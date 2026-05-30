@@ -110,7 +110,10 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
     const eventDate = new Date(record.timestamp)
     const dayOffset = Math.floor((eventDate.getTime() - startMs) / oneDayMs)
     const column = Math.max(0, Math.min(HEATMAP_COLUMNS - 1, dayOffset))
-    const row = Math.max(0, Math.min(HEATMAP_ROWS - 1, Math.floor(eventDate.getHours() / BUCKET_HOURS)))
+    const row = Math.max(
+      0,
+      Math.min(HEATMAP_ROWS - 1, Math.floor(eventDate.getHours() / BUCKET_HOURS))
+    )
     const key = `${column}-${row}`
     let bucket = cellMap.get(key)
     if (!bucket) {

@@ -16,9 +16,9 @@ describe('shortModelName', () => {
 
   it('extracts Claude family + version', () => {
     expect(shortModelName('claude', 'Claude Opus 4.7', 'claude-opus-4-7')).toBe('Opus 4.7')
-    expect(shortModelName('claude', 'Claude Sonnet 4.6 (thinking)', 'claude-sonnet-4-6-thinking')).toBe(
-      'Sonnet 4.6'
-    )
+    expect(
+      shortModelName('claude', 'Claude Sonnet 4.6 (thinking)', 'claude-sonnet-4-6-thinking')
+    ).toBe('Sonnet 4.6')
     expect(shortModelName('claude', 'Claude Haiku 4.0', 'claude-haiku-4-0')).toBe('Haiku 4.0')
   })
 

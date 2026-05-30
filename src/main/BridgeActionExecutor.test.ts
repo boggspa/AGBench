@@ -4,6 +4,12 @@ import type {
   BridgeApprovalReplyAction,
   BridgeCancelRunAction,
   BridgeComposerPromptAction,
+  BridgeEnsembleCancelRoundAction,
+  BridgeEnsembleCancelWakeupAction,
+  BridgeEnsembleQueuePromptAction,
+  BridgeEnsembleSkipActiveParticipantAction,
+  BridgeEnsembleSteerAction,
+  BridgeEnsembleWakeNowAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
   BridgeRegisterApnsTokenAction,
@@ -47,6 +53,43 @@ const sample = {
     provider: 'gemini',
     runId: 'run-42'
   } satisfies BridgeCancelRunAction,
+  ensembleCancelRound: {
+    kind: 'ensembleCancelRound',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    roundId: 'round-1'
+  } satisfies BridgeEnsembleCancelRoundAction,
+  ensembleSkipActiveParticipant: {
+    kind: 'ensembleSkipActiveParticipant',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    roundId: 'round-1',
+    participantId: 'participant-1'
+  } satisfies BridgeEnsembleSkipActiveParticipantAction,
+  ensembleWakeNow: {
+    kind: 'ensembleWakeNow',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    wakeupId: 'wakeup-1'
+  } satisfies BridgeEnsembleWakeNowAction,
+  ensembleCancelWakeup: {
+    kind: 'ensembleCancelWakeup',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    wakeupId: 'wakeup-1'
+  } satisfies BridgeEnsembleCancelWakeupAction,
+  ensembleQueuePrompt: {
+    kind: 'ensembleQueuePrompt',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    text: 'queue this'
+  } satisfies BridgeEnsembleQueuePromptAction,
+  ensembleSteer: {
+    kind: 'ensembleSteer',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    text: 'steer this'
+  } satisfies BridgeEnsembleSteerAction,
   registerApnsToken: {
     kind: 'registerApnsToken',
     pairID: 'pair-1',
@@ -80,6 +123,12 @@ describe('NoopActionExecutor', () => {
       executor.executeQuestionReject(sample.questionReject),
       executor.executeComposerPrompt(sample.composerPrompt),
       executor.executeCancelRun(sample.cancelRun),
+      executor.executeEnsembleCancelRound(sample.ensembleCancelRound),
+      executor.executeEnsembleSkipActiveParticipant(sample.ensembleSkipActiveParticipant),
+      executor.executeEnsembleWakeNow(sample.ensembleWakeNow),
+      executor.executeEnsembleCancelWakeup(sample.ensembleCancelWakeup),
+      executor.executeEnsembleQueuePrompt(sample.ensembleQueuePrompt),
+      executor.executeEnsembleSteer(sample.ensembleSteer),
       executor.executeRegisterApnsToken(sample.registerApnsToken),
       executor.executeSetYoloMode(sample.setYoloMode),
       executor.executeTogglePinChat(sample.togglePinChat),
@@ -95,10 +144,16 @@ describe('NoopActionExecutor', () => {
     expect(results[2].message).toContain('q-1')
     expect(results[3].message).toContain('t-1')
     expect(results[4].message).toContain('run-42')
-    expect(results[5].message).toContain('pair-1')
-    expect(results[6].message).toContain('true')
-    expect(results[7].message).toContain('chat-1')
-    expect(results[8].message).toContain('ws-1')
+    expect(results[5].message).toContain('t-1')
+    expect(results[6].message).toContain('t-1')
+    expect(results[7].message).toContain('wakeup-1')
+    expect(results[8].message).toContain('wakeup-1')
+    expect(results[9].message).toContain('t-1')
+    expect(results[10].message).toContain('t-1')
+    expect(results[11].message).toContain('pair-1')
+    expect(results[12].message).toContain('true')
+    expect(results[13].message).toContain('chat-1')
+    expect(results[14].message).toContain('ws-1')
   })
 })
 
@@ -145,6 +200,67 @@ describe('MainProcessActionExecutor.executeCancelRun', () => {
       await executor.executeCancelRun({ ...sample.cancelRun, provider })
     }
     expect(cancelRunFn.mock.calls.map((c) => c[0])).toEqual(['codex', 'claude', 'kimi'])
+  })
+})
+
+describe('MainProcessActionExecutor Ensemble controls', () => {
+  const cancelRunFn = vi.fn().mockResolvedValue(true)
+
+  it('dispatches each Ensemble action to its matching handler', async () => {
+    const deps = {
+      cancelRunFn,
+      ensembleCancelRoundFn: vi.fn(async () => ({ ok: true, roundId: 'round-1' })),
+      ensembleSkipActiveParticipantFn: vi.fn(async () => ({ ok: true })),
+      ensembleWakeNowFn: vi.fn(async () => ({ ok: true, wakeupId: 'wakeup-1' })),
+      ensembleCancelWakeupFn: vi.fn(async () => ({ ok: true, wakeupId: 'wakeup-1' })),
+      ensembleQueuePromptFn: vi.fn(async () => ({ ok: true })),
+      ensembleSteerFn: vi.fn(async () => ({ status: 'steered', roundId: 'round-2' }))
+    }
+    const executor = new MainProcessActionExecutor(deps)
+
+    const results = await Promise.all([
+      executor.executeEnsembleCancelRound(sample.ensembleCancelRound),
+      executor.executeEnsembleSkipActiveParticipant(sample.ensembleSkipActiveParticipant),
+      executor.executeEnsembleWakeNow(sample.ensembleWakeNow),
+      executor.executeEnsembleCancelWakeup(sample.ensembleCancelWakeup),
+      executor.executeEnsembleQueuePrompt(sample.ensembleQueuePrompt),
+      executor.executeEnsembleSteer(sample.ensembleSteer)
+    ])
+
+    expect(deps.ensembleCancelRoundFn).toHaveBeenCalledWith(sample.ensembleCancelRound)
+    expect(deps.ensembleSkipActiveParticipantFn).toHaveBeenCalledWith(
+      sample.ensembleSkipActiveParticipant
+    )
+    expect(deps.ensembleWakeNowFn).toHaveBeenCalledWith(sample.ensembleWakeNow)
+    expect(deps.ensembleCancelWakeupFn).toHaveBeenCalledWith(sample.ensembleCancelWakeup)
+    expect(deps.ensembleQueuePromptFn).toHaveBeenCalledWith(sample.ensembleQueuePrompt)
+    expect(deps.ensembleSteerFn).toHaveBeenCalledWith(sample.ensembleSteer)
+    expect(results.map((result) => result.executed)).toEqual([true, true, true, true, true, true])
+  })
+
+  it('surfaces handler declines without throwing', async () => {
+    const ensembleCancelRoundFn = vi.fn(async () => ({
+      ok: false,
+      error: 'Round id is no longer active'
+    }))
+    const executor = new MainProcessActionExecutor({ cancelRunFn, ensembleCancelRoundFn })
+    const result = await executor.executeEnsembleCancelRound(sample.ensembleCancelRound)
+
+    expect(result.executed).toBe(false)
+    expect(result.message).toContain('Round id is no longer active')
+  })
+
+  it('reports handler exceptions as execution failures', async () => {
+    const log = vi.fn()
+    const ensembleWakeNowFn = vi.fn(async () => {
+      throw new Error('orchestrator unavailable')
+    })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, ensembleWakeNowFn, log })
+    const result = await executor.executeEnsembleWakeNow(sample.ensembleWakeNow)
+
+    expect(result.executed).toBe(false)
+    expect(result.message).toContain('orchestrator unavailable')
+    expect(log).toHaveBeenCalled()
   })
 })
 

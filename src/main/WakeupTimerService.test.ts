@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  WakeupTimerService,
-  classifyWakeupRecovery
-} from './WakeupTimerService'
+import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
 import type { EnsembleWakeupRecord } from './store/types'
 
 function wakeup(overrides: Partial<EnsembleWakeupRecord> = {}): EnsembleWakeupRecord {
@@ -110,11 +107,12 @@ describe('classifyWakeupRecovery', () => {
   })
 
   it('ignores non-pending wakeups', () => {
-    const actions = classifyWakeupRecovery([
-      wakeup({ status: 'cancelled', cancelledAt: '2026-05-27T00:00:30.000Z' })
-    ], {
-      nowMs: new Date('2026-05-27T00:01:00.000Z').getTime()
-    })
+    const actions = classifyWakeupRecovery(
+      [wakeup({ status: 'cancelled', cancelledAt: '2026-05-27T00:00:30.000Z' })],
+      {
+        nowMs: new Date('2026-05-27T00:01:00.000Z').getTime()
+      }
+    )
     expect(actions).toEqual([])
   })
 })

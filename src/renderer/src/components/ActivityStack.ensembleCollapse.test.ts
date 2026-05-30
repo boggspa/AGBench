@@ -47,11 +47,7 @@ describe('buildTimelineItems — default (single-provider) behavior', () => {
     // The two-read run at the front now collapses (min-2 in AS2b).
     // The write is its own category (never collapses solo). The
     // trailing single read stays inline (only one in its run).
-    expect(items.map((i) => i.type)).toEqual([
-      'compact-group',
-      'activity',
-      'activity'
-    ])
+    expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity', 'activity'])
   })
 
   it('groups 2+ consecutive read/search activities into a compact group (AS2b min)', () => {

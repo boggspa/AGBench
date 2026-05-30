@@ -31,6 +31,7 @@
     "test:swift:bridge": "cd swift/GuiGeminiBridge && swift test",
     "test:swift:ios": "cd ios/GuiGeminiCompanion && swift test",
     "build:ios:sim": "node scripts/build-ios-simulator.cjs",
+    "validate:codexbridge-seam": "node scripts/check-codexbridge-seam.cjs",
     "validate:fixtures": "node scripts/validate-remote-ios-fixtures.cjs",
     "validate:remote-ios": "node scripts/validate-remote-ios-release.cjs",
     "validate:release": "node scripts/validate-release.cjs",

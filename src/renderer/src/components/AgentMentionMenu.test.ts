@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  filterComposerMentionCandidates,
-  type ComposerMentionCandidate
-} from './AgentMentionMenu'
+import { filterComposerMentionCandidates, type ComposerMentionCandidate } from './AgentMentionMenu'
 
 const candidates: ComposerMentionCandidate[] = [
   {
@@ -34,12 +31,12 @@ describe('filterComposerMentionCandidates', () => {
     expect(filterComposerMentionCandidates(candidates, 'build').map((item) => item.id)).toEqual([
       'agent:1'
     ])
-    expect(filterComposerMentionCandidates(candidates, 'renderer/app').map((item) => item.id)).toEqual([
-      'workspace:src/renderer/App.tsx'
-    ])
-    expect(filterComposerMentionCandidates(candidates, 'other project').map((item) => item.id)).toEqual([
-      'external:/Users/me/Other Project'
-    ])
+    expect(
+      filterComposerMentionCandidates(candidates, 'renderer/app').map((item) => item.id)
+    ).toEqual(['workspace:src/renderer/App.tsx'])
+    expect(
+      filterComposerMentionCandidates(candidates, 'other project').map((item) => item.id)
+    ).toEqual(['external:/Users/me/Other Project'])
   })
 
   it('preserves both rows when two same-provider ensemble participants both match', () => {

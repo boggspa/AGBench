@@ -123,7 +123,9 @@ describe('grokEventToRunEvents — tool events (G5d, best-effort shape)', () => 
 
   it('maps a flattened tool_use to a tool_use run event', () => {
     expect(
-      grokEventToRunEvents(json({ type: 'tool_use', id: 't1', name: 'Write', input: { path: 'a.ts' } }))
+      grokEventToRunEvents(
+        json({ type: 'tool_use', id: 't1', name: 'Write', input: { path: 'a.ts' } })
+      )
     ).toEqual([
       {
         type: 'tool_use',
@@ -151,7 +153,13 @@ describe('grokEventToRunEvents — tool events (G5d, best-effort shape)', () => 
     expect(
       grokEventToRunEvents(json({ type: 'tool_result', tool_use_id: 't1', output: 'ok' }))
     ).toEqual([
-      { type: 'tool_result', toolId: 't1', toolStatus: 'success', toolOutput: 'ok', raw: expect.anything() }
+      {
+        type: 'tool_result',
+        toolId: 't1',
+        toolStatus: 'success',
+        toolOutput: 'ok',
+        raw: expect.anything()
+      }
     ])
   })
 

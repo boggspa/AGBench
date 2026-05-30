@@ -70,10 +70,7 @@ export const BLENDER_CLASSES: BlenderClassEntry[] = [
       {
         name: 'blendPath',
         description: 'Absolute path to the source .blend file',
-        validate: (value) =>
-          value.endsWith('.blend')
-            ? null
-            : 'blendPath must end in .blend'
+        validate: (value) => (value.endsWith('.blend') ? null : 'blendPath must end in .blend')
       }
     ],
     resolveInputBlendPath: ({ blendPath }) => blendPath,
@@ -100,8 +97,7 @@ print(f"WROTE {bpy.context.scene.render.filepath}")
       {
         name: 'objPath',
         description: 'Absolute path to the source .obj file',
-        validate: (value) =>
-          value.endsWith('.obj') ? null : 'objPath must end in .obj'
+        validate: (value) => (value.endsWith('.obj') ? null : 'objPath must end in .obj')
       }
     ],
     build: ({ objPath }) => {
@@ -119,14 +115,14 @@ print(f"WROTE scene.blend with {len(bpy.data.objects)} object(s)")
   {
     id: 'export-gltf',
     label: 'Export the current scene to glTF',
-    description: 'Open a .blend file and export its active scene to scene.gltf in the sandbox tempdir.',
+    description:
+      'Open a .blend file and export its active scene to scene.gltf in the sandbox tempdir.',
     targetBundleId: 'org.blenderfoundation.blender',
     params: [
       {
         name: 'blendPath',
         description: 'Absolute path to the source .blend file',
-        validate: (value) =>
-          value.endsWith('.blend') ? null : 'blendPath must end in .blend'
+        validate: (value) => (value.endsWith('.blend') ? null : 'blendPath must end in .blend')
       }
     ],
     resolveInputBlendPath: ({ blendPath }) => blendPath,

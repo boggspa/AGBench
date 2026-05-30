@@ -1,7 +1,4 @@
-import type {
-  ChatRecord,
-  ScheduledEnsembleSnapshot
-} from '../../../main/store/types'
+import type { ChatRecord, ScheduledEnsembleSnapshot } from '../../../main/store/types'
 
 /**
  * 1.0.4-AT3 — capture a scheduled-task ensemble snapshot from a

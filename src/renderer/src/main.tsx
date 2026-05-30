@@ -10,8 +10,6 @@ const isPopout = new URLSearchParams(window.location.search).has('popout')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      {isPopout ? <PopoutApp /> : <App />}
-    </ErrorBoundary>
+    <ErrorBoundary>{isPopout ? <PopoutApp /> : <App />}</ErrorBoundary>
   </StrictMode>
 )

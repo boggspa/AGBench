@@ -178,11 +178,7 @@ describe('ExternalPathGrants display order (1.0.6-EW66)', () => {
 
 describe('reorderExternalPathGrantsByPath (1.0.6-EW66)', () => {
   it('rewrites order to match the renderer-supplied path order', () => {
-    const grants = [
-      g('gemini', '/tmp/a.txt'),
-      g('gemini', '/tmp/b.txt'),
-      g('gemini', '/tmp/c.txt')
-    ]
+    const grants = [g('gemini', '/tmp/a.txt'), g('gemini', '/tmp/b.txt'), g('gemini', '/tmp/c.txt')]
 
     const result = reorderExternalPathGrantsByPath(grants, [
       '/tmp/c.txt',
@@ -198,11 +194,7 @@ describe('reorderExternalPathGrantsByPath (1.0.6-EW66)', () => {
   })
 
   it('appends paths absent from the ordered list (stably, by path)', () => {
-    const grants = [
-      g('gemini', '/tmp/a.txt'),
-      g('gemini', '/tmp/b.txt'),
-      g('gemini', '/tmp/z.txt')
-    ]
+    const grants = [g('gemini', '/tmp/a.txt'), g('gemini', '/tmp/b.txt'), g('gemini', '/tmp/z.txt')]
 
     // Only z.txt is positioned; a + b are appended after it, sorted.
     const result = reorderExternalPathGrantsByPath(grants, ['/tmp/z.txt'])
@@ -215,11 +207,7 @@ describe('reorderExternalPathGrantsByPath (1.0.6-EW66)', () => {
   })
 
   it('writes the same order to every grant sharing a path', () => {
-    const grants = [
-      g('gemini', '/tmp/a.txt'),
-      g('codex', '/tmp/a.txt'),
-      g('gemini', '/tmp/b.txt')
-    ]
+    const grants = [g('gemini', '/tmp/a.txt'), g('codex', '/tmp/a.txt'), g('gemini', '/tmp/b.txt')]
 
     const result = reorderExternalPathGrantsByPath(grants, ['/tmp/b.txt', '/tmp/a.txt'])
 

@@ -10,7 +10,9 @@ const WORKSPACE = '/Users/test/project'
 const FILE_A = '/Users/test/project/src/a.ts'
 const FILE_B = '/Users/test/project/src/b.ts'
 
-function req(overrides: Partial<WriteIntentRequest> & Pick<WriteIntentRequest, 'mode' | 'laneId'>): WriteIntentRequest {
+function req(
+  overrides: Partial<WriteIntentRequest> & Pick<WriteIntentRequest, 'mode' | 'laneId'>
+): WriteIntentRequest {
   return {
     workspacePath: WORKSPACE,
     resourcePath: FILE_A,
@@ -271,7 +273,9 @@ describe('WorkspaceWriteIntentRegistry', () => {
   describe('cross-resource isolation', () => {
     it('locks on FILE_A do not block FILE_B', () => {
       registry.acquire(req({ laneId: 'lane-1', resourcePath: FILE_A, mode: 'write' }))
-      const result = registry.acquire(req({ laneId: 'lane-2', resourcePath: FILE_B, mode: 'write' }))
+      const result = registry.acquire(
+        req({ laneId: 'lane-2', resourcePath: FILE_B, mode: 'write' })
+      )
       expect(result.ok).toBe(true)
     })
   })

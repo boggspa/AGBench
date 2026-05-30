@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  CreativeApprovalGate,
-  type CreativeApprovalRequestBroadcast
-} from './CreativeApprovalGate'
+import { CreativeApprovalGate, type CreativeApprovalRequestBroadcast } from './CreativeApprovalGate'
 
 const sampleDetails = {
   title: 'Send your edit to Final Cut Pro',

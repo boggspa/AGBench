@@ -31,6 +31,8 @@
  *   - `composerPrompt`   — user sent a new message to an existing thread
  *                          via the iOS composer.
  *   - `cancelRun`        — user tapped "cancel" on an in-flight run.
+ *   - `ensemble*`        — remote task-console controls for ensemble rounds,
+ *                          wakeups, queued prompts, and steering.
  *
  * Workspace-bound payloads MUST carry `workspaceId`. The router relies on
  * this for allowlist evaluation; a workspace-bound payload missing it decodes
@@ -127,6 +129,57 @@ export interface BridgeCancelRunAction extends BridgeActionMetadata {
   message?: string
 }
 
+export interface BridgeEnsembleCancelRoundAction extends BridgeActionMetadata {
+  kind: 'ensembleCancelRound'
+  workspaceId: string
+  threadId: string
+  roundId?: string
+  message?: string
+}
+
+export interface BridgeEnsembleSkipActiveParticipantAction extends BridgeActionMetadata {
+  kind: 'ensembleSkipActiveParticipant'
+  workspaceId: string
+  threadId: string
+  roundId?: string
+  participantId?: string
+  message?: string
+}
+
+export interface BridgeEnsembleWakeNowAction extends BridgeActionMetadata {
+  kind: 'ensembleWakeNow'
+  workspaceId: string
+  threadId: string
+  wakeupId: string
+  message?: string
+}
+
+export interface BridgeEnsembleCancelWakeupAction extends BridgeActionMetadata {
+  kind: 'ensembleCancelWakeup'
+  workspaceId: string
+  threadId: string
+  wakeupId: string
+  message?: string
+}
+
+export interface BridgeEnsembleQueuePromptAction extends BridgeActionMetadata {
+  kind: 'ensembleQueuePrompt'
+  workspaceId: string
+  threadId: string
+  roundId?: string
+  text: string
+  message?: string
+}
+
+export interface BridgeEnsembleSteerAction extends BridgeActionMetadata {
+  kind: 'ensembleSteer'
+  workspaceId: string
+  threadId: string
+  roundId?: string
+  text: string
+  message?: string
+}
+
 export interface BridgeSetYoloModeAction extends BridgeActionMetadata {
   kind: 'setYoloMode'
   /** Used to gate this process-wide escalation through the remote
@@ -165,6 +218,12 @@ export type BridgeActionPayload =
   | BridgeQuestionRejectAction
   | BridgeComposerPromptAction
   | BridgeCancelRunAction
+  | BridgeEnsembleCancelRoundAction
+  | BridgeEnsembleSkipActiveParticipantAction
+  | BridgeEnsembleWakeNowAction
+  | BridgeEnsembleCancelWakeupAction
+  | BridgeEnsembleQueuePromptAction
+  | BridgeEnsembleSteerAction
   | BridgeRegisterApnsTokenAction
   | BridgeSetYoloModeAction
   | BridgeTogglePinChatAction
@@ -255,6 +314,12 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'ensembleCancelRound':
+    case 'ensembleSkipActiveParticipant':
+    case 'ensembleWakeNow':
+    case 'ensembleCancelWakeup':
+    case 'ensembleQueuePrompt':
+    case 'ensembleSteer':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -286,6 +351,12 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'ensembleCancelRound':
+    case 'ensembleSkipActiveParticipant':
+    case 'ensembleWakeNow':
+    case 'ensembleCancelWakeup':
+    case 'ensembleQueuePrompt':
+    case 'ensembleSteer':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -331,6 +402,12 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'composerPrompt':
     case 'cancelRun':
     case 'questionReply':
+    case 'ensembleCancelRound':
+    case 'ensembleSkipActiveParticipant':
+    case 'ensembleWakeNow':
+    case 'ensembleCancelWakeup':
+    case 'ensembleQueuePrompt':
+    case 'ensembleSteer':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -371,6 +448,30 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isCancelRun(parsed)
         ? (parsed as unknown as BridgeCancelRunAction)
         : { kind: 'unknown', rawKind: 'cancelRun', raw: parsed }
+    case 'ensembleCancelRound':
+      return isEnsembleCancelRound(parsed)
+        ? (parsed as unknown as BridgeEnsembleCancelRoundAction)
+        : { kind: 'unknown', rawKind: 'ensembleCancelRound', raw: parsed }
+    case 'ensembleSkipActiveParticipant':
+      return isEnsembleSkipActiveParticipant(parsed)
+        ? (parsed as unknown as BridgeEnsembleSkipActiveParticipantAction)
+        : { kind: 'unknown', rawKind: 'ensembleSkipActiveParticipant', raw: parsed }
+    case 'ensembleWakeNow':
+      return isEnsembleWakeNow(parsed)
+        ? (parsed as unknown as BridgeEnsembleWakeNowAction)
+        : { kind: 'unknown', rawKind: 'ensembleWakeNow', raw: parsed }
+    case 'ensembleCancelWakeup':
+      return isEnsembleCancelWakeup(parsed)
+        ? (parsed as unknown as BridgeEnsembleCancelWakeupAction)
+        : { kind: 'unknown', rawKind: 'ensembleCancelWakeup', raw: parsed }
+    case 'ensembleQueuePrompt':
+      return isEnsembleQueuePrompt(parsed)
+        ? (parsed as unknown as BridgeEnsembleQueuePromptAction)
+        : { kind: 'unknown', rawKind: 'ensembleQueuePrompt', raw: parsed }
+    case 'ensembleSteer':
+      return isEnsembleSteer(parsed)
+        ? (parsed as unknown as BridgeEnsembleSteerAction)
+        : { kind: 'unknown', rawKind: 'ensembleSteer', raw: parsed }
     case 'registerApnsToken':
       return isRegisterApnsToken(parsed)
         ? (parsed as unknown as BridgeRegisterApnsTokenAction)
@@ -461,6 +562,67 @@ function isCancelRun(v: Record<string, unknown>): boolean {
     typeof v.threadId === 'string' &&
     typeof v.provider === 'string' &&
     typeof v.runId === 'string' &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isWorkspaceThreadAction(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) && typeof v.workspaceId === 'string' && typeof v.threadId === 'string'
+  )
+}
+
+function isEnsembleCancelRound(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    (v.roundId === undefined || typeof v.roundId === 'string') &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isEnsembleSkipActiveParticipant(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    (v.roundId === undefined || typeof v.roundId === 'string') &&
+    (v.participantId === undefined || typeof v.participantId === 'string') &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isEnsembleWakeNow(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    typeof v.wakeupId === 'string' &&
+    v.wakeupId.length > 0 &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isEnsembleCancelWakeup(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    typeof v.wakeupId === 'string' &&
+    v.wakeupId.length > 0 &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isEnsembleQueuePrompt(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    (v.roundId === undefined || typeof v.roundId === 'string') &&
+    typeof v.text === 'string' &&
+    v.text.trim().length > 0 &&
+    (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isEnsembleSteer(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    (v.roundId === undefined || typeof v.roundId === 'string') &&
+    typeof v.text === 'string' &&
+    v.text.trim().length > 0 &&
     (v.message === undefined || typeof v.message === 'string')
   )
 }

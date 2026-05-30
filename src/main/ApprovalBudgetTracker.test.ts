@@ -70,7 +70,7 @@ describe('ApprovalBudgetTracker', () => {
       expect(tracker.getConsumed('env-1')).toBe(2)
     })
 
-    it("does not increment on exhausted attempts", () => {
+    it('does not increment on exhausted attempts', () => {
       tracker.tryConsume('env-1', 1)
       tracker.tryConsume('env-1', 1) // exhausted, no increment
       tracker.tryConsume('env-1', 1) // exhausted, no increment

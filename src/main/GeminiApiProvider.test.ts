@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
-import {
-  chunkTextForTest,
-  tryRunGeminiApi,
-  type GeminiApiProviderDeps
-} from './GeminiApiProvider'
+import { chunkTextForTest, tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
 import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './index'
 import type {
@@ -288,10 +284,7 @@ describe('chunkText — 1.0.4-AD thinking-bleed filter', () => {
       candidates: [
         {
           content: {
-            parts: [
-              { text: 'Acknowledging the sign-off…', thought: true },
-              { text: 'Good luck!' }
-            ]
+            parts: [{ text: 'Acknowledging the sign-off…', thought: true }, { text: 'Good luck!' }]
           }
         }
       ]
@@ -304,10 +297,7 @@ describe('chunkText — 1.0.4-AD thinking-bleed filter', () => {
       candidates: [
         {
           content: {
-            parts: [
-              { text: 'Hello ' },
-              { text: 'world!', thought: false }
-            ]
+            parts: [{ text: 'Hello ' }, { text: 'world!', thought: false }]
           }
         }
       ]

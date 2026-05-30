@@ -1,8 +1,4 @@
-import type {
-  ChatMessage,
-  EnsembleRoundSummaryRecord,
-  ProviderId
-} from './store/types'
+import type { ChatMessage, EnsembleRoundSummaryRecord, ProviderId } from './store/types'
 
 const SUMMARY_LABELS = [
   'Round summary:',
@@ -18,9 +14,7 @@ export function extractRoundSummaryBlock(content: string): string | null {
   if (!content || typeof content !== 'string') return null
   const normalized = content.replace(/\r\n/g, '\n').trim()
   if (!normalized) return null
-  const matches = Array.from(
-    normalized.matchAll(/(?:^|\n)\s*(?:#{1,6}\s*)?Round summary\s*:/gi)
-  )
+  const matches = Array.from(normalized.matchAll(/(?:^|\n)\s*(?:#{1,6}\s*)?Round summary\s*:/gi))
   if (matches.length === 0) return null
   for (let i = matches.length - 1; i >= 0; i -= 1) {
     const match = matches[i]

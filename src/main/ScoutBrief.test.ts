@@ -132,11 +132,7 @@ describe('handleScoutBrief', () => {
     })
 
     it('rejects when findings is empty', () => {
-      const result = handleScoutBrief(
-        'run-1',
-        { findings: '   ', confidence: 'high' },
-        makeDeps()
-      )
+      const result = handleScoutBrief('run-1', { findings: '   ', confidence: 'high' }, makeDeps())
       expect(result.ok).toBe(false)
       expect(result.error).toBe('missing_findings')
     })
@@ -152,11 +148,7 @@ describe('handleScoutBrief', () => {
     })
 
     it('rejects when runId is empty', () => {
-      const result = handleScoutBrief(
-        '',
-        { findings: 'x', confidence: 'high' },
-        makeDeps()
-      )
+      const result = handleScoutBrief('', { findings: 'x', confidence: 'high' }, makeDeps())
       expect(result.ok).toBe(false)
       expect(result.error).toBe('no_active_scout_pass')
     })

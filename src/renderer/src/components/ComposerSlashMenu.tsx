@@ -194,9 +194,7 @@ export function ComposerSlashMenu({
     >
       {flat.length === 0 ? (
         <div className="composer-slash-menu-empty">
-          {commands.length === 0
-            ? 'No slash commands available'
-            : `No commands match "${query}"`}
+          {commands.length === 0 ? 'No slash commands available' : `No commands match "${query}"`}
         </div>
       ) : (
         <div className="composer-slash-menu-list">

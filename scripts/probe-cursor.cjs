@@ -128,7 +128,9 @@ if (statusRes.error) findings.errors.push('status probe failed: ' + statusRes.er
 
 const modelsRes = capture(resolved.binaryPath, ['models'])
 findings.models = parseModels(modelsRes.stdout || modelsRes.stderr || '')
-findings.composerModelIds = findings.models.map((m) => m.id).filter((id) => id.startsWith('composer-'))
+findings.composerModelIds = findings.models
+  .map((m) => m.id)
+  .filter((id) => id.startsWith('composer-'))
 if (modelsRes.error) findings.errors.push('models probe failed: ' + modelsRes.error)
 
 console.log(JSON.stringify(findings, null, 2))

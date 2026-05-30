@@ -1,11 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ActivityStack } from './ActivityStack'
-import type {
-  ChatRecord,
-  EnsembleParticipant,
-  ToolActivity
-} from '../../../main/store/types'
+import type { ChatRecord, EnsembleParticipant, ToolActivity } from '../../../main/store/types'
 
 function makeEnsembleYieldActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
   return {
@@ -59,10 +55,7 @@ function makeParticipant(overrides: Partial<EnsembleParticipant>): EnsembleParti
 describe('ActivityStack ensemble_yield rendering', () => {
   it('humanizes the Codex-style mcp_AGBench_ensemble_yield tool name', () => {
     const html = renderToStaticMarkup(
-      <ActivityStack
-        activities={[makeEnsembleYieldActivity()]}
-        provider="codex"
-      />
+      <ActivityStack activities={[makeEnsembleYieldActivity()]} provider="codex" />
     )
 
     expect(html).toContain('yielding to')
@@ -112,11 +105,7 @@ describe('ActivityStack ensemble_yield rendering', () => {
     ])
 
     const html = renderToStaticMarkup(
-      <ActivityStack
-        activities={[makeEnsembleYieldActivity()]}
-        provider="codex"
-        chat={chat}
-      />
+      <ActivityStack activities={[makeEnsembleYieldActivity()]} provider="codex" chat={chat} />
     )
 
     expect(html).toContain('activity-yield-target')
@@ -194,11 +183,7 @@ function makeWriteActivity(overrides: Partial<ToolActivity> = {}): ToolActivity 
 describe('ActivityStack compactDensity routing', () => {
   it('routes individual tool activities through CompactToolTrace when compactDensity is true', () => {
     const html = renderToStaticMarkup(
-      <ActivityStack
-        activities={[makeWriteActivity()]}
-        provider="claude"
-        compactDensity
-      />
+      <ActivityStack activities={[makeWriteActivity()]} provider="claude" compactDensity />
     )
 
     expect(html).toContain('compact-tool-trace')
@@ -210,10 +195,7 @@ describe('ActivityStack compactDensity routing', () => {
 
   it('uses the standard ActivityRow when compactDensity is false (default)', () => {
     const html = renderToStaticMarkup(
-      <ActivityStack
-        activities={[makeWriteActivity()]}
-        provider="claude"
-      />
+      <ActivityStack activities={[makeWriteActivity()]} provider="claude" />
     )
 
     expect(html).not.toContain('compact-tool-trace')
@@ -256,11 +238,7 @@ describe('ActivityStack compactDensity routing', () => {
     // Smoke test: an activity that isn't a spawner still uses
     // CompactToolTrace.
     const html = renderToStaticMarkup(
-      <ActivityStack
-        activities={[makeWriteActivity()]}
-        provider="codex"
-        compactDensity
-      />
+      <ActivityStack activities={[makeWriteActivity()]} provider="codex" compactDensity />
     )
     expect(html).toContain('compact-tool-trace')
   })

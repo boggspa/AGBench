@@ -38,7 +38,8 @@ export class WakeupTimerService {
   constructor(deps: WakeupTimerServiceDeps) {
     this.now = deps.now || Date.now
     this.setTimer = deps.setTimeout || ((callback, delayMs) => setTimeout(callback, delayMs))
-    this.clearTimer = deps.clearTimeout || ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>))
+    this.clearTimer =
+      deps.clearTimeout || ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>))
     this.onFire = deps.onFire
   }
 

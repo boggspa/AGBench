@@ -129,11 +129,7 @@ function QueuedMessagesAboveRowImpl({
   if (!entries.length) return null
 
   return (
-    <div
-      className="queued-messages-above-row"
-      role="region"
-      aria-label="Queued messages"
-    >
+    <div className="queued-messages-above-row" role="region" aria-label="Queued messages">
       <div className="queued-messages-above-row-list" ref={listRef}>
         {entries.map((entry, index) => (
           <QueuedMessageRow
@@ -271,15 +267,10 @@ function QueuedMessageRow({
       <span className="queued-messages-row-meta" aria-hidden>
         <ProviderBadgeIcon provider={entry.provider} />
         <span className="queued-messages-row-position">#{position}</span>
-        {dmRoleLabel && (
-          <span className="queued-messages-row-dm">→ {dmRoleLabel}</span>
-        )}
+        {dmRoleLabel && <span className="queued-messages-row-dm">→ {dmRoleLabel}</span>}
       </span>
       <span className="queued-messages-row-body">
-        <MentionHighlightedText
-          value={truncatePrompt(entry.prompt)}
-          participants={participants}
-        />
+        <MentionHighlightedText value={truncatePrompt(entry.prompt)} participants={participants} />
       </span>
       <span className="queued-messages-row-actions">
         <button

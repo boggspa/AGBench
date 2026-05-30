@@ -261,8 +261,7 @@ export function parseAcpPermissionRequest(
   if (!isAcpPermissionRequest(message)) return null
   const rpcId = message.id as number | string
   const params = asObject(message.params)
-  const sessionId =
-    params && typeof params.sessionId === 'string' ? params.sessionId : ''
+  const sessionId = params && typeof params.sessionId === 'string' ? params.sessionId : ''
   const toolCall = asObject(params?.toolCall)
   const toolName =
     (toolCall && typeof toolCall.title === 'string' && toolCall.title) ||
@@ -343,8 +342,6 @@ export function buildAcpPermissionResponse(
 ): Record<string, unknown> {
   const optionId = selectAcpPermissionOption(options, decision)
   const outcome =
-    decision !== 'cancel' && optionId
-      ? { outcome: 'selected', optionId }
-      : { outcome: 'cancelled' }
+    decision !== 'cancel' && optionId ? { outcome: 'selected', optionId } : { outcome: 'cancelled' }
   return { jsonrpc: '2.0', id: rpcId, result: { outcome } }
 }

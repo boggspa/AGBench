@@ -19,9 +19,7 @@ import { ContenteditableComposer } from './ContenteditableComposer'
 
 describe('ContenteditableComposer — initial render', () => {
   it('renders an editable textbox with the right ARIA role + multiline', () => {
-    const html = renderToStaticMarkup(
-      <ContenteditableComposer value="" onChange={() => {}} />
-    )
+    const html = renderToStaticMarkup(<ContenteditableComposer value="" onChange={() => {}} />)
     expect(html).toContain('role="textbox"')
     expect(html).toContain('aria-multiline="true"')
     // React's SSR emits the camelCase attribute name verbatim
@@ -32,27 +30,20 @@ describe('ContenteditableComposer — initial render', () => {
   })
 
   it('marks the surface empty when value is empty', () => {
-    const html = renderToStaticMarkup(
-      <ContenteditableComposer value="" onChange={() => {}} />
-    )
+    const html = renderToStaticMarkup(<ContenteditableComposer value="" onChange={() => {}} />)
     expect(html).toContain('data-empty="true"')
     expect(html).toContain('<br>')
   })
 
   it('marks the surface non-empty when value has content', () => {
-    const html = renderToStaticMarkup(
-      <ContenteditableComposer value="hello" onChange={() => {}} />
-    )
+    const html = renderToStaticMarkup(<ContenteditableComposer value="hello" onChange={() => {}} />)
     expect(html).toContain('data-empty="false"')
     expect(html).toContain('hello')
   })
 
   it('escapes the value (no HTML injection)', () => {
     const html = renderToStaticMarkup(
-      <ContenteditableComposer
-        value="<script>alert(1)</script>"
-        onChange={() => {}}
-      />
+      <ContenteditableComposer value="<script>alert(1)</script>" onChange={() => {}} />
     )
     expect(html).toContain('&lt;script&gt;')
     expect(html).not.toContain('<script>alert(1)')
@@ -87,11 +78,7 @@ describe('ContenteditableComposer — initial render', () => {
 
   it('reflects placeholder via data attribute (not a real placeholder)', () => {
     const html = renderToStaticMarkup(
-      <ContenteditableComposer
-        value=""
-        onChange={() => {}}
-        placeholder="Type a message…"
-      />
+      <ContenteditableComposer value="" onChange={() => {}} placeholder="Type a message…" />
     )
     expect(html).toContain('data-placeholder="Type a message…"')
     expect(html).toContain('aria-placeholder="Type a message…"')
@@ -106,9 +93,7 @@ describe('ContenteditableComposer — initial render', () => {
   })
 
   it('applies the composer-textarea class for shared shell styling', () => {
-    const html = renderToStaticMarkup(
-      <ContenteditableComposer value="hi" onChange={() => {}} />
-    )
+    const html = renderToStaticMarkup(<ContenteditableComposer value="hi" onChange={() => {}} />)
     expect(html).toContain('composer-textarea')
     expect(html).toContain('contenteditable-composer')
   })

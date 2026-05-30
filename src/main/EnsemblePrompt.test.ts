@@ -6,12 +6,7 @@ import {
   formatToolTraceSummary,
   getOrderedEnsembleParticipants
 } from './EnsemblePrompt'
-import type {
-  ChatRecord,
-  EnsembleConfig,
-  EnsembleParticipant,
-  ToolActivity
-} from './store/types'
+import type { ChatRecord, EnsembleConfig, EnsembleParticipant, ToolActivity } from './store/types'
 
 const ensemble: EnsembleConfig = {
   enabled: true,
@@ -93,11 +88,7 @@ describe('Ensemble prompt composition', () => {
       roundMode: 'chair-summary',
       synthesizerParticipantId: 'claude'
     })
-    expect(ordered.map((participant) => participant.id)).toEqual([
-      'codex',
-      'gemini',
-      'claude'
-    ])
+    expect(ordered.map((participant) => participant.id)).toEqual(['codex', 'gemini', 'claude'])
   })
 
   // 1.0.4-AR2 — pre-AR2 the prompt-builder treated any
@@ -624,7 +615,9 @@ describe('Ensemble prompt composition', () => {
     // Deictic rule is now the inverted variant.
     expect(prompt).toContain('refer to AGBench / the harness / this ensemble')
     expect(prompt).not.toContain('NOT to AGBench')
-    expect(prompt).not.toContain('Discuss AGBench only when the user explicitly references it by name')
+    expect(prompt).not.toContain(
+      'Discuss AGBench only when the user explicitly references it by name'
+    )
   })
 
   it('1.0.4-AF: self-reflective stanza handles the no-workspace case', () => {
@@ -653,7 +646,9 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'Walk through this codebase.',
       roundId: 'round-default'
     })
-    expect(prompt).toContain('refer to the active workspace named in `Round subject:` above, NOT to AGBench')
+    expect(prompt).toContain(
+      'refer to the active workspace named in `Round subject:` above, NOT to AGBench'
+    )
     expect(prompt).not.toContain('self-reflective mode')
   })
 })
@@ -811,12 +806,7 @@ describe('formatToolTraceSummary', () => {
   })
 
   it('orders by descending count, then alphabetically', () => {
-    const summary = formatToolTraceSummary([
-      ta('z_tool'),
-      ta('a_tool'),
-      ta('z_tool'),
-      ta('a_tool')
-    ])
+    const summary = formatToolTraceSummary([ta('z_tool'), ta('a_tool'), ta('z_tool'), ta('a_tool')])
     // Tie at 2 each → alphabetical wins.
     expect(summary).toBe('(tools: a_tool × 2 · z_tool × 2)')
   })
@@ -831,9 +821,7 @@ describe('formatToolTraceSummary', () => {
   })
 
   it('falls back to displayName when toolName is missing', () => {
-    const summary = formatToolTraceSummary([
-      { ...ta(''), toolName: '', displayName: 'Search' }
-    ])
+    const summary = formatToolTraceSummary([{ ...ta(''), toolName: '', displayName: 'Search' }])
     expect(summary).toBe('(tools: Search)')
   })
 
@@ -969,9 +957,9 @@ describe('Ensemble synthesizer + last-round summary (AT8)', () => {
  */
 describe('formatRoundModeInstructions (AR13)', () => {
   it('returns no lines for roundtable (the default)', () => {
-    expect(
-      formatRoundModeInstructions({ ...ensemble, roundMode: 'roundtable' }, 'codex')
-    ).toEqual([])
+    expect(formatRoundModeInstructions({ ...ensemble, roundMode: 'roundtable' }, 'codex')).toEqual(
+      []
+    )
   })
 
   it('returns no lines when roundMode is undefined (back-compat)', () => {
@@ -979,9 +967,7 @@ describe('formatRoundModeInstructions (AR13)', () => {
   })
 
   it('returns no lines for targeted (orchestrator handles routing, no participant rule needed)', () => {
-    expect(
-      formatRoundModeInstructions({ ...ensemble, roundMode: 'targeted' }, 'codex')
-    ).toEqual([])
+    expect(formatRoundModeInstructions({ ...ensemble, roundMode: 'targeted' }, 'codex')).toEqual([])
   })
 
   it('emits a synthesizer-flavored rule for chair-summary when current participant IS the synthesizer', () => {
@@ -1003,10 +989,7 @@ describe('formatRoundModeInstructions (AR13)', () => {
   })
 
   it('emits a rebuttal rule asking the participant to respond to the prior turn', () => {
-    const lines = formatRoundModeInstructions(
-      { ...ensemble, roundMode: 'rebuttal' },
-      'codex'
-    )
+    const lines = formatRoundModeInstructions({ ...ensemble, roundMode: 'rebuttal' }, 'codex')
     expect(lines.join('\n')).toContain('REBUTTAL')
     expect(lines.join('\n')).toContain('IMMEDIATELY-PRIOR')
   })

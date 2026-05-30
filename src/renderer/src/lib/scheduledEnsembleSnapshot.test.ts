@@ -115,9 +115,7 @@ describe('applyScheduledEnsembleSnapshot', () => {
     })
     const snapshot: ScheduledEnsembleSnapshot = {
       orchestrationMode: 'turn_bound',
-      participants: [
-        participant({ id: 'claude', provider: 'claude', role: 'Explorer', order: 1 })
-      ],
+      participants: [participant({ id: 'claude', provider: 'claude', role: 'Explorer', order: 1 })],
       maxParticipants: 4,
       maxContinuationHops: 2,
       capturedAt: FIXED_NOW.toISOString()

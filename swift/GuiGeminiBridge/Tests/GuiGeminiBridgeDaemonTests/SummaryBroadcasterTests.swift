@@ -98,6 +98,76 @@ final class SummaryBroadcasterTests: XCTestCase {
         XCTAssertEqual(payload["schemaVersion"] as? Int, 1)
     }
 
+    func testElectronRemoteProjectionEnvelopeIsPreservedAsPayload() throws {
+        let projection = try SummaryBroadcaster.makeRemoteProjectionEventJSON(
+            params: [
+                "envelope": [
+                    "schemaVersion": 1,
+                    "envelopeId": "env-question-1",
+                    "kind": "questionCard",
+                    "threadId": "chat-1",
+                    "generatedAt": "2026-05-30T12:00:00.000Z",
+                    "payload": [
+                        "promptId": "question-1",
+                        "threadId": "chat-1",
+                        "question": "Proceed?"
+                    ]
+                ]
+            ],
+            publishedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        XCTAssertEqual(projection.threadID, "chat-1")
+        let event = try decodeEvent(projection.data)
+        XCTAssertEqual(event["channel"] as? String, "remote-projection")
+        XCTAssertEqual(event["kind"] as? String, "questionCard")
+        XCTAssertEqual(event["publishedAt"] as? String, "2026-05-30T12:00:00.000Z")
+        let payload = try XCTUnwrap(event["payload"] as? [String: Any])
+        XCTAssertEqual(payload["kind"] as? String, "questionCard")
+        XCTAssertEqual(payload["envelopeId"] as? String, "env-question-1")
+        let innerPayload = try XCTUnwrap(payload["payload"] as? [String: Any])
+        XCTAssertEqual(innerPayload["promptId"] as? String, "question-1")
+    }
+
+    func testElectronRemoteProjectionSnapshotExpandsIntoEvents() throws {
+        let projections = try SummaryBroadcaster.makeRemoteProjectionSnapshotEvents(
+            params: [
+                "projections": [
+                    [
+                        "schemaVersion": 1,
+                        "envelopeId": "env-task-1",
+                        "kind": "taskFeedSnapshot",
+                        "payload": [
+                            "taskId": "task-1",
+                            "threadId": "chat-1",
+                            "pendingQuestionCount": 1
+                        ]
+                    ],
+                    [
+                        "schemaVersion": 1,
+                        "envelopeId": "env-thread-2",
+                        "kind": "threadSnapshot",
+                        "threadId": "chat-2",
+                        "payload": [
+                            "threadId": "chat-2",
+                            "rows": [],
+                            "totalRows": 0
+                        ]
+                    ]
+                ]
+            ],
+            publishedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        XCTAssertEqual(projections.count, 2)
+        XCTAssertEqual(projections.map(\.threadID), ["chat-1", "chat-2"])
+        let first = try decodeEvent(projections[0].data)
+        XCTAssertEqual(first["channel"] as? String, "remote-projection")
+        XCTAssertEqual(first["kind"] as? String, "taskFeedSnapshot")
+        let firstPayload = try XCTUnwrap(first["payload"] as? [String: Any])
+        XCTAssertEqual(firstPayload["envelopeId"] as? String, "env-task-1")
+    }
+
     func testMissingRootKeyFailsBeforeBroadcast() {
         XCTAssertThrowsError(
             try SummaryBroadcaster.makeEventJSON(

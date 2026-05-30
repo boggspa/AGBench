@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { UsageRecord } from '../../../main/store/types'
-import {
-  buildHeatmapGrid,
-  formatTokenCount,
-  HEATMAP_COLUMNS,
-  HEATMAP_ROWS
-} from './UsageHeatmap'
+import { buildHeatmapGrid, formatTokenCount, HEATMAP_COLUMNS, HEATMAP_ROWS } from './UsageHeatmap'
 
-function makeRecord(overrides: Partial<UsageRecord> & { timestamp: number; totalTokens: number }): UsageRecord {
+function makeRecord(
+  overrides: Partial<UsageRecord> & { timestamp: number; totalTokens: number }
+): UsageRecord {
   return {
     id: Math.random().toString(36).slice(2),
     workspaceId: 'ws-1',
@@ -50,10 +47,7 @@ describe('buildHeatmapGrid', () => {
   it('drops events older than the 30-day window', () => {
     const now = new Date('2026-05-22T15:00:00Z')
     const oldEvent = new Date('2026-04-01T10:00:00Z').getTime() // > 30 days back
-    const grid = buildHeatmapGrid(
-      [makeRecord({ timestamp: oldEvent, totalTokens: 5000 })],
-      now
-    )
+    const grid = buildHeatmapGrid([makeRecord({ timestamp: oldEvent, totalTokens: 5000 })], now)
     expect(grid.totals.last30d).toBe(0)
     expect(grid.cells.every((c) => c.totalTokens === 0)).toBe(true)
   })

@@ -90,7 +90,10 @@ function collectSessionActivityEntries(
       })
       continue
     }
-    if (before.provider !== participant.provider || normalizedRole(before) !== normalizedRole(participant)) {
+    if (
+      before.provider !== participant.provider ||
+      normalizedRole(before) !== normalizedRole(participant)
+    ) {
       add({
         scope: 'participant',
         target: id,

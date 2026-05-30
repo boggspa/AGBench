@@ -112,9 +112,7 @@ export const APPLESCRIPT_CLASSES: AppleScriptClassEntry[] = [
         name: 'timecode',
         description: 'Target timecode (e.g. 00:01:23:15)',
         validate: (value) =>
-          /^\d{2}:\d{2}:\d{2}:\d{2}$/.test(value)
-            ? null
-            : 'timecode must be in HH:MM:SS:FF format'
+          /^\d{2}:\d{2}:\d{2}:\d{2}$/.test(value) ? null : 'timecode must be in HH:MM:SS:FF format'
       }
     ],
     build: ({ timecode }) => {
@@ -140,7 +138,7 @@ export const APPLESCRIPT_CLASSES: AppleScriptClassEntry[] = [
     id: 'fcp.export-current',
     label: 'Export current Final Cut Pro project',
     description:
-      'Trigger Final Cut Pro\'s File → Share → Master File menu to start an export of the active project.',
+      "Trigger Final Cut Pro's File → Share → Master File menu to start an export of the active project.",
     targetBundleId: 'com.apple.FinalCut',
     params: [],
     build: () => {
@@ -189,7 +187,8 @@ export const APPLESCRIPT_CLASSES: AppleScriptClassEntry[] = [
         description: 'Target BPM (1-999)',
         validate: (value) => {
           const n = Number(value)
-          if (!Number.isFinite(n) || n < 1 || n > 999) return 'bpm must be a number between 1 and 999'
+          if (!Number.isFinite(n) || n < 1 || n > 999)
+            return 'bpm must be a number between 1 and 999'
           return null
         }
       }

@@ -854,7 +854,9 @@ export function validateFcpxml(input: FcpxmlValidationInput): FcpxmlValidationRe
         }
       }
       const spineNode = firstChild(sequenceNode, 'spine')
-      const itemsToCheck = spineNode ? spineNode.children.filter((c) => isTimelineItemNode(c.name)) : []
+      const itemsToCheck = spineNode
+        ? spineNode.children.filter((c) => isTimelineItemNode(c.name))
+        : []
       itemsToCheck.forEach((item, idx) => {
         const loc = `sequence/spine/${item.name}[${idx + 1}]`
         checkAttr(item.name, 'offset', item.attrs.offset, loc)
@@ -1138,10 +1140,7 @@ export function getSequenceCanonicalDenominator(
  * the supplied default when the value is undefined so we stay
  * back-compat with K7 emission.
  */
-function normaliseTrackFlag(
-  value: string | boolean | undefined,
-  defaultStr: '0' | '1'
-): '0' | '1' {
+function normaliseTrackFlag(value: string | boolean | undefined, defaultStr: '0' | '1'): '0' | '1' {
   if (value === undefined) return defaultStr
   if (typeof value === 'boolean') return value ? '1' : '0'
   if (value === 'true' || value === '1') return '1'
@@ -1499,9 +1498,7 @@ export function serializeFcpxmlTimelineIr(
     for (const [eventName, eventProjects] of projectsByEvent) {
       lines.push(`${indent}${indent}<event name="${escapeXmlText(eventName)}">`)
       for (const project of eventProjects) {
-        lines.push(
-          `${indent}${indent}${indent}<project${emitAttrs([['name', project.name]])}>`
-        )
+        lines.push(`${indent}${indent}${indent}<project${emitAttrs([['name', project.name]])}>`)
         // Phase K7 — DTD requires <project> to contain exactly one
         // <sequence>, and <sequence> requires a `format` IDREF
         // (%media_attrs;). If the IR omits either, we synthesise the
@@ -1560,168 +1557,163 @@ export function serializeFcpxmlTimelineIr(
           ])}>`
         )
         lines.push(`${indent}${indent}${indent}${indent}${indent}<spine>`)
-          for (const rawItem of seq.spine) {
-            // K8.1 — Coerce title flat fields (text/font/fontSize/
-            // alignment/position) into the canonical textRuns +
-            // textStyleDefs + titleParams shape so agents who don't
-            // know the K8 canonical IR succeed anyway.
-            // K11 — Then inject the four canonical Basic Title params
-            // (Position/Flatten/Alignment/disableDRT with their
-            // Apple-internal keys) + fontFace/fontColor defaults so
-            // FCP actually renders the title instead of creating a
-            // bound-to-nothing element.
-            const item = injectBasicTitleTemplate(coerceTitleFlatFields(rawItem))
-            timelineItemCount += 1
-            markerCount += item.markers.length + item.captions.length
-            if (!item.duration) {
-              warnings.push(
-                `Spine item index ${item.index} (${item.type}${item.name ? ` "${item.name}"` : ''}) has no duration. ` +
-                  'FCP will likely reject the import; supply a duration like "5s" or "120/24000s".'
-              )
-            }
-            const isTitle = item.type === 'title'
-            const hasTitleContent =
-              isTitle &&
-              ((item.textRuns && item.textRuns.length > 0) ||
-                (item.textStyleDefs && item.textStyleDefs.length > 0) ||
-                (item.titleParams && item.titleParams.length > 0))
-            const hasChildren =
-              item.markers.length > 0 || item.captions.length > 0 || hasTitleContent
-            // K8.1 — asset-clip uses audioRole/videoRole per the DTD;
-            // a generic `role` attribute on <asset-clip> is rejected
-            // by the importer (this was the Codex 1.4 miss). Other
-            // spine item types (clip, gap, title, etc.) still use the
-            // generic `role` attribute.
-            const isAssetClip = item.type === 'asset-clip'
-            const splitRoles = isAssetClip
-              ? {
-                  audioRole: item.audioRole ?? splitAssetClipRole(item.role).audioRole,
-                  videoRole: item.videoRole ?? splitAssetClipRole(item.role).videoRole
-                }
-              : null
-            const roleAttrs: Array<[string, string | undefined]> = splitRoles
-              ? [
-                  ['audioRole', splitRoles.audioRole],
-                  ['videoRole', splitRoles.videoRole]
-                ]
-              : [['role', item.role]]
-            const headerAttrs = emitAttrs([
-              ['name', item.name],
-              ['ref', item.ref],
-              ['offset', t(item.offset)],
-              ['start', t(item.start)],
-              ['duration', t(item.duration)],
-              ['lane', item.lane],
-              ...roleAttrs,
-              ['format', item.format]
-            ])
-            if (!hasChildren) {
-              lines.push(
-                `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}/>`
-              )
-              continue
-            }
-            lines.push(
-              `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}>`
+        for (const rawItem of seq.spine) {
+          // K8.1 — Coerce title flat fields (text/font/fontSize/
+          // alignment/position) into the canonical textRuns +
+          // textStyleDefs + titleParams shape so agents who don't
+          // know the K8 canonical IR succeed anyway.
+          // K11 — Then inject the four canonical Basic Title params
+          // (Position/Flatten/Alignment/disableDRT with their
+          // Apple-internal keys) + fontFace/fontColor defaults so
+          // FCP actually renders the title instead of creating a
+          // bound-to-nothing element.
+          const item = injectBasicTitleTemplate(coerceTitleFlatFields(rawItem))
+          timelineItemCount += 1
+          markerCount += item.markers.length + item.captions.length
+          if (!item.duration) {
+            warnings.push(
+              `Spine item index ${item.index} (${item.type}${item.name ? ` "${item.name}"` : ''}) has no duration. ` +
+                'FCP will likely reject the import; supply a duration like "5s" or "120/24000s".'
             )
-            // Title-specific children. FCPXML orders these as:
-            //   <param>* before <text>? before <text-style-def>*
-            // (the DTD is permissive but FCP's importer is sensitive
-            // to param ordering for the title preset to bind right).
-            if (item.titleParams) {
-              for (const param of item.titleParams) {
-                lines.push(
-                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<param${emitAttrs(
-                    [
-                      ['name', param.name],
-                      ['key', param.key],
-                      ['value', param.value]
-                    ]
-                  )}/>`
-                )
-              }
-            }
-            if (item.textRuns && item.textRuns.length > 0) {
-              lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text>`)
-              for (const run of item.textRuns) {
-                if (run.styleRef) {
-                  lines.push(
-                    `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style ref="${escapeXmlText(run.styleRef)}">${escapeXmlText(run.text)}</text-style>`
-                  )
-                } else {
-                  lines.push(
-                    `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}${escapeXmlText(run.text)}`
-                  )
-                }
-              }
-              lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}${indent}</text>`)
-            }
-            if (item.textStyleDefs) {
-              for (const def of item.textStyleDefs) {
-                lines.push(
-                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style-def${emitAttrs(
-                    [['id', def.id]]
-                  )}>`
-                )
-                lines.push(
-                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style${emitAttrs(
-                    [
-                      ['font', def.font],
-                      ['fontSize', def.fontSize],
-                      ['fontFace', def.fontFace],
-                      ['fontColor', def.fontColor],
-                      ['alignment', def.alignment]
-                    ]
-                  )}/>`
-                )
-                lines.push(
-                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}</text-style-def>`
-                )
-              }
-            }
-            for (const marker of item.markers) {
-              lines.push(
-                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs(
-                  [
-                    ['start', t(marker.start)],
-                    ['duration', t(marker.duration)],
-                    ['value', marker.value],
-                    ['note', marker.note],
-                    ['role', marker.role]
-                  ]
-                )}/>`
-              )
-            }
-            for (const caption of item.captions) {
-              lines.push(
-                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<caption${emitAttrs(
-                  [
-                    ['start', t(caption.start)],
-                    ['duration', t(caption.duration)],
-                    ['value', caption.value],
-                    ['note', caption.note],
-                    ['role', caption.role]
-                  ]
-                )}/>`
-              )
-            }
-            lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}</${item.type}>`)
           }
-          lines.push(`${indent}${indent}${indent}${indent}${indent}</spine>`)
-          // Sequence-level markers ride at the spine sibling level.
-          for (const marker of seq.markers) {
-            markerCount += 1
+          const isTitle = item.type === 'title'
+          const hasTitleContent =
+            isTitle &&
+            ((item.textRuns && item.textRuns.length > 0) ||
+              (item.textStyleDefs && item.textStyleDefs.length > 0) ||
+              (item.titleParams && item.titleParams.length > 0))
+          const hasChildren = item.markers.length > 0 || item.captions.length > 0 || hasTitleContent
+          // K8.1 — asset-clip uses audioRole/videoRole per the DTD;
+          // a generic `role` attribute on <asset-clip> is rejected
+          // by the importer (this was the Codex 1.4 miss). Other
+          // spine item types (clip, gap, title, etc.) still use the
+          // generic `role` attribute.
+          const isAssetClip = item.type === 'asset-clip'
+          const splitRoles = isAssetClip
+            ? {
+                audioRole: item.audioRole ?? splitAssetClipRole(item.role).audioRole,
+                videoRole: item.videoRole ?? splitAssetClipRole(item.role).videoRole
+              }
+            : null
+          const roleAttrs: Array<[string, string | undefined]> = splitRoles
+            ? [
+                ['audioRole', splitRoles.audioRole],
+                ['videoRole', splitRoles.videoRole]
+              ]
+            : [['role', item.role]]
+          const headerAttrs = emitAttrs([
+            ['name', item.name],
+            ['ref', item.ref],
+            ['offset', t(item.offset)],
+            ['start', t(item.start)],
+            ['duration', t(item.duration)],
+            ['lane', item.lane],
+            ...roleAttrs,
+            ['format', item.format]
+          ])
+          if (!hasChildren) {
             lines.push(
-              `${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs([
-                ['start', t(marker.start)],
-                ['duration', t(marker.duration)],
-                ['value', marker.value],
-                ['note', marker.note],
-                ['role', marker.role]
+              `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}/>`
+            )
+            continue
+          }
+          lines.push(
+            `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}>`
+          )
+          // Title-specific children. FCPXML orders these as:
+          //   <param>* before <text>? before <text-style-def>*
+          // (the DTD is permissive but FCP's importer is sensitive
+          // to param ordering for the title preset to bind right).
+          if (item.titleParams) {
+            for (const param of item.titleParams) {
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<param${emitAttrs([
+                  ['name', param.name],
+                  ['key', param.key],
+                  ['value', param.value]
+                ])}/>`
+              )
+            }
+          }
+          if (item.textRuns && item.textRuns.length > 0) {
+            lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text>`)
+            for (const run of item.textRuns) {
+              if (run.styleRef) {
+                lines.push(
+                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style ref="${escapeXmlText(run.styleRef)}">${escapeXmlText(run.text)}</text-style>`
+                )
+              } else {
+                lines.push(
+                  `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}${escapeXmlText(run.text)}`
+                )
+              }
+            }
+            lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}${indent}</text>`)
+          }
+          if (item.textStyleDefs) {
+            for (const def of item.textStyleDefs) {
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style-def${emitAttrs(
+                  [['id', def.id]]
+                )}>`
+              )
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}${indent}<text-style${emitAttrs(
+                  [
+                    ['font', def.font],
+                    ['fontSize', def.fontSize],
+                    ['fontFace', def.fontFace],
+                    ['fontColor', def.fontColor],
+                    ['alignment', def.alignment]
+                  ]
+                )}/>`
+              )
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}</text-style-def>`
+              )
+            }
+          }
+          for (const marker of item.markers) {
+            lines.push(
+              `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs(
+                [
+                  ['start', t(marker.start)],
+                  ['duration', t(marker.duration)],
+                  ['value', marker.value],
+                  ['note', marker.note],
+                  ['role', marker.role]
+                ]
+              )}/>`
+            )
+          }
+          for (const caption of item.captions) {
+            lines.push(
+              `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<caption${emitAttrs([
+                ['start', t(caption.start)],
+                ['duration', t(caption.duration)],
+                ['value', caption.value],
+                ['note', caption.note],
+                ['role', caption.role]
               ])}/>`
             )
           }
-          lines.push(`${indent}${indent}${indent}${indent}</sequence>`)
+          lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}</${item.type}>`)
+        }
+        lines.push(`${indent}${indent}${indent}${indent}${indent}</spine>`)
+        // Sequence-level markers ride at the spine sibling level.
+        for (const marker of seq.markers) {
+          markerCount += 1
+          lines.push(
+            `${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs([
+              ['start', t(marker.start)],
+              ['duration', t(marker.duration)],
+              ['value', marker.value],
+              ['note', marker.note],
+              ['role', marker.role]
+            ])}/>`
+          )
+        }
+        lines.push(`${indent}${indent}${indent}${indent}</sequence>`)
         lines.push(`${indent}${indent}${indent}</project>`)
       }
       lines.push(`${indent}${indent}</event>`)

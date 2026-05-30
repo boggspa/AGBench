@@ -33,11 +33,7 @@ describe('classifyDispatchError', () => {
     // failure is socket-level wrap their error in this typed class
     // and the classifier reads `underlyingCode` directly instead of
     // sniffing `.code` / message substrings.
-    const err = new ParticipantUnreachableError(
-      'ensemble-gemini',
-      'gemini',
-      'ECONNREFUSED'
-    )
+    const err = new ParticipantUnreachableError('ensemble-gemini', 'gemini', 'ECONNREFUSED')
     expect(classifyDispatchError(err)).toEqual({
       kind: 'unreachable',
       underlyingCode: 'ECONNREFUSED'
@@ -187,9 +183,9 @@ describe('participantNoteLabel', () => {
 
   it('returns just the provider when role is empty / whitespace', () => {
     expect(participantNoteLabel(participant({ id: 'g', provider: 'gemini' }))).toBe('Gemini')
-    expect(
-      participantNoteLabel(participant({ id: 'g', provider: 'gemini', role: '   ' }))
-    ).toBe('Gemini')
+    expect(participantNoteLabel(participant({ id: 'g', provider: 'gemini', role: '   ' }))).toBe(
+      'Gemini'
+    )
   })
 })
 
@@ -234,11 +230,7 @@ describe('formatAllUnreachableNote', () => {
 
 describe('ParticipantUnreachableError', () => {
   it('stores the typed fields and produces a default message', () => {
-    const err = new ParticipantUnreachableError(
-      'ensemble-gemini',
-      'gemini',
-      'ECONNREFUSED'
-    )
+    const err = new ParticipantUnreachableError('ensemble-gemini', 'gemini', 'ECONNREFUSED')
     expect(err.name).toBe('ParticipantUnreachableError')
     expect(err.participantId).toBe('ensemble-gemini')
     expect(err.providerId).toBe('gemini')

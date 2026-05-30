@@ -3,6 +3,19 @@ import Observation
 import os.log
 import GuiGeminiCompanionCore
 
+enum RemoteNotificationResumeTrigger: String, Sendable {
+    case background
+    case tap
+    case launch
+}
+
+enum RemoteNotificationResumeResult: Sendable, Equatable {
+    case ignored
+    case noPair
+    case snapshotRequested
+    case snapshotUnavailable
+}
+
 /// AppState — top-level observable state owning the bridge client (once
 /// pairing completes) and the per-screen view models.
 ///
@@ -52,6 +65,11 @@ final class AppState {
     /// Cached APNs token bytes from the OS. Held until a pair is
     /// established so we can register immediately on connect.
     private(set) var pendingDeviceToken: Data?
+    /// APNs tap/background pushes carry only route ids. Keep the most
+    /// recent unresolved route until remote projection truth arrives and
+    /// the task console can select the matching detail.
+    private(set) var pendingNotificationRoute: RemoteNotificationRoute?
+    private(set) var lastNotificationRoute: RemoteNotificationRoute?
 
     /// True once `connect(with:)` has completed and the client + view
     /// models are ready. The RootView switches to TabView when this is true.
@@ -100,6 +118,7 @@ final class AppState {
                 transcript.ingest(event)
                 self.composerViewModel?.observeRunEvent(event)
                 self.remoteTaskConsoleViewModel?.ingest(event)
+                self.applyPendingNotificationRouteIfPossible()
 
                 if let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) {
                     switch decoded {
@@ -220,6 +239,35 @@ final class AppState {
         lastPushMessage = "Push registration error: \(message)"
     }
 
+    @discardableResult
+    func handleRemoteNotification(
+        userInfo: [AnyHashable: Any],
+        trigger: RemoteNotificationResumeTrigger
+    ) async -> RemoteNotificationResumeResult {
+        guard let route = RemoteNotificationRoute(userInfo: userInfo) else {
+            lastPushMessage = "Push received without route identifiers"
+            return .ignored
+        }
+
+        pendingNotificationRoute = route
+        lastNotificationRoute = route
+        applyPendingNotificationRouteIfPossible()
+
+        guard let client = await ensureBridgeClientForRemoteNotification() else {
+            lastPushMessage = "Push received, but no saved pair is available"
+            return .noPair
+        }
+
+        let requested = await client.requestProjectionSnapshot(route: route)
+        if requested {
+            lastPushMessage = "Push \(trigger.rawValue) handled; refreshing task state"
+            return .snapshotRequested
+        } else {
+            lastPushMessage = "Push \(trigger.rawValue) handled; bridge snapshot request is pending connection"
+            return .snapshotUnavailable
+        }
+    }
+
     private func registerPushToken(_ token: Data) async {
         guard let registrar = pushRegistrar else {
             // No pair → can't ship the action. Token stays cached in
@@ -238,6 +286,76 @@ final class AppState {
         } catch {
             lastPushMessage = "Push registration failed: \(error.localizedDescription)"
         }
+    }
+
+    private func ensureBridgeClientForRemoteNotification() async -> GuiGeminiBridgeClient? {
+        if let client = bridgeClient {
+            await client.start()
+            return client
+        }
+        guard let pair = await loadMostRecentPairForRemoteResume() else {
+            return nil
+        }
+        await connect(with: pair)
+        return bridgeClient
+    }
+
+    private func loadMostRecentPairForRemoteResume() async -> GuiGeminiBridgeClient.Pair? {
+        do {
+            let records = try await pairStorage.loadAllPairs()
+                .sorted { lhs, rhs in lhs.createdAt > rhs.createdAt }
+            for record in records {
+                guard let loaded = try await pairStorage.loadPair(pairID: record.pairID) else { continue }
+                return GuiGeminiBridgeClient.Pair(
+                    pairID: loaded.record.pairID,
+                    controllerDeviceID: loaded.record.controllerDeviceID,
+                    macDeviceID: loaded.record.macDeviceID,
+                    derivedKeys: loaded.derivedKeys,
+                    macDisplayName: loaded.record.macDisplayName,
+                    tailscaleEndpointHint: loaded.record.tailscaleEndpointHint
+                )
+            }
+        } catch {
+            logIOSBridgeApp("remote notification pair restore failed: \(error.localizedDescription)")
+            lastPushMessage = "Push resume failed: \(error.localizedDescription)"
+        }
+        return nil
+    }
+
+    @discardableResult
+    private func applyPendingNotificationRouteIfPossible() -> Bool {
+        guard let route = pendingNotificationRoute,
+              let viewModel = remoteTaskConsoleViewModel
+        else { return false }
+        guard let taskID = taskID(matching: route, in: viewModel.store) else { return false }
+        viewModel.selectTask(taskID)
+        pendingNotificationRoute = nil
+        return true
+    }
+
+    private func taskID(matching route: RemoteNotificationRoute, in store: RemoteTaskStore) -> String? {
+        if let taskId = route.taskId, store.tasksById[taskId] != nil {
+            return taskId
+        }
+        if let approvalId = route.approvalId {
+            for (taskId, approvals) in store.approvalsByTaskId where approvals.contains(where: { $0.id == approvalId }) {
+                return taskId
+            }
+        }
+        if let questionId = route.questionId {
+            for (taskId, questions) in store.questionsByTaskId where questions.contains(where: { $0.id == questionId }) {
+                return taskId
+            }
+        }
+        if let threadId = route.threadId,
+           let detail = store.detail(threadID: threadId) {
+            return detail.id
+        }
+        if let runId = route.runId,
+           let match = store.tasksById.values.first(where: { $0.runId == runId }) {
+            return match.id
+        }
+        return nil
     }
 }
 

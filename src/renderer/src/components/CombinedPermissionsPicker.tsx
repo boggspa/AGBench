@@ -79,8 +79,7 @@ export function CombinedPermissionsPicker({
   const [permissionHighlight, setPermissionHighlight] = useState(0)
   const [grantHighlight, setGrantHighlight] = useState(0)
 
-  const selectedOption =
-    permissionOptions.find((option) => option.value === selectedPermission) ||
+  const selectedOption = permissionOptions.find((option) => option.value === selectedPermission) ||
     permissionOptions[0] || { value: selectedPermission, label: selectedPermission }
 
   const grantsCount = useMemo(
@@ -128,9 +127,12 @@ export function CombinedPermissionsPicker({
       0,
       permissionOptions.findIndex((option) => option.value === selectedPermission)
     )
-    setPermissionHighlight(permIdx)
-    setGrantHighlight(0)
-    setFocusedColumn('permission')
+    const frame = window.requestAnimationFrame(() => {
+      setPermissionHighlight(permIdx)
+      setGrantHighlight(0)
+      setFocusedColumn('permission')
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [open, permissionOptions, selectedPermission])
 
   // Click-outside + Escape dismiss.

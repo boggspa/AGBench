@@ -1096,6 +1096,7 @@ public struct RemoteEnsembleParticipant: Codable, Identifiable, Sendable, Equata
     public let status: String?
     public let isActive: Bool
     public let sleepingUntil: Date?
+    public let wakeupId: String?
     public let pendingApprovalCount: Int
 
     public init(from decoder: Decoder) throws {
@@ -1107,6 +1108,7 @@ public struct RemoteEnsembleParticipant: Codable, Identifiable, Sendable, Equata
         status = container.decodeString(keys: ["status", "state"])
         isActive = container.decodeBool(keys: ["isActive", "active"]) ?? false
         sleepingUntil = container.decodeDate(keys: ["sleepingUntil", "wakeupAt"])
+        wakeupId = container.decodeString(keys: ["wakeupId", "wakeupID", "activeWakeupId", "pendingWakeupId"])
         pendingApprovalCount = container.decodeInt(keys: ["pendingApprovalCount", "approvalCount"]) ?? 0
     }
 }
@@ -1131,9 +1133,11 @@ public struct RemoteEnsembleProjection: Codable, Sendable, Equatable {
     public let workspaceId: String?
     public let threadId: String
     public let runId: String?
+    public let roundId: String?
     public let status: String?
     public let roundStatus: String?
     public let activeParticipantId: String?
+    public let wakeupId: String?
     public let participants: [RemoteEnsembleParticipant]
     public let queue: [RemoteEnsembleQueuedTurn]
     public let capabilities: RemoteTaskCapabilities
@@ -1145,9 +1149,11 @@ public struct RemoteEnsembleProjection: Codable, Sendable, Equatable {
         workspaceId = container.decodeString(keys: ["workspaceId", "workspaceID", "workspace_id"])
         threadId = container.decodeString(keys: ["threadId", "threadID", "chatId", "appChatId"]) ?? ""
         runId = container.decodeString(keys: ["runId", "runID", "appRunId", "appRunID"])
+        roundId = container.decodeString(keys: ["roundId", "roundID", "activeRoundId", "activeRoundID"])
         status = container.decodeString(keys: ["status", "state"])
         roundStatus = container.decodeString(keys: ["roundStatus", "orchestrationStatus"])
         activeParticipantId = container.decodeString(keys: ["activeParticipantId", "activeParticipantID"])
+        wakeupId = container.decodeString(keys: ["wakeupId", "wakeupID", "activeWakeupId", "pendingWakeupId"])
         participants = (try? container.decode([RemoteEnsembleParticipant].self, forKey: "participants")) ?? []
         queue = (try? container.decode([RemoteEnsembleQueuedTurn].self, forKey: "queue")) ?? []
         capabilities = (try? container.decode(RemoteTaskCapabilities.self, forKey: "capabilities")) ?? .none

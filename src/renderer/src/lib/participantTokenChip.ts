@@ -59,9 +59,7 @@ function formatCompactTokens(total: number): string {
   return `${Math.round(thousands)}k`
 }
 
-function formatTokenTooltip(
-  totals: NonNullable<EnsembleParticipant['tokenTotals']>
-): string {
+function formatTokenTooltip(totals: NonNullable<EnsembleParticipant['tokenTotals']>): string {
   const parts: string[] = []
   if (typeof totals.input_tokens === 'number' && totals.input_tokens > 0) {
     parts.push(`${totals.input_tokens.toLocaleString()} in`)

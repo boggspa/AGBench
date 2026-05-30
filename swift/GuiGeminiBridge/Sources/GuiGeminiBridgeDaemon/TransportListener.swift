@@ -310,7 +310,14 @@ public actor TransportListener {
                 // can filter delivery via toPairIDs.
                 let update = await watchedThreadsStore.update(pairID: pairID, threadIDs: threadIDs)
                 await self.recordSnapshotRequest(at: update.lastSeenAt)
-                let snapshotReason = update.isFirstSeen ? "subscribe" : "resubscribe"
+                let snapshotReason: String
+                if update.isFirstSeen {
+                    snapshotReason = "subscribe"
+                } else if update.changed {
+                    snapshotReason = "resubscribe"
+                } else {
+                    snapshotReason = "resume"
+                }
                 notifier.publish(method: "bridge.didReceiveWatchedThreads", params: [
                     "pairID": pairID.rawValue,
                     "threadIDs": update.threadIDs,

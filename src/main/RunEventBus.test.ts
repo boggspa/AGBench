@@ -17,7 +17,9 @@ import { makeElectronIpcSink } from './RunEventBus'
  * throws.
  */
 
-function makeSender(over: Partial<{ isDestroyed: () => boolean; send: (...args: any[]) => void }> = {}) {
+function makeSender(
+  over: Partial<{ isDestroyed: () => boolean; send: (...args: any[]) => void }> = {}
+) {
   return {
     isDestroyed: over.isDestroyed ?? (() => false),
     send: over.send ?? vi.fn()

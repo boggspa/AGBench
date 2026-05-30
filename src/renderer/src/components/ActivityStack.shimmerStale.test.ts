@@ -105,7 +105,7 @@ describe('isActivityShimmerStale', () => {
       expect(isActivityShimmerStale(a, NOW)).toBe(true)
     })
 
-    it('returns false when running with no startedAt (can\'t compute TTL)', () => {
+    it("returns false when running with no startedAt (can't compute TTL)", () => {
       const a = activity({ status: 'running' })
       // `startedAt` undefined — can't measure age, so no TTL trigger.
       // (Terminal-field paths above still flag stale if endedAt /

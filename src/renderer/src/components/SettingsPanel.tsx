@@ -29,10 +29,7 @@ import type {
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
 import { humaniseModelId } from '../lib/modelDisplayName'
-import {
-  getDashboardStatsByGroup,
-  isDashboardStatVisible
-} from '../lib/dashboardStatRegistry'
+import { getDashboardStatsByGroup, isDashboardStatVisible } from '../lib/dashboardStatRegistry'
 import {
   summariseCliProviderEnabled,
   summariseCodexStatus,
@@ -1508,10 +1505,10 @@ export function SettingsPanel({
   const codexUsage = codexStatus?.codexUsage
   const codexUsageConfigured = Boolean(
     codexUsage?.configured ||
-      codexUsage?.planType ||
-      codexUsage?.userId ||
-      (Array.isArray(codexUsage?.windows) && codexUsage.windows.length > 0) ||
-      (Array.isArray(codexUsage?.balances) && codexUsage.balances.length > 0)
+    codexUsage?.planType ||
+    codexUsage?.userId ||
+    (Array.isArray(codexUsage?.windows) && codexUsage.windows.length > 0) ||
+    (Array.isArray(codexUsage?.balances) && codexUsage.balances.length > 0)
   )
   const handleLoadInstalledFonts = async (): Promise<void> => {
     const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts
@@ -1684,7 +1681,7 @@ export function SettingsPanel({
                   ))}
                 </div>
                 <p className="settings-hint">
-                  Tints your message bubble and the "You" label with the same hue.
+                  Tints your message bubble and the &quot;You&quot; label with the same hue.
                 </p>
               </div>
 
@@ -1910,71 +1907,71 @@ export function SettingsPanel({
                         />
                       </div>
                       <div className="composer-bottom-controls">
-                      <div className="composer-control-footer settings-composer-preview-footer">
-                        <div className="composer-inline-pickers">
-                          <div className="composer-inline-pickers-left" aria-hidden="true">
-                            <button
-                              type="button"
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="attach"
-                              tabIndex={-1}
-                            >
-                              +
-                            </button>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="provider"
-                            >
-                              {composerPreviewMeta.providerLabel}
-                            </span>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="permission"
-                            >
-                              {composerPreviewMeta.permissionLabel}
-                            </span>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="model"
-                            >
-                              {composerPreviewMeta.modelLabel}
-                            </span>
-                          </div>
-                          <div className="composer-inline-actions" aria-hidden="true">
-                            <span className="context-wheel settings-composer-preview-context">
-                              <svg viewBox="0 0 18 18" width="18" height="18">
-                                <circle
-                                  cx="9"
-                                  cy="9"
-                                  r="6.6"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  opacity="0.22"
-                                />
-                                <path
-                                  d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </span>
-                            <span className="composer-thread-token-tally">44%</span>
-                            <span className="composer-send-cluster">
+                        <div className="composer-control-footer settings-composer-preview-footer">
+                          <div className="composer-inline-pickers">
+                            <div className="composer-inline-pickers-left" aria-hidden="true">
                               <button
                                 type="button"
-                                className="composer-action-btn run-btn"
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="attach"
                                 tabIndex={-1}
-                                aria-label="Preview send button"
                               >
-                                ↑
+                                +
                               </button>
-                            </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="provider"
+                              >
+                                {composerPreviewMeta.providerLabel}
+                              </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="permission"
+                              >
+                                {composerPreviewMeta.permissionLabel}
+                              </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="model"
+                              >
+                                {composerPreviewMeta.modelLabel}
+                              </span>
+                            </div>
+                            <div className="composer-inline-actions" aria-hidden="true">
+                              <span className="context-wheel settings-composer-preview-context">
+                                <svg viewBox="0 0 18 18" width="18" height="18">
+                                  <circle
+                                    cx="9"
+                                    cy="9"
+                                    r="6.6"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    opacity="0.22"
+                                  />
+                                  <path
+                                    d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </span>
+                              <span className="composer-thread-token-tally">44%</span>
+                              <span className="composer-send-cluster">
+                                <button
+                                  type="button"
+                                  className="composer-action-btn run-btn"
+                                  tabIndex={-1}
+                                  aria-label="Preview send button"
+                                >
+                                  ↑
+                                </button>
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
                       </div>
                     </div>
                   </div>
@@ -2030,7 +2027,9 @@ export function SettingsPanel({
                         />
                         <span>
                           Reduce transparency
-                          <small>Disables glass effects for better readability and battery life.</small>
+                          <small>
+                            Disables glass effects for better readability and battery life.
+                          </small>
                         </span>
                       </label>
                       <label className="settings-effects-check-row">
@@ -2251,9 +2250,7 @@ export function SettingsPanel({
                 <select
                   className="settings-select"
                   value={currency ?? 'USD'}
-                  onChange={(e) =>
-                    onChange({ currency: e.target.value as 'USD' | 'GBP' | 'EUR' })
-                  }
+                  onChange={(e) => onChange({ currency: e.target.value as 'USD' | 'GBP' | 'EUR' })}
                 >
                   <option value="USD">US Dollar (USD)</option>
                   <option value="GBP">British Pound (GBP)</option>
@@ -2261,8 +2258,8 @@ export function SettingsPanel({
                 </select>
                 <p className="settings-hint">
                   Used for cost displays on per-participant chips and the chat-level cumulative
-                  tally. Rates are static approximations — provider pricing is sampled in USD
-                  and converted at display time. Live FX refresh is on the 1.0.6 roadmap.
+                  tally. Rates are static approximations — provider pricing is sampled in USD and
+                  converted at display time. Live FX refresh is on the 1.0.6 roadmap.
                 </p>
               </div>
 
@@ -2320,9 +2317,8 @@ export function SettingsPanel({
               <div className="settings-group settings-dashboard-stats">
                 <label className="settings-label">Dashboard statistics</label>
                 <p className="settings-hint">
-                  Toggle which chips appear in the welcome dashboard's stat grid.
-                  Hidden chips stay tracked in the background — re-enable any time
-                  to see their data again.
+                  Toggle which chips appear in the welcome dashboard&apos;s stat grid. Hidden chips
+                  stay tracked in the background — re-enable any time to see their data again.
                 </p>
                 {(['calendar', 'duration', 'volume', 'spend'] as const).map((group) => {
                   const stats = getDashboardStatsByGroup(group)
@@ -2455,7 +2451,9 @@ export function SettingsPanel({
                           }}
                         />
                         <span className="settings-toggle-label">
-                          {dashboardStatPrefs?.workspacesTabEnabled !== false ? 'Visible' : 'Hidden'}
+                          {dashboardStatPrefs?.workspacesTabEnabled !== false
+                            ? 'Visible'
+                            : 'Hidden'}
                         </span>
                       </label>
                     </li>
@@ -2463,7 +2461,10 @@ export function SettingsPanel({
                   <label className="settings-label settings-dashboard-workspaces-shown-label">
                     Workspaces shown
                     <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
-                      {Math.max(4, Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8))}
+                      {Math.max(
+                        4,
+                        Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8)
+                      )}
                     </span>
                   </label>
                   <input
@@ -2471,7 +2472,10 @@ export function SettingsPanel({
                     min={4}
                     max={20}
                     step={1}
-                    value={Math.max(4, Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8))}
+                    value={Math.max(
+                      4,
+                      Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8)
+                    )}
                     onChange={(e) => {
                       const next = Math.max(4, Math.min(20, Number(e.target.value) || 8))
                       onChange({
@@ -2485,8 +2489,8 @@ export function SettingsPanel({
                     aria-label="Maximum workspace cards shown on the Workspaces tab"
                   />
                   <p className="settings-hint">
-                    The Workspaces tab shows up to this many workspace cost cards
-                    (scrollable when there are more). Defaults to 8; clamped 4–20.
+                    The Workspaces tab shows up to this many workspace cost cards (scrollable when
+                    there are more). Defaults to 8; clamped 4–20.
                   </p>
                 </div>
                 {/*
@@ -2533,12 +2537,9 @@ export function SettingsPanel({
                     // 10 minutes — auto-cycling slower than that
                     // feels indistinguishable from manual).
                     const raw = dashboardStatPrefs?.autoCycleSeconds
-                    const resolved =
-                      raw === undefined ? 180 : Math.max(0, Number(raw) || 0)
+                    const resolved = raw === undefined ? 180 : Math.max(0, Number(raw) || 0)
                     const cycleEnabled = resolved > 0
-                    const sliderValue = cycleEnabled
-                      ? Math.max(30, Math.min(600, resolved))
-                      : 180
+                    const sliderValue = cycleEnabled ? Math.max(30, Math.min(600, resolved)) : 180
                     return (
                       <>
                         <ul className="settings-dashboard-stats-list">
@@ -2554,9 +2555,7 @@ export function SettingsPanel({
                                   onChange({
                                     dashboardStatPrefs: {
                                       ...(dashboardStatPrefs || {}),
-                                      autoCycleSeconds: e.target.checked
-                                        ? sliderValue
-                                        : 0
+                                      autoCycleSeconds: e.target.checked ? sliderValue : 0
                                     }
                                   })
                                 }}
@@ -2606,9 +2605,9 @@ export function SettingsPanel({
                     )
                   })()}
                   <p className="settings-hint">
-                    While a welcome screen is open, the dashboard rotates through visible
-                    tabs at this cadence. Background chats don't cycle. Defaults to 3 minutes;
-                    range 30 seconds – 10 minutes.
+                    While a welcome screen is open, the dashboard rotates through visible tabs at
+                    this cadence. Background chats don&apos;t cycle. Defaults to 3 minutes; range 30
+                    seconds – 10 minutes.
                   </p>
                 </div>
               </div>
@@ -2645,24 +2644,19 @@ export function SettingsPanel({
                 <p className="settings-hint">
                   When enabled, prompts dispatched to Kimi participants in ensemble chats are
                   pre-scanned and any sentence containing a known Moonshot-rejected topic
-                  (Tiananmen, Xinjiang, Hong Kong protests, Tibet sovereignty, Taiwan
-                  independence, Falun Gong, US-China relations summaries, etc.) is replaced
-                  with a redacted placeholder so Kimi can still participate. Other panelists
-                  always see the unfiltered prompt. Your transcript is never modified — only
-                  Kimi&apos;s view. A diagnostic note appears whenever the filter fires.
+                  (Tiananmen, Xinjiang, Hong Kong protests, Tibet sovereignty, Taiwan independence,
+                  Falun Gong, US-China relations summaries, etc.) is replaced with a redacted
+                  placeholder so Kimi can still participate. Other panelists always see the
+                  unfiltered prompt. Your transcript is never modified — only Kimi&apos;s view. A
+                  diagnostic note appears whenever the filter fires.
                 </p>
-                <label
-                  className="settings-label"
-                  style={{ marginTop: 'var(--space-sm)' }}
-                >
+                <label className="settings-label" style={{ marginTop: 'var(--space-sm)' }}>
                   Custom triggers (one per line)
                 </label>
                 <textarea
                   className="settings-textarea"
                   value={kimiSanitiserCustomKeywords ?? ''}
-                  onChange={(e) =>
-                    onChange({ kimiSanitiserCustomKeywords: e.target.value })
-                  }
+                  onChange={(e) => onChange({ kimiSanitiserCustomKeywords: e.target.value })}
                   placeholder={
                     '# Add phrases you have seen trigger Moonshot rejection.\n# Lines starting with # are comments.\n# Example:\nSouth China Sea\nNine Dash Line'
                   }
@@ -2676,8 +2670,8 @@ export function SettingsPanel({
                   }}
                 />
                 <p className="settings-hint">
-                  Added on top of the curated default list. Case-insensitive substring match,
-                  one phrase per line. Lines starting with <code>#</code> are comments.
+                  Added on top of the curated default list. Case-insensitive substring match, one
+                  phrase per line. Lines starting with <code>#</code> are comments.
                 </p>
               </div>
 
@@ -2850,7 +2844,9 @@ export function SettingsPanel({
                         disabled={claudeLoginState === 'loading'}
                         onClick={onTriggerClaudeLogin}
                       >
-                        {claudeLoginState === 'loading' ? 'Opening browser...' : 'Login with Claude'}
+                        {claudeLoginState === 'loading'
+                          ? 'Opening browser...'
+                          : 'Login with Claude'}
                       </button>
                     </div>
                     <p className="settings-provider-auth-footnote">
@@ -2952,7 +2948,9 @@ export function SettingsPanel({
                   >
                     <div className="settings-provider-auth-command">
                       <code>grok</code>
-                      <span>Run the Grok CLI in Terminal and sign in (installs under ~/.grok/bin).</span>
+                      <span>
+                        Run the Grok CLI in Terminal and sign in (installs under ~/.grok/bin).
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -3691,7 +3689,9 @@ export function SettingsPanel({
                 </article>
                 <article className="settings-mcp-summary-card">
                   <span>Providers</span>
-                  <strong>{connectedMcpProviderCount}/{providerMcpSummaries.length}</strong>
+                  <strong>
+                    {connectedMcpProviderCount}/{providerMcpSummaries.length}
+                  </strong>
                   <small>report MCP or bridge status</small>
                 </article>
                 <article className="settings-mcp-summary-card">
@@ -3894,14 +3894,19 @@ export function SettingsPanel({
               <div className="settings-mcp-management-grid">
                 <article className="settings-mcp-management-card">
                   <strong>Custom MCP servers</strong>
-                  <p>External server discovery and toggles will live here once config editing lands.</p>
+                  <p>
+                    External server discovery and toggles will live here once config editing lands.
+                  </p>
                   <button type="button" className="btn btn-sm btn-ghost" disabled>
                     Managed in provider config
                   </button>
                 </article>
                 <article className="settings-mcp-management-card">
                   <strong>Skills</strong>
-                  <p>Provider-owned skills should be visible here with their enabled state and tool names.</p>
+                  <p>
+                    Provider-owned skills should be visible here with their enabled state and tool
+                    names.
+                  </p>
                   <button type="button" className="btn btn-sm btn-ghost" disabled>
                     Audit surface planned
                   </button>
@@ -4133,10 +4138,9 @@ export function SettingsPanel({
               <div className="settings-workspaces-header-copy">
                 <h3 className="settings-workspaces-subtitle">Loaded workspaces</h3>
                 <p className="settings-workspaces-description">
-                  Every project folder you&apos;ve pointed AGBench at. Click a row to
-                  switch the chat surface to that workspace; pin to keep it at the
-                  top of the sidebar; remove to drop it from the list (chats
-                  inside the workspace stay on disk).
+                  Every project folder you&apos;ve pointed AGBench at. Click a row to switch the
+                  chat surface to that workspace; pin to keep it at the top of the sidebar; remove
+                  to drop it from the list (chats inside the workspace stay on disk).
                 </p>
               </div>
               {onSelectWorkspaceDialog && (
@@ -4154,8 +4158,7 @@ export function SettingsPanel({
               <div className="settings-workspaces-empty" role="note">
                 <strong>No workspaces yet.</strong>
                 <span>
-                  Use <em>Add workspace</em> above to point AGBench at your first
-                  project folder.
+                  Use <em>Add workspace</em> above to point AGBench at your first project folder.
                 </span>
               </div>
             ) : (
@@ -4164,9 +4167,7 @@ export function SettingsPanel({
                   const isActive = currentWorkspace?.id === workspace.id
                   const pathParts = workspace.path.split(/[\\/]/).filter(Boolean)
                   const compactPath =
-                    pathParts.length > 3
-                      ? `…/${pathParts.slice(-3).join('/')}`
-                      : workspace.path
+                    pathParts.length > 3 ? `…/${pathParts.slice(-3).join('/')}` : workspace.path
                   return (
                     <li
                       key={workspace.id}
@@ -4235,161 +4236,158 @@ export function SettingsPanel({
         )}
 
         {/* ── Model usage (cross-provider) ──────────────────────────────── */}
-        {activeTab === 'model-usage' && (() => {
-          // Roll up cross-provider headline stats. We compute these inline
-          // (vs. memoising) because the Settings takeover renders are
-          // infrequent and the aggregate set is small (<20 entries).
-          const allRunEntries = usageSummary.filter(
-            (entry) => entry.model && entry.model !== 'usage limits'
-          )
-          const totalTokens = allRunEntries.reduce(
-            (sum, entry) => sum + (entry.totalTokens || 0),
-            0
-          )
-          const totalInputTokens = allRunEntries.reduce(
-            (sum, entry) => sum + (entry.inputTokens || 0),
-            0
-          )
-          const totalOutputTokens = allRunEntries.reduce(
-            (sum, entry) => sum + (entry.outputTokens || 0),
-            0
-          )
-          const totalRuns = allRunEntries.reduce(
-            (sum, entry) => sum + (entry.runs || 0),
-            0
-          )
-          const providerCount = new Set(allRunEntries.map((entry) => entry.provider)).size
-          const modelCount = allRunEntries.length
-          const comparisonEntries = [...allRunEntries].sort(
-            (a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs
-          )
-          const comparisonTokenTotal = comparisonEntries.reduce(
-            (sum, entry) => sum + (entry.totalTokens || 0),
-            0
-          )
-          const quotaEntries = usageSummary.filter((entry) => entry.model === 'usage limits')
-          const telemetryEntries = quotaEntries.filter(
-            (entry) => (entry.windows?.length || 0) > 0 || (entry.balances?.length || 0) > 0
-          )
-          const providerLabel = (provider: ProviderId): string => {
-            if (provider === 'codex') return 'Codex'
-            if (provider === 'claude') return 'Claude'
-            if (provider === 'kimi') return 'Kimi'
-            if (provider === 'grok') return 'Grok'
-            if (provider === 'cursor') return 'Cursor'
-            return 'Gemini'
-          }
-          // Rough cost estimate gated on whether the per-row stats
-          // carried explicit cost data. Skipped for v1 — keep the
-          // tile set focused on counts the user can verify against
-          // their provider dashboards.
-          const formatLargeNumber = (value: number): string => {
-            if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
-            if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-            if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-            return String(Math.round(value))
-          }
-          const formatBalanceValue = (
-            amount: number,
-            unit: string | undefined
-          ): string => {
-            const cleanUnit = String(unit || '').trim()
-            if (cleanUnit === '$' || cleanUnit.toLowerCase() === 'usd') {
-              return `$${amount.toLocaleString(undefined, {
-                minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
-                maximumFractionDigits: 2
-              })}`
+        {activeTab === 'model-usage' &&
+          (() => {
+            // Roll up cross-provider headline stats. We compute these inline
+            // (vs. memoising) because the Settings takeover renders are
+            // infrequent and the aggregate set is small (<20 entries).
+            const allRunEntries = usageSummary.filter(
+              (entry) => entry.model && entry.model !== 'usage limits'
+            )
+            const totalTokens = allRunEntries.reduce(
+              (sum, entry) => sum + (entry.totalTokens || 0),
+              0
+            )
+            const totalInputTokens = allRunEntries.reduce(
+              (sum, entry) => sum + (entry.inputTokens || 0),
+              0
+            )
+            const totalOutputTokens = allRunEntries.reduce(
+              (sum, entry) => sum + (entry.outputTokens || 0),
+              0
+            )
+            const totalRuns = allRunEntries.reduce((sum, entry) => sum + (entry.runs || 0), 0)
+            const providerCount = new Set(allRunEntries.map((entry) => entry.provider)).size
+            const modelCount = allRunEntries.length
+            const comparisonEntries = [...allRunEntries].sort(
+              (a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs
+            )
+            const comparisonTokenTotal = comparisonEntries.reduce(
+              (sum, entry) => sum + (entry.totalTokens || 0),
+              0
+            )
+            const quotaEntries = usageSummary.filter((entry) => entry.model === 'usage limits')
+            const telemetryEntries = quotaEntries.filter(
+              (entry) => (entry.windows?.length || 0) > 0 || (entry.balances?.length || 0) > 0
+            )
+            const providerLabel = (provider: ProviderId): string => {
+              if (provider === 'codex') return 'Codex'
+              if (provider === 'claude') return 'Claude'
+              if (provider === 'kimi') return 'Kimi'
+              if (provider === 'grok') return 'Grok'
+              if (provider === 'cursor') return 'Cursor'
+              return 'Gemini'
             }
-            const value =
-              Math.abs(amount) >= 1000
-                ? formatLargeNumber(amount)
-                : amount.toLocaleString(undefined, {
-                    maximumFractionDigits: amount % 1 === 0 ? 0 : 2
-                  })
-            return cleanUnit ? `${value} ${cleanUnit}` : value
-          }
-          const formatQuotaSource = (source: string | undefined): string =>
-            source ? source.replace(/[-_]/g, ' ') : 'live snapshot'
-          const formatFetchedAt = (timestamp: string | undefined): string => {
-            if (!timestamp) return ''
-            const date = new Date(timestamp)
-            if (!Number.isFinite(date.getTime())) return ''
-            return date.toLocaleString([], {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          }
-          return (
-            <div className="settings-model-usage">
-              <p className="settings-model-usage-description">
-                Cross-provider token + quota dashboard. Pulled from the same
-                aggregate the welcome screen + sidebar consume. To view
-                invoices or change payment methods, visit each provider&apos;s
-                billing surface directly — AGBench never proxies credentials.
-              </p>
+            // Rough cost estimate gated on whether the per-row stats
+            // carried explicit cost data. Skipped for v1 — keep the
+            // tile set focused on counts the user can verify against
+            // their provider dashboards.
+            const formatLargeNumber = (value: number): string => {
+              if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+              if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+              if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+              return String(Math.round(value))
+            }
+            const formatBalanceValue = (amount: number, unit: string | undefined): string => {
+              const cleanUnit = String(unit || '').trim()
+              if (cleanUnit === '$' || cleanUnit.toLowerCase() === 'usd') {
+                return `$${amount.toLocaleString(undefined, {
+                  minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+                  maximumFractionDigits: 2
+                })}`
+              }
+              const value =
+                Math.abs(amount) >= 1000
+                  ? formatLargeNumber(amount)
+                  : amount.toLocaleString(undefined, {
+                      maximumFractionDigits: amount % 1 === 0 ? 0 : 2
+                    })
+              return cleanUnit ? `${value} ${cleanUnit}` : value
+            }
+            const formatQuotaSource = (source: string | undefined): string =>
+              source ? source.replace(/[-_]/g, ' ') : 'live snapshot'
+            const formatFetchedAt = (timestamp: string | undefined): string => {
+              if (!timestamp) return ''
+              const date = new Date(timestamp)
+              if (!Number.isFinite(date.getTime())) return ''
+              return date.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            }
+            return (
+              <div className="settings-model-usage">
+                <p className="settings-model-usage-description">
+                  Cross-provider token + quota dashboard. Pulled from the same aggregate the welcome
+                  screen + sidebar consume. To view invoices or change payment methods, visit each
+                  provider&apos;s billing surface directly — AGBench never proxies credentials.
+                </p>
 
-              {/* Headline tiles — at-a-glance numbers above the meters. */}
-              <div className="settings-model-usage-tiles">
-                <div className="settings-model-usage-tile">
-                  <span className="settings-model-usage-tile-label">Total tokens</span>
-                  <span className="settings-model-usage-tile-value">
-                    {formatLargeNumber(totalTokens)}
-                  </span>
-                  <span className="settings-model-usage-tile-meta">
-                    {formatLargeNumber(totalInputTokens)} in ·{' '}
-                    {formatLargeNumber(totalOutputTokens)} out
-                  </span>
+                {/* Headline tiles — at-a-glance numbers above the meters. */}
+                <div className="settings-model-usage-tiles">
+                  <div className="settings-model-usage-tile">
+                    <span className="settings-model-usage-tile-label">Total tokens</span>
+                    <span className="settings-model-usage-tile-value">
+                      {formatLargeNumber(totalTokens)}
+                    </span>
+                    <span className="settings-model-usage-tile-meta">
+                      {formatLargeNumber(totalInputTokens)} in ·{' '}
+                      {formatLargeNumber(totalOutputTokens)} out
+                    </span>
+                  </div>
+                  <div className="settings-model-usage-tile">
+                    <span className="settings-model-usage-tile-label">Runs</span>
+                    <span className="settings-model-usage-tile-value">
+                      {formatLargeNumber(totalRuns)}
+                    </span>
+                    <span className="settings-model-usage-tile-meta">across all chats</span>
+                  </div>
+                  <div className="settings-model-usage-tile">
+                    <span className="settings-model-usage-tile-label">Providers</span>
+                    <span className="settings-model-usage-tile-value">{providerCount}</span>
+                    <span className="settings-model-usage-tile-meta">
+                      {modelCount} model{modelCount === 1 ? '' : 's'} tracked
+                    </span>
+                  </div>
                 </div>
-                <div className="settings-model-usage-tile">
-                  <span className="settings-model-usage-tile-label">Runs</span>
-                  <span className="settings-model-usage-tile-value">
-                    {formatLargeNumber(totalRuns)}
-                  </span>
-                  <span className="settings-model-usage-tile-meta">across all chats</span>
-                </div>
-                <div className="settings-model-usage-tile">
-                  <span className="settings-model-usage-tile-label">Providers</span>
-                  <span className="settings-model-usage-tile-value">{providerCount}</span>
-                  <span className="settings-model-usage-tile-meta">
-                    {modelCount} model{modelCount === 1 ? '' : 's'} tracked
-                  </span>
-                </div>
-              </div>
 
-              {/* Existing sidebar card — quota meters per provider + the
+                {/* Existing sidebar card — quota meters per provider + the
                   30-day usage heatmap baked in. Wrapped in a max-width
                   container so it inherits the same legibility budget as
                   the rest of the takeover content. */}
-              <div className="settings-model-usage-card">
-                <ModelUsageCard usageSummary={usageSummary} />
-              </div>
+                <div className="settings-model-usage-card">
+                  <ModelUsageCard usageSummary={usageSummary} />
+                </div>
 
-              {comparisonEntries.length > 0 && (
-                <section className="settings-model-comparisons" aria-label="Model comparisons">
-                  <div className="settings-model-comparisons-header">
-                    <span>Model Comparisons</span>
-                    <span>Last 30 days</span>
-                  </div>
-                  <div className="settings-model-comparison-list">
-                    {comparisonEntries.map((entry) => {
-                      const percent =
-                        comparisonTokenTotal > 0
-                          ? Math.max(0, Math.min(100, (entry.totalTokens / comparisonTokenTotal) * 100))
-                          : 0
-                      const fillWidth = `${Math.max(2, percent)}%`
-                      return (
-                        <div
-                          key={`${entry.provider}-${entry.model}`}
-                          className={`settings-model-comparison-row provider-${entry.provider}`}
-                        >
-                          <div className="settings-model-comparison-header">
-                            <span
-                              className={`settings-model-comparison-dot provider-${entry.provider}`}
-                              aria-hidden
-                            />
-                            {/*
+                {comparisonEntries.length > 0 && (
+                  <section className="settings-model-comparisons" aria-label="Model comparisons">
+                    <div className="settings-model-comparisons-header">
+                      <span>Model Comparisons</span>
+                      <span>Last 30 days</span>
+                    </div>
+                    <div className="settings-model-comparison-list">
+                      {comparisonEntries.map((entry) => {
+                        const percent =
+                          comparisonTokenTotal > 0
+                            ? Math.max(
+                                0,
+                                Math.min(100, (entry.totalTokens / comparisonTokenTotal) * 100)
+                              )
+                            : 0
+                        const fillWidth = `${Math.max(2, percent)}%`
+                        return (
+                          <div
+                            key={`${entry.provider}-${entry.model}`}
+                            className={`settings-model-comparison-row provider-${entry.provider}`}
+                          >
+                            <div className="settings-model-comparison-header">
+                              <span
+                                className={`settings-model-comparison-dot provider-${entry.provider}`}
+                                aria-hidden
+                              />
+                              {/*
                               1.0.5-EW50 — Humanise the CLI/API model id via
                               the shared `humaniseModelId` resolver so the
                               Settings → Model Usage list reads as
@@ -4400,106 +4398,108 @@ export function SettingsPanel({
                               mapping exists (e.g. brand-new models the
                               table hasn't been extended for yet).
                             */}
-                            <span className="settings-model-comparison-name" title={entry.model}>
-                              {humaniseModelId(entry.provider, entry.model)}
-                            </span>
-                            <span className="settings-model-comparison-tokens">
-                              {formatLargeNumber(entry.inputTokens)} in ·{' '}
-                              {formatLargeNumber(entry.outputTokens)} out
-                            </span>
-                            <strong className="settings-model-comparison-percent">
-                              {percent.toFixed(1)}%
-                            </strong>
+                              <span className="settings-model-comparison-name" title={entry.model}>
+                                {humaniseModelId(entry.provider, entry.model)}
+                              </span>
+                              <span className="settings-model-comparison-tokens">
+                                {formatLargeNumber(entry.inputTokens)} in ·{' '}
+                                {formatLargeNumber(entry.outputTokens)} out
+                              </span>
+                              <strong className="settings-model-comparison-percent">
+                                {percent.toFixed(1)}%
+                              </strong>
+                            </div>
+                            <div
+                              className="settings-model-comparison-track"
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={percent}
+                              aria-label={`${humaniseModelId(entry.provider, entry.model)} accounts for ${percent.toFixed(1)}% of model usage in the last 30 days`}
+                            >
+                              <span
+                                className={`settings-model-comparison-fill provider-${entry.provider}`}
+                                style={{ width: fillWidth }}
+                              />
+                            </div>
                           </div>
-                          <div
-                            className="settings-model-comparison-track"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={percent}
-                            aria-label={`${humaniseModelId(entry.provider, entry.model)} accounts for ${percent.toFixed(1)}% of model usage in the last 30 days`}
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {(telemetryEntries.length > 0 || grokProviderAvailable) && (
+                  <section
+                    className="settings-provider-telemetry"
+                    aria-label="Provider quota and balance telemetry"
+                  >
+                    <div className="settings-provider-telemetry-header">
+                      <span>Provider Telemetry</span>
+                      <span>Quota windows · balances</span>
+                    </div>
+                    <div className="settings-provider-telemetry-grid">
+                      {telemetryEntries.map((entry) => {
+                        const fetchedAt = formatFetchedAt(entry.quotaFetchedAt)
+                        return (
+                          <article
+                            key={`${entry.provider}-telemetry`}
+                            className={`settings-provider-telemetry-card provider-${entry.provider}`}
                           >
-                            <span
-                              className={`settings-model-comparison-fill provider-${entry.provider}`}
-                              style={{ width: fillWidth }}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {(telemetryEntries.length > 0 || grokProviderAvailable) && (
-                <section
-                  className="settings-provider-telemetry"
-                  aria-label="Provider quota and balance telemetry"
-                >
-                  <div className="settings-provider-telemetry-header">
-                    <span>Provider Telemetry</span>
-                    <span>Quota windows · balances</span>
-                  </div>
-                  <div className="settings-provider-telemetry-grid">
-                    {telemetryEntries.map((entry) => {
-                      const fetchedAt = formatFetchedAt(entry.quotaFetchedAt)
-                      return (
-                        <article
-                          key={`${entry.provider}-telemetry`}
-                          className={`settings-provider-telemetry-card provider-${entry.provider}`}
-                        >
-                          <div className="settings-provider-telemetry-title">
-                            <span
-                              className={`settings-model-comparison-dot provider-${entry.provider}`}
-                              aria-hidden
-                            />
-                            <strong>{providerLabel(entry.provider)}</strong>
-                            {entry.quotaStale && <span>Stale</span>}
-                          </div>
-                          <div className="settings-provider-telemetry-meta">
-                            <span>{entry.windows?.length || 0} quota windows</span>
-                            <span>{formatQuotaSource(entry.quotaSource)}</span>
-                            {fetchedAt && <span>{fetchedAt}</span>}
-                          </div>
-                          {(entry.balances?.length || 0) > 0 ? (
-                            <div className="settings-provider-balance-list">
-                              {entry.balances?.map((balance) => (
-                                <div key={balance.id} className="settings-provider-balance">
-                                  <span>{balance.label}</span>
-                                  <strong>{formatBalanceValue(balance.amount, balance.unit)}</strong>
-                                  {balance.subtitle && <small>{balance.subtitle}</small>}
-                                </div>
-                              ))}
+                            <div className="settings-provider-telemetry-title">
+                              <span
+                                className={`settings-model-comparison-dot provider-${entry.provider}`}
+                                aria-hidden
+                              />
+                              <strong>{providerLabel(entry.provider)}</strong>
+                              {entry.quotaStale && <span>Stale</span>}
                             </div>
-                          ) : (
-                            <div className="settings-provider-balance settings-provider-balance-empty">
-                              <span>Balance</span>
-                              <strong>Unavailable</strong>
+                            <div className="settings-provider-telemetry-meta">
+                              <span>{entry.windows?.length || 0} quota windows</span>
+                              <span>{formatQuotaSource(entry.quotaSource)}</span>
+                              {fetchedAt && <span>{fetchedAt}</span>}
                             </div>
-                          )}
-                        </article>
-                      )
-                    })}
-                    {/* Grok credits come from the PTY probe, not usageSummary,
-                     * so render a probe-driven card as a sibling of the
-                     * quota-window cards (CRUX15). */}
-                    {grokProviderAvailable && <GrokTelemetryCard />}
-                  </div>
-                </section>
-              )}
+                            {(entry.balances?.length || 0) > 0 ? (
+                              <div className="settings-provider-balance-list">
+                                {entry.balances?.map((balance) => (
+                                  <div key={balance.id} className="settings-provider-balance">
+                                    <span>{balance.label}</span>
+                                    <strong>
+                                      {formatBalanceValue(balance.amount, balance.unit)}
+                                    </strong>
+                                    {balance.subtitle && <small>{balance.subtitle}</small>}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="settings-provider-balance settings-provider-balance-empty">
+                                <span>Balance</span>
+                                <strong>Unavailable</strong>
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })}
+                      {/* Grok credits come from the PTY probe, not usageSummary,
+                       * so render a probe-driven card as a sibling of the
+                       * quota-window cards (CRUX15). */}
+                      {grokProviderAvailable && <GrokTelemetryCard />}
+                    </div>
+                  </section>
+                )}
 
-              {usageSummary.length === 0 && (
-                <div className="settings-model-usage-empty" role="note">
-                  <strong>No usage data yet.</strong>
-                  <span>
-                    Start a chat with any provider to populate the meters —
-                    AGBench begins tracking on the first completed run.
-                  </span>
-                </div>
-              )}
-            </div>
-          )
-        })()}
+                {usageSummary.length === 0 && (
+                  <div className="settings-model-usage-empty" role="note">
+                    <strong>No usage data yet.</strong>
+                    <span>
+                      Start a chat with any provider to populate the meters — AGBench begins
+                      tracking on the first completed run.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
         {/* ── Approvals (Phase E2 + admin grants) ──────────────────────── */}
         {activeTab === 'approval-ledger' && (

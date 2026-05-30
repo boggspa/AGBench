@@ -54,7 +54,9 @@ async function main() {
   }
 
   validateZipArtifacts(searchRoots)
-  console.log(`packaged Electron static smoke ok: ${path.relative(repoRoot, packageRoot) || packageRoot}`)
+  console.log(
+    `packaged Electron static smoke ok: ${path.relative(repoRoot, packageRoot) || packageRoot}`
+  )
   console.log(`node-pty native binding: ${path.relative(repoRoot, nativeBindings[0])}`)
   await runLaunchSmoke(packageRoot)
 }

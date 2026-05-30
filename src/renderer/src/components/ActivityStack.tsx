@@ -419,7 +419,10 @@ function renderEnsembleYieldTitle(
     const stripped = target.replace(/^@+/, '').trim().toLowerCase()
     const tokens = [
       stripped,
-      ...stripped.split(/[/,|]+/).map((s) => s.trim()).filter(Boolean)
+      ...stripped
+        .split(/[/,|]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
     ]
     const matched = participants.find((p) => {
       const role = (p.role || '').toLowerCase()
@@ -731,9 +734,7 @@ function getActivityDurationTotal(activities: ToolActivity[]): number | undefine
  */
 export function buildCompactGroupLabel(activities: readonly ToolActivity[]): string {
   const searchCount = activities.filter(isSearchActivity).length
-  const readCount = activities.filter(
-    (a) => a.category === 'read' && !isSearchActivity(a)
-  ).length
+  const readCount = activities.filter((a) => a.category === 'read' && !isSearchActivity(a)).length
   const writeCount = activities.filter((a) => a.category === 'write').length
   const shellCount = activities.filter((a) => a.category === 'shell').length
   const taskCount = activities.filter((a) => a.category === 'task').length
@@ -892,7 +893,8 @@ function ActivityCompactGroup({
   activities,
   workspacePath,
   provider,
-  participants
+  participants,
+  shimmerNow
 }: {
   activities: ToolActivity[]
   workspacePath?: string
@@ -901,12 +903,11 @@ function ActivityCompactGroup({
   provider?: ProviderId
   /** 1.0.4 — forwarded to ActivityRow for ensemble_yield chip tinting. */
   participants?: EnsembleParticipant[]
+  shimmerNow: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const searchCount = activities.filter(isSearchActivity).length
-  const readCount = activities.filter(
-    (a) => a.category === 'read' && !isSearchActivity(a)
-  ).length
+  const readCount = activities.filter((a) => a.category === 'read' && !isSearchActivity(a)).length
   const otherCount = activities.length - searchCount - readCount
   const durationMs = getActivityDurationTotal(activities)
   // 1.0.4-AS2b — label generation extracted to a pure helper
@@ -1040,6 +1041,7 @@ function ActivityCompactGroup({
               forceCompact
               provider={provider}
               participants={participants}
+              shimmerNow={shimmerNow}
             />
           ))}
         </div>
@@ -1199,7 +1201,10 @@ function ActivityImageBlocks({ blocks }: { blocks: ReturnType<typeof extractMcpI
       <div className="activity-image-grid">
         {blocks.map((block, index) => (
           <figure className="activity-image-card" key={block.id}>
-            <img src={`data:${block.mimeType};base64,${block.data}`} alt={`Tool result ${index + 1}`} />
+            <img
+              src={`data:${block.mimeType};base64,${block.data}`}
+              alt={`Tool result ${index + 1}`}
+            />
             <figcaption className="activity-image-meta">{block.mimeType}</figcaption>
           </figure>
         ))}
@@ -1383,9 +1388,12 @@ function useShimmerStaleTick(activities: readonly ToolActivity[] | undefined): n
   }, [activities])
   useEffect(() => {
     if (!hasMaybeRunning) return
-    setNow(Date.now())
+    const frame = window.requestAnimationFrame(() => setNow(Date.now()))
     const handle = window.setInterval(() => setNow(Date.now()), 15_000)
-    return () => window.clearInterval(handle)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearInterval(handle)
+    }
   }, [hasMaybeRunning])
   return now
 }
@@ -1406,16 +1414,13 @@ export function ActivityStack({
   // at render time — the tick's role is purely to keep the parent
   // re-rendering at a steady 15s cadence while any activity could
   // still be in flight.
-  useShimmerStaleTick(activities)
+  const shimmerNow = useShimmerStaleTick(activities)
   // 1.0.4 — ensemble participants are forwarded down to ActivityRow
   // so an `ensemble_yield(target: ...)` activity can render the target
   // as a provider-tinted `@<role>` chip. Memoised against the
   // participants array reference so we don't re-key every render when
   // the chat object has unrelated mutations.
-  const participants = useMemo(
-    () => chat?.ensemble?.participants,
-    [chat?.ensemble?.participants]
-  )
+  const participants = useMemo(() => chat?.ensemble?.participants, [chat?.ensemble?.participants])
 
   const childThreads = useMemo(() => {
     if (!provider || !activities || activities.length === 0) return [] as ChildAgentThread[]
@@ -1441,20 +1446,6 @@ export function ActivityStack({
     }
   }, [activities, childThreads])
 
-  if (!activities || activities.length === 0) return null
-  // 1.0.4-AS2 — Ensemble chats collapse every terminal activity into
-  // the compact group so only the currently-running one stays
-  // expanded inline. Pattern (a) from Chris's three options. Solo
-  // chats keep the existing read/search compact-group behavior.
-  const collapseAllTerminal = chat?.chatKind === 'ensemble'
-  const timelineItems = buildTimelineItems(topLevelActivities, { collapseAllTerminal })
-
-  const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
-    return thread.toolActivityIds
-      .map((id) => threadActivityById.get(id))
-      .filter((activity): activity is ToolActivity => Boolean(activity))
-  }
-
   // Phase L5 slice 3 — lifted expansion state. The set of ids that
   // are currently open. Single-open mode (default + always in
   // compactDensity) auto-collapses other rows when one expands;
@@ -1471,9 +1462,7 @@ export function ActivityStack({
   const isExpansionControlled =
     expandedActivityIds !== undefined && onExpandedActivityIdsChange !== undefined
   const expandedIds = isExpansionControlled ? expandedActivityIds : localExpandedIds
-  const setExpandedIds = (
-    next: Set<string> | ((prev: Set<string>) => Set<string>)
-  ): void => {
+  const setExpandedIds = (next: Set<string> | ((prev: Set<string>) => Set<string>)): void => {
     if (isExpansionControlled) {
       const resolved =
         typeof next === 'function'
@@ -1485,6 +1474,21 @@ export function ActivityStack({
     }
   }
   const allowMultiOpen = !compactDensity
+
+  if (!activities || activities.length === 0) return null
+  // 1.0.4-AS2 — Ensemble chats collapse every terminal activity into
+  // the compact group so only the currently-running one stays
+  // expanded inline. Pattern (a) from Chris's three options. Solo
+  // chats keep the existing read/search compact-group behavior.
+  const collapseAllTerminal = chat?.chatKind === 'ensemble'
+  const timelineItems = buildTimelineItems(topLevelActivities, { collapseAllTerminal })
+
+  const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
+    return thread.toolActivityIds
+      .map((id) => threadActivityById.get(id))
+      .filter((activity): activity is ToolActivity => Boolean(activity))
+  }
+
   const toggleExpand = (id: string, modKey: boolean): void => {
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -1525,6 +1529,7 @@ export function ActivityStack({
               workspacePath={workspacePath}
               provider={provider}
               participants={participants}
+              shimmerNow={shimmerNow}
             />
           )
         }
@@ -1538,11 +1543,7 @@ export function ActivityStack({
         // falls back to the chat-level `provider` passed here.
         if (compactDensity && !thread) {
           return (
-            <CompactToolTrace
-              key={item.activity.id}
-              activity={item.activity}
-              provider={provider}
-            />
+            <CompactToolTrace key={item.activity.id} activity={item.activity} provider={provider} />
           )
         }
         return (
@@ -1557,6 +1558,7 @@ export function ActivityStack({
             forceCompact={compactDensity}
             isExpanded={expandedIds.has(item.activity.id)}
             onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
+            shimmerNow={shimmerNow}
           />
         )
       })}
@@ -1665,11 +1667,13 @@ function ActivityDiffFiles({
 function ChildAgentThreadCard({
   thread,
   activities,
-  workspacePath
+  workspacePath,
+  shimmerNow
 }: {
   thread: ChildAgentThread
   activities: ToolActivity[]
   workspacePath?: string
+  shimmerNow?: number
 }) {
   const [expanded, setExpanded] = useState(thread.state === 'running')
   const interactivityLabel =
@@ -1784,6 +1788,7 @@ function ChildAgentThreadCard({
                      * context provider would point at the OUTER chat,
                      * which is misleading for these inner rows. */
                     provider={thread.provider}
+                    shimmerNow={shimmerNow}
                   />
                 ))}
               </div>
@@ -1813,7 +1818,8 @@ function ActivityRow({
   provider,
   participants,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  shimmerNow
 }: {
   activity: ToolActivity
   workspacePath?: string
@@ -1840,6 +1846,7 @@ function ActivityRow({
    * these (e.g. ChildAgentThreadCard internal rows). */
   isExpanded?: boolean
   onToggleExpand?: (modKey: boolean) => void
+  shimmerNow?: number
 }) {
   // Phase L5 slice 3 — when the parent passes `isExpanded` +
   // `onToggleExpand`, use them (the parent coordinates single-open
@@ -1868,6 +1875,7 @@ function ActivityRow({
             thread={childThread}
             activities={childActivities || []}
             workspacePath={workspacePath}
+            shimmerNow={shimmerNow}
           />
         )}
       </>
@@ -1943,15 +1951,14 @@ function ActivityRow({
   // transcript reads as a uniform vertical list at one text scale.
   const isInlineActivity = true
   const canExpand = hasExpandableDetail(activity, renderInputs)
-  // 1.0.4-AS1 — derive shimmer/pulse staleness at render time. The
-  // `Date.now()` read is fine here because the parent ActivityStack
-  // ticks every 15s while any activity might still be in flight
-  // (`useShimmerStaleTick`). Stale activities keep their original
+  // 1.0.4-AS1 — derive shimmer/pulse staleness from the parent tick
+  // while any activity might still be in flight (`useShimmerStaleTick`).
+  // Stale activities keep their original
   // `data-status` so the icon / category UX doesn't suddenly assert
   // success or error we can't confirm; the CSS rules for the
   // shimmer + pulse animations are the only thing that changes,
   // gated by `data-stale="true"`.
-  const isShimmerStale = isActivityShimmerStale(activity, Date.now())
+  const isShimmerStale = isActivityShimmerStale(activity, shimmerNow ?? 0)
   const showInlinePulse =
     (activity.status === 'running' || activity.status === 'pending') && !isShimmerStale
 
@@ -2173,6 +2180,7 @@ function ActivityRow({
           thread={childThread}
           activities={childActivities || []}
           workspacePath={workspacePath}
+          shimmerNow={shimmerNow}
         />
       )}
     </>

@@ -132,9 +132,7 @@ export function handleScoutBrief(
     }
   }
   const confidence =
-    args.confidence && VALID_CONFIDENCE.includes(args.confidence)
-      ? args.confidence
-      : null
+    args.confidence && VALID_CONFIDENCE.includes(args.confidence) ? args.confidence : null
   if (!confidence) {
     return {
       ok: false,
@@ -150,15 +148,12 @@ export function handleScoutBrief(
     confidence,
     emittedAt: new Date().toISOString(),
     ...(args.blockers ? { blockers: sanitiseStringList(args.blockers) } : {}),
-    ...(args.recommendations
-      ? { recommendations: sanitiseStringList(args.recommendations) }
-      : {}),
+    ...(args.recommendations ? { recommendations: sanitiseStringList(args.recommendations) } : {}),
     ...(args.tags ? { tags: sanitiseStringList(args.tags) } : {})
   }
   // Prune empty arrays for tidy storage.
   if (brief.blockers && brief.blockers.length === 0) delete brief.blockers
-  if (brief.recommendations && brief.recommendations.length === 0)
-    delete brief.recommendations
+  if (brief.recommendations && brief.recommendations.length === 0) delete brief.recommendations
   if (brief.tags && brief.tags.length === 0) delete brief.tags
 
   deps.recordScoutBrief(runId, brief)

@@ -30,11 +30,7 @@
  */
 
 import { memo } from 'react'
-import type {
-  ProviderId,
-  WorkspaceRecord,
-  GeminiWorktreeConfig
-} from '../../../main/store/types'
+import type { ProviderId, WorkspaceRecord, GeminiWorktreeConfig } from '../../../main/store/types'
 
 // `WORKSPACE_POLICY_SERVICES` lifted to `../lib/workspacePolicyServices`
 // — both this component and the new CombinedPermissionsPicker import

@@ -174,7 +174,16 @@ const INSPECTOR_TABS = [
     label: 'Diff Studio',
     // Two side-by-side panes with a separator — reads as "compare".
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect x="2" y="3" width="5" height="10" rx="1" />
         <rect x="9" y="3" width="5" height="10" rx="1" />
         <path d="M8 1.5v13" strokeDasharray="1.5 1.5" />
@@ -186,7 +195,16 @@ const INSPECTOR_TABS = [
     label: 'Raw Events',
     // Stylised terminal prompt `>_`
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="m3 5 3 3-3 3" />
         <path d="M8 12h6" />
       </svg>
@@ -197,7 +215,16 @@ const INSPECTOR_TABS = [
     label: 'Delegation',
     // Branching arrow — single trunk splitting into two children.
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <circle cx="3.5" cy="3.5" r="1.6" />
         <circle cx="12.5" cy="3.5" r="1.6" />
         <circle cx="8" cy="12.5" r="1.6" />
@@ -211,7 +238,16 @@ const INSPECTOR_TABS = [
     label: 'Delegation Timeline',
     // Horizontal bars at different lengths — Gantt-style.
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M3 4h7" />
         <path d="M3 8h10" />
         <path d="M3 12h5" />
@@ -223,7 +259,16 @@ const INSPECTOR_TABS = [
     label: 'Safety',
     // Shield outline.
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M8 2 3 4v4.5c0 3 2.2 5 5 6 2.8-1 5-3 5-6V4z" />
         <path d="m5.8 8 1.6 1.6L10.5 6.5" />
       </svg>
@@ -234,7 +279,16 @@ const INSPECTOR_TABS = [
     label: 'Capabilities',
     // Lightning bolt — "capabilities = power-ups".
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M9 1.5 4 9h4l-1 5.5 6-8H9z" />
       </svg>
     )
@@ -244,7 +298,16 @@ const INSPECTOR_TABS = [
     label: 'Background tasks',
     // Clock face — background = scheduled / over time.
     icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <circle cx="8" cy="8" r="5.5" />
         <path d="M8 4.5V8l2.5 1.5" />
       </svg>
@@ -280,7 +343,6 @@ class InspectorTabErrorBoundary extends Component<
     }
   }
   componentDidCatch(err: unknown, info: unknown): void {
-    // eslint-disable-next-line no-console
     console.error('[Inspector] tab render failed', err, info)
   }
   componentDidUpdate(prev: Readonly<{ resetKey: string }>): void {
@@ -301,8 +363,8 @@ class InspectorTabErrorBoundary extends Component<
                 margin: '0 0 var(--space-sm) 0'
               }}
             >
-              This inspector tab hit an error and was contained so the chat surface
-              stays usable. Other tabs are unaffected.
+              This inspector tab hit an error and was contained so the chat surface stays usable.
+              Other tabs are unaffected.
             </p>
             <p
               style={{
@@ -678,7 +740,11 @@ function DelegationTab(props: InspectorProps) {
       </div>
 
       <div className="safety-card">
-        <h4>{isEnsemble ? 'Ensemble delegation model' : `${providerLabel(props.provider)} delegation model`}</h4>
+        <h4>
+          {isEnsemble
+            ? 'Ensemble delegation model'
+            : `${providerLabel(props.provider)} delegation model`}
+        </h4>
         {isEnsemble && (
           <p
             style={{
@@ -688,8 +754,8 @@ function DelegationTab(props: InspectorProps) {
             }}
           >
             Delegation and subagent activity is audited across the enabled participant providers.
-            Native provider events remain provider-owned; AGBench displays the combined audit in
-            one inspector surface.
+            Native provider events remain provider-owned; AGBench displays the combined audit in one
+            inspector surface.
           </p>
         )}
         {isEnsemble && (
@@ -1258,9 +1324,7 @@ function safeText(value: unknown, fallback = ''): string {
   }
 }
 
-function getOrderedEnsembleParticipants(
-  chat?: ChatRecord | null
-): EnsembleParticipant[] {
+function getOrderedEnsembleParticipants(chat?: ChatRecord | null): EnsembleParticipant[] {
   if (chat?.chatKind !== 'ensemble' || !chat.ensemble) return []
   return [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
 }
@@ -1344,10 +1408,7 @@ function findProviderInValue(value: unknown, depth = 0): ProviderId | null {
   return null
 }
 
-function extractEnsembleDelegationAuditItems(
-  props: InspectorProps,
-  providers: ProviderId[]
-) {
+function extractEnsembleDelegationAuditItems(props: InspectorProps, providers: ProviderId[]) {
   const inferredProviderCount = props.rawLogs.filter((log) =>
     inferProviderFromRawLogContent(log.content)
   ).length
@@ -1440,15 +1501,10 @@ function contractToolSummary(contract?: ProviderCapabilityContract | null): stri
     contract.tools.mcpTools,
     contract.tools.networkAccess
   ].filter(Boolean)
-  return tools
-    .map((tool) => `${safeText(tool.label)} ${safeText(tool.state)}`)
-    .join(' · ')
+  return tools.map((tool) => `${safeText(tool.label)} ${safeText(tool.state)}`).join(' · ')
 }
 
-function runStateForParticipant(
-  chat: ChatRecord,
-  participant: EnsembleParticipant
-): string {
+function runStateForParticipant(chat: ChatRecord, participant: EnsembleParticipant): string {
   const activeRound = chat.ensemble?.activeRound
   const state = activeRound?.participants.find((item) => item.participantId === participant.id)
   if (activeRound?.activeParticipantId === participant.id && activeRound.status === 'running') {
@@ -1473,7 +1529,9 @@ function EnsembleCapabilitiesTab(props: InspectorProps) {
     (sum, participant) => sum + participantTokenTotal(participant),
     0
   )
-  const contracts = providers.map((provider) => contractForProvider(props, provider)).filter(Boolean)
+  const contracts = providers
+    .map((provider) => contractForProvider(props, provider))
+    .filter(Boolean)
   const availableContracts = contracts.filter((contract) => contract?.availability.available).length
   const activeParticipant = participants.find(
     (participant) => participant.id === ensemble.activeRound?.activeParticipantId
@@ -1603,24 +1661,6 @@ function CapabilitiesTab(props: InspectorProps) {
   const workspacePath = props.provider === 'gemini' ? currentWorkspace?.path : undefined
   const { capabilities, isLoading, error, refreshCapabilities } =
     useGeminiCapabilities(workspacePath)
-  // 1.0.3 hotfix diagnostic — dump the props once per mount so we can
-  // see which field threaded through as an object and triggered the
-  // React #31 crash that the InspectorTabErrorBoundary above is now
-  // catching. Strip once the root cause is pinned + a permanent
-  // type guard lands.
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.debug('[CapabilitiesTab] props snapshot', {
-      provider: props.provider,
-      chatKind: props.currentChat?.chatKind,
-      codexStatus: props.codexStatus,
-      codexModels: props.codexModels,
-      codexMcpStatus: props.codexMcpStatus,
-      providerCapabilities: props.providerCapabilities,
-      codexThreads: props.codexThreads
-    })
-  }, [props.provider])
-
   if (props.currentChat?.chatKind === 'ensemble' && props.currentChat.ensemble) {
     return <EnsembleCapabilitiesTab {...props} />
   }
@@ -1659,8 +1699,8 @@ function CapabilitiesTab(props: InspectorProps) {
             <span>{props.codexMcpStatus?.data?.length || 0}</span>
           </div>
         </div>
-        {(props.codexModels || []).slice(0, 10).map((model) => (
-          <div key={safeText(model.id) || String(Math.random())} className="safety-card">
+        {(props.codexModels || []).slice(0, 10).map((model, index) => (
+          <div key={safeText(model.id) || `codex-model-${index}`} className="safety-card">
             <h4>{safeText(model.label) || safeText(model.id, 'Model')}</h4>
             <div className="safety-row">
               <span>Model id</span>

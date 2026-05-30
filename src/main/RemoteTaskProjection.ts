@@ -440,7 +440,8 @@ export function buildMobileDiffSummary(
   if (workspaceSummaries.length === 0) return undefined
   const files = workspaceSummaries.flatMap((workspace) => workspace.files)
   const hunks = files.flatMap((file) => file.hunks ?? [])
-  const truncated = files.some((file) => Boolean(file.truncated)) || hunks.some((hunk) => hunk.truncated)
+  const truncated =
+    files.some((file) => Boolean(file.truncated)) || hunks.some((hunk) => hunk.truncated)
   const totals = workspaceSummaries.reduce(
     (acc, workspace) => {
       acc.filesChanged += workspace.filesChanged
@@ -704,8 +705,22 @@ function parseUnifiedDiffHeader(line: string): { oldStart?: number; newStart?: n
   return { oldStart: Number(match[1]), newStart: Number(match[2]) }
 }
 
+function isRemoteDiffControlCode(code: number): boolean {
+  return (
+    (code >= 0x00 && code <= 0x08) ||
+    code === 0x0b ||
+    code === 0x0c ||
+    (code >= 0x0e && code <= 0x1f) ||
+    (code >= 0x7f && code <= 0x9f)
+  )
+}
+
 function sanitizeDiffLine(raw: string, maxChars: number): string {
-  const sanitized = raw.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, ' ')
+  let sanitized = ''
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index]
+    sanitized += isRemoteDiffControlCode(char.charCodeAt(0)) ? ' ' : char
+  }
   if (sanitized.length <= maxChars) return sanitized
   return `${sanitized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}...`
 }

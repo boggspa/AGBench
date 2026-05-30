@@ -121,6 +121,94 @@ final class BridgeActionPayloadTests: XCTestCase {
         XCTAssertEqual(dict["runId"] as? String, "run-77")
     }
 
+    func testEnsembleCancelRoundEncoding() throws {
+        let dict = parse(try BridgeActionPayload.ensembleCancelRound(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            roundId: "round-1",
+            message: "cancelled from iPad"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleCancelRound")
+        XCTAssertEqual(dict["workspaceId"] as? String, "ws-1")
+        XCTAssertEqual(dict["threadId"] as? String, "thread-1")
+        XCTAssertEqual(dict["roundId"] as? String, "round-1")
+        XCTAssertEqual(dict["message"] as? String, "cancelled from iPad")
+    }
+
+    func testEnsembleSkipActiveParticipantEncoding() throws {
+        let dict = parse(try BridgeActionPayload.ensembleSkipActiveParticipant(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            roundId: "round-1",
+            participantId: "planner",
+            message: "skipped from iPad"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleSkipActiveParticipant")
+        XCTAssertEqual(dict["roundId"] as? String, "round-1")
+        XCTAssertEqual(dict["participantId"] as? String, "planner")
+        XCTAssertEqual(dict["message"] as? String, "skipped from iPad")
+    }
+
+    func testEnsembleWakeNowEncoding() throws {
+        let dict = parse(try BridgeActionPayload.ensembleWakeNow(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            wakeupId: "wakeup-1",
+            message: "woken from iPad"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleWakeNow")
+        XCTAssertEqual(dict["threadId"] as? String, "thread-1")
+        XCTAssertEqual(dict["wakeupId"] as? String, "wakeup-1")
+        XCTAssertEqual(dict["message"] as? String, "woken from iPad")
+    }
+
+    func testEnsembleCancelWakeupEncoding() throws {
+        let dict = parse(try BridgeActionPayload.ensembleCancelWakeup(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            wakeupId: "wakeup-1",
+            message: "cancelled from iPad"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleCancelWakeup")
+        XCTAssertEqual(dict["wakeupId"] as? String, "wakeup-1")
+        XCTAssertEqual(dict["message"] as? String, "cancelled from iPad")
+    }
+
+    func testEnsembleQueuePromptEncodingUsesTextFieldName() throws {
+        let dict = parse(try BridgeActionPayload.ensembleQueuePrompt(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            roundId: "round-1",
+            text: "continue after review",
+            message: "queued from iPad"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleQueuePrompt")
+        XCTAssertEqual(dict["roundId"] as? String, "round-1")
+        XCTAssertEqual(dict["text"] as? String, "continue after review")
+        XCTAssertNil(dict["prompt"])
+        XCTAssertEqual(dict["message"] as? String, "queued from iPad")
+    }
+
+    func testEnsembleSteerEncodingOmitsUnsetOptionalFields() throws {
+        let dict = parse(try BridgeActionPayload.ensembleSteer(
+            workspaceId: "ws-1",
+            threadId: "thread-1",
+            text: "focus on tests"
+        ).encode())
+
+        XCTAssertEqual(dict["kind"] as? String, "ensembleSteer")
+        XCTAssertEqual(dict["workspaceId"] as? String, "ws-1")
+        XCTAssertEqual(dict["threadId"] as? String, "thread-1")
+        XCTAssertEqual(dict["text"] as? String, "focus on tests")
+        XCTAssertNil(dict["roundId"])
+        XCTAssertNil(dict["message"])
+    }
+
     func testSetYoloModeEncoding() throws {
         let dict = parse(try BridgeActionPayload.setYoloMode(workspaceId: "ws-1", enabled: true).encode())
         XCTAssertEqual(dict["kind"] as? String, "setYoloMode")

@@ -158,7 +158,10 @@ export function parseCachedSnapshot(raw: string): FxRateSnapshot | null {
  * interval or is missing/unreadable timestamp. `now` is injected
  * for testability.
  */
-export function isSnapshotStale(snapshot: FxRateSnapshot | null, now: number = Date.now()): boolean {
+export function isSnapshotStale(
+  snapshot: FxRateSnapshot | null,
+  now: number = Date.now()
+): boolean {
   if (!snapshot) return true
   const fetchedAt = Date.parse(snapshot.fetchedAt)
   if (!Number.isFinite(fetchedAt)) return true
@@ -171,11 +174,7 @@ export function isSnapshotStale(snapshot: FxRateSnapshot | null, now: number = D
  * the live/fallback labels are reconstructed in-memory.
  */
 export function serialiseSnapshot(snapshot: FxRateSnapshot): string {
-  return JSON.stringify(
-    { rates: snapshot.rates, fetchedAt: snapshot.fetchedAt },
-    null,
-    2
-  )
+  return JSON.stringify({ rates: snapshot.rates, fetchedAt: snapshot.fetchedAt }, null, 2)
 }
 
 async function loadCached(): Promise<FxRateSnapshot | null> {

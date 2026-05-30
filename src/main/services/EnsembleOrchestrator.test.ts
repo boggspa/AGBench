@@ -119,23 +119,25 @@ function makeSettings(): AppSettings {
   }
 }
 
-function makeHarness(options: {
-  initialChat?: ChatRecord
-  dispatch?: (payload: AgentRunPayload) => Promise<{ dispatched: boolean; appRunId: string }>
-  /**
-   * 1.0.4-AD — optional probe injection. When set, the orchestrator
-   * calls it BEFORE each participant's dispatch. Returning
-   * `reachable: false` simulates a pre-flight health-check failure
-   * (dead Codex socket, missing CLI binary, etc.) and the
-   * orchestrator should skip dispatch + route to the next
-   * participant. Default (undefined) preserves the pre-1.0.4-AD code
-   * path so the existing dispatch-failure / yield / @-mention tests
-   * stay byte-identical.
-   */
-  probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
-  scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
-  cancelWakeupTimer?: (wakeupId: string) => void
-} = {}) {
+function makeHarness(
+  options: {
+    initialChat?: ChatRecord
+    dispatch?: (payload: AgentRunPayload) => Promise<{ dispatched: boolean; appRunId: string }>
+    /**
+     * 1.0.4-AD — optional probe injection. When set, the orchestrator
+     * calls it BEFORE each participant's dispatch. Returning
+     * `reachable: false` simulates a pre-flight health-check failure
+     * (dead Codex socket, missing CLI binary, etc.) and the
+     * orchestrator should skip dispatch + route to the next
+     * participant. Default (undefined) preserves the pre-1.0.4-AD code
+     * path so the existing dispatch-failure / yield / @-mention tests
+     * stay byte-identical.
+     */
+    probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
+    scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
+    cancelWakeupTimer?: (wakeupId: string) => void
+  } = {}
+) {
   let chat = options.initialChat
     ? (JSON.parse(JSON.stringify(options.initialChat)) as ChatRecord)
     : makeChat()
@@ -148,9 +150,7 @@ function makeHarness(options: {
       : { dispatched: true, appRunId: payload.appRunId || '' }
   })
   const cancelRun = vi.fn(async () => true)
-  const probeParticipant = options.probeParticipant
-    ? vi.fn(options.probeParticipant)
-    : undefined
+  const probeParticipant = options.probeParticipant ? vi.fn(options.probeParticipant) : undefined
   const orchestrator = new EnsembleOrchestrator({
     getChat: () => chat,
     saveChat: (next) => {
@@ -195,14 +195,18 @@ describe('EnsembleOrchestrator', () => {
       role: 'Reviewer',
       order: 1
     })
-    harness.orchestrator.handleProviderOutput('claude', {
-      appRunId: harness.dispatched[0].appRunId,
-      appChatId: 'ensemble-chat'
-    }, {
-      type: 'result',
-      status: 'success',
-      stats: { total_tokens: 10 }
-    })
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      {
+        appRunId: harness.dispatched[0].appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'result',
+        status: 'success',
+        stats: { total_tokens: 10 }
+      }
+    )
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.dispatched[1].provider).toBe('codex')
   })
@@ -301,9 +305,7 @@ describe('EnsembleOrchestrator', () => {
     expect(scheduledResult.ok).toBe(true)
     expect(scheduled).toHaveLength(1)
     expect(harness.chat.ensemble?.activeRound?.participants[0].status).toBe('sleeping')
-    expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([
-      scheduled[0].wakeupId
-    ])
+    expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([scheduled[0].wakeupId])
 
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     const codexRunId = harness.dispatched[1].appRunId!
@@ -315,9 +317,7 @@ describe('EnsembleOrchestrator', () => {
 
     await vi.waitFor(() => {
       expect(harness.chat.ensemble?.activeRound?.status).toBe('running')
-      expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([
-        scheduled[0].wakeupId
-      ])
+      expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([scheduled[0].wakeupId])
     })
     expect(harness.orchestrator.handleWakeupFired(scheduled[0].wakeupId)).toBe(true)
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
@@ -333,9 +333,7 @@ describe('EnsembleOrchestrator', () => {
     // ChatRun itself so the RunCard surfaces a transcript-resumed
     // chip beside the status. Claude in the fixture has no
     // linkedProviderSessionId, so the warning is set.
-    const claudeRuns = harness.chat.runs.filter(
-      (entry) => entry.ensembleParticipantId === 'claude'
-    )
+    const claudeRuns = harness.chat.runs.filter((entry) => entry.ensembleParticipantId === 'claude')
     expect(claudeRuns.length).toBeGreaterThanOrEqual(2)
     expect(claudeRuns[claudeRuns.length - 1].ensembleSleepResumeWarning).toContain(
       'no native provider session id was available'
@@ -370,9 +368,7 @@ describe('EnsembleOrchestrator', () => {
     )
     expect(harness.orchestrator.handleWakeupFired(scheduled[0].wakeupId)).toBe(true)
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
-    const claudeRuns = harness.chat.runs.filter(
-      (entry) => entry.ensembleParticipantId === 'claude'
-    )
+    const claudeRuns = harness.chat.runs.filter((entry) => entry.ensembleParticipantId === 'claude')
     expect(claudeRuns[claudeRuns.length - 1].ensembleSleepResumeWarning).toBeUndefined()
   })
 
@@ -522,10 +518,7 @@ describe('EnsembleOrchestrator', () => {
     const pending = restarted.chat.ensemble!.wakeups![wakeupId]
     expect(pending.status).toBe('pending')
 
-    const ok = restarted.orchestrator.resumePersistedWakeup(
-      pending,
-      {} as Electron.WebContents
-    )
+    const ok = restarted.orchestrator.resumePersistedWakeup(pending, {} as Electron.WebContents)
     expect(ok).toBe(true)
 
     // Wakeup record was flipped to fired with the recovery marker.
@@ -542,9 +535,7 @@ describe('EnsembleOrchestrator', () => {
 
     // The transcript carries the woke-after-restart status row.
     expect(
-      restarted.chat.messages.some((message) =>
-        message.content.includes('woke after app restart')
-      )
+      restarted.chat.messages.some((message) => message.content.includes('woke after app restart'))
     ).toBe(true)
   })
 
@@ -570,10 +561,7 @@ describe('EnsembleOrchestrator', () => {
     expect(scheduled.ok).toBe(true)
     const wakeupId = scheduled.wakeup!.wakeupId
 
-    const cancelled = harness.orchestrator.cancelWakeupById(
-      wakeupId,
-      'cancelled by user'
-    )
+    const cancelled = harness.orchestrator.cancelWakeupById(wakeupId, 'cancelled by user')
     expect(cancelled?.status).toBe('cancelled')
     expect(cancelled?.message).toBe('cancelled by user')
     expect(harness.chat.ensemble?.wakeups?.[wakeupId]?.status).toBe('cancelled')
@@ -620,10 +608,7 @@ describe('EnsembleOrchestrator', () => {
       status: 'fired',
       firedAt: '2026-05-24T00:01:02.000Z'
     }
-    const ok = harness.orchestrator.resumePersistedWakeup(
-      fired,
-      {} as Electron.WebContents
-    )
+    const ok = harness.orchestrator.resumePersistedWakeup(fired, {} as Electron.WebContents)
     expect(ok).toBe(false)
     expect(harness.dispatched).toHaveLength(0)
   })
@@ -693,13 +678,17 @@ describe('EnsembleOrchestrator', () => {
       mode: 'queue'
     })
     expect(queued.status).toBe('queued')
-    harness.orchestrator.handleProviderOutput('claude', {
-      appRunId: harness.dispatched[0].appRunId,
-      appChatId: 'ensemble-chat'
-    }, {
-      type: 'result',
-      status: 'success'
-    })
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      {
+        appRunId: harness.dispatched[0].appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'result',
+        status: 'success'
+      }
+    )
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.chat.messages.map((message) => message.content)).toContain('Second prompt')
   })
@@ -749,14 +738,10 @@ Next action:
       { type: 'result', status: 'success' }
     )
 
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     const roundId = harness.chat.ensemble!.activeRound!.roundId
     expect(harness.chat.ensemble?.lastRoundSummary).toContain('Capture in finishRound')
-    expect(harness.chat.ensemble?.roundSummaries?.[roundId]?.summary).toContain(
-      'Next action:'
-    )
+    expect(harness.chat.ensemble?.roundSummaries?.[roundId]?.summary).toContain('Next action:')
   })
 
   it('threads the captured summary into the next round prompt', async () => {
@@ -806,9 +791,7 @@ Next action:
       { type: 'result', status: 'success' }
     )
 
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     harness.orchestrator.startRound({
       chatId: 'ensemble-chat',
       prompt: 'Second round.',
@@ -845,13 +828,17 @@ Next action:
       'Ensemble steered: interrupted the active speaker and started a fresh round.'
     )
 
-    const handled = harness.orchestrator.handleProviderOutput('claude', {
-      appRunId: oldRun.appRunId,
-      appChatId: 'ensemble-chat'
-    }, {
-      type: 'content',
-      text: 'late old content'
-    })
+    const handled = harness.orchestrator.handleProviderOutput(
+      'claude',
+      {
+        appRunId: oldRun.appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'content',
+        text: 'late old content'
+      }
+    )
     expect(handled).toBe(false)
     expect(harness.chat.messages.map((message) => message.content)).not.toContain(
       'late old content'
@@ -1306,8 +1293,7 @@ Next action:
 
     // System message announcing the skip.
     const skipMessage = harness.chat.messages.find(
-      (message) =>
-        message.role === 'system' && message.metadata?.ensembleStatus === 'skipped'
+      (message) => message.role === 'system' && message.metadata?.ensembleStatus === 'skipped'
     )
     expect(skipMessage?.content).toContain('Reviewer skipped.')
     expect(skipMessage?.metadata?.ensembleProvider).toBe('claude')
@@ -1421,9 +1407,9 @@ Next action:
     const harness = makeHarness({
       dispatch: async (payload) => {
         if (payload.provider === 'gemini') {
-          const err = new Error(
-            'connect ECONNREFUSED /tmp/agbench-gemini.sock'
-          ) as Error & { code?: string }
+          const err = new Error('connect ECONNREFUSED /tmp/agbench-gemini.sock') as Error & {
+            code?: string
+          }
           err.code = 'ECONNREFUSED'
           throw err
         }
@@ -1469,11 +1455,7 @@ Next action:
 
     // Claude yields to gemini via the orchestrator's markYielded path
     // (mirroring `ensemble_yield(target='gemini')`).
-    harness.orchestrator.markYielded(
-      harness.dispatched[0].appRunId!,
-      'Passing to Gemini',
-      'gemini'
-    )
+    harness.orchestrator.markYielded(harness.dispatched[0].appRunId!, 'Passing to Gemini', 'gemini')
 
     // Gemini's dispatch throws ECONNREFUSED → orchestrator routes
     // past it to Codex (next-in-default-rotation).
@@ -1577,9 +1559,7 @@ Next action:
       { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
       { type: 'result', status: 'success', stats: { total_tokens: 5 } }
     )
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     const fallbackNote = harness.chat.messages.find(
       (message) =>
         message.role === 'system' &&
@@ -1634,9 +1614,7 @@ Next action:
     // Probe was called for both participants in turn order — Claude
     // first (rejected), then Codex (accepted).
     expect(harness.probeParticipant).toHaveBeenCalledTimes(2)
-    const probedIds = harness.probeParticipant!.mock.calls.map(
-      ([p]: [EnsembleParticipant]) => p.id
-    )
+    const probedIds = harness.probeParticipant!.mock.calls.map(([p]: [EnsembleParticipant]) => p.id)
     expect(probedIds).toEqual(['claude', 'codex'])
 
     // Active round's Claude state should be `unreachable` with the
@@ -1727,9 +1705,7 @@ Next action:
 
     // Wait for the round to settle (both participants probed and
     // marked unreachable, no dispatches fired).
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     expect(harness.dispatched).toHaveLength(0)
 
     const fallbackNote = harness.chat.messages.find(
@@ -1753,9 +1729,11 @@ Next action:
     expect(probeNotes[0].content).toContain('Claude / Reviewer: unreachable')
     expect(probeNotes[0].content).toContain('Codex / Worker: unreachable')
     // 1.0.5-EW29 — structured entries on the metadata.
-    const entries = (probeNotes[0].metadata as {
-      entries?: Array<{ status: string; provider: string; role: string }>
-    })?.entries
+    const entries = (
+      probeNotes[0].metadata as {
+        entries?: Array<{ status: string; provider: string; role: string }>
+      }
+    )?.entries
     expect(entries?.every((e) => e.status === 'unreachable')).toBe(true)
     expect(entries?.length).toBe(2)
   })
@@ -1851,7 +1829,7 @@ Next action:
     // assistant("Found it.").
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'content',
-      text: "Let me read the file first."
+      text: 'Let me read the file first.'
     })
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'tool_use',
@@ -2247,11 +2225,7 @@ Next action:
       { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
       { type: 'content', text: '@claude, what is 2+3?' }
     )
-    harness.orchestrator.markYielded(
-      harness.dispatched[0].appRunId!,
-      'Passing to Claude',
-      'claude'
-    )
+    harness.orchestrator.markYielded(harness.dispatched[0].appRunId!, 'Passing to Claude', 'claude')
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.dispatched[1].provider).toBe('claude')
 
@@ -2268,11 +2242,7 @@ Next action:
         text: '@codex 2+3=5. Your turn — what is 7-4?'
       }
     )
-    harness.orchestrator.markYielded(
-      harness.dispatched[1].appRunId!,
-      'Passing to Codex',
-      'codex'
-    )
+    harness.orchestrator.markYielded(harness.dispatched[1].appRunId!, 'Passing to Codex', 'codex')
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
     expect(harness.dispatched[2].provider).toBe('codex')
   })
@@ -2387,9 +2357,7 @@ Next action:
       { type: 'result', status: 'success', stats: { total_tokens: 10 } }
     )
 
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     expect(harness.dispatched).toHaveLength(2)
     expect(harness.chat.ensemble?.activeRound?.continuationHops || 0).toBe(0)
   })
@@ -2455,9 +2423,7 @@ Next action:
       { type: 'result', status: 'success', stats: { total_tokens: 10 } }
     )
 
-    await vi.waitFor(() =>
-      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
-    )
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
     expect(harness.dispatched).toHaveLength(3)
     expect(harness.chat.ensemble?.activeRound?.continuationHops).toBe(1)
     expect(harness.chat.messages.map((message) => message.content)).toContain(
@@ -2820,9 +2786,9 @@ Next action:
 
     // No ambiguity warning in the transcript.
     const messages = harness.chat.messages.map((m) => m.content)
-    expect(messages.some((content) =>
-      typeof content === 'string' && content.includes('was ambiguous')
-    )).toBe(false)
+    expect(
+      messages.some((content) => typeof content === 'string' && content.includes('was ambiguous'))
+    ).toBe(false)
   })
 
   it('1.0.4-AF: /discuss prefix flips the round into self-reflective mode and strips the token', async () => {
@@ -3047,9 +3013,7 @@ Next action:
     // The duration-exhausted check should have transitioned the
     // session to limit_reached + dropped the queued continuation.
     expect(harness.chat.ensemble?.workSession?.status).toBe('limit_reached')
-    expect(harness.chat.ensemble?.workSession?.endedReason).toContain(
-      'Duration budget reached'
-    )
+    expect(harness.chat.ensemble?.workSession?.endedReason).toContain('Duration budget reached')
     // Single dispatch — no fresh round fired from the queue.
     expect(harness.dispatched).toHaveLength(1)
     // Transcript status row should explain the end.
@@ -3092,10 +3056,7 @@ Next action:
     })
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
     // Queue a follow-up while Claude is mid-turn.
-    harness.orchestrator.enqueueWorkSessionContinuation(
-      'ensemble-chat',
-      'continue-please'
-    )
+    harness.orchestrator.enqueueWorkSessionContinuation('ensemble-chat', 'continue-please')
     // Close Claude's turn — round-end check fires + queued prompt
     // dispatches as a fresh round.
     harness.orchestrator.handleProviderOutput(
@@ -3280,7 +3241,7 @@ Next action:
     expect(scoutNote).toBeUndefined()
   })
 
-  it('1.0.4-AK6: threads scout briefs into the writer\'s prompt context after the parallel pass', async () => {
+  it("1.0.4-AK6: threads scout briefs into the writer's prompt context after the parallel pass", async () => {
     // End-to-end: scout pass records briefs, then the serial
     // writer's prompt should include the "Scout briefs from the
     // parallel pass:" section with each scout's findings.

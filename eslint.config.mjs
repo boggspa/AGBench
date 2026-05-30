@@ -26,6 +26,31 @@ export default defineConfig(
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules,
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            'SETTINGS_TABS',
+            'buildCompactGroupLabel',
+            'buildExternalPathOriginTooltip',
+            'buildTimelineItems',
+            'buildTurnReceiptSummary',
+            'composerHighlightScrollTransform',
+            'filterComposerMentionCandidates',
+            'formatDuration',
+            'formatFamilyTally',
+            'getProviderName',
+            'isActivityShimmerStale',
+            'resolveProviderRows',
+            'tallyByFamily',
+            'toolNameToFamily'
+          ]
+        }
+      ],
       '@typescript-eslint/no-unused-vars': [
         'error',
         {

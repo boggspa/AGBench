@@ -125,9 +125,7 @@ export function normalisePastedText(input: string): string {
   // tag-strip pass. Block-level closers emit a double newline
   // so paragraph separation survives the collapse-3+-to-2 pass
   // below; `<br>` stays single-newline.
-  let out = input
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n\n')
+  let out = input.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n\n')
   // Strip remaining tags.
   out = out.replace(/<[^>]+>/g, '')
   // Decode common entities.

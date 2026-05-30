@@ -1,4 +1,9 @@
-import type { EnsembleConfig, EnsembleParticipant, PermissionPresetId, ProviderId } from './store/types'
+import type {
+  EnsembleConfig,
+  EnsembleParticipant,
+  PermissionPresetId,
+  ProviderId
+} from './store/types'
 
 /*
  * F2 (1.0.3) — the per-provider participant defaults below MUST stay in
@@ -34,7 +39,8 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
   {
     provider: 'gemini',
     role: 'Researcher',
-    instructions: 'Use broad context to find supporting facts, references, and alternate approaches.',
+    instructions:
+      'Use broad context to find supporting facts, references, and alternate approaches.',
     permissionPresetId: 'read_only'
   },
   {

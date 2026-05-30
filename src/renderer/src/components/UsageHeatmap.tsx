@@ -69,36 +69,36 @@ interface UsageHeatmapProps {
   className?: string
 }
 
-export function UsageHeatmap({
-  refreshKey = 0,
-  showHeader = true,
-  className
-}: UsageHeatmapProps) {
+export function UsageHeatmap({ refreshKey = 0, showHeader = true, className }: UsageHeatmapProps) {
   const [records, setRecords] = useState<UsageRecord[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    // We always fetch ALL records and filter in the bucketing helper
-    // — the existing IPC has no time-range param, and the filter step
-    // happens in O(n) which is fine for typical usage volumes
-    // (~thousands of records over a 30-day window).
-    window.api
-      .getUsage()
-      .then((latest) => {
-        if (!cancelled) setRecords(latest)
-      })
-      .catch(() => {
-        // Best-effort: render an empty heatmap rather than crashing
-        // the whole card if the IPC fails.
-        if (!cancelled) setRecords([])
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    const frame = window.requestAnimationFrame(() => {
+      if (cancelled) return
+      setLoading(true)
+      // We always fetch ALL records and filter in the bucketing helper
+      // — the existing IPC has no time-range param, and the filter step
+      // happens in O(n) which is fine for typical usage volumes
+      // (~thousands of records over a 30-day window).
+      window.api
+        .getUsage()
+        .then((latest) => {
+          if (!cancelled) setRecords(latest)
+        })
+        .catch(() => {
+          // Best-effort: render an empty heatmap rather than crashing
+          // the whole card if the IPC fails.
+          if (!cancelled) setRecords([])
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+    })
     return () => {
       cancelled = true
+      window.cancelAnimationFrame(frame)
     }
   }, [refreshKey])
 

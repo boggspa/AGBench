@@ -108,9 +108,7 @@ export interface FirstLaunchSheetProps {
   composerStyle?: ComposerStyle
   userBubbleColor?: UserBubbleColor
   onAppearancePreviewChange?: (
-    next: Partial<
-      Pick<AppSettings, 'themeAppearance' | 'composerStyle' | 'userBubbleColor'>
-    >
+    next: Partial<Pick<AppSettings, 'themeAppearance' | 'composerStyle' | 'userBubbleColor'>>
   ) => void
 }
 
@@ -426,12 +424,7 @@ export function FirstLaunchSheet({
               just sizing — no tinted-circle background like the
               earlier inline-glyph variant carried.
             */}
-            <img
-              src={agbenchGhostMark}
-              alt=""
-              className="first-launch-sheet-ghost"
-              aria-hidden
-            />
+            <img src={agbenchGhostMark} alt="" className="first-launch-sheet-ghost" aria-hidden />
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to AGBench</h2>
               <p className="first-launch-sheet-subtitle">
@@ -452,11 +445,10 @@ export function FirstLaunchSheet({
 
         <section className="first-launch-sheet-section">
           <p className="first-launch-sheet-prose">
-            AGBench is a multi-provider AI CLI manager. It wraps{' '}
-            <strong>Codex</strong>, <strong>Claude</strong>, <strong>Gemini</strong>, and{' '}
-            <strong>Kimi</strong> inside one consistent chrome so you can compare runs side-by-side
-            in the same UI. Each provider keeps its own auth — sign in to the ones you want to use,
-            skip the rest.
+            AGBench is a multi-provider AI CLI manager. It wraps <strong>Codex</strong>,{' '}
+            <strong>Claude</strong>, <strong>Gemini</strong>, and <strong>Kimi</strong> inside one
+            consistent chrome so you can compare runs side-by-side in the same UI. Each provider
+            keeps its own auth — sign in to the ones you want to use, skip the rest.
           </p>
         </section>
 
@@ -484,7 +476,8 @@ export function FirstLaunchSheet({
             A <strong>workspace</strong> is a project folder AGBench has read / edit permission
             inside. Every chat is rooted in a workspace, and the agent can only touch files within
             its trust boundary. Find the <span className="first-launch-sheet-plus">+</span> button
-            in the sidebar header (next to "Workspaces") and pick a folder. You can add more later.
+            in the sidebar header (next to &quot;Workspaces&quot;) and pick a folder. You can add
+            more later.
           </p>
         </section>
 
@@ -580,8 +573,8 @@ export function FirstLaunchSheet({
                     {composerPreview.providerLabel}
                   </span>
                   <p>
-                    Assistant transcript text uses this typeface, including inline code, file
-                    names, and longer status lines.
+                    Assistant transcript text uses this typeface, including inline code, file names,
+                    and longer status lines.
                   </p>
                   <div className="settings-composer-preview-tool-row" aria-hidden="true">
                     <span>Edited</span>
@@ -660,71 +653,71 @@ export function FirstLaunchSheet({
                       </div>
                     </div>
                     <div className="composer-bottom-controls">
-                    <div className="composer-control-footer settings-composer-preview-footer">
-                      <div className="composer-inline-pickers">
-                        <div className="composer-inline-pickers-left" aria-hidden="true">
-                          <button
-                            type="button"
-                            className="composer-picker-label settings-composer-preview-control"
-                            data-composer-control="attach"
-                            tabIndex={-1}
-                          >
-                            +
-                          </button>
-                          <span
-                            className="composer-picker-label settings-composer-preview-control"
-                            data-composer-control="provider"
-                          >
-                            {composerPreview.providerLabel}
-                          </span>
-                          <span
-                            className="composer-picker-label settings-composer-preview-control"
-                            data-composer-control="permission"
-                          >
-                            {composerPreview.permissionLabel}
-                          </span>
-                          <span
-                            className="composer-picker-label settings-composer-preview-control"
-                            data-composer-control="model"
-                          >
-                            {composerPreview.modelLabel}
-                          </span>
-                        </div>
-                        <div className="composer-inline-actions" aria-hidden="true">
-                          <span className="context-wheel settings-composer-preview-context">
-                            <svg viewBox="0 0 18 18" width="18" height="18">
-                              <circle
-                                cx="9"
-                                cy="9"
-                                r="6.6"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                opacity="0.22"
-                              />
-                              <path
-                                d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          </span>
-                          <span className="composer-thread-token-tally">44%</span>
-                          <span className="composer-send-cluster">
+                      <div className="composer-control-footer settings-composer-preview-footer">
+                        <div className="composer-inline-pickers">
+                          <div className="composer-inline-pickers-left" aria-hidden="true">
                             <button
                               type="button"
-                              className="composer-action-btn run-btn"
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="attach"
                               tabIndex={-1}
-                              aria-label="Preview send button"
                             >
-                              ↑
+                              +
                             </button>
-                          </span>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="provider"
+                            >
+                              {composerPreview.providerLabel}
+                            </span>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="permission"
+                            >
+                              {composerPreview.permissionLabel}
+                            </span>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="model"
+                            >
+                              {composerPreview.modelLabel}
+                            </span>
+                          </div>
+                          <div className="composer-inline-actions" aria-hidden="true">
+                            <span className="context-wheel settings-composer-preview-context">
+                              <svg viewBox="0 0 18 18" width="18" height="18">
+                                <circle
+                                  cx="9"
+                                  cy="9"
+                                  r="6.6"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  opacity="0.22"
+                                />
+                                <path
+                                  d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="composer-thread-token-tally">44%</span>
+                            <span className="composer-send-cluster">
+                              <button
+                                type="button"
+                                className="composer-action-btn run-btn"
+                                tabIndex={-1}
+                                aria-label="Preview send button"
+                              >
+                                ↑
+                              </button>
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
                     </div>
                   </div>
                 </div>
@@ -738,9 +731,9 @@ export function FirstLaunchSheet({
           <p className="first-launch-sheet-section-helper">
             New Ensemble puts multiple provider participants in one shared transcript. Turn mode
             keeps one active speaker at a time; Continuous mode lets the panel keep moving. Hit the
-            <strong> Work Session</strong> button in the composer to run a supervised
-            multi-round autonomy session with one of five presets (One-shot review · Architecture
-            panel · Scout pass · Implementation review · Long-running work session).
+            <strong> Work Session</strong> button in the composer to run a supervised multi-round
+            autonomy session with one of five presets (One-shot review · Architecture panel · Scout
+            pass · Implementation review · Long-running work session).
           </p>
           <div className="first-launch-sheet-ensemble-preview" aria-label="Ensemble row preview">
             <div className="first-launch-sheet-ensemble-strip">
@@ -786,17 +779,17 @@ export function FirstLaunchSheet({
             </li>
             <li>
               <strong>/ for slash commands.</strong> Type <code>/</code> at the start of the
-              composer for the slash menu — quick handles for compact, help, feedback, model
-              swaps, etc.
+              composer for the slash menu — quick handles for compact, help, feedback, model swaps,
+              etc.
             </li>
             <li>
-              <strong>Cmd-K command palette.</strong> Anywhere in the app, press{' '}
-              <kbd>Cmd</kbd>+<kbd>K</kbd> for the global command palette.
+              <strong>Cmd-K command palette.</strong> Anywhere in the app, press <kbd>Cmd</kbd>+
+              <kbd>K</kbd> for the global command palette.
             </li>
             <li>
               <strong>Permission picker colour-codes the mode.</strong> Plan = blue, Default =
-              neutral, Auto-edit = orange. Read it before you hit Enter so you know how much
-              freedom the agent has.
+              neutral, Auto-edit = orange. Read it before you hit Enter so you know how much freedom
+              the agent has.
             </li>
             <li>
               <strong>Fast Mode toggle.</strong> Inside the model picker, capable models (Codex
@@ -812,17 +805,17 @@ export function FirstLaunchSheet({
               surface, provider, workspace, theme, and Ensemble context into the local bug log.
             </li>
             <li>
-              <strong>Screen Watch.</strong> The eye-on-screen icon in the composer's timecode
-              row picks a macOS window for the AI to see. Click again to detach. A small pulse
-              dot signals a live capture is running.
+              <strong>Screen Watch.</strong> The eye-on-screen icon in the composer&apos;s timecode
+              row picks a macOS window for the AI to see. Click again to detach. A small pulse dot
+              signals a live capture is running.
             </li>
             <li>
-              <strong>Per-participant retry.</strong> If an Ensemble participant fails (rate
-              limit, transient socket flake, etc.), open its chip's ⋯ menu for a Retry action
-              that re-dispatches just that participant against the last user prompt.
+              <strong>Per-participant retry.</strong> If an Ensemble participant fails (rate limit,
+              transient socket flake, etc.), open its chip&apos;s ⋯ menu for a Retry action that
+              re-dispatches just that participant against the last user prompt.
             </li>
             <li>
-              <strong>Cumulative session timecode.</strong> Composer's lower-left shows
+              <strong>Cumulative session timecode.</strong> Composer&apos;s lower-left shows
               <em> two </em>
               counters: per-run elapsed time and total wall-time across every run in this chat.
             </li>

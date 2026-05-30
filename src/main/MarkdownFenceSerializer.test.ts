@@ -87,7 +87,9 @@ describe('MarkdownFenceSerializer', () => {
   })
 
   it('closes an active fence when forced to truncate inside it', () => {
-    const text = ['Intro', '```bash', 'echo one', 'echo two', 'echo three', '```', 'After'].join('\n')
+    const text = ['Intro', '```bash', 'echo one', 'echo two', 'echo three', '```', 'After'].join(
+      '\n'
+    )
     const truncated = truncateOpaqueMarkdown(text, text.indexOf('echo three') + 4)
     expect(truncated).toContain('```bash')
     expect(truncated).toContain('[... truncated]')
@@ -95,4 +97,3 @@ describe('MarkdownFenceSerializer', () => {
     expect((truncated.match(/```/g) || []).length).toBe(2)
   })
 })
-

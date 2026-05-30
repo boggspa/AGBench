@@ -30,14 +30,15 @@ function formatResetWindow(text: string): string {
 
 export function GrokTelemetryCard(): React.ReactElement {
   const [snapshot, setSnapshot] = useState<GrokUsageSnapshot | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(
+    () => typeof window === 'undefined' || typeof window.api?.probeGrokUsage === 'function'
+  )
   const mountedRef = useRef(true)
 
   useEffect(() => {
     mountedRef.current = true
     const api = typeof window !== 'undefined' ? window.api : undefined
     if (typeof api?.probeGrokUsage !== 'function') {
-      setLoading(false)
       return () => {
         mountedRef.current = false
       }

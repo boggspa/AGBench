@@ -157,9 +157,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('data-provider="cursor"')
     expect(html).toContain('data-provider="grok"')
     // No PNG logo → accent monogram tile rendered instead of an <img>.
-    expect(html).toMatch(
-      /first-launch-sheet-provider-card-logo-monogram provider-cursor/
-    )
+    expect(html).toMatch(/first-launch-sheet-provider-card-logo-monogram provider-cursor/)
     expect(html).toMatch(/first-launch-sheet-provider-card-logo-monogram provider-grok/)
     // Enabled Cursor → "Available" sign-in state; disabled Grok → "disabled".
     expect(html).toContain('Available · CLI sign-in')

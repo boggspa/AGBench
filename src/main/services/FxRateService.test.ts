@@ -92,9 +92,7 @@ describe('parseCachedSnapshot', () => {
   })
 
   it('returns null when rates malformed', () => {
-    expect(
-      parseCachedSnapshot(JSON.stringify({ fetchedAt: '2026-01-01T00:00:00Z' }))
-    ).toBeNull()
+    expect(parseCachedSnapshot(JSON.stringify({ fetchedAt: '2026-01-01T00:00:00Z' }))).toBeNull()
     expect(
       parseCachedSnapshot(
         JSON.stringify({ rates: { GBP: -1, EUR: 0.92 }, fetchedAt: '2026-01-01T00:00:00Z' })

@@ -31,9 +31,7 @@ interface RepoMetadataMap {
  * Returns `null` for paths that don't exist or aren't repos — the
  * descriptor helper handles the null branch gracefully.
  */
-export function useExternalPathRepoMetadata(
-  grants: ExternalPathGrant[]
-): RepoMetadataMap {
+export function useExternalPathRepoMetadata(grants: ExternalPathGrant[]): RepoMetadataMap {
   const [metadata, setMetadata] = useState<RepoMetadataMap>({})
   const cacheRef = useRef<Map<string, ExternalPathGitMetadata | null>>(new Map())
 

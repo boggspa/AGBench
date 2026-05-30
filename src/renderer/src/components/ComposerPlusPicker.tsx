@@ -128,9 +128,7 @@ export function ComposerPlusPicker({
                     <span className="composer-plus-picker-row-copy">
                       <span className="composer-combined-picker-row-label">{item.label}</span>
                       {item.description && (
-                        <span className="composer-combined-picker-row-sub">
-                          {item.description}
-                        </span>
+                        <span className="composer-combined-picker-row-sub">{item.description}</span>
                       )}
                     </span>
                   </button>

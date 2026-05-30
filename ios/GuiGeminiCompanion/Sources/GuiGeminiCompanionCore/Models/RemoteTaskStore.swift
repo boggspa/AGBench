@@ -8,6 +8,12 @@ public enum RemoteTaskActionKind: String, Sendable, Equatable {
     case rejectQuestion
     case cancelRun
     case prompt
+    case ensembleCancelRound
+    case ensembleSkipActiveParticipant
+    case ensembleWakeNow
+    case ensembleCancelWakeup
+    case ensembleQueuePrompt
+    case ensembleSteer
 }
 
 public enum RemoteTaskActionState: Sendable, Equatable {
@@ -326,7 +332,10 @@ public final class RemoteTaskStore {
                         at: now
                     )
                 }
-            case .cancelRun, .prompt:
+            case .cancelRun, .prompt,
+                 .ensembleCancelRound, .ensembleSkipActiveParticipant,
+                 .ensembleWakeNow, .ensembleCancelWakeup,
+                 .ensembleQueuePrompt, .ensembleSteer:
                 break
             }
         }

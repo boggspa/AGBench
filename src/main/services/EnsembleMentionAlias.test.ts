@@ -23,7 +23,9 @@ import {
  * Codexes, etc.), the model-name disambiguation keeps working.
  */
 
-function participant(p: Partial<EnsembleParticipant> & Pick<EnsembleParticipant, 'id' | 'provider'>): EnsembleParticipant {
+function participant(
+  p: Partial<EnsembleParticipant> & Pick<EnsembleParticipant, 'id' | 'provider'>
+): EnsembleParticipant {
   return {
     enabled: true,
     role: '',
@@ -252,11 +254,7 @@ describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () =>
   })
 
   it('excludes self-mentions via excludeIds', () => {
-    const result = findFirstMention(
-      '@codex I am Codex, deferring',
-      QUARTET,
-      new Set([CODEX.id])
-    )
+    const result = findFirstMention('@codex I am Codex, deferring', QUARTET, new Set([CODEX.id]))
     // Codex narrating itself by provider name → null when excluded.
     expect(result).toBeNull()
   })
@@ -314,9 +312,7 @@ describe('resolvePhraseToParticipant (legacy single-phrase entry point)', () => 
     expect(resolvePhraseToParticipant('sonnet 4.7', QUARTET)?.id).toBe(CLAUDE.id)
   })
   it('honours excludeIds', () => {
-    expect(
-      resolvePhraseToParticipant('codex', QUARTET, new Set([CODEX.id]))
-    ).toBeNull()
+    expect(resolvePhraseToParticipant('codex', QUARTET, new Set([CODEX.id]))).toBeNull()
   })
 })
 

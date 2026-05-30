@@ -162,7 +162,7 @@ export function contentVersion(message: ChatMessage): string {
     let outputLen = 0
     let statuses = ''
     for (const a of activities) {
-      outputLen += (a.outputPreview?.length || a.resultSummary?.length || 0)
+      outputLen += a.outputPreview?.length || a.resultSummary?.length || 0
       statuses += `${a.status || '?'}|`
     }
     return `t:${activities.length}:${statuses}:${outputLen}`

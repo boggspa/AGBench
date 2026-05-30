@@ -60,6 +60,28 @@ export interface BridgeApprovalPushPayload {
   expiresAt?: number
 }
 
+export type BridgeRemoteAttentionReason =
+  | 'approval'
+  | 'question'
+  | 'taskNeedsAttention'
+  | 'ensemble'
+  | 'wakeup'
+  | 'resume'
+
+export interface BridgeRemoteAttentionPushPayload {
+  pairID: string
+  reason: BridgeRemoteAttentionReason
+  workspaceId?: string | null
+  threadId?: string
+  runId?: string
+  approvalId?: string
+  questionId?: string
+  wakeupId?: string
+  taskId?: string
+  projectionKind?: string
+  generatedAt?: string
+}
+
 export interface BridgeApnsPushResult {
   /** Whether the push was actually delivered (or attempted) to APNs. */
   delivered: boolean
@@ -76,6 +98,13 @@ export interface BridgeApnsPusher {
    * whether the push went out. Never throws — failed pushes are surfaced
    * via `delivered: false`. */
   pushApprovalNeeded(payload: BridgeApprovalPushPayload): Promise<BridgeApnsPushResult>
+
+  /** Push a generic, privacy-safe attention notification. The payload may
+   * include routing identifiers only; user prompts, commands, paths, diffs,
+   * and approval summaries must stay out of APNs. */
+  pushRemoteAttentionNeeded(
+    payload: BridgeRemoteAttentionPushPayload
+  ): Promise<BridgeApnsPushResult>
 
   /** Push a low-priority "state sync" silent notification. Used to nudge
    * the iPhone bridge client to reconnect when it's been backgrounded
@@ -100,6 +129,15 @@ export class NoopApnsPusher implements BridgeApnsPusher {
   async pushApprovalNeeded(payload: BridgeApprovalPushPayload): Promise<BridgeApnsPushResult> {
     this.log(
       `[BridgeApnsPusher noop] would push approval pairID=${payload.pairID} ws=${payload.workspaceId} thread=${payload.threadId} tool=${payload.toolCallId} — APNs not yet configured`
+    )
+    return { delivered: false, apnsId: '', reason: 'noop' }
+  }
+
+  async pushRemoteAttentionNeeded(
+    payload: BridgeRemoteAttentionPushPayload
+  ): Promise<BridgeApnsPushResult> {
+    this.log(
+      `[BridgeApnsPusher noop] would push remote attention pairID=${payload.pairID} reason=${payload.reason} ws=${payload.workspaceId ?? 'global'} thread=${payload.threadId ?? ''} — APNs not yet configured`
     )
     return { delivered: false, apnsId: '', reason: 'noop' }
   }

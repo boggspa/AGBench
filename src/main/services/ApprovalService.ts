@@ -10,13 +10,10 @@ import type { AgentRunRoute } from '../index'
 import type { RunManager } from '../RunManager'
 import type { PermissionService } from '../PermissionService'
 import type { ApprovalTimeoutScheduler, ApprovalTimeoutReason } from '../ApprovalTimeoutScheduler'
-import type {
-  BridgeApnsPusher,
-  BridgeApprovalPushPayload,
-  BridgeApnsPushResult
-} from '../BridgeApnsPusher'
+import type { BridgeApnsPusher } from '../BridgeApnsPusher'
 import type { BridgeApnsTokenStore } from '../BridgeApnsTokenStore'
 import { buildMobileApprovalCard, type MobileApprovalCard } from '../RemoteTaskProjection'
+import { RemoteAttentionApnsFanout } from '../RemoteAttentionApnsFanout'
 
 /**
  * ApprovalService — Phase B3 extraction.
@@ -254,8 +251,16 @@ export class ApprovalService {
   private pendingKimi = new Map<string, PendingKimiApproval>()
   private pendingHostCommand = new Map<string, PendingHostCommandApproval>()
   private scheduler: ApprovalTimeoutScheduler | null = null
+  private readonly remoteAttentionFanout: RemoteAttentionApnsFanout
 
-  constructor(private deps: ApprovalServiceDeps) {}
+  constructor(private deps: ApprovalServiceDeps) {
+    this.remoteAttentionFanout = new RemoteAttentionApnsFanout({
+      getTokenStore: deps.getApnsTokenStore,
+      getPusher: deps.getApnsPusher,
+      isUserAtDesktop: deps.isUserAtDesktop,
+      log: deps.log
+    })
+  }
 
   /** Late-bound scheduler injection. The scheduler's `onTimeout`
    * callback closes over the service (it calls `resolve(...)` on
@@ -300,9 +305,7 @@ export class ApprovalService {
    * Returns undefined when the approval isn't registered or wasn't an
    * external-path prompt.
    */
-  getPendingExternalPathDetection(
-    approvalId: string
-  ): PendingExternalPathDetection | undefined {
+  getPendingExternalPathDetection(approvalId: string): PendingExternalPathDetection | undefined {
     return (
       this.pendingCodex.get(approvalId)?.externalPathDetection ||
       this.pendingGeminiTool.get(approvalId)?.externalPathDetection ||
@@ -449,7 +452,9 @@ export class ApprovalService {
     return buildMobileApprovalCard({
       toolCallId: approvalId,
       threadId: input.threadId || session?.appChatId || input.runId,
-      workspaceId: input.workspacePath ? this.deps.workspaceIdForPath(input.workspacePath) : undefined,
+      workspaceId: input.workspacePath
+        ? this.deps.workspaceIdForPath(input.workspacePath)
+        : undefined,
       workspacePath: input.workspacePath,
       runId: input.runId,
       provider,
@@ -519,61 +524,25 @@ export class ApprovalService {
 
   // ──── wake-push to paired iOS devices ──────────────────────────
 
-  /** Phase C5+E. Fan out an APNs wake-push to every paired iOS
-   * device when the user is away from the desktop. Best-effort:
-   * never throws; missing pusher / no tokens / user-at-desktop are
-   * all silent no-ops. */
+  /** Phase C5+E. Fan out a generic APNs attention push to every paired
+   * iOS device when the user is away from the desktop. Best-effort:
+   * never throws; missing pusher / no tokens / user-at-desktop are all
+   * silent no-ops. The approval summary is intentionally ignored here:
+   * APNs payloads carry routing identifiers only, never command text,
+   * paths, diffs, prompts, or approval summaries. */
   notifyPairedDevices(args: {
     approvalId: string
     workspaceId: string
     threadId: string
     summary: string
   }): void {
-    const tokenStore = this.deps.getApnsTokenStore()
-    const pusher = this.deps.getApnsPusher()
-    if (!tokenStore || !pusher) return
-    const tokens = tokenStore.list()
-    if (tokens.length === 0) return
-    if (this.deps.isUserAtDesktop()) {
-      this.deps.log(`[APNs] skipping approval push for ${args.approvalId} — user is at desktop`)
-      return
-    }
-    const maybePushable = pusher as unknown as {
-      pushApprovalToToken?: (
-        deviceTokenHex: string,
-        env: 'production' | 'sandbox',
-        payload: BridgeApprovalPushPayload
-      ) => Promise<BridgeApnsPushResult>
-    }
-    if (typeof maybePushable.pushApprovalToToken !== 'function') return
-    for (const entry of tokens) {
-      void (async () => {
-        try {
-          const result = await maybePushable.pushApprovalToToken!(entry.deviceToken, entry.env, {
-            pairID: entry.pairID,
-            workspaceId: args.workspaceId,
-            threadId: args.threadId,
-            toolCallId: args.approvalId,
-            summary: args.summary
-          })
-          if (!result.delivered) {
-            const reason = result.reason ?? ''
-            if (/^Unregistered$|^BadDeviceToken$/i.test(reason)) {
-              this.deps.log(`[APNs] pruning dead token for pairID=${entry.pairID}: ${reason}`)
-              tokenStore.remove(entry.pairID)
-            } else if (reason && reason !== 'noop') {
-              this.deps.log(
-                `[APNs] approval push not delivered to pairID=${entry.pairID}: ${reason}`
-              )
-            }
-          }
-        } catch (err) {
-          this.deps.log(
-            `[APNs] approval push threw for pairID=${entry.pairID}: ${err instanceof Error ? err.message : String(err)}`
-          )
-        }
-      })()
-    }
+    void args.summary
+    this.remoteAttentionFanout.notify({
+      reason: 'approval',
+      workspaceId: args.workspaceId,
+      threadId: args.threadId,
+      approvalId: args.approvalId
+    })
   }
 
   /** Workspace path → id (or 'global' / canonical path fallback). */

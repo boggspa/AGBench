@@ -13,6 +13,7 @@ import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 // 1.0.5-EW25 — User-currency cost formatting helper.
 import { formatCost, setFxRatesPerUsd, type DisplayCurrency } from './lib/formatCost'
+import { computeCumulativeRunBaseMs } from './lib/cumulativeRunTimecode'
 import {
   AppSettings,
   WorkspaceRecord,
@@ -1988,21 +1989,6 @@ function ComposerRunTimecode({
  * doesn't need its own persisted accumulator. Downtime between
  * runs is naturally excluded.
  */
-export function computeCumulativeRunBaseMs(runs: readonly ChatRun[] | undefined): number {
-  if (!runs || runs.length === 0) return 0
-  let total = 0
-  for (const run of runs) {
-    if (!run.startedAt) continue
-    const start = Date.parse(run.startedAt)
-    if (!Number.isFinite(start)) continue
-    if (!run.endedAt) continue
-    const end = Date.parse(run.endedAt)
-    if (!Number.isFinite(end)) continue
-    total += Math.max(0, end - start)
-  }
-  return total
-}
-
 function ComposerCumulativeTimecode({
   running,
   startedAt,
@@ -5318,7 +5304,6 @@ function WelcomeWorkspacePicker({
   onAddNewWorkspace,
   onSelectNoWorkspace
 }: WelcomeWorkspacePickerProps): React.JSX.Element | null {
-  if (isGlobalChat) return null
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -5403,6 +5388,8 @@ function WelcomeWorkspacePicker({
     // visually clean.
     setTimeout(callback, 0)
   }
+
+  if (isGlobalChat) return null
 
   return (
     <div className="welcome-workspace-picker">

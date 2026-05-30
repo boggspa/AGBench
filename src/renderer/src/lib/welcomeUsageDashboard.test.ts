@@ -424,10 +424,7 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
       })
     ]
     const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
-    expect(data.modelBreakdown.map((m) => m.label)).toEqual([
-      'Kimi K2.6',
-      'Kimi K2.6 Thinking'
-    ])
+    expect(data.modelBreakdown.map((m) => m.label)).toEqual(['Kimi K2.6', 'Kimi K2.6 Thinking'])
   })
 
   it('percentages are computed against kept-model tokens, not the lifetime aggregate', () => {
@@ -618,22 +615,32 @@ describe('mixProviderColors', () => {
   } as const
 
   it('returns empty string when no provider has weight', () => {
-    expect(mixProviderColors({ gemini: 0, codex: 0, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)).toBe('')
+    expect(
+      mixProviderColors({ gemini: 0, codex: 0, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+    ).toBe('')
   })
 
   it('returns the single provider color when only one contributes', () => {
-    expect(mixProviderColors({ gemini: 0, codex: 50, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)).toBe('#6366F1')
+    expect(
+      mixProviderColors({ gemini: 0, codex: 50, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+    ).toBe('#6366F1')
   })
 
   it('builds a nested color-mix() expression that references both providers when two contribute', () => {
-    const result = mixProviderColors({ gemini: 30, codex: 70, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+    const result = mixProviderColors(
+      { gemini: 30, codex: 70, claude: 0, kimi: 0, grok: 0, cursor: 0 },
+      palette
+    )
     expect(result).toContain('color-mix(in srgb,')
     expect(result).toContain('#2563EB')
     expect(result).toContain('#6366F1')
   })
 
   it('weights the dominant provider with a higher percentage in the color-mix expression', () => {
-    const dominantCodex = mixProviderColors({ gemini: 10, codex: 90, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+    const dominantCodex = mixProviderColors(
+      { gemini: 10, codex: 90, claude: 0, kimi: 0, grok: 0, cursor: 0 },
+      palette
+    )
     // color-mix(in srgb, <gemini> 10%, <codex> 90%) → codex weight should appear with a high number.
     expect(dominantCodex).toMatch(/#6366F1 9[0-9]%/)
   })
@@ -785,13 +792,13 @@ describe('buildWelcomeUsageDashboardData EW49 new stats + global reset', () => {
       baseRecord({
         id: 'r1',
         timestamp: NOW - 1_000_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.42 as any
       } as never),
       baseRecord({
         id: 'r2',
         timestamp: NOW - 2_000_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 1.58 as any
       } as never)
     ]
@@ -919,7 +926,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         timestamp: NOW - 1 * DAY,
         workspaceId: 'ws-A',
         totalTokens: 10_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.4 as any
       } as never),
       baseRecord({
@@ -927,7 +934,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         timestamp: NOW - 2 * DAY,
         workspaceId: 'ws-A',
         totalTokens: 5_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.1 as any
       } as never),
       baseRecord({
@@ -935,7 +942,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         timestamp: NOW - 3 * DAY,
         workspaceId: 'ws-B',
         totalTokens: 2_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.05 as any
       } as never)
     ]
@@ -955,14 +962,14 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         id: 'r1',
         workspaceId: 'small-cost',
         totalTokens: 50_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.01 as any
       } as never),
       baseRecord({
         id: 'r2',
         workspaceId: 'big-cost',
         totalTokens: 1_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 5.0 as any
       } as never)
     ]
@@ -1012,13 +1019,13 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
       baseRecord({
         id: 'r1',
         workspaceId: 'ws-A',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.6 as any
       } as never),
       baseRecord({
         id: 'r2',
         workspaceId: 'ws-B',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.4 as any
       } as never)
     ]
@@ -1060,7 +1067,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         id: 'r1',
         timestamp: NOW,
         totalTokens: 1_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.05 as any
       } as never)
     ]
@@ -1082,7 +1089,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         timestamp: NOW - 60 * DAY,
         workspaceId: 'ws-A',
         totalTokens: 100_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 5.0 as any
       } as never),
       baseRecord({
@@ -1090,7 +1097,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
         timestamp: NOW - 5 * DAY,
         workspaceId: 'ws-A',
         totalTokens: 1_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.1 as any
       } as never)
     ]
@@ -1131,21 +1138,21 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
         id: 'r1',
         provider: 'codex',
         totalTokens: 12_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.6 as any
       } as never),
       baseRecord({
         id: 'r2',
         provider: 'codex',
         totalTokens: 4_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.2 as any
       } as never),
       baseRecord({
         id: 'r3',
         provider: 'claude',
         totalTokens: 8_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.3 as any
       } as never)
     ]
@@ -1172,21 +1179,21 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
         id: 'r1',
         provider: 'gemini',
         totalTokens: 92_000_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0 as any
       } as never),
       baseRecord({
         id: 'r2',
         provider: 'kimi',
         totalTokens: 1_300_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 1.2 as any
       } as never),
       baseRecord({
         id: 'r3',
         provider: 'codex',
         totalTokens: 6_700_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.4 as any
       } as never)
     ]
@@ -1206,14 +1213,14 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
         id: 'r1',
         provider: 'gemini',
         totalTokens: 90_000_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0 as any
       } as never),
       baseRecord({
         id: 'r2',
         provider: 'codex',
         totalTokens: 10_000_000,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 5 as any
       } as never)
     ]
@@ -1235,13 +1242,13 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
       baseRecord({
         id: 'r1',
         provider: 'codex',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.75 as any
       } as never),
       baseRecord({
         id: 'r2',
         provider: 'claude',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         explicitCostUsd: 0.25 as any
       } as never)
     ]

@@ -27,10 +27,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ProviderId, ComposerStyle } from '../../../main/store/types'
-import {
-  formatComposerModelChip,
-  reasoningDisplayLabel
-} from '../lib/composerChipFormat'
+import { formatComposerModelChip, reasoningDisplayLabel } from '../lib/composerChipFormat'
 
 export interface CombinedModelPickerModelOption {
   id: string
@@ -123,8 +120,9 @@ export function CombinedModelPicker({
   onToggleFastMode,
   disabled
 }: CombinedModelPickerProps): React.JSX.Element {
-  const fastModeCapable =
-    Boolean(fastModeCapableModelIds && fastModeCapableModelIds.has(selectedModelId))
+  const fastModeCapable = Boolean(
+    fastModeCapableModelIds && fastModeCapableModelIds.has(selectedModelId)
+  )
   const fastModeRowVisible = Boolean(
     fastModeCapableModelIds && fastModeCapableModelIds.size > 0 && onToggleFastMode
   )
@@ -136,8 +134,7 @@ export function CombinedModelPicker({
   const [modelHighlight, setModelHighlight] = useState(0)
   const [reasoningHighlight, setReasoningHighlight] = useState(0)
 
-  const selectedModelOption =
-    modelOptions.find((option) => option.id === selectedModelId) ||
+  const selectedModelOption = modelOptions.find((option) => option.id === selectedModelId) ||
     modelOptions[0] || { id: selectedModelId, label: selectedModelId }
 
   const chipText = useMemo(
@@ -234,9 +231,12 @@ export function CombinedModelPicker({
       0,
       reasoningOptions.findIndex((option) => option.value === selectedReasoning)
     )
-    setModelHighlight(modelIdx)
-    setReasoningHighlight(reasoningIdx)
-    setFocusedColumn('model')
+    const frame = window.requestAnimationFrame(() => {
+      setModelHighlight(modelIdx)
+      setReasoningHighlight(reasoningIdx)
+      setFocusedColumn('model')
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [open, modelOptions, selectedModelId, reasoningOptions, selectedReasoning])
 
   // Click-outside + Escape dismiss.
@@ -446,9 +446,7 @@ export function CombinedModelPicker({
         type="button"
         className="composer-combined-picker-trigger"
         data-composer-control="model"
-        data-fast-mode-active={
-          fastModeEnabled && fastModeCapable ? 'true' : 'false'
-        }
+        data-fast-mode-active={fastModeEnabled && fastModeCapable ? 'true' : 'false'}
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled}
         aria-haspopup="dialog"

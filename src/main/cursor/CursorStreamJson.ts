@@ -246,9 +246,9 @@ export function normalizeCursorToolArgs(
 }
 
 /** Pull the single `<name>ToolCall` entry out of a `tool_call` object. */
-function extractToolCall(toolCall: unknown):
-  | { base: string; args?: Record<string, unknown>; result?: unknown }
-  | undefined {
+function extractToolCall(
+  toolCall: unknown
+): { base: string; args?: Record<string, unknown>; result?: unknown } | undefined {
   const tc = asRecord(toolCall)
   if (!tc) return undefined
   const key = Object.keys(tc)[0]
@@ -344,7 +344,8 @@ export function cursorEventToRunEvents(line: CursorStreamLine): NormalizedCursor
           output = coerceToolOutput(resultRec.success)
         } else if (resultRec) {
           const firstVal = asRecord(Object.values(resultRec)[0])
-          output = firstString(typeof firstVal?.error === 'string' ? firstVal.error : '') ||
+          output =
+            firstString(typeof firstVal?.error === 'string' ? firstVal.error : '') ||
             coerceToolOutput(resultRec)
         } else {
           output = coerceToolOutput(tc.result)

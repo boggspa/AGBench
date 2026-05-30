@@ -52,9 +52,7 @@ const FX_RATES_PER_USD: Record<DisplayCurrency, number> = {
  * USD is pinned to 1 — even if a (broken) live source returns a
  * non-1 USD rate we ignore it; the whole table is USD-relative.
  */
-export function setFxRatesPerUsd(
-  partial: Partial<Record<DisplayCurrency, number>>
-): void {
+export function setFxRatesPerUsd(partial: Partial<Record<DisplayCurrency, number>>): void {
   if (!partial || typeof partial !== 'object') return
   for (const key of ['GBP', 'EUR'] as const) {
     const value = partial[key]

@@ -32,11 +32,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type {
-  ChatRecord,
-  EnsembleParticipant,
-  ProviderId
-} from '../../../main/store/types'
+import type { ChatRecord, EnsembleParticipant, ProviderId } from '../../../main/store/types'
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
 import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
@@ -272,16 +268,33 @@ export function EnsembleParticipantsAboveRow({
   onWakeNowParticipant,
   onCancelWakeupParticipant
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
+  const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [workSessionNow, setWorkSessionNow] = useState(() => Date.now())
+
+  const workSession = chat.chatKind === 'ensemble' ? chat.ensemble?.workSession : undefined
+  const workSessionStatus = workSession?.status
+  const showWorkSessionStrip =
+    workSession?.enabled &&
+    (workSessionStatus === 'active' ||
+      workSessionStatus === 'paused' ||
+      workSessionStatus === 'completed' ||
+      workSessionStatus === 'cancelled' ||
+      workSessionStatus === 'limit_reached')
+
+  useEffect(() => {
+    if (!showWorkSessionStrip) return
+    const handle = window.setInterval(() => setWorkSessionNow(Date.now()), 30_000)
+    return () => window.clearInterval(handle)
+  }, [showWorkSessionStrip, workSession?.startedAt, workSession?.maxDurationMs])
+
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
   const participants = [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
   const activeRound = chat.ensemble.activeRound
   const isRoundRunning = activeRound?.status === 'running'
   const canAddParticipant = !isRoundRunning && participants.length < MAX_ENSEMBLE_PARTICIPANTS
-
-  const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   const updateParticipant = (id: string, patch: Partial<EnsembleParticipant>): void => {
     if (isRoundRunning) return
@@ -401,16 +414,6 @@ export function EnsembleParticipantsAboveRow({
   // interactively. The strip surfaces the objective, current
   // budget consumption, elapsed/remaining time, and a Stop action.
   // Below-budget hops + statuses fall through with muted styling.
-  const workSession = chat.ensemble?.workSession
-  const workSessionStatus = workSession?.status
-  const showWorkSessionStrip =
-    workSession?.enabled &&
-    (workSessionStatus === 'active' ||
-      workSessionStatus === 'paused' ||
-      workSessionStatus === 'completed' ||
-      workSessionStatus === 'cancelled' ||
-      workSessionStatus === 'limit_reached')
-
   // Elapsed / remaining time computed from startedAt + maxDurationMs.
   // Cached on the render to avoid jitter; the parent re-renders
   // every 30s while the strip is visible (cheap interval).
@@ -418,7 +421,7 @@ export function EnsembleParticipantsAboveRow({
     if (!workSession?.startedAt) return null
     const started = new Date(workSession.startedAt).getTime()
     if (!Number.isFinite(started)) return null
-    const elapsedMs = Math.max(0, Date.now() - started)
+    const elapsedMs = Math.max(0, workSessionNow - started)
     const remainingMs = Math.max(0, (workSession.maxDurationMs || 0) - elapsedMs)
     return { elapsedMs, remainingMs }
   })()
@@ -579,9 +582,7 @@ export function EnsembleParticipantsAboveRow({
                 // Click outside the chip + popover dismisses
                 // (handled by OverflowPopover's outside-click).
                 if (participant.id === selectedParticipantId) {
-                  setOverflowOpenId((curr) =>
-                    curr === participant.id ? null : participant.id
-                  )
+                  setOverflowOpenId((curr) => (curr === participant.id ? null : participant.id))
                 } else {
                   onSelectParticipant(participant.id)
                   if (overflowOpenId && overflowOpenId !== participant.id) {
@@ -789,7 +790,7 @@ function ParticipantChip({
   onCancelWakeup,
   wakeAt
 }: ParticipantChipProps): React.JSX.Element {
-  const chipRef = useRef<HTMLDivElement | null>(null)
+  const [chipAnchor, setChipAnchor] = useState<HTMLDivElement | null>(null)
   // Slug the status onto the class so CSS can colour-code the pill
   // (running=warm, yielded=amber, answered=green, cancelled=muted, etc.).
   const statusClass = `status-${statusLabel.toLowerCase().replace(/\s+/g, '-')}`
@@ -829,9 +830,7 @@ function ParticipantChip({
 
       const findChipUnderPointer = (x: number, y: number): string | null => {
         const el = document.elementFromPoint(x, y) as HTMLElement | null
-        const chip = el?.closest(
-          '.ensemble-above-chip[data-participant-id]'
-        ) as HTMLElement | null
+        const chip = el?.closest('.ensemble-above-chip[data-participant-id]') as HTMLElement | null
         return chip?.getAttribute('data-participant-id') || null
       }
 
@@ -871,12 +870,12 @@ function ParticipantChip({
       document.addEventListener('pointerup', handleUp)
       document.addEventListener('pointercancel', handleUp)
     },
-    [participant.id, onClick, onDragStart, onDragHover, onDragEnd]
+    [locked, participant.id, onClick, onDragStart, onDragHover, onDragEnd]
   )
 
   return (
     <div
-      ref={chipRef}
+      ref={setChipAnchor}
       data-participant-id={participant.id}
       data-linked-session={participant.linkedProviderSessionId ? 'true' : undefined}
       onPointerDown={handlePointerDown}
@@ -924,7 +923,9 @@ function ParticipantChip({
           without the redundant glyph. Token chip + status icon
           stay on the right edge.
         */}
-        <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
+        <span className="ensemble-above-chip-role">
+          {participant.role || getProviderName(participant.provider)}
+        </span>
         {/* 1.0.4-AV2 — per-participant token-spend chip. Renders
           inline between the role label and the status icon when
           the participant has accumulated 1k+ total tokens in this
@@ -962,7 +963,7 @@ function ParticipantChip({
       */}
       {overflowOpen && (
         <OverflowPopover
-          anchor={chipRef.current}
+          anchor={chipAnchor}
           participant={participant}
           onPatch={onPatch}
           locked={locked}
@@ -1167,7 +1168,11 @@ function nextParticipantId(participants: EnsembleParticipant[]): string {
 function nextRoleLabel(baseRole: string, participants: EnsembleParticipant[]): string {
   const base = (baseRole || 'Participant').replace(/\s+\d+$/, '').trim() || 'Participant'
   const existing = new Set(
-    participants.map((participant) => String(participant.role || '').trim().toLowerCase())
+    participants.map((participant) =>
+      String(participant.role || '')
+        .trim()
+        .toLowerCase()
+    )
   )
   if (!existing.has(base.toLowerCase())) return base
   for (let index = 2; index < 32; index += 1) {

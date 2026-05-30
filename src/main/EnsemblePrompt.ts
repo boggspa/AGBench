@@ -83,12 +83,16 @@ export function getOrderedEnsembleParticipants(
   const rawMax = Math.floor(Number(config.maxParticipants))
   const enabledCount = (config.participants || []).filter((p) => p.enabled).length
   const desiredFloor = Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.max(2, enabledCount))
-  const maxParticipants = Number.isFinite(rawMax) && rawMax >= 2
-    ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.max(rawMax, desiredFloor))
-    : MAX_ENSEMBLE_PARTICIPANTS
+  const maxParticipants =
+    Number.isFinite(rawMax) && rawMax >= 2
+      ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.max(rawMax, desiredFloor))
+      : MAX_ENSEMBLE_PARTICIPANTS
   const enabled = (config.participants || [])
     .filter((participant) => participant.enabled)
-    .sort((a, b) => a.order - b.order || providerLabel(a.provider).localeCompare(providerLabel(b.provider)))
+    .sort(
+      (a, b) =>
+        a.order - b.order || providerLabel(a.provider).localeCompare(providerLabel(b.provider))
+    )
     .slice(0, Math.max(1, maxParticipants))
   if (!currentPrompt || /@all\b/i.test(currentPrompt)) {
     return applyChairSummaryOrder(enabled, config)
@@ -109,10 +113,13 @@ export function getOrderedEnsembleParticipants(
     }
   }
   if (mentioned.size === 0) return applyChairSummaryOrder(enabled, config)
-  return applyChairSummaryOrder([
-    ...enabled.filter((participant) => mentioned.has(participant.id)),
-    ...enabled.filter((participant) => !mentioned.has(participant.id))
-  ], config)
+  return applyChairSummaryOrder(
+    [
+      ...enabled.filter((participant) => mentioned.has(participant.id)),
+      ...enabled.filter((participant) => !mentioned.has(participant.id))
+    ],
+    config
+  )
 }
 
 function applyChairSummaryOrder(
@@ -171,11 +178,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // fixed final turn. Surface "X hops remaining" so the speaker can
   // weigh another yield vs. closing to user.
   const continuousHopsRemaining =
-    orchestrationMode === 'continuous'
-      ? Math.max(0, maxContinuationHops - continuationHops)
-      : null
-  const isContinuousNearCap =
-    continuousHopsRemaining !== null && continuousHopsRemaining <= 1
+    orchestrationMode === 'continuous' ? Math.max(0, maxContinuationHops - continuationHops) : null
+  const isContinuousNearCap = continuousHopsRemaining !== null && continuousHopsRemaining <= 1
   const roster = orderedParticipants
     .map((participant) => {
       const isSelf = participant.id === input.participant.id
@@ -192,11 +196,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
           marker = ' (you — first speaker)'
         } else if (isLastSpeaker && isLastInList) {
           marker = ` (you — last speaker, position ${positionOneIndexed} of ${totalParticipants})`
-        } else if (
-          isMultiParticipantRound &&
-          positionOneIndexed > 0 &&
-          totalParticipants >= 3
-        ) {
+        } else if (isMultiParticipantRound && positionOneIndexed > 0 && totalParticipants >= 3) {
           marker = ` (you — position ${positionOneIndexed} of ${totalParticipants})`
         } else {
           marker = ' (you)'
@@ -242,8 +242,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
       // Pick at most one model alias to keep the line scannable —
       // the resolver matches all variants, this is just the hint.
       const modelHintRaw = modelAliases[0] || ''
-      const titleCase = (s: string): string =>
-        s.replace(/(^|\s)\S/g, (m) => m.toUpperCase())
+      const titleCase = (s: string): string => s.replace(/(^|\s)\S/g, (m) => m.toUpperCase())
       const hintTokens = [
         roleHint ? `@${roleHint}` : '',
         modelHintRaw ? `@${titleCase(modelHintRaw)}` : ''
@@ -280,7 +279,9 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     ...(disambigNote ? ['', disambigNote] : []),
     '',
     'Your role instructions:',
-    sanitizeText(input.participant.instructions || 'Contribute a concise, useful response for your role.'),
+    sanitizeText(
+      input.participant.instructions || 'Contribute a concise, useful response for your role.'
+    ),
     '',
     'Rules:',
     '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages.',
@@ -331,24 +332,24 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         ? [
             '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. Discuss AGBench only when the user explicitly references it by name.'
           ]
-        // 1.0.5-EW20 — Conversational-mode rule for workspace-less
-        // global ensembles. Chris reported: in a chill global chat
-        // the panel reflexively pushed him to bind a workspace
-        // (specifically the Codex smoke-test dir on his desktop)
-        // because the default role instructions (Explorer /
-        // Worker / Researcher / Reviewer) all assume there's a
-        // concrete task underway. AR8 suspended the workspace
-        // stanza in this exact case but the absence of "you're
-        // working on a project" wasn't enough to override the
-        // task-shaped role descriptions — agents filled the
-        // silence with "where would you like us to look?". This
-        // rule names the mode explicitly so the panel knows the
-        // user may just be chatting and stops nudging toward
-        // execution. Only fires for global scope; workspace-
-        // scoped chats without a workspace path shouldn't really
-        // happen in practice, but if they did, the existing
-        // empty-rule branch is still the right behavior there.
-        : input.chat.scope === 'global'
+        : // 1.0.5-EW20 — Conversational-mode rule for workspace-less
+          // global ensembles. Chris reported: in a chill global chat
+          // the panel reflexively pushed him to bind a workspace
+          // (specifically the Codex smoke-test dir on his desktop)
+          // because the default role instructions (Explorer /
+          // Worker / Researcher / Reviewer) all assume there's a
+          // concrete task underway. AR8 suspended the workspace
+          // stanza in this exact case but the absence of "you're
+          // working on a project" wasn't enough to override the
+          // task-shaped role descriptions — agents filled the
+          // silence with "where would you like us to look?". This
+          // rule names the mode explicitly so the panel knows the
+          // user may just be chatting and stops nudging toward
+          // execution. Only fires for global scope; workspace-
+          // scoped chats without a workspace path shouldn't really
+          // happen in practice, but if they did, the existing
+          // empty-rule branch is still the right behavior there.
+          input.chat.scope === 'global'
           ? [
               '- This is a conversational global chat — no workspace is bound and the user may not have a specific task in mind. Match the tone of a casual panel: share thoughts, weigh in on what the user actually said, and respond like an expert at a coffee table. Do NOT push the user to bind a workspace, assign a project, or treat the round as "we should be doing real work" unless they explicitly ask for that kind of help. If they want to start a concrete task they will bind a workspace themselves; until then, just chat.'
             ]
@@ -573,7 +574,8 @@ function messageTag(message: ChatMessage): string {
   if (message.role === 'user') return 'User'
   if (message.role === 'assistant') {
     const provider = message.metadata?.ensembleProvider as ProviderId | undefined
-    const role = typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
+    const role =
+      typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
     if (provider) return `${providerLabel(provider)}${role ? ` / ${role}` : ''}`
     return 'Assistant'
   }
@@ -692,9 +694,7 @@ export function providerLabel(provider: ProviderId): string {
  * single-provider-per-role ensembles (the 1.0.3 common case) see
  * no extra prompt overhead.
  */
-export function formatSameProviderDisambiguationNote(
-  participants: EnsembleParticipant[]
-): string {
+export function formatSameProviderDisambiguationNote(participants: EnsembleParticipant[]): string {
   const groups = new Map<ProviderId, EnsembleParticipant[]>()
   for (const p of participants) {
     const existing = groups.get(p.provider)
@@ -796,7 +796,10 @@ function shortModelLabel(provider: ProviderId, model: string | undefined): strin
 }
 
 function sanitizeText(value: unknown): string {
-  return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
 }
 
 /**

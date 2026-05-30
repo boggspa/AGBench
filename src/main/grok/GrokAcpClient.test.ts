@@ -160,9 +160,14 @@ describe('runGrokAcpTurn', () => {
 
     const response = child.sent().find((m) => m.id === 42 && 'result' in m)
     // Default-deny → it SELECTS the reject option (a denial), never an allow.
-    expect(response).toMatchObject({ id: 42, result: { outcome: { outcome: 'selected', optionId: 'r' } } })
+    expect(response).toMatchObject({
+      id: 42,
+      result: { outcome: { outcome: 'selected', optionId: 'r' } }
+    })
     // The decline is surfaced in the transcript so the user knows a tool was asked for.
-    expect(events.some((e) => e.type === 'provider_warning' && /requested a tool/.test(e.text || ''))).toBe(true)
+    expect(
+      events.some((e) => e.type === 'provider_warning' && /requested a tool/.test(e.text || ''))
+    ).toBe(true)
   })
 
   it('G5 — routes the permission request through an injected handler (allow path)', async () => {
@@ -190,7 +195,10 @@ describe('runGrokAcpTurn', () => {
 
     expect(seen).toEqual(['Read file'])
     const response = child.sent().find((m) => m.id === 99 && 'result' in m)
-    expect(response).toMatchObject({ id: 99, result: { outcome: { outcome: 'selected', optionId: 'a' } } })
+    expect(response).toMatchObject({
+      id: 99,
+      result: { outcome: { outcome: 'selected', optionId: 'a' } }
+    })
   })
 
   it('surfaces a spawn/process error as a provider_warning + closes', () => {

@@ -221,6 +221,62 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.kind).toBe('registerApnsToken')
     })
 
+    it('decodes ensemble control variants', () => {
+      const variants = [
+        {
+          kind: 'ensembleCancelRound',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          roundId: 'round-1',
+          message: 'stop this round'
+        },
+        {
+          kind: 'ensembleSkipActiveParticipant',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          roundId: 'round-1',
+          participantId: 'participant-1',
+          message: 'skip stalled participant'
+        },
+        {
+          kind: 'ensembleWakeNow',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          wakeupId: 'wakeup-1',
+          message: 'wake now'
+        },
+        {
+          kind: 'ensembleCancelWakeup',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          wakeupId: 'wakeup-1',
+          message: 'cancel timer'
+        },
+        {
+          kind: 'ensembleQueuePrompt',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          text: 'continue with the next item',
+          message: 'queued from iOS'
+        },
+        {
+          kind: 'ensembleSteer',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          text: 'focus on the failing test first',
+          message: 'steered from iOS'
+        }
+      ]
+
+      for (const variant of variants) {
+        const { payload } = decodeBridgeActionPayload(encode(variant))
+        expect(payload.kind).toBe(variant.kind)
+        if (payload.kind === 'unknown') throw new Error('expected known variant')
+        expect(workspaceIdFromPayload(payload)).toBe('ws-1')
+        expect('threadId' in payload ? payload.threadId : undefined).toBe('thread-1')
+      }
+    })
+
     it('decodes optional action metadata on known variants', () => {
       const metadata = { actionId: 'action-1', issuedAt: 1000, expiresAt: 2000 }
       const variants: Array<Record<string, unknown>> = [
@@ -261,6 +317,42 @@ describe('decodeBridgeActionPayload', () => {
           pairID: 'pair-1',
           deviceToken: 'tok',
           env: 'production'
+        },
+        {
+          kind: 'ensembleCancelRound',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          roundId: 'round-1'
+        },
+        {
+          kind: 'ensembleSkipActiveParticipant',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          participantId: 'participant-1'
+        },
+        {
+          kind: 'ensembleWakeNow',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          wakeupId: 'wakeup-1'
+        },
+        {
+          kind: 'ensembleCancelWakeup',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          wakeupId: 'wakeup-1'
+        },
+        {
+          kind: 'ensembleQueuePrompt',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          text: 'queued prompt'
+        },
+        {
+          kind: 'ensembleSteer',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          text: 'steering prompt'
         }
       ]
 
@@ -327,6 +419,49 @@ describe('decodeBridgeActionPayload', () => {
       })
       const { payload } = decodeBridgeActionPayload(wire)
       expect(payload.kind).toBe('unknown')
+    })
+
+    it('treats ensemble wake actions without wakeupId as unknown', () => {
+      for (const kind of ['ensembleWakeNow', 'ensembleCancelWakeup']) {
+        const wire = encode({
+          kind,
+          workspaceId: 'ws-1',
+          threadId: 'thread-1'
+        })
+        const { payload } = decodeBridgeActionPayload(wire)
+        expect(payload.kind).toBe('unknown')
+        if (payload.kind === 'unknown') {
+          expect(payload.rawKind).toBe(kind)
+        }
+      }
+    })
+
+    it('treats ensemble text actions without text as unknown', () => {
+      for (const kind of ['ensembleQueuePrompt', 'ensembleSteer']) {
+        const wire = encode({
+          kind,
+          workspaceId: 'ws-1',
+          threadId: 'thread-1'
+        })
+        const { payload } = decodeBridgeActionPayload(wire)
+        expect(payload.kind).toBe('unknown')
+        if (payload.kind === 'unknown') {
+          expect(payload.rawKind).toBe(kind)
+        }
+      }
+    })
+
+    it('treats ensemble controls without threadId as unknown', () => {
+      const wire = encode({
+        kind: 'ensembleCancelRound',
+        workspaceId: 'ws-1',
+        roundId: 'round-1'
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('unknown')
+      if (payload.kind === 'unknown') {
+        expect(payload.rawKind).toBe('ensembleCancelRound')
+      }
     })
   })
 
@@ -534,6 +669,60 @@ describe('workspaceIdFromPayload', () => {
       {
         payload: { kind: 'togglePinWorkspace', workspaceId: 'ws-g', pinned: false },
         expected: 'ws-g'
+      },
+      {
+        payload: {
+          kind: 'ensembleCancelRound',
+          workspaceId: 'ws-h',
+          threadId: 't',
+          roundId: 'r'
+        },
+        expected: 'ws-h'
+      },
+      {
+        payload: {
+          kind: 'ensembleSkipActiveParticipant',
+          workspaceId: 'ws-i',
+          threadId: 't',
+          participantId: 'p'
+        },
+        expected: 'ws-i'
+      },
+      {
+        payload: {
+          kind: 'ensembleWakeNow',
+          workspaceId: 'ws-j',
+          threadId: 't',
+          wakeupId: 'wakeup'
+        },
+        expected: 'ws-j'
+      },
+      {
+        payload: {
+          kind: 'ensembleCancelWakeup',
+          workspaceId: 'ws-k',
+          threadId: 't',
+          wakeupId: 'wakeup'
+        },
+        expected: 'ws-k'
+      },
+      {
+        payload: {
+          kind: 'ensembleQueuePrompt',
+          workspaceId: 'ws-l',
+          threadId: 't',
+          text: 'queue'
+        },
+        expected: 'ws-l'
+      },
+      {
+        payload: {
+          kind: 'ensembleSteer',
+          workspaceId: 'ws-m',
+          threadId: 't',
+          text: 'steer'
+        },
+        expected: 'ws-m'
       }
     ]
     for (const { payload, expected } of variants) {
@@ -573,7 +762,18 @@ describe('payloadRequiresWorkspaceGating', () => {
       { kind: 'cancelRun', workspaceId: 'w', threadId: 't', provider: 'gemini', runId: 'r' },
       { kind: 'setYoloMode', workspaceId: 'w', enabled: false },
       { kind: 'togglePinChat', workspaceId: 'w', appChatId: 'chat', pinned: true },
-      { kind: 'togglePinWorkspace', workspaceId: 'w', pinned: true }
+      { kind: 'togglePinWorkspace', workspaceId: 'w', pinned: true },
+      { kind: 'ensembleCancelRound', workspaceId: 'w', threadId: 't', roundId: 'round' },
+      {
+        kind: 'ensembleSkipActiveParticipant',
+        workspaceId: 'w',
+        threadId: 't',
+        participantId: 'p'
+      },
+      { kind: 'ensembleWakeNow', workspaceId: 'w', threadId: 't', wakeupId: 'wakeup' },
+      { kind: 'ensembleCancelWakeup', workspaceId: 'w', threadId: 't', wakeupId: 'wakeup' },
+      { kind: 'ensembleQueuePrompt', workspaceId: 'w', threadId: 't', text: 'queue' },
+      { kind: 'ensembleSteer', workspaceId: 'w', threadId: 't', text: 'steer' }
     ]
     for (const v of variants) {
       expect(payloadRequiresWorkspaceGating(v)).toBe(true)
@@ -650,6 +850,26 @@ describe('payloadIsMutating', () => {
         pinned: true
       })
     ).toBe(true)
+  })
+
+  it('classifies ensemble remote controls as mutating', () => {
+    const variants: BridgeActionPayload[] = [
+      { kind: 'ensembleCancelRound', workspaceId: 'w', threadId: 't', roundId: 'round' },
+      {
+        kind: 'ensembleSkipActiveParticipant',
+        workspaceId: 'w',
+        threadId: 't',
+        participantId: 'p'
+      },
+      { kind: 'ensembleWakeNow', workspaceId: 'w', threadId: 't', wakeupId: 'wakeup' },
+      { kind: 'ensembleCancelWakeup', workspaceId: 'w', threadId: 't', wakeupId: 'wakeup' },
+      { kind: 'ensembleQueuePrompt', workspaceId: 'w', threadId: 't', text: 'queue' },
+      { kind: 'ensembleSteer', workspaceId: 'w', threadId: 't', text: 'steer' }
+    ]
+
+    for (const payload of variants) {
+      expect(payloadIsMutating(payload)).toBe(true)
+    }
   })
 
   it('classifies approvalReply as non-mutating (responds to desktop-initiated prompt)', () => {

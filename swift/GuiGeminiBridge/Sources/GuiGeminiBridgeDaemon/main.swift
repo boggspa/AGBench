@@ -1630,6 +1630,56 @@ dispatcher.register("bridge.remoteProjection") { rawParams in
     return [String: Any]()
 }
 
+/// `bridge.broadcastRemoteProjection` — Electron already built a
+/// RemoteProjectionEnvelope and asks the daemon to rebroadcast it to iOS.
+/// Keep the envelope intact as the event payload so iOS decodes the same
+/// source-of-truth projection the Mac generated.
+dispatcher.register("bridge.broadcastRemoteProjection") { rawParams in
+    do {
+        let projection = try SummaryBroadcaster.makeRemoteProjectionEventJSON(
+            params: rawParams,
+            publishedAt: Date()
+        )
+        Task.detached { @Sendable [summaryBroadcaster, projection] in
+            await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
+        }
+        FileHandle.standardError.write(Data(
+            "[bridge.broadcastRemoteProjection] broadcast bytes=\(projection.data.count) threadID=\(projection.threadID ?? "nil")\n".utf8
+        ))
+    } catch {
+        FileHandle.standardError.write(Data(
+            "[bridge.broadcastRemoteProjection] WARN: \(String(describing: error))\n".utf8
+        ))
+    }
+    return [String: Any]()
+}
+
+/// `bridge.broadcastRemoteProjectionSnapshot` — Electron sends a bounded
+/// list of current projection envelopes after subscribe/resume. Expand the
+/// batch into individual remote-projection events so the iOS reducer can
+/// apply each card/snapshot normally.
+dispatcher.register("bridge.broadcastRemoteProjectionSnapshot") { rawParams in
+    do {
+        let projections = try SummaryBroadcaster.makeRemoteProjectionSnapshotEvents(
+            params: rawParams,
+            publishedAt: Date()
+        )
+        for projection in projections {
+            Task.detached { @Sendable [summaryBroadcaster, projection] in
+                await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
+            }
+        }
+        FileHandle.standardError.write(Data(
+            "[bridge.broadcastRemoteProjectionSnapshot] broadcast count=\(projections.count)\n".utf8
+        ))
+    } catch {
+        FileHandle.standardError.write(Data(
+            "[bridge.broadcastRemoteProjectionSnapshot] WARN: \(String(describing: error))\n".utf8
+        ))
+    }
+    return [String: Any]()
+}
+
 /// `bridge.runEvent` — inbound notification (no id). Electron forwards every
 /// run-bus event here via `BridgeRunEventSink`. For each event the daemon
 /// re-encodes the params dict to JSON bytes and broadcasts via

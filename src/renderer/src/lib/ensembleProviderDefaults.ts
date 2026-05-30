@@ -25,11 +25,7 @@ import type {
   CombinedModelPickerModelOption,
   CombinedModelPickerReasoningOption
 } from '../components/CombinedModelPicker'
-import type {
-  EnsembleParticipant,
-  PermissionPresetId,
-  ProviderId
-} from '../../../main/store/types'
+import type { EnsembleParticipant, PermissionPresetId, ProviderId } from '../../../main/store/types'
 
 export interface EnsembleModelDefaults {
   modelOptions: CombinedModelPickerModelOption[]
@@ -102,9 +98,7 @@ const GEMINI_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'flash-lite', label: 'Flash Lite' }
 ]
 
-const KIMI_MODELS: CombinedModelPickerModelOption[] = [
-  { id: 'kimi-k2.6', label: 'Kimi K2.6' }
-]
+const KIMI_MODELS: CombinedModelPickerModelOption[] = [{ id: 'kimi-k2.6', label: 'Kimi K2.6' }]
 
 // Grok — mirrors App.tsx GROK_DEFAULT_MODELS. `grok-build` is the real CLI id =
 // Grok Build 0.1 (NOT "Grok 4.3", which the subscription CLI doesn't expose).
@@ -260,7 +254,7 @@ export function resolveEnsembleParticipantSettings(
   // Codex serviceTier: respect explicit value, else infer 'fast' from
   // fastModeEnabled (mirrors the existing renderer + dispatch fallback).
   const serviceTier =
-    participant.serviceTier ?? (fastModeEnabled ? 'fast' : defaults.serviceTier ?? '')
+    participant.serviceTier ?? (fastModeEnabled ? 'fast' : (defaults.serviceTier ?? ''))
   return {
     provider: participant.provider,
     model,

@@ -710,10 +710,13 @@ export class AppStore {
     return chat
   }
 
-  static createEnsembleChat(args: { workspaceId?: string; workspacePath?: string } = {}): ChatRecord {
+  static createEnsembleChat(
+    args: { workspaceId?: string; workspacePath?: string } = {}
+  ): ChatRecord {
     const settings = this.getSettings()
     const activeProvider = settings.activeProvider || 'gemini'
-    const scope: ChatRecord['scope'] = args.workspaceId && args.workspacePath ? 'workspace' : 'global'
+    const scope: ChatRecord['scope'] =
+      args.workspaceId && args.workspacePath ? 'workspace' : 'global'
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       scope,

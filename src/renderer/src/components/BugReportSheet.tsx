@@ -171,12 +171,16 @@ export function BugReportSheet({
   const [confirmation, setConfirmation] = useState<string | null>(null)
   const [titleTouched, setTitleTouched] = useState(false)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const [stamp, setStamp] = useState<{ iso: string; human: string }>(() =>
+    formatTimestamp(new Date())
+  )
 
   // Reset form whenever the sheet transitions to closed — keeps the
   // next opening clean and avoids leaking a half-typed draft into the
   // "saved!" success state.
   useEffect(() => {
-    if (!open) {
+    if (open) return
+    const frame = window.requestAnimationFrame(() => {
       setTitle('')
       setDescription('')
       setExpected('')
@@ -186,8 +190,9 @@ export function BugReportSheet({
       setSubmitError(null)
       setConfirmation(null)
       setTitleTouched(false)
-    }
-  }, [open])
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [open, initialSurface])
 
   // Autofocus the title input on open — small UX win so the tester
   // can start typing without a Tab dance.
@@ -221,15 +226,18 @@ export function BugReportSheet({
   // Stable timestamp captured at open — re-computing on every render
   // would mean the human-readable preview ticks forward while the user
   // is typing, which looks wrong. Re-stamp on open.
-  const stampRef = useRef<{ iso: string; human: string }>(formatTimestamp(new Date()))
   useEffect(() => {
-    if (open) {
-      stampRef.current = formatTimestamp(new Date())
-      setSurface(SURFACE_OPTIONS.includes(initialSurface as (typeof SURFACE_OPTIONS)[number])
-        ? initialSurface
-        : 'Transcript')
-    }
-  }, [open])
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => {
+      setStamp(formatTimestamp(new Date()))
+      setSurface(
+        SURFACE_OPTIONS.includes(initialSurface as (typeof SURFACE_OPTIONS)[number])
+          ? initialSurface
+          : 'Transcript'
+      )
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [open, initialSurface])
 
   const workspaceLabel = useMemo(
     () => currentWorkspacePath || '(global chat)',
@@ -257,7 +265,7 @@ export function BugReportSheet({
           expected: expected.trim(),
           severity,
           context: {
-            timestamp: stampRef.current.iso,
+            timestamp: stamp.iso,
             version: appVersion,
             provider: currentProvider,
             workspace: workspaceLabel,
@@ -296,6 +304,7 @@ export function BugReportSheet({
       promptBubble,
       severity,
       settingsTab,
+      stamp.iso,
       surface,
       theme,
       trimmedTitle,
@@ -467,7 +476,7 @@ export function BugReportSheet({
             <ul className="bug-report-sheet-context-list">
               <li>
                 <span className="bug-report-sheet-context-key">Timestamp</span>
-                <span className="bug-report-sheet-context-value">{stampRef.current.human}</span>
+                <span className="bug-report-sheet-context-value">{stamp.human}</span>
               </li>
               <li>
                 <span className="bug-report-sheet-context-key">Version</span>

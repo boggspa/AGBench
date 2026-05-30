@@ -90,6 +90,9 @@ export interface BridgeActionAckV1 {
   providerRunId?: string
   approvalId?: string
   questionId?: string
+  roundId?: string
+  participantId?: string
+  wakeupId?: string
   pairId?: string
   correlationId?: string
   scope?: BridgeActionAckScope
@@ -126,6 +129,9 @@ export interface BridgeActionOwnershipCheck {
   runId?: string
   approvalId?: string
   questionId?: string
+  roundId?: string
+  participantId?: string
+  wakeupId?: string
 }
 
 export interface BridgePrepareStartTurnOwnershipCheck {
@@ -403,6 +409,18 @@ export class BridgeActionRouter {
         return this.executor.executeComposerPrompt(payload)
       case 'cancelRun':
         return this.executor.executeCancelRun(payload)
+      case 'ensembleCancelRound':
+        return this.executor.executeEnsembleCancelRound(payload)
+      case 'ensembleSkipActiveParticipant':
+        return this.executor.executeEnsembleSkipActiveParticipant(payload)
+      case 'ensembleWakeNow':
+        return this.executor.executeEnsembleWakeNow(payload)
+      case 'ensembleCancelWakeup':
+        return this.executor.executeEnsembleCancelWakeup(payload)
+      case 'ensembleQueuePrompt':
+        return this.executor.executeEnsembleQueuePrompt(payload)
+      case 'ensembleSteer':
+        return this.executor.executeEnsembleSteer(payload)
       case 'registerApnsToken':
         return this.executor.executeRegisterApnsToken(payload)
       case 'setYoloMode':
@@ -565,6 +583,9 @@ export class BridgeActionRouter {
       providerRunId: descriptor?.providerRunId,
       approvalId: descriptor?.approvalId,
       questionId: descriptor?.questionId,
+      roundId: descriptor?.roundId,
+      participantId: descriptor?.participantId,
+      wakeupId: descriptor?.wakeupId,
       pairId: input.pairID,
       correlationId: descriptor?.actionId,
       scope: input.scope ?? (input.payload ? scopeForPayload(input.payload) : undefined),
@@ -646,7 +667,10 @@ export class BridgeActionRouter {
         threadId: descriptor.threadId,
         runId: descriptor.runId,
         approvalId: descriptor.approvalId,
-        questionId: descriptor.questionId
+        questionId: descriptor.questionId,
+        roundId: descriptor.roundId,
+        participantId: descriptor.participantId,
+        wakeupId: descriptor.wakeupId
       })
     } catch (err) {
       return {
@@ -684,7 +708,14 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'composerPrompt':
       return 'startTurn'
     case 'cancelRun':
+    case 'ensembleCancelRound':
+    case 'ensembleCancelWakeup':
       return 'cancel'
+    case 'ensembleSkipActiveParticipant':
+    case 'ensembleWakeNow':
+    case 'ensembleQueuePrompt':
+    case 'ensembleSteer':
+      return 'steer'
     case 'setYoloMode':
       return 'yolo'
     case 'togglePinChat':
@@ -718,6 +749,9 @@ function actionAckDescriptorFromPayload(
   | 'providerRunId'
   | 'approvalId'
   | 'questionId'
+  | 'roundId'
+  | 'participantId'
+  | 'wakeupId'
 > {
   const descriptor: Pick<
     BridgeActionAckV1,
@@ -730,6 +764,9 @@ function actionAckDescriptorFromPayload(
     | 'providerRunId'
     | 'approvalId'
     | 'questionId'
+    | 'roundId'
+    | 'participantId'
+    | 'wakeupId'
   > = {
     actionKind: payload.kind,
     actionId: actionIdFromPayload(payload) ?? undefined,
@@ -749,6 +786,15 @@ function actionAckDescriptorFromPayload(
     descriptor.runId = payload.runId
   } else if (typeof data?.runId === 'string') {
     descriptor.runId = data.runId
+  }
+  if ('roundId' in payload && typeof payload.roundId === 'string') {
+    descriptor.roundId = payload.roundId
+  }
+  if (payload.kind === 'ensembleSkipActiveParticipant') {
+    descriptor.participantId = payload.participantId
+  }
+  if (payload.kind === 'ensembleWakeNow' || payload.kind === 'ensembleCancelWakeup') {
+    descriptor.wakeupId = payload.wakeupId
   }
   if (typeof data?.appRunId === 'string') {
     descriptor.appRunId = data.appRunId

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { bandForUsedPercent, summarizeProviderUsage } from './ProviderUsageStatus'
 import type { NormalizedProviderUsageSnapshot } from './ProviderQuotaSnapshots'
 
-function snapshot(overrides: Partial<NormalizedProviderUsageSnapshot> = {}): NormalizedProviderUsageSnapshot {
+function snapshot(
+  overrides: Partial<NormalizedProviderUsageSnapshot> = {}
+): NormalizedProviderUsageSnapshot {
   return {
     provider: 'codex',
     source: 'codex-account',
@@ -83,9 +85,33 @@ describe('summarizeProviderUsage', () => {
       'codex',
       snapshot({
         windows: [
-          { id: 'a', label: 'A', runs: 0, totalTokens: 0, limitLabel: '', trackingOnly: false, usedPercent: 20 },
-          { id: 'b', label: 'B', runs: 0, totalTokens: 0, limitLabel: '', trackingOnly: false, usedPercent: 92 },
-          { id: 'c', label: 'C', runs: 0, totalTokens: 0, limitLabel: '', trackingOnly: false, usedPercent: 50 }
+          {
+            id: 'a',
+            label: 'A',
+            runs: 0,
+            totalTokens: 0,
+            limitLabel: '',
+            trackingOnly: false,
+            usedPercent: 20
+          },
+          {
+            id: 'b',
+            label: 'B',
+            runs: 0,
+            totalTokens: 0,
+            limitLabel: '',
+            trackingOnly: false,
+            usedPercent: 92
+          },
+          {
+            id: 'c',
+            label: 'C',
+            runs: 0,
+            totalTokens: 0,
+            limitLabel: '',
+            trackingOnly: false,
+            usedPercent: 50
+          }
         ]
       })
     )
@@ -115,10 +141,7 @@ describe('summarizeProviderUsage', () => {
   })
 
   it('propagates stale flag from the underlying snapshot', () => {
-    const result = summarizeProviderUsage(
-      'kimi',
-      snapshot({ provider: 'kimi', stale: true })
-    )
+    const result = summarizeProviderUsage('kimi', snapshot({ provider: 'kimi', stale: true }))
     expect(result.stale).toBe(true)
   })
 

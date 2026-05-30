@@ -82,8 +82,8 @@ describe('getDashboardStatResetAt', () => {
   it('rejects non-positive / non-finite values defensively', () => {
     expect(getDashboardStatResetAt({ sessions: 0 }, 'sessions')).toBe(0)
     expect(getDashboardStatResetAt({ sessions: -100 }, 'sessions')).toBe(0)
-    expect(
-      getDashboardStatResetAt({ sessions: Number.NaN as unknown as number }, 'sessions')
-    ).toBe(0)
+    expect(getDashboardStatResetAt({ sessions: Number.NaN as unknown as number }, 'sessions')).toBe(
+      0
+    )
   })
 })

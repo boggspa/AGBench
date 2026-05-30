@@ -72,7 +72,10 @@ function isClosingFenceLine(line: string, active: MarkdownFenceState): boolean {
   return marker[0] === active.char && marker.length >= active.length
 }
 
-function fenceStateBeforeLimit(text: string, limit: number): {
+function fenceStateBeforeLimit(
+  text: string,
+  limit: number
+): {
   activeFence: MarkdownFenceState | null
   lastSafeCut: number
 } {
@@ -131,4 +134,3 @@ export function truncateOpaqueMarkdown(
   if (!activeFence) return prefix
   return `${prefix}\n${activeFence.char.repeat(activeFence.length)}`
 }
-

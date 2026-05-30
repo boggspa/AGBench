@@ -106,8 +106,7 @@ export class WorkspaceWriteIntentRegistry {
         ok: false,
         conflict: {
           holders: [],
-          reason:
-            'Write-intent acquisition requires workspacePath, resourcePath, and laneId.'
+          reason: 'Write-intent acquisition requires workspacePath, resourcePath, and laneId.'
         }
       }
     }
@@ -215,9 +214,7 @@ export class WorkspaceWriteIntentRegistry {
     if (!resourceMap) return false
     const holders = resourceMap.get(token.resourcePath)
     if (!holders) return false
-    const next = holders.filter(
-      (h) => !(h.laneId === token.laneId && h.mode === token.mode)
-    )
+    const next = holders.filter((h) => !(h.laneId === token.laneId && h.mode === token.mode))
     if (next.length === holders.length) return false
     if (next.length === 0) {
       resourceMap.delete(token.resourcePath)

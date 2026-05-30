@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeCumulativeRunBaseMs } from '../App'
+import { computeCumulativeRunBaseMs } from './cumulativeRunTimecode'
 import type { ChatRun } from '../../../main/store/types'
 
 /*

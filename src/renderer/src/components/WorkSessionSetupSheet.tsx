@@ -54,7 +54,11 @@ const PERMISSION_PRESET_OPTIONS: { value: PermissionPresetId; label: string; hin
 const DEFAULT_MAX_ROUNDS = 38
 const DEFAULT_MAX_DURATION_MS = 6 * 60 * 60 * 1000
 
-const ROUND_MODE_OPTIONS: { value: Exclude<EnsembleRoundMode, 'targeted'>; label: string; hint: string }[] = [
+const ROUND_MODE_OPTIONS: {
+  value: Exclude<EnsembleRoundMode, 'targeted'>
+  label: string
+  hint: string
+}[] = [
   {
     value: 'roundtable',
     label: 'Roundtable',
@@ -106,22 +110,17 @@ export function WorkSessionSetupSheet({
   onConfirm,
   onCancel
 }: WorkSessionSetupSheetProps): React.JSX.Element | null {
-  const enabledParticipants = useMemo(
-    () => participants.filter((p) => p.enabled),
-    [participants]
-  )
+  const enabledParticipants = useMemo(() => participants.filter((p) => p.enabled), [participants])
 
   const initialAllowed = useMemo(() => {
     if (initial?.allowedParticipantIds && initial.allowedParticipantIds.length > 0) {
       return new Set(initial.allowedParticipantIds)
     }
     return new Set(enabledParticipants.map((p) => p.id))
-  }, [enabledParticipants, initial?.allowedParticipantIds])
+  }, [enabledParticipants, initial])
 
   const [objective, setObjective] = useState(initial?.objective || '')
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
-    initial?.acceptanceCriteria || ''
-  )
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(initial?.acceptanceCriteria || '')
   const [initialPrompt, setInitialPrompt] = useState(initial?.initialPrompt || '')
   const [allowed, setAllowed] = useState<Set<string>>(initialAllowed)
   const [leadId, setLeadId] = useState<string | undefined>(
@@ -136,9 +135,7 @@ export function WorkSessionSetupSheet({
   const [maxDurationMs, setMaxDurationMs] = useState<number>(
     initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS
   )
-  const [enableScoutPass, setEnableScoutPass] = useState<boolean>(
-    initial?.enableScoutPass ?? false
-  )
+  const [enableScoutPass, setEnableScoutPass] = useState<boolean>(initial?.enableScoutPass ?? false)
   const [roundMode, setRoundMode] = useState<Exclude<EnsembleRoundMode, 'targeted'>>(
     initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
       ? initialRoundMode
@@ -157,27 +154,40 @@ export function WorkSessionSetupSheet({
   // or editing an existing session.
   useEffect(() => {
     if (!isOpen) return
-    setObjective(initial?.objective || '')
-    setAcceptanceCriteria(initial?.acceptanceCriteria || '')
-    setInitialPrompt(initial?.initialPrompt || '')
-    setAllowed(initialAllowed)
-    setLeadId(initial?.leadParticipantId || enabledParticipants[0]?.id)
-    setPermissionPresetId(initial?.permissionPresetId || 'workspace_write')
-    setMaxRoundsPerProvider(initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
-    setMaxDurationMs(initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
-    setEnableScoutPass(initial?.enableScoutPass ?? false)
-    setRoundMode(
-      initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
-        ? initialRoundMode
-        : 'roundtable'
-    )
-    setSynthesizerParticipantId(
-      initialSynthesizerParticipantId || initial?.leadParticipantId || enabledParticipants[0]?.id
-    )
-    setErrors([])
+    const frame = window.requestAnimationFrame(() => {
+      setObjective(initial?.objective || '')
+      setAcceptanceCriteria(initial?.acceptanceCriteria || '')
+      setInitialPrompt(initial?.initialPrompt || '')
+      setAllowed(initialAllowed)
+      setLeadId(initial?.leadParticipantId || enabledParticipants[0]?.id)
+      setPermissionPresetId(initial?.permissionPresetId || 'workspace_write')
+      setMaxRoundsPerProvider(initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
+      setMaxDurationMs(initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
+      setEnableScoutPass(initial?.enableScoutPass ?? false)
+      setRoundMode(
+        initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
+          ? initialRoundMode
+          : 'roundtable'
+      )
+      setSynthesizerParticipantId(
+        initialSynthesizerParticipantId || initial?.leadParticipantId || enabledParticipants[0]?.id
+      )
+      setErrors([])
+    })
     // Focus objective on open so the user can type immediately.
-    setTimeout(() => objectiveRef.current?.focus(), 50)
-  }, [isOpen, initial, initialAllowed, enabledParticipants, initialRoundMode, initialSynthesizerParticipantId])
+    const focusTimer = window.setTimeout(() => objectiveRef.current?.focus(), 50)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(focusTimer)
+    }
+  }, [
+    isOpen,
+    initial,
+    initialAllowed,
+    enabledParticipants,
+    initialRoundMode,
+    initialSynthesizerParticipantId
+  ])
 
   // Esc dismisses the sheet — matches BugReportSheet behaviour.
   useEffect(() => {
@@ -227,15 +237,13 @@ export function WorkSessionSetupSheet({
       return
     }
 
-    const resolvedLead =
-      leadId && allowedIds.includes(leadId) ? leadId : undefined
+    const resolvedLead = leadId && allowedIds.includes(leadId) ? leadId : undefined
     const config: WorkSessionConfig = {
       enabled: true,
       status: 'active',
       objective: trimmedObjective,
       acceptanceCriteria: trimmedCriteria,
-      allowedParticipantIds:
-        allowedIds.length === enabledParticipants.length ? null : allowedIds,
+      allowedParticipantIds: allowedIds.length === enabledParticipants.length ? null : allowedIds,
       leadParticipantId: resolvedLead,
       permissionPresetId,
       maxRoundsPerProvider,
@@ -286,9 +294,9 @@ export function WorkSessionSetupSheet({
         <header className="work-session-setup-header">
           <h2 id="work-session-setup-title">{sheetTitle}</h2>
           <p className="work-session-setup-subhead">
-            Define an objective + acceptance criteria. The ensemble continues through
-            rounds via <code>ensemble_continue</code> until acceptance is reported or
-            a hard-stop trips. Existing approval gates still fire for each mutation.
+            Define an objective + acceptance criteria. The ensemble continues through rounds via{' '}
+            <code>ensemble_continue</code> until acceptance is reported or a hard-stop trips.
+            Existing approval gates still fire for each mutation.
           </p>
         </header>
         <div className="work-session-setup-body">
@@ -387,8 +395,7 @@ export function WorkSessionSetupSheet({
                         onChange={() => handleToggleAllowed(participant.id)}
                       />
                       <span className="work-session-participant-label">
-                        {providerLabel(participant.provider)} /{' '}
-                        {participant.role || 'Participant'}
+                        {providerLabel(participant.provider)} / {participant.role || 'Participant'}
                       </span>
                     </label>
                     <button
@@ -444,9 +451,7 @@ export function WorkSessionSetupSheet({
                   </option>
                 ))}
               </select>
-              <span className="work-session-field-hint">
-                Used only for chair-summary rounds.
-              </span>
+              <span className="work-session-field-hint">Used only for chair-summary rounds.</span>
             </label>
           </div>
           <div className="work-session-row">
@@ -455,9 +460,7 @@ export function WorkSessionSetupSheet({
               <select
                 className="work-session-field-select"
                 value={permissionPresetId}
-                onChange={(e) =>
-                  setPermissionPresetId(e.target.value as PermissionPresetId)
-                }
+                onChange={(e) => setPermissionPresetId(e.target.value as PermissionPresetId)}
               >
                 {PERMISSION_PRESET_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -467,9 +470,8 @@ export function WorkSessionSetupSheet({
               </select>
               <span className="work-session-field-hint">
                 {
-                  PERMISSION_PRESET_OPTIONS.find(
-                    (option) => option.value === permissionPresetId
-                  )?.hint
+                  PERMISSION_PRESET_OPTIONS.find((option) => option.value === permissionPresetId)
+                    ?.hint
                 }
               </span>
             </label>
@@ -485,9 +487,7 @@ export function WorkSessionSetupSheet({
                   setMaxRoundsPerProvider(Math.max(1, Math.floor(Number(e.target.value) || 0)))
                 }
               />
-              <span className="work-session-field-hint">
-                Hard cap per provider. Default 38.
-              </span>
+              <span className="work-session-field-hint">Hard cap per provider. Default 38.</span>
             </label>
           </div>
           <div className="work-session-field">
@@ -514,9 +514,9 @@ export function WorkSessionSetupSheet({
               onChange={(e) => setEnableScoutPass(e.target.checked)}
             />
             <span>
-              <strong>Enable Parallel Scout Pass</strong> — read-only participants can
-              run concurrently within a round. Disabled by default while parallel
-              dispatch is in early shake-out.
+              <strong>Enable Parallel Scout Pass</strong> — read-only participants can run
+              concurrently within a round. Disabled by default while parallel dispatch is in early
+              shake-out.
             </span>
           </label>
           {errors.length > 0 && (

@@ -396,6 +396,9 @@ private struct iPadInspectorHost: View {
                             actions: ensembleControlActions
                         )
                     }
+                    if let actionState = selectedTaskDetail?.actionState {
+                        iPadActionFeedbackPanel(state: actionState)
+                    }
                     iPadDiffInspector(
                         summary: selectedTaskDetail?.diffSummary,
                         fallbackEvent: latestDiffEvent
@@ -585,9 +588,6 @@ private struct iPadEnsembleStatePanel: View {
             participantList
             controlGrid
             queueAndSteerControls
-            if hasAnyCapability && !hasAnyActionHandler {
-                integrationNote("Ensemble action payloads are not wired in this build; controls remain disabled until the bridge exposes safe action handlers.")
-            }
         }
         .padding(Theme.Spacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -669,7 +669,7 @@ private struct iPadEnsembleStatePanel: View {
                     title: "Wake now",
                     systemImage: "alarm",
                     isCapable: state.capabilities.wakeNow,
-                    handlerAvailable: actions.wakeNow != nil
+                    handlerAvailable: actions.wakeNow != nil && activeWakeupId != nil
                 ) {
                     guard let wakeNow = actions.wakeNow else { return }
                     await wakeNow(state)
@@ -678,7 +678,7 @@ private struct iPadEnsembleStatePanel: View {
                     title: "Cancel wakeup",
                     systemImage: "alarm.waves.left.and.right",
                     isCapable: state.capabilities.cancelWakeup,
-                    handlerAvailable: actions.cancelWakeup != nil
+                    handlerAvailable: actions.cancelWakeup != nil && activeWakeupId != nil
                 ) {
                     guard let cancelWakeup = actions.cancelWakeup else { return }
                     await cancelWakeup(state)
@@ -748,6 +748,18 @@ private struct iPadEnsembleStatePanel: View {
         return state.participants.first { $0.id == activeParticipantId }
     }
 
+    private var activeWakeupId: String? {
+        if let wakeupId = state.wakeupId, !wakeupId.isEmpty {
+            return wakeupId
+        }
+        if let wakeupId = activeParticipant?.wakeupId, !wakeupId.isEmpty {
+            return wakeupId
+        }
+        return state.participants.first { participant in
+            participant.wakeupId?.isEmpty == false
+        }?.wakeupId
+    }
+
     private var wakeupDescription: String? {
         let sleeping = state.participants.compactMap { participant -> String? in
             guard let sleepingUntil = participant.sleepingUntil else { return nil }
@@ -755,24 +767,6 @@ private struct iPadEnsembleStatePanel: View {
             return "\(label) wakes \(sleepingUntil.formatted(date: .omitted, time: .shortened))"
         }
         return sleeping.isEmpty ? nil : sleeping.joined(separator: " · ")
-    }
-
-    private var hasAnyCapability: Bool {
-        state.capabilities.cancelRound
-            || state.capabilities.skipActiveParticipant
-            || state.capabilities.wakeNow
-            || state.capabilities.cancelWakeup
-            || state.capabilities.queuePrompt
-            || state.capabilities.steer
-    }
-
-    private var hasAnyActionHandler: Bool {
-        actions.cancelRound != nil
-            || actions.skipActiveParticipant != nil
-            || actions.wakeNow != nil
-            || actions.cancelWakeup != nil
-            || actions.queuePrompt != nil
-            || actions.steer != nil
     }
 
     private func controlButton(
@@ -791,15 +785,111 @@ private struct iPadEnsembleStatePanel: View {
         .buttonStyle(.bordered)
         .disabled(!isCapable || !handlerAvailable)
     }
+}
 
-    private func integrationNote(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.Typography.smallCaption)
-            .foregroundStyle(Theme.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(Theme.Spacing.tight)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+@available(iOS 17.0, macOS 14.0, *)
+private struct iPadActionFeedbackPanel: View {
+    let state: RemoteTaskActionState
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.tight) {
+            Image(systemName: systemImage)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(tint)
+                .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.primaryText)
+                Text(message)
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var title: String {
+        switch state {
+        case .sending(let kind, _, _):
+            return "Sending \(label(for: kind))"
+        case .acknowledged(let kind, _, _, _):
+            return "\(label(for: kind)) sent"
+        case .failed(let kind, _, _, _):
+            return "\(label(for: kind)) failed"
+        case .stale(let kind, _, _, _):
+            return "\(label(for: kind)) stale"
+        }
+    }
+
+    private var message: String {
+        switch state {
+        case .sending(_, let targetId, _):
+            return "Waiting for desktop acknowledgement for \(targetId)."
+        case .acknowledged(_, _, let message, _),
+             .failed(_, _, let message, _),
+             .stale(_, _, let message, _):
+            return message
+        }
+    }
+
+    private var systemImage: String {
+        switch state {
+        case .sending:
+            return "arrow.up.circle"
+        case .acknowledged:
+            return "checkmark.circle"
+        case .failed:
+            return "exclamationmark.triangle"
+        case .stale:
+            return "clock.badge.exclamationmark"
+        }
+    }
+
+    private var tint: Color {
+        switch state {
+        case .sending:
+            return Theme.accent
+        case .acknowledged:
+            return Theme.success
+        case .failed:
+            return Theme.warning
+        case .stale:
+            return Theme.secondaryAccent
+        }
+    }
+
+    private func label(for kind: RemoteTaskActionKind) -> String {
+        switch kind {
+        case .approve:
+            return "Approval"
+        case .decline:
+            return "Decline"
+        case .answerQuestion:
+            return "Answer"
+        case .rejectQuestion:
+            return "Question reject"
+        case .cancelRun:
+            return "Cancel run"
+        case .prompt:
+            return "Prompt"
+        case .ensembleCancelRound:
+            return "Cancel round"
+        case .ensembleSkipActiveParticipant:
+            return "Skip active"
+        case .ensembleWakeNow:
+            return "Wake now"
+        case .ensembleCancelWakeup:
+            return "Cancel wakeup"
+        case .ensembleQueuePrompt:
+            return "Queue prompt"
+        case .ensembleSteer:
+            return "Steer"
+        }
     }
 }
 

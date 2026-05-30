@@ -13,11 +13,7 @@ import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
 import { getProviderName } from './Sidebar'
 import type { ComposerMentionTriggerKind } from '../lib/ComposerMentionTrigger'
 
-export type ComposerMentionKind =
-  | 'agent'
-  | 'participant'
-  | 'workspace-file'
-  | 'external-grant'
+export type ComposerMentionKind = 'agent' | 'participant' | 'workspace-file' | 'external-grant'
 
 export interface ComposerMentionPick {
   kind: ComposerMentionKind
@@ -133,21 +129,40 @@ export function AgentMentionMenu({
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    const cleanupFrames: number[] = []
+    const deferFiles = (files: WorkspaceFileEntry[]): void => {
+      const frame = window.requestAnimationFrame(() => {
+        if (!cancelled) setWorkspaceFiles(files)
+      })
+      cleanupFrames.push(frame)
+    }
+
     // File listing is only relevant for the `-@` file trigger. The
     // plain `@` mention popover renders sub-agents or participants
     // and never consumes the workspace-file list, so skip the IPC
     // call when the trigger doesn't need it.
     if (!open || !workspacePath || triggerKind !== 'file-mention') {
-      setWorkspaceFiles([])
-      return
+      deferFiles([])
+      return () => {
+        cancelled = true
+        cleanupFrames.forEach((frame) => window.cancelAnimationFrame(frame))
+      }
     }
     const cached = workspaceFileCacheRef.current.get(workspacePath)
     if (cached) {
-      setWorkspaceFiles(cached)
-      return
+      deferFiles(cached)
+      return () => {
+        cancelled = true
+        cleanupFrames.forEach((frame) => window.cancelAnimationFrame(frame))
+      }
     }
-    if (loadingWorkspacePathsRef.current.has(workspacePath)) return
-    let cancelled = false
+    if (loadingWorkspacePathsRef.current.has(workspacePath)) {
+      return () => {
+        cancelled = true
+        cleanupFrames.forEach((frame) => window.cancelAnimationFrame(frame))
+      }
+    }
     loadingWorkspacePathsRef.current.add(workspacePath)
     window.api
       .listWorkspaceFiles(workspacePath)
@@ -163,6 +178,7 @@ export function AgentMentionMenu({
       })
     return () => {
       cancelled = true
+      cleanupFrames.forEach((frame) => window.cancelAnimationFrame(frame))
     }
   }, [open, workspacePath, triggerKind])
 

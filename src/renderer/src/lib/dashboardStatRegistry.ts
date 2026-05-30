@@ -122,9 +122,7 @@ export const DASHBOARD_STAT_REGISTRY: DashboardStatDescriptor[] = [
  * registry by group (e.g. the Settings UI lists each family in
  * its own sub-section). Returns descriptors in registry order.
  */
-export function getDashboardStatsByGroup(
-  group: DashboardStatGroup
-): DashboardStatDescriptor[] {
+export function getDashboardStatsByGroup(group: DashboardStatGroup): DashboardStatDescriptor[] {
   return DASHBOARD_STAT_REGISTRY.filter((stat) => stat.group === group)
 }
 

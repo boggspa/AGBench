@@ -34,6 +34,30 @@ function makeStubExecutor(
       message: 'composerPrompt done'
     }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
+    executeEnsembleCancelRound: make('executeEnsembleCancelRound', {
+      executed: true,
+      message: 'ensembleCancelRound done'
+    }),
+    executeEnsembleSkipActiveParticipant: make('executeEnsembleSkipActiveParticipant', {
+      executed: true,
+      message: 'ensembleSkipActiveParticipant done'
+    }),
+    executeEnsembleWakeNow: make('executeEnsembleWakeNow', {
+      executed: true,
+      message: 'ensembleWakeNow done'
+    }),
+    executeEnsembleCancelWakeup: make('executeEnsembleCancelWakeup', {
+      executed: true,
+      message: 'ensembleCancelWakeup done'
+    }),
+    executeEnsembleQueuePrompt: make('executeEnsembleQueuePrompt', {
+      executed: true,
+      message: 'ensembleQueuePrompt done'
+    }),
+    executeEnsembleSteer: make('executeEnsembleSteer', {
+      executed: true,
+      message: 'ensembleSteer done'
+    }),
     executeRegisterApnsToken: make('executeRegisterApnsToken', {
       executed: true,
       message: 'registerApnsToken done'
@@ -839,6 +863,183 @@ describe('BridgeActionRouter', () => {
       expect(result.accepted).toBe(true)
       expect(result.message).toBe('togglePinWorkspace done')
       expect(calls[0].method).toBe('executeTogglePinWorkspace')
+    })
+  })
+
+  describe('ensemble action policy', () => {
+    const seedAllowlist = (capabilities: Array<'monitor' | 'approve' | 'cancel' | 'steer'>) => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-ensemble',
+        path: '/ensemble',
+        mode: 'read-write',
+        capabilities,
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      return allowlist
+    }
+
+    const encodeAction = (action: Record<string, unknown>) =>
+      Buffer.from(
+        JSON.stringify({
+          workspaceId: 'ws-ensemble',
+          threadId: 'ensemble-thread',
+          ...action
+        }),
+        'utf-8'
+      ).toString('base64')
+
+    it('maps round and wakeup cancellation controls to the cancel capability', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(['monitor', 'cancel']),
+        executor
+      })
+      const cases = [
+        {
+          action: { kind: 'ensembleCancelRound', roundId: 'round-1', message: 'stop' },
+          method: 'executeEnsembleCancelRound',
+          descriptor: { roundId: 'round-1' }
+        },
+        {
+          action: { kind: 'ensembleCancelWakeup', wakeupId: 'wakeup-1', message: 'cancel' },
+          method: 'executeEnsembleCancelWakeup',
+          descriptor: { wakeupId: 'wakeup-1' }
+        }
+      ]
+
+      for (const testCase of cases) {
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: 'pair-1',
+          payloadBase64: encodeAction(testCase.action)
+        })) as {
+          accepted: boolean
+          reasonCode?: string
+          actionKind?: string
+          workspaceId?: string
+          threadId?: string
+          roundId?: string
+          wakeupId?: string
+        }
+        expect(result.accepted).toBe(true)
+        expect(result.reasonCode).toBe('accepted')
+        expect(result.actionKind).toBe(testCase.action.kind)
+        expect(result.workspaceId).toBe('ws-ensemble')
+        expect(result.threadId).toBe('ensemble-thread')
+        expect(result).toMatchObject(testCase.descriptor)
+      }
+
+      expect(calls.map((call) => call.method)).toEqual([
+        'executeEnsembleCancelRound',
+        'executeEnsembleCancelWakeup'
+      ])
+    })
+
+    it('denies cancel controls when only steer capability is granted', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(['monitor', 'steer']),
+        executor
+      })
+      for (const action of [
+        { kind: 'ensembleCancelRound', roundId: 'round-1' },
+        { kind: 'ensembleCancelWakeup', wakeupId: 'wakeup-1' }
+      ]) {
+        const result = (await router.route('bridge.requestActionAck', {
+          payloadBase64: encodeAction(action)
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(false)
+        expect(result.reasonCode).toBe('capabilityDenied')
+        expect(result.message).toMatch(/capability "cancel"/i)
+      }
+      expect(calls).toHaveLength(0)
+    })
+
+    it('maps skip, wake-now, queue, and steer controls to the steer capability', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(['monitor', 'steer']),
+        executor
+      })
+      const cases = [
+        {
+          action: {
+            kind: 'ensembleSkipActiveParticipant',
+            roundId: 'round-1',
+            participantId: 'participant-1',
+            message: 'skip'
+          },
+          method: 'executeEnsembleSkipActiveParticipant',
+          descriptor: { roundId: 'round-1', participantId: 'participant-1' }
+        },
+        {
+          action: { kind: 'ensembleWakeNow', wakeupId: 'wakeup-1', message: 'wake' },
+          method: 'executeEnsembleWakeNow',
+          descriptor: { wakeupId: 'wakeup-1' }
+        },
+        {
+          action: { kind: 'ensembleQueuePrompt', text: 'continue with the next task' },
+          method: 'executeEnsembleQueuePrompt',
+          descriptor: {}
+        },
+        {
+          action: { kind: 'ensembleSteer', text: 'focus on failing tests' },
+          method: 'executeEnsembleSteer',
+          descriptor: {}
+        }
+      ]
+
+      for (const testCase of cases) {
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: 'pair-1',
+          payloadBase64: encodeAction(testCase.action)
+        })) as {
+          accepted: boolean
+          reasonCode?: string
+          actionKind?: string
+          workspaceId?: string
+          threadId?: string
+          roundId?: string
+          participantId?: string
+          wakeupId?: string
+        }
+        expect(result.accepted).toBe(true)
+        expect(result.reasonCode).toBe('accepted')
+        expect(result.actionKind).toBe(testCase.action.kind)
+        expect(result.workspaceId).toBe('ws-ensemble')
+        expect(result.threadId).toBe('ensemble-thread')
+        expect(result).toMatchObject(testCase.descriptor)
+      }
+
+      expect(calls.map((call) => call.method)).toEqual([
+        'executeEnsembleSkipActiveParticipant',
+        'executeEnsembleWakeNow',
+        'executeEnsembleQueuePrompt',
+        'executeEnsembleSteer'
+      ])
+    })
+
+    it('denies steer controls when only cancel capability is granted', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(['monitor', 'cancel']),
+        executor
+      })
+      for (const action of [
+        { kind: 'ensembleSkipActiveParticipant', participantId: 'participant-1' },
+        { kind: 'ensembleWakeNow', wakeupId: 'wakeup-1' },
+        { kind: 'ensembleQueuePrompt', text: 'queue this' },
+        { kind: 'ensembleSteer', text: 'steer this' }
+      ]) {
+        const result = (await router.route('bridge.requestActionAck', {
+          payloadBase64: encodeAction(action)
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(false)
+        expect(result.reasonCode).toBe('capabilityDenied')
+        expect(result.message).toMatch(/capability "steer"/i)
+      }
+      expect(calls).toHaveLength(0)
     })
   })
 

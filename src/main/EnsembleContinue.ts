@@ -194,8 +194,7 @@ export function handleEnsembleContinue(
     return {
       ok: false,
       status: 'active',
-      message:
-        'ensemble_continue: `nextPrompt` is required when acceptanceStatus is "inProgress".',
+      message: 'ensemble_continue: `nextPrompt` is required when acceptanceStatus is "inProgress".',
       queued: false,
       error: 'missing_next_prompt'
     }

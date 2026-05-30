@@ -90,7 +90,10 @@ export function SettingsSidebar({
           })}
         </nav>
         {visibleVersion && (
-          <div className="settings-sidebar-version" aria-label={`AGBench version ${visibleVersion}`}>
+          <div
+            className="settings-sidebar-version"
+            aria-label={`AGBench version ${visibleVersion}`}
+          >
             AGBench v{visibleVersion}
           </div>
         )}

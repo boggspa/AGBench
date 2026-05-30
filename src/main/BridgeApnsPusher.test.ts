@@ -29,6 +29,19 @@ describe('NoopApnsPusher', () => {
     expect(result.reason).toBe('noop')
   })
 
+  it('returns delivered=false with reason=noop for remote attention pushes', async () => {
+    const pusher = new NoopApnsPusher()
+    const result = await pusher.pushRemoteAttentionNeeded({
+      pairID: 'pair-1',
+      reason: 'approval',
+      workspaceId: 'ws-1',
+      threadId: 't-1',
+      approvalId: 'approval-1'
+    })
+    expect(result.delivered).toBe(false)
+    expect(result.reason).toBe('noop')
+  })
+
   it('logs intent when an approval push is requested', async () => {
     const log = vi.fn()
     const pusher = new NoopApnsPusher(log)
@@ -219,6 +232,14 @@ describe('createBridgeApnsPusher factory', () => {
     expect(approvalResult.delivered).toBe(false)
     const silentResult = await pusher.pushSilent('p')
     expect(silentResult.delivered).toBe(false)
+    const attentionResult = await pusher.pushRemoteAttentionNeeded({
+      pairID: 'p',
+      reason: 'approval',
+      workspaceId: 'w',
+      threadId: 't',
+      approvalId: 'a'
+    })
+    expect(attentionResult.delivered).toBe(false)
   })
 
   // Phase E1: Settings-UI path injects an already-decrypted PEM string

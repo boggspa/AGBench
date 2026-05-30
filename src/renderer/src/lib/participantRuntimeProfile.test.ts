@@ -84,7 +84,7 @@ describe('resolveRuntimePickerScope', () => {
     expect(result.selectedRuntimeProfileId).toBeNull()
   })
 
-  it('ignores chatLevelSelection in participant scope (the participant\'s own field is authoritative)', () => {
+  it("ignores chatLevelSelection in participant scope (the participant's own field is authoritative)", () => {
     const result = resolveRuntimePickerScope({
       chat: chat({ chatKind: 'ensemble' }),
       chatLevelSelection: 'should-be-ignored',

@@ -499,8 +499,7 @@ export const buildWelcomeUsageDashboardData = (
   // longest thread, etc.) inherits the filter naturally — no
   // per-stat threading needed. Range-scoped stats then apply
   // the additional range cutoff on top.
-  const resetCutoff =
-    Number.isFinite(statResetAt) && statResetAt > 0 ? statResetAt : 0
+  const resetCutoff = Number.isFinite(statResetAt) && statResetAt > 0 ? statResetAt : 0
   const recordsAfterReset =
     resetCutoff > 0 ? records.filter((record) => record.timestamp >= resetCutoff) : records
   const chatsAfterReset =
@@ -645,11 +644,7 @@ export const buildWelcomeUsageDashboardData = (
   for (const record of records) {
     if (record.usageKind === 'reset_hint') continue
     const duration = Number(record.durationMs)
-    if (
-      record.timestamp >= wallTime24hCutoff &&
-      Number.isFinite(duration) &&
-      duration > 0
-    ) {
+    if (record.timestamp >= wallTime24hCutoff && Number.isFinite(duration) && duration > 0) {
       wallTime24hMs += duration
     }
   }
@@ -789,9 +784,7 @@ export const buildWelcomeUsageDashboardData = (
     .map((model) => ({
       ...model,
       percent:
-        modelBreakdownTokenTotal > 0
-          ? (model.totalTokens / modelBreakdownTokenTotal) * 100
-          : 0
+        modelBreakdownTokenTotal > 0 ? (model.totalTokens / modelBreakdownTokenTotal) * 100 : 0
     }))
 
   const todayStart = startOfLocalDay(now)
@@ -996,9 +989,7 @@ export const buildWelcomeUsageDashboardData = (
     })
     .sort(
       (a, b) =>
-        b.costUsd - a.costUsd ||
-        b.tokens - a.tokens ||
-        a.displayName.localeCompare(b.displayName)
+        b.costUsd - a.costUsd || b.tokens - a.tokens || a.displayName.localeCompare(b.displayName)
     )
   const todayDayStart = startOfLocalDay(now)
   const dailyCostBreakdown: DailyCostBucket[] = []
@@ -1065,9 +1056,7 @@ export const buildWelcomeUsageDashboardData = (
     // run estimates (its CLI reports no usage); see estimateProjectedTokenUsage.
     .sort(
       (a, b) =>
-        b.tokens - a.tokens ||
-        b.costUsd - a.costUsd ||
-        a.displayName.localeCompare(b.displayName)
+        b.tokens - a.tokens || b.costUsd - a.costUsd || a.displayName.localeCompare(b.displayName)
     )
 
   const sessionsCount = sessionIds.size
@@ -1078,8 +1067,7 @@ export const buildWelcomeUsageDashboardData = (
   // session duration is sum-of-wall-time / sessions; tokens per
   // session is the same shape but for tokens.
   const avgSessionMs = sessionsCount > 0 ? Math.round(totalWallTimeMs / sessionsCount) : 0
-  const tokensPerSession =
-    sessionsCount > 0 ? Math.round(totalTokens / sessionsCount) : 0
+  const tokensPerSession = sessionsCount > 0 ? Math.round(totalTokens / sessionsCount) : 0
 
   return {
     hasActivity,

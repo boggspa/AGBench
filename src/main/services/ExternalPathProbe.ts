@@ -122,10 +122,7 @@ async function findRepoRoot(startPath: string, fs: FsLike): Promise<string | nul
  *     follow the pointer and read the HEAD inside that pointed dir.
  *   - Detached HEAD: HEAD content is a raw 40-char SHA. Returns undefined.
  */
-async function readCurrentBranch(
-  repoRoot: string,
-  fs: FsLike
-): Promise<string | undefined> {
+async function readCurrentBranch(repoRoot: string, fs: FsLike): Promise<string | undefined> {
   const dotGitPath = path.join(repoRoot, '.git')
   let headPath: string
 
@@ -136,9 +133,7 @@ async function readCurrentBranch(
       const pointer = (await fs.readFile(dotGitPath, 'utf8')).trim()
       const match = pointer.match(/^gitdir:\s*(.+)$/m)
       if (!match) return undefined
-      const gitDirAbs = path.isAbsolute(match[1])
-        ? match[1]
-        : path.resolve(repoRoot, match[1])
+      const gitDirAbs = path.isAbsolute(match[1]) ? match[1] : path.resolve(repoRoot, match[1])
       headPath = path.join(gitDirAbs, 'HEAD')
     } else {
       headPath = path.join(dotGitPath, 'HEAD')

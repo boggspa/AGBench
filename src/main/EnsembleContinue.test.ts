@@ -50,7 +50,10 @@ function makeWorkSession(over: Partial<WorkSessionConfig> = {}): WorkSessionConf
   }
 }
 
-function makeChat(over: Partial<ChatRecord> = {}, ensembleOver: Partial<EnsembleConfig> = {}): ChatRecord {
+function makeChat(
+  over: Partial<ChatRecord> = {},
+  ensembleOver: Partial<EnsembleConfig> = {}
+): ChatRecord {
   const ensemble: EnsembleConfig = {
     enabled: true,
     maxParticipants: 4,
@@ -126,10 +129,7 @@ describe('handleEnsembleContinue', () => {
       expect(result.ok).toBe(true)
       expect(result.status).toBe('active')
       expect(result.queued).toBe(true)
-      expect(queueFollowUpPrompt).toHaveBeenCalledWith(
-        'chat-1',
-        'Wire up the toolbar button next.'
-      )
+      expect(queueFollowUpPrompt).toHaveBeenCalledWith('chat-1', 'Wire up the toolbar button next.')
       expect(saveChat).toHaveBeenCalledOnce()
       expect(chat.ensemble?.workSession?.roundsUsed.codex).toBe(1)
       expect(chat.ensemble?.workSession?.totalRoundsUsed).toBe(1)
@@ -171,11 +171,7 @@ describe('handleEnsembleContinue', () => {
 
     it('defaults to inProgress when acceptanceStatus is omitted', () => {
       const { deps } = makeDeps(chat)
-      const result = handleEnsembleContinue(
-        'chat-1',
-        { nextPrompt: 'Continue.' },
-        deps
-      )
+      const result = handleEnsembleContinue('chat-1', { nextPrompt: 'Continue.' }, deps)
       expect(result.ok).toBe(true)
       expect(result.status).toBe('active')
       expect(result.queued).toBe(true)
@@ -202,11 +198,7 @@ describe('handleEnsembleContinue', () => {
     it('rejects when no Work Session is active', () => {
       const chat = makeChat({}, { workSession: undefined })
       const { deps } = makeDeps(chat)
-      const result = handleEnsembleContinue(
-        'chat-1',
-        { nextPrompt: 'x' },
-        deps
-      )
+      const result = handleEnsembleContinue('chat-1', { nextPrompt: 'x' }, deps)
       expect(result.ok).toBe(false)
       expect(result.error).toBe('no_active_work_session')
     })
@@ -254,11 +246,7 @@ describe('handleEnsembleContinue', () => {
     it('rejects when nextPrompt is missing for inProgress', () => {
       const chat = makeChat()
       const { deps, queueFollowUpPrompt } = makeDeps(chat)
-      const result = handleEnsembleContinue(
-        'chat-1',
-        { acceptanceStatus: 'inProgress' },
-        deps
-      )
+      const result = handleEnsembleContinue('chat-1', { acceptanceStatus: 'inProgress' }, deps)
       expect(result.ok).toBe(false)
       expect(result.error).toBe('missing_next_prompt')
       expect(queueFollowUpPrompt).not.toHaveBeenCalled()

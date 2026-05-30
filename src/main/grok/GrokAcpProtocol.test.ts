@@ -252,14 +252,24 @@ describe('G4c — ACP tool_call / tool_call_update → tool-card run events', ()
       toolUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'call_3', status: 'failed' })
     )
     expect(events).toEqual([
-      { type: 'tool_result', toolId: 'call_3', toolStatus: 'error', toolOutput: '', raw: expect.anything() }
+      {
+        type: 'tool_result',
+        toolId: 'call_3',
+        toolStatus: 'error',
+        toolOutput: '',
+        raw: expect.anything()
+      }
     ])
   })
 
   it('emits nothing for a non-terminal tool_call_update (in_progress)', () => {
     expect(
       acpMessageToRunEvents(
-        toolUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', status: 'in_progress' })
+        toolUpdate({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call_1',
+          status: 'in_progress'
+        })
       )
     ).toEqual([])
   })

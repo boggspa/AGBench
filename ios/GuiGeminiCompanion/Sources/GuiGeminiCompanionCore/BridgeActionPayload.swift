@@ -75,6 +75,45 @@ public enum BridgeActionPayload: Sendable, Equatable {
         runId: String,
         message: String? = nil
     )
+    case ensembleCancelRound(
+        workspaceId: String,
+        threadId: String,
+        roundId: String? = nil,
+        message: String? = nil
+    )
+    case ensembleSkipActiveParticipant(
+        workspaceId: String,
+        threadId: String,
+        roundId: String? = nil,
+        participantId: String? = nil,
+        message: String? = nil
+    )
+    case ensembleWakeNow(
+        workspaceId: String,
+        threadId: String,
+        wakeupId: String,
+        message: String? = nil
+    )
+    case ensembleCancelWakeup(
+        workspaceId: String,
+        threadId: String,
+        wakeupId: String,
+        message: String? = nil
+    )
+    case ensembleQueuePrompt(
+        workspaceId: String,
+        threadId: String,
+        roundId: String? = nil,
+        text: String,
+        message: String? = nil
+    )
+    case ensembleSteer(
+        workspaceId: String,
+        threadId: String,
+        roundId: String? = nil,
+        text: String,
+        message: String? = nil
+    )
     case registerApnsToken(
         pairID: String,
         deviceToken: String,
@@ -153,6 +192,63 @@ public enum BridgeActionPayload: Sendable, Equatable {
                 "provider": provider,
                 "runId": runId
             ]
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleCancelRound(let workspaceId, let threadId, let roundId, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleCancelRound",
+                "workspaceId": workspaceId,
+                "threadId": threadId
+            ]
+            if let roundId { dict["roundId"] = roundId }
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleSkipActiveParticipant(let workspaceId, let threadId, let roundId, let participantId, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleSkipActiveParticipant",
+                "workspaceId": workspaceId,
+                "threadId": threadId
+            ]
+            if let roundId { dict["roundId"] = roundId }
+            if let participantId { dict["participantId"] = participantId }
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleWakeNow(let workspaceId, let threadId, let wakeupId, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleWakeNow",
+                "workspaceId": workspaceId,
+                "threadId": threadId,
+                "wakeupId": wakeupId
+            ]
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleCancelWakeup(let workspaceId, let threadId, let wakeupId, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleCancelWakeup",
+                "workspaceId": workspaceId,
+                "threadId": threadId,
+                "wakeupId": wakeupId
+            ]
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleQueuePrompt(let workspaceId, let threadId, let roundId, let text, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleQueuePrompt",
+                "workspaceId": workspaceId,
+                "threadId": threadId,
+                "text": text
+            ]
+            if let roundId { dict["roundId"] = roundId }
+            if let message { dict["message"] = message }
+            return dict
+        case .ensembleSteer(let workspaceId, let threadId, let roundId, let text, let message):
+            var dict: [String: Any] = [
+                "kind": "ensembleSteer",
+                "workspaceId": workspaceId,
+                "threadId": threadId,
+                "text": text
+            ]
+            if let roundId { dict["roundId"] = roundId }
             if let message { dict["message"] = message }
             return dict
         case .registerApnsToken(let pairID, let deviceToken, let env):

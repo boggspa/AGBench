@@ -93,9 +93,7 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
   */
   return (
     <div className="run-card" data-provider={provider}>
-      <span className={`run-card-provider provider-${provider}`}>
-        {getProviderLabel(provider)}
-      </span>
+      <span className={`run-card-provider provider-${provider}`}>{getProviderLabel(provider)}</span>
       <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
       {run.ensembleSleepResumeWarning && (
         // 1.0.5-N6 — Wakeup resumed from transcript context
@@ -103,10 +101,7 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
         // tooltip carries the full explanation; the chip just
         // flags that the agent's working memory is
         // reconstructed.
-        <span
-          className="run-card-resume-warning"
-          title={run.ensembleSleepResumeWarning}
-        >
+        <span className="run-card-resume-warning" title={run.ensembleSleepResumeWarning}>
           transcript-resumed
         </span>
       )}

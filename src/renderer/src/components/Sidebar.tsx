@@ -316,7 +316,9 @@ function SidebarChatTitleEditable({
   // entered (so the user sees the current title, not a stale one
   // from a previous abandoned edit).
   useEffect(() => {
-    if (isEditing) setDraft(chat.title)
+    if (!isEditing) return
+    const frame = window.requestAnimationFrame(() => setDraft(chat.title))
+    return () => window.cancelAnimationFrame(frame)
   }, [isEditing, chat.title])
 
   if (isEditing) {
@@ -881,7 +883,7 @@ export function Sidebar({
     () => chats.filter((chat) => chat.pinned === true && !chat.archived),
     [chats]
   )
-  const recentChats = useMemo(() => selectRecentChats(regularChats, { limit: 5 }), [regularChats])
+  const recentChats = selectRecentChats(regularChats, { limit: 5 })
   const visibleEnsembleChats = isSidebarSearchActive
     ? ensembleChats.filter((chat) => !chat.pinned && chatMatchesSearch(chat, sidebarSearchQuery))
     : ensembleChats.filter((chat) => !chat.pinned)
@@ -1560,67 +1562,67 @@ export function Sidebar({
               </button>
             </div>
             {!isSectionCollapsed('pinned') && (
-            <div className="sidebar-pinned-list">
-              {visiblePinnedWorkspaces.map((workspace) => (
-                <div
-                  key={`pinned-workspace-${workspace.id}`}
-                  role="button"
-                  tabIndex={0}
-                  className={`sidebar-pinned-item ${currentWorkspace?.id === workspace.id ? 'active' : ''}`}
-                  onClick={() => onSelectWorkspace(workspace)}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget) return
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      onSelectWorkspace(workspace)
-                    }
-                  }}
-                  title={workspace.path}
-                >
-                  <FolderSymbolIcon />
-                  <span className="sidebar-pinned-label">
-                    <HighlightMatch text={workspace.displayName} query={sidebarSearchQuery} />
-                  </span>
-                  <SidebarOverflowMenu
-                    triggerLabel="Workspace actions"
-                    items={buildWorkspaceMenuItems(workspace)}
-                  />
-                </div>
-              ))}
-              {visiblePinnedChats.map((chat) => (
-                <div
-                  key={`pinned-chat-${chat.appChatId}`}
-                  role="button"
-                  tabIndex={0}
-                  className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
-                  onClick={() => onSelectChat(chat)}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget) return
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      onSelectChat(chat)
-                    }
-                  }}
-                  title={chat.title}
-                >
-                  {renderProviderDot(chat.provider)}
-                  <SidebarChatTitleEditable
-                    chat={chat}
-                    className="sidebar-pinned-label"
-                    query={sidebarSearchQuery}
-                    isSelected={currentChat?.appChatId === chat.appChatId}
-                    isEditing={editingChatId === chat.appChatId}
-                    onStartEdit={() => setEditingChatId(chat.appChatId)}
-                    onSubmit={(next) => commitChatRename(chat, next)}
-                    onCancel={() => setEditingChatId(null)}
-                  />
-                  <SidebarOverflowMenu
-                    triggerLabel="Chat actions"
-                    items={buildChatMenuItems(chat)}
-                  />
-                </div>
-              ))}
-            </div>
+              <div className="sidebar-pinned-list">
+                {visiblePinnedWorkspaces.map((workspace) => (
+                  <div
+                    key={`pinned-workspace-${workspace.id}`}
+                    role="button"
+                    tabIndex={0}
+                    className={`sidebar-pinned-item ${currentWorkspace?.id === workspace.id ? 'active' : ''}`}
+                    onClick={() => onSelectWorkspace(workspace)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onSelectWorkspace(workspace)
+                      }
+                    }}
+                    title={workspace.path}
+                  >
+                    <FolderSymbolIcon />
+                    <span className="sidebar-pinned-label">
+                      <HighlightMatch text={workspace.displayName} query={sidebarSearchQuery} />
+                    </span>
+                    <SidebarOverflowMenu
+                      triggerLabel="Workspace actions"
+                      items={buildWorkspaceMenuItems(workspace)}
+                    />
+                  </div>
+                ))}
+                {visiblePinnedChats.map((chat) => (
+                  <div
+                    key={`pinned-chat-${chat.appChatId}`}
+                    role="button"
+                    tabIndex={0}
+                    className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                    onClick={() => onSelectChat(chat)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onSelectChat(chat)
+                      }
+                    }}
+                    title={chat.title}
+                  >
+                    {renderProviderDot(chat.provider)}
+                    <SidebarChatTitleEditable
+                      chat={chat}
+                      className="sidebar-pinned-label"
+                      query={sidebarSearchQuery}
+                      isSelected={currentChat?.appChatId === chat.appChatId}
+                      isEditing={editingChatId === chat.appChatId}
+                      onStartEdit={() => setEditingChatId(chat.appChatId)}
+                      onSubmit={(next) => commitChatRename(chat, next)}
+                      onCancel={() => setEditingChatId(null)}
+                    />
+                    <SidebarOverflowMenu
+                      triggerLabel="Chat actions"
+                      items={buildChatMenuItems(chat)}
+                    />
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -1633,13 +1635,16 @@ export function Sidebar({
           target and discovers drag-to-pin only by accident.
         */}
         {showPinDropPlaceholder && (
-          <div className="sidebar-pin-drop-placeholder" {...pinDropProps} role="region" aria-label="Drop here to pin">
+          <div
+            className="sidebar-pin-drop-placeholder"
+            {...pinDropProps}
+            role="region"
+            aria-label="Drop here to pin"
+          >
             <span className="sidebar-pin-drop-placeholder-glyph" aria-hidden>
               ☆
             </span>
-            <span className="sidebar-pin-drop-placeholder-copy">
-              Drop here to pin
-            </span>
+            <span className="sidebar-pin-drop-placeholder-copy">Drop here to pin</span>
           </div>
         )}
 
@@ -1658,46 +1663,46 @@ export function Sidebar({
               </button>
             </div>
             {!isSectionCollapsed('recents') && (
-            <div className="sidebar-recents-list">
-              {visibleRecentChats.map((chat) => {
-                const chatAgeTimestamp = chat.updatedAt || chat.createdAt
-                return (
-                  <div
-                    key={`recent-${chat.appChatId}`}
-                    role="button"
-                    tabIndex={0}
-                    className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
-                    onClick={() => onSelectChat(chat)}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        onSelectChat(chat)
-                      }
-                    }}
-                    title={chat.title}
-                    {...getChatTileDragProps(chat)}
-                  >
-                    {renderProviderDot(chat.provider)}
-                    <SidebarChatTitleEditable
-                      chat={chat}
-                      className="sidebar-recents-label"
-                      query={sidebarSearchQuery}
-                      isSelected={currentChat?.appChatId === chat.appChatId}
-                      isEditing={editingChatId === chat.appChatId}
-                      onStartEdit={() => setEditingChatId(chat.appChatId)}
-                      onSubmit={(next) => commitChatRename(chat, next)}
-                      onCancel={() => setEditingChatId(null)}
-                    />
-                    <ChatAgeLabel timestamp={chatAgeTimestamp} />
-                    <SidebarOverflowMenu
-                      triggerLabel="Chat actions"
-                      items={buildChatMenuItems(chat)}
-                    />
-                  </div>
-                )
-              })}
-            </div>
+              <div className="sidebar-recents-list">
+                {visibleRecentChats.map((chat) => {
+                  const chatAgeTimestamp = chat.updatedAt || chat.createdAt
+                  return (
+                    <div
+                      key={`recent-${chat.appChatId}`}
+                      role="button"
+                      tabIndex={0}
+                      className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                      onClick={() => onSelectChat(chat)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectChat(chat)
+                        }
+                      }}
+                      title={chat.title}
+                      {...getChatTileDragProps(chat)}
+                    >
+                      {renderProviderDot(chat.provider)}
+                      <SidebarChatTitleEditable
+                        chat={chat}
+                        className="sidebar-recents-label"
+                        query={sidebarSearchQuery}
+                        isSelected={currentChat?.appChatId === chat.appChatId}
+                        isEditing={editingChatId === chat.appChatId}
+                        onStartEdit={() => setEditingChatId(chat.appChatId)}
+                        onSubmit={(next) => commitChatRename(chat, next)}
+                        onCancel={() => setEditingChatId(null)}
+                      />
+                      <ChatAgeLabel timestamp={chatAgeTimestamp} />
+                      <SidebarOverflowMenu
+                        triggerLabel="Chat actions"
+                        items={buildChatMenuItems(chat)}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}
@@ -1731,9 +1736,9 @@ export function Sidebar({
                 <PlusSymbolIcon />
               </button>
             </div>
-            {!isSectionCollapsed('ensembles') && (
-              visibleEnsembleChats.length === 0 ? (
-              /*
+            {!isSectionCollapsed('ensembles') &&
+              (visibleEnsembleChats.length === 0 ? (
+                /*
                 Empty-state caption. Gives ensembles the same
                 discoverability Workspaces gets when the list is
                 empty — without it, fresh users never see the
@@ -1741,76 +1746,79 @@ export function Sidebar({
                 the `+ New` menu alone. The caption nudges them at
                 the trigger by name so the link is obvious.
               */
-              <div className="sidebar-ensembles-empty" role="note">
-                <span className="sidebar-ensembles-empty-icon" aria-hidden>
-                  <EnsembleSymbolIcon />
-                </span>
-                <span className="sidebar-ensembles-empty-copy">
-                  No ensembles yet. Use <strong>+ New → New Ensemble</strong> to
-                  put two or more providers in the same thread.
-                </span>
-              </div>
-            ) : (
-              <div className="sidebar-chat-list sidebar-ensemble-list">
-                {visibleEnsembleChats.map((chat) => {
-                const activeRound = chat.ensemble?.activeRound
-                const activeParticipant = chat.ensemble?.participants.find(
-                  (participant) => participant.id === activeRound?.activeParticipantId
-                )
-                const isRunning = activeRound?.status === 'running'
-                const subtitle = activeParticipant
-                  ? `${getProviderName(activeParticipant.provider)} / ${activeParticipant.role}`
-                  : chat.scope === 'global'
-                    ? 'Global ensemble'
-                    : 'Workspace ensemble'
-                return (
-                  <button
-                    type="button"
-                    key={`ensemble-${chat.appChatId}`}
-                    className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
-                    onClick={() => onSelectChat(chat)}
-                    {...getChatTileDragProps(chat)}
-                  >
-                    <span className="sidebar-chat-copy" title={chat.title}>
-                      <span className="sidebar-chat-title-line">
-                        <span className="sidebar-provider-label provider-ensemble">
-                          <span>Ensemble</span>
+                <div className="sidebar-ensembles-empty" role="note">
+                  <span className="sidebar-ensembles-empty-icon" aria-hidden>
+                    <EnsembleSymbolIcon />
+                  </span>
+                  <span className="sidebar-ensembles-empty-copy">
+                    No ensembles yet. Use <strong>+ New → New Ensemble</strong> to put two or more
+                    providers in the same thread.
+                  </span>
+                </div>
+              ) : (
+                <div className="sidebar-chat-list sidebar-ensemble-list">
+                  {visibleEnsembleChats.map((chat) => {
+                    const activeRound = chat.ensemble?.activeRound
+                    const activeParticipant = chat.ensemble?.participants.find(
+                      (participant) => participant.id === activeRound?.activeParticipantId
+                    )
+                    const isRunning = activeRound?.status === 'running'
+                    const subtitle = activeParticipant
+                      ? `${getProviderName(activeParticipant.provider)} / ${activeParticipant.role}`
+                      : chat.scope === 'global'
+                        ? 'Global ensemble'
+                        : 'Workspace ensemble'
+                    return (
+                      <button
+                        type="button"
+                        key={`ensemble-${chat.appChatId}`}
+                        className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
+                        onClick={() => onSelectChat(chat)}
+                        {...getChatTileDragProps(chat)}
+                      >
+                        <span className="sidebar-chat-copy" title={chat.title}>
+                          <span className="sidebar-chat-title-line">
+                            <span className="sidebar-provider-label provider-ensemble">
+                              <span>Ensemble</span>
+                            </span>
+                            <SidebarChatTitleEditable
+                              chat={chat}
+                              className="sidebar-chat-title"
+                              query={sidebarSearchQuery}
+                              isSelected={currentChat?.appChatId === chat.appChatId}
+                              isEditing={editingChatId === chat.appChatId}
+                              onStartEdit={() => setEditingChatId(chat.appChatId)}
+                              onSubmit={(next) => commitChatRename(chat, next)}
+                              onCancel={() => setEditingChatId(null)}
+                            />
+                          </span>
+                          <span className="sidebar-chat-subline">
+                            <span
+                              className={`sidebar-run-status tone-${isRunning ? 'warning' : 'muted'}`}
+                            >
+                              {isRunning ? `Speaking: ${subtitle}` : subtitle}
+                            </span>
+                          </span>
                         </span>
-                        <SidebarChatTitleEditable
-                          chat={chat}
-                          className="sidebar-chat-title"
-                          query={sidebarSearchQuery}
-                          isSelected={currentChat?.appChatId === chat.appChatId}
-                          isEditing={editingChatId === chat.appChatId}
-                          onStartEdit={() => setEditingChatId(chat.appChatId)}
-                          onSubmit={(next) => commitChatRename(chat, next)}
-                          onCancel={() => setEditingChatId(null)}
+                        {isRunning && (
+                          <span
+                            className="sidebar-chat-busy"
+                            title="Ensemble round running"
+                            aria-label="Ensemble round running"
+                          />
+                        )}
+                        {!isRunning && (
+                          <ChatAgeLabel timestamp={chat.updatedAt || chat.createdAt} />
+                        )}
+                        <SidebarOverflowMenu
+                          triggerLabel="Ensemble actions"
+                          items={buildChatMenuItems(chat)}
                         />
-                      </span>
-                      <span className="sidebar-chat-subline">
-                        <span className={`sidebar-run-status tone-${isRunning ? 'warning' : 'muted'}`}>
-                          {isRunning ? `Speaking: ${subtitle}` : subtitle}
-                        </span>
-                      </span>
-                    </span>
-                    {isRunning && (
-                      <span
-                        className="sidebar-chat-busy"
-                        title="Ensemble round running"
-                        aria-label="Ensemble round running"
-                      />
-                    )}
-                    {!isRunning && <ChatAgeLabel timestamp={chat.updatedAt || chat.createdAt} />}
-                    <SidebarOverflowMenu
-                      triggerLabel="Ensemble actions"
-                      items={buildChatMenuItems(chat)}
-                    />
-                  </button>
-                )
-              })}
-              </div>
-              )
-            )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
           </div>
         )}
 
@@ -1821,9 +1829,7 @@ export function Sidebar({
               className="sidebar-section-header-toggle"
               onClick={() => toggleSidebarSection('workspaces')}
               aria-expanded={!isSectionCollapsed('workspaces')}
-              title={
-                isSectionCollapsed('workspaces') ? 'Expand Workspaces' : 'Collapse Workspaces'
-              }
+              title={isSectionCollapsed('workspaces') ? 'Expand Workspaces' : 'Collapse Workspaces'}
             >
               <ChevronSymbolIcon isExpanded={!isSectionCollapsed('workspaces')} />
               <h4 className="sidebar-section-title">Workspaces</h4>
@@ -1842,11 +1848,7 @@ export function Sidebar({
               collapsed lets the user add a workspace even while their
               list is folded away.
             */}
-            <span
-              className={
-                workspaceAddPointerActive ? 'workspace-add-pointer' : undefined
-              }
-            >
+            <span className={workspaceAddPointerActive ? 'workspace-add-pointer' : undefined}>
               <button
                 type="button"
                 className="sidebar-section-header-action sidebar-workspace-create"
@@ -1878,9 +1880,9 @@ export function Sidebar({
               <div className="sidebar-onboarding-hint-body">
                 <strong>Add your first workspace</strong>
                 <span>
-                  Click the <span className="sidebar-onboarding-plus">+</span> above to
-                  point AGBench at a project folder. Workspaces hold your chats and let
-                  the agent read / edit files inside their trust boundary.
+                  Click the <span className="sidebar-onboarding-plus">+</span> above to point
+                  AGBench at a project folder. Workspaces hold your chats and let the agent read /
+                  edit files inside their trust boundary.
                 </span>
               </div>
               {onDismissOnboardingHint && (
@@ -1906,273 +1908,275 @@ export function Sidebar({
             */}
             {!isSectionCollapsed('workspaces') &&
               visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
-              const expanded = isSidebarSearchActive ? true : expandedWorkspaceIds.has(ws.id)
-              const workspaceChats = chatsByWorkspace.get(ws.id) || []
-              const workspaceHasRunning = workspaceChats.some((chat) =>
-                runningChatIdSet.has(chat.appChatId)
-              )
-              return (
-                <div key={ws.id} className="sidebar-workspace-group">
-                  <div
-                    className={`sidebar-item sidebar-workspace-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelectWorkspace(ws)}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) {
-                        return
-                      }
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        onSelectWorkspace(ws)
-                      }
-                    }}
-                    onFocus={() => setHoveredWorkspace(ws.id)}
-                    onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setHoveredWorkspace(null)
-                      }
-                    }}
-                    onMouseEnter={() => setHoveredWorkspace(ws.id)}
-                    onMouseLeave={() => setHoveredWorkspace(null)}
-                  >
-                    {totalChats > 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost sidebar-tree-toggle"
-                        onClick={(event) => toggleWorkspaceExpanded(event, ws.id)}
-                        title={expanded ? 'Collapse chats' : 'Expand chats'}
-                        aria-label={expanded ? 'Collapse chats' : 'Expand chats'}
-                      >
-                        <ChevronSymbolIcon isExpanded={expanded} />
-                      </button>
-                    ) : (
-                      <span className="sidebar-tree-toggle spacer" />
-                    )}
-                    <FolderSymbolIcon />
-                    <span className="sidebar-workspace-copy" title={ws.path}>
-                      <span className="sidebar-workspace-name">
-                        <HighlightMatch text={ws.displayName} query={sidebarSearchQuery} />
+                const expanded = isSidebarSearchActive ? true : expandedWorkspaceIds.has(ws.id)
+                const workspaceChats = chatsByWorkspace.get(ws.id) || []
+                const workspaceHasRunning = workspaceChats.some((chat) =>
+                  runningChatIdSet.has(chat.appChatId)
+                )
+                return (
+                  <div key={ws.id} className="sidebar-workspace-group">
+                    <div
+                      className={`sidebar-item sidebar-workspace-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelectWorkspace(ws)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) {
+                          return
+                        }
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectWorkspace(ws)
+                        }
+                      }}
+                      onFocus={() => setHoveredWorkspace(ws.id)}
+                      onBlur={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                          setHoveredWorkspace(null)
+                        }
+                      }}
+                      onMouseEnter={() => setHoveredWorkspace(ws.id)}
+                      onMouseLeave={() => setHoveredWorkspace(null)}
+                    >
+                      {totalChats > 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost sidebar-tree-toggle"
+                          onClick={(event) => toggleWorkspaceExpanded(event, ws.id)}
+                          title={expanded ? 'Collapse chats' : 'Expand chats'}
+                          aria-label={expanded ? 'Collapse chats' : 'Expand chats'}
+                        >
+                          <ChevronSymbolIcon isExpanded={expanded} />
+                        </button>
+                      ) : (
+                        <span className="sidebar-tree-toggle spacer" />
+                      )}
+                      <FolderSymbolIcon />
+                      <span className="sidebar-workspace-copy" title={ws.path}>
+                        <span className="sidebar-workspace-name">
+                          <HighlightMatch text={ws.displayName} query={sidebarSearchQuery} />
+                        </span>
+                        <span className="sidebar-workspace-meta">
+                          <HighlightMatch text={getWorkspaceMeta(ws)} query={sidebarSearchQuery} />
+                        </span>
                       </span>
-                      <span className="sidebar-workspace-meta">
-                        <HighlightMatch text={getWorkspaceMeta(ws)} query={sidebarSearchQuery} />
-                      </span>
-                    </span>
-                    {workspaceHasRunning && (
-                      <span
-                        className="sidebar-workspace-running-dot"
-                        title="Task running in this workspace"
-                        aria-label="Task running in this workspace"
-                      />
-                    )}
-                    {totalChats > 0 && hoveredWorkspace !== ws.id && (
-                      <span
-                        className="sidebar-workspace-count-badge"
-                        title={`${totalChats} chat${totalChats === 1 ? '' : 's'}`}
-                        aria-label={`${totalChats} chat${totalChats === 1 ? '' : 's'} in this workspace`}
-                      >
-                        {totalChats}
-                      </span>
-                    )}
-                    {/* 1.0.3 — workspace inline action icons retired in
+                      {workspaceHasRunning && (
+                        <span
+                          className="sidebar-workspace-running-dot"
+                          title="Task running in this workspace"
+                          aria-label="Task running in this workspace"
+                        />
+                      )}
+                      {totalChats > 0 && hoveredWorkspace !== ws.id && (
+                        <span
+                          className="sidebar-workspace-count-badge"
+                          title={`${totalChats} chat${totalChats === 1 ? '' : 's'}`}
+                          aria-label={`${totalChats} chat${totalChats === 1 ? '' : 's'} in this workspace`}
+                        >
+                          {totalChats}
+                        </span>
+                      )}
+                      {/* 1.0.3 — workspace inline action icons retired in
                         favour of the three-dots overflow menu (single
                         source of actions per chat-tile rework). All
                         affordances (New chat / Pin / Unpin / Remove
                         workspace) live in `buildWorkspaceMenuItems`. */}
-                    <SidebarOverflowMenu
-                      triggerLabel="Workspace actions"
-                      items={buildWorkspaceMenuItems(ws)}
-                    />
-                  </div>
-                  {visibleChats.length > 0 && expanded ? (
-                    <div className="sidebar-chat-list">
-                      {visibleChats
-                        // Phase F1: hide sub-threads here — they render
-                        // nested under their parent below.
-                        .filter((chat) => !chat.parentChatId)
-                        .map((chat) => {
-                          const chatAgeTimestamp = chat.updatedAt || chat.createdAt
-                          const isChatRunning = runningChatIdSet.has(chat.appChatId)
-                          const lastRunStatus = getLastRunStatus(chat)
-                          const subThreads = subThreadsByParentId.get(chat.appChatId) ?? []
-                          // Phase I3.2 — "branched · N" badge. The badge
-                          // is bright while any sub-thread is running and
-                          // dims (still visible) once they've all
-                          // terminated, so the user can spot orchestrating
-                          // chats at a glance without losing the history.
-                          const subThreadCount = subThreads.length
-                          const subThreadsExpanded = isSidebarSearchActive
-                            ? true
-                            : !collapsedSubThreadParentIds.has(chat.appChatId)
-                          const liveSubThreadCount = subThreads.reduce(
-                            (count, sub) => count + (runningChatIdSet.has(sub.appChatId) ? 1 : 0),
-                            0
-                          )
-                          const branchedBadgeTone = liveSubThreadCount > 0 ? 'active' : 'dim'
-                          return (
-                            <div key={chat.appChatId} className="sidebar-chat-family">
-                              <button
-                                type="button"
-                                className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
-                                onClick={() => onSelectChat(chat)}
-                              >
-                                {subThreadCount > 0 && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="sidebar-tree-toggle sidebar-chat-tree-toggle"
-                                    onClick={(event) =>
-                                      toggleSubThreadsExpanded(event, chat.appChatId)
-                                    }
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter' || event.key === ' ') {
+                      <SidebarOverflowMenu
+                        triggerLabel="Workspace actions"
+                        items={buildWorkspaceMenuItems(ws)}
+                      />
+                    </div>
+                    {visibleChats.length > 0 && expanded ? (
+                      <div className="sidebar-chat-list">
+                        {visibleChats
+                          // Phase F1: hide sub-threads here — they render
+                          // nested under their parent below.
+                          .filter((chat) => !chat.parentChatId)
+                          .map((chat) => {
+                            const chatAgeTimestamp = chat.updatedAt || chat.createdAt
+                            const isChatRunning = runningChatIdSet.has(chat.appChatId)
+                            const lastRunStatus = getLastRunStatus(chat)
+                            const subThreads = subThreadsByParentId.get(chat.appChatId) ?? []
+                            // Phase I3.2 — "branched · N" badge. The badge
+                            // is bright while any sub-thread is running and
+                            // dims (still visible) once they've all
+                            // terminated, so the user can spot orchestrating
+                            // chats at a glance without losing the history.
+                            const subThreadCount = subThreads.length
+                            const subThreadsExpanded = isSidebarSearchActive
+                              ? true
+                              : !collapsedSubThreadParentIds.has(chat.appChatId)
+                            const liveSubThreadCount = subThreads.reduce(
+                              (count, sub) => count + (runningChatIdSet.has(sub.appChatId) ? 1 : 0),
+                              0
+                            )
+                            const branchedBadgeTone = liveSubThreadCount > 0 ? 'active' : 'dim'
+                            return (
+                              <div key={chat.appChatId} className="sidebar-chat-family">
+                                <button
+                                  type="button"
+                                  className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                                  onClick={() => onSelectChat(chat)}
+                                >
+                                  {subThreadCount > 0 && (
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      className="sidebar-tree-toggle sidebar-chat-tree-toggle"
+                                      onClick={(event) =>
                                         toggleSubThreadsExpanded(event, chat.appChatId)
                                       }
-                                    }}
-                                    title={
-                                      subThreadsExpanded
-                                        ? 'Collapse sub-threads'
-                                        : 'Expand sub-threads'
-                                    }
-                                    aria-label={
-                                      subThreadsExpanded
-                                        ? 'Collapse sub-threads'
-                                        : 'Expand sub-threads'
-                                    }
-                                    aria-expanded={subThreadsExpanded}
-                                  >
-                                    <ChevronSymbolIcon isExpanded={subThreadsExpanded} />
-                                  </span>
-                                )}
-                                <span className="sidebar-chat-copy" title={chat.title}>
-                                  <span className="sidebar-chat-title-line">
-                                    <SidebarProviderLabel provider={chat.provider} />
-                                    <SidebarChatTitleEditable
-                                      chat={chat}
-                                      className="sidebar-chat-title"
-                                      query={sidebarSearchQuery}
-                                      isSelected={currentChat?.appChatId === chat.appChatId}
-                                      isEditing={editingChatId === chat.appChatId}
-                                      onStartEdit={() => setEditingChatId(chat.appChatId)}
-                                      onSubmit={(next) => commitChatRename(chat, next)}
-                                      onCancel={() => setEditingChatId(null)}
-                                    />
-                                  </span>
-                                  {(isChatRunning ||
-                                    (lastRunStatus &&
-                                      lastRunStatus.tone !== 'success' &&
-                                      lastRunStatus.tone !== 'muted') ||
-                                    subThreadCount > 0) && (
-                                    <span className="sidebar-chat-subline">
-                                      {isChatRunning ? (
-                                        <span className="sidebar-run-status tone-running">
-                                          Running
-                                        </span>
-                                      ) : lastRunStatus ? (
-                                        <span
-                                          className={`sidebar-run-status tone-${lastRunStatus.tone}`}
-                                        >
-                                          {lastRunStatus.label}
-                                        </span>
-                                      ) : null}
-                                      {subThreadCount > 0 && (
-                                        <span
-                                          className={`sidebar-branched-badge sidebar-branched-${branchedBadgeTone}`}
-                                          title={`${liveSubThreadCount} of ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'} running`}
-                                          aria-label={`branched ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'}`}
-                                        >
-                                          branched · {subThreadCount}
-                                        </span>
-                                      )}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                          toggleSubThreadsExpanded(event, chat.appChatId)
+                                        }
+                                      }}
+                                      title={
+                                        subThreadsExpanded
+                                          ? 'Collapse sub-threads'
+                                          : 'Expand sub-threads'
+                                      }
+                                      aria-label={
+                                        subThreadsExpanded
+                                          ? 'Collapse sub-threads'
+                                          : 'Expand sub-threads'
+                                      }
+                                      aria-expanded={subThreadsExpanded}
+                                    >
+                                      <ChevronSymbolIcon isExpanded={subThreadsExpanded} />
                                     </span>
                                   )}
-                                </span>
-                                {isChatRunning && (
-                                  <span
-                                    className="sidebar-chat-busy"
-                                    title="Task running"
-                                    aria-label="Task running"
-                                  />
-                                )}
-                                {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
-                                <SidebarOverflowMenu
-                                  triggerLabel="Chat actions"
-                                  items={buildChatMenuItems(chat)}
-                                />
-                              </button>
-                              {subThreads.length > 0 && subThreadsExpanded && (
-                                <div className="sidebar-chat-children">
-                                  {subThreads.map((subChat) => {
-                                    const subRunning = runningChatIdSet.has(subChat.appChatId)
-                                    const subLastStatus = getLastRunStatus(subChat)
-                                    const subProviderColor = `var(--provider-${subChat.provider || 'gemini'}-color)`
-                                    return (
-                                      <button
-                                        type="button"
-                                        key={subChat.appChatId}
-                                        className={`sidebar-item sidebar-chat-item sidebar-sub-thread provider-${subChat.provider || 'gemini'} ${currentChat?.appChatId === subChat.appChatId ? 'active' : ''} ${subRunning ? 'running' : ''}`}
-                                        onClick={() => onSelectChat(subChat)}
-                                      >
-                                        <span className="sidebar-sub-thread-prefix" aria-hidden>
-                                          ↳
-                                        </span>
-                                        <span
-                                          className="sidebar-sub-thread-dot"
-                                          aria-hidden="true"
-                                          style={{ background: subProviderColor }}
-                                        />
-                                        <span className="sidebar-chat-copy" title={subChat.title}>
-                                          <span className="sidebar-chat-title-line">
-                                            <SidebarProviderLabel provider={subChat.provider} />
-                                            <SidebarChatTitleEditable
-                                              chat={subChat}
-                                              className="sidebar-chat-title"
-                                              query={sidebarSearchQuery}
-                                              isSelected={
-                                                currentChat?.appChatId === subChat.appChatId
-                                              }
-                                              isEditing={editingChatId === subChat.appChatId}
-                                              onStartEdit={() => setEditingChatId(subChat.appChatId)}
-                                              onSubmit={(next) => commitChatRename(subChat, next)}
-                                              onCancel={() => setEditingChatId(null)}
-                                            />
+                                  <span className="sidebar-chat-copy" title={chat.title}>
+                                    <span className="sidebar-chat-title-line">
+                                      <SidebarProviderLabel provider={chat.provider} />
+                                      <SidebarChatTitleEditable
+                                        chat={chat}
+                                        className="sidebar-chat-title"
+                                        query={sidebarSearchQuery}
+                                        isSelected={currentChat?.appChatId === chat.appChatId}
+                                        isEditing={editingChatId === chat.appChatId}
+                                        onStartEdit={() => setEditingChatId(chat.appChatId)}
+                                        onSubmit={(next) => commitChatRename(chat, next)}
+                                        onCancel={() => setEditingChatId(null)}
+                                      />
+                                    </span>
+                                    {(isChatRunning ||
+                                      (lastRunStatus &&
+                                        lastRunStatus.tone !== 'success' &&
+                                        lastRunStatus.tone !== 'muted') ||
+                                      subThreadCount > 0) && (
+                                      <span className="sidebar-chat-subline">
+                                        {isChatRunning ? (
+                                          <span className="sidebar-run-status tone-running">
+                                            Running
                                           </span>
-                                          {(subRunning ||
-                                            (subLastStatus &&
-                                              subLastStatus.tone !== 'success' &&
-                                              subLastStatus.tone !== 'muted')) && (
-                                            <span className="sidebar-chat-subline">
-                                              {subRunning ? (
-                                                <span className="sidebar-run-status tone-running">
-                                                  Running
-                                                </span>
-                                              ) : subLastStatus ? (
-                                                <span
-                                                  className={`sidebar-run-status tone-${subLastStatus.tone}`}
-                                                >
-                                                  {subLastStatus.label}
-                                                </span>
-                                              ) : null}
+                                        ) : lastRunStatus ? (
+                                          <span
+                                            className={`sidebar-run-status tone-${lastRunStatus.tone}`}
+                                          >
+                                            {lastRunStatus.label}
+                                          </span>
+                                        ) : null}
+                                        {subThreadCount > 0 && (
+                                          <span
+                                            className={`sidebar-branched-badge sidebar-branched-${branchedBadgeTone}`}
+                                            title={`${liveSubThreadCount} of ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'} running`}
+                                            aria-label={`branched ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'}`}
+                                          >
+                                            branched · {subThreadCount}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                  </span>
+                                  {isChatRunning && (
+                                    <span
+                                      className="sidebar-chat-busy"
+                                      title="Task running"
+                                      aria-label="Task running"
+                                    />
+                                  )}
+                                  {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
+                                  <SidebarOverflowMenu
+                                    triggerLabel="Chat actions"
+                                    items={buildChatMenuItems(chat)}
+                                  />
+                                </button>
+                                {subThreads.length > 0 && subThreadsExpanded && (
+                                  <div className="sidebar-chat-children">
+                                    {subThreads.map((subChat) => {
+                                      const subRunning = runningChatIdSet.has(subChat.appChatId)
+                                      const subLastStatus = getLastRunStatus(subChat)
+                                      const subProviderColor = `var(--provider-${subChat.provider || 'gemini'}-color)`
+                                      return (
+                                        <button
+                                          type="button"
+                                          key={subChat.appChatId}
+                                          className={`sidebar-item sidebar-chat-item sidebar-sub-thread provider-${subChat.provider || 'gemini'} ${currentChat?.appChatId === subChat.appChatId ? 'active' : ''} ${subRunning ? 'running' : ''}`}
+                                          onClick={() => onSelectChat(subChat)}
+                                        >
+                                          <span className="sidebar-sub-thread-prefix" aria-hidden>
+                                            ↳
+                                          </span>
+                                          <span
+                                            className="sidebar-sub-thread-dot"
+                                            aria-hidden="true"
+                                            style={{ background: subProviderColor }}
+                                          />
+                                          <span className="sidebar-chat-copy" title={subChat.title}>
+                                            <span className="sidebar-chat-title-line">
+                                              <SidebarProviderLabel provider={subChat.provider} />
+                                              <SidebarChatTitleEditable
+                                                chat={subChat}
+                                                className="sidebar-chat-title"
+                                                query={sidebarSearchQuery}
+                                                isSelected={
+                                                  currentChat?.appChatId === subChat.appChatId
+                                                }
+                                                isEditing={editingChatId === subChat.appChatId}
+                                                onStartEdit={() =>
+                                                  setEditingChatId(subChat.appChatId)
+                                                }
+                                                onSubmit={(next) => commitChatRename(subChat, next)}
+                                                onCancel={() => setEditingChatId(null)}
+                                              />
                                             </span>
-                                          )}
-                                        </span>
-                                        <SidebarOverflowMenu
-                                          triggerLabel="Sub-thread actions"
-                                          items={buildChatMenuItems(subChat)}
-                                        />
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
+                                            {(subRunning ||
+                                              (subLastStatus &&
+                                                subLastStatus.tone !== 'success' &&
+                                                subLastStatus.tone !== 'muted')) && (
+                                              <span className="sidebar-chat-subline">
+                                                {subRunning ? (
+                                                  <span className="sidebar-run-status tone-running">
+                                                    Running
+                                                  </span>
+                                                ) : subLastStatus ? (
+                                                  <span
+                                                    className={`sidebar-run-status tone-${subLastStatus.tone}`}
+                                                  >
+                                                    {subLastStatus.label}
+                                                  </span>
+                                                ) : null}
+                                              </span>
+                                            )}
+                                          </span>
+                                          <SidebarOverflowMenu
+                                            triggerLabel="Sub-thread actions"
+                                            items={buildChatMenuItems(subChat)}
+                                          />
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
             {isSidebarSearchActive &&
               visibleWorkspaceEntries.length === 0 &&
               visibleGlobalChats.length === 0 && (
@@ -2203,66 +2207,66 @@ export function Sidebar({
               </button>
             </div>
             {!isSectionCollapsed('chats') && (
-            <div className="sidebar-chat-list sidebar-global-chat-list">
-              {visibleGlobalChats.map((chat) => {
-                const chatAgeTimestamp = chat.updatedAt || chat.createdAt
-                const isChatRunning = runningChatIdSet.has(chat.appChatId)
-                const lastRunStatus = getLastRunStatus(chat)
-                return (
-                  <button
-                    type="button"
-                    key={chat.appChatId}
-                    className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
-                    onClick={() => onSelectChat(chat)}
-                  >
-                    <span className="sidebar-chat-copy" title={chat.title}>
-                      <span className="sidebar-chat-title-line">
-                        <SidebarProviderLabel provider={chat.provider} />
-                        <SidebarChatTitleEditable
-                          chat={chat}
-                          className="sidebar-chat-title"
-                          query={sidebarSearchQuery}
-                          isSelected={currentChat?.appChatId === chat.appChatId}
-                          isEditing={editingChatId === chat.appChatId}
-                          onStartEdit={() => setEditingChatId(chat.appChatId)}
-                          onSubmit={(next) => commitChatRename(chat, next)}
-                          onCancel={() => setEditingChatId(null)}
-                        />
-                      </span>
-                      {(isChatRunning ||
-                        (lastRunStatus &&
-                          lastRunStatus.tone !== 'success' &&
-                          lastRunStatus.tone !== 'muted')) && (
-                        <span className="sidebar-chat-subline">
-                          {isChatRunning ? (
-                            <span className="sidebar-run-status tone-running">Running</span>
-                          ) : lastRunStatus ? (
-                            <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
-                              {lastRunStatus.label}
-                            </span>
-                          ) : null}
+              <div className="sidebar-chat-list sidebar-global-chat-list">
+                {visibleGlobalChats.map((chat) => {
+                  const chatAgeTimestamp = chat.updatedAt || chat.createdAt
+                  const isChatRunning = runningChatIdSet.has(chat.appChatId)
+                  const lastRunStatus = getLastRunStatus(chat)
+                  return (
+                    <button
+                      type="button"
+                      key={chat.appChatId}
+                      className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                      onClick={() => onSelectChat(chat)}
+                    >
+                      <span className="sidebar-chat-copy" title={chat.title}>
+                        <span className="sidebar-chat-title-line">
+                          <SidebarProviderLabel provider={chat.provider} />
+                          <SidebarChatTitleEditable
+                            chat={chat}
+                            className="sidebar-chat-title"
+                            query={sidebarSearchQuery}
+                            isSelected={currentChat?.appChatId === chat.appChatId}
+                            isEditing={editingChatId === chat.appChatId}
+                            onStartEdit={() => setEditingChatId(chat.appChatId)}
+                            onSubmit={(next) => commitChatRename(chat, next)}
+                            onCancel={() => setEditingChatId(null)}
+                          />
                         </span>
+                        {(isChatRunning ||
+                          (lastRunStatus &&
+                            lastRunStatus.tone !== 'success' &&
+                            lastRunStatus.tone !== 'muted')) && (
+                          <span className="sidebar-chat-subline">
+                            {isChatRunning ? (
+                              <span className="sidebar-run-status tone-running">Running</span>
+                            ) : lastRunStatus ? (
+                              <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                                {lastRunStatus.label}
+                              </span>
+                            ) : null}
+                          </span>
+                        )}
+                      </span>
+                      {isChatRunning && (
+                        <span
+                          className="sidebar-chat-busy"
+                          title="Task running"
+                          aria-label="Task running"
+                        />
                       )}
-                    </span>
-                    {isChatRunning && (
-                      <span
-                        className="sidebar-chat-busy"
-                        title="Task running"
-                        aria-label="Task running"
+                      {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
+                      <SidebarOverflowMenu
+                        triggerLabel="Chat actions"
+                        items={buildChatMenuItems(chat)}
                       />
-                    )}
-                    {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
-                    <SidebarOverflowMenu
-                      triggerLabel="Chat actions"
-                      items={buildChatMenuItems(chat)}
-                    />
-                  </button>
-                )
-              })}
-              {visibleGlobalChats.length === 0 && !isSidebarSearchActive && (
-                <div className="sidebar-empty-state">No chats yet.</div>
-              )}
-            </div>
+                    </button>
+                  )
+                })}
+                {visibleGlobalChats.length === 0 && !isSidebarSearchActive && (
+                  <div className="sidebar-empty-state">No chats yet.</div>
+                )}
+              </div>
             )}
           </div>
         </div>

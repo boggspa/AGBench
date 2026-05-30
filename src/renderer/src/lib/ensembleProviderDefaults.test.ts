@@ -78,9 +78,7 @@ describe('getDefaultEnsembleParticipantConfig', () => {
 
 describe('resolveEnsembleParticipantSettings', () => {
   it('fills missing fields from the codex provider defaults', () => {
-    const resolved = resolveEnsembleParticipantSettings(
-      participant({ provider: 'codex' })
-    )
+    const resolved = resolveEnsembleParticipantSettings(participant({ provider: 'codex' }))
     expect(resolved).toEqual({
       provider: 'codex',
       model: 'cli-default',

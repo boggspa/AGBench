@@ -11,4 +11,3 @@ describe('formatOpaqueMarkdownPromptSection', () => {
     expect(section).toContain(content)
   })
 })
-

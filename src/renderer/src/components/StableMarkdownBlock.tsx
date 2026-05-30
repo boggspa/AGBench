@@ -96,7 +96,7 @@ function MarkdownCodeBlock({ content, language }: { content: string; language?: 
  * gate; this tokeniser is cheap enough to always run, the chip
  * collapses to text when no participants exist).
  */
-const PARTICIPANT_MENTION_REGEX = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
+const PARTICIPANT_MENTION_REGEX = /(^|[\s([{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
 
 function tokeniseParticipantMentions(value: string): ReactNode {
   if (!value || !value.includes('@')) return value

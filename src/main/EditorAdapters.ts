@@ -142,7 +142,7 @@ const EDITOR_ADAPTERS: EditorAdapter[] = [
     cliCommand: 'cursor',
     positionalSyntax: 'vscode-goto',
     notes:
-      'Cursor inherits VS Code\'s CLI surface and accepts `cursor -g file:line:col` for positional opens.'
+      "Cursor inherits VS Code's CLI surface and accepts `cursor -g file:line:col` for positional opens."
   },
   {
     id: 'zed',
@@ -176,8 +176,7 @@ const EDITOR_ADAPTERS: EditorAdapter[] = [
     commonAppPaths: ['/Applications/BBEdit.app'],
     cliCommand: 'bbedit',
     positionalSyntax: 'dash-l-positional',
-    notes:
-      'Use `bbedit +<line> <file>` for position; we normalise that via the dispatcher.'
+    notes: 'Use `bbedit +<line> <file>` for position; we normalise that via the dispatcher.'
   },
   {
     id: 'nova',

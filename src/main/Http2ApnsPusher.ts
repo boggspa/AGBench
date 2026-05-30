@@ -5,7 +5,8 @@ import type {
   BridgeApnsEnv,
   BridgeApnsPusher,
   BridgeApnsPushResult,
-  BridgeApprovalPushPayload
+  BridgeApprovalPushPayload,
+  BridgeRemoteAttentionPushPayload
 } from './BridgeApnsPusher'
 
 /**
@@ -169,6 +170,17 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     }
   }
 
+  async pushRemoteAttentionNeeded(
+    _payload: BridgeRemoteAttentionPushPayload
+  ): Promise<BridgeApnsPushResult> {
+    return {
+      delivered: false,
+      apnsId: '',
+      reason:
+        'Http2ApnsPusher: device-token lookup not wired in pushRemoteAttentionNeeded (use pushRemoteAttentionToToken instead)'
+    }
+  }
+
   async pushSilent(pairID: string): Promise<BridgeApnsPushResult> {
     return {
       delivered: false,
@@ -199,14 +211,30 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
    * reconnect / sync state. */
   async pushSilentToToken(
     deviceTokenHex: string,
-    env: BridgeApnsEnv
+    env: BridgeApnsEnv,
+    payload?: Omit<BridgeRemoteAttentionPushPayload, 'pairID'>
   ): Promise<BridgeApnsPushResult> {
-    const body = JSON.stringify({ aps: { 'content-available': 1 } })
+    const body = this.buildSilentApsBody(payload)
     return this.deliver({
       deviceTokenHex,
       env,
       pushType: 'background',
       priority: 5,
+      body
+    })
+  }
+
+  async pushRemoteAttentionToToken(
+    deviceTokenHex: string,
+    env: BridgeApnsEnv,
+    payload: BridgeRemoteAttentionPushPayload
+  ): Promise<BridgeApnsPushResult> {
+    const body = this.buildRemoteAttentionApsBody(payload)
+    return this.deliver({
+      deviceTokenHex,
+      env,
+      pushType: 'alert',
+      priority: 10,
       body
     })
   }
@@ -315,20 +343,63 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     return JSON.stringify({
       aps: {
         alert: {
-          title: 'Approval needed',
-          body: payload.summary || 'GUIGemini wants your decision'
+          title: 'AGBench needs attention',
+          body: 'Open AGBench to respond.'
         },
         sound: 'default',
         'mutable-content': 1
       },
-      // Custom fields — iOS app deep-links via these.
+      // Routing identifiers only. Do not put command text, paths, diffs,
+      // summaries, or deep-link paths into APNs payloads.
       pairID: payload.pairID,
       workspaceId: payload.workspaceId,
       threadId: payload.threadId,
-      toolCallId: payload.toolCallId,
-      deepLinkPath: payload.deepLinkPath ?? null,
-      expiresAt: payload.expiresAt ?? null
+      toolCallId: payload.toolCallId
     })
+  }
+
+  private buildSilentApsBody(payload?: Omit<BridgeRemoteAttentionPushPayload, 'pairID'>): string {
+    return JSON.stringify(
+      stripNullish({
+        aps: { 'content-available': 1 },
+        reason: payload?.reason,
+        workspaceId: payload?.workspaceId,
+        threadId: payload?.threadId,
+        runId: payload?.runId,
+        approvalId: payload?.approvalId,
+        questionId: payload?.questionId,
+        wakeupId: payload?.wakeupId,
+        taskId: payload?.taskId,
+        projectionKind: payload?.projectionKind,
+        generatedAt: payload?.generatedAt
+      })
+    )
+  }
+
+  private buildRemoteAttentionApsBody(payload: BridgeRemoteAttentionPushPayload): string {
+    return JSON.stringify(
+      stripNullish({
+        aps: {
+          alert: {
+            title: 'AGBench needs attention',
+            body: 'Open AGBench to review the latest task state.'
+          },
+          sound: 'default',
+          'mutable-content': 1
+        },
+        pairID: payload.pairID,
+        reason: payload.reason,
+        workspaceId: payload.workspaceId,
+        threadId: payload.threadId,
+        runId: payload.runId,
+        approvalId: payload.approvalId,
+        questionId: payload.questionId,
+        wakeupId: payload.wakeupId,
+        taskId: payload.taskId,
+        projectionKind: payload.projectionKind,
+        generatedAt: payload.generatedAt
+      })
+    )
   }
 
   private sendRequest(args: {
@@ -387,6 +458,12 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
 }
 
 // MARK: - Helpers
+
+function stripNullish<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null)
+  )
+}
 
 function base64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')

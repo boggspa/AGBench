@@ -122,9 +122,7 @@ export function summarizeProviderUsage(
       windows: []
     }
   }
-  const windows = Array.isArray(snapshot.windows)
-    ? snapshot.windows.map(summarizeWindow)
-    : []
+  const windows = Array.isArray(snapshot.windows) ? snapshot.windows.map(summarizeWindow) : []
   const worstBand: ProviderUsageBand = windows.reduce<ProviderUsageBand>(
     (worst, w) => (BAND_ORDER[w.band] > BAND_ORDER[worst] ? w.band : worst),
     'unknown'

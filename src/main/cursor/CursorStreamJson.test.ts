@@ -15,7 +15,10 @@ describe('CursorStreamJson', () => {
       expect(a.lines).toHaveLength(1)
       expect(a.lines[0].json?.type).toBe('system')
       expect(a.carry).toBe('{"type":"assist')
-      const b = parseCursorStreamChunk('ant","message":{"content":[{"type":"text","text":"hi"}]}}\n', a.carry)
+      const b = parseCursorStreamChunk(
+        'ant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        a.carry
+      )
       expect(b.lines).toHaveLength(1)
       expect(b.lines[0].json?.type).toBe('assistant')
       expect(b.carry).toBe('')
@@ -32,11 +35,15 @@ describe('CursorStreamJson', () => {
         cursorEventToRunEvents(
           ev({ type: 'system', subtype: 'init', session_id: 's1', model: 'Composer 2.5 Fast' })
         )
-      ).toEqual([{ type: 'init', sessionId: 's1', model: 'Composer 2.5 Fast', raw: expect.anything() }])
+      ).toEqual([
+        { type: 'init', sessionId: 's1', model: 'Composer 2.5 Fast', raw: expect.anything() }
+      ])
     })
 
     it('ignores the user echo', () => {
-      expect(cursorEventToRunEvents(ev({ type: 'user', message: { role: 'user', content: [] } }))).toEqual([])
+      expect(
+        cursorEventToRunEvents(ev({ type: 'user', message: { role: 'user', content: [] } }))
+      ).toEqual([])
     })
 
     it('maps an assistant message to a content event (concatenated text blocks)', () => {
@@ -45,16 +52,22 @@ describe('CursorStreamJson', () => {
           ev({
             type: 'assistant',
             session_id: 's1',
-            message: { role: 'assistant', content: [{ type: 'text', text: 'Hello ' }, { type: 'text', text: 'world' }] }
+            message: {
+              role: 'assistant',
+              content: [
+                { type: 'text', text: 'Hello ' },
+                { type: 'text', text: 'world' }
+              ]
+            }
           })
         )
       ).toEqual([{ type: 'content', text: 'Hello world', sessionId: 's1', raw: expect.anything() }])
     })
 
     it('maps thinking delta to thinking, completed to nothing', () => {
-      expect(cursorEventToRunEvents(ev({ type: 'thinking', subtype: 'delta', text: 'Hmm' }))).toEqual([
-        { type: 'thinking', text: 'Hmm', sessionId: undefined, raw: expect.anything() }
-      ])
+      expect(
+        cursorEventToRunEvents(ev({ type: 'thinking', subtype: 'delta', text: 'Hmm' }))
+      ).toEqual([{ type: 'thinking', text: 'Hmm', sessionId: undefined, raw: expect.anything() }])
       expect(cursorEventToRunEvents(ev({ type: 'thinking', subtype: 'completed' }))).toEqual([])
     })
 
@@ -147,7 +160,12 @@ describe('CursorStreamJson', () => {
           type: 'tool_call',
           subtype: 'completed',
           call_id: 'tool_1',
-          tool_call: { globToolCall: { args: {}, result: { success: { files: ['a.js', 'b.js'], totalFiles: 2 } } } }
+          tool_call: {
+            globToolCall: {
+              args: {},
+              result: { success: { files: ['a.js', 'b.js'], totalFiles: 2 } }
+            }
+          }
         })
       )
       expect(out[0].type).toBe('tool_result')
@@ -165,7 +183,13 @@ describe('CursorStreamJson', () => {
           tool_call: {
             editToolCall: {
               args: { path: 'x.txt' },
-              result: { writePermissionDenied: { path: '', error: 'Write permission denied: Blocked by permissions configuration', isReadonly: false } }
+              result: {
+                writePermissionDenied: {
+                  path: '',
+                  error: 'Write permission denied: Blocked by permissions configuration',
+                  isReadonly: false
+                }
+              }
             }
           }
         })
@@ -184,7 +208,12 @@ describe('CursorStreamJson', () => {
             is_error: false,
             session_id: 's1',
             result: 'final answer',
-            usage: { inputTokens: 8129, outputTokens: 834, cacheReadTokens: 29056, cacheWriteTokens: 0 }
+            usage: {
+              inputTokens: 8129,
+              outputTokens: 834,
+              cacheReadTokens: 29056,
+              cacheWriteTokens: 0
+            }
           })
         )
       ).toEqual([
@@ -192,7 +221,12 @@ describe('CursorStreamJson', () => {
           type: 'result',
           status: 'success',
           sessionId: 's1',
-          usage: { inputTokens: 8129, outputTokens: 834, cacheReadTokens: 29056, cacheWriteTokens: 0 },
+          usage: {
+            inputTokens: 8129,
+            outputTokens: 834,
+            cacheReadTokens: 29056,
+            cacheWriteTokens: 0
+          },
           text: 'final answer',
           raw: expect.anything()
         }
@@ -200,7 +234,9 @@ describe('CursorStreamJson', () => {
     })
 
     it('marks an is_error result as failed', () => {
-      const out = cursorEventToRunEvents(ev({ type: 'result', subtype: 'error_max_turns', is_error: true }))
+      const out = cursorEventToRunEvents(
+        ev({ type: 'result', subtype: 'error_max_turns', is_error: true })
+      )
       expect(out[0].type).toBe('result')
       expect(out[0].status).toBe('error_max_turns')
     })

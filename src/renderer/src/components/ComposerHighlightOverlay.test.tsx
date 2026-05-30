@@ -66,7 +66,9 @@ describe('ComposerHighlightOverlay', () => {
    * dev app.
    */
   it('coerces non-finite scroll offsets (NaN / Infinity) to a no-op transform', () => {
-    expect(composerHighlightScrollTransform(Number.NaN, Number.NaN)).toBe('translate3d(0px, 0px, 0)')
+    expect(composerHighlightScrollTransform(Number.NaN, Number.NaN)).toBe(
+      'translate3d(0px, 0px, 0)'
+    )
     expect(composerHighlightScrollTransform(Infinity, -Infinity)).toBe('translate3d(0px, 0px, 0)')
   })
 

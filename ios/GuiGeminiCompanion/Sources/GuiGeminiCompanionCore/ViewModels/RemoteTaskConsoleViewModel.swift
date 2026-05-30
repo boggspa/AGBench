@@ -141,6 +141,134 @@ public final class RemoteTaskConsoleViewModel {
         await send(action: action, taskId: task.id, kind: .prompt, targetId: task.threadId)
     }
 
+    public func ensembleCancelRound(_ ensemble: RemoteEnsembleProjection) async {
+        let taskId = taskId(for: ensemble)
+        let targetId = ensemble.roundId ?? ensemble.runId ?? ensemble.threadId
+        guard ensemble.capabilities.cancelRound else {
+            markUnavailable(taskId: taskId, kind: .ensembleCancelRound, targetId: targetId, message: "Cancel round is unavailable for this Ensemble.")
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleCancelRound, targetId: targetId)
+        let action = BridgeActionPayload.ensembleCancelRound(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            roundId: ensemble.roundId,
+            message: "cancelled from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleCancelRound, targetId: targetId)
+    }
+
+    public func ensembleSkipActiveParticipant(_ ensemble: RemoteEnsembleProjection) async {
+        let taskId = taskId(for: ensemble)
+        let participantId = ensemble.activeParticipantId
+        let targetId = participantId ?? ensemble.roundId ?? ensemble.threadId
+        guard ensemble.capabilities.skipActiveParticipant else {
+            markUnavailable(taskId: taskId, kind: .ensembleSkipActiveParticipant, targetId: targetId, message: "Skip active participant is unavailable for this Ensemble.")
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleSkipActiveParticipant, targetId: targetId)
+        let action = BridgeActionPayload.ensembleSkipActiveParticipant(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            roundId: ensemble.roundId,
+            participantId: participantId,
+            message: "skipped from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleSkipActiveParticipant, targetId: targetId)
+    }
+
+    public func ensembleWakeNow(_ ensemble: RemoteEnsembleProjection) async {
+        let taskId = taskId(for: ensemble)
+        let targetId = wakeupId(for: ensemble) ?? ensemble.activeParticipantId ?? ensemble.threadId
+        guard ensemble.capabilities.wakeNow else {
+            markUnavailable(taskId: taskId, kind: .ensembleWakeNow, targetId: targetId, message: "Wake now is unavailable for this Ensemble.")
+            return
+        }
+        guard let wakeupId = wakeupId(for: ensemble) else {
+            markUnavailable(taskId: taskId, kind: .ensembleWakeNow, targetId: targetId, message: "No pending wakeup id is available for this Ensemble.")
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleWakeNow, targetId: wakeupId)
+        let action = BridgeActionPayload.ensembleWakeNow(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            wakeupId: wakeupId,
+            message: "woken from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleWakeNow, targetId: wakeupId)
+    }
+
+    public func ensembleCancelWakeup(_ ensemble: RemoteEnsembleProjection) async {
+        let taskId = taskId(for: ensemble)
+        let targetId = wakeupId(for: ensemble) ?? ensemble.activeParticipantId ?? ensemble.threadId
+        guard ensemble.capabilities.cancelWakeup else {
+            markUnavailable(taskId: taskId, kind: .ensembleCancelWakeup, targetId: targetId, message: "Cancel wakeup is unavailable for this Ensemble.")
+            return
+        }
+        guard let wakeupId = wakeupId(for: ensemble) else {
+            markUnavailable(taskId: taskId, kind: .ensembleCancelWakeup, targetId: targetId, message: "No pending wakeup id is available for this Ensemble.")
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleCancelWakeup, targetId: wakeupId)
+        let action = BridgeActionPayload.ensembleCancelWakeup(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            wakeupId: wakeupId,
+            message: "cancelled from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleCancelWakeup, targetId: wakeupId)
+    }
+
+    public func ensembleQueuePrompt(_ ensemble: RemoteEnsembleProjection, text: String) async {
+        let taskId = taskId(for: ensemble)
+        let targetId = ensemble.roundId ?? ensemble.threadId
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ensemble.capabilities.queuePrompt else {
+            markUnavailable(taskId: taskId, kind: .ensembleQueuePrompt, targetId: targetId, message: "Queue prompt is unavailable for this Ensemble.")
+            return
+        }
+        guard !trimmed.isEmpty else {
+            lastActionMessage = "Prompt is empty"
+            return
+        }
+        if let limit = ensemble.capabilities.queueLimit, ensemble.queue.count >= limit {
+            markUnavailable(taskId: taskId, kind: .ensembleQueuePrompt, targetId: targetId, message: "The Ensemble queue is full.")
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleQueuePrompt, targetId: targetId)
+        let action = BridgeActionPayload.ensembleQueuePrompt(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            roundId: ensemble.roundId,
+            text: trimmed,
+            message: "queued from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleQueuePrompt, targetId: targetId)
+    }
+
+    public func ensembleSteer(_ ensemble: RemoteEnsembleProjection, text: String) async {
+        let taskId = taskId(for: ensemble)
+        let targetId = ensemble.roundId ?? ensemble.threadId
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ensemble.capabilities.steer else {
+            markUnavailable(taskId: taskId, kind: .ensembleSteer, targetId: targetId, message: "Steer is unavailable for this Ensemble.")
+            return
+        }
+        guard !trimmed.isEmpty else {
+            lastActionMessage = "Steer text is empty"
+            return
+        }
+        store.markActionSending(taskId: taskId, kind: .ensembleSteer, targetId: targetId)
+        let action = BridgeActionPayload.ensembleSteer(
+            workspaceId: workspaceId(for: ensemble, taskId: taskId),
+            threadId: ensemble.threadId,
+            roundId: ensemble.roundId,
+            text: trimmed,
+            message: "steered from iPad"
+        )
+        await send(action: action, taskId: taskId, kind: .ensembleSteer, targetId: targetId)
+    }
+
     private func send(
         action: BridgeActionPayload,
         taskId: String,
@@ -187,5 +315,49 @@ public final class RemoteTaskConsoleViewModel {
         return store.tasksById.first { _, task in
             task.threadId == question.threadId && (question.runId == nil || task.runId == question.runId)
         }?.key
+    }
+
+    private func taskId(for ensemble: RemoteEnsembleProjection) -> String {
+        if let taskId = ensemble.taskId, store.tasksById[taskId] != nil {
+            return taskId
+        }
+        if let matching = store.tasksById.first(where: { _, task in
+            task.threadId == ensemble.threadId && (ensemble.runId == nil || task.runId == ensemble.runId)
+        })?.key {
+            return matching
+        }
+        return RemoteTaskIdentity.makeTaskId(
+            workspaceId: ensemble.workspaceId,
+            threadId: ensemble.threadId,
+            runId: ensemble.runId
+        )
+    }
+
+    private func workspaceId(for ensemble: RemoteEnsembleProjection, taskId: String) -> String {
+        ensemble.workspaceId ?? store.tasksById[taskId]?.workspaceId ?? ""
+    }
+
+    private func wakeupId(for ensemble: RemoteEnsembleProjection) -> String? {
+        if let wakeupId = ensemble.wakeupId, !wakeupId.isEmpty {
+            return wakeupId
+        }
+        if let activeParticipantId = ensemble.activeParticipantId,
+           let wakeupId = ensemble.participants.first(where: { $0.id == activeParticipantId })?.wakeupId,
+           !wakeupId.isEmpty {
+            return wakeupId
+        }
+        return ensemble.participants.first { participant in
+            participant.wakeupId?.isEmpty == false
+        }?.wakeupId
+    }
+
+    private func markUnavailable(
+        taskId: String,
+        kind: RemoteTaskActionKind,
+        targetId: String,
+        message: String
+    ) {
+        lastActionMessage = message
+        store.markActionFailed(taskId: taskId, kind: kind, targetId: targetId, message: message)
     }
 }

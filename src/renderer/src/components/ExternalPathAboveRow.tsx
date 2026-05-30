@@ -190,10 +190,7 @@ export function ExternalPathAboveRow({
   // (provider + access verb + timestamp + origin source), so the
   // separate variable is no longer needed.
   const hasDiff =
-    diffStats &&
-    (diffStats.filesChanged > 0 ||
-      diffStats.additions > 0 ||
-      diffStats.deletions > 0)
+    diffStats && (diffStats.filesChanged > 0 || diffStats.additions > 0 || diffStats.deletions > 0)
   // 1.0.5-EW42b — Build a rich tooltip that explains what created
   // this grant (composer-proactive vs. agent-approval vs. legacy
   // manual picker), which provider it's scoped to, and when it

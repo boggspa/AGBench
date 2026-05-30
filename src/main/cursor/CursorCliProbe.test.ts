@@ -90,13 +90,34 @@ describe('CursorCliProbe', () => {
   describe('parseCursorHelp', () => {
     it('extracts the read-only-relevant flags', () => {
       const { flags } = parseCursorHelp(HELP_FIXTURE)
-      for (const f of ['--print', '--output-format', '--mode', '--plan', '--resume', '--model', '--force', '--trust']) {
+      for (const f of [
+        '--print',
+        '--output-format',
+        '--mode',
+        '--plan',
+        '--resume',
+        '--model',
+        '--force',
+        '--trust'
+      ]) {
         expect(flags).toContain(f)
       }
     })
     it('extracts subcommands incl. [arg] and |alias forms, excluding continuations', () => {
       const { subcommands } = parseCursorHelp(HELP_FIXTURE)
-      for (const c of ['login', 'logout', 'mcp', 'status', 'models', 'create-chat', 'agent', 'ls', 'resume', 'help', 'install-shell-integration']) {
+      for (const c of [
+        'login',
+        'logout',
+        'mcp',
+        'status',
+        'models',
+        'create-chat',
+        'agent',
+        'ls',
+        'resume',
+        'help',
+        'install-shell-integration'
+      ]) {
         expect(subcommands).toContain(c)
       }
       // "disable browser opening." is a deep-indented continuation line, NOT a command.
@@ -108,7 +129,10 @@ describe('CursorCliProbe', () => {
     it('parses id + label rows and skips headers', () => {
       const models = parseCursorModels(MODELS_FIXTURE)
       expect(models).toContainEqual({ id: 'composer-2.5', label: 'Composer 2.5 (current)' })
-      expect(models).toContainEqual({ id: 'composer-2.5-fast', label: 'Composer 2.5 Fast (default)' })
+      expect(models).toContainEqual({
+        id: 'composer-2.5-fast',
+        label: 'Composer 2.5 Fast (default)'
+      })
       expect(models.find((m) => m.id === 'Available')).toBeUndefined()
     })
     it('returns [] when logged out', () => {
@@ -132,7 +156,10 @@ describe('CursorCliProbe', () => {
         return ok('')
       })
       const findings = await probeCursorCli({
-        resolveBinary: async () => ({ binaryPath: '/home/u/.local/bin/cursor-agent', source: 'common' }),
+        resolveBinary: async () => ({
+          binaryPath: '/home/u/.local/bin/cursor-agent',
+          source: 'common'
+        }),
         capture
       })
       expect(findings.binaryPath).toBe('/home/u/.local/bin/cursor-agent')
@@ -152,7 +179,10 @@ describe('CursorCliProbe', () => {
         return ok('')
       })
       const findings = await probeCursorCli({
-        resolveBinary: async () => ({ binaryPath: '/home/u/.local/bin/cursor-agent', source: 'common' }),
+        resolveBinary: async () => ({
+          binaryPath: '/home/u/.local/bin/cursor-agent',
+          source: 'common'
+        }),
         capture
       })
       expect(findings.loggedIn).toBe(false)

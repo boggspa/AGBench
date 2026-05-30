@@ -39,12 +39,7 @@ function ensembleChat(): ChatRecord {
 
 describe('rebindWelcomeEnsembleChatToWorkspace', () => {
   it('updates an empty welcome Ensemble chat in place', () => {
-    const updated = rebindWelcomeEnsembleChatToWorkspace(
-      ensembleChat(),
-      workspace,
-      true,
-      1234
-    )
+    const updated = rebindWelcomeEnsembleChatToWorkspace(ensembleChat(), workspace, true, 1234)
 
     expect(updated?.appChatId).toBe('ensemble-chat')
     expect(updated?.chatKind).toBe('ensemble')

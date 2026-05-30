@@ -55,9 +55,7 @@ const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   cursor: false
 }
 
-export function buildProviderAuthStatusV2(
-  input: ProviderAuthStatusV2Input
-): ProviderAuthStatusV2 {
+export function buildProviderAuthStatusV2(input: ProviderAuthStatusV2Input): ProviderAuthStatusV2 {
   const { provider } = input
   const available = input.available !== false
   const codexReachable = provider === 'codex' && (available || input.codexClientStarted === true)
@@ -105,8 +103,7 @@ function deriveAuthState(
   if (provider === 'codex') {
     return {
       authState: 'not-queried',
-      authReason:
-        'Codex auth lives in the app-server. Call account/read for live state.'
+      authReason: 'Codex auth lives in the app-server. Call account/read for live state.'
     }
   }
 

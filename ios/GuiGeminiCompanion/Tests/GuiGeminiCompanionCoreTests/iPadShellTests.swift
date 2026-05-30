@@ -4,6 +4,16 @@ import XCTest
 
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
+private final class EnsembleActionCallRecorder {
+    var calls: [String] = []
+
+    func append(_ call: String) {
+        calls.append(call)
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
 final class iPadShellTests: XCTestCase {
     func testWorkspaceSummaryNormalizesEmptyNameAndDirtyCount() {
         let workspace = iPadWorkspaceSummary(
@@ -217,6 +227,7 @@ final class iPadShellTests: XCTestCase {
             "payload": {
               "threadId": "thread-ensemble",
               "runId": "run-ensemble",
+              "roundId": "round-ensemble",
               "status": "running",
               "roundStatus": "turn-bound",
               "activeParticipantId": "planner",
@@ -226,7 +237,8 @@ final class iPadShellTests: XCTestCase {
                   "provider": "gemini",
                   "role": "Planner",
                   "status": "running",
-                  "isActive": true
+                  "isActive": true,
+                  "wakeupId": "wakeup-planner"
                 },
                 {
                   "id": "reviewer",
@@ -267,10 +279,164 @@ final class iPadShellTests: XCTestCase {
 
         XCTAssertEqual(detail?.ensemble?.participants.count, 2)
         XCTAssertEqual(detail?.ensemble?.activeParticipantId, "planner")
+        XCTAssertEqual(detail?.ensemble?.roundId, "round-ensemble")
+        XCTAssertEqual(detail?.ensemble?.participants.first?.wakeupId, "wakeup-planner")
         XCTAssertEqual(detail?.ensemble?.queue.count, 1)
         XCTAssertEqual(detail?.ensemble?.capabilities.queueLimit, 2)
         XCTAssertTrue(detail?.ensemble?.capabilities.cancelRound ?? false)
         XCTAssertEqual([Any](arrayLiteral: shell).count, 1)
+    }
+
+    func testEnsembleControlActionsCanBeInvokedFromShellHandlers() async throws {
+        let state = try ensembleStateForActionTests()
+        let recorder = EnsembleActionCallRecorder()
+        let actions = iPadEnsembleControlActions(
+            cancelRound: { state in recorder.append("cancel:\(state.roundId ?? "")") },
+            skipActiveParticipant: { state in recorder.append("skip:\(state.activeParticipantId ?? "")") },
+            wakeNow: { state in recorder.append("wake:\(state.participants.first?.wakeupId ?? "")") },
+            cancelWakeup: { state in recorder.append("cancelWakeup:\(state.participants.first?.wakeupId ?? "")") },
+            queuePrompt: { state, text in recorder.append("queue:\(state.roundId ?? ""):\(text)") },
+            steer: { state, text in recorder.append("steer:\(state.threadId):\(text)") }
+        )
+
+        await actions.cancelRound?(state)
+        await actions.skipActiveParticipant?(state)
+        await actions.wakeNow?(state)
+        await actions.cancelWakeup?(state)
+        await actions.queuePrompt?(state, "next")
+        await actions.steer?(state, "focus")
+
+        XCTAssertEqual(recorder.calls, [
+            "cancel:round-ensemble",
+            "skip:planner",
+            "wake:wakeup-planner",
+            "cancelWakeup:wakeup-planner",
+            "queue:round-ensemble:next",
+            "steer:thread-ensemble:focus"
+        ])
+    }
+
+    func testRemoteTaskConsoleViewModelRoutesEnsembleActionState() async throws {
+        let store = RemoteTaskStore()
+        store.ingest(try ensembleProjectionEventForActionTests())
+        let viewModel = RemoteTaskConsoleViewModel(store: store)
+        let state = try XCTUnwrap(store.detail(threadID: "thread-ensemble")?.ensemble)
+
+        await viewModel.ensembleCancelRound(state)
+        guard case .failed(let cancelKind, let cancelTarget, let cancelMessage, _) = store.actionStatesByTaskId["task-ensemble"] else {
+            return XCTFail("Expected cancel round to fail without a bridge client")
+        }
+        XCTAssertEqual(cancelKind, .ensembleCancelRound)
+        XCTAssertEqual(cancelTarget, "round-ensemble")
+        XCTAssertEqual(cancelMessage, "Bridge is not connected")
+
+        await viewModel.ensembleWakeNow(state)
+        guard case .failed(let wakeKind, let wakeTarget, let wakeMessage, _) = store.actionStatesByTaskId["task-ensemble"] else {
+            return XCTFail("Expected wake now to fail without a bridge client")
+        }
+        XCTAssertEqual(wakeKind, .ensembleWakeNow)
+        XCTAssertEqual(wakeTarget, "wakeup-planner")
+        XCTAssertEqual(wakeMessage, "Bridge is not connected")
+        XCTAssertEqual(viewModel.lastActionMessage, "Bridge is not connected")
+    }
+
+    func testRemoteTaskConsoleViewModelDoesNotSendWakeActionWithoutWakeupId() async throws {
+        let store = RemoteTaskStore()
+        let event = try BridgeRunEvent.decode(eventRecordBytes: Data("""
+        {
+          "channel": "remote-projection",
+          "provider": "ensemble",
+          "publishedAt": "2026-05-20T12:00:00.000Z",
+          "payload": {
+            "kind": "ensemble",
+            "taskId": "task-ensemble",
+            "workspaceId": "workspace-1",
+            "threadId": "thread-ensemble",
+            "payload": {
+              "threadId": "thread-ensemble",
+              "roundId": "round-ensemble",
+              "status": "running",
+              "activeParticipantId": "planner",
+              "participants": [
+                { "id": "planner", "provider": "gemini", "role": "Planner", "isActive": true }
+              ],
+              "capabilities": {
+                "wakeNow": true
+              }
+            }
+          }
+        }
+        """.utf8))
+        store.ingest(event)
+        let viewModel = RemoteTaskConsoleViewModel(store: store)
+        let state = try XCTUnwrap(store.detail(threadID: "thread-ensemble")?.ensemble)
+
+        await viewModel.ensembleWakeNow(state)
+
+        guard case .failed(let kind, let target, let message, _) = store.actionStatesByTaskId["task-ensemble"] else {
+            return XCTFail("Expected wake now to fail before bridge send")
+        }
+        XCTAssertEqual(kind, .ensembleWakeNow)
+        XCTAssertEqual(target, "planner")
+        XCTAssertEqual(message, "No pending wakeup id is available for this Ensemble.")
+    }
+
+    private func ensembleStateForActionTests() throws -> RemoteEnsembleProjection {
+        let store = RemoteTaskStore()
+        store.ingest(try ensembleProjectionEventForActionTests())
+        return try XCTUnwrap(store.detail(threadID: "thread-ensemble")?.ensemble)
+    }
+
+    private func ensembleProjectionEventForActionTests() throws -> BridgeRunEvent {
+        try BridgeRunEvent.decode(eventRecordBytes: Data("""
+        {
+          "channel": "remote-projection",
+          "provider": "ensemble",
+          "publishedAt": "2026-05-20T12:00:00.000Z",
+          "payload": {
+            "kind": "ensemble",
+            "taskId": "task-ensemble",
+            "workspaceId": "workspace-1",
+            "threadId": "thread-ensemble",
+            "payload": {
+              "threadId": "thread-ensemble",
+              "runId": "run-ensemble",
+              "roundId": "round-ensemble",
+              "status": "running",
+              "roundStatus": "turn-bound",
+              "activeParticipantId": "planner",
+              "participants": [
+                {
+                  "id": "planner",
+                  "provider": "gemini",
+                  "role": "Planner",
+                  "status": "running",
+                  "isActive": true,
+                  "wakeupId": "wakeup-planner"
+                },
+                {
+                  "id": "reviewer",
+                  "provider": "codex",
+                  "role": "Reviewer",
+                  "status": "idle"
+                }
+              ],
+              "queue": [
+                { "id": "queued-1", "label": "Follow-up", "participantId": "reviewer" }
+              ],
+              "capabilities": {
+                "cancelRound": true,
+                "skipActiveParticipant": true,
+                "wakeNow": true,
+                "cancelWakeup": true,
+                "queuePrompt": true,
+                "steer": true,
+                "queueLimit": 2
+              }
+            }
+          }
+        }
+        """.utf8))
     }
 
     // MARK: - Bridge summary application

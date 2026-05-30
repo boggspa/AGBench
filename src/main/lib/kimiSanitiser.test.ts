@@ -105,9 +105,7 @@ describe('kimiSanitiser', () => {
   })
 
   it('caps the diagnostic at 8 matches with a "and N more" suffix', () => {
-    const input = Array(10)
-      .fill('A Tiananmen reference happened.')
-      .join(' ')
+    const input = Array(10).fill('A Tiananmen reference happened.').join(' ')
     const result = sanitiseForKimi(input)
     const diagnostic = formatKimiSanitiserDiagnostic(result)
     expect(diagnostic).toContain('…and 2 more')

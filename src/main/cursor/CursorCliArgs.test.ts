@@ -47,8 +47,12 @@ describe('buildCursorCliArgs', () => {
   })
 
   it('forwards only Composer 2.5 model ids', () => {
-    expect(buildCursorCliArgs({ ...base, model: 'composer-2.5' }).join(' ')).toContain('--model composer-2.5')
-    expect(buildCursorCliArgs({ ...base, model: 'composer-2.5-fast' }).join(' ')).toContain('--model composer-2.5-fast')
+    expect(buildCursorCliArgs({ ...base, model: 'composer-2.5' }).join(' ')).toContain(
+      '--model composer-2.5'
+    )
+    expect(buildCursorCliArgs({ ...base, model: 'composer-2.5-fast' }).join(' ')).toContain(
+      '--model composer-2.5-fast'
+    )
   })
 
   it('drops non-Composer / sentinel / leaked model ids', () => {
@@ -58,7 +62,9 @@ describe('buildCursorCliArgs', () => {
   })
 
   it('appends --resume for a real chat id, not for empty', () => {
-    expect(buildCursorCliArgs({ ...base, providerSessionId: 'chat_123' }).join(' ')).toContain('--resume chat_123')
+    expect(buildCursorCliArgs({ ...base, providerSessionId: 'chat_123' }).join(' ')).toContain(
+      '--resume chat_123'
+    )
     expect(buildCursorCliArgs({ ...base, providerSessionId: '   ' })).not.toContain('--resume')
   })
 

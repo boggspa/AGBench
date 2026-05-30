@@ -74,7 +74,12 @@ describe('buildSoloWakeupResumePayload', () => {
       status: 'fired',
       reason: 'wait for build'
     }
-    const payload = buildSoloWakeupResumePayload(chat, wakeup, 'codex-run-99', '2026-05-27T11:00:00.000Z')
+    const payload = buildSoloWakeupResumePayload(
+      chat,
+      wakeup,
+      'codex-run-99',
+      '2026-05-27T11:00:00.000Z'
+    )
     expect(payload.provider).toBe('codex')
     expect(payload.appChatId).toBe(chat.appChatId)
     expect(payload.appRunId).toBe('codex-run-99')

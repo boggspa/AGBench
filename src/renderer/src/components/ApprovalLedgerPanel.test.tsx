@@ -80,9 +80,7 @@ describe('ApprovalLedgerPanel', () => {
   it('hides the bulk forget button when no workspace path is provided', () => {
     const html = renderToStaticMarkup(
       <ApprovalLedgerPanel
-        workspaceGrants={[
-          makeGrant({ service: 'subThreadDelegation' })
-        ]}
+        workspaceGrants={[makeGrant({ service: 'subThreadDelegation' })]}
         onRevokeWorkspaceGrant={() => undefined}
       />
     )

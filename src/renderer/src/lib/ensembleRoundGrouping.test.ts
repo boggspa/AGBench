@@ -93,12 +93,7 @@ describe('groupEnsembleMessagesByRound (AV1)', () => {
       message('b', { roundId: 'r2' })
     ]
     const items = groupEnsembleMessagesByRound(chat({ messages }))
-    expect(items.map((i) => i.type)).toEqual([
-      'message',
-      'round-group',
-      'message',
-      'round-group'
-    ])
+    expect(items.map((i) => i.type)).toEqual(['message', 'round-group', 'message', 'round-group'])
   })
 
   it('does NOT merge non-adjacent same-roundId messages (steer/resume safety)', () => {
@@ -110,7 +105,8 @@ describe('groupEnsembleMessagesByRound (AV1)', () => {
     ]
     const items = groupEnsembleMessagesByRound(chat({ messages }))
     expect(items.map((i) => i.type)).toEqual(['round-group', 'message', 'round-group'])
-    if (items[0].type === 'round-group') expect(items[0].messages.map((m) => m.id)).toEqual(['u1', 'a'])
+    if (items[0].type === 'round-group')
+      expect(items[0].messages.map((m) => m.id)).toEqual(['u1', 'a'])
     if (items[2].type === 'round-group') expect(items[2].messages).toHaveLength(1)
   })
 

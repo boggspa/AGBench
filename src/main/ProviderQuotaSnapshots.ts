@@ -465,7 +465,7 @@ export function normalizeClaudeUsageSnapshot(
     logClaudeUsageMissingFamilyWindowOnce(payload)
   }
   const extraUsage = payload?.extraUsage ?? payload?.extra_usage
-  if (Boolean(extraUsage?.isEnabled ?? extraUsage?.is_enabled)) {
+  if (extraUsage?.isEnabled ?? extraUsage?.is_enabled) {
     const unit = String(extraUsage?.currency || 'credits')
     const usedCredits = numericUsageValue(extraUsage?.usedCredits ?? extraUsage?.used_credits)
     const monthlyLimit = numericUsageValue(extraUsage?.monthlyLimit ?? extraUsage?.monthly_limit)
@@ -626,7 +626,7 @@ function logClaudeUsageMissingFamilyWindowOnce(payload: any): void {
       payload.models && typeof payload.models === 'object'
         ? Object.keys(payload.models).sort()
         : null
-    // eslint-disable-next-line no-console
+
     console.warn(
       '[claudeUsage] per-family weekly windows (Sonnet / Opus) not found in OAuth payload — ' +
         `top-level keys: ${JSON.stringify(topLevelKeys)}` +

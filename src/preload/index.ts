@@ -95,12 +95,13 @@ const api = {
   // Renderer hydrates `formatCost`'s in-memory rate table from this
   // on app boot. `refreshFxRates` is reserved for a future explicit
   // "refresh now" button; not wired into any UI yet.
-  getFxRates: () => ipcRenderer.invoke('fx-rates:get') as Promise<{
-    rates: { USD: 1; GBP: number; EUR: number }
-    fetchedAt: string
-    source: 'live' | 'cached' | 'fallback'
-    errorMessage?: string
-  }>,
+  getFxRates: () =>
+    ipcRenderer.invoke('fx-rates:get') as Promise<{
+      rates: { USD: 1; GBP: number; EUR: number }
+      fetchedAt: string
+      source: 'live' | 'cached' | 'fallback'
+      errorMessage?: string
+    }>,
   refreshFxRates: (force?: boolean) =>
     ipcRenderer.invoke('fx-rates:refresh', force) as Promise<{
       rates: { USD: 1; GBP: number; EUR: number }
@@ -173,10 +174,8 @@ const api = {
   ) => ipcRenderer.invoke('respond-agent-approval', requestId, action),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
-  openWorkspacePopout: (input: {
-    kind: 'file-editor' | 'diff-studio'
-    workspacePath: string
-  }) => ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
+  openWorkspacePopout: (input: { kind: 'file-editor' | 'diff-studio'; workspacePath: string }) =>
+    ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
   readWorkspaceFile: (workspace: string, path: string) =>
     ipcRenderer.invoke('read-workspace-file', workspace, path),
@@ -245,8 +244,7 @@ const api = {
       context?: string
     }) => void
   ) => {
-    const wrapped = (_event: unknown, request: Parameters<typeof handler>[0]) =>
-      handler(request)
+    const wrapped = (_event: unknown, request: Parameters<typeof handler>[0]) => handler(request)
     ipcRenderer.on('agent-question-requested', wrapped)
     return () => ipcRenderer.removeListener('agent-question-requested', wrapped)
   },

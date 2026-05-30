@@ -232,8 +232,7 @@ export function sanitiseForKimi(
       }
     }
     if (matchedTrigger) {
-      const excerpt =
-        sentence.length > 120 ? `${sentence.slice(0, 117).trim()}…` : sentence.trim()
+      const excerpt = sentence.length > 120 ? `${sentence.slice(0, 117).trim()}…` : sentence.trim()
       matches.push({ trigger: matchedTrigger, sentenceExcerpt: excerpt })
       out.push(PLACEHOLDER)
     } else {
@@ -253,9 +252,7 @@ export function sanitiseForKimi(
  * when sanitisation fires so the user sees both that
  * sanitisation happened AND what specifically got hidden.
  */
-export function formatKimiSanitiserDiagnostic(
-  result: KimiSanitiserResult
-): string {
+export function formatKimiSanitiserDiagnostic(result: KimiSanitiserResult): string {
   if (!result.redacted || result.matches.length === 0) return ''
   const lines: string[] = [
     `Kimi compatibility filter redacted ${result.matches.length} sentence${
@@ -268,8 +265,6 @@ export function formatKimiSanitiserDiagnostic(
   if (result.matches.length > 8) {
     lines.push(`  · …and ${result.matches.length - 8} more`)
   }
-  lines.push(
-    'Other participants (Codex / Claude / Gemini) saw the full unfiltered prompt.'
-  )
+  lines.push('Other participants (Codex / Claude / Gemini) saw the full unfiltered prompt.')
   return lines.join('\n')
 }

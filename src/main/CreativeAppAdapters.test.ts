@@ -552,7 +552,9 @@ describe('CreativeAppAdapters', () => {
       })
       // The asset element opens (no self-close) and the media-rep
       // child sits inside it.
-      expect(writer.text).toMatch(/<asset[^/]+id="r1"[^>]*>\s*\n\s*<media-rep[^>]+src="file:\/\/\/x\.mov"\s*\/>\s*\n\s*<\/asset>/)
+      expect(writer.text).toMatch(
+        /<asset[^/]+id="r1"[^>]*>\s*\n\s*<media-rep[^>]+src="file:\/\/\/x\.mov"\s*\/>\s*\n\s*<\/asset>/
+      )
       // Round-trip: the IR parser pulls src from the media-rep child.
       const reparsed = buildFcpxmlTimelineIr({ path: 'mr.fcpxml', text: writer.text })
       expect(reparsed.resources.assets[0].src).toBe('file:///x.mov')
@@ -603,9 +605,7 @@ describe('CreativeAppAdapters', () => {
               { id: 'r2', name: '4k' }
             ]
           },
-          projects: [
-            { name: 'p', sequence: { spine: [], markers: [] } }
-          ]
+          projects: [{ name: 'p', sequence: { spine: [], markers: [] } }]
         }
       })
       expect(writer.text).toMatch(/<sequence[^>]+format="r1"/)
@@ -623,9 +623,7 @@ describe('CreativeAppAdapters', () => {
           projects: [{ name: 'p', sequence: { spine: [], markers: [] } }]
         }
       })
-      expect(writer.warnings.some((w) => /no <format> resources are declared/.test(w))).toBe(
-        true
-      )
+      expect(writer.warnings.some((w) => /no <format> resources are declared/.test(w))).toBe(true)
     })
 
     it('warns when a spine item is missing duration (DTD #REQUIRED on gap)', () => {
@@ -703,9 +701,7 @@ describe('CreativeAppAdapters', () => {
       expect(
         getSequenceCanonicalDenominator('r1', [{ id: 'r1', frameDuration: '100/2400s' }])
       ).toBe(2400)
-      expect(
-        getSequenceCanonicalDenominator('r1', [{ id: 'r1', frameDuration: '1/30s' }])
-      ).toBe(30)
+      expect(getSequenceCanonicalDenominator('r1', [{ id: 'r1', frameDuration: '1/30s' }])).toBe(30)
       // Unknown ref or missing frameDuration → null (writer skips canon).
       expect(getSequenceCanonicalDenominator('missing', [])).toBeNull()
       expect(getSequenceCanonicalDenominator('r1', [{ id: 'r1' }])).toBeNull()
@@ -866,7 +862,11 @@ describe('CreativeAppAdapters', () => {
       expect(titleItem?.textStyleDefs?.[0].id).toBe('ts1')
       expect(titleItem?.textStyleDefs?.[0].font).toBe('Helvetica')
       expect(titleItem?.textStyleDefs?.[0].fontSize).toBe('72')
-      expect(titleItem?.titleParams?.[0]).toEqual({ name: 'Position', key: undefined, value: '0 -200' })
+      expect(titleItem?.titleParams?.[0]).toEqual({
+        name: 'Position',
+        key: undefined,
+        value: '0 -200'
+      })
     })
 
     it('non-title items ignore the title-specific fields even when present', () => {
@@ -1006,9 +1006,7 @@ describe('CreativeAppAdapters', () => {
       const writer = serializeFcpxmlTimelineIr({
         ir: {
           resources: {
-            assets: [
-              { id: 'r1', src: 'file:///a.wav', hasVideo: false, hasAudio: true }
-            ]
+            assets: [{ id: 'r1', src: 'file:///a.wav', hasVideo: false, hasAudio: true }]
           }
         }
       })

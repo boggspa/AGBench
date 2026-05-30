@@ -550,7 +550,9 @@ describe('ToolParser', () => {
       // The exact shape that produced the bogus "+0 -1" on the Grok Thinking card.
       const thinking =
         'The user wants test files.\n- Minimal comment-only files (JokeComment*)\nNow I will start.'
-      expect(deriveToolDiffSummary('grok_thinking', { kind: 'reasoning' }, thinking)).toBeUndefined()
+      expect(
+        deriveToolDiffSummary('grok_thinking', { kind: 'reasoning' }, thinking)
+      ).toBeUndefined()
       // Even without the reasoning hint, a *_thinking pseudo-tool never diffs.
       expect(deriveToolDiffSummary('kimi_thinking', {}, thinking)).toBeUndefined()
       // And a non-thinking tool whose result is plain prose is also clean now.
@@ -622,9 +624,7 @@ describe('ToolParser', () => {
         ]
       })
 
-      expect(blocks).toEqual([
-        expect.objectContaining({ mimeType: 'image/png', data: 'abc123' })
-      ])
+      expect(blocks).toEqual([expect.objectContaining({ mimeType: 'image/png', data: 'abc123' })])
     })
 
     it('extracts image blocks from stringified MCP envelopes', () => {

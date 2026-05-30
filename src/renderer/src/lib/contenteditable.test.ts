@@ -48,9 +48,7 @@ describe('buildContenteditableHtml', () => {
   })
 
   it('escapes mention data + className attributes', () => {
-    const mentions: MentionSegment[] = [
-      { start: 0, end: 7, data: '<bad>', className: 'pro<vider' }
-    ]
+    const mentions: MentionSegment[] = [{ start: 0, end: 7, data: '<bad>', className: 'pro<vider' }]
     expect(buildContenteditableHtml('@"weird', mentions)).toBe(
       '<span data-mention="&lt;bad&gt;" class="pro&lt;vider">@&quot;weird</span>'
     )
@@ -129,9 +127,7 @@ describe('normalisePastedText', () => {
     // by text) so the trim doesn't strip it away — paste
     // normalisation deliberately trims surrounding whitespace
     // because most real-world pastes carry decorative ws.
-    expect(normalisePastedText('text:&amp;&lt;&gt;&quot;&#39;&apos;&nbsp;x')).toBe(
-      'text:&<>"\'\' x'
-    )
+    expect(normalisePastedText('text:&amp;&lt;&gt;&quot;&#39;&apos;&nbsp;x')).toBe("text:&<>\"'' x")
   })
 
   it('handles nested tags', () => {
@@ -155,8 +151,7 @@ describe('normalisePastedText', () => {
   })
 
   it('handles real-world rich-paste shape (Google Docs style)', () => {
-    const input =
-      '<meta charset="utf-8"><b style="font-weight:bold">Hello</b>, <i>world</i>!'
+    const input = '<meta charset="utf-8"><b style="font-weight:bold">Hello</b>, <i>world</i>!'
     expect(normalisePastedText(input)).toBe('Hello, world!')
   })
 })

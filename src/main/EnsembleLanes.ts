@@ -37,11 +37,7 @@ import type {
  * counter. Reusable across helpers + the orchestrator so tests
  * can pin the shape.
  */
-export function buildLaneId(
-  roundId: string,
-  participantId: string,
-  attempt: number = 1
-): string {
+export function buildLaneId(roundId: string, participantId: string, attempt: number = 1): string {
   return `lane-${roundId}-${participantId}-${attempt}`
 }
 
@@ -236,8 +232,7 @@ export function canStartConcurrentRound(input: {
   if (!input.concurrentLanesEnabled) {
     return {
       ok: false,
-      reason:
-        'Concurrent Ensemble dispatch is behind the AGBENCH_CONCURRENT_LANES safety flag.'
+      reason: 'Concurrent Ensemble dispatch is behind the AGBENCH_CONCURRENT_LANES safety flag.'
     }
   }
   if (!input.chatIsEnsemble) {

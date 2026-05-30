@@ -98,9 +98,7 @@ export interface DerivePermissionEnvelopeInput {
  * the derivation enforces that with a final clamp pass for
  * file scopes, network scope, allowed tools, and expiry.
  */
-export function derivePermissionEnvelope(
-  input: DerivePermissionEnvelopeInput
-): PermissionEnvelope {
+export function derivePermissionEnvelope(input: DerivePermissionEnvelopeInput): PermissionEnvelope {
   const allowedTools = input.request.allowedTools ?? [...READ_ONLY_TOOL_PRESET]
   const fileReadScope = input.request.fileReadScope ?? input.parentEnvelope?.fileReadScope ?? []
   const fileWriteScope = input.request.fileWriteScope ?? []

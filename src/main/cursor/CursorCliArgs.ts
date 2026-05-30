@@ -73,8 +73,7 @@ export function buildCursorCliArgs(input: BuildCursorCliArgsInput): string[] {
   if (writeCapable && input.webBridgeActive) {
     args.push('--approve-mcps')
   }
-  const resumeId =
-    typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
+  const resumeId = typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
   if (resumeId) {
     args.push('--resume', resumeId)
   }

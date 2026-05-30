@@ -298,9 +298,7 @@ describe('TranscriptVirtualWindow', () => {
     })
 
     it('rejects a corrupt (negative / NaN) cached measurement', () => {
-      const cache = new Map<string, number>([
-        [measurementKey('m1', 'a:5', 8, false), Number.NaN]
-      ])
+      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), Number.NaN]])
       expect(getRowHeight(row, cache, 8, false)).toBe(row.estimatedHeight)
       const neg = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), -5]])
       expect(getRowHeight(row, neg, 8, false)).toBe(row.estimatedHeight)
@@ -427,20 +425,20 @@ describe('TranscriptVirtualWindow', () => {
     })
 
     it('treats non-finite inputs as zero', () => {
-      expect(
-        computeAnchorDelta({ previousTopSpacerPx: Number.NaN, nextTopSpacerPx: 100 })
-      ).toBe(100)
-      expect(
-        computeAnchorDelta({ previousTopSpacerPx: 100, nextTopSpacerPx: Number.NaN })
-      ).toBe(-100)
+      expect(computeAnchorDelta({ previousTopSpacerPx: Number.NaN, nextTopSpacerPx: 100 })).toBe(
+        100
+      )
+      expect(computeAnchorDelta({ previousTopSpacerPx: 100, nextTopSpacerPx: Number.NaN })).toBe(
+        -100
+      )
     })
   })
 
   describe('windowReachesEnd', () => {
     it('is true when the window includes the last row', () => {
-      expect(windowReachesEnd({ startIndex: 3, endIndex: 5, topSpacerPx: 0, bottomSpacerPx: 0 }, 5)).toBe(
-        true
-      )
+      expect(
+        windowReachesEnd({ startIndex: 3, endIndex: 5, topSpacerPx: 0, bottomSpacerPx: 0 }, 5)
+      ).toBe(true)
     })
 
     it('is false when rows remain below the window', () => {

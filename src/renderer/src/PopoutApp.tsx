@@ -51,7 +51,10 @@ export function PopoutApp() {
   }, [kind, workspacePath])
 
   useEffect(() => {
-    void refreshDiff()
+    const frame = window.requestAnimationFrame(() => {
+      void refreshDiff()
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [refreshDiff])
 
   // 1.0.5-PO2 — Subscribe to the main-process broadcast that fires

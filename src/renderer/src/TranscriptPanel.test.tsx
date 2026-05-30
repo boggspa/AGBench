@@ -29,7 +29,6 @@ function msg(i: number): ChatMessage {
 
 const MESSAGES: ChatMessage[] = Array.from({ length: 120 }, (_, i) => msg(i))
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeProps(overrides: Record<string, any> = {}): any {
   return {
     scrollRef: createRef<HTMLDivElement>(),

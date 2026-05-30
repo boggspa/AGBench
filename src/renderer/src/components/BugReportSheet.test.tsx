@@ -44,12 +44,7 @@ const baseProps = {
 describe('BugReportSheet', () => {
   it('returns null when not open so the host can mount it unconditionally', () => {
     const html = renderToStaticMarkup(
-      <BugReportSheet
-        {...baseProps}
-        open={false}
-        onDismiss={() => {}}
-        onSubmit={async () => {}}
-      />
+      <BugReportSheet {...baseProps} open={false} onDismiss={() => {}} onSubmit={async () => {}} />
     )
     expect(html).toBe('')
   })
@@ -89,7 +84,9 @@ describe('BugReportSheet', () => {
     // the form-data round-trip works correctly even with the
     // visually-hidden inputs. React's static-markup serializer can
     // emit the attributes in either order, so we accept both.
-    expect(html).toMatch(/<input[^>]*checked[^>]*value="minor"|<input[^>]*value="minor"[^>]*checked/)
+    expect(html).toMatch(
+      /<input[^>]*checked[^>]*value="minor"|<input[^>]*value="minor"[^>]*checked/
+    )
   })
 
   it('renders the surface picker for newer app areas', () => {
@@ -136,12 +133,7 @@ describe('BugReportSheet', () => {
 
   it('renders the auto-captured context block with expanded context fields', () => {
     const html = renderToStaticMarkup(
-      <BugReportSheet
-        {...baseProps}
-        open
-        onDismiss={() => {}}
-        onSubmit={async () => {}}
-      />
+      <BugReportSheet {...baseProps} open onDismiss={() => {}} onSubmit={async () => {}} />
     )
     // Each context key appears in the read-only preview block above
     // the submit button — testers see what's being captured before

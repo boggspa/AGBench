@@ -183,11 +183,14 @@ export function grokEventToRunEvents(line: GrokStreamLine): NormalizedGrokRunEve
         obj.toolId
       )
       const isError =
-        obj.is_error === true ||
-        obj.isError === true ||
-        obj.status === 'error' ||
-        obj.error != null
-      const toolOutput = coerceToolOutput(obj.output, obj.content, obj.result, obj.data, obj.message)
+        obj.is_error === true || obj.isError === true || obj.status === 'error' || obj.error != null
+      const toolOutput = coerceToolOutput(
+        obj.output,
+        obj.content,
+        obj.result,
+        obj.data,
+        obj.message
+      )
       return [
         {
           type: 'tool_result',

@@ -7,6 +7,9 @@ import {
   type PendingCodexApproval,
   type PendingHostCommandApproval
 } from './ApprovalService'
+import type { BridgeRemoteAttentionPushPayload } from '../BridgeApnsPusher'
+
+type AttentionPushCall = [string, 'production' | 'sandbox', BridgeRemoteAttentionPushPayload]
 
 /**
  * Phase B3 — unit tests for ApprovalService.
@@ -618,7 +621,7 @@ describe('ApprovalService — wake-push gating', () => {
       remove: vi.fn()
     }
     const pusher = {
-      pushApprovalToToken: vi.fn(async () => ({
+      pushRemoteAttentionToToken: vi.fn(async () => ({
         delivered: true,
         apnsId: 'apns-1',
         reason: 'sent'
@@ -638,7 +641,7 @@ describe('ApprovalService — wake-push gating', () => {
     })
     // Microtask flush so any async work would run.
     await new Promise((r) => setTimeout(r, 0))
-    expect(pusher.pushApprovalToToken).not.toHaveBeenCalled()
+    expect(pusher.pushRemoteAttentionToToken).not.toHaveBeenCalled()
     expect(spies.log).toHaveBeenCalledWith(expect.stringContaining('user is at desktop'))
   })
 
@@ -649,7 +652,7 @@ describe('ApprovalService — wake-push gating', () => {
     }
     const pushFn = vi.fn(async () => ({ delivered: true, apnsId: 'apns-1', reason: '' }))
     const { deps } = makeDeps({
-      getApnsPusher: () => ({ pushApprovalToToken: pushFn }) as never,
+      getApnsPusher: () => ({ pushRemoteAttentionToToken: pushFn }) as never,
       getApnsTokenStore: () => tokenStore as never,
       isUserAtDesktop: () => false
     })
@@ -665,8 +668,17 @@ describe('ApprovalService — wake-push gating', () => {
     expect(pushFn).toHaveBeenCalledWith(
       'token-1',
       'production',
-      expect.objectContaining({ pairID: 'p-1', workspaceId: 'w-1', threadId: 't-1' })
+      expect.objectContaining({
+        pairID: 'p-1',
+        reason: 'approval',
+        workspaceId: 'w-1',
+        threadId: 't-1',
+        approvalId: 'a-1'
+      })
     )
+    const calls = pushFn.mock.calls as unknown as AttentionPushCall[]
+    const payload = calls[0][2] as unknown as Record<string, unknown>
+    expect(payload.summary).toBeUndefined()
   })
 
   it('prunes dead tokens on Apple Unregistered', async () => {
@@ -676,7 +688,7 @@ describe('ApprovalService — wake-push gating', () => {
     }
     const pushFn = vi.fn(async () => ({ delivered: false, apnsId: '', reason: 'Unregistered' }))
     const { deps } = makeDeps({
-      getApnsPusher: () => ({ pushApprovalToToken: pushFn }) as never,
+      getApnsPusher: () => ({ pushRemoteAttentionToToken: pushFn }) as never,
       getApnsTokenStore: () => tokenStore as never,
       isUserAtDesktop: () => false
     })

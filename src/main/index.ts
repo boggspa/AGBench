@@ -35,6 +35,7 @@ import {
   buildRemoteEnsembleState,
   buildRemoteProjectionEnvelope,
   buildRemoteTaskCard,
+  type RemoteTaskCard,
   type RemoteTaskCapabilities,
   type RemoteProjectionEnvelope
 } from './RemoteTaskProjection'
@@ -46,8 +47,13 @@ import {
   RemoteWorkspaceAllowlist,
   type RemoteWorkspaceCapability
 } from './RemoteWorkspaceAllowlist'
-import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
+import {
+  createBridgeApnsPusher,
+  type BridgeApnsPusher,
+  type BridgeRemoteAttentionPushPayload
+} from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
+import { RemoteAttentionApnsFanout } from './RemoteAttentionApnsFanout'
 import { isUserAtDesktop as pureIsUserAtDesktop } from './ApnsIdleGate'
 import {
   ApprovalTimeoutScheduler,
@@ -317,6 +323,32 @@ const remoteQuestionRegistry = new RemoteQuestionRegistry({
   defaultTtlMs: AGENT_QUESTION_TIMEOUT_MS
 })
 let bridgeBroadcasterRef: BridgeBroadcaster | null = null
+const remoteTaskAttentionKeys = new Map<string, string>()
+
+function maybeNotifyRemoteTaskNeedsAttention(taskCard: RemoteTaskCard): void {
+  const needsAttention =
+    taskCard.status === 'awaitingApproval' || taskCard.status === 'awaitingQuestion'
+  const attentionKey = [
+    taskCard.status,
+    taskCard.runId || taskCard.latestRunId || '',
+    taskCard.pendingApprovalCount,
+    taskCard.pendingQuestionCount
+  ].join(':')
+  const previousKey = remoteTaskAttentionKeys.get(taskCard.id)
+  if (previousKey === attentionKey) return
+  remoteTaskAttentionKeys.set(taskCard.id, attentionKey)
+  if (!needsAttention) return
+
+  remoteAttentionApnsFanoutRef?.notify({
+    reason: 'taskNeedsAttention',
+    workspaceId: taskCard.workspaceId,
+    threadId: taskCard.threadId,
+    runId: taskCard.runId || taskCard.latestRunId,
+    taskId: taskCard.id,
+    projectionKind: 'RemoteTaskCard',
+    generatedAt: new Date().toISOString()
+  })
+}
 
 /**
  * Cancel every outstanding question tied to a run. Called when the
@@ -347,6 +379,16 @@ remoteQuestionRegistry.subscribe((event) => {
     bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
   } catch (err) {
     console.error('[BridgeBroadcaster] question projection failed:', err)
+  }
+  if (event.type === 'registered') {
+    remoteAttentionApnsFanoutRef?.notify({
+      reason: 'question',
+      workspaceId: record.workspaceId,
+      threadId: record.threadId,
+      runId: record.runId,
+      questionId: record.questionId,
+      projectionKind: 'MobileQuestionCard'
+    })
   }
   if (
     event.type !== 'registered' &&
@@ -564,6 +606,7 @@ let kimiMcpBridgeRepairPromise: Promise<void> | null = null
 // `getApnsTokenStore` deps it's constructed with.
 let bridgeApnsTokenStoreRef: BridgeApnsTokenStore | null = null
 let bridgeApnsPusherRef: BridgeApnsPusher | null = null
+let remoteAttentionApnsFanoutRef: RemoteAttentionApnsFanout | null = null
 
 // Phase B3: late-bound ApprovalService. Owns the five pending-approval
 // registries + the scheduled-timeout integration + the APNs wake-push
@@ -766,7 +809,20 @@ function notifyPairedDevicesOfApproval(args: {
   threadId: string
   summary: string
 }): void {
-  approvalService?.notifyPairedDevices(args)
+  if (remoteAttentionApnsFanoutRef) {
+    remoteAttentionApnsFanoutRef.notify({
+      reason: 'approval',
+      workspaceId: args.workspaceId,
+      threadId: args.threadId,
+      approvalId: args.approvalId,
+      projectionKind: 'MobileApprovalCard'
+    })
+    return
+  }
+  approvalService?.notifyPairedDevices({
+    ...args,
+    summary: 'Open AGBench to respond.'
+  })
 }
 
 /**
@@ -15836,7 +15892,7 @@ async function executeGeminiMcpTool(
     let text = ''
     let toolIsError = false
     let richResult: McpToolExecutionResult | null = null
-    const useRichResult = (result: McpToolExecutionResult) => {
+    const applyRichResult = (result: McpToolExecutionResult) => {
       richResult = result
       text = result.text
       toolIsError =
@@ -15924,21 +15980,21 @@ async function executeGeminiMcpTool(
       toolName === 'browser_screenshot' ||
       toolName === 'browser_console'
     ) {
-      useRichResult(await executeBrowserTool(toolName, args, context))
+      applyRichResult(await executeBrowserTool(toolName, args, context))
     } else if (toolName === 'attached_window_capture') {
-      useRichResult(await executeAttachedWindowCapture(args))
+      applyRichResult(await executeAttachedWindowCapture(args))
     } else if (toolName === 'attached_window_status') {
-      useRichResult(executeAttachedWindowStatus())
+      applyRichResult(executeAttachedWindowStatus())
     } else if (toolName === 'appwatch_start') {
-      useRichResult(await executeAppwatchStart(args))
+      applyRichResult(await executeAppwatchStart(args))
     } else if (toolName === 'appwatch_stop') {
-      useRichResult(await executeAppwatchStop())
+      applyRichResult(await executeAppwatchStop())
     } else if (toolName === 'appwatch_status') {
-      useRichResult(await executeAppwatchStatus())
+      applyRichResult(await executeAppwatchStatus())
     } else if (toolName === 'appwatch_latest_frame') {
-      useRichResult(await executeAppwatchLatestFrame())
+      applyRichResult(await executeAppwatchLatestFrame())
     } else if (toolName === 'appwatch_frames') {
-      useRichResult(await executeAppwatchFrames(args))
+      applyRichResult(await executeAppwatchFrames(args))
     } else if (toolName === 'approval_status') {
       text = mcpJson(executeApprovalStatus(context, args, parentProvider))
     } else if (toolName === 'provider_auth_status') {
@@ -20246,6 +20302,12 @@ if (isGeminiMcpBridgeProcess) {
     // definition near the top of this file.
     bridgeApnsTokenStoreRef = bridgeApnsTokenStore
     bridgeApnsPusherRef = bridgeApnsPusher
+    remoteAttentionApnsFanoutRef = new RemoteAttentionApnsFanout({
+      getTokenStore: () => bridgeApnsTokenStoreRef,
+      getPusher: () => bridgeApnsPusherRef,
+      isUserAtDesktop: userIsAtDesktop,
+      log: (line) => console.log(line)
+    })
 
     // Phase E2: GuiGeminiBridge daemon supervisor. Default-on by setting,
     // with AGBENCH_BRIDGE_DAEMON preserving explicit force-on/force-off
@@ -20331,11 +20393,11 @@ if (isGeminiMcpBridgeProcess) {
         steer: capabilities.has('steer'),
         pin: capabilities.has('pin'),
         yolo: capabilities.has('yolo'),
-        cancelRound: capabilities.has('steer') || capabilities.has('cancel'),
+        cancelRound: capabilities.has('cancel'),
         skipActiveParticipant: capabilities.has('steer'),
         wakeNow: capabilities.has('steer'),
-        cancelWakeup: capabilities.has('steer') || capabilities.has('cancel'),
-        queuePrompt: capabilities.has('steer') || capabilities.has('startTurn')
+        cancelWakeup: capabilities.has('cancel'),
+        queuePrompt: capabilities.has('steer')
       }
     }
 
@@ -20373,6 +20435,7 @@ if (isGeminiMcpBridgeProcess) {
           pendingApprovalCount: approvalCounts.get(chat.appChatId) ?? 0,
           capabilities
         })
+        maybeNotifyRemoteTaskNeedsAttention(taskCard)
         envelopes.push(
           buildRemoteProjectionEnvelope({
             kind: 'taskCard',
@@ -20560,6 +20623,138 @@ if (isGeminiMcpBridgeProcess) {
           broadcastThreadUpdate(action.appChatId)
           broadcastThreadList()
           return { pinned: action.pinned }
+        },
+        ensembleCancelRoundFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          if (
+            action.roundId &&
+            chat.ensemble.activeRound?.roundId &&
+            chat.ensemble.activeRound.roundId !== action.roundId
+          ) {
+            return { ok: false, error: 'Round id is no longer active' }
+          }
+          const ok = Boolean(
+            await ensembleOrchestratorRef?.cancelRound(
+              action.threadId,
+              action.message || 'cancelled from iOS'
+            )
+          )
+          if (ok) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          return { ok }
+        },
+        ensembleSkipActiveParticipantFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          if (
+            action.roundId &&
+            chat.ensemble.activeRound?.roundId &&
+            chat.ensemble.activeRound.roundId !== action.roundId
+          ) {
+            return { ok: false, error: 'Round id is no longer active' }
+          }
+          if (
+            action.participantId &&
+            chat.ensemble.activeRound?.activeParticipantId &&
+            chat.ensemble.activeRound.activeParticipantId !== action.participantId
+          ) {
+            return { ok: false, error: 'Participant is no longer active' }
+          }
+          const ok = Boolean(await ensembleOrchestratorRef?.skipActiveParticipant(action.threadId))
+          if (ok) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          return { ok }
+        },
+        ensembleWakeNowFn: async (action) => {
+          wakeupTimerServiceRef?.cancel(action.wakeupId)
+          const ok = Boolean(ensembleOrchestratorRef?.handleWakeupFired(action.wakeupId))
+          if (ok) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          return { ok, wakeupId: action.wakeupId }
+        },
+        ensembleCancelWakeupFn: async (action) => {
+          wakeupTimerServiceRef?.cancel(action.wakeupId)
+          const cancelled = ensembleOrchestratorRef?.cancelWakeupById(
+            action.wakeupId,
+            action.message || 'cancelled from iOS'
+          )
+          if (cancelled) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            return { ok: true, cancelled }
+          }
+          const persisted = findPersistedEnsembleWakeup(action.wakeupId)
+          if (!persisted || persisted.status !== 'pending') {
+            return { ok: false, error: 'No pending wakeup matches' }
+          }
+          const fallback = {
+            ...persisted,
+            status: 'cancelled' as const,
+            cancelledAt: new Date().toISOString(),
+            message: action.message || 'cancelled from iOS'
+          }
+          savePersistedEnsembleWakeup(fallback)
+          broadcastThreadUpdate(action.threadId)
+          bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          return { ok: true, cancelled: fallback }
+        },
+        ensembleQueuePromptFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          const text = action.text.trim()
+          if (!text) return { ok: false, error: 'Prompt is empty' }
+          if (
+            action.roundId &&
+            chat.ensemble.activeRound?.roundId &&
+            chat.ensemble.activeRound.roundId !== action.roundId
+          ) {
+            return { ok: false, error: 'Round id is no longer active' }
+          }
+          const ok = Boolean(
+            ensembleOrchestratorRef?.enqueueWorkSessionContinuation(action.threadId, text)
+          )
+          if (ok) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          return { ok }
+        },
+        ensembleSteerFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          const text = action.text.trim()
+          if (!text) return { ok: false, error: 'Prompt is empty' }
+          if (
+            action.roundId &&
+            chat.ensemble.activeRound?.roundId &&
+            chat.ensemble.activeRound.roundId !== action.roundId
+          ) {
+            return { ok: false, error: 'Round id is no longer active' }
+          }
+          const sender = mainWindow?.webContents
+          if (!sender || sender.isDestroyed()) {
+            return { ok: false, error: 'No main window available for Ensemble steering' }
+          }
+          const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
+          const result = ensembleOrchestratorRef?.startRound({
+            chatId: action.threadId,
+            prompt: text,
+            event: fakeEvent,
+            mode: 'steer'
+          })
+          const ok = result?.status === 'started' || result?.status === 'steered'
+          if (ok) {
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          return { ok, ...result }
         },
         composerPromptFn: async (action) => {
           // Resolve workspace path from the iOS-supplied workspaceId.
@@ -22348,7 +22543,8 @@ if (isGeminiMcpBridgeProcess) {
       const pusherTokenAware = pusher as unknown as {
         pushSilentToToken?: (
           deviceTokenHex: string,
-          env: 'production' | 'sandbox'
+          env: 'production' | 'sandbox',
+          payload?: Omit<BridgeRemoteAttentionPushPayload, 'pairID'>
         ) => Promise<{ delivered: boolean; apnsId: string; reason?: string }>
       }
       let delivered = 0
@@ -22370,7 +22566,10 @@ if (isGeminiMcpBridgeProcess) {
       }
       for (const entry of entries) {
         try {
-          const result = await pusherTokenAware.pushSilentToToken(entry.deviceToken, entry.env)
+          const result = await pusherTokenAware.pushSilentToToken(entry.deviceToken, entry.env, {
+            reason: 'resume',
+            generatedAt: new Date().toISOString()
+          })
           if (result.delivered) {
             delivered++
           } else {

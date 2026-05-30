@@ -53,11 +53,35 @@ struct RootView: View {
 @available(iOS 17.0, *)
 private extension iPadShell {
     init(appState: AppState) {
+        let remoteTaskViewModel = appState.remoteTaskConsoleViewModel
         self.init(
             pairingViewModel: appState.pairingViewModel,
             transcriptViewModel: appState.transcriptViewModel,
             approvalViewModel: appState.approvalViewModel,
             composerViewModel: appState.composerViewModel,
+            remoteTaskStore: remoteTaskViewModel?.store,
+            ensembleControlActions: remoteTaskViewModel.map { viewModel in
+                iPadEnsembleControlActions(
+                    cancelRound: { state in
+                        await viewModel.ensembleCancelRound(state)
+                    },
+                    skipActiveParticipant: { state in
+                        await viewModel.ensembleSkipActiveParticipant(state)
+                    },
+                    wakeNow: { state in
+                        await viewModel.ensembleWakeNow(state)
+                    },
+                    cancelWakeup: { state in
+                        await viewModel.ensembleCancelWakeup(state)
+                    },
+                    queuePrompt: { state, text in
+                        await viewModel.ensembleQueuePrompt(state, text: text)
+                    },
+                    steer: { state, text in
+                        await viewModel.ensembleSteer(state, text: text)
+                    }
+                )
+            } ?? .disabled,
             pushStatusMessage: appState.lastPushMessage,
             yoloModeEnabled: appState.yoloModeEnabled,
             onSetYoloMode: { enabled in

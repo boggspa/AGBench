@@ -54,9 +54,7 @@ export function CreativeActionApprovalModal({
       // Dedupe — main might re-broadcast on renderer reload. Keep
       // insertion order so the first asker stays at the head.
       setQueue((current) =>
-        current.some((q) => q.requestId === request.requestId)
-          ? current
-          : [...current, request]
+        current.some((q) => q.requestId === request.requestId) ? current : [...current, request]
       )
     })
     return unsubscribe

@@ -116,6 +116,7 @@ public actor GuiGeminiBridgeClient {
     private var statusForwarderTask: Task<Void, Never>?
     private var selectedRoute: RouteSelection?
     private var didStart = false
+    private var watchedThreadIDs: Set<String> = []
 
     static let defaultTailscalePort: UInt16 = 38_747
 
@@ -270,8 +271,21 @@ public actor GuiGeminiBridgeClient {
     /// Tell the desktop which threads this device is currently watching
     /// so the desktop can scope event-broadcast filtering.
     public func sendWatchedThreads(threadIDs: [String]) async -> Bool {
+        watchedThreadIDs = Set(threadIDs)
         guard let controller else { return false }
-        return await controller.sendWatchedThreads(threadIDs: threadIDs)
+        return await controller.sendWatchedThreads(threadIDs: watchedThreadIDs.sorted())
+    }
+
+    /// Best-effort snapshot request used after APNs wake/resume. The
+    /// daemon treats any watched-thread update as a subscribe/resume signal;
+    /// Electron responds by broadcasting fresh workspace, thread, and remote
+    /// projection snapshots.
+    public func requestProjectionSnapshot(route: RemoteNotificationRoute?) async -> Bool {
+        var nextThreadIDs = watchedThreadIDs
+        for threadID in route?.watchedThreadIds ?? [] {
+            nextThreadIDs.insert(threadID)
+        }
+        return await sendWatchedThreads(threadIDs: nextThreadIDs.sorted())
     }
 
     // MARK: - Private

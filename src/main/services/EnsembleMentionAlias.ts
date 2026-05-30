@@ -118,11 +118,7 @@ const USER_ALIASES = new Set(['user', 'human', 'you'])
  * all normalise to "gpt 5.5".
  */
 export function normalizeAlias(s: string): string {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
+  return s.toLowerCase().trim().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ')
 }
 
 /**
@@ -147,10 +143,7 @@ export function normalizeAlias(s: string): string {
  * stripped) so users can type `@gpt5.5` and `@flashlite` without
  * spaces and still match.
  */
-export function generateModelAliases(
-  provider: ProviderId,
-  model: string | undefined
-): string[] {
+export function generateModelAliases(provider: ProviderId, model: string | undefined): string[] {
   if (!model) return []
   const id = model.toLowerCase()
   const out = new Set<string>()
@@ -173,11 +166,7 @@ export function generateModelAliases(
     const match = id.match(/^gpt-([\d.]+)(.*)$/)
     if (match) {
       const version = match[1]
-      const suffix = match[2]
-        .replace(/^-/, '')
-        .split('-')
-        .filter(Boolean)
-        .join(' ')
+      const suffix = match[2].replace(/^-/, '').split('-').filter(Boolean).join(' ')
       push(version)
       push(`gpt ${version}`)
       if (suffix) {
@@ -192,11 +181,7 @@ export function generateModelAliases(
     if (match) {
       const family = match[1]
       const version = `${match[2]}.${match[3]}`
-      const suffix = match[4]
-        .replace(/^-/, '')
-        .split('-')
-        .filter(Boolean)
-        .join(' ')
+      const suffix = match[4].replace(/^-/, '').split('-').filter(Boolean).join(' ')
       push(family)
       push(`${family} ${version}`)
       push(`claude ${family} ${version}`)
@@ -210,11 +195,7 @@ export function generateModelAliases(
     const match = id.match(/^kimi-(k[\d.]+)(.*)$/)
     if (match) {
       const ver = match[1]
-      const suffix = match[2]
-        .replace(/^-/, '')
-        .split('-')
-        .filter(Boolean)
-        .join(' ')
+      const suffix = match[2].replace(/^-/, '').split('-').filter(Boolean).join(' ')
       push(ver)
       push(`kimi ${ver}`)
       if (suffix) {
@@ -290,9 +271,7 @@ export interface ParticipantAliasMap {
   aliasWordCount: Map<string, number>
 }
 
-export function buildParticipantAliasMap(
-  participants: EnsembleParticipant[]
-): ParticipantAliasMap {
+export function buildParticipantAliasMap(participants: EnsembleParticipant[]): ParticipantAliasMap {
   const byAlias = new Map<string, EnsembleParticipant[]>()
   const aliasWordCount = new Map<string, number>()
   for (const p of participants) {
@@ -490,9 +469,7 @@ function resolveMentionPhrase(
       if (!key || RESERVED_TOKENS.has(key)) continue
       const candidates = aliasMap.byAlias.get(key)
       if (!candidates || candidates.length === 0) continue
-      const eligible = excludeIds
-        ? candidates.filter((p) => !excludeIds.has(p.id))
-        : candidates
+      const eligible = excludeIds ? candidates.filter((p) => !excludeIds.has(p.id)) : candidates
       if (eligible.length === 0) continue
       // Take the first (preserves ensemble order). Same-alias ties
       // (two participants both named "codex") fall back to the first
@@ -506,10 +483,7 @@ function resolveMentionPhrase(
       // on the final word is dropped so the consumed length matches
       // the *meaningful* mention boundary — the `.` after `Planner`
       // stays in the surrounding text where it belongs.
-      const consumedText = reconstructPrefix(phrase, len).replace(
-        TRAILING_PUNCT_RE,
-        ''
-      )
+      const consumedText = reconstructPrefix(phrase, len).replace(TRAILING_PUNCT_RE, '')
       const ambiguousAmong = eligible.length > 1 ? eligible.slice(1) : undefined
       return { participant: eligible[0], consumedText, ambiguousAmong }
     }

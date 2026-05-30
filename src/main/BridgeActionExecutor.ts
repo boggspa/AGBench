@@ -2,6 +2,12 @@ import type {
   BridgeApprovalReplyAction,
   BridgeCancelRunAction,
   BridgeComposerPromptAction,
+  BridgeEnsembleCancelRoundAction,
+  BridgeEnsembleCancelWakeupAction,
+  BridgeEnsembleQueuePromptAction,
+  BridgeEnsembleSkipActiveParticipantAction,
+  BridgeEnsembleSteerAction,
+  BridgeEnsembleWakeNowAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
   BridgeRegisterApnsTokenAction,
@@ -54,6 +60,20 @@ export interface BridgeActionExecutor {
   executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult>
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
+  executeEnsembleCancelRound(
+    action: BridgeEnsembleCancelRoundAction
+  ): Promise<BridgeActionExecutionResult>
+  executeEnsembleSkipActiveParticipant(
+    action: BridgeEnsembleSkipActiveParticipantAction
+  ): Promise<BridgeActionExecutionResult>
+  executeEnsembleWakeNow(action: BridgeEnsembleWakeNowAction): Promise<BridgeActionExecutionResult>
+  executeEnsembleCancelWakeup(
+    action: BridgeEnsembleCancelWakeupAction
+  ): Promise<BridgeActionExecutionResult>
+  executeEnsembleQueuePrompt(
+    action: BridgeEnsembleQueuePromptAction
+  ): Promise<BridgeActionExecutionResult>
+  executeEnsembleSteer(action: BridgeEnsembleSteerAction): Promise<BridgeActionExecutionResult>
   executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
   ): Promise<BridgeActionExecutionResult>
@@ -94,6 +114,36 @@ export class NoopActionExecutor implements BridgeActionExecutor {
   }
   async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
     return notWired('cancelRun', action.runId)
+  }
+  async executeEnsembleCancelRound(
+    action: BridgeEnsembleCancelRoundAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleCancelRound', action.threadId)
+  }
+  async executeEnsembleSkipActiveParticipant(
+    action: BridgeEnsembleSkipActiveParticipantAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleSkipActiveParticipant', action.threadId)
+  }
+  async executeEnsembleWakeNow(
+    action: BridgeEnsembleWakeNowAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleWakeNow', action.wakeupId)
+  }
+  async executeEnsembleCancelWakeup(
+    action: BridgeEnsembleCancelWakeupAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleCancelWakeup', action.wakeupId)
+  }
+  async executeEnsembleQueuePrompt(
+    action: BridgeEnsembleQueuePromptAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleQueuePrompt', action.threadId)
+  }
+  async executeEnsembleSteer(
+    action: BridgeEnsembleSteerAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleSteer', action.threadId)
   }
   async executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
@@ -188,6 +238,14 @@ export interface MainProcessActionExecutorDependencies {
     pinned: boolean
     reason?: string
   }>
+  ensembleCancelRoundFn?: (action: BridgeEnsembleCancelRoundAction) => Promise<unknown>
+  ensembleSkipActiveParticipantFn?: (
+    action: BridgeEnsembleSkipActiveParticipantAction
+  ) => Promise<unknown>
+  ensembleWakeNowFn?: (action: BridgeEnsembleWakeNowAction) => Promise<unknown>
+  ensembleCancelWakeupFn?: (action: BridgeEnsembleCancelWakeupAction) => Promise<unknown>
+  ensembleQueuePromptFn?: (action: BridgeEnsembleQueuePromptAction) => Promise<unknown>
+  ensembleSteerFn?: (action: BridgeEnsembleSteerAction) => Promise<unknown>
   log?: (line: string) => void
 }
 
@@ -368,6 +426,72 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
+  async executeEnsembleCancelRound(
+    action: BridgeEnsembleCancelRoundAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleCancelRound',
+      action.threadId,
+      this.deps.ensembleCancelRoundFn,
+      action
+    )
+  }
+
+  async executeEnsembleSkipActiveParticipant(
+    action: BridgeEnsembleSkipActiveParticipantAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleSkipActiveParticipant',
+      action.threadId,
+      this.deps.ensembleSkipActiveParticipantFn,
+      action
+    )
+  }
+
+  async executeEnsembleWakeNow(
+    action: BridgeEnsembleWakeNowAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleWakeNow',
+      action.wakeupId,
+      this.deps.ensembleWakeNowFn,
+      action
+    )
+  }
+
+  async executeEnsembleCancelWakeup(
+    action: BridgeEnsembleCancelWakeupAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleCancelWakeup',
+      action.wakeupId,
+      this.deps.ensembleCancelWakeupFn,
+      action
+    )
+  }
+
+  async executeEnsembleQueuePrompt(
+    action: BridgeEnsembleQueuePromptAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleQueuePrompt',
+      action.threadId,
+      this.deps.ensembleQueuePromptFn,
+      action
+    )
+  }
+
+  async executeEnsembleSteer(
+    action: BridgeEnsembleSteerAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleSteer',
+      action.threadId,
+      this.deps.ensembleSteerFn,
+      action
+    )
+  }
+
   async executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
   ): Promise<BridgeActionExecutionResult> {
@@ -471,6 +595,51 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       return { executed: false, message: `Pin workspace update failed: ${errMessage}` }
     }
   }
+
+  private async executeEnsembleAction<TAction>(
+    kind: string,
+    id: string,
+    handler: ((action: TAction) => Promise<unknown>) | undefined,
+    action: TAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!handler) {
+      this.log(`[BridgeActionExecutor] ${kind} has no handler — id=${id}`)
+      return notWired(kind, id)
+    }
+    try {
+      const result = await handler(action)
+      const resultRecord = isRecord(result) ? result : null
+      const okValue = typeof resultRecord?.ok === 'boolean' ? resultRecord.ok : undefined
+      const appliedValue =
+        typeof resultRecord?.applied === 'boolean' ? resultRecord.applied : undefined
+      const executed = okValue ?? appliedValue ?? Boolean(result)
+      const reason =
+        typeof resultRecord?.error === 'string'
+          ? resultRecord.error
+          : typeof resultRecord?.reason === 'string'
+            ? resultRecord.reason
+            : typeof resultRecord?.message === 'string'
+              ? resultRecord.message
+              : undefined
+      return {
+        executed,
+        message: executed
+          ? `Ensemble action "${kind}" applied`
+          : `Ensemble action "${kind}" was not applied${reason ? `: ${reason}` : ''}`,
+        data: {
+          actionKind: kind,
+          result: serializableOrNull(result)
+        }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] ${kind} failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Ensemble action "${kind}" failed: ${errMessage}`
+      }
+    }
+  }
 }
 
 /** Best-effort coercion of a service-returned value into something
@@ -484,4 +653,8 @@ function serializableOrNull(value: unknown): unknown {
   } catch {
     return null
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

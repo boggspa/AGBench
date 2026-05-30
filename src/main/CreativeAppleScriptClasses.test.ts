@@ -58,9 +58,7 @@ describe('CreativeAppleScriptClasses (K4)', () => {
     it('validates timecode shape', () => {
       const entry = findAppleScriptClass('fcp.set-playhead')!
       expect(entry.params[0].validate?.('00:01:23:15')).toBeNull()
-      expect(entry.params[0].validate?.('0:1:23:15')).toBe(
-        'timecode must be in HH:MM:SS:FF format'
-      )
+      expect(entry.params[0].validate?.('0:1:23:15')).toBe('timecode must be in HH:MM:SS:FF format')
       expect(entry.params[0].validate?.('not-timecode')).toBe(
         'timecode must be in HH:MM:SS:FF format'
       )

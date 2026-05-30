@@ -44,9 +44,7 @@ describe('buildExternalPathOriginTooltip', () => {
   })
 
   it('returns a manual-picker phrase for legacy ids (numeric prefix, no known marker)', () => {
-    const tooltip = buildExternalPathOriginTooltip(
-      makeGrant({ id: '1700000000000-abcd' })
-    )
+    const tooltip = buildExternalPathOriginTooltip(makeGrant({ id: '1700000000000-abcd' }))
     expect(tooltip).toMatch(/Granted manually via an older picker\./)
   })
 
@@ -69,17 +67,13 @@ describe('buildExternalPathOriginTooltip', () => {
   })
 
   it('falls back to the raw createdAt string when parsing yields NaN', () => {
-    const tooltip = buildExternalPathOriginTooltip(
-      makeGrant({ createdAt: 'not-a-date' })
-    )
+    const tooltip = buildExternalPathOriginTooltip(makeGrant({ createdAt: 'not-a-date' }))
     const [header] = tooltip.split('\n')
     expect(header).toMatch(/not-a-date/)
   })
 
   it('write-access grants use "edit access" not "read access" in the header line', () => {
-    const tooltip = buildExternalPathOriginTooltip(
-      makeGrant({ access: 'write' })
-    )
+    const tooltip = buildExternalPathOriginTooltip(makeGrant({ access: 'write' }))
     expect(tooltip.split('\n')[0]).toMatch(/edit access/)
     expect(tooltip.split('\n')[0]).not.toMatch(/read access/)
   })

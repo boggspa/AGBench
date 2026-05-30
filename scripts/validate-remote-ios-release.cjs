@@ -16,6 +16,12 @@ const steps = [
     required: true
   },
   {
+    name: 'CodexBridge seam',
+    cmd: 'npm',
+    args: ['run', 'validate:codexbridge-seam'],
+    required: true
+  },
+  {
     name: 'swift daemon tests',
     cmd: 'npm',
     args: ['run', 'test:swift:bridge'],

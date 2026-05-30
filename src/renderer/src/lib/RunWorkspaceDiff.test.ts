@@ -75,9 +75,10 @@ describe('RunWorkspaceDiff', () => {
     it('returns an empty map when there are no WRITE grants or no changes', () => {
       expect(buildRunDiffByPath([], [grant('/repo-a', 'write')])).toEqual({})
       expect(
-        buildRunDiffByPath([messageWith([editActivity('t1', '/repo-a/x.ts', 1)])], [
-          grant('/repo-a', 'read')
-        ])
+        buildRunDiffByPath(
+          [messageWith([editActivity('t1', '/repo-a/x.ts', 1)])],
+          [grant('/repo-a', 'read')]
+        )
       ).toEqual({})
     })
   })

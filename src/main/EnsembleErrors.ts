@@ -84,16 +84,8 @@ export class ParticipantUnreachableError extends Error {
   readonly providerId: string
   readonly underlyingCode: string
 
-  constructor(
-    participantId: string,
-    providerId: string,
-    underlyingCode: string,
-    message?: string
-  ) {
-    super(
-      message ??
-        `Participant ${participantId} (${providerId}) unreachable: ${underlyingCode}`
-    )
+  constructor(participantId: string, providerId: string, underlyingCode: string, message?: string) {
+    super(message ?? `Participant ${participantId} (${providerId}) unreachable: ${underlyingCode}`)
     this.name = 'ParticipantUnreachableError'
     this.participantId = participantId
     this.providerId = providerId
@@ -148,12 +140,7 @@ export function classifyDispatchError(error: unknown): DispatchFailureReason {
   // and lost their `.code`. We only match the canonical caps form
   // (`ECONNREFUSED` not `connection refused`) to avoid false
   // positives on natural-language messages.
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : ''
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
   for (const code of UNREACHABLE_CODES) {
     if (message.includes(code)) {
       return { kind: 'unreachable', underlyingCode: code }

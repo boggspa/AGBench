@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  formatCost,
-  formatCostAlwaysOn,
-  getFxRatesPerUsd,
-  setFxRatesPerUsd
-} from './formatCost'
+import { formatCost, formatCostAlwaysOn, getFxRatesPerUsd, setFxRatesPerUsd } from './formatCost'
 
 /**
  * 1.0.5-EW34 — Tests for the conservative-overestimate bias

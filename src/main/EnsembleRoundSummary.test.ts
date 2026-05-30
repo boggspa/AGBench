@@ -44,9 +44,7 @@ Next action:
 
 describe('EnsembleRoundSummary', () => {
   it('extracts the final structured round summary block', () => {
-    expect(extractRoundSummaryBlock(`Earlier text\n\n${structured}`)).toContain(
-      'The panel chose'
-    )
+    expect(extractRoundSummaryBlock(`Earlier text\n\n${structured}`)).toContain('The panel chose')
   })
 
   it('requires every structured label', () => {
@@ -55,10 +53,7 @@ describe('EnsembleRoundSummary', () => {
 
   it('captures only the terminal synthesizer assistant message', () => {
     const record = findTerminalSynthesizerRoundSummary({
-      messages: [
-        assistant('a', 'claude', 'Looks good.'),
-        assistant('b', 'codex', structured)
-      ],
+      messages: [assistant('a', 'claude', 'Looks good.'), assistant('b', 'codex', structured)],
       roundId: 'round-1',
       synthesizerParticipantId: 'codex',
       capturedAt: '2026-05-27T12:01:00.000Z'

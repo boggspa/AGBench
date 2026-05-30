@@ -74,9 +74,7 @@ describe('EditorAdapters (Phase L)', () => {
 
     it('formats Zed and Sublime as bare `file:line:col`', () => {
       const zed = findEditorById('zed')!
-      expect(buildEditorPositionalArgs(zed, '/path/file.ts', 12, 4)).toEqual([
-        '/path/file.ts:12:4'
-      ])
+      expect(buildEditorPositionalArgs(zed, '/path/file.ts', 12, 4)).toEqual(['/path/file.ts:12:4'])
       const sublime = findEditorById('sublime-text')!
       expect(buildEditorPositionalArgs(sublime, '/path/file.ts', 12, 4)).toEqual([
         '/path/file.ts:12:4'

@@ -442,6 +442,131 @@ describe('Http2ApnsPusher — endpoint selection', () => {
   })
 })
 
+describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
+  it('omits summaries, commands, file paths, and deep links from approval alerts', () => {
+    const { dir, path } = writeTestAuthKey()
+    try {
+      const bodyWrites: string[] = []
+      const mockConnect = (_authority: string) =>
+        ({
+          closed: false,
+          destroyed: false,
+          on: () => {},
+          request: () => ({
+            on: () => {},
+            setEncoding: () => {},
+            write: (body: string) => {
+              bodyWrites.push(body)
+            },
+            end: () => {}
+          }),
+          close: () => {}
+        }) as never
+      const pusher = new Http2ApnsPusher({
+        authKeyPath: path,
+        keyId: 'KEYID00000',
+        teamId: 'TEAM00ABCD',
+        bundleId: 'com.example.app',
+        connect: mockConnect
+      })
+      void pusher.pushApprovalToToken('a', 'sandbox', {
+        pairID: 'p',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc',
+        summary: 'Run rm -rf /Users/dev/project?',
+        deepLinkPath: '/Users/dev/project/file.ts'
+      })
+      return Promise.resolve().then(() => {
+        const body = JSON.parse(bodyWrites[0])
+        const serialized = JSON.stringify(body)
+        expect(body.aps.alert).toEqual({
+          title: 'AGBench needs attention',
+          body: 'Open AGBench to respond.'
+        })
+        expect(body).toMatchObject({
+          pairID: 'p',
+          workspaceId: 'w',
+          threadId: 't',
+          toolCallId: 'tc'
+        })
+        expect(body.deepLinkPath).toBeUndefined()
+        expect(body.expiresAt).toBeUndefined()
+        expect(serialized).not.toContain('rm -rf')
+        expect(serialized).not.toContain('/Users/dev')
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('sends remote attention alerts with routing identifiers only', () => {
+    const { dir, path } = writeTestAuthKey()
+    try {
+      const bodyWrites: string[] = []
+      const mockConnect = (_authority: string) =>
+        ({
+          closed: false,
+          destroyed: false,
+          on: () => {},
+          request: () => ({
+            on: () => {},
+            setEncoding: () => {},
+            write: (body: string) => {
+              bodyWrites.push(body)
+            },
+            end: () => {}
+          }),
+          close: () => {}
+        }) as never
+      const pusher = new Http2ApnsPusher({
+        authKeyPath: path,
+        keyId: 'KEYID00000',
+        teamId: 'TEAM00ABCD',
+        bundleId: 'com.example.app',
+        connect: mockConnect
+      })
+      void pusher.pushRemoteAttentionToToken('a', 'sandbox', {
+        pairID: 'p',
+        reason: 'ensemble',
+        workspaceId: 'w',
+        threadId: 't',
+        runId: 'r',
+        wakeupId: 'wake',
+        taskId: 'task',
+        projectionKind: 'RemoteEnsembleState',
+        generatedAt: '2026-05-30T12:00:00.000Z',
+        deepLinkPath: '/Users/dev/project/file.ts',
+        summary: 'Open diff for secret-file.ts'
+      } as never)
+      return Promise.resolve().then(() => {
+        const body = JSON.parse(bodyWrites[0])
+        const serialized = JSON.stringify(body)
+        expect(body.aps.alert).toEqual({
+          title: 'AGBench needs attention',
+          body: 'Open AGBench to review the latest task state.'
+        })
+        expect(body).toMatchObject({
+          pairID: 'p',
+          reason: 'ensemble',
+          workspaceId: 'w',
+          threadId: 't',
+          runId: 'r',
+          wakeupId: 'wake',
+          taskId: 'task',
+          projectionKind: 'RemoteEnsembleState'
+        })
+        expect(body.deepLinkPath).toBeUndefined()
+        expect(body.summary).toBeUndefined()
+        expect(serialized).not.toContain('/Users/dev')
+        expect(serialized).not.toContain('secret-file.ts')
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('derEcdsaToConcat', () => {
   it('strips leading 0x00 padding from r and s INTEGERs', () => {
     // DER for r=0x01, s=0x02 (both 1-byte values)

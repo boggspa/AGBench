@@ -137,7 +137,8 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         outputUsdPerMillion: 2.5,
         sourceUrl: 'https://docs.x.ai/docs/models',
         lastVerified: RATE_TABLE_VERSION,
-        notes: 'xAI API pricing for grok-4.3 (1M ctx). Projected API-equivalent, not actual billing.'
+        notes:
+          'xAI API pricing for grok-4.3 (1M ctx). Projected API-equivalent, not actual billing.'
       }
     ]
   },
@@ -396,7 +397,11 @@ export function findDollarRateNearTokenPhrase(
   // Build a regex that matches the dollar value with either 0/1/2
   // decimal places. Escape the `$` to be literal.
   const decimalGroup =
-    remainder === 0 ? '(?:\\.0{1,2})?' : `\\.${Math.round(remainder * 100).toString().padStart(2, '0')}`
+    remainder === 0
+      ? '(?:\\.0{1,2})?'
+      : `\\.${Math.round(remainder * 100)
+          .toString()
+          .padStart(2, '0')}`
   const dollarPattern = `\\$${intPart}${decimalGroup}`
   // Within the SAME ~80 characters, require any of:
   //   "M tokens", "1M tokens", "million tokens", "1,000,000 tokens",
@@ -549,11 +554,7 @@ export async function probeAllProviderRates(): Promise<ProviderRatesSnapshot> {
 async function persistSnapshot(snapshot: ProviderRatesSnapshot): Promise<void> {
   if (!snapshot.probe) return
   try {
-    await fs.writeFile(
-      cachePath(),
-      JSON.stringify(snapshot.probe, null, 2),
-      'utf-8'
-    )
+    await fs.writeFile(cachePath(), JSON.stringify(snapshot.probe, null, 2), 'utf-8')
   } catch {
     // Best-effort.
   }

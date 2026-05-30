@@ -107,10 +107,7 @@ export function tokeniseMentions(
  * 1.0.4 — user-mentions count too (`@user` / `@human` / `@you`),
  * so the overlay activates and renders the chip even in chats
  * with no ensemble participants. */
-export function hasResolvedMention(
-  value: string,
-  participants: EnsembleParticipant[]
-): boolean {
+export function hasResolvedMention(value: string, participants: EnsembleParticipant[]): boolean {
   if (!value || !value.includes('@')) return false
   return findFirstMention(value, participants) !== null
 }

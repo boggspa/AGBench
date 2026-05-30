@@ -143,9 +143,9 @@ export function SidebarOverflowMenu({
 
   // Reset focused index when menu closes so opening it again starts fresh.
   useEffect(() => {
-    if (!open) {
-      setFocusedIndex(-1)
-    }
+    if (open) return
+    const frame = window.requestAnimationFrame(() => setFocusedIndex(-1))
+    return () => window.cancelAnimationFrame(frame)
   }, [open])
 
   const handleTriggerClick = (event: MouseEvent<HTMLSpanElement>) => {
@@ -258,13 +258,7 @@ export function SidebarOverflowMenu({
         style={triggerStyle}
       >
         <span className="sf-symbol-icon" aria-hidden>
-          <svg
-            viewBox="0 0 16 16"
-            width="14"
-            height="14"
-            fill="currentColor"
-            role="img"
-          >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" role="img">
             <circle cx="3.2" cy="8" r="1.4" />
             <circle cx="8" cy="8" r="1.4" />
             <circle cx="12.8" cy="8" r="1.4" />

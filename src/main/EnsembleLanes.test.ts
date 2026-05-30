@@ -35,9 +35,7 @@ function makeRound(lanes: ConcurrentLane[] = []): EnsembleRoundState {
 
 describe('buildLaneId', () => {
   it('produces a stable id from roundId + participantId + attempt', () => {
-    expect(buildLaneId('round-1', 'codex-explorer', 1)).toBe(
-      'lane-round-1-codex-explorer-1'
-    )
+    expect(buildLaneId('round-1', 'codex-explorer', 1)).toBe('lane-round-1-codex-explorer-1')
   })
 
   it('defaults attempt to 1', () => {

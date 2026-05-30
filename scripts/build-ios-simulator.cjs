@@ -54,15 +54,19 @@ if (!existsSync(PROJECT_PATH)) {
   run('xcodegen', ['generate'], { cwd: IOS_DIR })
 }
 
-run('xcodebuild', [
-  '-project',
-  'GuiGeminiCompanion.xcodeproj',
-  '-scheme',
-  'GuiGeminiCompanion',
-  '-configuration',
-  'Debug',
-  '-destination',
-  'generic/platform=iOS Simulator',
-  'CODE_SIGNING_ALLOWED=NO',
-  'build'
-], { cwd: IOS_DIR })
+run(
+  'xcodebuild',
+  [
+    '-project',
+    'GuiGeminiCompanion.xcodeproj',
+    '-scheme',
+    'GuiGeminiCompanion',
+    '-configuration',
+    'Debug',
+    '-destination',
+    'generic/platform=iOS Simulator',
+    'CODE_SIGNING_ALLOWED=NO',
+    'build'
+  ],
+  { cwd: IOS_DIR }
+)

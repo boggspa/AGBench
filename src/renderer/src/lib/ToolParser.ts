@@ -529,19 +529,13 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
       }
       if (unqualifiedName === 'update_topic') {
         const topic =
-          (params.title as string) ||
-          (params.topic as string) ||
-          (params.name as string) ||
-          ''
+          (params.title as string) || (params.topic as string) || (params.name as string) || ''
         return topic ? `Topic update: ${topic}` : 'Topic update'
       }
-      if (unqualifiedName === 'codex_reasoning')
-        return (params.title as string) || 'Thinking note'
-      if (unqualifiedName === 'kimi_thinking')
-        return (params.title as string) || 'Kimi thinking'
+      if (unqualifiedName === 'codex_reasoning') return (params.title as string) || 'Thinking note'
+      if (unqualifiedName === 'kimi_thinking') return (params.title as string) || 'Kimi thinking'
       if (unqualifiedName === 'codex_plan') return 'Plan update'
-      if (unqualifiedName === 'invoke_agent')
-        return (params.title as string) || 'Delegated task'
+      if (unqualifiedName === 'invoke_agent') return (params.title as string) || 'Delegated task'
       if (unqualifiedName === 'summary') return (params.title as string) || 'Summary'
       if (unqualifiedName === 'intent') return (params.title as string) || 'Intent'
       // 1.0.4-AA — `exit_plan_mode` + `exitplanmode` were falling

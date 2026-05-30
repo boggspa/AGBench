@@ -11,10 +11,7 @@ import type {
   PermissionPresetId,
   ProviderId
 } from './store/types'
-import {
-  coalesceExternalPathGrants,
-  stripExternalPathGrantOrder
-} from './store/ExternalPathGrants'
+import { coalesceExternalPathGrants, stripExternalPathGrantOrder } from './store/ExternalPathGrants'
 
 const AGENTIC_SERVICE_IDS: AgenticServiceId[] = [
   'shellCommands',
@@ -103,10 +100,15 @@ export function resolveEffectiveRunPermissions(
   const networkAccess =
     input.settings.agenticServices?.networkAccess === 'deny'
       ? 'deny'
-      : input.overrides?.networkAccess || preset.networkAccess || input.settings.agenticServices?.networkAccess || 'allow'
+      : input.overrides?.networkAccess ||
+        preset.networkAccess ||
+        input.settings.agenticServices?.networkAccess ||
+        'allow'
 
   const approvalMode =
-    input.overrides?.approvalMode || preset.approvalMode || (presetId === 'read_only' ? 'plan' : 'default')
+    input.overrides?.approvalMode ||
+    preset.approvalMode ||
+    (presetId === 'read_only' ? 'plan' : 'default')
 
   // 1.0.6-EW66 — strip the renderer-only `order` field: effective
   // run permissions feed execution, not the composer workspace list.
@@ -134,7 +136,9 @@ function normalizePresetId(value: unknown): PermissionPresetId {
     : 'default'
 }
 
-function servicesFromSettings(settings: AgenticServicesSettings): Record<AgenticServiceId, AgenticServicePolicy> {
+function servicesFromSettings(
+  settings: AgenticServicesSettings
+): Record<AgenticServiceId, AgenticServicePolicy> {
   return {
     shellCommands: normalizePolicy(settings?.shellCommands, 'ask'),
     fileChanges: normalizePolicy(settings?.fileChanges, 'ask'),
@@ -143,10 +147,7 @@ function servicesFromSettings(settings: AgenticServicesSettings): Record<Agentic
   }
 }
 
-function normalizePolicy(
-  value: unknown,
-  fallback: AgenticServicePolicy
-): AgenticServicePolicy {
+function normalizePolicy(value: unknown, fallback: AgenticServicePolicy): AgenticServicePolicy {
   return value === 'ask' || value === 'workspace' || value === 'allow' || value === 'deny'
     ? value
     : fallback
@@ -174,4 +175,3 @@ function workspaceGrantServiceIdsFor(
   }
   return [...serviceIds]
 }
-

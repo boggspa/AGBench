@@ -25,9 +25,7 @@ describe('describeExternalPath', () => {
   })
 
   it('falls back to non-repo when gitMetadata is null', () => {
-    expect(
-      describeExternalPath('/Users/me/code/some-folder', { gitMetadata: null })
-    ).toEqual({
+    expect(describeExternalPath('/Users/me/code/some-folder', { gitMetadata: null })).toEqual({
       isRepo: false,
       repoRoot: '/Users/me/code/some-folder',
       basename: 'some-folder'

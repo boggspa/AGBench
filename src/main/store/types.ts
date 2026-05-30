@@ -631,11 +631,7 @@ export interface EnsembleRunIdentity {
  *
  * Undefined reads as `'roundtable'` (the pre-AR13 default).
  */
-export type EnsembleRoundMode =
-  | 'targeted'
-  | 'roundtable'
-  | 'chair-summary'
-  | 'rebuttal'
+export type EnsembleRoundMode = 'targeted' | 'roundtable' | 'chair-summary' | 'rebuttal'
 
 export interface EnsembleRoundSummaryRecord {
   roundId: string
@@ -866,13 +862,7 @@ export interface WorkSessionConfig {
  * `authState` / `authReason` (replaces `accountStatus`).
  */
 export type ProviderAuthServerState = 'started' | 'lazy' | 'error' | 'unavailable'
-export type ProviderAuthTransport =
-  | 'sdk'
-  | 'cli'
-  | 'app-server'
-  | 'pty'
-  | 'http'
-  | 'unavailable'
+export type ProviderAuthTransport = 'sdk' | 'cli' | 'app-server' | 'pty' | 'http' | 'unavailable'
 export type ProviderAuthState =
   | 'authenticated'
   | 'not-queried'

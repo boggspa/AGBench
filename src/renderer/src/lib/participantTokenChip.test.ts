@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildParticipantTokenChipModel } from './participantTokenChip'
 import type { EnsembleParticipant } from '../../../main/store/types'
 
-function participant(
-  overrides: Partial<EnsembleParticipant> = {}
-): EnsembleParticipant {
+function participant(overrides: Partial<EnsembleParticipant> = {}): EnsembleParticipant {
   return {
     id: 'p',
     provider: 'codex',
@@ -46,13 +44,16 @@ describe('buildParticipantTokenChipModel (AV2)', () => {
 
   it('formats m for millions (one decimal under 10, integer at and above)', () => {
     expect(
-      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 1_234_567 } })).label
+      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 1_234_567 } }))
+        .label
     ).toBe('1.2m')
     expect(
-      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 9_999_999 } })).label
+      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 9_999_999 } }))
+        .label
     ).toBe('10.0m')
     expect(
-      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 14_500_000 } })).label
+      buildParticipantTokenChipModel(participant({ tokenTotals: { total_tokens: 14_500_000 } }))
+        .label
     ).toBe('15m')
   })
 

@@ -91,8 +91,7 @@ export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
   // G6 — resume the prior session by id (persistent conversation). Only emit
   // for a genuine non-empty id; a fresh chat (no id yet) starts a new session,
   // whose id is captured from the terminal event for the next turn.
-  const resumeId =
-    typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
+  const resumeId = typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
   if (resumeId) {
     args.push('--resume', resumeId)
   }

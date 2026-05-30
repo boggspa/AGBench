@@ -101,9 +101,7 @@ export function QuotaProgressBar({
   emphasised = false,
   pace = null
 }: QuotaProgressBarProps): ReactElement {
-  const clampedFraction = Number.isFinite(fraction)
-    ? Math.max(0, Math.min(1, fraction))
-    : 0
+  const clampedFraction = Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0
   // Render the fill at AT LEAST 3% width so a non-zero fraction
   // still produces a visible sliver. Pure-zero fractions render
   // an empty bar (no fill div).

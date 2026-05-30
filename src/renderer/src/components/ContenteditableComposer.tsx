@@ -293,15 +293,18 @@ export const ContenteditableComposer = forwardRef<
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true
   }, [])
-  const handleCompositionEnd = useCallback((_event: CompositionEvent<HTMLDivElement>) => {
-    isComposingRef.current = false
-    // Sync our state with whatever the IME committed.
-    const root = rootRef.current
-    if (!root) return
-    const text = extractPlainText(root)
-    lastWrittenValueRef.current = text
-    onChange(text)
-  }, [onChange])
+  const handleCompositionEnd = useCallback(
+    (_event: CompositionEvent<HTMLDivElement>) => {
+      isComposingRef.current = false
+      // Sync our state with whatever the IME committed.
+      const root = rootRef.current
+      if (!root) return
+      const text = extractPlainText(root)
+      lastWrittenValueRef.current = text
+      onChange(text)
+    },
+    [onChange]
+  )
 
   // Imperative ref API.
   useImperativeHandle(

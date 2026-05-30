@@ -251,9 +251,9 @@ export function PairingPage(): JSX.Element {
         <header className="pairing-page__section-header">
           <h3 className="pairing-page__section-title">Paired-device workspace access</h3>
           <p className="pairing-page__section-subtitle">
-            Choose which workspaces a paired iPhone / iPad can run agents against.
-            Empty list = all iOS-initiated runs are denied. Per-action revalidation is
-            enforced — revoking an entry takes effect on the next iOS request.
+            Choose which workspaces a paired iPhone / iPad can run agents against. Empty list = all
+            iOS-initiated runs are denied. Per-action revalidation is enforced — revoking an entry
+            takes effect on the next iOS request.
           </p>
         </header>
         <RemoteWorkspacesPanel />
@@ -272,8 +272,8 @@ export function PairingPage(): JSX.Element {
         <header className="pairing-page__section-header">
           <h3 className="pairing-page__section-title">Bridge networking</h3>
           <p className="pairing-page__section-subtitle">
-            How the desktop daemon advertises itself to paired iOS devices, and how
-            off-LAN devices wake the Mac via APNs.
+            How the desktop daemon advertises itself to paired iOS devices, and how off-LAN devices
+            wake the Mac via APNs.
           </p>
         </header>
         <BridgeNetworkingPanel />

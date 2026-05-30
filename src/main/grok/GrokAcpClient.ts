@@ -118,9 +118,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
       writeResponse(buildAcpPermissionResponse(request.rpcId, request.options, 'deny'))
     let decision: AcpPermissionDecision | Promise<AcpPermissionDecision>
     try {
-      decision = options.onPermissionRequest
-        ? options.onPermissionRequest(request)
-        : 'deny'
+      decision = options.onPermissionRequest ? options.onPermissionRequest(request) : 'deny'
     } catch {
       fallbackDeny()
       return

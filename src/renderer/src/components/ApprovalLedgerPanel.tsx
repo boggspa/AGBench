@@ -300,8 +300,7 @@ export function ApprovalLedgerPanel({
               disabled={!onRevokeWorkspaceGrant || bulkRevoking}
               title="Revoke every sub-thread delegation grant in this workspace"
             >
-              Forget all sub-thread delegations for this workspace (
-              {subThreadGrantsHere.length})
+              Forget all sub-thread delegations for this workspace ({subThreadGrantsHere.length})
             </button>
           </div>
         )}

@@ -85,16 +85,12 @@ describe('extractFirstEnsembleDmTarget', () => {
 
   it('returns the first match when multiple participants are mentioned', () => {
     expect(
-      extractFirstEnsembleDmTarget(
-        '[@A](ensemble-dm://id-a) and [@B](ensemble-dm://id-b)'
-      )
+      extractFirstEnsembleDmTarget('[@A](ensemble-dm://id-a) and [@B](ensemble-dm://id-b)')
     ).toBe('id-a')
   })
 
   it('ignores other markdown link schemes (e.g. agent://)', () => {
-    expect(
-      extractFirstEnsembleDmTarget('[@Helper](agent://thread-xyz) help')
-    ).toBeNull()
+    expect(extractFirstEnsembleDmTarget('[@Helper](agent://thread-xyz) help')).toBeNull()
   })
 
   it('resolves plain @Role against participants by role (case-insensitive)', () => {
@@ -131,9 +127,7 @@ describe('extractFirstEnsembleDmTarget', () => {
     // `@example.com` is preceded by `e` (not a boundary), so the
     // tokeniser regex won't match — same defence as the transcript
     // tokeniser.
-    expect(
-      extractFirstEnsembleDmTarget('contact me@example.com first', participants)
-    ).toBeNull()
+    expect(extractFirstEnsembleDmTarget('contact me@example.com first', participants)).toBeNull()
   })
 
   it('prefers the markdown link over plain @Role when both are present', () => {
