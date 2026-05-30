@@ -2372,6 +2372,14 @@ button.sidebar-item {
   box-shadow: none;
   transform: none;
   image-rendering: pixelated;
+  /* 1.0.6 — clear the FIRST `.ghost-body` definition's percentage clip-path
+   * (~line 2059), which was authored for the old 54px body. It cascades into
+   * this redrawn 84px body and clips its `::before` (navy silhouette / "blue
+   * outline") and `::after` (face) at 18%/82% — slicing the ghost's left+right
+   * sides. The silhouette is now drawn entirely by `::before`'s own clip-path,
+   * so the parent must NOT clip. (Codex's earlier inset tweak didn't help —
+   * the cause is this stale clip, not positioning/overflow.) */
+  clip-path: none;
 }
 
 .ghost-body::before,
