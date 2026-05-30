@@ -2181,6 +2181,13 @@ button.sidebar-item {
   height: 100%;
   overflow: visible;
   pointer-events: none;
+  /* 1.0.6 — 10% narrower (width only), centred. Applied here on the SVG rather
+   * than `.ghost-avatar` because the avatar's `transform` is driven by the
+   * `ghostGutterFloat` animation and would clobber a base transform; the inner
+   * SVG has no animation, so scaleX composes cleanly with the float (parent) and
+   * the eye blink (child <g>). */
+  transform: scaleX(0.9);
+  transform-origin: 50% 50%;
 }
 /* Blink: squash each eye group around ITS OWN centre (transform-box: fill-box),
  * reusing the existing ghostBlink keyframe. Scoped under .ghost-svg so it beats
