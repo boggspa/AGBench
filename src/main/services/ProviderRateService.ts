@@ -74,6 +74,9 @@ export interface ModelRateEntry {
   /** Optional notes — e.g. "subscription-only via Codex CLI",
    * "tier-1 only", "preview pricing". */
   notes?: string
+  /** Explicit source confidence for the rate value. Missing means
+   * baked-in manual table. */
+  confidence?: ProviderRateConfidence
 }
 
 export interface ProviderRateTable {
@@ -326,11 +329,16 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
 }
 
 export type RateProbeStatus = 'verified' | 'not-verified' | 'fetch-failed'
+export type ProviderRateConfidence = 'baked-in' | 'manual-override'
 
 export interface ModelRateProbeResult {
   modelId: string
   status: RateProbeStatus
-  baseline: { inputUsdPerMillion: number; outputUsdPerMillion: number }
+  baseline: {
+    inputUsdPerMillion: number
+    outputUsdPerMillion: number
+    confidence: ProviderRateConfidence
+  }
   /** When status is 'verified', the dollar string we found that
    * matched the baked-in input or output rate. Useful for
    * surfacing "we saw '$3.00 / 1M' on the pricing page next to
@@ -356,6 +364,9 @@ export interface ProviderRatesSnapshot {
   rateTableVersion: string
   /** Baked-in rates — always present. */
   baseline: Record<ProviderId, ProviderRateTable>
+  /** Optional local override load summary. Overrides are manually
+   * authored and validated before they can alter the baseline. */
+  manualOverrides?: ProviderRateManualOverrideSummary
   /** Probe results from the last `probeProviderRates` run. May
    * be empty / stale; clients should treat `baseline` as the
    * source of truth and probe results as drift signals only. */
@@ -363,6 +374,23 @@ export interface ProviderRatesSnapshot {
     runAt: string
     results: Record<ProviderId, ProviderRateProbeResult>
   }
+}
+
+export interface ProviderRateManualOverride {
+  provider: ProviderId
+  modelId: string
+  inputUsdPerMillion: number
+  outputUsdPerMillion: number
+  cachedInputUsdPerMillion?: number
+  sourceUrl?: string
+  lastVerified?: string
+  notes?: string
+}
+
+export interface ProviderRateManualOverrideSummary {
+  loadedAt: string
+  applied: Array<{ provider: ProviderId; modelId: string }>
+  rejected: Array<{ provider?: string; modelId?: string; reason: string }>
 }
 
 /**
@@ -418,10 +446,16 @@ export function findDollarRateNearTokenPhrase(
 }
 
 const CACHE_FILENAME = 'provider-rates-probe.json'
+const MANUAL_OVERRIDES_FILENAME = 'provider-rates-overrides.json'
 const FETCH_TIMEOUT_MS = 15_000
+const PROBE_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 
 function cachePath(): string {
   return join(app.getPath('userData'), CACHE_FILENAME)
+}
+
+function manualOverridesPath(): string {
+  return join(app.getPath('userData'), MANUAL_OVERRIDES_FILENAME)
 }
 
 let cachedSnapshot: ProviderRatesSnapshot = {
@@ -431,6 +465,221 @@ let cachedSnapshot: ProviderRatesSnapshot = {
 
 export function getCurrentProviderRates(): ProviderRatesSnapshot {
   return cachedSnapshot
+}
+
+const providerIds = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
+
+function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === 'string' && providerIds.has(value as ProviderId)
+}
+
+function isRateProbeStatus(value: unknown): value is RateProbeStatus {
+  return value === 'verified' || value === 'not-verified' || value === 'fetch-failed'
+}
+
+function isProviderRateConfidence(value: unknown): value is ProviderRateConfidence {
+  return value === 'baked-in' || value === 'manual-override'
+}
+
+function cloneRateTables(
+  tables: Record<ProviderId, ProviderRateTable>
+): Record<ProviderId, ProviderRateTable> {
+  const out = {} as Record<ProviderId, ProviderRateTable>
+  for (const [provider, table] of Object.entries(tables) as Array<[ProviderId, ProviderRateTable]>) {
+    out[provider] = {
+      ...table,
+      models: table.models.map((model) => ({ ...model }))
+    }
+  }
+  return out
+}
+
+function modelRateConfidence(model: ModelRateEntry): ProviderRateConfidence {
+  return model.confidence || 'baked-in'
+}
+
+function modelProbeBaseline(model: ModelRateEntry): ModelRateProbeResult['baseline'] {
+  return {
+    inputUsdPerMillion: model.inputUsdPerMillion,
+    outputUsdPerMillion: model.outputUsdPerMillion,
+    confidence: modelRateConfidence(model)
+  }
+}
+
+function validUsdRate(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value < 10_000
+}
+
+function normalizeManualOverrides(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>).overrides)) {
+    return (raw as Record<string, unknown>).overrides as unknown[]
+  }
+  return []
+}
+
+export function applyManualProviderRateOverrides(
+  baseline: Record<ProviderId, ProviderRateTable>,
+  rawOverrides: unknown,
+  loadedAt: string = new Date().toISOString()
+): {
+  baseline: Record<ProviderId, ProviderRateTable>
+  summary: ProviderRateManualOverrideSummary
+} {
+  const next = cloneRateTables(baseline)
+  const summary: ProviderRateManualOverrideSummary = { loadedAt, applied: [], rejected: [] }
+  for (const raw of normalizeManualOverrides(rawOverrides)) {
+    const entry = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
+    const provider = entry?.provider
+    const modelId = typeof entry?.modelId === 'string' ? entry.modelId.trim() : ''
+    if (!entry || !isProviderId(provider)) {
+      summary.rejected.push({ modelId, reason: 'unknown-provider' })
+      continue
+    }
+    const table = next[provider]
+    const modelIndex = table.models.findIndex((model) => model.modelId === modelId)
+    if (modelIndex < 0) {
+      summary.rejected.push({ provider, modelId, reason: 'unknown-model' })
+      continue
+    }
+    if (!validUsdRate(entry.inputUsdPerMillion) || !validUsdRate(entry.outputUsdPerMillion)) {
+      summary.rejected.push({ provider, modelId, reason: 'invalid-rate' })
+      continue
+    }
+    if (entry.outputUsdPerMillion < entry.inputUsdPerMillion) {
+      summary.rejected.push({ provider, modelId, reason: 'output-below-input' })
+      continue
+    }
+    const cachedInput =
+      entry.cachedInputUsdPerMillion === undefined
+        ? undefined
+        : validUsdRate(entry.cachedInputUsdPerMillion) &&
+            entry.cachedInputUsdPerMillion < entry.inputUsdPerMillion
+          ? entry.cachedInputUsdPerMillion
+          : null
+    if (cachedInput === null) {
+      summary.rejected.push({ provider, modelId, reason: 'invalid-cached-input-rate' })
+      continue
+    }
+    const current = table.models[modelIndex]
+    table.models[modelIndex] = {
+      ...current,
+      inputUsdPerMillion: entry.inputUsdPerMillion,
+      outputUsdPerMillion: entry.outputUsdPerMillion,
+      ...(cachedInput !== undefined ? { cachedInputUsdPerMillion: cachedInput } : {}),
+      sourceUrl: typeof entry.sourceUrl === 'string' && entry.sourceUrl ? entry.sourceUrl : current.sourceUrl,
+      lastVerified:
+        typeof entry.lastVerified === 'string' && Number.isFinite(Date.parse(entry.lastVerified))
+          ? entry.lastVerified
+          : loadedAt.slice(0, 10),
+      notes:
+        typeof entry.notes === 'string' && entry.notes.trim()
+          ? `Manual override: ${entry.notes.trim()}`
+          : 'Manual override.',
+      confidence: 'manual-override'
+    }
+    summary.applied.push({ provider, modelId })
+  }
+  return { baseline: next, summary }
+}
+
+export function shouldRefreshProviderRateProbe(
+  snapshot: ProviderRatesSnapshot,
+  now: number = Date.now()
+): boolean {
+  const runAt = snapshot.probe?.runAt
+  if (!runAt) return true
+  const runAtMs = Date.parse(runAt)
+  if (!Number.isFinite(runAtMs)) return true
+  return now - runAtMs > PROBE_REFRESH_INTERVAL_MS
+}
+
+export function parsePersistedProviderRateProbe(raw: string): ProviderRatesSnapshot['probe'] | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const probe = parsed as Record<string, unknown>
+  if (typeof probe.runAt !== 'string' || !Number.isFinite(Date.parse(probe.runAt))) return null
+  const rawResults = probe.results
+  if (!rawResults || typeof rawResults !== 'object') return null
+  const results = {} as Record<ProviderId, ProviderRateProbeResult>
+  for (const [providerRaw, resultRaw] of Object.entries(rawResults)) {
+    if (!isProviderId(providerRaw)) return null
+    if (!resultRaw || typeof resultRaw !== 'object') return null
+    const result = resultRaw as Record<string, unknown>
+    if (!Array.isArray(result.models)) return null
+    if (result.fetchedAt !== undefined && typeof result.fetchedAt !== 'string') return null
+    if (result.pageFetchError !== undefined && typeof result.pageFetchError !== 'string') {
+      return null
+    }
+    const models: ModelRateProbeResult[] = []
+    for (const modelRaw of result.models) {
+      if (!modelRaw || typeof modelRaw !== 'object') return null
+      const model = modelRaw as Record<string, unknown>
+      const baseline = model.baseline as Record<string, unknown> | undefined
+      if (!baseline || typeof baseline !== 'object') return null
+      const confidence = baseline.confidence
+      if (confidence !== undefined && !isProviderRateConfidence(confidence)) return null
+      if (
+        typeof model.modelId !== 'string' ||
+        !isRateProbeStatus(model.status) ||
+        !validUsdRate(baseline.inputUsdPerMillion) ||
+        !validUsdRate(baseline.outputUsdPerMillion)
+      ) {
+        return null
+      }
+      if (
+        model.matchedDollarStrings !== undefined &&
+        (!Array.isArray(model.matchedDollarStrings) ||
+          model.matchedDollarStrings.some((match) => typeof match !== 'string'))
+      ) {
+        return null
+      }
+      if (model.errorMessage !== undefined && typeof model.errorMessage !== 'string') return null
+      const inputUsdPerMillion = baseline.inputUsdPerMillion
+      const outputUsdPerMillion = baseline.outputUsdPerMillion
+      const matchedDollarStrings = Array.isArray(model.matchedDollarStrings)
+        ? (model.matchedDollarStrings as string[])
+        : undefined
+      models.push({
+        modelId: model.modelId,
+        status: model.status,
+        baseline: {
+          inputUsdPerMillion,
+          outputUsdPerMillion,
+          confidence: confidence || 'baked-in'
+        },
+        matchedDollarStrings,
+        errorMessage: model.errorMessage
+      })
+    }
+    results[providerRaw] = {
+      provider: providerRaw,
+      pricingUrl: typeof result.pricingUrl === 'string' ? result.pricingUrl : '',
+      fetchedAt: result.fetchedAt,
+      models,
+      pageFetchError: result.pageFetchError
+    }
+  }
+  return { runAt: probe.runAt, results }
+}
+
+async function loadManualOverrideBaseline(): Promise<{
+  baseline: Record<ProviderId, ProviderRateTable>
+  manualOverrides?: ProviderRateManualOverrideSummary
+}> {
+  try {
+    const raw = await fs.readFile(manualOverridesPath(), 'utf-8')
+    const parsed = JSON.parse(raw)
+    const result = applyManualProviderRateOverrides(BAKED_IN_RATES, parsed)
+    return { baseline: result.baseline, manualOverrides: result.summary }
+  } catch {
+    return { baseline: BAKED_IN_RATES }
+  }
 }
 
 /**
@@ -460,10 +709,7 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
         models: table.models.map((m) => ({
           modelId: m.modelId,
           status: 'fetch-failed',
-          baseline: {
-            inputUsdPerMillion: m.inputUsdPerMillion,
-            outputUsdPerMillion: m.outputUsdPerMillion
-          },
+          baseline: modelProbeBaseline(m),
           errorMessage: `Pricing page returned HTTP ${response.status}.`
         }))
       }
@@ -479,10 +725,7 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
       models: table.models.map((m) => ({
         modelId: m.modelId,
         status: 'fetch-failed',
-        baseline: {
-          inputUsdPerMillion: m.inputUsdPerMillion,
-          outputUsdPerMillion: m.outputUsdPerMillion
-        },
+        baseline: modelProbeBaseline(m),
         errorMessage: message
       }))
     }
@@ -503,10 +746,7 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
       return {
         modelId: m.modelId,
         status,
-        baseline: {
-          inputUsdPerMillion: m.inputUsdPerMillion,
-          outputUsdPerMillion: m.outputUsdPerMillion
-        },
+        baseline: modelProbeBaseline(m),
         matchedDollarStrings: matched.length > 0 ? matched : undefined,
         errorMessage:
           matched.length === 0
@@ -522,13 +762,27 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
  * one provider don't affect the others. Updates the in-memory
  * snapshot + persists to disk for next-boot warm-start.
  */
-export async function probeAllProviderRates(): Promise<ProviderRatesSnapshot> {
+export async function probeAllProviderRates(
+  options: { force?: boolean } = {}
+): Promise<ProviderRatesSnapshot> {
+  const { baseline, manualOverrides } = await loadManualOverrideBaseline()
+  const probe = cachedSnapshot.probe
+  cachedSnapshot = {
+    rateTableVersion: RATE_TABLE_VERSION,
+    baseline,
+    ...(manualOverrides ? { manualOverrides } : {}),
+    ...(probe ? { probe } : {})
+  }
+  if (!options.force && !shouldRefreshProviderRateProbe(cachedSnapshot)) {
+    return cachedSnapshot
+  }
+
   // Skip providers with no baked-in models, and keep Grok's xAI pricing fetch
   // gated behind the experimental flag — so a gate-off install never reaches
   // out to x.ai. (Grok's baked rates stay available for projected cost display
   // regardless; only the network verification probe is gated.)
   const grokProbeAllowed = experimentalGrokProviderEnabled()
-  const providers = (Object.values(BAKED_IN_RATES) as ProviderRateTable[]).filter(
+  const providers = (Object.values(baseline) as ProviderRateTable[]).filter(
     (table) => table.models.length > 0 && (table.provider !== 'grok' || grokProbeAllowed)
   )
   const results = await Promise.all(providers.map(probeOneProvider))
@@ -541,7 +795,8 @@ export async function probeAllProviderRates(): Promise<ProviderRatesSnapshot> {
   }
   cachedSnapshot = {
     rateTableVersion: RATE_TABLE_VERSION,
-    baseline: BAKED_IN_RATES,
+    baseline,
+    ...(manualOverrides ? { manualOverrides } : {}),
     probe: {
       runAt: new Date().toISOString(),
       results: resultsMap
@@ -567,18 +822,20 @@ async function persistSnapshot(snapshot: ProviderRatesSnapshot): Promise<void> {
  * probe completes.
  */
 export async function loadPersistedProbeResults(): Promise<void> {
+  const { baseline, manualOverrides } = await loadManualOverrideBaseline()
+  let probe: ProviderRatesSnapshot['probe'] | null = null
   try {
     const raw = await fs.readFile(cachePath(), 'utf-8')
-    const parsed = JSON.parse(raw)
-    if (!parsed?.runAt || !parsed?.results) return
-    cachedSnapshot = {
-      rateTableVersion: RATE_TABLE_VERSION,
-      baseline: BAKED_IN_RATES,
-      probe: parsed
-    }
+    probe = parsePersistedProviderRateProbe(raw)
   } catch {
-    // No cache yet or malformed — baseline-only snapshot stays in
-    // memory until the next probe runs.
+    // No cache yet or malformed — baseline-only snapshot stays in memory until
+    // the next eligible probe run.
+  }
+  cachedSnapshot = {
+    rateTableVersion: RATE_TABLE_VERSION,
+    baseline,
+    ...(manualOverrides ? { manualOverrides } : {}),
+    ...(probe ? { probe } : {})
   }
 }
 

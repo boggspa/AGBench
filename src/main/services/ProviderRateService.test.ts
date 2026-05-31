@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applyManualProviderRateOverrides,
   BAKED_IN_RATES,
   findDollarRateNearTokenPhrase,
   getCurrentProviderRates,
+  parsePersistedProviderRateProbe,
+  shouldRefreshProviderRateProbe,
   RATE_TABLE_VERSION
 } from './ProviderRateService'
 
@@ -152,5 +155,227 @@ describe('getCurrentProviderRates', () => {
     // Callers must treat baseline as authoritative regardless.
     const snapshot = getCurrentProviderRates()
     expect(snapshot.baseline.claude.models.length).toBeGreaterThan(0)
+  })
+})
+
+describe('applyManualProviderRateOverrides', () => {
+  it('applies valid manual overrides with an explicit confidence label', () => {
+    const out = applyManualProviderRateOverrides(
+      BAKED_IN_RATES,
+      {
+        overrides: [
+          {
+            provider: 'gemini',
+            modelId: 'gemini-3.1-flash',
+            inputUsdPerMillion: 0.31,
+            outputUsdPerMillion: 2.55,
+            cachedInputUsdPerMillion: 0.08,
+            sourceUrl: 'https://example.com/pricing',
+            lastVerified: '2026-05-31',
+            notes: 'checked by release owner'
+          }
+        ]
+      },
+      '2026-05-31T12:00:00.000Z'
+    )
+
+    expect(out.summary.applied).toEqual([{ provider: 'gemini', modelId: 'gemini-3.1-flash' }])
+    expect(out.summary.rejected).toEqual([])
+    const model = out.baseline.gemini.models.find((entry) => entry.modelId === 'gemini-3.1-flash')
+    expect(model?.inputUsdPerMillion).toBe(0.31)
+    expect(model?.outputUsdPerMillion).toBe(2.55)
+    expect(model?.cachedInputUsdPerMillion).toBe(0.08)
+    expect(model?.sourceUrl).toBe('https://example.com/pricing')
+    expect(model?.confidence).toBe('manual-override')
+    expect(model?.notes).toContain('Manual override:')
+
+    const bakedModel = BAKED_IN_RATES.gemini.models.find(
+      (entry) => entry.modelId === 'gemini-3.1-flash'
+    )
+    expect(bakedModel?.inputUsdPerMillion).toBe(0.3)
+    expect(bakedModel?.confidence).toBeUndefined()
+  })
+
+  it('rejects invalid manual rates without changing the baseline', () => {
+    const out = applyManualProviderRateOverrides(
+      BAKED_IN_RATES,
+      [
+        {
+          provider: 'gemini',
+          modelId: 'gemini-3.1-flash',
+          inputUsdPerMillion: 100_000,
+          outputUsdPerMillion: 2.55
+        },
+        {
+          provider: 'claude',
+          modelId: 'claude-sonnet-4-6',
+          inputUsdPerMillion: 3,
+          outputUsdPerMillion: 2
+        },
+        {
+          provider: 'kimi',
+          modelId: 'kimi-k2.6',
+          inputUsdPerMillion: 0.6,
+          outputUsdPerMillion: 2.5,
+          cachedInputUsdPerMillion: 9
+        }
+      ],
+      '2026-05-31T12:00:00.000Z'
+    )
+
+    expect(out.summary.applied).toEqual([])
+    expect(out.summary.rejected.map((entry) => entry.reason)).toEqual([
+      'invalid-rate',
+      'output-below-input',
+      'invalid-cached-input-rate'
+    ])
+    expect(out.baseline.gemini.models.find((entry) => entry.modelId === 'gemini-3.1-flash'))
+      .toMatchObject({ inputUsdPerMillion: 0.3, outputUsdPerMillion: 2.5 })
+  })
+})
+
+describe('shouldRefreshProviderRateProbe', () => {
+  it('refreshes missing, malformed, or stale probes only', () => {
+    const now = Date.parse('2026-05-31T12:00:00.000Z')
+
+    expect(
+      shouldRefreshProviderRateProbe({ rateTableVersion: RATE_TABLE_VERSION, baseline: BAKED_IN_RATES }, now)
+    ).toBe(true)
+    expect(
+      shouldRefreshProviderRateProbe(
+        {
+          rateTableVersion: RATE_TABLE_VERSION,
+          baseline: BAKED_IN_RATES,
+          probe: { runAt: 'not-a-date', results: {} as never }
+        },
+        now
+      )
+    ).toBe(true)
+    expect(
+      shouldRefreshProviderRateProbe(
+        {
+          rateTableVersion: RATE_TABLE_VERSION,
+          baseline: BAKED_IN_RATES,
+          probe: { runAt: '2026-05-30T12:00:00.000Z', results: {} as never }
+        },
+        now
+      )
+    ).toBe(false)
+    expect(
+      shouldRefreshProviderRateProbe(
+        {
+          rateTableVersion: RATE_TABLE_VERSION,
+          baseline: BAKED_IN_RATES,
+          probe: { runAt: '2026-05-20T12:00:00.000Z', results: {} as never }
+        },
+        now
+      )
+    ).toBe(true)
+  })
+})
+
+describe('parsePersistedProviderRateProbe', () => {
+  it('keeps explicit confidence labels and defaults old cache entries to baked-in', () => {
+    const parsed = parsePersistedProviderRateProbe(
+      JSON.stringify({
+        runAt: '2026-05-31T12:00:00.000Z',
+        results: {
+          gemini: {
+            provider: 'gemini',
+            pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+            fetchedAt: '2026-05-31T12:01:00.000Z',
+            models: [
+              {
+                modelId: 'gemini-3.1-flash',
+                status: 'verified',
+                baseline: {
+                  inputUsdPerMillion: 0.31,
+                  outputUsdPerMillion: 2.55,
+                  confidence: 'manual-override'
+                },
+                matchedDollarStrings: ['$0.31 / 1M tokens']
+              },
+              {
+                modelId: 'gemini-3.1-pro',
+                status: 'not-verified',
+                baseline: {
+                  inputUsdPerMillion: 1.25,
+                  outputUsdPerMillion: 10
+                }
+              }
+            ]
+          }
+        }
+      })
+    )
+
+    expect(parsed?.results.gemini.models[0]?.baseline.confidence).toBe('manual-override')
+    expect(parsed?.results.gemini.models[1]?.baseline.confidence).toBe('baked-in')
+  })
+
+  it('rejects malformed persisted probe data instead of trusting bad scrape output', () => {
+    expect(parsePersistedProviderRateProbe('{')).toBeNull()
+    expect(
+      parsePersistedProviderRateProbe(
+        JSON.stringify({
+          runAt: '2026-05-31T12:00:00.000Z',
+          results: {
+            gemini: {
+              provider: 'gemini',
+              pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+              models: [
+                {
+                  modelId: 'gemini-3.1-flash',
+                  status: 'verified',
+                  baseline: {
+                    inputUsdPerMillion: 0,
+                    outputUsdPerMillion: 2.55,
+                    confidence: 'manual-override'
+                  }
+                }
+              ]
+            }
+          }
+        })
+      )
+    ).toBeNull()
+    expect(
+      parsePersistedProviderRateProbe(
+        JSON.stringify({
+          runAt: '2026-05-31T12:00:00.000Z',
+          results: {
+            gemini: {
+              provider: 'gemini',
+              pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+              models: [
+                {
+                  modelId: 'gemini-3.1-flash',
+                  status: 'verified',
+                  baseline: {
+                    inputUsdPerMillion: 0.31,
+                    outputUsdPerMillion: 2.55,
+                    confidence: 'scraped'
+                  }
+                }
+              ]
+            }
+          }
+        })
+      )
+    ).toBeNull()
+    expect(
+      parsePersistedProviderRateProbe(
+        JSON.stringify({
+          runAt: '2026-05-31T12:00:00.000Z',
+          results: {
+            unknown: {
+              provider: 'unknown',
+              pricingUrl: '',
+              models: []
+            }
+          }
+        })
+      )
+    ).toBeNull()
   })
 })
