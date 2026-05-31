@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="agent-identicon-tre-solomon-title agent-identicon-tre-solomon-desc" data-agent-name="Tre Solomon" data-agent-accent="#DD2CBC" data-agent-hue="311" style="color: #DD2CBC; --agent-accent: #DD2CBC;">
+  <title id="agent-identicon-tre-solomon-title">Tre Solomon</title>
+  <desc id="agent-identicon-tre-solomon-desc">Tre Solomon agent identicon with side-sweep, moustache, signal-pips, and a #DD2CBC accent.</desc>
+  <style>
+    .line {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 14;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .fine {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.72;
+    }
+
+    .device {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 15;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brow {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 16;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .lens {
+      fill: currentColor;
+      stroke: none;
+    }
+
+    .accent {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+
+    .detail {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .detail-fine {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.78;
+    }
+
+    .detail-fill {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+    }
+
+    .detail-soft {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+      opacity: 0.14;
+    }
+
+    .detail-dot {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+      opacity: 0.9;
+    }
+  </style>
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+
+  <g id="agent-identicon-tre-solomon-details" data-hair="side-sweep" data-accessory="moustache" data-orbital="signal-pips">
+    <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+  </g>
+</svg>

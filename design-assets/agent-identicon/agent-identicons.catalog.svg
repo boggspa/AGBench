@@ -1,0 +1,4671 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1692" height="1056" viewBox="0 0 1692 1056">
+  <title>AGBench named agent identicons</title>
+  <style>
+
+    .line {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 14;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .fine {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.72;
+    }
+
+    .device {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 15;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brow {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 16;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .lens {
+      fill: currentColor;
+      stroke: none;
+    }
+
+    .accent {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+
+    .detail {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .detail-fine {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.78;
+    }
+
+    .detail-fill {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+    }
+
+    .detail-soft {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+      opacity: 0.14;
+    }
+
+    .detail-dot {
+      fill: var(--agent-accent, currentColor);
+      stroke: none;
+      opacity: 0.9;
+    }
+
+    .name {
+      fill: #202631;
+      font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      text-anchor: middle;
+    }
+    .meta {
+      fill: #727888;
+      font: 9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      text-anchor: middle;
+    }
+  </style>
+  <g transform="translate(0 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD3E2C; --agent-accent: #DD3E2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="tiny-crown" data-orbital="north-satellite">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <path class="detail" d="M430 104 h36 v24 h-36Z" />
+    <path class="detail-fine" d="M430 116 h-28" />
+    <path class="detail-fine" d="M466 116 h28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Donny-Davis</text>
+    <text class="meta" x="94" y="146">#DD3E2C</text>
+    <text class="meta" x="94" y="160">circuit-curl · tiny-crown</text>
+  </g>
+  <g transform="translate(188 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD88; --agent-accent: #2CDD88;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="lapel-bars" data-orbital="south-spark">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M206 480 h54" />
+    <path class="detail-fine" d="M220 504 h42" />
+    <path class="detail-fine" d="M344 504 h42" />
+    <path class="detail" d="M456 536 l12 -26 l12 26 l26 12 l-26 12 l-12 26 l-12 -26 l-26 -12Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Harmonium</text>
+    <text class="meta" x="94" y="146">#2CDD88</text>
+    <text class="meta" x="94" y="160">quiff · lapel-bars</text>
+  </g>
+  <g transform="translate(376 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #992CDD; --agent-accent: #992CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="visor-ridge" data-accessory="ear-sat" data-orbital="north-west-dot">
+        <path class="detail" d="M228 214 C274 178 330 174 386 206" />
+    <path class="detail-fine" d="M248 194 C286 180 326 180 366 194" />
+    <circle class="detail" cx="440" cy="292" r="17" />
+    <path class="detail-fine" d="M452 280 l24 -24" />
+    <circle class="detail-dot" cx="484" cy="248" r="7" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Jenkinz</text>
+    <text class="meta" x="94" y="146">#992CDD</text>
+    <text class="meta" x="94" y="160">visor-ridge · ear-sat</text>
+  </g>
+  <g transform="translate(564 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #C8DD2C; --agent-accent: #C8DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="cheek-sparks" data-orbital="west-radar">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Dexterman</text>
+    <text class="meta" x="94" y="146">#C8DD2C</text>
+    <text class="meta" x="94" y="160">double-horns · cheek-sparks</text>
+  </g>
+  <g transform="translate(752 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CB1DD; --agent-accent: #2CB1DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="comet-chain" data-orbital="west-radar">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Croxley-Marvin</text>
+    <text class="meta" x="94" y="146">#2CB1DD</text>
+    <text class="meta" x="94" y="160">flat-cap · comet-chain</text>
+  </g>
+  <g transform="translate(940 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C53; --agent-accent: #DD2C53;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="tie-signal" data-orbital="west-radar">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M300 500 l-18 36 h36Z" />
+    <path class="detail-fine" d="M288 522 h24" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Wendens-Ambo</text>
+    <text class="meta" x="94" y="146">#DD2C53</text>
+    <text class="meta" x="94" y="160">quiff · tie-signal</text>
+  </g>
+  <g transform="translate(1128 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD2F; --agent-accent: #2CDD2F;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="comet-chain" data-orbital="signal-pips">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Georgioni</text>
+    <text class="meta" x="94" y="146">#2CDD2F</text>
+    <text class="meta" x="94" y="160">halo-wire · comet-chain</text>
+  </g>
+  <g transform="translate(1316 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #4D2CDD; --agent-accent: #4D2CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="moustache" data-orbital="north-west-dot">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Teleminster</text>
+    <text class="meta" x="94" y="146">#4D2CDD</text>
+    <text class="meta" x="94" y="160">circuit-curl · moustache</text>
+  </g>
+  <g transform="translate(1504 0)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD932C; --agent-accent: #DD932C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="cheek-sparks" data-orbital="east-moon">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <path class="detail" d="M468 208 a23 23 0 1 0 0 46 a15 23 0 1 1 0 -46Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Korbis</text>
+    <text class="meta" x="94" y="146">#DD932C</text>
+    <text class="meta" x="94" y="160">double-horns · cheek-sparks</text>
+  </g>
+  <g transform="translate(0 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDDCB; --agent-accent: #2CDDCB;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="three-spikes" data-accessory="comet-chain" data-orbital="south-spark">
+        <path class="detail" d="M264 142 l-18 -42" />
+    <path class="detail" d="M304 132 l4 -48" />
+    <path class="detail" d="M346 144 l28 -38" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <path class="detail" d="M456 536 l12 -26 l12 26 l26 12 l-26 12 l-12 26 l-12 -26 l-26 -12Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Wellson</text>
+    <text class="meta" x="94" y="146">#2CDDCB</text>
+    <text class="meta" x="94" y="160">three-spikes · comet-chain</text>
+  </g>
+  <g transform="translate(188 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2CB4; --agent-accent: #DD2CB4;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="tiny-crown" data-orbital="signal-pips">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Baxter-Ravens</text>
+    <text class="meta" x="94" y="146">#DD2CB4</text>
+    <text class="meta" x="94" y="160">circuit-curl · tiny-crown</text>
+  </g>
+  <g transform="translate(376 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #9FDD2C; --agent-accent: #9FDD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="moustache" data-orbital="south-spark">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <path class="detail" d="M456 536 l12 -26 l12 26 l26 12 l-26 12 l-12 26 l-12 -26 l-26 -12Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Brian Brian Brian</text>
+    <text class="meta" x="94" y="146">#9FDD2C</text>
+    <text class="meta" x="94" y="160">halo-wire · moustache</text>
+  </g>
+  <g transform="translate(564 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C5EDD; --agent-accent: #2C5EDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="lapel-bars" data-orbital="upper-orbit">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M206 480 h54" />
+    <path class="detail-fine" d="M220 504 h42" />
+    <path class="detail-fine" d="M344 504 h42" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Imhotep</text>
+    <text class="meta" x="94" y="146">#2C5EDD</text>
+    <text class="meta" x="94" y="160">quiff · lapel-bars</text>
+  </g>
+  <g transform="translate(752 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C2F; --agent-accent: #DD2C2F;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="star-pin" data-orbital="upper-orbit">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="m402 446 9 18 20 3-14 14 3 20-18-9-18 9 3-20-14-14 20-3Z" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Hubert Cumberdale</text>
+    <text class="meta" x="94" y="146">#DD2C2F</text>
+    <text class="meta" x="94" y="160">halo-wire · star-pin</text>
+  </g>
+  <g transform="translate(940 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD50; --agent-accent: #2CDD50;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="cheek-sparks" data-orbital="upper-orbit">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Phobos</text>
+    <text class="meta" x="94" y="146">#2CDD50</text>
+    <text class="meta" x="94" y="160">circuit-curl · cheek-sparks</text>
+  </g>
+  <g transform="translate(1128 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #8A2CDD; --agent-accent: #8A2CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="top-knot" data-accessory="antenna" data-orbital="north-west-dot">
+        <circle class="detail" cx="304" cy="104" r="22" />
+    <path class="detail" d="M280 134 C298 116 320 116 338 134" />
+    <path class="detail" d="M410 226 C452 198 476 166 480 128" />
+    <circle class="detail" cx="482" cy="118" r="17" />
+    <path class="detail-fine" d="M506 94 l24 -24" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Deimos</text>
+    <text class="meta" x="94" y="146">#8A2CDD</text>
+    <text class="meta" x="94" y="160">top-knot · antenna</text>
+  </g>
+  <g transform="translate(1316 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DDDA2C; --agent-accent: #DDDA2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="cheek-sparks" data-orbital="north-west-dot">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Dogsbody</text>
+    <text class="meta" x="94" y="146">#DDDA2C</text>
+    <text class="meta" x="94" y="160">circuit-curl · cheek-sparks</text>
+  </g>
+  <g transform="translate(1504 176)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C9CDD; --agent-accent: #2C9CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="star-pin" data-orbital="signal-pips">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="m402 446 9 18 20 3-14 14 3 20-18-9-18 9 3-20-14-14 20-3Z" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Roboteknik</text>
+    <text class="meta" x="94" y="146">#2C9CDD</text>
+    <text class="meta" x="94" y="160">halo-wire · star-pin</text>
+  </g>
+  <g transform="translate(0 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C8D; --agent-accent: #DD2C8D;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="antenna" data-orbital="west-radar">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail" d="M410 226 C452 198 476 166 480 128" />
+    <circle class="detail" cx="482" cy="118" r="17" />
+    <path class="detail-fine" d="M506 94 l24 -24" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Zandar</text>
+    <text class="meta" x="94" y="146">#DD2C8D</text>
+    <text class="meta" x="94" y="160">double-horns · antenna</text>
+  </g>
+  <g transform="translate(188 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #50DD2C; --agent-accent: #50DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="comet-chain" data-orbital="low-orbit">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Serafin</text>
+    <text class="meta" x="94" y="146">#50DD2C</text>
+    <text class="meta" x="94" y="160">double-horns · comet-chain</text>
+  </g>
+  <g transform="translate(376 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C44DD; --agent-accent: #2C44DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="collar-orbit" data-orbital="low-orbit">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="M218 430 C270 398 330 398 382 430" />
+    <circle class="detail-dot" cx="244" cy="416" r="8" />
+    <circle class="detail-dot" cx="356" cy="416" r="8" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Orzwald</text>
+    <text class="meta" x="94" y="146">#2C44DD</text>
+    <text class="meta" x="94" y="160">flat-cap · collar-orbit</text>
+  </g>
+  <g transform="translate(564 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD762C; --agent-accent: #DD762C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="antenna" data-orbital="west-radar">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="M410 226 C452 198 476 166 480 128" />
+    <circle class="detail" cx="482" cy="118" r="17" />
+    <path class="detail-fine" d="M506 94 l24 -24" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Channing</text>
+    <text class="meta" x="94" y="146">#DD762C</text>
+    <text class="meta" x="94" y="160">flat-cap · antenna</text>
+  </g>
+  <g transform="translate(752 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD9F; --agent-accent: #2CDD9F;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="star-pin" data-orbital="upper-orbit">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="m402 446 9 18 20 3-14 14 3 20-18-9-18 9 3-20-14-14 20-3Z" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Tobus Maximus</text>
+    <text class="meta" x="94" y="146">#2CDD9F</text>
+    <text class="meta" x="94" y="160">flat-cap · star-pin</text>
+  </g>
+  <g transform="translate(940 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #BF2CDD; --agent-accent: #BF2CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="side-sweep" data-accessory="collar-orbit" data-orbital="low-orbit">
+        <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <path class="detail" d="M218 430 C270 398 330 398 382 430" />
+    <circle class="detail-dot" cx="244" cy="416" r="8" />
+    <circle class="detail-dot" cx="356" cy="416" r="8" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Arxfold</text>
+    <text class="meta" x="94" y="146">#BF2CDD</text>
+    <text class="meta" x="94" y="160">side-sweep · collar-orbit</text>
+  </g>
+  <g transform="translate(1128 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #A8DD2C; --agent-accent: #A8DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="side-sweep" data-accessory="ear-sat" data-orbital="low-orbit">
+        <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <circle class="detail" cx="440" cy="292" r="17" />
+    <path class="detail-fine" d="M452 280 l24 -24" />
+    <circle class="detail-dot" cx="484" cy="248" r="7" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Persia</text>
+    <text class="meta" x="94" y="146">#A8DD2C</text>
+    <text class="meta" x="94" y="160">side-sweep · ear-sat</text>
+  </g>
+  <g transform="translate(1316 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C88DD; --agent-accent: #2C88DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="shoulder-flashes" data-orbital="east-moon">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <path class="detail" d="M150 502 l48 -20 l-22 38" />
+    <path class="detail" d="M450 502 l-48 -20 l22 38" />
+    <path class="detail" d="M468 208 a23 23 0 1 0 0 46 a15 23 0 1 1 0 -46Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Jakker</text>
+    <text class="meta" x="94" y="146">#2C88DD</text>
+    <text class="meta" x="94" y="160">circuit-curl · shoulder-flashes</text>
+  </g>
+  <g transform="translate(1504 352)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C64; --agent-accent: #DD2C64;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="top-knot" data-accessory="star-pin" data-orbital="upper-orbit">
+        <circle class="detail" cx="304" cy="104" r="22" />
+    <path class="detail" d="M280 134 C298 116 320 116 338 134" />
+    <path class="detail" d="m402 446 9 18 20 3-14 14 3 20-18-9-18 9 3-20-14-14 20-3Z" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Hilbert</text>
+    <text class="meta" x="94" y="146">#DD2C64</text>
+    <text class="meta" x="94" y="160">top-knot · star-pin</text>
+  </g>
+  <g transform="translate(0 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD44; --agent-accent: #2CDD44;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="top-knot" data-accessory="nameplate" data-orbital="north-west-dot">
+        <circle class="detail" cx="304" cy="104" r="22" />
+    <path class="detail" d="M280 134 C298 116 320 116 338 134" />
+    <path class="detail" d="M238 472 h124" />
+    <circle class="detail-dot" cx="262" cy="472" r="7" />
+    <circle class="detail-dot" cx="338" cy="472" r="7" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Dufus</text>
+    <text class="meta" x="94" y="146">#2CDD44</text>
+    <text class="meta" x="94" y="160">top-knot · nameplate</text>
+  </g>
+  <g transform="translate(188 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #6D2CDD; --agent-accent: #6D2CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="moustache" data-orbital="west-radar">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Sicklemas</text>
+    <text class="meta" x="94" y="146">#6D2CDD</text>
+    <text class="meta" x="94" y="160">halo-wire · moustache</text>
+  </g>
+  <g transform="translate(376 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DDA52C; --agent-accent: #DDA52C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="top-knot" data-accessory="nameplate" data-orbital="north-west-dot">
+        <circle class="detail" cx="304" cy="104" r="22" />
+    <path class="detail" d="M280 134 C298 116 320 116 338 134" />
+    <path class="detail" d="M238 472 h124" />
+    <circle class="detail-dot" cx="262" cy="472" r="7" />
+    <circle class="detail-dot" cx="338" cy="472" r="7" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Frankenborg</text>
+    <text class="meta" x="94" y="146">#DDA52C</text>
+    <text class="meta" x="94" y="160">top-knot · nameplate</text>
+  </g>
+  <g transform="translate(564 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDDB7; --agent-accent: #2CDDB7;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="top-knot" data-accessory="collar-orbit" data-orbital="north-satellite">
+        <circle class="detail" cx="304" cy="104" r="22" />
+    <path class="detail" d="M280 134 C298 116 320 116 338 134" />
+    <path class="detail" d="M218 430 C270 398 330 398 382 430" />
+    <circle class="detail-dot" cx="244" cy="416" r="8" />
+    <circle class="detail-dot" cx="356" cy="416" r="8" />
+    <path class="detail" d="M430 104 h36 v24 h-36Z" />
+    <path class="detail-fine" d="M430 116 h-28" />
+    <path class="detail-fine" d="M466 116 h28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Chaxim</text>
+    <text class="meta" x="94" y="146">#2CDDB7</text>
+    <text class="meta" x="94" y="160">top-knot · collar-orbit</text>
+  </g>
+  <g transform="translate(752 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2CBC; --agent-accent: #DD2CBC;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="side-sweep" data-accessory="moustache" data-orbital="signal-pips">
+        <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Tre Solomon</text>
+    <text class="meta" x="94" y="146">#DD2CBC</text>
+    <text class="meta" x="94" y="160">side-sweep · moustache</text>
+  </g>
+  <g transform="translate(940 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #64DD2C; --agent-accent: #64DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="tiny-crown" data-orbital="west-radar">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Eloque</text>
+    <text class="meta" x="94" y="146">#64DD2C</text>
+    <text class="meta" x="94" y="160">quiff · tiny-crown</text>
+  </g>
+  <g transform="translate(1128 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C56DD; --agent-accent: #2C56DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="three-spikes" data-accessory="shoulder-flashes" data-orbital="upper-orbit">
+        <path class="detail" d="M264 142 l-18 -42" />
+    <path class="detail" d="M304 132 l4 -48" />
+    <path class="detail" d="M346 144 l28 -38" />
+    <path class="detail" d="M150 502 l48 -20 l-22 38" />
+    <path class="detail" d="M450 502 l-48 -20 l22 38" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Xarxes</text>
+    <text class="meta" x="94" y="146">#2C56DD</text>
+    <text class="meta" x="94" y="160">three-spikes · shoulder-flashes</text>
+  </g>
+  <g transform="translate(1316 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C32; --agent-accent: #DD2C32;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="star-pin" data-orbital="south-spark">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail" d="m402 446 9 18 20 3-14 14 3 20-18-9-18 9 3-20-14-14 20-3Z" />
+    <path class="detail" d="M456 536 l12 -26 l12 26 l26 12 l-26 12 l-12 26 l-12 -26 l-26 -12Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Julio</text>
+    <text class="meta" x="94" y="146">#DD2C32</text>
+    <text class="meta" x="94" y="160">double-horns · star-pin</text>
+  </g>
+  <g transform="translate(1504 528)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD7F; --agent-accent: #2CDD7F;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="cheek-sparks" data-orbital="east-moon">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <path class="detail" d="M468 208 a23 23 0 1 0 0 46 a15 23 0 1 1 0 -46Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Jeremy Patchman</text>
+    <text class="meta" x="94" y="146">#2CDD7F</text>
+    <text class="meta" x="94" y="160">quiff · cheek-sparks</text>
+  </g>
+  <g transform="translate(0 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #902CDD; --agent-accent: #902CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="nameplate" data-orbital="north-west-dot">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail" d="M238 472 h124" />
+    <circle class="detail-dot" cx="262" cy="472" r="7" />
+    <circle class="detail-dot" cx="338" cy="472" r="7" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Malek Malloc</text>
+    <text class="meta" x="94" y="146">#902CDD</text>
+    <text class="meta" x="94" y="160">double-horns · nameplate</text>
+  </g>
+  <g transform="translate(188 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DDBC2C; --agent-accent: #DDBC2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="side-sweep" data-accessory="tiny-crown" data-orbital="signal-pips">
+        <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Tommy Tipper</text>
+    <text class="meta" x="94" y="146">#DDBC2C</text>
+    <text class="meta" x="94" y="160">side-sweep · tiny-crown</text>
+  </g>
+  <g transform="translate(376 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C8DDD; --agent-accent: #2C8DDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="visor-ridge" data-accessory="ear-sat" data-orbital="north-satellite">
+        <path class="detail" d="M228 214 C274 178 330 174 386 206" />
+    <path class="detail-fine" d="M248 194 C286 180 326 180 366 194" />
+    <circle class="detail" cx="440" cy="292" r="17" />
+    <path class="detail-fine" d="M452 280 l24 -24" />
+    <circle class="detail-dot" cx="484" cy="248" r="7" />
+    <path class="detail" d="M430 104 h36 v24 h-36Z" />
+    <path class="detail-fine" d="M430 116 h-28" />
+    <path class="detail-fine" d="M466 116 h28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Jim The Mage</text>
+    <text class="meta" x="94" y="146">#2C8DDD</text>
+    <text class="meta" x="94" y="160">visor-ridge · ear-sat</text>
+  </g>
+  <g transform="translate(564 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C7F; --agent-accent: #DD2C7F;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="side-sweep" data-accessory="lapel-bars" data-orbital="north-west-dot">
+        <path class="detail" d="M224 186 C256 126 334 104 398 178" />
+    <path class="detail-fine" d="M248 164 C286 140 328 134 368 150" />
+    <path class="detail" d="M206 480 h54" />
+    <path class="detail-fine" d="M220 504 h42" />
+    <path class="detail-fine" d="M344 504 h42" />
+    <circle class="detail-dot" cx="154" cy="154" r="10" />
+    <path class="detail-fine" d="M170 170 l28 28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Kevin The Karate King</text>
+    <text class="meta" x="94" y="146">#DD2C7F</text>
+    <text class="meta" x="94" y="160">side-sweep · lapel-bars</text>
+  </g>
+  <g transform="translate(752 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #4DDD2C; --agent-accent: #4DDD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="ear-sat" data-orbital="east-moon">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <circle class="detail" cx="440" cy="292" r="17" />
+    <path class="detail-fine" d="M452 280 l24 -24" />
+    <circle class="detail-dot" cx="484" cy="248" r="7" />
+    <path class="detail" d="M468 208 a23 23 0 1 0 0 46 a15 23 0 1 1 0 -46Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Master Maxwell</text>
+    <text class="meta" x="94" y="146">#4DDD2C</text>
+    <text class="meta" x="94" y="160">circuit-curl · ear-sat</text>
+  </g>
+  <g transform="translate(940 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C32DD; --agent-accent: #2C32DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="nameplate" data-orbital="east-moon">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="M238 472 h124" />
+    <circle class="detail-dot" cx="262" cy="472" r="7" />
+    <circle class="detail-dot" cx="338" cy="472" r="7" />
+    <path class="detail" d="M468 208 a23 23 0 1 0 0 46 a15 23 0 1 1 0 -46Z" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Dorribald</text>
+    <text class="meta" x="94" y="146">#2C32DD</text>
+    <text class="meta" x="94" y="160">halo-wire · nameplate</text>
+  </g>
+  <g transform="translate(1128 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD8A2C; --agent-accent: #DD8A2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="shoulder-flashes" data-orbital="low-orbit">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail" d="M150 502 l48 -20 l-22 38" />
+    <path class="detail" d="M450 502 l-48 -20 l22 38" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Marsham</text>
+    <text class="meta" x="94" y="146">#DD8A2C</text>
+    <text class="meta" x="94" y="160">double-horns · shoulder-flashes</text>
+  </g>
+  <g transform="translate(1316 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD90; --agent-accent: #2CDD90;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="tie-signal" data-orbital="signal-pips">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M300 500 l-18 36 h36Z" />
+    <path class="detail-fine" d="M288 522 h24" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Yorris</text>
+    <text class="meta" x="94" y="146">#2CDD90</text>
+    <text class="meta" x="94" y="160">quiff · tie-signal</text>
+  </g>
+  <g transform="translate(1504 704)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2CA8; --agent-accent: #DD2CA8;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="visor-ridge" data-accessory="comet-chain" data-orbital="low-orbit">
+        <path class="detail" d="M228 214 C274 178 330 174 386 206" />
+    <path class="detail-fine" d="M248 194 C286 180 326 180 366 194" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Bennison</text>
+    <text class="meta" x="94" y="146">#DD2CA8</text>
+    <text class="meta" x="94" y="160">visor-ridge · comet-chain</text>
+  </g>
+  <g transform="translate(0 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #A2DD2C; --agent-accent: #A2DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="shoulder-flashes" data-orbital="low-orbit">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="M150 502 l48 -20 l-22 38" />
+    <path class="detail" d="M450 502 l-48 -20 l22 38" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">La Li Lu Le Lo</text>
+    <text class="meta" x="94" y="146">#A2DD2C</text>
+    <text class="meta" x="94" y="160">flat-cap · shoulder-flashes</text>
+  </g>
+  <g transform="translate(188 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2C67DD; --agent-accent: #2C67DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="tie-signal" data-orbital="low-orbit">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="M300 500 l-18 36 h36Z" />
+    <path class="detail-fine" d="M288 522 h24" />
+    <path class="detail-fine" d="M132 444 C214 512 386 512 468 444" />
+    <circle class="detail-dot" cx="424" cy="468" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Nish</text>
+    <text class="meta" x="94" y="146">#2C67DD</text>
+    <text class="meta" x="94" y="160">flat-cap · tie-signal</text>
+  </g>
+  <g transform="translate(376 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C4A; --agent-accent: #DD2C4A;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="circuit-curl" data-accessory="ear-sat" data-orbital="upper-orbit">
+        <path class="detail" d="M238 162 C246 124 292 112 302 148 C314 188 376 160 354 122" />
+    <circle class="detail-dot" cx="356" cy="122" r="8" />
+    <circle class="detail" cx="440" cy="292" r="17" />
+    <path class="detail-fine" d="M452 280 l24 -24" />
+    <circle class="detail-dot" cx="484" cy="248" r="7" />
+    <path class="detail-fine" d="M150 180 C222 92 380 92 452 180" />
+    <circle class="detail-dot" cx="396" cy="128" r="8" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Ozbern</text>
+    <text class="meta" x="94" y="146">#DD2C4A</text>
+    <text class="meta" x="94" y="160">circuit-curl · ear-sat</text>
+  </g>
+  <g transform="translate(564 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CDD5E; --agent-accent: #2CDD5E;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="quiff" data-accessory="tiny-crown" data-orbital="west-radar">
+        <path class="detail" d="M246 154 C254 113 288 99 316 128 C342 105 375 118 384 154" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Pendris</text>
+    <text class="meta" x="94" y="146">#2CDD5E</text>
+    <text class="meta" x="94" y="160">quiff · tiny-crown</text>
+  </g>
+  <g transform="translate(752 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #612CDD; --agent-accent: #612CDD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="double-horns" data-accessory="shoulder-flashes" data-orbital="west-radar">
+        <path class="detail" d="M246 158 C218 126 226 102 260 94" />
+    <path class="detail" d="M358 158 C392 128 384 102 350 94" />
+    <path class="detail" d="M150 502 l48 -20 l-22 38" />
+    <path class="detail" d="M450 502 l-48 -20 l22 38" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Quendrew</text>
+    <text class="meta" x="94" y="146">#612CDD</text>
+    <text class="meta" x="94" y="160">double-horns · shoulder-flashes</text>
+  </g>
+  <g transform="translate(940 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD9F2C; --agent-accent: #DD9F2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="three-spikes" data-accessory="comet-chain" data-orbital="signal-pips">
+        <path class="detail" d="M264 142 l-18 -42" />
+    <path class="detail" d="M304 132 l4 -48" />
+    <path class="detail" d="M346 144 l28 -38" />
+    <path class="detail-fine" d="M386 318 C428 328 456 354 470 396" />
+    <circle class="detail-dot" cx="474" cy="406" r="9" />
+    <path class="detail-fine" d="M486 396 l18 -18" />
+    <circle class="detail-dot" cx="132" cy="220" r="7" />
+    <circle class="detail-dot" cx="118" cy="254" r="9" />
+    <circle class="detail-dot" cx="132" cy="290" r="7" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Roobis</text>
+    <text class="meta" x="94" y="146">#DD9F2C</text>
+    <text class="meta" x="94" y="160">three-spikes · comet-chain</text>
+  </g>
+  <g transform="translate(1128 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #2CB7DD; --agent-accent: #2CB7DD;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="moustache" data-orbital="west-radar">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail" d="M286 362 C266 344 242 348 228 372" />
+    <path class="detail" d="M314 362 C334 344 358 348 372 372" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Uno</text>
+    <text class="meta" x="94" y="146">#2CB7DD</text>
+    <text class="meta" x="94" y="160">halo-wire · moustache</text>
+  </g>
+  <g transform="translate(1316 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #DD2C93; --agent-accent: #DD2C93;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="halo-wire" data-accessory="cheek-sparks" data-orbital="west-radar">
+        <ellipse class="detail" cx="306" cy="112" rx="76" ry="22" />
+    <path class="detail-fine" d="M250 112 C284 126 328 126 362 112" />
+    <path class="detail-fine" d="M232 338 l-20 16" />
+    <path class="detail-fine" d="M222 324 l-26 2" />
+    <path class="detail-fine" d="M368 338 l20 16" />
+    <path class="detail-fine" d="M378 324 l26 2" />
+    <path class="detail-fine" d="M126 276 C104 298 104 332 126 354" />
+    <path class="detail-fine" d="M104 252 C66 292 66 338 104 378" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Volkarr</text>
+    <text class="meta" x="94" y="146">#DD2C93</text>
+    <text class="meta" x="94" y="160">halo-wire · cheek-sparks</text>
+  </g>
+  <g transform="translate(1504 880)">
+    <g transform="translate(44 6) scale(0.166667)" style="color: #53DD2C; --agent-accent: #53DD2C;">
+
+
+    <path
+      class="line"
+      d="M206 356
+         C196 306 200 228 226 178
+         C250 132 288 116 328 126
+         C368 136 399 174 410 224
+         C424 290 406 350 378 390
+         C354 424 324 444 300 444
+         C274 444 238 414 218 382
+         C212 372 209 364 206 356Z"
+    />
+
+    <path
+      class="line"
+      d="M214 228
+         C224 164 264 124 318 126
+         C355 128 386 154 400 194
+         C376 172 342 164 306 170
+         C270 176 238 196 214 228Z"
+    />
+
+    <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+    <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+    <path class="device" d="M176 326 h-19 v38"/>
+    <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+    <path class="brow" d="M220 258 l66 20"/>
+    <path class="brow" d="M380 258 l-66 20"/>
+
+    <path
+      class="lens"
+      d="M220 278
+         C247 267 280 270 299 284
+         L288 330
+         C263 340 229 336 216 321
+         C209 306 211 288 220 278Z"
+    />
+    <path
+      class="lens"
+      d="M380 278
+         C353 267 320 270 301 284
+         L312 330
+         C337 340 371 336 384 321
+         C391 306 389 288 380 278Z"
+    />
+    <path class="line" d="M291 300 h18"/>
+
+    <path class="fine" d="M300 306 v38 l-16 8"/>
+    <path class="line" d="M262 386 h76"/>
+    <path class="fine" d="M248 354 q-16 14 -34 12"/>
+    <path class="fine" d="M352 354 q16 14 34 12"/>
+
+    <path
+      class="line"
+      d="M162 500
+         C194 458 242 434 300 434
+         C358 434 406 458 438 500"
+    />
+    <path class="line" d="M238 454 l44 92"/>
+    <path class="line" d="M362 454 l-44 92"/>
+    <path class="line" d="M300 444 l-28 44 h56z"/>
+    <path class="line" d="M300 488 v58"/>
+
+    <g class="accent">
+      <path d="M254 150 q46 -28 92 0"/>
+      <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+    </g>
+      <g data-hair="flat-cap" data-accessory="tiny-crown" data-orbital="north-satellite">
+        <path class="detail-fill" d="M218 166 C250 116 340 104 394 158 L382 180 C324 154 270 154 218 180Z" opacity="0.22" />
+    <path class="detail" d="M216 178 C270 146 334 146 394 178" />
+    <path class="detail-fine" d="M388 178 h38" />
+    <path class="detail" d="M250 130 l28 -34 l28 34 l28 -34 l28 34" />
+    <path class="detail-fine" d="M250 130 h112" />
+    <path class="detail" d="M430 104 h36 v24 h-36Z" />
+    <path class="detail-fine" d="M430 116 h-28" />
+    <path class="detail-fine" d="M466 116 h28" />
+      </g>
+    </g>
+    <text class="name" x="94" y="128">Yoodoo</text>
+    <text class="meta" x="94" y="146">#53DD2C</text>
+    <text class="meta" x="94" y="160">flat-cap · tiny-crown</text>
+  </g>
+</svg>

@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="base-agent-identicon-title base-agent-identicon-desc">
+  <title id="base-agent-identicon-title">Base Agent Identicon</title>
+  <desc id="base-agent-identicon-desc">Monochrome monoline suited agent identicon with focused brows, filled sunglasses, and a neck-routed earpiece.</desc>
+  <style>
+    .line {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 14;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .fine {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+      opacity: 0.72;
+    }
+
+    .device {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 15;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .brow {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 16;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .lens {
+      fill: currentColor;
+      stroke: none;
+    }
+
+    .accent {
+      fill: none;
+      stroke: var(--agent-accent, currentColor);
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+  </style>
+
+  <path
+    class="line"
+    d="M206 356
+       C196 306 200 228 226 178
+       C250 132 288 116 328 126
+       C368 136 399 174 410 224
+       C424 290 406 350 378 390
+       C354 424 324 444 300 444
+       C274 444 238 414 218 382
+       C212 372 209 364 206 356Z"
+  />
+
+  <path
+    class="line"
+    d="M214 228
+       C224 164 264 124 318 126
+       C355 128 386 154 400 194
+       C376 172 342 164 306 170
+       C270 176 238 196 214 228Z"
+  />
+
+  <path class="line" d="M205 274 C176 282 170 334 203 352"/>
+  <path class="line" d="M395 274 C424 282 430 334 397 352"/>
+  <path class="device" d="M176 326 h-19 v38"/>
+  <path class="device" d="M157 364 v60 q0 28 28 28 h46"/>
+
+  <path class="brow" d="M220 258 l66 20"/>
+  <path class="brow" d="M380 258 l-66 20"/>
+
+  <path
+    class="lens"
+    d="M220 278
+       C247 267 280 270 299 284
+       L288 330
+       C263 340 229 336 216 321
+       C209 306 211 288 220 278Z"
+  />
+  <path
+    class="lens"
+    d="M380 278
+       C353 267 320 270 301 284
+       L312 330
+       C337 340 371 336 384 321
+       C391 306 389 288 380 278Z"
+  />
+  <path class="line" d="M291 300 h18"/>
+
+  <path class="fine" d="M300 306 v38 l-16 8"/>
+  <path class="line" d="M262 386 h76"/>
+  <path class="fine" d="M248 354 q-16 14 -34 12"/>
+  <path class="fine" d="M352 354 q16 14 34 12"/>
+
+  <path
+    class="line"
+    d="M162 500
+       C194 458 242 434 300 434
+       C358 434 406 458 438 500"
+  />
+  <path class="line" d="M238 454 l44 92"/>
+  <path class="line" d="M362 454 l-44 92"/>
+  <path class="line" d="M300 444 l-28 44 h56z"/>
+  <path class="line" d="M300 488 v58"/>
+
+  <g class="accent">
+    <path d="M254 150 q46 -28 92 0"/>
+    <path d="M246 438 q24 18 54 18 q30 0 54 -18"/>
+  </g>
+</svg>

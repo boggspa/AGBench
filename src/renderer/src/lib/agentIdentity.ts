@@ -18,45 +18,65 @@ import type {
  *      persona prompt, which is for the model, not the UI).
  *   2. For Claude / Gemini / Kimi there's no native concept at all.
  *
- * Identity pairs are unique within a chat (no two "Ohm"s in the same
+ * Identity pairs are unique within a chat (no two "Harmonium"s in the same
  * conversation) and survive reloads via `chat.providerMetadata.agentIdentities`.
  */
 
-const SCIENTIST_NAME_POOL: readonly string[] = [
-  'Ohm',
-  'Beauvoir',
+const AGENT_NICKNAME_POOL: readonly string[] = [
+  'Donny-Davis',
+  'Harmonium',
+  'Jenkinz',
+  'Dexterman',
+  'Croxley-Marvin',
+  'Wendens-Ambo',
+  'Georgioni',
+  'Teleminster',
+  'Korbis',
+  'Wellson',
+  'Baxter-Ravens',
+  'Brian Brian Brian',
+  'Imhotep',
+  'Hubert Cumberdale',
+  'Phobos',
+  'Deimos',
+  'Dogsbody',
+  'Roboteknik',
+  'Zandar',
+  'Serafin',
+  'Orzwald',
+  'Channing',
+  'Tobus Maximus',
+  'Arxfold',
+  'Persia',
+  'Jakker',
   'Hilbert',
-  'Aquinas',
-  'Poincare',
-  'Einstein',
-  'Bernoulli',
-  'Curie',
-  'Darwin',
-  'Euler',
-  'Fermat',
-  'Galois',
-  'Hawking',
-  'Itō',
-  'Joule',
-  'Kepler',
-  'Lorenz',
-  'Maxwell',
-  'Newton',
-  'Oppenheimer',
-  'Pauli',
-  'Quine',
-  'Riemann',
-  'Shannon',
-  'Turing',
-  'Wittgenstein',
-  'Zermelo',
-  'Pythagoras',
-  'Russell',
-  'Tesla',
-  'Faraday',
-  'Gauss',
-  'Heisenberg',
-  'Lovelace'
+  'Dufus',
+  'Sicklemas',
+  'Frankenborg',
+  'Chaxim',
+  'Tre Solomon',
+  'Eloque',
+  'Xarxes',
+  'Julio',
+  'Jeremy Patchman',
+  'Malek Malloc',
+  'Tommy Tipper',
+  'Jim The Mage',
+  'Kevin The Karate King',
+  'Master Maxwell',
+  'Dorribald',
+  'Marsham',
+  'Yorris',
+  'Bennison',
+  'La Li Lu Le Lo',
+  'Nish',
+  'Ozbern',
+  'Pendris',
+  'Quendrew',
+  'Roobis',
+  'Uno',
+  'Volkarr',
+  'Yoodoo'
 ]
 
 const COLOR_POOL: readonly string[] = [
@@ -151,12 +171,12 @@ function extractPlatformName(activity: ToolActivity | undefined): string | undef
 
 /**
  * Find the next unused (name, color) pair given the identities already
- * assigned in this chat. Names cycle through `SCIENTIST_NAME_POOL` in order
+ * assigned in this chat. Names cycle through `AGENT_NICKNAME_POOL` in order
  * and don't repeat until the pool is exhausted; colors cycle every 8 entries.
  */
 function pickNextPoolPair(usedNames: Set<string>): { name: string; color: string } {
   let chosenName: string | undefined
-  for (const candidate of SCIENTIST_NAME_POOL) {
+  for (const candidate of AGENT_NICKNAME_POOL) {
     if (!usedNames.has(candidate)) {
       chosenName = candidate
       break
@@ -166,7 +186,7 @@ function pickNextPoolPair(usedNames: Set<string>): { name: string; color: string
   if (!chosenName) {
     let suffix = 2
     while (true) {
-      const candidate = `${SCIENTIST_NAME_POOL[(suffix - 1) % SCIENTIST_NAME_POOL.length]} ${suffix}`
+      const candidate = `${AGENT_NICKNAME_POOL[(suffix - 1) % AGENT_NICKNAME_POOL.length]} ${suffix}`
       if (!usedNames.has(candidate)) {
         chosenName = candidate
         break
@@ -175,7 +195,7 @@ function pickNextPoolPair(usedNames: Set<string>): { name: string; color: string
     }
   }
   // Color cycles by position of the assigned name index.
-  const baseIndex = SCIENTIST_NAME_POOL.indexOf(chosenName)
+  const baseIndex = AGENT_NICKNAME_POOL.indexOf(chosenName)
   const colorIndex = (baseIndex >= 0 ? baseIndex : usedNames.size) % COLOR_POOL.length
   return { name: chosenName, color: COLOR_POOL[colorIndex] }
 }
@@ -260,7 +280,7 @@ export function attachIdentitiesToThreads(
 }
 
 /** Exported for tests and UI palettes. */
-export const AGENT_NAME_POOL: readonly string[] = SCIENTIST_NAME_POOL
+export const AGENT_NAME_POOL: readonly string[] = AGENT_NICKNAME_POOL
 export const AGENT_COLOR_POOL: readonly string[] = COLOR_POOL
 
 /**
