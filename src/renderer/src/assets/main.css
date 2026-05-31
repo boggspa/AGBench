@@ -2966,6 +2966,10 @@ button.sidebar-item {
   gap: var(--space-sm);
 }
 
+.welcome-suggestions + .welcome-standalone-heatmaps {
+  margin-top: clamp(14px, 2.2vh, 28px);
+}
+
 .usage-heatmap--welcome-standalone {
   margin-top: 0;
   padding: 0;
