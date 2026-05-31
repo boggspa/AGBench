@@ -219,7 +219,8 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
       return {
         provider: 'claude',
         providerLabel: 'Claude',
-        modelLabel: 'Opus 4.7',
+        // 1.0.6 — Opus 4.8 is the current default (4.7 now "Legacy").
+        modelLabel: 'Opus 4.8',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
       }
@@ -242,7 +243,8 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
       return {
         provider: 'gemini',
         providerLabel: 'Grok',
-        modelLabel: 'Fast',
+        // 1.0.6 — live Grok composer shows "Grok Build 0.1" (Fast is a mode).
+        modelLabel: 'Grok Build 0.1',
         permissionLabel: 'Default Approval',
         placeholder: 'What do you want to know?'
       }
