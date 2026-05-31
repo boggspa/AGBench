@@ -59,6 +59,11 @@ describe('GrokCreditsMeterView', () => {
     expect(html).toContain('resets May 31, 16:00 PT')
   })
 
+  it('renders the shared pace tick when the reset timestamp is parseable', () => {
+    const html = render({ snapshot: snap('Credits used: 1%\nResets: May 31, 16:00 PT') })
+    expect(html).toContain('quota-pace-tick')
+  })
+
   it('tidies a collapsed reset window for display', () => {
     const html = render({ snapshot: snap('Credits used: 0%\nResets: May31,16:00PT') })
     expect(html).toContain('resets May 31, 16:00 PT')

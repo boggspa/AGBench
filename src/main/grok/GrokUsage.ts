@@ -21,6 +21,8 @@ export interface GrokUsageSnapshot {
   resetAtText: string | null
   /** ISO timestamp when robustly parseable; null otherwise (we trust the text). */
   resetAt: string | null
+  /** Grok subscription credits reset on a monthly credit window when parseable. */
+  limitWindowSeconds: number | null
   /** Plan label when shown (e.g. "Free credits with SuperGrok"). */
   planLabel: string | null
   payAsYouGoEnabled: boolean | null
@@ -28,6 +30,8 @@ export interface GrokUsageSnapshot {
   /** 'observed' = captured from the live CLI; 'unavailable' = probe found nothing. */
   confidence: 'observed' | 'unavailable'
 }
+
+export const GROK_CREDIT_WINDOW_SECONDS = 30 * 24 * 60 * 60
 
 /** Strip ANSI/VT control sequences while preserving printable text + spaces. */
 export function stripGrokAnsi(input: string): string {
@@ -79,6 +83,82 @@ function parseResetText(text: string): string | null {
   return value || null
 }
 
+function monthIndex(name: string): number | null {
+  const key = name.slice(0, 3).toLowerCase()
+  const index = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec'
+  ].indexOf(key)
+  return index >= 0 ? index : null
+}
+
+function nthSundayOfMonth(year: number, month: number, nth: number): number {
+  let seen = 0
+  for (let day = 1; day <= 31; day += 1) {
+    const date = new Date(Date.UTC(year, month, day))
+    if (date.getUTCMonth() !== month) break
+    if (date.getUTCDay() === 0) {
+      seen += 1
+      if (seen === nth) return day
+    }
+  }
+  return 1
+}
+
+function pacificUtcOffsetHours(year: number, month: number, day: number): number {
+  if (month < 2 || month > 10) return -8
+  if (month > 2 && month < 10) return -7
+  if (month === 2) return day >= nthSundayOfMonth(year, 2, 2) ? -7 : -8
+  return day < nthSundayOfMonth(year, 10, 1) ? -7 : -8
+}
+
+function parseResetAt(text: string | null, refreshedAt: string): string | null {
+  if (!text) return null
+  const refreshed = new Date(refreshedAt)
+  if (Number.isNaN(refreshed.getTime())) return null
+  const match = text.match(/^([A-Za-z]+)\s*(\d{1,2}),?\s*(\d{1,2}):(\d{2})\s*(PT|PST|PDT)$/i)
+  if (!match) return null
+  const month = monthIndex(match[1])
+  const day = Number(match[2])
+  const hour = Number(match[3])
+  const minute = Number(match[4])
+  if (
+    month === null ||
+    !Number.isInteger(day) ||
+    day < 1 ||
+    day > 31 ||
+    !Number.isInteger(hour) ||
+    hour < 0 ||
+    hour > 23 ||
+    !Number.isInteger(minute) ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null
+  }
+  const timezone = match[5].toUpperCase()
+  const year = refreshed.getUTCFullYear()
+  const offsetHours =
+    timezone === 'PDT' ? -7 : timezone === 'PST' ? -8 : pacificUtcOffsetHours(year, month, day)
+  const makeDate = (targetYear: number) =>
+    new Date(Date.UTC(targetYear, month, day, hour - offsetHours, minute))
+  let parsed = makeDate(year)
+  if (parsed.getTime() <= refreshed.getTime() - 60 * 60 * 1000) {
+    parsed = makeDate(year + 1)
+  }
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+}
+
 function parsePlanLabel(text: string): string | null {
   const sup = text.match(/((?:Free\s*credits\s*with\s*)?SuperGrok(?:\s*Heavy)?)/i)
   if (sup) return sup[1].replace(/\s+/g, ' ').trim()
@@ -104,6 +184,7 @@ export function parseGrokUsage(
   const text = stripGrokAnsi(rawText || '')
   const credit = parsePercentDisplay(text)
   const resetAtText = parseResetText(text)
+  const resetAt = parseResetAt(resetAtText, refreshedAt)
   const planLabel = parsePlanLabel(text)
   const payAsYouGoEnabled = parsePayAsYouGo(text)
 
@@ -114,7 +195,8 @@ export function parseGrokUsage(
     creditsUsedPercent: credit ? credit.percent : null,
     creditsUsedDisplay: credit ? credit.display : '',
     resetAtText,
-    resetAt: null, // No robust year/timezone in the CLI text — trust resetAtText.
+    resetAt,
+    limitWindowSeconds: resetAt ? GROK_CREDIT_WINDOW_SECONDS : null,
     planLabel,
     payAsYouGoEnabled,
     refreshedAt,

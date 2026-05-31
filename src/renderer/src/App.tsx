@@ -825,7 +825,12 @@ function GhostCompanion() {
     <div className="ghost-companion" aria-hidden>
       <div className="ghost-avatar">
         <div className="ghost-shadow" />
-        <svg className="ghost-svg" viewBox="34 26 68 80" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+        <svg
+          className="ghost-svg"
+          viewBox="34 26 68 80"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden
+        >
           <defs>
             <linearGradient
               id="ghostCompanionFill"
@@ -1493,6 +1498,7 @@ export interface UsageWindowAggregate {
   trackingOnly?: boolean
   usedPercent?: number
   remainingPercent?: number
+  limitWindowSeconds?: number
 }
 
 export interface UsageBalanceAggregate {
@@ -4186,7 +4192,7 @@ interface AgentApprovalRequest {
 const isNativeSubAgentPreferenceApproval = (request: AgentApprovalRequest | null): boolean =>
   Boolean(
     request?.actions?.includes('useProviderNative') ||
-      request?.actions?.includes('useAGBenchSubthread')
+    request?.actions?.includes('useAGBenchSubthread')
   )
 
 const WORKTREE_DIFF_UNAVAILABLE_TEXT =
@@ -10168,7 +10174,12 @@ function App(): React.JSX.Element {
         trackingOnly: false,
         // Honest names: usedPercent = USED, remainingPercent = REMAINING.
         usedPercent,
-        remainingPercent
+        remainingPercent,
+        limitWindowSeconds:
+          Number.isFinite(Number(windowEntry?.limitWindowSeconds)) &&
+          Number(windowEntry?.limitWindowSeconds) > 0
+            ? Number(windowEntry.limitWindowSeconds)
+            : undefined
       }
     }
 
@@ -10420,7 +10431,8 @@ function App(): React.JSX.Element {
           limitLabel: windowEntry.limitLabel,
           resetAt: windowEntry.resetAt || '',
           usedPercent: windowEntry.usedPercent ?? null,
-          remainingPercent: windowEntry.remainingPercent ?? null
+          remainingPercent: windowEntry.remainingPercent ?? null,
+          limitWindowSeconds: windowEntry.limitWindowSeconds ?? null
         })),
         balances: (entry.balances || []).map((balance) => ({
           id: balance.id,
@@ -13891,7 +13903,8 @@ function App(): React.JSX.Element {
             const isPlanMode = updated.runs?.[updated.runs.length - 1]?.approvalMode === 'plan'
             const parsedChoice = parsePlanModeChoice(event.content)
             const last = updated.messages[updated.messages.length - 1]
-            const assistantMessageId = last && last.role === 'assistant' ? last.id : createMessageId()
+            const assistantMessageId =
+              last && last.role === 'assistant' ? last.id : createMessageId()
 
             if (last && last.role === 'assistant') {
               updated.messages = [

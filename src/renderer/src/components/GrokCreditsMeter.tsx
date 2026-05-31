@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GrokUsageSnapshot } from '../../../main/grok/GrokUsage'
+import { computeQuotaPace } from '../lib/QuotaPace'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { QuotaProgressBar } from './QuotaProgressBar'
 
@@ -61,6 +62,19 @@ export function GrokCreditsMeterView({
     percent != null && Number.isFinite(percent) ? Math.max(0, Math.min(1, percent / 100)) : 0
   const display = snapshot?.creditsUsedDisplay || '0%'
   const metaText = stale ? 'Subscription credits · stale' : 'Subscription credits'
+  const pace =
+    snapshot?.resetAt && snapshot.limitWindowSeconds && percent != null
+      ? computeQuotaPace({
+          id: 'grok-credits',
+          label: 'Credits',
+          runs: 0,
+          totalTokens: 0,
+          limitLabel: metaText,
+          resetAt: snapshot.resetAt,
+          usedPercent: percent,
+          limitWindowSeconds: snapshot.limitWindowSeconds
+        })
+      : null
 
   return (
     <div className="model-usage-item provider-grok quota-only">
@@ -85,7 +99,7 @@ export function GrokCreditsMeterView({
               ) : null}
               <span className="model-usage-window-percent">{display}</span>
             </div>
-            <QuotaProgressBar fraction={fraction} accent="var(--provider-grok-color)" />
+            <QuotaProgressBar fraction={fraction} accent="var(--provider-grok-color)" pace={pace} />
             <div className="model-usage-window-meta">
               <span>{metaText}</span>
             </div>

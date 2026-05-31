@@ -38,15 +38,20 @@ describe('parseGrokUsage', () => {
     expect(s.creditsUsedDisplay).toBe('12%')
   })
 
-  it('captures an explicit reset window and never fabricates an ISO resetAt', () => {
-    const s = parseGrokUsage('Credits used: 0%\nResets: May 31, 16:00 PT')
+  it('captures an explicit PT reset window and derives a pace reset timestamp', () => {
+    const s = parseGrokUsage(
+      'Credits used: 0%\nResets: May 31, 16:00 PT',
+      '2026-05-31T09:00:00.000Z'
+    )
     expect(s.resetAtText).toBe('May 31, 16:00 PT')
-    expect(s.resetAt).toBeNull()
+    expect(s.resetAt).toBe('2026-05-31T23:00:00.000Z')
+    expect(s.limitWindowSeconds).toBe(30 * 24 * 60 * 60)
   })
 
   it('captures a short "Resets 1 Jun" window (no colon)', () => {
     const s = parseGrokUsage('Credits used: 0%  Resets 1 Jun')
     expect(s.resetAtText).toBe('1 Jun')
+    expect(s.resetAt).toBeNull()
   })
 
   it('stops the reset capture before a trailing pay-as-you-go field on the same line', () => {
@@ -93,7 +98,7 @@ describe('parseGrokUsage', () => {
       'Resets: May 31, 16:00 PT',
       'Pay as you go: disabled'
     ].join('\n')
-    const s = parseGrokUsage(screen)
+    const s = parseGrokUsage(screen, '2026-05-31T09:00:00.000Z')
     expect(s).toMatchObject({
       provider: 'grok',
       source: 'grok-cli-usage',
@@ -101,6 +106,8 @@ describe('parseGrokUsage', () => {
       creditsUsedPercent: 1.05,
       creditsUsedDisplay: '1.05%',
       resetAtText: 'May 31, 16:00 PT',
+      resetAt: '2026-05-31T23:00:00.000Z',
+      limitWindowSeconds: 30 * 24 * 60 * 60,
       planLabel: 'Free credits with SuperGrok',
       payAsYouGoEnabled: false,
       confidence: 'observed'

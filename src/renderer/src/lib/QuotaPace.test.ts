@@ -124,6 +124,23 @@ describe('computeQuotaPace', () => {
     expect(pace).toBeNull()
   })
 
+  it('uses an explicit duration for labels that cannot be inferred', () => {
+    // 30-day monthly window, 50% elapsed, 10% used → ahead.
+    const fakeReset = new Date('2026-06-16T00:00:00Z')
+    const now = new Date('2026-06-01T00:00:00Z')
+    const pace = computeQuotaPace(
+      makeWindow({
+        label: 'Included in Pro',
+        resetAt: fakeReset.toISOString(),
+        usedPercent: 10,
+        limitWindowSeconds: 30 * 24 * 60 * 60
+      }),
+      now
+    )
+    expect(pace?.state).toBe('ahead')
+    expect(pace?.expectedFraction).toBeCloseTo(0.5, 1)
+  })
+
   it('returns null when elapsed fraction is below the 3% floor (too early in the window)', () => {
     // 5h window, 0.5% elapsed → expectedFraction below floor.
     const start = Date.now()

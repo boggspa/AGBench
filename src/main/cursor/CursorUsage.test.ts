@@ -30,6 +30,7 @@ describe('parseCursorUsageResponse', () => {
     expect(windows[2].usedPercent).toBe(0) // 0% is a valid window, not skipped
     expect(windows[0].resetAt).toBe('2030-01-01T00:00:00.000Z')
     expect(windows.every((w) => w.limitLabel === 'This cycle')).toBe(true)
+    expect(windows.every((w) => w.limitWindowSeconds === 30 * 24 * 60 * 60)).toBe(true)
   })
 
   it('derives the On-Demand Spend balance only when individualLimit > 0', () => {

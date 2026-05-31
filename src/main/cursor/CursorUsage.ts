@@ -40,6 +40,8 @@ export interface CursorUsageWindow {
   usedPercent: number
   /** ISO timestamp of the billing-cycle reset. */
   resetAt?: string
+  /** Cursor dashboard percentages are monthly billing-cycle buckets. */
+  limitWindowSeconds?: number
 }
 
 export interface CursorUsageBalance {
@@ -75,6 +77,7 @@ export const CURSOR_USAGE_ENDPOINT =
   'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage'
 
 export const CURSOR_USAGE_SOURCE = 'cursor-dashboard-usage'
+export const CURSOR_BILLING_WINDOW_SECONDS = 30 * 24 * 60 * 60
 
 /**
  * Candidate DB paths to try in order: the live DB then the editor's
@@ -131,7 +134,8 @@ export function parseCursorUsageResponse(payload: unknown): {
       label,
       limitLabel: 'This cycle',
       usedPercent: clampPercent(value),
-      resetAt
+      resetAt,
+      limitWindowSeconds: CURSOR_BILLING_WINDOW_SECONDS
     })
   }
 
@@ -148,7 +152,8 @@ export function parseCursorUsageResponse(payload: unknown): {
         label: 'Included in Pro',
         limitLabel: 'This cycle',
         usedPercent: 0,
-        resetAt
+        resetAt,
+        limitWindowSeconds: CURSOR_BILLING_WINDOW_SECONDS
       })
     }
   }

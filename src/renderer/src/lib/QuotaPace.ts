@@ -64,11 +64,11 @@ const MIN_EXPECTED_FRACTION = 0.03
 const MAX_EXPECTED_FRACTION = 0.985
 
 /**
- * Infer the window's full duration (in seconds) from its label. The
- * `UsageWindowAggregate` shape AGBench uses today doesn't carry an
- * explicit `windowKind` discriminator, so we rely on label-substring
- * pattern matching — same approach as the Swift reference's
- * `inferredPaceDuration` fallback path.
+ * Infer the window's full duration (in seconds) from its label when the
+ * upstream snapshot does not provide an explicit `limitWindowSeconds`.
+ * This fallback keeps older provider snapshots working while newer
+ * providers can pass exact/known rollover durations for labels like
+ * Cursor's "Included in Pro" that do not include "monthly".
  *
  * Returns `null` when the duration can't be inferred (e.g. an
  * unlabelled custom window) — pace calculation then returns `null`.
@@ -134,7 +134,11 @@ export function computeQuotaPace(
   const remainingMs = resetDate.getTime() - now.getTime()
   if (remainingMs <= 0) return null
 
-  const durationSec = inferWindowDurationSeconds(window.label)
+  const explicitDurationSec = Number(window.limitWindowSeconds)
+  const durationSec =
+    Number.isFinite(explicitDurationSec) && explicitDurationSec > 0
+      ? explicitDurationSec
+      : inferWindowDurationSeconds(window.label)
   if (!durationSec || durationSec <= 0) return null
   const durationMs = durationSec * 1000
 
