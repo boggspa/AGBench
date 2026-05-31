@@ -500,7 +500,9 @@ function getComposerPreviewMeta(style: ComposerStyle): {
     case 'claude':
       return {
         providerLabel: 'Claude',
-        modelLabel: 'Opus 4.7',
+        // 1.0.6 — Opus 4.8 is the current default (4.7 is now "Legacy" in the
+        // model picker); keep the preview in step with the live composer chip.
+        modelLabel: 'Opus 4.8',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
       }
@@ -516,7 +518,9 @@ function getComposerPreviewMeta(style: ComposerStyle): {
     case 'grok':
       return {
         providerLabel: 'Grok',
-        modelLabel: 'Fast',
+        // 1.0.6 — the live Grok composer shows the model as "Grok Build 0.1"
+        // (Fast is a separate mode toggle, not the model name).
+        modelLabel: 'Grok Build 0.1',
         permissionLabel: 'Default Approval',
         placeholder: 'What do you want to know?'
       }
@@ -530,7 +534,8 @@ function getComposerPreviewMeta(style: ComposerStyle): {
     case 'kimi':
       return {
         providerLabel: 'Kimi',
-        modelLabel: 'K2 Thinking',
+        // 1.0.6 — canonical Kimi label is K2.6 (K2.6 Thinking with reasoning on).
+        modelLabel: 'K2.6 Thinking',
         permissionLabel: 'Read workspace',
         placeholder: 'Type "/" to quickly access skills'
       }
