@@ -47,7 +47,9 @@ function HeatmapCellTile({ cell }: { cell: HeatmapCell }) {
       style={style}
       title={
         cell.eventCount > 0
-          ? `${formatTokenCount(cell.totalTokens)} tokens · ${cell.eventCount} call${cell.eventCount === 1 ? '' : 's'}`
+          ? cell.totalTokens > 0
+            ? `${formatTokenCount(cell.totalTokens)} tokens · ${cell.eventCount} call${cell.eventCount === 1 ? '' : 's'}`
+            : `${cell.eventCount} activity marker${cell.eventCount === 1 ? '' : 's'}`
           : undefined
       }
     />
@@ -68,6 +70,12 @@ interface UsageHeatmapProps {
   showHeader?: boolean
   /** Number of day columns to render. Defaults to the sidebar's 30-day window. */
   dayCount?: number
+  /** Data source for the rendered grid. */
+  usageSource?: 'agbench' | 'external'
+  /** Header title. Defaults to the original AGBench "Activity" label. */
+  title?: string
+  /** Optional accessible label override. */
+  ariaLabel?: string
   /** Class name appended to the root `<div>` — lets callers retune
    * sizing without forking the component. */
   className?: string
@@ -77,6 +85,9 @@ export function UsageHeatmap({
   refreshKey = 0,
   showHeader = true,
   dayCount = HEATMAP_COLUMNS,
+  usageSource = 'agbench',
+  title = 'Activity',
+  ariaLabel,
   className
 }: UsageHeatmapProps) {
   const [records, setRecords] = useState<UsageRecord[]>([])
@@ -91,8 +102,11 @@ export function UsageHeatmap({
       // — the existing IPC has no time-range param, and the filter step
       // happens in O(n) which is fine for typical usage volumes
       // (~thousands of records over a 30-day window).
-      window.api
-        .getUsage()
+      const loader =
+        usageSource === 'external' && typeof window.api.getExternalUsage === 'function'
+          ? window.api.getExternalUsage
+          : window.api.getUsage
+      loader()
         .then((latest) => {
           if (!cancelled) setRecords(latest)
         })
@@ -109,7 +123,7 @@ export function UsageHeatmap({
       cancelled = true
       window.cancelAnimationFrame(frame)
     }
-  }, [refreshKey])
+  }, [refreshKey, usageSource])
 
   const grid: HeatmapGrid = useMemo(() => buildHeatmapGrid(records, new Date(), dayCount), [
     records,
@@ -120,11 +134,11 @@ export function UsageHeatmap({
   return (
     <div
       className={`usage-heatmap${className ? ` ${className}` : ''}`}
-      aria-label="Usage activity heatmap"
+      aria-label={ariaLabel || `${title} usage activity heatmap`}
     >
       {showHeader && (
         <div className="usage-heatmap-header">
-          <span className="usage-heatmap-title">Activity</span>
+          <span className="usage-heatmap-title">{title}</span>
           <span className="usage-heatmap-chip">
             24h <strong>{formatTokenCount(grid.totals.last24h)}</strong>
           </span>

@@ -101,7 +101,12 @@ export function buildHeatmapGrid(
   // Phase 1: aggregate per-bucket token totals + per-provider sums.
   const cellMap = new Map<
     string,
-    { totalTokens: number; eventCount: number; providerTokens: Map<ProviderId, number> }
+    {
+      totalTokens: number
+      visualWeight: number
+      eventCount: number
+      providerTokens: Map<ProviderId, number>
+    }
   >()
   let last24h = 0
   let last7d = 0
@@ -112,10 +117,14 @@ export function buildHeatmapGrid(
   const now30dMs = now.getTime() - 30 * oneDayMs
 
   for (const record of records) {
+    if (record.usageKind === 'reset_hint') continue
     if (!Number.isFinite(record.timestamp)) continue
     if (record.timestamp < startMs || record.timestamp > endMs) continue
-    const tokens = Number.isFinite(record.totalTokens) ? record.totalTokens : 0
-    if (tokens <= 0) continue
+    const tokens = Number.isFinite(record.totalTokens) ? Math.max(0, record.totalTokens) : 0
+    // External-provider activity sources such as Cursor can report "used in
+    // this bucket" without a token estimate. Keep those cells visible while
+    // leaving token totals honest at zero.
+    const visualWeight = tokens > 0 ? tokens : 50
 
     const eventDate = new Date(record.timestamp)
     const dayOffset = Math.floor((eventDate.getTime() - startMs) / oneDayMs)
@@ -127,15 +136,16 @@ export function buildHeatmapGrid(
     const key = `${column}-${row}`
     let bucket = cellMap.get(key)
     if (!bucket) {
-      bucket = { totalTokens: 0, eventCount: 0, providerTokens: new Map() }
+      bucket = { totalTokens: 0, visualWeight: 0, eventCount: 0, providerTokens: new Map() }
       cellMap.set(key, bucket)
     }
     bucket.totalTokens += tokens
+    bucket.visualWeight += visualWeight
     bucket.eventCount += 1
     if (record.provider) {
       bucket.providerTokens.set(
         record.provider,
-        (bucket.providerTokens.get(record.provider) ?? 0) + tokens
+        (bucket.providerTokens.get(record.provider) ?? 0) + visualWeight
       )
     }
 
@@ -152,7 +162,7 @@ export function buildHeatmapGrid(
   // ~1.3× more intense, not 10×.
   let maxLogWeight = 0
   for (const bucket of cellMap.values()) {
-    const weight = Math.log10(bucket.totalTokens + 1)
+    const weight = Math.log10(bucket.visualWeight + 1)
     if (weight > maxLogWeight) maxLogWeight = weight
   }
 
@@ -179,8 +189,13 @@ export function buildHeatmapGrid(
         })
         continue
       }
-      const weight = Math.log10(bucket.totalTokens + 1)
-      const intensity = maxLogWeight > 0 ? Math.max(0.18, weight / maxLogWeight) : 0
+      const weight = Math.log10(bucket.visualWeight + 1)
+      const intensity =
+        bucket.totalTokens > 0
+          ? maxLogWeight > 0
+            ? Math.max(0.18, weight / maxLogWeight)
+            : 0
+          : 0.24
       // Dominant provider = the one contributing the most tokens to
       // this bucket. Ties broken by deterministic provider order.
       let dominantProvider: ProviderId | null = null

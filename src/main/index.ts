@@ -91,6 +91,7 @@ import {
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
+import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 import {
   hasProviderUsageSnapshotContent,
   normalizeClaudeUsageSnapshot,
@@ -21676,6 +21677,7 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-usage', (_, workspaceId?: string, chatId?: string) =>
       AppStore.getUsage(workspaceId, chatId)
     )
+    ipcMain.handle('get-external-usage', () => loadExternalProviderUsageRecords())
 
     // Scheduled tasks
     ipcMain.handle('get-scheduled-tasks', (_, workspaceId?: string) =>

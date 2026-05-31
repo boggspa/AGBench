@@ -2952,11 +2952,18 @@ button.sidebar-item {
   grid-template-rows: minmax(0, 1fr);
 }
 
-.welcome-standalone-heatmap {
+.welcome-standalone-heatmap,
+.welcome-standalone-heatmaps {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));
   margin: var(--space-xs) auto 0;
   pointer-events: auto;
+}
+
+.welcome-standalone-heatmaps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
 .usage-heatmap--welcome-standalone {

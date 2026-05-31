@@ -119,6 +119,28 @@ describe('buildHeatmapGrid', () => {
       true
     )
   })
+
+  it('renders activity-only records without inflating token totals', () => {
+    const now = new Date('2026-05-22T15:00:00')
+    const grid = buildHeatmapGrid(
+      [
+        makeRecord({
+          timestamp: new Date('2026-05-22T14:30:00').getTime(),
+          totalTokens: 0,
+          provider: 'cursor'
+        })
+      ],
+      now
+    )
+    const cell = grid.cells.find((c) => c.column === HEATMAP_COLUMNS - 1 && c.row === 7)
+
+    expect(cell).toBeDefined()
+    expect(cell!.eventCount).toBe(1)
+    expect(cell!.totalTokens).toBe(0)
+    expect(cell!.dominantProvider).toBe('cursor')
+    expect(cell!.intensity).toBeGreaterThan(0)
+    expect(grid.totals.window).toBe(0)
+  })
 })
 
 describe('formatTokenCount', () => {

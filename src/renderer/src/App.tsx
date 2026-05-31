@@ -21283,8 +21283,14 @@ function App(): React.JSX.Element {
               </div>
             )}
             {shouldShowWelcomeUsageDashboard && (
-              <div className="welcome-standalone-heatmap">
+              <div className="welcome-standalone-heatmaps">
                 <UsageHeatmap dayCount={90} className="usage-heatmap--welcome-standalone" />
+                <UsageHeatmap
+                  dayCount={90}
+                  usageSource="external"
+                  title="External Activity"
+                  className="usage-heatmap--welcome-standalone"
+                />
               </div>
             )}
           </div>
