@@ -2453,6 +2453,10 @@ export interface AgentIdentity {
   name: string
   /** Accent color (hex). Drives chip color, card name color, dot color. */
   color: string
+  /** Generated fallback-identity slug when this identity maps to a named SVG. */
+  slug?: string
+  /** Generated fallback-identity accent. Mirrors `color` for named SVG identities. */
+  accent?: string
   /** Optional role label (e.g. "explorer", "reviewer"). */
   role?: string
   source: AgentIdentitySource

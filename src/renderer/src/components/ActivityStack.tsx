@@ -21,7 +21,7 @@ import { inlineStatsForActivity } from '../lib/ActivityInlineStats'
 import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay'
 import { FileTypeIcon } from './FileTypeIcon'
 import { DigitOdometer } from './DigitOdometer'
-import { AgentIdenticon } from './icons/AgentIdenticon'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
 import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
@@ -1281,8 +1281,9 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
                     : undefined
                 }
               >
-                <AgentIdenticon
-                  seed={thread.identity?.agentId || thread.id}
+                <AgentIdentityIcon
+                  identity={thread.identity}
+                  seed={thread.id}
                   color={thread.identity?.color}
                   size={14}
                   className="child-agent-spawn-block-pill-icon"
@@ -1310,8 +1311,9 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
                 onClick={() => scrollToAgent(thread.id)}
                 title="Scroll to this agent's card"
               >
-                <AgentIdenticon
-                  seed={identity?.agentId || thread.id}
+                <AgentIdentityIcon
+                  identity={identity}
+                  seed={thread.id}
                   color={identity?.color}
                   size={18}
                   className="child-agent-spawn-block-icon"
@@ -1725,7 +1727,7 @@ function ChildAgentThreadCard({
           aria-hidden
           style={identityColor ? { color: identityColor } : undefined}
         >
-          <AgentIdenticon seed={identity?.agentId || thread.id} color={identityColor} size={22} />
+          <AgentIdentityIcon identity={identity} seed={thread.id} color={identityColor} size={22} />
         </span>
         <span
           className="child-agent-thread-name"

@@ -295,7 +295,7 @@ describe('ActivityStack agent invocation presentation', () => {
     expect(html).toContain('Provider-native activity')
   })
 
-  it('renders child-agent identities with seeded identicons', () => {
+  it('renders child-agent identities with named identicons', () => {
     const chat = makeChat()
     const html = renderToStaticMarkup(
       <ActivityStack
@@ -318,12 +318,21 @@ describe('ActivityStack agent invocation presentation', () => {
       />
     )
 
-    expect(html).toContain('agent-identicon')
+    expect(html).toContain('agent-identity-icon-named')
+    expect(html).toContain('data-agent-slug="donny-davis"')
     expect(html).toContain('Donny-Davis')
     const metadata = chat.providerMetadata as
-      | { agentIdentities?: Record<string, { name?: string }> }
+      | {
+          agentIdentities?: Record<
+            string,
+            { accent?: string; color?: string; name?: string; slug?: string }
+          >
+        }
       | undefined
     expect(metadata?.agentIdentities?.['task-ident']?.name).toBe('Donny-Davis')
+    expect(metadata?.agentIdentities?.['task-ident']?.slug).toBe('donny-davis')
+    expect(metadata?.agentIdentities?.['task-ident']?.accent).toBe('#DD3E2C')
+    expect(metadata?.agentIdentities?.['task-ident']?.color).toBe('#DD3E2C')
   })
 })
 

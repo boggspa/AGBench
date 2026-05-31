@@ -6,13 +6,14 @@ import type {
   ComposerStyle,
   EnsembleParticipant,
   ExternalPathGrant,
+  AgentIdentity,
   ProviderId,
   WorkspaceFileEntry
 } from '../../../main/store/types'
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
 import { getProviderName } from './Sidebar'
 import type { ComposerMentionTriggerKind } from '../lib/ComposerMentionTrigger'
-import { AgentIdenticon } from './icons/AgentIdenticon'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 
 export type ComposerMentionKind = 'agent' | 'participant' | 'workspace-file' | 'external-grant'
 
@@ -36,6 +37,7 @@ export interface ComposerMentionCandidate extends ComposerMentionPick {
   id: string
   detail?: string
   color?: string
+  identity?: AgentIdentity
 }
 
 interface AgentMentionMenuProps {
@@ -261,7 +263,8 @@ export function AgentMentionMenu({
         agentId: thread.id,
         name,
         detail: identity?.role || thread.role || 'Agent',
-        color: identity?.color
+        color: identity?.color,
+        identity
       }
     })
   }, [
@@ -385,7 +388,8 @@ export function AgentMentionMenu({
                 onClick={() => onPick(candidate)}
               >
                 {candidate.kind === 'agent' ? (
-                  <AgentIdenticon
+                  <AgentIdentityIcon
+                    identity={candidate.identity}
                     seed={candidate.agentId || candidate.name}
                     color={candidate.color}
                     size={18}

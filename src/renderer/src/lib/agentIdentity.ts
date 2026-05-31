@@ -5,6 +5,7 @@ import type {
   ProviderId,
   ToolActivity
 } from '../../../main/store/types'
+import { namedAgentIdenticonForName } from './agentIdentityCatalog'
 
 /**
  * Subagent identity registry.
@@ -134,7 +135,8 @@ export function findIdentity(
 ): AgentIdentity | undefined {
   if (!chat || !agentId) return undefined
   const map = safeAgentIdentitiesMap(chat)
-  return map[agentId]
+  const identity = map[agentId]
+  return identity ? enrichIdentityWithNamedIcon(identity) : undefined
 }
 
 /**
@@ -174,7 +176,24 @@ function extractPlatformName(activity: ToolActivity | undefined): string | undef
  * assigned in this chat. Names cycle through `AGENT_NICKNAME_POOL` in order
  * and don't repeat until the pool is exhausted; colors cycle every 8 entries.
  */
-function pickNextPoolPair(usedNames: Set<string>): { name: string; color: string } {
+function enrichIdentityWithNamedIcon(identity: AgentIdentity): AgentIdentity {
+  const named = namedAgentIdenticonForName(identity.name)
+  if (!named) return identity
+  const next = {
+    ...identity,
+    color: named.accent,
+    slug: named.slug,
+    accent: named.accent
+  }
+  return next
+}
+
+function pickNextPoolPair(usedNames: Set<string>): {
+  name: string
+  color: string
+  slug?: string
+  accent?: string
+} {
   let chosenName: string | undefined
   for (const candidate of AGENT_NICKNAME_POOL) {
     if (!usedNames.has(candidate)) {
@@ -197,7 +216,13 @@ function pickNextPoolPair(usedNames: Set<string>): { name: string; color: string
   // Color cycles by position of the assigned name index.
   const baseIndex = AGENT_NICKNAME_POOL.indexOf(chosenName)
   const colorIndex = (baseIndex >= 0 ? baseIndex : usedNames.size) % COLOR_POOL.length
-  return { name: chosenName, color: COLOR_POOL[colorIndex] }
+  const named = namedAgentIdenticonForName(chosenName)
+  return {
+    name: chosenName,
+    color: named?.accent ?? COLOR_POOL[colorIndex],
+    slug: named?.slug,
+    accent: named?.accent
+  }
 }
 
 /**
@@ -227,7 +252,16 @@ export function assignAgentIdentity(
   // Already assigned? Reuse.
   const existing = map[thread.id]
   if (existing && typeof existing.name === 'string' && typeof existing.color === 'string') {
-    return existing
+    const enriched = enrichIdentityWithNamedIcon(existing)
+    if (
+      enriched !== existing &&
+      (existing.color !== enriched.color ||
+        existing.slug !== enriched.slug ||
+        existing.accent !== enriched.accent)
+    ) {
+      map[thread.id] = enriched
+    }
+    return enriched
   }
 
   // For Codex, try the platform name first. Fall back to pool for everyone else.
@@ -237,10 +271,13 @@ export function assignAgentIdentity(
   if (platformName && !usedNames.has(platformName)) {
     // Color still comes from our pool — Codex's color choices aren't on the wire.
     const colorIndex = Object.keys(map).length % COLOR_POOL.length
+    const named = namedAgentIdenticonForName(platformName)
     identity = {
       agentId: thread.id,
       name: platformName,
-      color: COLOR_POOL[colorIndex],
+      color: named?.accent ?? COLOR_POOL[colorIndex],
+      slug: named?.slug,
+      accent: named?.accent,
       role: thread.role,
       source: 'platform',
       assignedAt: new Date().toISOString()
@@ -251,6 +288,8 @@ export function assignAgentIdentity(
       agentId: thread.id,
       name: pair.name,
       color: pair.color,
+      slug: pair.slug,
+      accent: pair.accent,
       role: thread.role,
       source: 'pool',
       assignedAt: new Date().toISOString()

@@ -21357,7 +21357,7 @@ input:disabled, select:disabled, textarea:disabled {
 .child-agent-thread-avatar.status-running { color: var(--tool-running); background: color-mix(in srgb, var(--tool-running) 14%, transparent); }
 .child-agent-thread-avatar.status-completed { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .child-agent-thread-avatar.status-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
-.child-agent-thread-avatar .agent-identicon {
+.child-agent-thread-avatar :is(.agent-identicon, .agent-identity-icon) {
   display: block;
 }
 
@@ -22350,6 +22350,21 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .agent-mention-icon {
   flex-shrink: 0;
+}
+
+.agent-identity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.agent-identity-icon > svg,
+.agent-identity-icon .agent-named-identicon-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* Inline ensemble-participant mention chip. Drives the per-provider

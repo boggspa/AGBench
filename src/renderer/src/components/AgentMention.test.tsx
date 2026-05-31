@@ -33,7 +33,7 @@ function chatWithIdentity(): ChatRecord {
 }
 
 describe('AgentMention', () => {
-  it('renders known sub-agent mentions with the seeded identicon', () => {
+  it('renders known sub-agent mentions with the named identicon when available', () => {
     const html = renderToStaticMarkup(
       <AgentIdentityContext.Provider value={chatWithIdentity()}>
         <AgentMention agentId="agent-1">@Harmonium</AgentMention>
@@ -41,8 +41,9 @@ describe('AgentMention', () => {
     )
 
     expect(html).toContain('agent-mention has-identity')
-    expect(html).toContain('agent-identicon')
+    expect(html).toContain('agent-identity-icon-named')
+    expect(html).toContain('data-agent-slug="harmonium"')
     expect(html).toContain('@Harmonium')
-    expect(html).toContain('color:#ff5f5f')
+    expect(html).toContain('color:#2CDD88')
   })
 })
