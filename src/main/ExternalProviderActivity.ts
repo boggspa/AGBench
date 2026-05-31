@@ -29,7 +29,12 @@ interface ExternalUsageEvent {
 
 const DEFAULT_LOOKBACK_DAYS = 90
 const MAX_FILES_PER_PROVIDER = 260
+const MAX_CODEX_SESSION_FILES = 2_400
+const MAX_CLAUDE_SESSION_FILES = 1_200
+const MAX_GEMINI_SESSION_FILES = 1_200
 const MAX_TEXT_BYTES = 8 * 1024 * 1024
+const MAX_EXPANDED_SESSION_TEXT_BYTES = 128 * 1024 * 1024
+const MAX_CODEX_SQLITE_MARKERS_PER_BUCKET = 8
 
 export async function loadExternalProviderUsageRecords(
   options: ExternalProviderActivityOptions = {}
@@ -92,8 +97,21 @@ function eventToUsageRecord(event: ExternalUsageEvent): UsageRecord | null {
 }
 
 async function readCodexActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
-  const root = join(homeDir, '.codex', 'sessions')
-  const files = await collectFiles(root, (path) => path.endsWith('.jsonl'), sinceMs)
+  const codexRoot = join(homeDir, '.codex')
+  const files = [
+    ...(await collectFiles(
+      join(codexRoot, 'sessions'),
+      (path) => path.endsWith('.jsonl'),
+      sinceMs,
+      MAX_CODEX_SESSION_FILES
+    )),
+    ...(await collectFiles(
+      join(codexRoot, 'archived_sessions'),
+      (path) => path.endsWith('.jsonl'),
+      sinceMs,
+      MAX_CODEX_SESSION_FILES
+    ))
+  ]
   const events: ExternalUsageEvent[] = []
   for (const filePath of files) {
     const text = await readTextTail(filePath)
@@ -122,16 +140,23 @@ async function readCodexActivity(homeDir: string, sinceMs: number): Promise<Exte
       })
     }
   }
+  events.push(...(await readCodexSessionIndexActivity(codexRoot, sinceMs)))
+  events.push(...(await readCodexSqliteActivity(codexRoot, sinceMs)))
   return events
 }
 
 async function readClaudeActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
   const root = join(homeDir, '.claude', 'projects')
-  const files = await collectFiles(root, (path) => path.endsWith('.jsonl'), sinceMs)
+  const files = await collectFiles(
+    root,
+    (path) => path.endsWith('.jsonl'),
+    sinceMs,
+    MAX_CLAUDE_SESSION_FILES
+  )
   const events: ExternalUsageEvent[] = []
   const seen = new Set<string>()
   for (const filePath of files) {
-    const text = await readTextTail(filePath)
+    const text = await readTextTail(filePath, MAX_EXPANDED_SESSION_TEXT_BYTES)
     let lineIndex = 0
     for (const json of parseJsonLines(text)) {
       lineIndex += 1
@@ -170,23 +195,23 @@ async function readGeminiActivity(homeDir: string, sinceMs: number): Promise<Ext
   const root = join(homeDir, '.gemini', 'tmp')
   const files = await collectFiles(
     root,
-    (path) => /\/chats\/session-.*\.jsonl?$/.test(path),
-    sinceMs
+    (path) => isGeminiSessionActivityPath(path),
+    sinceMs,
+    MAX_GEMINI_SESSION_FILES
   )
   const events: ExternalUsageEvent[] = []
   const seen = new Set<string>()
   for (const filePath of files) {
-    const text = await readTextTail(filePath)
-    let lineIndex = 0
-    for (const json of parseJsonLines(text)) {
-      lineIndex += 1
+    const text = await readTextTail(filePath, MAX_EXPANDED_SESSION_TEXT_BYTES)
+    const entries = parseGeminiSessionEntries(text)
+    for (const { json, sourceIndex } of entries) {
       const timestamp = parseTimestamp(json?.timestamp)
       if (!timestamp || timestamp < sinceMs) continue
       const tokens = json?.tokens
       if (!tokens || typeof tokens !== 'object') continue
       const inputTokens = numberValue(tokens.input)
       const outputTokens = numberValue(tokens.output)
-      const totalTokens = inputTokens + outputTokens
+      const totalTokens = inputTokens + outputTokens || numberValue(tokens.total)
       if (totalTokens <= 0) continue
       const dedupeKey = `${json?.id || ''}|${timestamp}|${totalTokens}`
       if (seen.has(dedupeKey)) continue
@@ -196,9 +221,87 @@ async function readGeminiActivity(homeDir: string, sinceMs: number): Promise<Ext
         timestamp,
         model: String(json?.model || 'Gemini'),
         inputTokens,
-        outputTokens,
+        outputTokens: outputTokens || Math.max(0, totalTokens - inputTokens),
         totalTokens,
-        sourceKey: `${filePath}:${lineIndex}`
+        sourceKey: `${filePath}:${sourceIndex}`
+      })
+    }
+  }
+  return events
+}
+
+async function readCodexSessionIndexActivity(
+  codexRoot: string,
+  sinceMs: number
+): Promise<ExternalUsageEvent[]> {
+  const indexPath = join(codexRoot, 'session_index.jsonl')
+  try {
+    await fs.access(indexPath)
+  } catch {
+    return []
+  }
+
+  const events: ExternalUsageEvent[] = []
+  const text = await readTextTail(indexPath)
+  let lineIndex = 0
+  for (const json of parseJsonLines(text)) {
+    lineIndex += 1
+    const timestamp =
+      parseTimestamp(json?.updated_at) ||
+      parseTimestamp(json?.updatedAt) ||
+      parseTimestamp(json?.timestamp) ||
+      parseTimestamp(json?.created_at) ||
+      parseTimestamp(json?.createdAt)
+    if (!timestamp || timestamp < sinceMs) continue
+    events.push({
+      provider: 'codex',
+      timestamp,
+      model: 'Codex',
+      totalTokens: 0,
+      sourceKey: `${indexPath}:${lineIndex}`
+    })
+  }
+  return events
+}
+
+async function readCodexSqliteActivity(
+  codexRoot: string,
+  sinceMs: number
+): Promise<ExternalUsageEvent[]> {
+  const dbPath = join(codexRoot, 'logs_2.sqlite')
+  try {
+    await fs.access(dbPath)
+  } catch {
+    return []
+  }
+
+  const cutoffSeconds = Math.floor(sinceMs / 1000)
+  const query = [
+    'SELECT (ts / 7200) * 7200 AS bucket_ts, COUNT(*) AS event_count FROM logs',
+    `WHERE ts >= ${cutoffSeconds}`,
+    'GROUP BY bucket_ts ORDER BY bucket_ts ASC;'
+  ].join(' ')
+  const rows = await runSqliteQuery(dbPath, query)
+  const events: ExternalUsageEvent[] = []
+  for (const row of rows) {
+    const [bucketRaw, countRaw] = row.split('|')
+    const bucketSeconds = Number(bucketRaw)
+    const eventCount = Number(countRaw)
+    if (!Number.isFinite(bucketSeconds) || !Number.isFinite(eventCount)) continue
+    const markerCount = Math.min(
+      MAX_CODEX_SQLITE_MARKERS_PER_BUCKET,
+      Math.max(1, Math.ceil(Math.log2(Math.max(1, eventCount) + 1)))
+    )
+    const spacingSeconds = 7200 / (markerCount + 1)
+    for (let index = 0; index < markerCount; index += 1) {
+      const timestamp = (bucketSeconds + spacingSeconds * (index + 1)) * 1000
+      if (timestamp < sinceMs) continue
+      events.push({
+        provider: 'codex',
+        timestamp,
+        model: 'Codex',
+        totalTokens: 0,
+        sourceKey: `codex-sqlite:${bucketSeconds}:${index}`
       })
     }
   }
@@ -280,6 +383,10 @@ async function readCursorActivity(homeDir: string, sinceMs: number): Promise<Ext
 async function runSqliteRows(dbPath: string): Promise<string[]> {
   const query =
     "SELECT key || char(9) || value FROM ItemTable WHERE key LIKE 'aiCodeTracking.dailyStats.%' ORDER BY key ASC;"
+  return runSqliteQuery(dbPath, query)
+}
+
+async function runSqliteQuery(dbPath: string, query: string): Promise<string[]> {
   return new Promise((resolve) => {
     execFile(
       '/usr/bin/sqlite3',
@@ -290,7 +397,11 @@ async function runSqliteRows(dbPath: string): Promise<string[]> {
           resolve([])
           return
         }
-        resolve(String(stdout || '').split(/\r?\n/).filter(Boolean))
+        resolve(
+          String(stdout || '')
+            .split(/\r?\n/)
+            .filter(Boolean)
+        )
       }
     )
   })
@@ -299,7 +410,8 @@ async function runSqliteRows(dbPath: string): Promise<string[]> {
 async function collectFiles(
   root: string,
   accepts: (path: string) => boolean,
-  sinceMs: number
+  sinceMs: number,
+  maxFiles: number = MAX_FILES_PER_PROVIDER
 ): Promise<string[]> {
   try {
     const rootStat = await fs.stat(root)
@@ -336,7 +448,7 @@ async function collectFiles(
   }
   return files
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, MAX_FILES_PER_PROVIDER)
+    .slice(0, maxFiles)
     .map((file) => file.path)
 }
 
@@ -371,6 +483,44 @@ function parseJsonLines(text: string): any[] {
     }
   }
   return parsed
+}
+
+function parseGeminiSessionEntries(text: string): Array<{ json: any; sourceIndex: number }> {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed?.messages)) {
+        return parsed.messages.map((json: any, index: number) => ({
+          json,
+          sourceIndex: index + 1
+        }))
+      }
+      if (parsed?.tokens && typeof parsed.tokens === 'object') {
+        return [{ json: parsed, sourceIndex: 1 }]
+      }
+    } catch {
+      // Modern Gemini sessions are JSONL, so fall through to line parsing.
+    }
+  }
+
+  const entries: Array<{ json: any; sourceIndex: number }> = []
+  let lineIndex = 0
+  for (const line of text.split(/\r?\n/)) {
+    lineIndex += 1
+    const trimmedLine = line.trim()
+    if (!trimmedLine || trimmedLine.startsWith('{$set')) continue
+    try {
+      entries.push({ json: JSON.parse(trimmedLine), sourceIndex: lineIndex })
+    } catch {
+      continue
+    }
+  }
+  return entries
+}
+
+function isGeminiSessionActivityPath(path: string): boolean {
+  return /\/chats\/.+\.jsonl?$/.test(path)
 }
 
 function parseTimestamp(value: unknown): number | null {

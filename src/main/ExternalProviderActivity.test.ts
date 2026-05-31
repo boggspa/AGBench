@@ -101,4 +101,141 @@ describe('loadExternalProviderUsageRecords', () => {
       await rm(homeDir, { recursive: true, force: true })
     }
   })
+
+  it('keeps Codex history beyond the old narrow session cap', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-codex-history-'))
+    try {
+      const sessionDir = join(homeDir, '.codex', 'sessions', '2026', '05', '31')
+      await mkdir(sessionDir, { recursive: true })
+
+      for (let index = 0; index < 270; index += 1) {
+        await writeFile(
+          join(sessionDir, `rollout-${String(index).padStart(3, '0')}.jsonl`),
+          JSON.stringify({
+            timestamp: `2026-05-31T${String(index % 24).padStart(2, '0')}:00:00.000Z`,
+            payload: {
+              type: 'token_count',
+              info: {
+                last_token_usage: {
+                  input_tokens: 1,
+                  output_tokens: 1,
+                  total_tokens: index === 269 ? 269 : 2
+                }
+              }
+            }
+          })
+        )
+      }
+
+      const records = await loadExternalProviderUsageRecords({
+        homeDir,
+        now: new Date('2026-05-31T23:00:00.000Z')
+      })
+
+      expect(records.filter((record) => record.provider === 'codex')).toHaveLength(270)
+      expect(
+        records.some((record) => record.provider === 'codex' && record.totalTokens === 269)
+      ).toBe(true)
+    } finally {
+      await rm(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads Codex archived sessions and session-index activity markers', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-codex-archive-'))
+    try {
+      await mkdir(join(homeDir, '.codex', 'archived_sessions'), { recursive: true })
+
+      await writeFile(
+        join(homeDir, '.codex', 'archived_sessions', 'archived.jsonl'),
+        JSON.stringify({
+          timestamp: '2026-05-30T09:00:00.000Z',
+          payload: {
+            type: 'token_count',
+            info: {
+              last_token_usage: {
+                input_tokens: 10,
+                output_tokens: 5,
+                total_tokens: 15
+              }
+            }
+          }
+        })
+      )
+      await writeFile(
+        join(homeDir, '.codex', 'session_index.jsonl'),
+        JSON.stringify({
+          id: 'thread-1',
+          thread_name: 'hidden from output',
+          updated_at: '2026-05-29T13:00:00.000Z'
+        })
+      )
+
+      const records = await loadExternalProviderUsageRecords({
+        homeDir,
+        now: new Date('2026-05-31T13:00:00.000Z')
+      })
+      const codexRecords = records.filter((record) => record.provider === 'codex')
+
+      expect(codexRecords.some((record) => record.totalTokens === 15)).toBe(true)
+      expect(codexRecords.some((record) => record.totalTokens === 0)).toBe(true)
+      expect(codexRecords.every((record) => record.model === 'Codex')).toBe(true)
+    } finally {
+      await rm(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads Gemini legacy JSON and nested session JSONL activity', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-gemini-sessions-'))
+    try {
+      const chatsDir = join(homeDir, '.gemini', 'tmp', 'sample', 'chats')
+      const nestedDir = join(chatsDir, 'subagent-session')
+      await mkdir(nestedDir, { recursive: true })
+
+      await writeFile(
+        join(chatsDir, 'session-2026-05-31.json'),
+        JSON.stringify({
+          sessionId: 'legacy',
+          messages: [
+            {
+              id: 'legacy-1',
+              timestamp: '2026-05-31T09:00:00.000Z',
+              type: 'gemini',
+              model: 'gemini-3.1-pro-preview',
+              tokens: { input: 100, output: 20, total: 150 }
+            }
+          ]
+        })
+      )
+      await writeFile(
+        join(nestedDir, 'worker.jsonl'),
+        [
+          JSON.stringify({
+            sessionId: 'worker',
+            startTime: '2026-05-31T10:00:00.000Z',
+            kind: 'subagent'
+          }),
+          JSON.stringify({
+            id: 'nested-1',
+            timestamp: '2026-05-31T10:05:00.000Z',
+            type: 'gemini',
+            model: 'gemini-3.1-flash-lite-preview',
+            tokens: { input: 40, output: 10, total: 50 }
+          })
+        ].join('\n')
+      )
+
+      const records = await loadExternalProviderUsageRecords({
+        homeDir,
+        now: new Date('2026-05-31T13:00:00.000Z')
+      })
+      const geminiRecords = records.filter((record) => record.provider === 'gemini')
+
+      expect(geminiRecords.map((record) => record.totalTokens).sort((a, b) => a - b)).toEqual([
+        50, 120
+      ])
+    } finally {
+      await rm(homeDir, { recursive: true, force: true })
+    }
+  })
 })
