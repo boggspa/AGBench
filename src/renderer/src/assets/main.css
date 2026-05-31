@@ -21677,6 +21677,37 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
 }
 
+/* 1.0.6 — Obsidian + Codex/Claude shell welcome starter cards. Obsidian gives
+ * the Codex/Claude COMPOSER a light surface (it overrides --text-secondary etc.
+ * to dark charcoal for that block, main.css:32436), but the starter cards sit on
+ * the dark Obsidian PAGE and the shell rule above still paints them a near-black
+ * #151515 fill — so the inherited charcoal text rendered dark-on-dark. The
+ * `[data-theme="light"]` rescue above excludes Obsidian, so it never recovered.
+ * Match Obsidian's inverted-composer treatment: a light card with dark text,
+ * specificity (0,3,0) to beat the (0,2,0) shell fill. Scoped to
+ * obsidian + codex/claude only — no reach into any other theme/shell. */
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f3ef 100%);
+  border-color: rgba(18, 21, 27, 0.14);
+  color: rgba(18, 21, 27, 0.72);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn:hover,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #eeede8 100%);
+  border-color: rgba(18, 21, 27, 0.22);
+  color: rgba(18, 21, 27, 0.94);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-label,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-label {
+  color: rgba(18, 21, 27, 0.94);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-description,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-description {
+  color: rgba(18, 21, 27, 0.6);
+}
+
 @media (max-width: 980px) {
   /* Composer-area width is now inherited from the default .composer-area
    * rule; we keep the narrow-viewport status-row tweaks because those are
