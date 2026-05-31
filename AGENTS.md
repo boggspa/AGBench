@@ -10,6 +10,21 @@ If you're a human, this is also a useful map of the product surface.
 
 ---
 
+## Formatting policy for agents
+
+Do not run `npm run format` or repository-wide Prettier as routine
+cleanup. The current `format` script runs `prettier --write .`, which
+can create large unrelated diffs across the workspace and make review
+harder.
+
+Prettier is available for intentional formatting work, but normal code
+changes should preserve the surrounding style and format only the files
+or regions that were deliberately touched. Use scoped formatting or
+targeted `prettier-ignore` comments only when the formatting change is
+part of the task.
+
+---
+
 ## Environment summary
 
 AGBench is an Electron desktop app that runs coding agents in isolated
