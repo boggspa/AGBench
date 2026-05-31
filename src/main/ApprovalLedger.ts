@@ -6,14 +6,179 @@ import type {
   ApprovalLedgerRecord,
   ApprovalLedgerRequestInput,
   ApprovalLedgerScope,
-  ApprovalLedgerStatus
+  ApprovalLedgerStatus,
+  ProviderId
 } from './store/types'
 
 export const APPROVAL_LEDGER_SCHEMA_VERSION = 1
 export const PENDING_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000
+export const APPROVAL_TITLE_BACKFILL_VERSION = '1.0.7-M8'
+
+const providerLabels: Record<ProviderId, string> = {
+  gemini: 'Gemini',
+  codex: 'Codex',
+  claude: 'Claude',
+  kimi: 'Kimi',
+  grok: 'Grok',
+  cursor: 'Cursor'
+}
+
+const providerIds = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
+const providerMcpMethodPattern = /^(gemini|codex|claude|kimi|grok|cursor)-mcp\//
+
+export interface ApprovalTitleBackfillChange {
+  index: number
+  id?: string
+  approvalId?: string
+  provider: ProviderId
+  method?: string
+  previousTitle: string
+  nextTitle: string
+  reason: string
+}
+
+export interface ApprovalTitleBackfillUnchangedRow {
+  index: number
+  id?: string
+  approvalId?: string
+  provider?: ProviderId
+  method?: string
+  title?: string
+  reason: string
+}
+
+export interface ApprovalTitleBackfillResult {
+  records: ApprovalLedgerRecord[]
+  scanned: number
+  changed: number
+  unchanged: number
+  changes: ApprovalTitleBackfillChange[]
+  unchangedRows: ApprovalTitleBackfillUnchangedRow[]
+  staleRowsAfter: ApprovalTitleBackfillChange[]
+}
 
 function addMs(isoTimestamp: string, ms: number): string {
   return new Date(new Date(isoTimestamp).getTime() + ms).toISOString()
+}
+
+function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === 'string' && providerIds.has(value as ProviderId)
+}
+
+function approvalTitleProviderFromMethod(method: unknown): ProviderId | undefined {
+  if (typeof method !== 'string') return undefined
+  const match = method.match(providerMcpMethodPattern)
+  return isProviderId(match?.[1]) ? match[1] : undefined
+}
+
+function approvalTitleProviderFromRecord(record: Partial<ApprovalLedgerRecord>): ProviderId | undefined {
+  const methodProvider = approvalTitleProviderFromMethod(record.method)
+  if (methodProvider) return methodProvider
+  if (isProviderId(record.provider)) return record.provider
+  const metadata = record.metadata && typeof record.metadata === 'object' ? record.metadata : {}
+  const metadataProvider = metadata.parentProvider || metadata.provider
+  return isProviderId(metadataProvider) ? metadataProvider : undefined
+}
+
+function rewriteHistoricalApprovalTitle(
+  title: string,
+  provider: ProviderId
+): { title: string; reason: string } | null {
+  if (provider === 'gemini') return null
+  const providerName = providerLabels[provider]
+  if (title.startsWith('Approve Gemini ')) {
+    return {
+      title: title.replace(/^Approve Gemini\b/, `Approve ${providerName}`),
+      reason: 'approve-title-provider-prefix'
+    }
+  }
+  if (title.startsWith('Gemini wants ')) {
+    return {
+      title: title.replace(/^Gemini\b/, providerName),
+      reason: 'delegation-title-provider-prefix'
+    }
+  }
+  return null
+}
+
+export function backfillApprovalLedgerTitles(
+  records: ApprovalLedgerRecord[],
+  migratedAt: string = new Date().toISOString()
+): ApprovalTitleBackfillResult {
+  const changes: ApprovalTitleBackfillChange[] = []
+  const unchangedRows: ApprovalTitleBackfillUnchangedRow[] = []
+  const nextRecords = records.map((record, index) => {
+    const provider = approvalTitleProviderFromRecord(record)
+    const baseRow = {
+      index,
+      id: record.id,
+      approvalId: record.approvalId,
+      provider,
+      method: record.method,
+      title: record.title
+    }
+    if (!provider) {
+      unchangedRows.push({ ...baseRow, reason: 'provider-unresolved' })
+      return record
+    }
+    const rewrite = rewriteHistoricalApprovalTitle(record.title, provider)
+    if (!rewrite) {
+      unchangedRows.push({
+        ...baseRow,
+        reason: provider === 'gemini' ? 'gemini-provider' : 'title-current-or-provider-agnostic'
+      })
+      return record
+    }
+    const nextRecord: ApprovalLedgerRecord = {
+      ...record,
+      title: rewrite.title,
+      metadata: {
+        ...(record.metadata || {}),
+        approvalTitleBackfill: {
+          version: APPROVAL_TITLE_BACKFILL_VERSION,
+          migratedAt,
+          previousTitle: record.title
+        }
+      }
+    }
+    changes.push({
+      index,
+      id: record.id,
+      approvalId: record.approvalId,
+      provider,
+      method: record.method,
+      previousTitle: record.title,
+      nextTitle: rewrite.title,
+      reason: rewrite.reason
+    })
+    return nextRecord
+  })
+  const staleRowsAfter: ApprovalTitleBackfillChange[] = []
+  nextRecords.forEach((record, index) => {
+    const provider = approvalTitleProviderFromRecord(record)
+    if (!provider || provider === 'gemini') return
+    const rewrite = rewriteHistoricalApprovalTitle(record.title, provider)
+    if (!rewrite) return
+    staleRowsAfter.push({
+      index,
+      id: record.id,
+      approvalId: record.approvalId,
+      provider,
+      method: record.method,
+      previousTitle: record.title,
+      nextTitle: rewrite.title,
+      reason: rewrite.reason
+    })
+  })
+  return {
+    records: nextRecords,
+    scanned: records.length,
+    changed: changes.length,
+    unchanged: unchangedRows.length,
+    changes,
+    unchangedRows,
+    staleRowsAfter
+  }
 }
 
 export function scopeForApprovalAction(action: AgentApprovalAction): ApprovalLedgerScope {

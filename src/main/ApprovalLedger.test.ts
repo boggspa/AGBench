@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   PENDING_APPROVAL_TTL_MS,
+  backfillApprovalLedgerTitles,
   createApprovalLedgerRecord,
   expireScopedApprovalLedgerRecords,
   filterApprovalLedgerRecords,
@@ -179,5 +180,121 @@ describe('ApprovalLedger', () => {
       })
     ).toHaveLength(2)
     expect(filterApprovalLedgerRecords([pending], { service: 'fileChanges' })).toHaveLength(0)
+  })
+
+  it('backfills historical Gemini-labelled titles for non-Gemini MCP approvals', () => {
+    const records = [
+      createApprovalLedgerRecord(
+        {
+          ...baseRequest,
+          approvalId: 'codex-shell',
+          id: 'codex-shell',
+          provider: 'codex',
+          method: 'codex-mcp/run_shell_command',
+          title: 'Approve Gemini shell command'
+        },
+        '2026-05-07T00:00:00.000Z'
+      ),
+      createApprovalLedgerRecord(
+        {
+          ...baseRequest,
+          approvalId: 'claude-delegate',
+          id: 'claude-delegate',
+          provider: 'claude',
+          method: 'claude-mcp/delegate_to_subthread',
+          title: 'Gemini wants to delegate to Codex sub-thread'
+        },
+        '2026-05-07T00:00:00.000Z'
+      ),
+      createApprovalLedgerRecord(
+        {
+          ...baseRequest,
+          approvalId: 'gemini-shell',
+          id: 'gemini-shell',
+          provider: 'gemini',
+          method: 'gemini-mcp/run_shell_command',
+          title: 'Approve Gemini shell command'
+        },
+        '2026-05-07T00:00:00.000Z'
+      ),
+      createApprovalLedgerRecord(
+        {
+          ...baseRequest,
+          approvalId: 'kimi-patch',
+          id: 'kimi-patch',
+          provider: 'kimi',
+          method: 'kimi-mcp/apply_patch',
+          title: 'Approve patch application'
+        },
+        '2026-05-07T00:00:00.000Z'
+      )
+    ]
+
+    const result = backfillApprovalLedgerTitles(records, '2026-05-31T20:00:00.000Z')
+
+    expect(result.changed).toBe(2)
+    expect(result.staleRowsAfter).toEqual([])
+    expect(result.records.find((record) => record.id === 'codex-shell')?.title).toBe(
+      'Approve Codex shell command'
+    )
+    expect(result.records.find((record) => record.id === 'claude-delegate')?.title).toBe(
+      'Claude wants to delegate to Codex sub-thread'
+    )
+    expect(result.records.find((record) => record.id === 'gemini-shell')?.title).toBe(
+      'Approve Gemini shell command'
+    )
+    expect(result.records.find((record) => record.id === 'kimi-patch')?.title).toBe(
+      'Approve patch application'
+    )
+    expect(
+      result.records.find((record) => record.id === 'codex-shell')?.metadata?.approvalTitleBackfill
+    ).toEqual({
+      version: '1.0.7-M8',
+      migratedAt: '2026-05-31T20:00:00.000Z',
+      previousTitle: 'Approve Gemini shell command'
+    })
+  })
+
+  it('treats a rerun of the approval-title backfill as a no-op', () => {
+    const record = createApprovalLedgerRecord(
+      {
+        ...baseRequest,
+        approvalId: 'codex-tool',
+        id: 'codex-tool',
+        provider: 'codex',
+        method: 'codex-mcp/workspace_search',
+        title: 'Approve Gemini tool call'
+      },
+      '2026-05-07T00:00:00.000Z'
+    )
+    const firstRun = backfillApprovalLedgerTitles([record], '2026-05-31T20:00:00.000Z')
+    const secondRun = backfillApprovalLedgerTitles(
+      firstRun.records,
+      '2026-05-31T20:01:00.000Z'
+    )
+
+    expect(firstRun.changed).toBe(1)
+    expect(secondRun.changed).toBe(0)
+    expect(secondRun.records[0].title).toBe('Approve Codex tool call')
+  })
+
+  it('uses the MCP method prefix to correct a stale title even if provider metadata is wrong', () => {
+    const record = createApprovalLedgerRecord(
+      {
+        ...baseRequest,
+        approvalId: 'method-wins',
+        id: 'method-wins',
+        provider: 'gemini',
+        method: 'claude-mcp/write_file',
+        title: 'Approve Gemini file write'
+      },
+      '2026-05-07T00:00:00.000Z'
+    )
+
+    const result = backfillApprovalLedgerTitles([record], '2026-05-31T20:00:00.000Z')
+
+    expect(result.changed).toBe(1)
+    expect(result.records[0].title).toBe('Approve Claude file write')
+    expect(result.staleRowsAfter).toEqual([])
   })
 })
