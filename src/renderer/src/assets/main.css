@@ -2956,7 +2956,7 @@ button.sidebar-item {
 .welcome-standalone-heatmaps {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));
-  margin: clamp(22px, 3vh, 42px) auto 0;
+  margin: clamp(44px, 6vh, 84px) auto 0;
   pointer-events: auto;
 }
 
@@ -2967,7 +2967,7 @@ button.sidebar-item {
 }
 
 .welcome-suggestions + .welcome-standalone-heatmaps {
-  margin-top: clamp(30px, 4vh, 56px);
+  margin-top: clamp(60px, 8vh, 112px);
 }
 
 .usage-heatmap--welcome-standalone {
