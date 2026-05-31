@@ -861,6 +861,10 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
       return 'steer'
+    // Admin-only capabilities: these are intentionally NOT included in the
+    // read-write task-console default set. A workspace entry must list them
+    // explicitly before a paired device can change sidebar pinning or toggle
+    // session YOLO.
     case 'setYoloMode':
       return 'yolo'
     case 'togglePinChat':

@@ -1350,6 +1350,64 @@ describe('BridgeActionRouter', () => {
       expect(result.accepted).toBe(true)
     })
 
+    it('still denies pin and yolo against default read-write workspaces', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      for (const action of [
+        {
+          kind: 'togglePinWorkspace',
+          workspaceId: 'ws-readwrite',
+          pinned: true
+        },
+        {
+          kind: 'setYoloMode',
+          workspaceId: 'ws-readwrite',
+          enabled: true
+        }
+      ]) {
+        const result = (await router.route('bridge.requestActionAck', {
+          payloadBase64: encodeAction(action)
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(false)
+        expect(result.reasonCode).toBe('capabilityDenied')
+        expect(result.message).toMatch(/admin/i)
+      }
+    })
+
+    it('accepts pin and yolo only when explicit admin capabilities are present', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-admin',
+        path: '/admin',
+        mode: 'read-write',
+        capabilities: ['monitor', 'approve', 'pin', 'yolo'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      const router = new BridgeActionRouter({ allowlist, executor })
+      const pinResult = (await router.route('bridge.requestActionAck', {
+        payloadBase64: encodeAction({
+          kind: 'togglePinWorkspace',
+          workspaceId: 'ws-admin',
+          pinned: true
+        })
+      })) as { accepted: boolean; reasonCode?: string }
+      const yoloResult = (await router.route('bridge.requestActionAck', {
+        payloadBase64: encodeAction({
+          kind: 'setYoloMode',
+          workspaceId: 'ws-admin',
+          enabled: true
+        })
+      })) as { accepted: boolean; reasonCode?: string }
+
+      expect(pinResult).toMatchObject({ accepted: true, reasonCode: 'accepted' })
+      expect(yoloResult).toMatchObject({ accepted: true, reasonCode: 'accepted' })
+      expect(calls.map((call) => call.method)).toEqual([
+        'executeTogglePinWorkspace',
+        'executeSetYoloMode'
+      ])
+    })
+
     it('permissive-dev mode bypasses read-only enforcement', async () => {
       const router = new BridgeActionRouter({
         allowlist: seedReadOnly(),

@@ -5,9 +5,12 @@ import { join } from 'path'
 import {
   READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES,
   READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES,
+  REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS,
   RemoteWorkspaceAllowlist,
   capabilitiesForRemoteWorkspaceEntry,
-  capabilitiesForRemoteWorkspaceMode
+  capabilitiesForRemoteWorkspaceMode,
+  describeRemoteWorkspaceCapability,
+  isAdminRemoteWorkspaceCapability
 } from './RemoteWorkspaceAllowlist'
 
 describe('RemoteWorkspaceAllowlist', () => {
@@ -180,6 +183,35 @@ describe('RemoteWorkspaceAllowlist', () => {
         true
       )
       expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'yolo' }).allowed).toBe(false)
+    })
+
+    it('keeps pin and yolo as explicit admin-only capabilities outside defaults', () => {
+      expect(capabilitiesForRemoteWorkspaceMode('read-write')).not.toContain('pin')
+      expect(capabilitiesForRemoteWorkspaceMode('read-write')).not.toContain('yolo')
+      expect(isAdminRemoteWorkspaceCapability('pin')).toBe(true)
+      expect(isAdminRemoteWorkspaceCapability('yolo')).toBe(true)
+      expect(describeRemoteWorkspaceCapability('pin')).toMatchObject({
+        label: 'Pin items (admin)',
+        adminOnly: true
+      })
+      expect(REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS.yolo.description).toMatch(/approval bypass/i)
+    })
+
+    it('allows pin and yolo only when an allowlist entry explicitly grants them', () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-admin',
+        path: '/a',
+        mode: 'read-write',
+        capabilities: ['monitor', 'approve', 'pin', 'yolo'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+
+      expect(allowlist.evaluate({ workspaceId: 'ws-admin', capability: 'pin' }).allowed).toBe(true)
+      expect(allowlist.evaluate({ workspaceId: 'ws-admin', capability: 'yolo' }).allowed).toBe(
+        true
+      )
     })
 
     it('uses explicit capabilities when present instead of mode defaults', () => {

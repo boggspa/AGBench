@@ -41,7 +41,17 @@ export type RemoteWorkspaceCapability =
   | 'startTurn'
   | 'diffReview'
   | 'steer'
+  /**
+   * Admin-only remote capability. Not part of read-write task-console
+   * defaults; it must be explicitly present on an allowlist entry before a
+   * paired device can pin/unpin chats or workspaces.
+   */
   | 'pin'
+  /**
+   * Admin-only remote capability. Not part of read-write task-console
+   * defaults; it must be explicitly present on an allowlist entry before a
+   * paired device can toggle session YOLO.
+   */
   | 'yolo'
 
 export const READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] = [
@@ -58,6 +68,78 @@ export const READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceC
   'diffReview',
   'steer'
 ]
+
+export const ADMIN_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] = [
+  'pin',
+  'yolo'
+]
+
+export interface RemoteWorkspaceCapabilityDescription {
+  capability: RemoteWorkspaceCapability
+  label: string
+  description: string
+  adminOnly: boolean
+}
+
+export const REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS: Record<
+  RemoteWorkspaceCapability,
+  RemoteWorkspaceCapabilityDescription
+> = {
+  monitor: {
+    capability: 'monitor',
+    label: 'Monitor tasks',
+    description: 'View remote task status, transcript projections, and pending prompts.',
+    adminOnly: false
+  },
+  approve: {
+    capability: 'approve',
+    label: 'Approve prompts',
+    description: 'Respond to desktop-origin approval requests from a paired device.',
+    adminOnly: false
+  },
+  answer: {
+    capability: 'answer',
+    label: 'Answer questions',
+    description: 'Send answers back to agent questions that are waiting for user input.',
+    adminOnly: false
+  },
+  cancel: {
+    capability: 'cancel',
+    label: 'Cancel work',
+    description: 'Cancel active runs, rounds, or pending wakeups from a paired device.',
+    adminOnly: false
+  },
+  startTurn: {
+    capability: 'startTurn',
+    label: 'Start turns',
+    description: 'Start a new provider turn against the allowlisted workspace.',
+    adminOnly: false
+  },
+  diffReview: {
+    capability: 'diffReview',
+    label: 'Review diffs',
+    description: 'Inspect bounded diff summaries sent to the paired device.',
+    adminOnly: false
+  },
+  steer: {
+    capability: 'steer',
+    label: 'Steer ensembles',
+    description: 'Queue, steer, skip, or wake Ensemble participants from the paired device.',
+    adminOnly: false
+  },
+  pin: {
+    capability: 'pin',
+    label: 'Pin items (admin)',
+    description: 'Pin or unpin chats and workspaces from a paired device.',
+    adminOnly: true
+  },
+  yolo: {
+    capability: 'yolo',
+    label: 'Session YOLO (admin)',
+    description: 'Toggle the desktop session YOLO approval bypass from a paired device.',
+    adminOnly: true
+  }
+}
 
 export interface RemoteWorkspaceEntry {
   /** Stable id used by GUIGemini's internal workspace registry. */
@@ -221,9 +303,10 @@ export class RemoteWorkspaceAllowlist {
       check.capability !== undefined &&
       !capabilitiesForRemoteWorkspaceEntry(entry).includes(check.capability)
     ) {
+      const description = describeRemoteWorkspaceCapability(check.capability)
       return {
         allowed: false,
-        reason: `Capability "${check.capability}" is not allowed for workspace "${check.workspaceId}"`
+        reason: `Capability "${check.capability}" (${description.label}) is not allowed for workspace "${check.workspaceId}"`
       }
     }
     return { allowed: true, entry }
@@ -296,6 +379,18 @@ export function capabilitiesForRemoteWorkspaceEntry(
   entry: RemoteWorkspaceEntry
 ): readonly RemoteWorkspaceCapability[] {
   return entry.capabilities ?? capabilitiesForRemoteWorkspaceMode(entry.mode)
+}
+
+export function isAdminRemoteWorkspaceCapability(
+  capability: RemoteWorkspaceCapability
+): boolean {
+  return ADMIN_REMOTE_WORKSPACE_CAPABILITIES.includes(capability)
+}
+
+export function describeRemoteWorkspaceCapability(
+  capability: RemoteWorkspaceCapability
+): RemoteWorkspaceCapabilityDescription {
+  return REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS[capability]
 }
 
 export function isRemoteWorkspaceCapability(value: unknown): value is RemoteWorkspaceCapability {
