@@ -60,7 +60,23 @@ describe('GrokCreditsMeterView', () => {
   })
 
   it('renders the shared pace tick when the reset timestamp is parseable', () => {
-    const html = render({ snapshot: snap('Credits used: 1%\nResets: May 31, 16:00 PT') })
+    // Deterministic across time. The view calls computeQuotaPace with the REAL
+    // wall clock, but `snap()` pins refreshedAt to a fixed date — so a hardcoded
+    // reset rots: once real time passes it, remainingMs<=0 → pace returns null →
+    // no tick (it only passed the night it was written). Build the reset in the
+    // parser's own "Mon DD, HH:MM PT" format ~15 days ahead of real now, with
+    // refreshedAt = real now so the year resolves correctly. The inferred 30-day
+    // Grok credit window is then ~half elapsed; at 1% used the meter reads well
+    // "ahead" of pace, so the shared tick surfaces on every run.
+    const MONTHS = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ]
+    const now = new Date()
+    const future = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000)
+    const resetText = `${MONTHS[future.getUTCMonth()]} ${future.getUTCDate()}, 12:00 PT`
+    const snapshot = parseGrokUsage(`Credits used: 1%\nResets: ${resetText}`, now.toISOString())
+    const html = render({ snapshot })
     expect(html).toContain('quota-pace-tick')
   })
 
