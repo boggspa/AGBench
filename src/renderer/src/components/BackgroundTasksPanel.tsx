@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChatRecord, ChildAgentThread, ProviderId } from '../../../main/store/types'
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
+import { AgentIdenticon } from './icons/AgentIdenticon'
 
 interface BackgroundTasksPanelProps {
   chat?: ChatRecord
@@ -107,11 +108,9 @@ function BackgroundTaskRow({
         onClick={() => onActivate(thread.id)}
         title="Scroll to this agent's card in the transcript"
       >
-        <span
-          className={`background-task-dot state-${thread.state}`}
-          style={color ? { background: color, boxShadow: `0 0 0 3px ${color}33` } : undefined}
-          aria-hidden
-        />
+        <span className={`background-task-avatar state-${thread.state}`} aria-hidden>
+          <AgentIdenticon seed={identity?.agentId || thread.id} color={color} size={18} />
+        </span>
         <span className="background-task-name" style={color ? { color } : undefined}>
           {name}
         </span>

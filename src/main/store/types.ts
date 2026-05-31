@@ -2436,7 +2436,7 @@ export interface ChildAgentThread {
   toolActivityIds: string[]
   /** Visual identity (display name + color) assigned by `assignAgentIdentity`.
    * For Codex this may carry a platform-extracted name; for other providers it
-   * comes from our scientist-surname pool. Persisted to
+   * comes from our bespoke nickname pool. Persisted to
    * `ChatRecord.providerMetadata.agentIdentities` so the same thread keeps the
    * same identity across renders and app reloads. */
   identity?: AgentIdentity

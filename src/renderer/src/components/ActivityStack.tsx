@@ -21,6 +21,7 @@ import { inlineStatsForActivity } from '../lib/ActivityInlineStats'
 import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay'
 import { FileTypeIcon } from './FileTypeIcon'
 import { DigitOdometer } from './DigitOdometer'
+import { AgentIdenticon } from './icons/AgentIdenticon'
 import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
 import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
@@ -1280,6 +1281,12 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
                     : undefined
                 }
               >
+                <AgentIdenticon
+                  seed={thread.identity?.agentId || thread.id}
+                  color={thread.identity?.color}
+                  size={14}
+                  className="child-agent-spawn-block-pill-icon"
+                />
                 {thread.identity?.name || thread.name}
               </span>
             ))}
@@ -1303,10 +1310,11 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
                 onClick={() => scrollToAgent(thread.id)}
                 title="Scroll to this agent's card"
               >
-                <span
-                  className="child-agent-spawn-block-dot"
-                  style={identity ? { background: identity.color } : undefined}
-                  aria-hidden
+                <AgentIdenticon
+                  seed={identity?.agentId || thread.id}
+                  color={identity?.color}
+                  size={18}
+                  className="child-agent-spawn-block-icon"
                 />
                 <span
                   className="child-agent-spawn-block-name"
@@ -1717,21 +1725,7 @@ function ChildAgentThreadCard({
           aria-hidden
           style={identityColor ? { color: identityColor } : undefined}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="5" width="10" height="8" rx="2" />
-            <circle cx="6.5" cy="9" r="0.9" fill="currentColor" stroke="none" />
-            <circle cx="9.5" cy="9" r="0.9" fill="currentColor" stroke="none" />
-            <path d="M8 5V3M6 3h4" />
-          </svg>
+          <AgentIdenticon seed={identity?.agentId || thread.id} color={identityColor} size={22} />
         </span>
         <span
           className="child-agent-thread-name"

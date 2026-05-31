@@ -12,6 +12,7 @@ import type {
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
 import { getProviderName } from './Sidebar'
 import type { ComposerMentionTriggerKind } from '../lib/ComposerMentionTrigger'
+import { AgentIdenticon } from './icons/AgentIdenticon'
 
 export type ComposerMentionKind = 'agent' | 'participant' | 'workspace-file' | 'external-grant'
 
@@ -383,11 +384,20 @@ export function AgentMentionMenu({
                 onMouseEnter={() => setHighlight(index)}
                 onClick={() => onPick(candidate)}
               >
-                <span
-                  className={`agent-mention-menu-dot kind-${candidate.kind}`}
-                  style={candidate.color ? { background: candidate.color } : undefined}
-                  aria-hidden
-                />
+                {candidate.kind === 'agent' ? (
+                  <AgentIdenticon
+                    seed={candidate.agentId || candidate.name}
+                    color={candidate.color}
+                    size={18}
+                    className="agent-mention-menu-icon"
+                  />
+                ) : (
+                  <span
+                    className={`agent-mention-menu-dot kind-${candidate.kind}`}
+                    style={candidate.color ? { background: candidate.color } : undefined}
+                    aria-hidden
+                  />
+                )}
                 <span className="agent-mention-menu-copy">
                   <span
                     className="agent-mention-menu-name"

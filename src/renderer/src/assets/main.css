@@ -21357,6 +21357,9 @@ input:disabled, select:disabled, textarea:disabled {
 .child-agent-thread-avatar.status-running { color: var(--tool-running); background: color-mix(in srgb, var(--tool-running) 14%, transparent); }
 .child-agent-thread-avatar.status-completed { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .child-agent-thread-avatar.status-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.child-agent-thread-avatar .agent-identicon {
+  display: block;
+}
 
 .child-agent-thread-name {
   font-weight: 600;
@@ -22169,11 +22172,16 @@ input:disabled, select:disabled, textarea:disabled {
 .child-agent-spawn-block-pill {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
   font-size: calc(var(--font-size-xs) - 1px);
   font-weight: 500;
+}
+.child-agent-spawn-block-pill-icon,
+.child-agent-spawn-block-icon {
+  flex-shrink: 0;
 }
 .child-agent-spawn-block-body {
   display: flex;
@@ -22199,13 +22207,6 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .child-agent-spawn-block-row:hover {
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-}
-.child-agent-spawn-block-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-tertiary);
 }
 .child-agent-spawn-block-name {
   font-weight: 600;
@@ -22288,14 +22289,14 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   border-color: color-mix(in srgb, var(--panel-border) 80%, transparent);
 }
-.background-task-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+.background-task-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  background: var(--text-tertiary);
+  color: var(--text-tertiary);
 }
-.background-task-row.state-running .background-task-dot {
+.background-task-row.state-running .background-task-avatar {
   animation: background-task-pulse 1.6s ease-in-out infinite;
 }
 @keyframes background-task-pulse {
@@ -22325,7 +22326,8 @@ input:disabled, select:disabled, textarea:disabled {
 /* ----- Inline @-mention chip ----- */
 .agent-mention {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 3px;
   padding: 1px 7px;
   margin: 0 1px;
   border-radius: 999px;
@@ -22345,6 +22347,9 @@ input:disabled, select:disabled, textarea:disabled {
 .agent-mention.unknown-identity {
   color: var(--text-tertiary);
   border-color: var(--text-tertiary);
+}
+.agent-mention-icon {
+  flex-shrink: 0;
 }
 
 /* Inline ensemble-participant mention chip. Drives the per-provider
@@ -22435,6 +22440,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .agent-mention-menu-dot.kind-external-grant {
   background: color-mix(in srgb, var(--warning) 72%, var(--text-tertiary));
+}
+.agent-mention-menu-icon {
+  flex-shrink: 0;
 }
 .agent-mention-menu-copy {
   display: flex;

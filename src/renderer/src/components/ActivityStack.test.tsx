@@ -40,6 +40,23 @@ function makeEnsembleChat(participants: EnsembleParticipant[]): ChatRecord {
   }
 }
 
+function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
+  return {
+    appChatId: 'chat-identity',
+    scope: 'workspace',
+    provider: 'claude',
+    title: 'Agent thread',
+    workspaceId: 'ws-1',
+    workspacePath: '/repo',
+    createdAt: 1,
+    updatedAt: 1,
+    archived: false,
+    messages: [],
+    runs: [],
+    ...overrides
+  }
+}
+
 function makeParticipant(overrides: Partial<EnsembleParticipant>): EnsembleParticipant {
   return {
     id: 'ensemble-gemini',
@@ -276,6 +293,37 @@ describe('ActivityStack agent invocation presentation', () => {
     expect(html).toContain('Provider tool call in this transcript')
     expect(html).toContain('Invocation prompt')
     expect(html).toContain('Provider-native activity')
+  })
+
+  it('renders child-agent identities with seeded identicons', () => {
+    const chat = makeChat()
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        provider="claude"
+        chat={chat}
+        chatId="chat-identity"
+        runId="run-identity"
+        activities={[
+          makeWriteActivity({
+            id: 'task-ident',
+            toolName: 'Task',
+            displayName: 'Task',
+            category: 'task',
+            status: 'running',
+            parameters: {
+              prompt: 'Review the current diff'
+            }
+          })
+        ]}
+      />
+    )
+
+    expect(html).toContain('agent-identicon')
+    expect(html).toContain('Donny-Davis')
+    const metadata = chat.providerMetadata as
+      | { agentIdentities?: Record<string, { name?: string }> }
+      | undefined
+    expect(metadata?.agentIdentities?.['task-ident']?.name).toBe('Donny-Davis')
   })
 })
 

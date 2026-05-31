@@ -1,6 +1,7 @@
 import { useContext, type ReactNode } from 'react'
 import { AgentIdentityContext } from './AgentIdentityContext'
 import { findIdentity } from '../lib/agentIdentity'
+import { AgentIdenticon } from './icons/AgentIdenticon'
 
 interface AgentMentionProps {
   agentId: string
@@ -57,6 +58,14 @@ export function AgentMention({ agentId, children }: AgentMentionProps) {
       onClick={handleClick}
       title={titleParts.join(' · ') || `Agent ${agentId}`}
     >
+      {identity && (
+        <AgentIdenticon
+          seed={identity.agentId || agentId}
+          color={color}
+          size={13}
+          className="agent-mention-icon"
+        />
+      )}
       @{displayName}
     </button>
   )
