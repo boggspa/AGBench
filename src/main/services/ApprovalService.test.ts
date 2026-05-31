@@ -342,6 +342,41 @@ describe('ApprovalService — resolve dispatch', () => {
     expect(svc.has('m-1')).toBe(false)
   })
 
+  it('Main: provider-native sub-agent action resolves true without widening generic approvals', async () => {
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    const resolveFn = vi.fn()
+    const resolveAction = vi.fn()
+    svc.registerMain('native-1', {
+      provider: 'claude',
+      runId: 'r-1',
+      resolve: resolveFn,
+      resolveAction
+    })
+
+    const ok = await svc.resolve('native-1', 'useProviderNative')
+
+    expect(ok).toBe(true)
+    expect(resolveAction).toHaveBeenCalledWith('useProviderNative')
+    expect(spies.permissionService.isApprovedAction).not.toHaveBeenCalledWith('useProviderNative')
+    expect(resolveFn).toHaveBeenCalledWith(true)
+  })
+
+  it('Main: AGBench sub-thread action resolves false so provider-native tool is denied', async () => {
+    const { deps } = makeDeps()
+    const svc = new ApprovalService(deps)
+    const resolveFn = vi.fn()
+    svc.registerMain('native-2', {
+      provider: 'claude',
+      runId: 'r-1',
+      resolve: resolveFn
+    })
+
+    await svc.resolve('native-2', 'useAGBenchSubthread')
+
+    expect(resolveFn).toHaveBeenCalledWith(false)
+  })
+
   it('GeminiTool: applies permission decision + resolves with allowed flag', async () => {
     const { deps, spies } = makeDeps()
     spies.permissionService.applyApprovalDecision.mockReturnValue(false)

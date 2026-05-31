@@ -76,6 +76,7 @@ export interface PendingMainApproval {
   provider: ProviderId
   workspacePath?: string
   runId?: string
+  resolveAction?: (action: AgentApprovalAction) => void
   resolve: (allowed: boolean) => void
 }
 
@@ -589,7 +590,14 @@ export class ApprovalService {
       })
       this.pendingMain.delete(requestId)
       this.deps.runManager.clearApproval(requestId)
-      pendingMain.resolve(this.deps.permissionService.isApprovedAction(action))
+      pendingMain.resolveAction?.(action)
+      const allowed =
+        action === 'useProviderNative'
+          ? true
+          : action === 'useAGBenchSubthread'
+            ? false
+            : this.deps.permissionService.isApprovedAction(action)
+      pendingMain.resolve(allowed)
       return true
     }
 

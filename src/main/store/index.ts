@@ -160,6 +160,7 @@ const defaultSettings: AppSettings = {
     networkAccess: 'allow'
   },
   agenticWorkspaceGrants: [],
+  nativeSubAgentRequests: 'ask',
   // Default on — the user-visible win is that delegated sub-threads
   // resume their parent agent automatically when they finish. Users
   // who prefer to nudge manually can flip this off in Settings.
@@ -383,6 +384,10 @@ export class AppStore {
       agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants)
         ? stored.agenticWorkspaceGrants
         : [],
+      nativeSubAgentRequests:
+        stored.nativeSubAgentRequests === 'provider' || stored.nativeSubAgentRequests === 'agbench'
+          ? stored.nativeSubAgentRequests
+          : 'ask',
       // Normalize: a stored non-boolean (e.g. an older settings file
       // where the field is missing) falls back to the default (true)
       // so the auto-resume behaviour is on for upgrading users.

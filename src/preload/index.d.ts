@@ -106,6 +106,8 @@ type AgentApprovalAction =
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  | 'useProviderNative'
+  | 'useAGBenchSubthread'
   | 'grantExternalPathRead'
   | 'grantExternalPathEdit'
   | 'declineExternalPath'

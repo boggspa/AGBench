@@ -190,12 +190,15 @@ export type GeminiApiRuntimeMode = 'auto' | 'always' | 'never'
 export type ProductOperationStatus = 'ok' | 'warning' | 'error' | 'unknown'
 export type ExternalPathGrantAccess = 'read' | 'write'
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace'
+export type NativeSubAgentRequestPolicy = 'ask' | 'provider' | 'agbench'
 export type AgentApprovalAction =
   | 'accept'
   | 'acceptForSession'
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  | 'useProviderNative'
+  | 'useAGBenchSubthread'
   // Slice 4 of the external-path-redesign arc. When the runtime
   // detector (slice 5) spots a tool call referencing a path outside
   // the workspace, the approval payload uses these actions in place
@@ -1323,6 +1326,10 @@ export interface AppSettings {
   sidebarWidth: number
   agenticServices: AgenticServicesSettings
   agenticWorkspaceGrants: AgenticWorkspaceGrant[]
+  /** User preference for provider-native sub-agent tools (`Task`,
+   * `invoke_agent`, etc.) versus AGBench durable sub-threads. When
+   * unset, the runtime asks on the first observable native request. */
+  nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), an agent's parent chat is automatically
    * "nudged" with a synthetic continuation prompt after a sub-thread
    * the agent delegated to (with `returnResultToParent: true`) finishes

@@ -12,6 +12,7 @@ import type {
   GeminiMcpBridgeStatus,
   GeminiAuthStatus,
   GeminiAuthProfileSummary,
+  NativeSubAgentRequestPolicy,
   ProviderApiKeyStatus,
   ProviderCapabilityContract,
   ProviderId,
@@ -127,6 +128,7 @@ interface SettingsPanelProps {
   claudeBinaryPath: string
   kimiBinaryPath: string
   agenticServices: AgenticServicesSettings
+  nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), AGBench auto-dispatches a continuation run
    * on the parent chat once a sub-thread the parent delegated to (with
    * `returnResultToParent: true`) finishes. See AutoResumeParent.ts. */
@@ -244,6 +246,7 @@ interface SettingsPanelProps {
     claudeBinaryPath?: string
     kimiBinaryPath?: string
     agenticServices?: AgenticServicesSettings
+    nativeSubAgentRequests?: NativeSubAgentRequestPolicy
     autoResumeParentOnSubThreadCompletion?: boolean
     geminiMcpBridgeEnabled?: boolean
     codexSandboxFallback?: CodexSandboxFallbackMode
@@ -584,6 +587,27 @@ const AGENTIC_SERVICE_POLICY_OPTIONS: Array<{ value: AgenticServicePolicy; label
 const NETWORK_POLICY_OPTIONS: Array<{ value: AgenticNetworkPolicy; label: string }> = [
   { value: 'allow', label: 'Allow' },
   { value: 'deny', label: 'Block' }
+]
+const NATIVE_SUB_AGENT_REQUEST_OPTIONS: Array<{
+  value: NativeSubAgentRequestPolicy
+  label: string
+  helper: string
+}> = [
+  {
+    value: 'ask',
+    label: 'Ask',
+    helper: 'Prompt on the first observable native sub-agent request.'
+  },
+  {
+    value: 'provider',
+    label: 'Provider',
+    helper: 'Allow provider-native Task / invoke_agent style sub-agents.'
+  },
+  {
+    value: 'agbench',
+    label: 'AGBench',
+    helper: 'Redirect native sub-agent requests to durable AGBench sub-threads.'
+  }
 ]
 const CODEX_SANDBOX_FALLBACK_OPTIONS: Array<{ value: CodexSandboxFallbackMode; label: string }> = [
   { value: 'ask_rerun', label: 'Ask to rerun outside sandbox' },
@@ -1261,6 +1285,7 @@ export function SettingsPanel({
   claudeBinaryPath,
   kimiBinaryPath,
   agenticServices,
+  nativeSubAgentRequests = 'ask',
   autoResumeParentOnSubThreadCompletion,
   agenticWorkspaceGrantCount,
   agenticWorkspaceGrants,
@@ -3721,6 +3746,44 @@ export function SettingsPanel({
                   </small>
                 </article>
               </div>
+            </div>
+
+            <div className="settings-group span-all">
+              <div className="settings-mcp-section-title">
+                <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                  Native sub-agent requests
+                </h4>
+                <p className="settings-hint">
+                  Choose whether provider-native Task / invoke_agent calls continue natively or are
+                  redirected to AGBench sub-threads for durable sidebar, iOS, recall, and audit
+                  visibility.
+                </p>
+              </div>
+              <label className="settings-service-row">
+                <span>
+                  Native Sub-Agent Requests
+                  <small>
+                    {NATIVE_SUB_AGENT_REQUEST_OPTIONS.find(
+                      (option) => option.value === nativeSubAgentRequests
+                    )?.helper || NATIVE_SUB_AGENT_REQUEST_OPTIONS[0].helper}
+                  </small>
+                </span>
+                <select
+                  className="settings-select"
+                  value={nativeSubAgentRequests}
+                  onChange={(event) =>
+                    onChange({
+                      nativeSubAgentRequests: event.target.value as NativeSubAgentRequestPolicy
+                    })
+                  }
+                >
+                  {NATIVE_SUB_AGENT_REQUEST_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="settings-group span-all">

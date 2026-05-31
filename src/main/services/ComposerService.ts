@@ -159,7 +159,8 @@ export class ComposerService {
       codexHandoffsApplied,
       isGlobalRun: scope === 'global',
       approvalMode,
-      providerLabel: getProviderLabel(provider)
+      providerLabel: getProviderLabel(provider),
+      nativeSubAgentRequests: settings.nativeSubAgentRequests
     })
 
     const providerMetadataPatchData = {

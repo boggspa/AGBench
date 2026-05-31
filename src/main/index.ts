@@ -232,6 +232,12 @@ import {
   detectCrossProviderDelegationMisuse,
   crossProviderDelegationWarningMessage
 } from './CrossProviderDelegationDetector'
+import {
+  isNativeSubAgentToolName,
+  nativeSubAgentRedirectMessage,
+  normalizeNativeSubAgentPolicy,
+  previewNativeSubAgentTask
+} from './NativeSubAgentPolicy'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { getSubThreadResumeSessionId, resolveSubThreadRecall } from './SubThreadRecall'
 import { classifyShellOpenTarget } from './ShellOpenPolicy'
@@ -1218,6 +1224,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'funFxMode',
   'advancedFx',
   'agenticServices',
+  'nativeSubAgentRequests',
   'geminiMcpBridgeEnabled',
   'geminiMcpBridgeLastStatus',
   'bridgeDaemonEnabled',
@@ -1969,6 +1976,13 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
       ),
       networkAccess: sanitizeAgenticNetworkPolicy(services.networkAccess, current.networkAccess)
     }
+  }
+  if ('nativeSubAgentRequests' in sanitized) {
+    sanitized.nativeSubAgentRequests =
+      sanitized.nativeSubAgentRequests === 'provider' ||
+      sanitized.nativeSubAgentRequests === 'agbench'
+        ? sanitized.nativeSubAgentRequests
+        : 'ask'
   }
   if ('advancedFx' in sanitized) {
     sanitized.advancedFx = sanitizeAdvancedFxSettings(
@@ -2776,7 +2790,8 @@ function composeDelegatedProviderPrompt(args: {
     codexHandoffsApplied: [],
     isGlobalRun: (args.subThread.scope ?? 'workspace') === 'global',
     approvalMode: args.approvalMode,
-    providerLabel: providerLabel(args.provider)
+    providerLabel: providerLabel(args.provider),
+    nativeSubAgentRequests: settings.nativeSubAgentRequests
   }).contextualPrompt
 }
 
@@ -3575,6 +3590,8 @@ async function requestMainApproval(
     body: string
     preview?: unknown
     workspacePath?: string
+    actions?: AgentApprovalAction[]
+    resolveAction?: (action: AgentApprovalAction) => void
   }
 ): Promise<boolean> {
   if (!sender || sender.isDestroyed()) return false
@@ -3585,6 +3602,7 @@ async function requestMainApproval(
       provider,
       workspacePath: request.workspacePath,
       runId: routed.appRunId,
+      resolveAction: request.resolveAction,
       resolve: resolveApproval
     })
     runManager.registerApproval(routed.appRunId, approvalId)
@@ -3595,7 +3613,7 @@ async function requestMainApproval(
       isMainAuthority: true,
       kind: request.method
     })
-    const actions: AgentApprovalAction[] = ['accept', 'decline', 'cancel']
+    const actions: AgentApprovalAction[] = request.actions || ['accept', 'decline', 'cancel']
     const approvalPayload = {
       provider,
       appRunId: routed.appRunId,
@@ -7268,6 +7286,63 @@ function claudeToolApprovalPreview(
   }
 }
 
+async function resolveNativeSubAgentToolPreference(
+  sender: Electron.WebContents,
+  provider: ProviderId,
+  route: AgentRunRoute,
+  payload: AgentRunPayload,
+  toolName: string,
+  input: unknown,
+  updatedInput: Record<string, unknown>
+): Promise<
+  | { behavior: 'allow'; updatedInput: Record<string, unknown> }
+  | { behavior: 'deny'; message: string }
+  | null
+> {
+  if (!isNativeSubAgentToolName(toolName)) return null
+  const policy = normalizeNativeSubAgentPolicy(AppStore.getSettings().nativeSubAgentRequests)
+  if (policy === 'provider') {
+    return { behavior: 'allow', updatedInput }
+  }
+  const denyMessage = nativeSubAgentRedirectMessage({ provider, toolName, input })
+  if (policy === 'agbench') {
+    return { behavior: 'deny', message: denyMessage }
+  }
+
+  const promptPreview = previewNativeSubAgentTask(input)
+  const useProviderNative = await requestMainApproval(sender, provider, route, {
+    method: 'nativeSubAgent/preference',
+    title: 'Choose sub-agent routing',
+    body:
+      `${providerLabel(provider)} requested its native ${toolName} sub-agent tool.\n\n` +
+      'Use Provider Native to continue with the provider tool, or use AGBench Sub-thread to ask the model to call delegate_to_subthread instead.\n\n' +
+      'Change this later in Settings -> MCP.',
+    workspacePath: payload.scope === 'global' ? undefined : payload.workspace,
+    actions: ['useProviderNative', 'useAGBenchSubthread'],
+    preview: {
+      kind: 'native sub-agent',
+      toolName,
+      provider,
+      task: promptPreview,
+      redirectTool:
+        provider === 'claude'
+          ? 'mcp__AGBench__delegate_to_subthread'
+          : 'AGBench__delegate_to_subthread'
+    },
+    resolveAction: (action) => {
+      if (action === 'useProviderNative') {
+        AppStore.updateSettings({ nativeSubAgentRequests: 'provider' })
+      } else if (action === 'useAGBenchSubthread') {
+        AppStore.updateSettings({ nativeSubAgentRequests: 'agbench' })
+      }
+    }
+  })
+
+  return useProviderNative
+    ? { behavior: 'allow', updatedInput }
+    : { behavior: 'deny', message: denyMessage }
+}
+
 async function canUseClaudeSdkTool(
   sender: Electron.WebContents,
   route: AgentRunRoute,
@@ -7298,6 +7373,16 @@ async function canUseClaudeSdkTool(
     !Array.isArray(normalizedInput)
       ? (normalizedInput as Record<string, unknown>)
       : {}
+  const nativeSubAgentDecision = await resolveNativeSubAgentToolPreference(
+    sender,
+    'claude',
+    route,
+    payload,
+    toolName,
+    normalizedInput,
+    updatedInput
+  )
+  if (nativeSubAgentDecision) return nativeSubAgentDecision
   // Auto-allow side-effect-free AGBench tools before the agentic-
   // service gate. The MCP dispatcher already skips approval for
   // these (line ~14078), but Claude's `canUseTool` callback fires

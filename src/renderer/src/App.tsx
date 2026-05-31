@@ -32,6 +32,7 @@ import {
   AgenticServicesSettings,
   AgenticWorkspaceGrant,
   AgenticServiceId,
+  NativeSubAgentRequestPolicy,
   GeminiApiRuntimeMode,
   GeminiMcpBridgeStatus,
   CodexSandboxFallbackMode,
@@ -3346,6 +3347,7 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
   const command = typeof preview.command === 'string' ? preview.command : ''
   const cwd = typeof preview.cwd === 'string' ? preview.cwd : ''
   const toolName = typeof preview.toolName === 'string' ? preview.toolName : ''
+  const taskPreview = typeof preview.task === 'string' ? preview.task : ''
   const patchPreview =
     typeof preview.patchPreview === 'string'
       ? preview.patchPreview
@@ -3356,7 +3358,7 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
           : ''
   const changesPreview = formatApprovalChangePreview(preview.changes)
   const kind = typeof preview.kind === 'string' ? preview.kind : 'approval'
-  const hasDetails = command || cwd || toolName || patchPreview || changesPreview
+  const hasDetails = command || cwd || toolName || taskPreview || patchPreview || changesPreview
   if (!hasDetails) return null
 
   return (
@@ -3378,6 +3380,12 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
         <div className="agent-approval-preview-block">
           <span>Command</span>
           <pre>{command}</pre>
+        </div>
+      )}
+      {taskPreview && (
+        <div className="agent-approval-preview-block">
+          <span>Task</span>
+          <pre>{taskPreview}</pre>
         </div>
       )}
       {changesPreview && (
@@ -4153,6 +4161,8 @@ type AgentApprovalAction =
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  | 'useProviderNative'
+  | 'useAGBenchSubthread'
   // Slice 4 of the external-path-redesign arc. See the same union
   // in src/main/store/types.ts:84 — mirrored here because App.tsx
   // declares its own copy rather than importing the canonical
@@ -4172,6 +4182,12 @@ interface AgentApprovalRequest {
   preview?: any
   actions: AgentApprovalAction[]
 }
+
+const isNativeSubAgentPreferenceApproval = (request: AgentApprovalRequest | null): boolean =>
+  Boolean(
+    request?.actions?.includes('useProviderNative') ||
+      request?.actions?.includes('useAGBenchSubthread')
+  )
 
 const WORKTREE_DIFF_UNAVAILABLE_TEXT =
   'Gemini worktree mode is active, but the effective worktree path is not known. Diff Studio is disabled so it does not show changes from the original workspace.'
@@ -7266,6 +7282,7 @@ type SettingsPanelUpdate = {
   claudeBinaryPath?: string
   kimiBinaryPath?: string
   agenticServices?: AgenticServicesSettings
+  nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   autoResumeParentOnSubThreadCompletion?: boolean
   geminiMcpBridgeEnabled?: boolean
   codexSandboxFallback?: CodexSandboxFallbackMode
@@ -9397,6 +9414,9 @@ function App(): React.JSX.Element {
       setAgenticServices(normalizedServices)
       settingsPatch.agenticServices = normalizedServices
       providersToRefresh.push(currentProvider)
+    }
+    if (next.nativeSubAgentRequests !== undefined) {
+      settingsPatch.nativeSubAgentRequests = next.nativeSubAgentRequests
     }
     if (next.autoResumeParentOnSubThreadCompletion !== undefined) {
       setAutoResumeParentOnSubThreadCompletion(next.autoResumeParentOnSubThreadCompletion)
@@ -18160,6 +18180,7 @@ function App(): React.JSX.Element {
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
               agenticServices={agenticServices}
+              nativeSubAgentRequests={settings?.nativeSubAgentRequests ?? 'ask'}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
               agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
               agenticWorkspaceGrants={agenticWorkspaceGrants}
@@ -19805,6 +19826,34 @@ function App(): React.JSX.Element {
                               : 'Allow once'}
                           </button>
                         )}
+                        {(pendingAgentApproval.actions || []).includes('useProviderNative') && (
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'useProviderNative'
+                              )
+                            }
+                          >
+                            Use Provider Native
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || []).includes('useAGBenchSubthread') && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'useAGBenchSubthread'
+                              )
+                            }
+                          >
+                            Use AGBench Sub-thread
+                          </button>
+                        )}
                         {(pendingAgentApproval.actions || []).includes('acceptForWorkspace') && (
                           <button
                             className="btn btn-sm btn-ghost"
@@ -19839,24 +19888,26 @@ function App(): React.JSX.Element {
                           session-wide YOLO so every subsequent approval auto-allows for
                           the rest of the process lifetime. Never persisted to disk.
                           Global `deny` policies still win. */}
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          title="Auto-allow every approval prompt for the rest of this session. Restart the app to revert. Doesn't override globally-denied services."
-                          onClick={async () => {
-                            try {
-                              await window.api.agenticYoloSet(true)
-                            } catch (error) {
-                              console.error('Failed to enable YOLO session mode', error)
-                            }
-                            await handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'acceptForSession'
-                            )
-                          }}
-                        >
-                          Trust this session
-                        </button>
+                        {!isNativeSubAgentPreferenceApproval(pendingAgentApproval) && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            title="Auto-allow every approval prompt for the rest of this session. Restart the app to revert. Doesn't override globally-denied services."
+                            onClick={async () => {
+                              try {
+                                await window.api.agenticYoloSet(true)
+                              } catch (error) {
+                                console.error('Failed to enable YOLO session mode', error)
+                              }
+                              await handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'acceptForSession'
+                              )
+                            }}
+                          >
+                            Trust this session
+                          </button>
+                        )}
                         {(pendingAgentApproval.actions || ['decline']).includes('decline') && (
                           <button
                             className="btn btn-sm btn-ghost"
