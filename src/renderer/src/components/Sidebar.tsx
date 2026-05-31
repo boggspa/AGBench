@@ -21,6 +21,7 @@ import { ActiveRunsSection } from './ActiveRunsSection'
 import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
+import { ProviderGlyph } from './icons/ProviderGlyph'
 
 const ageTickListeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -774,115 +775,14 @@ export function getProviderName(provider?: ProviderId) {
   return 'Gemini'
 }
 
-// Phase L6 slice 1 — exported so `ModelUsageCard` can reuse the
-// same inlined-SVG provider iconography as the sidebar. The full
-// logo-asset upgrade lives in slice 4; this stays as the fallback
-// when bundled raster assets are unavailable.
+// Exported so compact provider rows can reuse the same original
+// provider mnemonic glyphs as the sidebar.
 export function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
   const providerKey = provider || 'gemini'
 
   return (
     <span className={`sidebar-provider-icon provider-${providerKey}`} aria-hidden="true">
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path
-          d="M2.7 2.9h10.6c.35 0 .63.29.63.65v9.01c0 .36-.28.65-.63.65H2.7a.65.65 0 0 1-.63-.65V3.55c0-.36.28-.65.63-.65Z"
-          fill="currentColor"
-          opacity="0.16"
-        />
-        {providerKey === 'claude' ? (
-          <>
-            <path
-              d="M4.8 5.1h1.8L8 10.2M4.8 7h2.2"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M8.5 5.15c0-.53.43-.96.96-.96h.72a.93.93 0 0 1 .86 1.32l-.33.79"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        ) : providerKey === 'gemini' ? (
-          <>
-            <path
-              d="M8 4.3c2.3 0 4.2 1.9 4.2 4.2 0 2.3-1.9 4.2-4.2 4.2S3.8 10.8 3.8 8.5A4.2 4.2 0 0 1 8 4.3Z"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-            <path
-              d="M8 6.5c1 0 1.8.8 1.8 1.8 0 1-1 1.8-1.8 1.8"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-            <path
-              d="M8 10.6c-1 0-1.8-.8-1.8-1.8 0-1 1-1.8 1.8-1.8"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          </>
-        ) : providerKey === 'codex' ? (
-          <>
-            <path
-              d="M5.3 4.7 9.2 8 5.3 11.3M6.5 8h4.7"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M8 4.7v-.9M9.85 8h.9M6.05 11.3h.9"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-            />
-          </>
-        ) : providerKey === 'grok' ? (
-          // Grok — the xAI monochrome "X" mark (two crossing strokes).
-          <>
-            <path
-              d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
-          </>
-        ) : providerKey === 'cursor' ? (
-          <>
-            <path
-              d="M4.1 4.1 11.9 8 4.1 11.9 5.5 8 4.1 4.1Z"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M5.5 8h3.9M7.6 6.2 9.4 8l-1.8 1.8"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        ) : (
-          <>
-            <path
-              d="M4.2 11.3 7.7 5 11.2 11.3"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d="M4.9 6.3h5.7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-            <path d="M4.9 8.7h5.7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-          </>
-        )}
-      </svg>
+      <ProviderGlyph provider={providerKey} />
     </span>
   )
 }

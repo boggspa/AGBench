@@ -9,8 +9,10 @@ describe('ProviderBadgeIcon', () => {
 
     expect(cursor).toContain('provider-cursor')
     expect(kimi).toContain('provider-kimi')
-    expect(cursor).toContain('M4.1 4.1 11.9 8 4.1 11.9 5.5 8 4.1 4.1Z')
-    expect(cursor).not.toContain('M4.2 11.3 7.7 5 11.2 11.3')
+    expect(cursor).toContain('provider-glyph-cursor')
+    expect(kimi).toContain('provider-glyph-kimi')
+    expect(cursor).toContain('M5.7 3.8 18.8 12l-6.1 1.3-2.7 5.8Z')
+    expect(cursor).not.toContain('M15.6 4.7a7.9 7.9')
     expect(cursor).not.toEqual(kimi)
   })
 })

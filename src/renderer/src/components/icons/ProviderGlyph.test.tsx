@@ -1,0 +1,28 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { ProviderGlyph } from './ProviderGlyph'
+
+describe('ProviderGlyph', () => {
+  it('renders original mnemonic glyphs for all first-class providers', () => {
+    for (const provider of ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'] as const) {
+      const html = renderToStaticMarkup(<ProviderGlyph provider={provider} />)
+      expect(html).toContain(`provider-glyph-${provider}`)
+      expect(html).toContain(`--provider-accent:var(--provider-${provider}-color, currentColor)`)
+      expect(html).not.toContain('<img')
+    }
+  })
+
+  it('falls back to a generic prompt glyph for future providers', () => {
+    const html = renderToStaticMarkup(<ProviderGlyph provider="future" />)
+
+    expect(html).toContain('provider-glyph-future')
+    expect(html).toContain('M4.6 6.2h14.8v11.6H4.6Z')
+  })
+
+  it('normalizes unknown provider ids before using them in classes and CSS vars', () => {
+    const html = renderToStaticMarkup(<ProviderGlyph provider="Future Provider!" />)
+
+    expect(html).toContain('provider-glyph-future-provider')
+    expect(html).toContain('--provider-accent:var(--provider-future-provider-color, currentColor)')
+  })
+})

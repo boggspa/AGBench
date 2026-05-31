@@ -2802,11 +2802,48 @@ button.sidebar-item {
   color: var(--text-primary);
 }
 
-/* Phase L6 slice 4 — provider logo tile. Tinted rounded-rect
+.provider-glyph {
+  width: 1em;
+  height: 1em;
+  display: block;
+  color: var(--provider-accent, currentColor);
+}
+
+.provider-glyph-line,
+.provider-glyph-accent {
+  fill: none;
+  stroke: var(--provider-accent, currentColor);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.provider-glyph-line {
+  stroke-width: 1.75;
+}
+
+.provider-glyph-accent {
+  stroke-width: 1.85;
+}
+
+.provider-glyph-fine {
+  stroke-width: 1.3;
+  opacity: 0.76;
+}
+
+.provider-glyph-soft {
+  fill: var(--provider-accent, currentColor);
+  opacity: 0.12;
+  stroke: none;
+}
+
+.provider-glyph-dot {
+  fill: var(--provider-accent, currentColor);
+  stroke: none;
+}
+
+/* Phase L6 slice 4 — provider glyph tile. Tinted rounded-rect
  * container with the provider's accent at low opacity behind the
- * raster logo (or inline-SVG fallback for Kimi). Matches the
- * another-project `ProviderBrandIconView` shape so AGBench's
- * Model Usage Card reads as a sister to that app's compact card. */
+ * original AGBench mnemonic glyph. */
 .provider-logo-tile {
   display: inline-flex;
   align-items: center;
@@ -2822,23 +2859,10 @@ button.sidebar-item {
 .provider-logo-tile.provider-grok   { background: color-mix(in srgb, var(--provider-grok-color) 14%, transparent); }
 .provider-logo-tile.provider-cursor   { background: color-mix(in srgb, var(--provider-cursor-color) 14%, transparent); }
 
-.provider-logo-tile-image {
-  width: 80%;
-  height: 80%;
-  object-fit: contain;
-  display: block;
+.provider-logo-tile .provider-glyph {
+  width: 78%;
+  height: 78%;
 }
-.provider-logo-tile .sidebar-provider-icon {
-  /* When the SVG-icon fallback (Kimi) renders inside the tile,
-   * size it to fit and inherit the provider colour via
-   * currentColor so it visually matches the raster logos
-   * (dark glyph on tinted background). */
-  width: 70%;
-  height: 70%;
-}
-.provider-logo-tile.provider-kimi .sidebar-provider-icon { color: var(--provider-kimi-color); }
-.provider-logo-tile.provider-grok .sidebar-provider-icon { color: var(--provider-grok-color); }
-.provider-logo-tile.provider-cursor .sidebar-provider-icon { color: var(--provider-cursor-color); }
 
 /* Phase L6 slice 5 — Activity heatmap. 30×12 grid of small rounded
  * squares; each cell coloured by the dominant provider in that
@@ -5565,6 +5589,12 @@ button.sidebar-item {
 }
 .ensemble-hierarchy-tile.provider-kimi {
   border-color: color-mix(in srgb, var(--provider-kimi, #6fb04a) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile.provider-grok {
+  border-color: color-mix(in srgb, var(--provider-grok-color) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile.provider-cursor {
+  border-color: color-mix(in srgb, var(--provider-cursor-color) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile-text {
   display: flex;
@@ -23907,39 +23937,13 @@ input:disabled, select:disabled, textarea:disabled {
   min-width: 0;
 }
 
-/* Provider logo on the left of each provider card header.
- * Sourced from `src/renderer/src/assets/provider-logos/*.png`
- * (same logos used in the model usage cards). 24×24, no
- * background — just the logo glyph sized to sit next to the
- * provider name. */
+/* Original provider mnemonic glyph on the left of each provider card
+ * header. Labels still carry the real product names; these are visual
+ * hints rather than official logos. */
 .first-launch-sheet-provider-card-logo {
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  object-fit: contain;
-  border-radius: 5px;
-}
-/* Monogram fallback for providers without a logo PNG (Cursor / Grok,
- * 1.0.6). Accent-tinted tile + uppercase initial, sized like the <img>
- * logo above so the header row stays aligned. Auto-retired once a real
- * logo is added to PROVIDER_LOGOS. */
-.first-launch-sheet-provider-card-logo-monogram {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--monogram-accent, var(--text-secondary));
-  background: color-mix(in srgb, var(--monogram-accent, var(--text-secondary)) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--monogram-accent, var(--text-secondary)) 34%, transparent);
-}
-.first-launch-sheet-provider-card-logo-monogram.provider-cursor {
-  --monogram-accent: var(--provider-cursor-color);
-}
-.first-launch-sheet-provider-card-logo-monogram.provider-grok {
-  --monogram-accent: var(--provider-grok-color);
 }
 
 /* Per-provider colour tinting. Cards pick up the canonical

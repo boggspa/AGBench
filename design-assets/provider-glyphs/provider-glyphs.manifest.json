@@ -1,0 +1,38 @@
+[
+  {
+    "id": "gemini",
+    "label": "Gemini",
+    "accent": "#2563EB",
+    "hint": "offset constellation sparkle"
+  },
+  {
+    "id": "codex",
+    "label": "Codex",
+    "accent": "#6366F1",
+    "hint": "prompt box and bracket cursor"
+  },
+  {
+    "id": "claude",
+    "label": "Claude",
+    "accent": "#D97706",
+    "hint": "uneven radial burst"
+  },
+  {
+    "id": "kimi",
+    "label": "Kimi",
+    "accent": "#84A33B",
+    "hint": "crescent and angled wordmark slash"
+  },
+  {
+    "id": "cursor",
+    "label": "Cursor",
+    "accent": "#E3B91E",
+    "hint": "pointer with insertion caret"
+  },
+  {
+    "id": "grok",
+    "label": "Grok",
+    "accent": "#D8DEE9",
+    "hint": "crosshair diagonal slash"
+  }
+]
