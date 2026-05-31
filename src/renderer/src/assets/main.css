@@ -2913,7 +2913,7 @@ button.sidebar-item {
 }
 .usage-heatmap-cell {
   border-radius: 2px;
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   transition: opacity 180ms ease;
   /* When cells have no events they inherit the background from
    * this rule; when they have a provider colour the inline style
@@ -2970,6 +2970,10 @@ button.sidebar-item {
 
 .usage-heatmap--welcome-standalone .usage-heatmap-grid {
   min-height: 70px;
+}
+
+.usage-heatmap--welcome-standalone .usage-heatmap-cell[data-empty="true"] {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
 }
 
 /* Phase L6 slice 6 — glass chrome polish on the Model Usage Card.

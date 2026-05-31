@@ -32,17 +32,19 @@ const TIME_LABELS = ['00', '04', '08', '12', '16', '20'] // hour-of-day ticks sh
 /** A single cell. Pulled out so React.memo can short-circuit
  * re-renders when the cell's bucket data hasn't changed. */
 function HeatmapCellTile({ cell }: { cell: HeatmapCell }) {
-  const fillColor = cell.color ?? 'transparent'
-  const opacity = cell.color ? cell.intensity : 0
+  const style = cell.color
+    ? {
+        backgroundColor: cell.color,
+        opacity: cell.intensity
+      }
+    : undefined
   return (
     <span
       className="usage-heatmap-cell"
+      data-empty={cell.color ? undefined : 'true'}
       data-column={cell.column}
       data-row={cell.row}
-      style={{
-        backgroundColor: fillColor,
-        opacity
-      }}
+      style={style}
       title={
         cell.eventCount > 0
           ? `${formatTokenCount(cell.totalTokens)} tokens · ${cell.eventCount} call${cell.eventCount === 1 ? '' : 's'}`
