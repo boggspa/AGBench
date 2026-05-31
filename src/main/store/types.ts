@@ -696,6 +696,37 @@ export interface SoloChatWakeupRecord {
   expiredAt?: string
 }
 
+/** M4 — TTL scope for a blackboard entry.
+ * - `round`   : visible only during the round that wrote it (pruned next round)
+ * - `session` : persists across rounds while the ensemble session is live
+ * - `chat`    : persists for the lifetime of the chat */
+export type BlackboardScope = 'round' | 'session' | 'chat'
+
+/** M4 — category buckets, mirroring the synthesizer's round-summary shape so a
+ * round summary can be auto-derived into blackboard entries. */
+export type BlackboardCategory = 'decision' | 'fact' | 'risk' | 'do-not-repeat' | 'note'
+
+/** M4 — a single entry in the cross-participant shared scratchpad. Participants
+ * read a compact digest of in-scope entries in their prompt (so shared context
+ * doesn't mean dumping full transcript memory) and can post new entries via the
+ * `blackboard_post` MCP tool. See src/main/blackboard/Blackboard.ts. */
+export interface BlackboardEntry {
+  id: string
+  chatId: string
+  /** Round in which the entry was written (drives `round`-scope pruning). */
+  roundId: string
+  /** Author participant id, or 'synthesizer' / 'system' for derived entries. */
+  participantId: string
+  /** Short stable handle for the note (used for de-dupe/upsert per author). */
+  key: string
+  value: string
+  category: BlackboardCategory
+  scope: BlackboardScope
+  /** Provenance — a tool-call id or a prior entry id this was derived from. */
+  derivedFrom?: string
+  createdAt: string
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
@@ -1324,6 +1355,11 @@ export interface AppSettings {
    * the curated defaults. Lines starting with `#` are treated as
    * comments and skipped. Empty string = use defaults only. */
   kimiSanitiserCustomKeywords: string
+  /** 1.0.7-M10 — Opt-in second-pass Kimi classifier redaction.
+   * When enabled, a Kimi content-filter retry can escalate beyond
+   * literal EW26 keyword matches to a deterministic sentence
+   * classifier. Missing/false keeps the retry envelope keyword-only. */
+  kimiClassifierEnabled?: boolean
   funFxEnabled: boolean
   funFxMode: FunFxMode
   advancedFx: AdvancedFxSettings
