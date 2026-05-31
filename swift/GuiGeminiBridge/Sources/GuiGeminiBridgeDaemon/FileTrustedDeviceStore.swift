@@ -132,7 +132,12 @@ public actor FileTrustedDeviceStore: TrustedDeviceStore {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let records = try? decoder.decode([TrustedDeviceRecord].self, from: data) else {
+        // 1.0.6 — Swift 6.2+ parser disambiguation: `[TrustedDeviceRecord].self`
+        // is parsed as `[TrustedDeviceRecord.Type]` (array literal of metatypes)
+        // rather than `Array<TrustedDeviceRecord>.Type`, breaking the decode
+        // call. Use the unambiguous `Array<…>.self` long form. Restores `npm run
+        // prebuild:bridge-daemon` (and the `build:mac:notarized` ship script).
+        guard let records = try? decoder.decode(Array<TrustedDeviceRecord>.self, from: data) else {
             // Corrupt or version-mismatched file — treat as empty rather than
             // crashing. A future Phase C-late will surface a recovery event.
             return

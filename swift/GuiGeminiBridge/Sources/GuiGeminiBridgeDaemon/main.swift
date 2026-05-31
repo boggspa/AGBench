@@ -598,7 +598,11 @@ dispatcher.register("bridge.listTrustedDevices") { _ in
         // lookup of the empty set (records start at zero and persistence
         // wouldn't survive a restart anyway). Phase C-late will add a
         // protocol-level snapshot method to TrustedDeviceStore.
-        return [TrustedDeviceRecord]()
+        // 1.0.6 — `Array<…>()` long form: Swift 6.2+ parses the `[T]()` short
+        // form as a call on `[T.Type]` (an array literal of metatypes) and
+        // fails "cannot call value of non-function type." Same fix already
+        // applied at FileTrustedDeviceStore.swift:135.
+        return Array<TrustedDeviceRecord>()
     }
     return try encodeAsJSONObject(records)
 }
