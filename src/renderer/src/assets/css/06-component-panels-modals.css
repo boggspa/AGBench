@@ -1,0 +1,763 @@
+/* ── DigitOdometer ──────────────────────────────────────────────────
+   Skeuomorphic per-digit rolling counter. Each digit slot is a
+   1em-tall clipped window containing a 10-cell vertical column
+   (digits 0..9). Translating the column by `-digit * 1em` reveals
+   exactly one digit through the clip; transitioning that transform
+   gives the "roll" effect. Only the changing digit moves — leading
+   digits stay still — matching Codex / OpenAI's polished feel.
+   See DigitOdometer.tsx for the rationale + a11y notes. */
+
+.digit-odometer {
+  display: inline-flex;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.digit-odometer__sign {
+  display: inline-block;
+  margin-right: 0.05em;
+}
+
+.digit-odometer__slot {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: bottom;
+  width: 0.62em; /* tabular-num width approximation; tweak per font */
+  text-align: center;
+}
+
+.digit-odometer__column {
+  display: flex;
+  flex-direction: column;
+  /* The transform is set inline per render; transition runs the roll. */
+  transition: transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+.digit-odometer__cell {
+  display: block;
+  height: 1em;
+  line-height: 1;
+}
+
+:root[data-reduce-motion="true"] .digit-odometer__column {
+  transition: none !important;
+}
+
+.activity-progress-note {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: min(760px, 100%);
+  margin: 3px 0 5px;
+  padding: 6px 10px;
+  color: color-mix(in srgb, var(--text-primary) 88%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 70%);
+  border-radius: 10px;
+}
+
+.activity-progress-note-body {
+  min-width: 0;
+}
+
+.activity-progress-note-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.activity-progress-note-title span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-progress-note-duration {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.activity-progress-note p {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.activity-compact-group {
+  width: min(760px, 100%);
+  margin: 2px 0;
+  color: var(--text-secondary);
+}
+
+.activity-compact-group-header {
+  display: grid;
+  /* Phase L4 slice 1 — icon column widens (14px → 20px) to host
+   * the body-text-sized icon set; row padding opens up for the
+   * larger title and meta type. */
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-compact-group-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.activity-count-badge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-tertiary);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.activity-compact-chevron {
+  transition: transform 180ms ease;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.activity-compact-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.activity-compact-group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Phase L4 slice 1 — match the body-text scale of inline tool
+   * rows so grouped + individual rows read as one coherent block. */
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-primary) 86%, transparent);
+}
+
+.activity-compact-group-duration,
+.activity-compact-group-caret {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.activity-compact-group-caret {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.activity-compact-group:hover .activity-compact-group-caret,
+.activity-compact-group.expanded .activity-compact-group-caret {
+  opacity: 1;
+}
+
+.activity-compact-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -1px 0 3px 26px;
+}
+
+.activity-compact-chip {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-elevated) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  font-size: 0.68rem;
+}
+
+.activity-compact-chip.muted {
+  color: var(--text-muted);
+}
+
+.activity-compact-group-list {
+  margin-left: 18px;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+}
+
+/* 1.0.4-AG — compact tool trace.
+ *
+ * One-line render for individual tool activities when the user has
+ * `compactDensity` enabled. The line packs: icon · toolName · provider ·
+ * status · duration · "result preview" with a chevron at the end. Click
+ * toggles a foldout panel below the line that holds the full
+ * `{ input, result, timeline }` view — kept distinct from the line so
+ * the transcript stays scannable even with multiple traces expanded.
+ *
+ * Status comes through the line's left-edge accent (data-status) and
+ * the status pill colour. Provider attribution comes through the
+ * provider-tinted name chip (.compact-tool-trace-provider).
+ */
+.compact-tool-trace {
+  width: min(760px, 100%);
+  margin: 2px 0;
+  border-left: 2px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  border-radius: 0 4px 4px 0;
+}
+
+.compact-tool-trace[data-status="success"] {
+  border-left-color: color-mix(in srgb, var(--tool-success) 60%, transparent);
+}
+.compact-tool-trace[data-status="error"] {
+  border-left-color: color-mix(in srgb, var(--tool-error) 70%, transparent);
+}
+.compact-tool-trace[data-status="warning"] {
+  border-left-color: color-mix(in srgb, var(--tool-warning) 65%, transparent);
+}
+.compact-tool-trace[data-status="running"],
+.compact-tool-trace[data-status="pending"] {
+  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.compact-tool-trace-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px 5px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.compact-tool-trace-line:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.compact-tool-trace-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.compact-tool-trace-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+.compact-tool-trace-name {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.compact-tool-trace-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.compact-tool-trace-provider {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.compact-tool-trace-provider.provider-gemini { color: var(--provider-gemini-color, #8eb1ff); }
+.compact-tool-trace-provider.provider-codex  { color: var(--provider-codex-color,  #aaa0ff); }
+.compact-tool-trace-provider.provider-claude { color: var(--provider-claude-color, #ffad64); }
+.compact-tool-trace-provider.provider-kimi   { color: var(--provider-kimi-color,   #bbcf66); }
+
+.compact-tool-trace-status {
+  flex-shrink: 0;
+  text-transform: lowercase;
+  font-variant: small-caps;
+  color: var(--text-tertiary);
+}
+.compact-tool-trace-status.status-success { color: var(--tool-success); }
+.compact-tool-trace-status.status-error   { color: var(--tool-error); }
+.compact-tool-trace-status.status-warning { color: var(--tool-warning); }
+.compact-tool-trace-status.status-running,
+.compact-tool-trace-status.status-pending { color: var(--accent); }
+
+.compact-tool-trace-duration {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-tool-trace-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.compact-tool-trace-preview.is-redacted {
+  color: var(--text-muted);
+}
+
+.compact-tool-trace-redacted-hint {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-elevated) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.compact-tool-trace-chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--text-tertiary);
+  transition: transform 180ms ease;
+}
+.compact-tool-trace-chevron[data-expanded="true"] {
+  transform: rotate(180deg);
+  color: var(--text-secondary);
+}
+
+/* Foldout — sits BELOW the line in its own visual unit. Indented +
+ * lightly tinted background so it reads as a distinct attached panel
+ * rather than an inline continuation of the row's text flow. */
+.compact-tool-trace-foldout {
+  margin: 4px 0 6px 24px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-elevated) 35%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compact-tool-trace-foldout-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.compact-tool-trace-foldout-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.compact-tool-trace-foldout-body {
+  margin: 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--app-bg-elevated) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* Balanced Native Glass: Electron vibrancy plus a stable Liquid Glass-style sidebar layer. */
+[data-appearance="native_glass"][data-reduce-transparency="false"] {
+  --sidebar-glass-fill: rgba(24, 25, 24, 0.22);
+  --sidebar-glass-fill-elevated: rgba(70, 73, 70, 0.16);
+  --sidebar-glass-fill-strong: rgba(92, 96, 92, 0.22);
+  --sidebar-glass-border: rgba(236, 239, 232, 0.16);
+  --sidebar-glass-border-strong: rgba(246, 248, 240, 0.24);
+  --sidebar-glass-highlight: rgba(255, 255, 255, 0.2);
+  --sidebar-glass-noise: rgba(255, 255, 255, 0.04);
+  --sidebar-glass-shadow: 18px 0 48px rgba(0, 0, 0, 0.14);
+  --sidebar-glass-inner-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 248, 0.08), rgba(52, 54, 52, 0.035) 42%, rgba(0, 0, 0, 0.08)),
+    var(--sidebar-glass-fill) !important;
+  border-right-color: var(--sidebar-glass-border);
+  box-shadow: var(--sidebar-glass-inner-shadow), var(--sidebar-glass-shadow);
+  /* GPU: dropped — under [data-appearance="native_glass"] the macOS vibrancy
+   * view is already blurring behind this surface, so a CSS backdrop-filter on
+   * top is a redundant full-panel compositor pass every frame. */
+  isolation: isolate;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(120deg, transparent 0 18%, rgba(255, 255, 255, 0.08) 28%, transparent 42%),
+    radial-gradient(circle at 28% 0%, rgba(255, 255, 255, 0.1), transparent 34%),
+    repeating-linear-gradient(135deg, var(--sidebar-glass-noise) 0 1px, transparent 1px 7px);
+  mix-blend-mode: screen;
+  opacity: 0.34;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.11), transparent 2px, transparent calc(100% - 2px), rgba(255, 255, 255, 0.1));
+  opacity: 0.28;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar > * {
+  position: relative;
+  z-index: 1;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(
+  .sidebar-masthead,
+  .sidebar-search-field,
+  .sidebar-empty-state,
+  .run-summary,
+  .model-usage-summary,
+  .sidebar-footer .btn
+) {
+  /* Glass-mode tile chrome — intentionally excludes
+   * .sidebar-workspace-item, .sidebar-chat-item, and
+   * .sidebar-global-chat-item so workspace/thread/sub-thread rows render
+   * flat-on-sidebar (matching Pinned/Recents) in native glass mode. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    var(--sidebar-glass-fill-elevated);
+  border-color: var(--sidebar-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--sidebar-glass-highlight),
+    0 10px 26px rgba(0, 0, 0, 0.13);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(
+  .sidebar-section-header,
+  .sidebar-section-title,
+  .sidebar-masthead-stats span,
+  .sidebar-workspace-count-badge,
+  .sidebar-chat-age
+) {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(28, 30, 28, 0.12);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(
+  .sidebar-workspace-item.active,
+  .sidebar-chat-item.active,
+  .sidebar-global-chat-item.active
+) {
+  background:
+    linear-gradient(135deg, rgba(98, 130, 176, 0.18), rgba(255, 255, 255, 0.055)),
+    var(--sidebar-glass-fill-strong);
+  border-color: var(--sidebar-glass-border-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 3px 0 0 rgba(115, 150, 198, 0.68),
+    0 12px 30px rgba(24, 31, 42, 0.14);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(input, button, .sidebar-search-hint) {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.18);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] :is(
+  .app-inspector,
+  .app-file-editor,
+  .gemini-terminal-split,
+  .composer-surface
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 248, 0.055), rgba(0, 0, 0, 0.045)),
+    rgba(24, 25, 24, 0.24);
+  border-color: rgba(236, 239, 232, 0.15);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.14);
+  /* GPU: dropped — under [data-appearance="native_glass"] the macOS vibrancy
+   * view is already blurring behind this surface, so a CSS backdrop-filter on
+   * top is a redundant full-panel compositor pass every frame. */
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .composer-surface {
+  /* GPU: dropped — under [data-appearance="native_glass"] the macOS vibrancy
+   * view is already blurring behind this surface, so a CSS backdrop-filter on
+   * top is a redundant full-panel compositor pass every frame. */
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] :is(
+  .agent-aura-layer,
+  .living-workspace-layer,
+  .run-data-viz-layer
+) {
+  clip-path: inset(0 0 0 calc(var(--sidebar-width, 280px) + 12px));
+  opacity: 0.16;
+}
+/* These FX layers actually mount INSIDE `.app-transcript` (App.tsx —
+ * LivingWorkspace / AgentAura / RunDataViz), which already begins to the
+ * right of the sidebar. The sidebar-width clip above then subtracts the
+ * sidebar a SECOND time, leaving a hard vertical seam where the clipped
+ * layer starts. Inside the transcript there's nothing to clip away
+ * (`.app-transcript` is overflow:hidden), so reset the clip there. The
+ * higher-specificity `.app-transcript` descendant keeps `opacity: 0.16`. */
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript :is(
+  .agent-aura-layer,
+  .living-workspace-layer,
+  .run-data-viz-layer
+) {
+  clip-path: inset(0);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .living-workspace-layer.fx-intensity-epic,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .living-workspace-layer.fx-intensity-cinematic {
+  opacity: 0.18;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .transcript-scroll {
+  background: transparent;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
+  /* Bumped from 0.25 → 0.38 (≈50% more opacity, per user
+   * preference). With the macOS vibrancy view underneath, the
+   * old 25% black overlay let too much of the desktop tint
+   * bleed through the transcript pane; the higher overlay
+   * tones down the wash so the message body stays the visual
+   * priority while still reading as a glass surface. */
+  background-color: rgba(0, 0, 0, 0.38);
+}
+
+/* Light-theme override for native_glass transcript + sidebar.
+ * Iterated up from 0.32 → 0.48 → 0.86 over a few passes. The
+ * lower values let the macOS vibrancy view pass through too
+ * much desktop wallpaper tint (pinks / blues from whatever
+ * the user has behind the window) and the transcript pane
+ * read as a tinted wash rather than a clean reading surface.
+ * 0.86 is dense enough that the vibrancy contributes only a
+ * subtle frost / depth cue while the panel stays as a dim
+ * white background where message text + tool-call cards are
+ * the visual priority. Readability over aesthetic — the user
+ * explicitly asked for "improve readability" on this surface. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
+  /* Lift the sidebar fill in light + native-glass to a brighter
+   * frosted white. The base native_glass sidebar rule layers a
+   * dark gradient on top of `--sidebar-glass-fill`; in light
+   * mode that gradient muddies the panel. Replace with a
+   * mostly-white gradient so the sidebar reads as a clean
+   * frosted surface, with `backdrop-filter` off (the macOS
+   * vibrancy already provides the blur). */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.22)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right-color: rgba(0, 0, 0, 0.08) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar::before {
+  /* The base ::before adds a darkening overlay — suppress it
+   * in light + native-glass so the brighter fill above shows
+   * through cleanly. */
+  display: none !important;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-codex::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-claude::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-kimi::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-gemini::after {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(var(--agent-accent-rgb) / 0.055), transparent 50%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0.12) 42%, rgba(0, 0, 0, 0.18)),
+    linear-gradient(to top, rgba(0, 0, 0, 0.16), transparent 30%);
+  opacity: 0.72;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .workspace-sidebar-resize-handle::before,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .panel-resize-handle::before {
+  background: rgba(236, 246, 255, 0.12);
+  box-shadow: none;
+}
+
+/* Sidebar containment: keep long workspace/thread names inside their cards. */
+.app-sidebar,
+.app-sidebar .sidebar-content,
+.app-sidebar .sidebar-hierarchy-scroll,
+.app-sidebar .sidebar-workspace-scroll,
+.app-sidebar .sidebar-workspace-list,
+.app-sidebar .sidebar-workspace-group,
+.app-sidebar .sidebar-chat-list {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-sidebar .sidebar-item {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  gap: 6px;
+}
+
+.app-sidebar .sidebar-workspace-item {
+  padding: 6px 7px;
+}
+
+.app-sidebar .sidebar-chat-item,
+.app-sidebar .sidebar-global-chat-item {
+  padding-right: 7px;
+}
+
+.sidebar-workspace-copy,
+.sidebar-chat-copy,
+.sidebar-chat-title-line,
+.sidebar-chat-subline {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.sidebar-chat-title-line {
+  flex: 1 1 auto;
+}
+
+.sidebar-workspace-name,
+.sidebar-workspace-meta,
+.sidebar-chat-title,
+.sidebar-chat-subline {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-chat-title {
+  flex: 1 1 auto;
+}
+
+.sidebar-chat-title-line .sidebar-provider-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 48%;
+  overflow: hidden;
+}
+
+.sidebar-provider-label > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar .sidebar-chat-age,
+.app-sidebar .sidebar-workspace-count-badge,
+.app-sidebar .sidebar-workspace-running-dot,
+.app-sidebar .sidebar-chat-busy,
+.app-sidebar .sidebar-item-action,
+.app-sidebar .sidebar-tree-toggle,
+.app-sidebar .sf-symbol-icon {
+  flex-shrink: 0;
+}
+
+/* Sidebar model usage: show real provider/model entries with more
+ * vertical room.
+ *
+ * 1.0.5-EW10 — Bumped the max-height upper bound 680 → 960 to match
+ * the JS-side SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx:48). Chris
+ * caught: the user could drag the resize handle to ~680px but no
+ * further, even though the JS state allowed up to 960px. The handle
+ * fired the resize but this CSS rule clamped the rendered height
+ * back to 680. ModelUsageCard.css line ~131 already has
+ * `max-height: none` on the more-specific `--sidebar` variant, but
+ * the cascade order was letting this less-specific rule win. With
+ * the same 960px upper bound here, the cap is consistent regardless
+ * of which rule wins. */
+.app-sidebar .model-usage-summary {
+  /* CRUX11 — raised 960 → 1400 / 46vh → 72vh so the six-provider meter list
+   * (gemini/codex/claude/kimi/cursor/grok) can be dragged to full height
+   * instead of capping early and hiding the Activity heatmap below it. Stays
+   * in lockstep with SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx). */
+  max-height: clamp(380px, 72vh, 1400px);
+  min-height: min(360px, 42vh);
+  overflow-y: auto;
+}
+
+.app-sidebar .model-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.app-sidebar .model-usage-item {
+  min-width: 0;
+}
+
+.app-sidebar .model-usage-item + .model-usage-item {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 38%, transparent);
+}
+
+.app-sidebar .model-usage-window-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Chat area: theme-colour solid backing at 60% opacity, behind weather/ghost/FX layers. */
+.app-transcript {
+  background: color-mix(in srgb, var(--content-bg) 60%, transparent);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
+  background: color-mix(in srgb, var(--content-bg) 60%, transparent);
+}
+

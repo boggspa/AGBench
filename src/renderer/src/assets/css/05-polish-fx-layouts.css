@@ -1,0 +1,3472 @@
+/* Commercial Polish: Sidebar / Inspector / File Editor                    */
+/* Pure additive overrides — no functional changes, smoother UX surfaces.  */
+/* ====================================================================== */
+
+/* --- Sidebar: refined active row with gradient + soft accent rail ----- */
+.app-sidebar .sidebar-item {
+  transition: background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+              color 140ms ease,
+              box-shadow 140ms ease;
+}
+
+.app-sidebar .sidebar-item.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 17%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 60%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.app-sidebar .sidebar-item.active::before {
+  width: 3px;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 60%, transparent));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--accent) 36%, transparent);
+  opacity: 1;
+}
+
+/* --- Sidebar: section header sticky + subtle frosted backdrop --------- */
+.app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+  position: sticky;
+  top: -1px;
+  z-index: 2;
+  margin: 0 -2px 6px;
+  padding: 6px 4px 5px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--app-bg) 80%, transparent),
+    color-mix(in srgb, var(--app-bg) 60%, transparent)
+  );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid color-mix(in srgb, var(--sidebar-border) 70%, transparent);
+}
+
+.app-sidebar .sidebar-section-title {
+  /* 1.0.3 polish — 15% smaller, matching the base
+   * `.sidebar-section-title` rule above. This `.app-sidebar`-scoped
+   * override exists at higher specificity (0,2,0) and was previously
+   * winning the cascade with the plain `var(--font-size-xs)` value,
+   * which is why the first 15%-reduction pass didn't show up
+   * visually. Now mirrors the calc form so both rules end up at the
+   * same computed value. */
+  font-size: calc(var(--font-size-xs) * 0.85);
+  font-weight: 700;
+  letter-spacing: 0.085em;
+  color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
+}
+
+/* --- Sidebar: vertical tree-line for nested chats --------------------- */
+.app-sidebar .sidebar-workspace-group .sidebar-chat-list {
+  position: relative;
+  margin-left: 18px;
+  padding-left: 14px;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-list::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 6px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sidebar-border) 80%, transparent),
+    color-mix(in srgb, var(--sidebar-border) 30%, transparent)
+  );
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item {
+  padding-left: 10px;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.active::before {
+  left: -14px;
+  top: 50%;
+  bottom: auto;
+  height: 16px;
+  transform: translateY(-50%);
+}
+
+/* --- Sidebar: chat row provider accents + subtle running semantics ------- */
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item {
+  --chat-provider-accent: var(--accent);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-gemini {
+  --chat-provider-accent: #6f9dff;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-codex {
+  --chat-provider-accent: #9b8cff;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-claude {
+  --chat-provider-accent: #ff9f4a;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-kimi {
+  --chat-provider-accent: #a9bd55;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-grok {
+  --chat-provider-accent: var(--provider-grok-color);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-cursor {
+  --chat-provider-accent: var(--provider-cursor-color);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 13px;
+  bottom: 13px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-provider-accent) 62%, transparent);
+  transition: background-color 140ms ease, opacity 140ms ease;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.active::before {
+  background: color-mix(in srgb, var(--chat-provider-accent) 82%, var(--text-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--chat-provider-accent) 20%, transparent);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.running .sidebar-chat-busy {
+  background: var(--chat-provider-accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--chat-provider-accent) 20%, transparent),
+    0 0 10px color-mix(in srgb, var(--chat-provider-accent) 40%, transparent);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item .sidebar-chat-age {
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item:hover .sidebar-chat-age,
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item:focus-visible .sidebar-chat-age,
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.active .sidebar-chat-age {
+  opacity: 0.7;
+  color: var(--text-secondary);
+}
+
+/* --- Sidebar: workspace chat count chip ------------------------------- */
+.app-sidebar .sidebar-workspace-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 92%, transparent);
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+
+.app-sidebar .sidebar-item:hover .sidebar-workspace-count-badge {
+  opacity: 0;
+  transform: translateX(4px);
+}
+
+.app-sidebar .sidebar-item.active .sidebar-workspace-count-badge {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 85%, white);
+}
+
+/* --- Sidebar: workspace running indicator ----------------------------- */
+.app-sidebar .sidebar-workspace-running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex: 0 0 6px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: sidebarBusyPulse 1.4s ease-in-out infinite;
+}
+
+/* --- Sidebar: hover action buttons -------------------------------- */
+.app-sidebar .sidebar-item-action {
+  border-radius: 5px;
+  width: var(--control-hit-sm);
+  height: var(--control-hit-sm);
+  transition: background-color 0.12s ease, color 0.12s ease, opacity 0.12s ease, transform 0.12s ease;
+}
+
+.app-sidebar .sidebar-item:hover .sidebar-item-action {
+  opacity: 1;
+}
+
+.app-sidebar .sidebar-item-action:hover {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent) !important;
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+/* --- Sidebar: search field with subtle inner depth -------------------- */
+.app-sidebar .sidebar-search-field {
+  height: 32px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border-color: color-mix(in srgb, var(--sidebar-border) 75%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 2%, transparent);
+}
+
+.app-sidebar .sidebar-search-field:focus-within {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--sidebar-border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+/* --- Sidebar: workspace group spacing softer -------------------------- */
+.app-sidebar .sidebar-workspace-group:not(:last-child) {
+  border-bottom-color: transparent;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+}
+
+/* --- Sidebar: run summary card uplift --------------------------------- */
+.app-sidebar .run-summary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-elevated-bg) 78%, transparent) 0%,
+    color-mix(in srgb, var(--panel-elevated-bg) 58%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--panel-border) 90%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.10);
+}
+
+.app-sidebar .run-summary-title {
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.app-sidebar .run-summary-row {
+  padding: 3px 0;
+  font-size: var(--font-size-xs);
+}
+
+.app-sidebar .run-summary-row span:first-child {
+  color: var(--text-tertiary);
+}
+
+.app-sidebar .run-summary-row span:last-child {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+}
+
+/* --- Sidebar: model usage meter refinements --------------------------- */
+.app-sidebar .model-usage-meter-track {
+  height: 6px;
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.app-sidebar .model-usage-meter-fill {
+  border-radius: inherit;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* --- Sidebar: footer button ------------------------------------------ */
+.app-sidebar .sidebar-footer {
+  padding: var(--space-md);
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 90%, transparent);
+  background: color-mix(in srgb, var(--app-bg) 16%, transparent);
+}
+
+/* 1.0.5-EW11 — Suppress all transitions / animations briefly when
+ * the appearance mode swaps (Solid ↔ Soft Glass ↔ Native Glass).
+ * The class is added in useAppearance.applyToDocument right before
+ * the data-appearance attribute swap and removed 150ms later. With
+ * transitions paused for that window, backdrop-filter and background
+ * changes apply instantaneously instead of being interpolated — no
+ * mid-flight blur layers for the compositor to leave stale on the
+ * GPU. !important is intentional: we need to defeat every shell-
+ * and theme-specific transition rule across the entire stylesheet
+ * during the swap window. */
+.is-appearance-transitioning,
+.is-appearance-transitioning *,
+.is-appearance-transitioning *::before,
+.is-appearance-transitioning *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
+/* 1.0.5-EW3 — Match the sidebar-footer's backdrop frosting to the
+ * `.model-usage-summary` card sitting directly above it. Pre-EW3 the
+ * footer rendered with a flat 16%-of-app-bg tint and no
+ * backdrop-filter while the model-usage-summary already had per-
+ * appearance backdrop-blur + tinted background treatments
+ * (mirrored from rules at ~line 2828 onward). The mismatch was most
+ * visible in light + soft_glass modes, where the model-usage card
+ * popped as a distinct frosted panel and the bare footer showed the
+ * raw sidebar bg through.
+ *
+ * 1.0.5-EW3a — Added stacking-context isolation + dropped the
+ * brightness-jump gradient overlay. Better but still visibly off.
+ *
+ * 1.0.5-EW3b — Three things the card had that the footer was
+ * still missing (root cause of the lingering mismatch):
+ *
+ *  1. The card has an 8px `margin-bottom` (from .model-usage-summary
+ *     `margin: 8px 0`), so a strip of bare sidebar sat between the
+ *     card and the footer. In light mode that strip is brighter
+ *     than both → visible discontinuity. Zero the card's
+ *     bottom-margin in the sidebar variant so they butt flush.
+ *
+ *  2. The card has `border: 1px solid rgba(255,255,255,0.08)` and
+ *     `box-shadow: inset 0 1px 0 rgba(255,255,255,0.06)` (a top-
+ *     edge brightening). Apply matching `border-top` colour +
+ *     inset top highlight to the footer so the divider line reads
+ *     as the SAME material continuing, not a different surface.
+ *
+ *  3. The card has `box-shadow: 0 4px 18px -8px rgba(0,0,0,0.25)`
+ *     (a downward drop shadow that visually elevates it). In light
+ *     mode this is what makes the card POP as a distinct frosted
+ *     panel. Add the SAME shadow flipped vertically
+ *     (`0 -4px 18px -8px ...`) on the footer so the shadow casts
+ *     UPWARD into the (now-zero) gap above, visually integrating
+ *     the two sections.
+ */
+.app-sidebar .sidebar-footer {
+  position: relative;
+  isolation: isolate;
+}
+[data-appearance="solid"] .app-sidebar .sidebar-footer {
+  background: color-mix(in srgb, var(--app-bg-elevated) 92%, transparent);
+  border-top-color: color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+}
+[data-appearance="soft_glass"] .app-sidebar .sidebar-footer {
+  background: color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* EW3b — Match the card's chrome so the two read as the same
+   * material. Border-top colour matches the card's border;
+   * inset top highlight matches the card's `inset 0 1px 0`;
+   * outer shadow is the card's shadow flipped vertically so it
+   * casts UPWARD into the gap between the card and the footer
+   * (which we close below via the card's margin-bottom override). */
+  border-top-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 -4px 18px -8px rgba(0, 0, 0, 0.25);
+}
+[data-appearance="native_glass"] .app-sidebar .sidebar-footer {
+  background: rgba(255, 255, 255, 0.025);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top-color: rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* EW3b — Close the gap between the model-usage card and the
+ * footer so they read as continuous material. The card keeps its
+ * top margin (separating it from the chats list above) but loses
+ * its bottom margin in the sidebar variant only. */
+.app-sidebar .model-usage-summary {
+  margin-bottom: 0;
+}
+
+.app-sidebar .sidebar-footer .btn {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  padding: 7px 12px;
+  font-weight: 540;
+  justify-content: center;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.app-sidebar .sidebar-footer .btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--sidebar-border));
+}
+
+/* ====================================================================== */
+/* Inspector polish                                                        */
+/* ====================================================================== */
+
+/* --- Tabs: segmented control with smoother active pill --------------- */
+.app-inspector .inspector-tabs {
+  padding: 8px 12px;
+  gap: 3px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  /* GPU: dropped on tab-bar chrome. */
+}
+
+.app-inspector .inspector-tab {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 550;
+  letter-spacing: 0.005em;
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  transition: color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+}
+
+.app-inspector .inspector-tab:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.app-inspector .inspector-tab.active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 7%, transparent),
+    0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+/* --- Inspector toolbar: refined frosted bar --------------------------- */
+.app-inspector .diff-studio-toolbar {
+  padding: 9px 14px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  /* GPU: dropped on toolbar chrome. */
+}
+
+/* --- Safety cards: gradient + subtle inner highlight ----------------- */
+.app-inspector .safety-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-elevated-bg) 80%, transparent) 0%,
+    color-mix(in srgb, var(--panel-elevated-bg) 58%, transparent) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--panel-border) 88%, transparent);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.10),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+  position: relative;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.app-inspector .safety-card:hover {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 8%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.app-inspector .safety-card h4 {
+  margin: 0 0 10px 0;
+  font-size: var(--font-size-sm);
+  font-weight: 680;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+
+.app-inspector .safety-row {
+  padding: 5px 0;
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 40%, transparent);
+}
+
+.app-inspector .safety-row:last-child {
+  border-bottom: none;
+}
+
+.app-inspector .safety-row > span:first-child {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.app-inspector .safety-row > span:last-child {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 540;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Trust assistant panel uplift ------------------------------------ */
+.app-inspector .trust-assistant-panel {
+  border-radius: 10px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-elevated-bg) 88%, transparent),
+    color-mix(in srgb, var(--panel-elevated-bg) 68%, transparent)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+/* --- Diff file rows: refined density --------------------------------- */
+.app-inspector .diff-file-row {
+  padding: 8px 14px;
+  font-size: var(--font-size-sm);
+  transition: background-color 110ms ease, border-left-color 110ms ease;
+}
+
+.app-inspector .diff-file-name {
+  font-weight: 520;
+}
+
+.app-inspector .diff-file-row:hover {
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.app-inspector .diff-file-row.selected {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-left-color: var(--accent);
+}
+
+.app-inspector .diff-file-row.selected .diff-file-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.app-inspector .diff-file-badge {
+  padding: 2px 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* --- Raw events: refined log lines ----------------------------------- */
+.app-inspector .raw-events-body {
+  padding: 8px 12px;
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-inspector .raw-log-line {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-bottom: none;
+  transition: background-color 100ms ease;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.app-inspector .raw-log-line + .raw-log-line {
+  margin-top: 1px;
+}
+
+.app-inspector .raw-log-line:hover {
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.app-inspector .raw-log-meta {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ====================================================================== */
+/* File Editor polish                                                      */
+/* ====================================================================== */
+
+.app-file-editor .file-editor-header {
+  padding: 8px 14px;
+  min-height: 40px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  /* GPU: dropped on cockpit overlay button. */
+}
+
+.app-file-editor .file-editor-header strong {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+
+.app-file-editor .file-editor-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-file-editor .file-editor-filter {
+  margin: 8px 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.app-file-editor .file-editor-filter::placeholder {
+  color: var(--text-muted);
+}
+
+.app-file-editor .file-editor-filter:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: none;
+}
+
+.app-file-editor .file-editor-row {
+  margin: 0 6px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: var(--font-size-sm);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.app-file-editor .file-editor-row.file:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.app-file-editor .file-editor-row.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 65%,
+    transparent 100%
+  );
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--text-primary);
+}
+
+.app-file-editor .file-editor-file-name {
+  font-weight: 500;
+}
+
+.app-file-editor .file-editor-row.active .file-editor-file-name {
+  font-weight: 600;
+}
+
+.app-file-editor .file-editor-file-size {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.app-file-editor .file-editor-dirty-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: editorDirtyPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes editorDirtyPulse {
+  0%, 100% { opacity: 0.75; transform: scale(0.92); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
+[data-reduce-motion="true"] .app-file-editor .file-editor-dirty-dot {
+  animation: none;
+}
+
+.app-file-editor .file-editor-code-surface {
+  background: color-mix(in srgb, var(--app-bg-sunken) 88%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.app-file-editor .file-editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  font-style: italic;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.app-file-editor .file-editor-status {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--panel-elevated-bg) 40%, transparent);
+  letter-spacing: 0.01em;
+}
+
+.app-file-editor .file-editor-unsaved-card {
+  margin: 8px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--warning) 14%, var(--panel-elevated-bg)),
+    color-mix(in srgb, var(--warning) 4%, var(--panel-elevated-bg))
+  );
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--panel-border));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-file-editor .file-editor-unsaved-card strong {
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  color: var(--warning);
+}
+
+.app-file-editor .file-editor-unsaved-card span {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.app-file-editor .file-editor-unsaved-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* ====================================================================== */
+/* Togglable Epic FX profile layer                                        */
+/* ====================================================================== */
+
+:root[data-fx-enabled="false"],
+:root[data-fx-mode="off"] {
+  --fx-sidebar-aurora-opacity: 0;
+  --fx-inspector-aurora-opacity: 0;
+  --fx-sky-opacity: 0;
+  --fx-ghost-opacity: 0;
+  --fx-burst-multiplier: 0;
+  --fx-burst-duration: 0s;
+  --fx-burst-sweep-opacity: 0;
+  --fx-sky-motion-multiplier: 0;
+}
+
+:root[data-fx-enabled="true"] {
+  --fx-sidebar-aurora-opacity: 0.16;
+  --fx-inspector-aurora-opacity: 0.14;
+  --fx-sky-opacity: 1;
+  --fx-ghost-opacity: 1;
+  --fx-burst-multiplier: 1;
+  --fx-burst-duration: 1.08s;
+  --fx-burst-sweep-opacity: 0.18;
+  --fx-sky-motion-multiplier: 1;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] {
+  --fx-sidebar-aurora-opacity: 0.08;
+  --fx-inspector-aurora-opacity: 0.06;
+  --fx-burst-multiplier: 0.5;
+  --fx-burst-duration: 0.82s;
+  --fx-burst-sweep-opacity: 0.08;
+  --fx-sky-motion-multiplier: 1.45;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="cinematic"] {
+  --fx-sidebar-aurora-opacity: 0.2;
+  --fx-inspector-aurora-opacity: 0.16;
+  --fx-burst-multiplier: 0.82;
+  --fx-burst-duration: 0.98s;
+  --fx-burst-sweep-opacity: 0.14;
+  --fx-sky-motion-multiplier: 1;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] {
+  --fx-sidebar-aurora-opacity: 0.26;
+  --fx-inspector-aurora-opacity: 0.22;
+  --fx-sky-opacity: 1;
+  --fx-ghost-opacity: 1;
+  --fx-burst-multiplier: 1;
+  --fx-burst-duration: 1.15s;
+  --fx-burst-sweep-opacity: 0.18;
+  --fx-sky-motion-multiplier: 0.82;
+}
+
+:root[data-reduce-motion="true"] {
+  --fx-burst-duration: 0s;
+  --fx-burst-multiplier: 0;
+  --fx-burst-sweep-opacity: 0;
+  --fx-sky-motion-multiplier: 0;
+}
+
+:root[data-fx-enabled="true"] .sky-visual-fx {
+  opacity: var(--fx-sky-opacity);
+  transition: opacity 220ms ease;
+}
+
+:root[data-fx-enabled="false"] .sky-visual-fx,
+:root[data-fx-mode="off"] .sky-visual-fx {
+  opacity: 0;
+}
+
+:root[data-fx-enabled="true"] .ghost-companion {
+  opacity: var(--fx-ghost-opacity);
+  transition: opacity 220ms ease;
+}
+
+:root[data-fx-enabled="false"] .ghost-companion,
+:root[data-fx-mode="off"] .ghost-companion {
+  opacity: 0;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-visual-fx {
+  filter: saturate(0.78) brightness(1.05);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-orb {
+  animation-duration: calc(28s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-glow {
+  animation-duration: calc(44s * var(--fx-sky-motion-multiplier));
+  opacity: 0.78;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-cloud {
+  animation-duration: calc(228s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-rainfall span,
+:root[data-fx-enabled="true"][data-fx-mode="subtle"] .sky-snowfall span {
+  animation-duration: calc(3.4s * var(--fx-sky-motion-multiplier));
+  opacity: calc(0.9 * var(--fx-sky-opacity));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="cinematic"] .sky-visual-fx {
+  filter: saturate(1.03) brightness(0.98);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="cinematic"] .sky-cloud {
+  animation-duration: calc(178s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="cinematic"] .sky-rainfall span,
+:root[data-fx-enabled="true"][data-fx-mode="cinematic"] .sky-snowfall span {
+  animation-duration: calc(3s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .sky-visual-fx {
+  filter: saturate(1.12) brightness(1.03);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .sky-cloud {
+  animation-duration: calc(124s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .sky-rainfall span,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .sky-snowfall span {
+  animation-duration: calc(2.6s * var(--fx-sky-motion-multiplier));
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .ghost-avatar {
+  animation-duration: 58s;
+  transform: translate3d(0, 0, 0) scale(1.01);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-sidebar,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-file-editor {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-sidebar::before,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector::before {
+  content: "";
+  position: absolute;
+  inset: -18% 0 -8%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--fx-sidebar-aurora-opacity);
+  background:
+    linear-gradient(140deg, rgba(116, 151, 255, 0.24), transparent 28%),
+    radial-gradient(circle at 28% 16%, rgba(80, 130, 255, 0.2), transparent 56%),
+    radial-gradient(circle at 84% 84%, rgba(95, 214, 255, 0.18), transparent 62%);
+  /* GPU: filter: blur(30px) removed — the gradient stops already feather
+   * softly and the runtime blur was the single most expensive paint op in
+   * the file (full-panel pseudo, re-rasterized every frame). */
+  animation: fxEpicAuroraSlide 10s ease-in-out infinite alternate;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-file-editor::before {
+  content: "";
+  position: absolute;
+  inset: -18% 0 -8%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--fx-inspector-aurora-opacity);
+  background:
+    linear-gradient(140deg, rgba(173, 205, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 24% 14%, rgba(125, 220, 255, 0.12), transparent 56%),
+    radial-gradient(circle at 78% 82%, rgba(255, 222, 140, 0.08), transparent 64%);
+  animation: fxEpicAuroraSlide 14s ease-in-out infinite alternate;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector::before {
+  opacity: var(--fx-inspector-aurora-opacity);
+  background:
+    linear-gradient(140deg, rgba(149, 176, 255, 0.16), transparent 28%),
+    radial-gradient(circle at 22% 12%, rgba(111, 198, 255, 0.16), transparent 56%),
+    radial-gradient(circle at 82% 84%, rgba(122, 241, 255, 0.1), transparent 64%);
+  animation-duration: 13s;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-sidebar > * ,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector > * ,
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-file-editor > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-root.fx-burst-run-start,
+.app-root.fx-burst-run-complete,
+.app-root.fx-burst-run-summary,
+.app-root.fx-burst-warning {
+  overflow: hidden;
+}
+
+.app-root.fx-burst-run-start::before,
+.app-root.fx-burst-run-complete::before,
+.app-root.fx-burst-run-summary::before,
+.app-root.fx-burst-warning::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(1.02);
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-start::before {
+  background:
+    radial-gradient(circle at 24% 22%, rgba(132, 180, 255, 0.32), transparent 44%),
+    radial-gradient(circle at 76% 14%, rgba(112, 226, 255, 0.22), transparent 42%);
+  animation: fxRunStartBurst var(--fx-burst-duration) ease-out forwards;
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-complete::before {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(84, 255, 163, 0.22), transparent 44%),
+    radial-gradient(circle at 76% 82%, rgba(123, 178, 255, 0.2), transparent 44%);
+  animation: fxRunCompleteBurst var(--fx-burst-duration) ease-out forwards;
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-summary::before {
+  background:
+    radial-gradient(circle at 16% 70%, rgba(255, 193, 109, 0.2), transparent 52%),
+    radial-gradient(circle at 80% 20%, rgba(127, 174, 255, 0.18), transparent 50%);
+  animation: fxRunSummaryBurst var(--fx-burst-duration) ease-out forwards;
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-warning::before {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 132, 132, 0.22), transparent 52%),
+    radial-gradient(circle at 50% 74%, rgba(255, 206, 122, 0.18), transparent 55%);
+  animation: fxWarningBurst var(--fx-burst-duration) ease-out forwards;
+}
+
+:root[data-fx-mode="epic"][data-fx-enabled="true"] .app-root.fx-burst-run-start::before {
+  mix-blend-mode: screen;
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-start::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-complete::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-summary::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-warning::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: 70vw;
+  height: 130px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  opacity: 0;
+}
+
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-start::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-complete::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-run-summary::after,
+:root[data-fx-enabled="true"] .app-root.fx-burst-warning::after {
+  animation: fxBurstSweep var(--fx-burst-duration) ease-out forwards;
+}
+
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-start::before,
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-complete::before,
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-summary::before,
+:root[data-reduce-motion="true"] .app-root.fx-burst-warning::before,
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-start::after,
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-complete::after,
+:root[data-reduce-motion="true"] .app-root.fx-burst-run-summary::after,
+:root[data-reduce-motion="true"] .app-root.fx-burst-warning::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* GPU: stop the epic-mode aurora slide when reduce-motion is on. Without
+ * this, the aurora pseudo-elements continued animating their transform
+ * across the sidebar, inspector and file-editor regardless of the
+ * reduce-motion preference — defeating the user's accessibility setting
+ * and burning compositor time on devices that asked for stillness. */
+:root[data-reduce-motion="true"][data-fx-mode="epic"] .app-sidebar::before,
+:root[data-reduce-motion="true"][data-fx-mode="epic"] .app-inspector::before,
+:root[data-reduce-motion="true"][data-fx-mode="epic"] .app-file-editor::before {
+  animation: none;
+}
+
+@keyframes fxEpicAuroraSlide {
+  from {
+    transform: translateX(-1.6%);
+  }
+  to {
+    transform: translateX(1.8%);
+  }
+}
+
+@keyframes fxRunStartBurst {
+  0% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+  14% {
+    opacity: calc(0.22 * var(--fx-burst-multiplier));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.09);
+  }
+}
+
+@keyframes fxRunCompleteBurst {
+  0% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+  20% {
+    opacity: calc(0.18 * var(--fx-burst-multiplier));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes fxRunSummaryBurst {
+  0% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+  18% {
+    opacity: calc(0.16 * var(--fx-burst-multiplier));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes fxWarningBurst {
+  0% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+  16% {
+    opacity: calc(0.22 * var(--fx-burst-multiplier));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes fxBurstSweep {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scaleX(0.35);
+  }
+  24% {
+    opacity: var(--fx-burst-sweep-opacity);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scaleX(1.5);
+  }
+}
+
+:root[data-fx-mode="epic"][data-fx-enabled="true"] .app-root.fx-burst-run-complete::after {
+  top: 52%;
+  width: 90vw;
+  height: 160px;
+  opacity: var(--fx-burst-sweep-opacity);
+}
+
+.app-inspector .inspector-tab.active {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .inspector-tab.active {
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.app-inspector .inspector-body {
+  isolation: isolate;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .safety-card {
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 30%, transparent)) 1;
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .raw-log-line {
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .raw-log-line:nth-child(even) {
+  background: color-mix(in srgb, var(--text-primary) 2.4%, transparent);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .raw-log-meta {
+  border-left: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+:root[data-fx-enabled="true"][data-fx-mode="epic"] .app-sidebar {
+  border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 52%, transparent);
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--text-primary) 4%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Cockpit + bounded inspector fixes */
+.app-inspector,
+.app-inspector .inspector-body,
+.app-inspector .diff-studio {
+  min-height: 0;
+}
+
+.app-inspector .inspector-body {
+  max-height: none;
+}
+
+.app-inspector .raw-events-body {
+  height: auto;
+  max-height: none;
+  overscroll-behavior: contain;
+  contain: content;
+}
+
+/* Raw Events must never resize the inspector shell; only the log viewport scrolls. */
+.app-inspector {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-inspector .inspector-tabs {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
+}
+
+.app-inspector .inspector-body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-inspector .raw-events-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-inspector .raw-events-panel .diff-studio-toolbar {
+  flex: 0 0 auto;
+  min-height: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.app-inspector .raw-events-panel .raw-events-body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  height: auto;
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  contain: layout paint;
+}
+
+.composer-runtime-profile {
+  height: 28px;
+  max-width: 210px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  flex: 0 1 auto;
+}
+
+.composer-runtime-profile select {
+  max-width: 132px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  outline: none;
+}
+
+.cockpit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 14%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 32%),
+    rgba(0, 0, 0, 0.44);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.cockpit-panel {
+  width: min(1180px, calc(100vw - 48px));
+  max-height: min(820px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--panel-bg-solid) 96%, transparent), color-mix(in srgb, var(--panel-elevated-bg) 88%, transparent)),
+    var(--panel-bg-solid);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.34);
+}
+
+.cockpit-header,
+.cockpit-metrics,
+.cockpit-provider-header,
+.cockpit-lane-actions {
+  display: flex;
+  align-items: center;
+}
+
+.cockpit-header {
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+}
+
+.cockpit-kicker {
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cockpit-header h2 {
+  margin: 4px 0 3px;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.cockpit-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.cockpit-close-btn,
+.cockpit-lane-actions button {
+  border: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cockpit-close-btn {
+  padding: 8px 14px;
+}
+
+.cockpit-metrics {
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 58%, transparent);
+  overflow-x: auto;
+}
+
+.cockpit-metrics span {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.cockpit-metrics strong {
+  color: var(--text-primary);
+}
+
+.cockpit-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 14px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.cockpit-lanes {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding-right: 2px;
+}
+
+.cockpit-provider,
+.cockpit-handoffs {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 68%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 55%, transparent);
+  overflow: hidden;
+}
+
+.cockpit-provider {
+  display: flex;
+  flex-direction: column;
+}
+
+.cockpit-handoffs {
+  overflow: auto;
+}
+
+.cockpit-provider-header {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 52%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.cockpit-provider-header strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.cockpit-empty {
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.cockpit-lane,
+.cockpit-handoff-card {
+  margin: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 58%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
+}
+
+.cockpit-lane.phase-active {
+  border-color: color-mix(in srgb, var(--success) 46%, var(--panel-border));
+}
+
+.cockpit-lane.phase-failed,
+.cockpit-lane.phase-cancelled {
+  opacity: 0.76;
+}
+
+.cockpit-lane-main {
+  display: grid;
+  gap: 5px;
+}
+
+.cockpit-lane-main strong,
+.cockpit-handoff-card strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-lane-main p,
+.cockpit-handoff-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.cockpit-lane-phase {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+}
+
+.cockpit-lane-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.cockpit-lane-meta span,
+.cockpit-handoff-card > span {
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-lane-meta .cockpit-conflict {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.cockpit-lane-actions {
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.cockpit-lane-actions button {
+  padding: 5px 9px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.cockpit-lane-actions button:hover:not(:disabled),
+.cockpit-close-btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  color: var(--text-primary);
+}
+
+.cockpit-lane-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.cockpit-handoff-card {
+  display: grid;
+  gap: 7px;
+}
+
+@media (max-width: 980px) {
+  .cockpit-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .cockpit-lanes {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+}
+
+/* Professional sidebar command-surface pass */
+.app-sidebar .sidebar-content {
+  gap: 10px;
+  padding-top: 12px;
+}
+
+/* 1.0.5-EW63 — Chrome stripped. Boss-brief: the masthead read
+ * as the only heavily-styled element in an otherwise
+ * typographically-flat sidebar. Removing the gradient fill +
+ * border + drop shadow makes it sit on the bare sidebar bg
+ * exactly the way the section headers below (PINNED, RECENTS,
+ * ENSEMBLES, etc.) do. The `+ New` button keeps its accent
+ * chrome — it's the lone CTA on this row and should retain
+ * visual hierarchy.
+ *
+ * `!important` on the paint declarations defeats the
+ * appearance-mode overrides at lines ~17924 (native_glass)
+ * and ~24554 (native_glass + light theme) which include
+ * `.sidebar-masthead` in a group selector with other
+ * elements (search field, run summary, model usage) — those
+ * group rules still apply to the other elements but lose to
+ * our base on the masthead specifically. */
+.sidebar-masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 0 !important;
+  border-radius: 14px;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.sidebar-masthead-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/* 1.0.5-EW63 — Accent tint dialled from 86% to 60%. On the
+ * now-transparent masthead the original tint over-popped
+ * against the sidebar background; 60% reads as a secondary
+ * label (the masthead's eyebrow) rather than competing with
+ * the workspace name below it. */
+.sidebar-product-label {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.115em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.sidebar-masthead-copy strong {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 720;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-masthead-copy > span:last-child {
+  min-width: 0;
+  color: var(--sidebar-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-primary-action {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)),
+    color-mix(in srgb, var(--text-primary) 7%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent);
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.sidebar-primary-action:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 54%, transparent);
+}
+
+.sidebar-masthead-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 2px 2px;
+  scrollbar-width: none;
+}
+
+.sidebar-masthead-stats::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar-masthead-stats span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--sidebar-text-secondary);
+  font-size: 10.5px;
+  font-weight: 620;
+  line-height: 1;
+}
+
+.sidebar-masthead-stats .sidebar-stat-live {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
+}
+
+.app-sidebar .sidebar-search-section {
+  gap: 7px;
+}
+
+.app-sidebar .sidebar-search-field {
+  height: 36px;
+  border-radius: 11px;
+  padding: 0 9px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 7%, transparent), color-mix(in srgb, var(--text-primary) 3%, transparent));
+}
+
+.sidebar-search-hint {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 72%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.sidebar-search-highlight {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
+}
+
+.app-sidebar .sidebar-hierarchy-scroll,
+.app-sidebar .sidebar-workspace-scroll {
+  gap: 10px;
+}
+
+.app-sidebar .sidebar-workspace-list {
+  gap: 6px;
+}
+
+.app-sidebar .sidebar-hierarchy-scroll .sidebar-section-header {
+  position: static;
+  top: auto;
+}
+
+.app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+  border-bottom: 0;
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--app-bg) 82%, transparent), color-mix(in srgb, var(--app-bg) 38%, transparent));
+}
+
+.app-sidebar .sidebar-workspace-group {
+  /* Flat-on-sidebar look — matches Pinned/Recents.
+   * Tile chrome (border, padding, hover background) intentionally removed
+   * so workspaces blend into the sidebar background like pinned/recent rows.
+   * Indentation for nested chats is preserved via .sidebar-chat-list. */
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.app-sidebar .sidebar-workspace-group:not(:last-child) {
+  margin-bottom: 0;
+}
+
+.app-sidebar .sidebar-workspace-item {
+  align-items: center;
+  min-height: 42px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.sidebar-workspace-copy,
+.sidebar-chat-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar-workspace-name,
+.sidebar-chat-title {
+  min-width: 0;
+  color: var(--sidebar-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* 1.0.3 polish — workspace parent title scaled down 15% to match
+   * the chat-title reduction. Was inheriting parent size (default
+   * 14px in the sidebar); 0.85em scales relative so per-section
+   * tweaks still propagate. */
+  font-size: 0.85em;
+}
+
+/* 1.0.3 sidebar rename — inline `<input>` that replaces the title
+ * span during edit mode. Matches the title's font + colour so the
+ * mode switch feels seamless; only the visible boundary changes
+ * (faint background + 1px outline rim so the user can see it's
+ * now editable). Auto-focuses on entry; Enter / blur commits, Esc
+ * cancels (handlers in SidebarChatTitleEditable). */
+.sidebar-chat-title-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+  margin: -2px 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--sidebar-bg, var(--background)) 80%, transparent);
+  color: var(--sidebar-text);
+  font: inherit;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.sidebar-chat-title-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
+.sidebar-workspace-name {
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-workspace-meta,
+.sidebar-chat-subline {
+  min-width: 0;
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 82%, transparent);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar .sidebar-chat-list {
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.app-sidebar .sidebar-chat-item,
+.app-sidebar .sidebar-global-chat-item {
+  --chat-provider-accent: var(--accent);
+  align-items: center;
+  min-height: 36px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 8px;
+}
+
+.app-sidebar .sidebar-chat-item.provider-gemini,
+.app-sidebar .sidebar-global-chat-item.provider-gemini {
+  --chat-provider-accent: #6f9dff;
+}
+
+.app-sidebar .sidebar-chat-item.provider-codex,
+.app-sidebar .sidebar-global-chat-item.provider-codex {
+  --chat-provider-accent: #9b8cff;
+}
+
+.app-sidebar .sidebar-chat-item.provider-claude,
+.app-sidebar .sidebar-global-chat-item.provider-claude {
+  --chat-provider-accent: #ff9f4a;
+}
+
+.app-sidebar .sidebar-chat-item.provider-kimi,
+.app-sidebar .sidebar-global-chat-item.provider-kimi {
+  --chat-provider-accent: #a9bd55;
+}
+
+.app-sidebar .sidebar-chat-item.provider-grok,
+.app-sidebar .sidebar-global-chat-item.provider-grok {
+  --chat-provider-accent: var(--provider-grok-color);
+}
+
+.app-sidebar .sidebar-chat-item.provider-cursor,
+.app-sidebar .sidebar-global-chat-item.provider-cursor {
+  --chat-provider-accent: var(--provider-cursor-color);
+}
+
+.sidebar-chat-title-line,
+.sidebar-chat-subline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-chat-title-line .sidebar-provider-label {
+  flex: 0 0 auto;
+  /* 1.0.3 polish — provider prefix scales with the title (15% smaller
+   * matching `.sidebar-chat-title` below). Scoped to title-line
+   * descendants so non-sidebar usages of `.sidebar-provider-label`
+   * (if any creep in) aren't affected. */
+  font-size: 0.85em;
+}
+
+.sidebar-chat-title {
+  font-weight: 610;
+  letter-spacing: -0.008em;
+  /* 1.0.3 polish — 15% smaller across Ensembles / Workspace-expanded /
+   * Sub-threads / Global. Pinned + Recents handled separately via
+   * `.sidebar-pinned-label` / `.sidebar-recents-label`. Subtitle
+   * tokens (`.sidebar-chat-subline`, `.sidebar-run-status`,
+   * `.sidebar-branched-badge`) keep their existing size. */
+  font-size: 0.85em;
+}
+
+.sidebar-chat-subline {
+  gap: 5px;
+}
+
+.sidebar-run-status {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+  color: var(--sidebar-text-secondary);
+  font-size: 9.5px;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.sidebar-run-status.tone-success {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 28%, transparent);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+
+.sidebar-run-status.tone-warning {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+}
+
+.sidebar-run-status.tone-danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.sidebar-run-status.tone-muted {
+  color: var(--sidebar-text-secondary);
+}
+
+.app-sidebar .sidebar-chat-age {
+  margin-left: 4px;
+  padding: 0;
+}
+
+/* Global chat age: same ghost-by-default treatment */
+.app-sidebar .sidebar-global-chat-item .sidebar-chat-age {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.app-sidebar .sidebar-global-chat-item:hover .sidebar-chat-age,
+.app-sidebar .sidebar-global-chat-item:focus-visible .sidebar-chat-age,
+.app-sidebar .sidebar-global-chat-item.active .sidebar-chat-age {
+  opacity: 0.7;
+  color: var(--text-secondary);
+}
+
+.app-sidebar .sidebar-empty-state {
+  display: grid;
+  gap: 4px;
+  padding: 14px 12px;
+  border: 1px dashed color-mix(in srgb, var(--sidebar-border) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.app-sidebar .sidebar-empty-state strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.app-sidebar .sidebar-empty-state span {
+  color: var(--sidebar-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.app-sidebar .run-summary {
+  margin: 0 var(--space-md) var(--space-sm);
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 7%, transparent), transparent 72%),
+    color-mix(in srgb, var(--panel-elevated-bg) 58%, transparent);
+}
+
+.app-sidebar .model-usage-summary {
+  /* 1.0.5-EW10 — Old 240px cap removed. ModelUsageCard.css line ~131
+   * sets the canonical height/max-height via the JS-driven
+   * `--model-usage-sidebar-height` CSS var (allowing up to 960px or
+   * 100vh − 56px, whichever is smaller). Leaving overflow: auto so
+   * the scroll behaviour stays consistent. */
+  overflow: auto;
+}
+
+.app-sidebar .sidebar-footer {
+  padding: 10px var(--space-md) var(--space-md);
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-footer-action-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding-bottom: 7px;
+}
+
+.sidebar-footer-action-row::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-md));
+  right: calc(-1 * var(--space-md));
+  bottom: 0;
+  height: 1px;
+  background: var(--sidebar-border);
+  pointer-events: none;
+}
+
+.sidebar-footer-settings-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-footer-settings {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--sidebar-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.14s, background 0.14s;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-settings-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 90;
+  width: min(260px, calc(var(--sidebar-width, 280px) - 28px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 90%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow:
+    0 1px 0 inset color-mix(in srgb, #ffffff 10%, transparent),
+    0 18px 46px rgba(0, 0, 0, 0.38),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: sidebar-new-menu-fade-in 140ms ease-out;
+  transform-origin: bottom left;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-settings-menu {
+  border-color: var(--surface-border);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  color: var(--surface-text);
+  box-shadow:
+    0 1px 0 inset rgba(255, 255, 255, 0.72),
+    0 18px 46px rgba(0, 0, 0, 0.16),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.sidebar-settings-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  text-align: left;
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.sidebar-settings-menu-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-settings-menu-item {
+  color: var(--surface-text);
+}
+
+.sidebar-settings-menu-item:hover:not(:disabled),
+.sidebar-settings-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 0;
+}
+
+.sidebar-settings-menu-item-danger {
+  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
+}
+
+.sidebar-settings-menu-item-danger:hover:not(:disabled),
+.sidebar-settings-menu-item-danger:focus-visible {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.sidebar-settings-menu-back {
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sidebar-settings-menu-choice.is-active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-settings-menu-item .sf-symbol-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
+.sidebar-settings-menu-check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+}
+
+.sidebar-settings-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-settings-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--panel-border) 64%, transparent);
+}
+
+.sidebar-footer-settings:hover {
+  color: var(--sidebar-text);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.sidebar-footer-settings:active {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+.sidebar-footer-settings .sf-symbol-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.sidebar-footer-settings:hover .sf-symbol-icon {
+  opacity: 1;
+}
+
+.sidebar-footer-remote {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 46%, transparent);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent);
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 88%, transparent);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color 0.14s, background 0.14s, border-color 0.14s;
+}
+
+.sidebar-footer-remote:hover,
+.sidebar-footer-remote:focus-visible {
+  color: var(--sidebar-text);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.sidebar-footer-remote .sf-symbol-icon {
+  opacity: 0.78;
+}
+
+.sidebar-footer-remote:hover .sf-symbol-icon,
+.sidebar-footer-remote:focus-visible .sf-symbol-icon {
+  opacity: 1;
+}
+
+.app-shell-stats-toolbar {
+  --app-shell-stat-cpu: #4f8cff;
+  --app-shell-stat-ram: #36b76a;
+  --app-shell-stat-threads: #ff5a66;
+  width: 100%;
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.app-shell-stat {
+  min-width: 0;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 2px;
+  color: var(--sidebar-text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-shell-stat svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-shell-stat--cpu {
+  color: var(--app-shell-stat-cpu);
+}
+
+.app-shell-stat--ram {
+  color: var(--app-shell-stat-ram);
+}
+
+.app-shell-stat--threads {
+  color: var(--app-shell-stat-threads);
+}
+
+.app-shell-stat-value {
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.app-shell-stat-detail {
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-primary-action,
+  .app-sidebar .sidebar-item,
+  .app-sidebar .sidebar-item-action,
+  .sidebar-tree-chevron,
+  .sidebar-chat-busy,
+  .app-sidebar .sidebar-workspace-running-dot {
+    transition: none;
+    animation: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .sidebar-primary-action,
+:root[data-reduce-motion="true"] .app-sidebar .sidebar-item,
+:root[data-reduce-motion="true"] .app-sidebar .sidebar-item-action,
+:root[data-reduce-motion="true"] .sidebar-tree-chevron,
+:root[data-reduce-motion="true"] .sidebar-chat-busy,
+:root[data-reduce-motion="true"] .app-sidebar .sidebar-workspace-running-dot {
+  transition: none;
+  animation: none;
+}
+/* FX Labs: opt-in ambience, workspace atmosphere, and passive run visualization */
+.app-root.fx-agent-aura-root {
+  --agent-aura-rgb: 87 148 255;
+  --agent-aura-rgb-2: 78 220 186;
+  --agent-aura-danger-rgb: 255 92 108;
+  --agent-aura-warn-rgb: 255 184 77;
+  --agent-aura-opacity: 0.34;
+}
+
+.app-root.fx-provider-gemini {
+  --agent-aura-rgb: 75 142 255;
+  --agent-aura-rgb-2: 88 231 190;
+}
+
+.app-root.fx-provider-codex {
+  --agent-aura-rgb: 255 154 85;
+  --agent-aura-rgb-2: 255 218 112;
+}
+
+.app-root.fx-provider-claude {
+  --agent-aura-rgb: 255 123 94;
+  --agent-aura-rgb-2: 227 176 125;
+}
+
+.app-root.fx-provider-kimi {
+  --agent-aura-rgb: 103 225 255;
+  --agent-aura-rgb-2: 157 121 255;
+}
+
+.app-root.fx-intensity-subtle {
+  --agent-aura-opacity: 0.2;
+}
+
+.app-root.fx-intensity-epic {
+  --agent-aura-opacity: 0.48;
+}
+
+.app-root.fx-status-approval {
+  --agent-aura-rgb: var(--agent-aura-warn-rgb);
+}
+
+.app-root.fx-status-failed {
+  --agent-aura-rgb: var(--agent-aura-danger-rgb);
+}
+
+.app-transcript.fx-labs-active {
+  isolation: isolate;
+}
+
+.agent-aura-layer,
+.living-workspace-layer,
+.run-data-viz-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.agent-aura-layer {
+  z-index: 1;
+  opacity: var(--agent-aura-opacity, 0.3);
+  mix-blend-mode: screen;
+}
+
+.agent-aura-edge {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgb(var(--agent-aura-rgb) / 0.75), transparent);
+  opacity: 0;
+  animation: aura-edge-scan 4.8s ease-in-out infinite;
+  animation-play-state: paused;
+}
+
+.agent-aura-edge-left {
+  left: 2px;
+}
+
+.agent-aura-edge-right {
+  right: 2px;
+  animation-delay: -2.4s;
+}
+
+/* Only reveal the aura edges when there is actual agent activity to signal — */
+/* otherwise the 1px lines read as unwanted vertical seams at the panel boundary. */
+.agent-aura-layer.fx-status-running .agent-aura-edge,
+.agent-aura-layer.fx-status-queued .agent-aura-edge,
+.agent-aura-layer.fx-status-approval .agent-aura-edge,
+.agent-aura-layer.fx-status-handoff .agent-aura-edge {
+  opacity: 0.66;
+  animation-play-state: running;
+}
+
+.agent-aura-run-burst {
+  position: absolute;
+  right: 18%;
+  bottom: 18%;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--agent-aura-rgb) / 0.48);
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.agent-aura-layer.fx-status-running .agent-aura-run-burst,
+.agent-aura-layer.fx-status-complete .agent-aura-run-burst,
+.agent-aura-layer.fx-status-approval .agent-aura-run-burst {
+  animation: aura-run-burst 2.8s ease-out infinite;
+}
+
+.agent-aura-layer.fx-status-queued .agent-aura-edge {
+  animation-duration: 6.8s;
+}
+
+.agent-aura-layer.fx-status-failed {
+  mix-blend-mode: normal;
+}
+
+.living-workspace-layer {
+  z-index: 0;
+  opacity: 0.42;
+}
+
+.living-workspace-layer.fx-intensity-subtle {
+  opacity: 0.26;
+}
+
+.living-workspace-layer.fx-intensity-epic {
+  opacity: 0.56;
+}
+
+.living-depth {
+  position: absolute;
+  inset: -12%;
+  transform: translateZ(0);
+}
+
+.living-depth-back {
+  background:
+    radial-gradient(circle at 18% 16%, rgb(255 255 255 / 0.12), transparent 18%),
+    radial-gradient(circle at 82% 10%, rgb(255 255 255 / 0.1), transparent 16%),
+    linear-gradient(135deg, rgb(var(--accent-rgb, 80 140 255) / 0.08), transparent 58%);
+  animation: living-parallax-back 26s ease-in-out infinite;
+}
+
+.living-depth-mid {
+  background:
+    radial-gradient(circle at 66% 72%, rgb(var(--agent-aura-rgb, 87 148 255) / 0.12), transparent 24%),
+    linear-gradient(180deg, transparent, rgb(0 0 0 / 0.12));
+  animation: living-parallax-mid 18s ease-in-out infinite;
+}
+
+.living-room-light {
+  position: absolute;
+  left: 50%;
+  bottom: -20%;
+  width: 62vw;
+  height: 42vh;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  /* GPU: radial-gradient with `transparent 68%` already feathers smoothly.
+   * The runtime filter: blur(24px) was being re-applied every frame because
+   * the parent's transform animation changes the bounding box — dropping it
+   * keeps the same visible softness with zero per-frame filter cost. */
+  background: radial-gradient(circle, rgb(var(--agent-aura-rgb-2, 78 220 186) / 0.16), transparent 68%);
+  animation: living-room-light 10s ease-in-out infinite;
+}
+
+.living-phase-dawn .living-depth-back {
+  background:
+    radial-gradient(circle at 20% 18%, rgb(255 210 142 / 0.2), transparent 22%),
+    linear-gradient(135deg, rgb(255 148 109 / 0.14), transparent 62%);
+}
+
+.living-phase-evening .living-depth-back {
+  background:
+    radial-gradient(circle at 78% 18%, rgb(255 130 110 / 0.18), transparent 24%),
+    linear-gradient(135deg, rgb(98 97 255 / 0.12), transparent 62%);
+}
+
+.living-phase-night .living-depth-back {
+  background:
+    radial-gradient(circle at 20% 18%, rgb(147 191 255 / 0.16), transparent 20%),
+    radial-gradient(circle at 80% 24%, rgb(255 255 255 / 0.12), transparent 2px),
+    radial-gradient(circle at 72% 38%, rgb(255 255 255 / 0.1), transparent 2px),
+    linear-gradient(135deg, rgb(28 42 89 / 0.28), transparent 62%);
+}
+
+.living-motes,
+.living-weather-particles {
+  position: absolute;
+  inset: 0;
+}
+
+.living-motes span,
+.living-weather-particles span {
+  position: absolute;
+  left: calc(4% + (var(--mote-index, var(--particle-index, 0)) * 5.3%));
+  top: calc(7% + (var(--mote-index, var(--particle-index, 0)) * 4.7%));
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.72);
+  box-shadow: 0 0 18px rgb(var(--agent-aura-rgb-2, 78 220 186) / 0.4);
+  animation: living-mote-float 12s ease-in-out infinite;
+  animation-delay: calc(var(--mote-index, var(--particle-index, 0)) * -0.7s);
+}
+
+.living-weather-particles span {
+  width: 1px;
+  height: 20px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.75), transparent);
+  animation-name: living-weather-fall;
+  animation-duration: 1.8s;
+  opacity: 0;
+}
+
+.living-rain .living-weather-particles span,
+.living-heavy_rain .living-weather-particles span,
+.living-storm .living-weather-particles span {
+  opacity: 0.72;
+}
+
+.living-snow .living-weather-particles span,
+.living-mist .living-weather-particles span,
+.living-fog .living-weather-particles span {
+  width: 5px;
+  height: 5px;
+  opacity: 0.58;
+  background: rgb(255 255 255 / 0.84);
+  animation-name: living-snow-drift;
+  animation-duration: 8s;
+}
+
+.run-data-viz-layer {
+  z-index: 3;
+  opacity: 0.52;
+  mix-blend-mode: screen;
+}
+
+.run-data-viz-layer.fx-intensity-subtle {
+  opacity: 0.34;
+}
+
+.run-data-viz-layer.fx-intensity-epic {
+  opacity: 0.68;
+}
+
+.run-data-viz-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.run-data-viz-flow,
+.run-data-viz-progress {
+  fill: none;
+  stroke: rgb(var(--agent-aura-rgb, 87 148 255) / 0.8);
+  stroke-width: 0.45;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-dasharray: 8 12;
+  animation: run-data-flow 4s linear infinite;
+}
+
+.run-data-viz-flow-b {
+  stroke: rgb(var(--agent-aura-rgb-2, 78 220 186) / 0.7);
+  animation-delay: -1.6s;
+}
+
+.run-data-viz-progress {
+  stroke-width: 1.1;
+  stroke-dasharray: none;
+  opacity: 0.7;
+}
+
+.run-data-viz-queue {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  display: flex;
+  gap: 5px;
+}
+
+.run-data-viz-queue span {
+  width: 4px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgb(var(--agent-aura-rgb, 87 148 255) / 0.68);
+  box-shadow: 0 0 14px rgb(var(--agent-aura-rgb, 87 148 255) / 0.5);
+  transform-origin: bottom;
+  animation: run-queue-lane 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--queue-index, 0) * -0.18s);
+}
+
+.run-data-viz-layer.approval-waiting .run-data-viz-queue span,
+.run-data-viz-layer.fx-status-approval .run-data-viz-flow {
+  background: rgb(var(--agent-aura-warn-rgb) / 0.74);
+  stroke: rgb(var(--agent-aura-warn-rgb) / 0.82);
+}
+
+.composer-surface.fx-agent-aura {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.28),
+    0 18px 58px rgb(var(--agent-aura-rgb, 87 148 255) / 0.18),
+    var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
+}
+
+/* GPU: the aura "breathe" used to animate `box-shadow` on .composer-surface
+ * which is a paint-bound property (shadow is recomputed every frame). Now
+ * the peak-intensity shadow lives on a ::after pseudo and we animate the
+ * pseudo's opacity instead — composite-only, near-zero per-frame cost.
+ * Visually identical: same colour, same blur radii, same cadence. */
+.composer-surface.fx-agent-aura.fx-status-running {
+  position: relative;
+}
+.composer-surface.fx-agent-aura.fx-status-running::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.5),
+    0 22px 68px rgb(var(--agent-aura-rgb, 87 148 255) / 0.24);
+  animation: composer-aura-rim-pulse 2.8s ease-in-out infinite;
+  will-change: opacity;
+}
+@keyframes composer-aura-rim-pulse {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+:root[data-reduce-motion="true"] .composer-surface.fx-agent-aura.fx-status-running::after {
+  animation: none;
+  opacity: 0;
+}
+
+.composer-surface.fx-agent-aura.fx-status-approval {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-warn-rgb) / 0.5),
+    0 18px 58px rgb(var(--agent-aura-warn-rgb) / 0.2),
+    var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
+}
+
+.composer-surface.fx-agent-aura.fx-status-failed {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-danger-rgb) / 0.42),
+    0 18px 58px rgb(var(--agent-aura-danger-rgb) / 0.2),
+    var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
+}
+
+.fx-agent-aura-root .sidebar-chat-item.active,
+.fx-agent-aura-root .sidebar-chat-row.active {
+  box-shadow:
+    inset 2px 0 0 rgb(var(--agent-aura-rgb, 87 148 255) / 0.82),
+    0 0 22px rgb(var(--agent-aura-rgb, 87 148 255) / 0.12);
+}
+
+.fx-agent-aura-root .inspector-panel,
+.fx-agent-aura-root .inspector-sidebar,
+.fx-agent-aura-root .app-inspector {
+  box-shadow: inset 1px 0 0 rgb(var(--agent-aura-rgb, 87 148 255) / 0.22);
+}
+
+.settings-fx-labs {
+  border: 1px solid rgb(var(--agent-aura-rgb, 87 148 255) / 0.18);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  background:
+    radial-gradient(circle at top right, rgb(var(--agent-aura-rgb, 87 148 255) / 0.1), transparent 42%),
+    var(--panel-bg-muted, transparent);
+}
+
+.settings-fx-toggle {
+  gap: var(--space-md);
+}
+
+.settings-fx-toggle > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  font-weight: 650;
+}
+
+.settings-fx-toggle small {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.settings-fx-toggle input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@keyframes aura-edge-scan {
+  0%, 100% {
+    opacity: 0.18;
+    transform: translateY(-5%);
+  }
+  50% {
+    opacity: 0.78;
+    transform: translateY(5%);
+  }
+}
+
+@keyframes aura-run-burst {
+  0% {
+    opacity: 0.36;
+    transform: scale(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes living-parallax-back {
+  0%, 100% {
+    transform: translate3d(-1%, -1%, 0) scale(1.02);
+  }
+  50% {
+    transform: translate3d(1%, 1.2%, 0) scale(1.05);
+  }
+}
+
+@keyframes living-parallax-mid {
+  0%, 100% {
+    transform: translate3d(1%, 0, 0) scale(1.02);
+  }
+  50% {
+    transform: translate3d(-1.5%, -1%, 0) scale(1.04);
+  }
+}
+
+@keyframes living-room-light {
+  0%, 100% {
+    opacity: 0.42;
+    transform: translateX(-50%) scale(0.95);
+  }
+  50% {
+    opacity: 0.72;
+    transform: translateX(-50%) scale(1.08);
+  }
+}
+
+@keyframes living-mote-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translate3d(18px, -28px, 0);
+    opacity: 0.88;
+  }
+}
+
+@keyframes living-weather-fall {
+  0% {
+    transform: translate3d(0, -24px, 0);
+  }
+  100% {
+    transform: translate3d(-18px, 120vh, 0);
+  }
+}
+
+@keyframes living-snow-drift {
+  0% {
+    transform: translate3d(0, -18px, 0);
+  }
+  100% {
+    transform: translate3d(34px, 110vh, 0);
+  }
+}
+
+@keyframes run-data-flow {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+@keyframes run-queue-lane {
+  0%, 100% {
+    transform: scaleY(0.35);
+    opacity: 0.34;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 0.92;
+  }
+}
+
+@keyframes composer-aura-rim {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.24),
+      0 18px 58px rgb(var(--agent-aura-rgb, 87 148 255) / 0.14),
+      var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.5),
+      0 22px 68px rgb(var(--agent-aura-rgb, 87 148 255) / 0.24),
+      var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
+  }
+}
+
+:root[data-reduce-motion="true"] .agent-aura-layer,
+:root[data-reduce-motion="true"] .living-workspace-layer,
+:root[data-reduce-motion="true"] .run-data-viz-layer {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-aura-layer *,
+  .living-workspace-layer *,
+  .run-data-viz-layer *,
+  .composer-surface.fx-agent-aura {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Markdown Cockpit Renderer */
+.message-markdown-pro {
+  max-width: min(100%, 860px);
+  display: flow-root;
+  font-family: var(--transcript-font-family);
+  color: var(--text-primary);
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+
+.message-markdown-pro > *:first-child {
+  margin-top: 0;
+}
+
+.message-markdown-pro > *:last-child {
+  margin-bottom: 0;
+}
+
+.message-markdown-pro p,
+.message-markdown-pro ul,
+.message-markdown-pro ol,
+.message-markdown-pro blockquote,
+.message-markdown-pro table,
+.message-markdown-pro pre,
+.message-markdown-pro .message-code-shell {
+  margin: 0 0 0.9rem;
+}
+
+.message-markdown-pro h1,
+.message-markdown-pro h2,
+.message-markdown-pro h3,
+.message-markdown-pro h4,
+.message-markdown-pro h5,
+.message-markdown-pro h6 {
+  margin: 1.1rem 0 0.55rem;
+  color: var(--text-primary);
+  letter-spacing: -0.015em;
+  line-height: 1.22;
+}
+
+.message-markdown-pro h1 { font-size: 1.42rem; }
+.message-markdown-pro h2 { font-size: 1.22rem; }
+.message-markdown-pro h3 { font-size: 1.08rem; }
+.message-markdown-pro h4,
+.message-markdown-pro h5,
+.message-markdown-pro h6 { font-size: 1rem; }
+
+.message-markdown-pro ul,
+.message-markdown-pro ol {
+  padding-left: 1.45rem;
+}
+
+.message-markdown-pro li {
+  margin: 0.18rem 0;
+  padding-left: 0.12rem;
+}
+
+.message-markdown-pro li > ul,
+.message-markdown-pro li > ol {
+  margin: 0.28rem 0 0.32rem;
+}
+
+.message-markdown-pro input[type="checkbox"] {
+  margin: 0 0.45rem 0 -1.15rem;
+  vertical-align: middle;
+  accent-color: var(--accent);
+}
+
+.message-markdown-pro blockquote {
+  padding: 0.72rem 0.95rem;
+  border-left: 3px solid rgb(var(--agent-accent-rgb) / 0.55);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background:
+    linear-gradient(90deg, rgb(var(--agent-accent-rgb) / 0.12), transparent 74%),
+    rgb(255 255 255 / 0.025);
+  color: var(--text-secondary);
+}
+
+.message-markdown-pro blockquote p {
+  margin: 0;
+}
+
+.message-markdown-pro hr {
+  border: 0;
+  height: 1px;
+  margin: 1.2rem 0;
+  background: linear-gradient(90deg, transparent, rgb(var(--agent-accent-rgb) / 0.32), transparent);
+}
+
+.message-markdown-pro table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-spacing: 0;
+  border-collapse: separate;
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.16);
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.026);
+}
+
+.message-markdown-pro th,
+.message-markdown-pro td {
+  padding: 0.48rem 0.68rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message-markdown-pro th {
+  color: var(--text-primary);
+  background: rgb(var(--agent-accent-rgb) / 0.1);
+  font-weight: 700;
+}
+
+.message-markdown-pro tr:last-child td {
+  border-bottom: 0;
+}
+
+.message-markdown-pro th:last-child,
+.message-markdown-pro td:last-child {
+  border-right: 0;
+}
+
+.message-markdown-pro code:not(.cm-content code) {
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.18);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.055);
+  color: color-mix(in srgb, var(--text-primary) 94%, var(--accent));
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0.1rem 0.32rem;
+}
+
+.message-code-shell {
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.22);
+  border-radius: calc(var(--radius-sm) * 1.4);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.042), transparent 34%),
+    var(--app-bg-sunken);
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 18px 40px rgb(0 0 0 / 0.18);
+}
+
+.message-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 32px;
+  padding: 0.28rem 0.42rem 0.28rem 0.72rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  background: rgb(255 255 255 / 0.035);
+}
+
+.message-code-language {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.message-code-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.message-code-action {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.045);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.34rem 0.48rem;
+}
+
+.message-code-action:hover {
+  border-color: rgb(var(--agent-accent-rgb) / 0.36);
+  color: var(--text-primary);
+}
+
+.message-code-shell.wrap .cm-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-code-shell .message-code-block {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.message-code-shell .cm-scroller {
+  max-height: 560px;
+}
+
+/* Live tool diff telemetry — per-row inline odometer ("+46 -23" next to
+ * file names). Mechanical roll lives in `.digit-odometer` (lower down);
+ * `.activity-line-stat*` selectors below are still used by static
+ * file-change card spans that don't need per-digit rolling. */
+
+.activity-line-stat {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-line-stat-estimated {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.activity-file-change-cards {
+  display: grid;
+  gap: 5px;
+}
+
+.activity-file-change-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgb(255 255 255 / 0.075);
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.032);
+}
+
+/* Phase L5 slice 2 — placeholder card shown when EVERY diff entry
+ * has no resolvable file path (rare; malformed diff payload or a
+ * tool reporting stats without attribution). One-column layout
+ * + muted styling so the user knows a diff WAS reported but the
+ * file names didn't make it through, rather than fronting an
+ * intrusive "Unknown file UNKNOWN +0 -1" card. */
+.activity-file-change-card-placeholder {
+  grid-template-columns: 1fr;
+  border-style: dashed;
+  background: transparent;
+  opacity: 0.7;
+}
+
+.activity-file-change-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-file-change-path-placeholder {
+  font-family: inherit;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+
+.activity-file-change-status {
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgb(var(--agent-accent-rgb) / 0.12);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.activity-file-change-status.status-created {
+  color: var(--success);
+}
+
+.activity-file-change-status.status-deleted {
+  color: var(--danger);
+}
+
+.activity-file-change-stats {
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.activity-file-change-overflow {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+}
+
+.creative-timeline-diff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.18);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 70%, var(--info));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgb(var(--agent-accent-rgb) / 0.09), transparent 60%),
+    color-mix(in srgb, var(--app-bg-elevated) 86%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.025),
+    0 10px 24px rgb(0 0 0 / 0.12);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.creative-timeline-diff-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.creative-timeline-diff-title-row,
+.creative-timeline-path-row,
+.creative-timeline-guard-row,
+.creative-timeline-resource-chips,
+.creative-timeline-sidecar,
+.creative-timeline-warnings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.creative-timeline-app-chip,
+.creative-timeline-warning-chip,
+.creative-timeline-resource-chip,
+.creative-timeline-guard-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 7px;
+  padding: 0.22rem 0.48rem;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.creative-timeline-app-chip {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.creative-timeline-warning-chip {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+}
+
+.creative-timeline-diff-title {
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  color: var(--text-primary);
+}
+
+.creative-timeline-path-row {
+  justify-content: flex-end;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.creative-timeline-path-row span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.creative-timeline-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.035);
+}
+
+.creative-timeline-stat span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-stat strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-guard-row span {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.creative-timeline-projects {
+  display: grid;
+  gap: 8px;
+}
+
+.creative-timeline-project {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding-top: 8px;
+}
+
+.creative-timeline-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.creative-timeline-project-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-event {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.creative-timeline-project-fields {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-project-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.creative-timeline-project-section {
+  min-width: 0;
+}
+
+.creative-timeline-project-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.creative-timeline-item-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.creative-timeline-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.075);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.03);
+  padding: 6px 7px;
+}
+
+.creative-timeline-item.tone-added {
+  border-left-color: var(--success);
+}
+
+.creative-timeline-item.tone-changed {
+  border-left-color: var(--info);
+}
+
+.creative-timeline-item.tone-removed {
+  border-left-color: var(--danger);
+}
+
+.creative-timeline-item-name,
+.creative-timeline-item-meta,
+.creative-timeline-field-list {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-item-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.creative-timeline-item-meta,
+.creative-timeline-field-list {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.creative-timeline-resources {
+  display: grid;
+  gap: 5px;
+}
+
+.creative-timeline-resource-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.creative-timeline-resource-label {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-resource-chip {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.creative-timeline-resource-chip.muted {
+  color: var(--text-tertiary);
+}
+
+.creative-timeline-sidecar {
+  border-top: 1px dashed rgb(255 255 255 / 0.09);
+  padding-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.creative-timeline-sidecar span {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-sidecar code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  padding: 0;
+}
+
+.creative-timeline-warnings {
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.creative-timeline-overflow {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+@media (max-width: 760px) {
+  .creative-timeline-diff-header,
+  .creative-timeline-project-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .creative-timeline-path-row {
+    justify-content: flex-start;
+  }
+
+  .creative-timeline-stat-grid,
+  .creative-timeline-project-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
