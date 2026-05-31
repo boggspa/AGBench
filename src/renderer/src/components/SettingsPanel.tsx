@@ -50,6 +50,7 @@ import {
   resolveComposerFontFamily,
   type TypefaceOption
 } from '../lib/typefaceOptions'
+import { setFxRatesPerUsd } from '../lib/formatCost'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -298,6 +299,8 @@ interface SettingsPanelProps {
    */
   layout?: 'sheet' | 'takeover'
 }
+
+type FxRateSnapshot = Awaited<ReturnType<typeof window.api.getFxRates>>
 
 const CONTEXT_TURN_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 16, 20]
 const VISUAL_EFFECT_OPTIONS: Array<{ value: VisualEffectStyle; label: string }> = [
@@ -1262,6 +1265,25 @@ function SettingsProviderAuthCard({
   )
 }
 
+function fxConfidenceLabel(source?: FxRateSnapshot['source']): string {
+  if (source === 'live') return 'Live'
+  if (source === 'cached') return 'Cached'
+  if (source === 'fallback') return 'Fallback'
+  return 'Unknown'
+}
+
+function formatFxUpdatedAt(snapshot: FxRateSnapshot | null): string {
+  if (!snapshot) return 'Not loaded yet'
+  const time = Date.parse(snapshot.fetchedAt)
+  if (!Number.isFinite(time)) return 'Unknown'
+  return new Date(time).toLocaleString()
+}
+
+function formatFxRate(snapshot: FxRateSnapshot | null, currency: 'GBP' | 'EUR'): string {
+  const rate = snapshot?.rates?.[currency]
+  return typeof rate === 'number' && Number.isFinite(rate) ? rate.toFixed(4) : 'n/a'
+}
+
 export function SettingsPanel({
   mode,
   visualEffectStyle,
@@ -1370,6 +1392,9 @@ export function SettingsPanel({
   const [keyCommandQuery, setKeyCommandQuery] = useState('')
   const [kimiClassifierEnabled, setKimiClassifierEnabled] = useState(false)
   const [kimiClassifierStatus, setKimiClassifierStatus] = useState('disabled')
+  const [fxSnapshot, setFxSnapshot] = useState<FxRateSnapshot | null>(null)
+  const [fxRefreshing, setFxRefreshing] = useState(false)
+  const [fxError, setFxError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1390,6 +1415,25 @@ export function SettingsPanel({
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    if (typeof window === 'undefined' || typeof window.api?.getFxRates !== 'function') return
+    void window.api
+      .getFxRates()
+      .then((snapshot) => {
+        if (cancelled) return
+        setFxSnapshot(snapshot)
+        setFxRatesPerUsd(snapshot.rates)
+        setFxError(snapshot.errorMessage ?? null)
+      })
+      .catch((err) => {
+        if (!cancelled) setFxError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const updateKimiClassifierEnabled = (enabled: boolean): void => {
     setKimiClassifierEnabled(enabled)
     setKimiClassifierStatus(enabled ? 'enabled' : 'disabled')
@@ -1401,6 +1445,25 @@ export function SettingsPanel({
       setKimiClassifierEnabled(!enabled)
       setKimiClassifierStatus('unavailable')
     })
+  }
+
+  const refreshExchangeRates = async (): Promise<void> => {
+    if (typeof window === 'undefined' || typeof window.api?.refreshFxRates !== 'function') {
+      setFxError('Exchange-rate refresh is unavailable in this renderer.')
+      return
+    }
+    setFxRefreshing(true)
+    setFxError(null)
+    try {
+      const snapshot = await window.api.refreshFxRates(true)
+      setFxSnapshot(snapshot)
+      setFxRatesPerUsd(snapshot.rates)
+      setFxError(snapshot.errorMessage ?? null)
+    } catch (err) {
+      setFxError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFxRefreshing(false)
+    }
   }
 
   const safeTurns = Number.isFinite(chatContextTurns)
@@ -2337,9 +2400,39 @@ export function SettingsPanel({
                 </select>
                 <p className="settings-hint">
                   Used for cost displays on per-participant chips and the chat-level cumulative
-                  tally. Rates are static approximations — provider pricing is sampled in USD and
-                  converted at display time. Live FX refresh is on the 1.0.6 roadmap.
+                  tally. Provider pricing is sampled in USD and converted at display time.
                 </p>
+              </div>
+
+              <div className="settings-group">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-sm)'
+                  }}
+                >
+                  <label className="settings-label">Exchange rates</label>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => void refreshExchangeRates()}
+                    disabled={fxRefreshing}
+                  >
+                    {fxRefreshing ? 'Refreshing...' : 'Refresh exchange rates'}
+                  </button>
+                </div>
+                <p className="settings-hint">
+                  Confidence: {fxConfidenceLabel(fxSnapshot?.source)}. Last updated:{' '}
+                  {formatFxUpdatedAt(fxSnapshot)}. GBP {formatFxRate(fxSnapshot, 'GBP')}; EUR{' '}
+                  {formatFxRate(fxSnapshot, 'EUR')}.
+                </p>
+                {fxError && (
+                  <p className="settings-error" style={{ margin: 0 }}>
+                    Refresh failed: {fxError}
+                  </p>
+                )}
               </div>
 
               {/*
