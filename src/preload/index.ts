@@ -4,6 +4,7 @@ import type {
   ProviderId,
   WorkspaceActivitySnapshot
 } from '../main/store/types'
+import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 
 type ComposerImageAttachment = {
   id?: string
@@ -587,6 +588,8 @@ const api = {
   exportProductDiagnostics: (path?: string) =>
     ipcRenderer.invoke('export-product-diagnostics', path),
   repairProductInstall: () => ipcRenderer.invoke('repair-product-install'),
+  getAppShellStats: () =>
+    ipcRenderer.invoke('app-shell-stats:snapshot') as Promise<AppShellStatsSnapshot>,
   // Tester-feedback intake (1.0.1). `getAppVersion` lets the bug-report
   // sheet show the same version string that `submit-bug-report` stamps
   // into the file. `submitBugReport` ships the form contents + an
@@ -660,6 +663,11 @@ const api = {
   onChatUpdated: (callback: (chat: unknown) => void) => {
     ipcRenderer.on('chat-updated', (_event, chat) => callback(chat))
   },
+  onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => {
+    const wrapped = (_event: unknown, snapshot: AppShellStatsSnapshot): void => callback(snapshot)
+    ipcRenderer.on('app-shell-stats-changed', wrapped)
+    return () => ipcRenderer.removeListener('app-shell-stats-changed', wrapped)
+  },
   // 1.0.5-PO2 — Workspace popout live-refresh signal. Main process
   // emits when something in the popout's workspace has changed
   // (chat update, run progress, etc.). The popout debounces a
@@ -702,6 +710,7 @@ const api = {
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
     ipcRenderer.removeAllListeners('chat-updated')
+    ipcRenderer.removeAllListeners('app-shell-stats-changed')
     ipcRenderer.removeAllListeners('workspace-popout-refresh')
     ipcRenderer.removeAllListeners('creative-action:request')
   }

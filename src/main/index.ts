@@ -82,6 +82,7 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
+import { AppShellStatsService } from './services/AppShellStatsService'
 import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
 import {
@@ -2177,6 +2178,33 @@ const providerPreflightService = new ProviderPreflightService()
 let runRepository: RunRepository | null = null
 let runQueueServiceRef: RunQueueService | null = null
 
+const RUN_MANAGER_PROVIDERS: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+
+function getActiveAgbenchThreadCount(): number {
+  const chatIds = new Set<string>()
+  let anonymousRuns = 0
+  for (const provider of RUN_MANAGER_PROVIDERS) {
+    for (const session of runManager.getActiveByProvider(provider)) {
+      if (session.appChatId) {
+        chatIds.add(session.appChatId)
+      } else {
+        anonymousRuns += 1
+      }
+    }
+  }
+  return chatIds.size + anonymousRuns
+}
+
+const appShellStatsService = new AppShellStatsService({
+  getAppMetrics: () => app.getAppMetrics(),
+  getTotalMemoryBytes: () => os.totalmem(),
+  getActiveThreadCount: getActiveAgbenchThreadCount
+})
+
+appShellStatsService.onChange((snapshot) => {
+  safeSendToWebContents(mainWindow, 'app-shell-stats-changed', snapshot)
+})
+
 function getRunRepository(): RunRepository {
   if (!runRepository) {
     runRepository = new RunRepository({
@@ -2221,10 +2249,24 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
 }
 
 runManager.onChange((event) => {
-  if (event.type === 'removed') return
+  if (event.type === 'removed') {
+    void appShellStatsService.refresh().catch((err) => {
+      console.warn(
+        '[AppShellStats] refresh after run removal failed:',
+        err instanceof Error ? err.message : String(err)
+      )
+    })
+    return
+  }
   persistRunSessionQueueState(event.session)
   expireRunScopedApprovalLedger(event.session)
   getRunRepository().appendLifecycleEvent(event.type, event.session)
+  void appShellStatsService.refresh().catch((err) => {
+    console.warn(
+      '[AppShellStats] refresh after run state change failed:',
+      err instanceof Error ? err.message : String(err)
+    )
+  })
   // Phase F2: when a sub-thread's run completes, optionally propagate
   // its final assistant message to the parent transcript. Best-effort
   // (errors don't break the run-event subscriber chain).
@@ -20017,6 +20059,15 @@ function schedulePersistMainWindowBounds(): void {
   }, 1000)
 }
 
+function isMainWindowStatsActive(): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  return mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused()
+}
+
+function updateAppShellStatsPollingMode(): void {
+  appShellStatsService.setWindowActive(isMainWindowStatsActive())
+}
+
 function createWindow(): void {
   const isMac = process.platform === 'darwin'
   const settings = AppStore.getSettings()
@@ -20065,11 +20116,16 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
     emitDueScheduledTasks()
+    appShellStatsService.start(isMainWindowStatsActive())
   })
   mainWindow.on('resize', schedulePersistMainWindowBounds)
   mainWindow.on('move', schedulePersistMainWindowBounds)
   mainWindow.on('maximize', persistMainWindowBounds)
   mainWindow.on('unmaximize', persistMainWindowBounds)
+  mainWindow.on('minimize', updateAppShellStatsPollingMode)
+  mainWindow.on('restore', updateAppShellStatsPollingMode)
+  mainWindow.on('show', updateAppShellStatsPollingMode)
+  mainWindow.on('hide', updateAppShellStatsPollingMode)
   mainWindow.on('close', () => {
     if (windowBoundsSaveTimer) {
       clearTimeout(windowBoundsSaveTimer)
@@ -20077,15 +20133,21 @@ function createWindow(): void {
     }
     persistMainWindowBounds()
   })
+  mainWindow.on('closed', () => {
+    appShellStatsService.stop()
+    mainWindow = null
+  })
   mainWindow.on('focus', () => {
     if (mainWindow) {
       applyNativeGlassToWindow(mainWindow, AppStore.getSettings())
     }
+    updateAppShellStatsPollingMode()
   })
   mainWindow.on('blur', () => {
     if (mainWindow) {
       applyNativeGlassToWindow(mainWindow, AppStore.getSettings())
     }
+    updateAppShellStatsPollingMode()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -21852,6 +21914,7 @@ if (isGeminiMcpBridgeProcess) {
       exportProductDiagnostics(requestedPath)
     )
     ipcMain.handle('repair-product-install', async () => repairProductInstall())
+    ipcMain.handle('app-shell-stats:snapshot', async () => appShellStatsService.getSnapshot())
 
     // Tester-feedback intake (1.0.1). Returns the canonical app
     // version so the BugReportSheet's read-only context row matches
@@ -23926,6 +23989,7 @@ if (isGeminiMcpBridgeProcess) {
   })
 
   app.on('window-all-closed', () => {
+    appShellStatsService.stop()
     if (geminiSessionProcess) {
       geminiSessionProcess.kill()
       geminiSessionProcess = null

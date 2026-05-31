@@ -18,6 +18,7 @@ import type {
 } from '../../../main/store/types'
 import { selectRecentChats } from '../lib/recentChatsList'
 import { ActiveRunsSection } from './ActiveRunsSection'
+import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
 
@@ -2688,49 +2689,52 @@ export function Sidebar({
 
       {/* Footer */}
       <div className="sidebar-footer">
-        <div className="sidebar-footer-settings-wrap" ref={settingsMenuWrapRef}>
-          <button
-            className="sidebar-footer-settings"
-            onClick={() => {
-              setSettingsMenuOpen((current) => !current)
-              setSettingsMenuPane('root')
-            }}
-            title="Settings"
-            aria-label="Open settings menu"
-            aria-haspopup="menu"
-            aria-expanded={settingsMenuOpen}
-          >
-            <GearSymbolIcon />
-            <span>Settings</span>
-          </button>
-          {settingsMenuOpen && (
-            <SidebarSettingsMenu
-              pane={settingsMenuPane}
-              setPane={setSettingsMenuPane}
-              quickSettings={appearanceQuickSettings}
-              onAppearanceQuickChange={onAppearanceQuickChange}
-              onOpenSettings={onOpenSettings}
-              onOpenWorkspacePopout={onOpenWorkspacePopout}
-              canOpenWorkspacePopout={canOpenWorkspacePopout}
-              onQuitApp={onQuitApp}
-              onClose={() => {
-                setSettingsMenuOpen(false)
+        <div className="sidebar-footer-action-row">
+          <div className="sidebar-footer-settings-wrap" ref={settingsMenuWrapRef}>
+            <button
+              className="sidebar-footer-settings"
+              onClick={() => {
+                setSettingsMenuOpen((current) => !current)
                 setSettingsMenuPane('root')
               }}
-            />
-          )}
+              title="Settings"
+              aria-label="Open settings menu"
+              aria-haspopup="menu"
+              aria-expanded={settingsMenuOpen}
+            >
+              <GearSymbolIcon />
+              <span>Settings</span>
+            </button>
+            {settingsMenuOpen && (
+              <SidebarSettingsMenu
+                pane={settingsMenuPane}
+                setPane={setSettingsMenuPane}
+                quickSettings={appearanceQuickSettings}
+                onAppearanceQuickChange={onAppearanceQuickChange}
+                onOpenSettings={onOpenSettings}
+                onOpenWorkspacePopout={onOpenWorkspacePopout}
+                canOpenWorkspacePopout={canOpenWorkspacePopout}
+                onQuitApp={onQuitApp}
+                onClose={() => {
+                  setSettingsMenuOpen(false)
+                  setSettingsMenuPane('root')
+                }}
+              />
+            )}
+          </div>
+          <button
+            type="button"
+            className="sidebar-footer-remote"
+            onClick={onShowPairingSheet ?? onOpenSettings}
+            title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
+            aria-label={
+              onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'
+            }
+          >
+            <RemoteConnectionSymbolIcon />
+          </button>
         </div>
-        <button
-          type="button"
-          className="sidebar-footer-remote"
-          onClick={onShowPairingSheet ?? onOpenSettings}
-          title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
-          aria-label={
-            onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'
-          }
-        >
-          <RemoteConnectionSymbolIcon />
-        </button>
+        <AppShellStatsToolbar />
       </div>
     </div>
   )

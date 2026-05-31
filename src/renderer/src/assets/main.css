@@ -17165,7 +17165,16 @@ input:disabled, select:disabled, textarea:disabled {
 
 .app-sidebar .sidebar-footer {
   padding: 10px var(--space-md) var(--space-md);
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-footer-action-row {
+  display: flex;
   align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
 }
 
 .sidebar-footer-settings-wrap {
@@ -17372,6 +17381,65 @@ input:disabled, select:disabled, textarea:disabled {
 .sidebar-footer-remote:hover .sf-symbol-icon,
 .sidebar-footer-remote:focus-visible .sf-symbol-icon {
   opacity: 1;
+}
+
+.app-shell-stats-toolbar {
+  --app-shell-stat-cpu: #4f8cff;
+  --app-shell-stat-ram: #36b76a;
+  --app-shell-stat-threads: #ff5a66;
+  width: 100%;
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.app-shell-stat {
+  min-width: 0;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  color: var(--sidebar-text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-shell-stat svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-shell-stat--cpu {
+  color: var(--app-shell-stat-cpu);
+}
+
+.app-shell-stat--ram {
+  color: var(--app-shell-stat-ram);
+}
+
+.app-shell-stat--threads {
+  color: var(--app-shell-stat-threads);
+}
+
+.app-shell-stat-value {
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 @media (prefers-reduced-motion: reduce) {

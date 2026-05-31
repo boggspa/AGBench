@@ -94,6 +94,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'record-product-crash': ['object'],
   'export-product-diagnostics': ['optionalString'],
   'repair-product-install': [],
+  'app-shell-stats:snapshot': [],
   'set-appearance-mode': ['any'],
   'get-host-weather': [],
   'fx-rates:get': [],
@@ -102,6 +103,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'providerRates:probe': [],
   // 1.0.6-CRUX42 — open a Terminal running a provider's interactive CLI login.
   'provider:open-login-terminal': ['provider'],
+  'provider:open-logout-terminal': ['provider'],
+  'app:quit': [],
   // Auto-update service (no-arg snapshot/control channels).
   'update-snapshot': [],
   'check-for-updates': [],

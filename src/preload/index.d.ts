@@ -45,6 +45,7 @@ import {
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
+import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -436,9 +437,7 @@ declare global {
       }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       openProviderLoginTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
-      openProviderLogoutTerminal: (
-        provider: ProviderId
-      ) => Promise<{ ok: boolean; error?: string }>
+      openProviderLogoutTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>
@@ -763,6 +762,7 @@ declare global {
       recordProductCrash: (input: ProductCrashInput) => Promise<ProductCrashRecord>
       exportProductDiagnostics: (path?: string) => Promise<ProductDiagnosticsExportResult>
       repairProductInstall: () => Promise<ProductOperationsStatus>
+      getAppShellStats: () => Promise<AppShellStatsSnapshot>
       getAppVersion: () => Promise<string>
       submitBugReport: (payload: {
         title: string
@@ -832,6 +832,7 @@ declare global {
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => void
+      onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void
       onWorkspacePopoutRefresh: (
         callback: (payload: { workspacePath: string; reason: string }) => void
       ) => () => void
