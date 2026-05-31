@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { GeminiWorktreeLaunchOption, ProviderId } from '../main/store/types'
+import type {
+  GeminiWorktreeLaunchOption,
+  ProviderId,
+  WorkspaceActivitySnapshot
+} from '../main/store/types'
 
 type ComposerImageAttachment = {
   id?: string
@@ -549,6 +553,12 @@ const api = {
   recordUsage: (usage: any) => ipcRenderer.invoke('record-usage', usage),
   getUsage: (workspaceId?: string, chatId?: string) =>
     ipcRenderer.invoke('get-usage', workspaceId, chatId),
+  getWorkspaceActivity: (workspacePath: string, dayCount?: number) =>
+    ipcRenderer.invoke(
+      'get-workspace-activity',
+      workspacePath,
+      dayCount
+    ) as Promise<WorkspaceActivitySnapshot>,
   getScheduledTasks: (workspaceId?: string) =>
     ipcRenderer.invoke('get-scheduled-tasks', workspaceId),
   saveScheduledTask: (task: any) => ipcRenderer.invoke('save-scheduled-task', task),

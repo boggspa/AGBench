@@ -90,6 +90,7 @@ import {
 import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
 import { UsageHeatmap } from './components/UsageHeatmap'
+import { WorkspaceActivityHeatmap } from './components/WorkspaceActivityHeatmap'
 import { useAppearance } from './hooks/useAppearance'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
@@ -17526,6 +17527,12 @@ function App(): React.JSX.Element {
   // copy lives INSIDE the dashboard, gated on `hasActivity`.
   const shouldShowWelcomeUsageDashboard =
     isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
+  const welcomeWorkspaceActivityPath =
+    isWelcomeChat && !isCurrentGlobalChat
+      ? currentWorkspace?.path || currentChat?.workspacePath
+      : ''
+  const shouldShowWelcomeStandaloneHeatmaps =
+    Boolean(welcomeWorkspaceActivityPath) || shouldShowWelcomeUsageDashboard
   const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
     const style: CSSProperties = {}
     if (showGeminiTerminal && currentProvider === 'gemini') {
@@ -21295,19 +21302,30 @@ function App(): React.JSX.Element {
                 ))}
               </div>
             )}
-            {shouldShowWelcomeUsageDashboard && (
+            {shouldShowWelcomeStandaloneHeatmaps && (
               <div className="welcome-standalone-heatmaps">
-                <UsageHeatmap
-                  dayCount={90}
-                  title="AGBench Activity"
-                  className="usage-heatmap--welcome-standalone"
-                />
-                <UsageHeatmap
-                  dayCount={90}
-                  usageSource="external"
-                  title="External Activity"
-                  className="usage-heatmap--welcome-standalone"
-                />
+                {welcomeWorkspaceActivityPath && (
+                  <WorkspaceActivityHeatmap
+                    workspacePath={welcomeWorkspaceActivityPath}
+                    dayCount={90}
+                    className="usage-heatmap--welcome-standalone"
+                  />
+                )}
+                {shouldShowWelcomeUsageDashboard && (
+                  <>
+                    <UsageHeatmap
+                      dayCount={90}
+                      title="AGBench Activity"
+                      className="usage-heatmap--welcome-standalone"
+                    />
+                    <UsageHeatmap
+                      dayCount={90}
+                      usageSource="external"
+                      title="External Activity"
+                      className="usage-heatmap--welcome-standalone"
+                    />
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -31,6 +31,7 @@ import {
   RunRecoveryRecord,
   WorkspaceChangeFilter,
   WorkspaceChangeSet,
+  WorkspaceActivitySnapshot,
   ProductCrashFilter,
   ProductCrashInput,
   ProductCrashRecord,
@@ -721,6 +722,10 @@ declare global {
       clearChats: (workspaceId?: string) => Promise<void>
       recordUsage: (usage: Omit<UsageRecord, 'id' | 'timestamp'>) => Promise<void>
       getUsage: (workspaceId?: string, chatId?: string) => Promise<UsageRecord[]>
+      getWorkspaceActivity: (
+        workspacePath: string,
+        dayCount?: number
+      ) => Promise<WorkspaceActivitySnapshot>
       getScheduledTasks: (workspaceId?: string) => Promise<ScheduledTask[]>
       saveScheduledTask: (
         task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &

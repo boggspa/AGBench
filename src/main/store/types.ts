@@ -2078,6 +2078,32 @@ export interface UsageRecord {
   responseText?: string
 }
 
+export type WorkspaceActivityEventKind = 'git_commit' | 'worktree_change' | 'filesystem_change'
+
+export interface WorkspaceActivityEvent {
+  timestamp: number
+  kind: WorkspaceActivityEventKind
+  count: number
+  weight: number
+}
+
+export interface WorkspaceActivitySnapshot {
+  workspacePath: string
+  dayCount: number
+  generatedAt: number
+  source: 'git' | 'filesystem' | 'none'
+  truncated: boolean
+  events: WorkspaceActivityEvent[]
+  stats: {
+    gitRepo: boolean
+    commits: number
+    worktreeFiles: number
+    filesystemFiles: number
+    scannedFiles: number
+    scanLimit: number
+  }
+}
+
 export type ScheduledTaskStatus =
   | 'pending'
   | 'due'

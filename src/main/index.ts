@@ -82,6 +82,7 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
+import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
 import {
   getCurrentProviderRates,
@@ -21678,6 +21679,9 @@ if (isGeminiMcpBridgeProcess) {
       AppStore.getUsage(workspaceId, chatId)
     )
     ipcMain.handle('get-external-usage', () => loadExternalProviderUsageRecords())
+    ipcMain.handle('get-workspace-activity', (_, workspacePath: string, dayCount?: number) =>
+      getWorkspaceActivitySnapshot(requireRegisteredWorkspace(workspacePath), dayCount)
+    )
 
     // Scheduled tasks
     ipcMain.handle('get-scheduled-tasks', (_, workspaceId?: string) =>
