@@ -1,4 +1,9 @@
-import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/types'
+import type { ChatMessage, ChatRecord } from '../../../main/store/types'
+import {
+  agentInvocationSourceClassName,
+  agentInvocationSourceLabel,
+  providerDisplayName
+} from '../lib/AgentInvocationPresentation'
 import { MarkdownMessage } from './MarkdownMessage'
 import { subThreadReturnBody } from './SubThreadReturnCardModel'
 
@@ -8,16 +13,6 @@ interface SubThreadReturnCardProps {
   onOpenSubThread?: (chatId: string) => void
 }
 
-function providerLabel(provider?: ProviderId | string): string {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  if (provider === 'grok') return 'Grok'
-  if (provider === 'cursor') return 'Cursor'
-  if (provider === 'gemini') return 'Gemini'
-  return 'Sub-thread'
-}
-
 function textValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
@@ -25,7 +20,7 @@ function textValue(value: unknown): string | undefined {
 export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThreadReturnCardProps) {
   const metadata = message.metadata || {}
   const provider = metadata.subThreadProvider
-  const providerName = providerLabel(typeof provider === 'string' ? provider : undefined)
+  const providerName = providerDisplayName(typeof provider === 'string' ? provider : undefined)
   const title = textValue(metadata.subThreadTitle) || 'Untitled sub-thread'
   const subThreadId = textValue(metadata.subThreadId)
   const body = subThreadReturnBody(message.content)
@@ -37,7 +32,12 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
           <span aria-hidden="true" className="subthread-return-glyph">
             ↩
           </span>
-          <span className="subthread-return-label">Result from</span>
+          <span className="subthread-return-label">Invocation result from</span>
+          <span
+            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('agbench-subthread')}`}
+          >
+            {agentInvocationSourceLabel('agbench-subthread')}
+          </span>
           <span className={`subthread-return-provider provider-${provider || 'unknown'}`}>
             {providerName}
           </span>

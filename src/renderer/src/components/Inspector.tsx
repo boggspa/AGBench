@@ -140,9 +140,9 @@ interface InspectorProps {
   onClearCodexUsageCredential?: () => void
   onInstallGeminiMcpBridge?: () => void
   onRefreshGeminiMcpBridgeStatus?: () => void
-  /** Current chat — used by the Background tasks tab to list live subagents. */
+  /** Current chat — used by the Live Invocations tab to list active provider-native invocations. */
   currentChat?: ChatRecord | null
-  /** Phase I3.3 — full chat list, used by the Delegation Timeline tab to
+  /** Phase I3.3 — full chat list, used by the Invocation Timeline tab to
    * reconstruct the parent → sub-thread tree for the active chat. */
   chats?: ChatRecord[]
   /** Phase I3.3 — chat ids that currently have an active run, so the
@@ -157,7 +157,7 @@ interface InspectorProps {
  * Inspector tab definitions (1.0.3 polish).
  *
  * Text labels were getting heavily truncated on narrower screens —
- * "Delegation Timeline" / "Background tasks" each ate ~120-140px of
+ * "Invocation Timeline" / "Live Invocations" each ate ~120-140px of
  * a strip that maxes out at ~360px, so the last two tabs often
  * rendered as "…" and went unclickable. Switched to monoline SVG
  * glyphs so every tab fits at every width. Hover title + aria-label
@@ -212,7 +212,7 @@ const INSPECTOR_TABS = [
   },
   {
     id: 'delegation' as const,
-    label: 'Delegation',
+    label: 'Invocations',
     // Branching arrow — single trunk splitting into two children.
     icon: (
       <svg
@@ -235,7 +235,7 @@ const INSPECTOR_TABS = [
   },
   {
     id: 'timeline' as const,
-    label: 'Delegation Timeline',
+    label: 'Invocation Timeline',
     // Horizontal bars at different lengths — Gantt-style.
     icon: (
       <svg
@@ -295,7 +295,7 @@ const INSPECTOR_TABS = [
   },
   {
     id: 'background-tasks' as const,
-    label: 'Background tasks',
+    label: 'Live Invocations',
     // Clock face — background = scheduled / over time.
     icon: (
       <svg
@@ -727,10 +727,10 @@ function DelegationTab(props: InspectorProps) {
       <div className="diff-studio-toolbar">
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
-            {isEnsemble ? 'Ensemble delegation audit' : 'Provider delegation audit'}
+            {isEnsemble ? 'Ensemble agent invocation audit' : 'Agent invocation audit'}
           </div>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
-            {activities.length} delegated {activities.length === 1 ? 'activity' : 'activities'}{' '}
+            {activities.length} agent invocation {activities.length === 1 ? 'event' : 'events'}{' '}
             detected from raw/tool events
           </div>
         </div>
@@ -742,8 +742,8 @@ function DelegationTab(props: InspectorProps) {
       <div className="safety-card">
         <h4>
           {isEnsemble
-            ? 'Ensemble delegation model'
-            : `${providerLabel(props.provider)} delegation model`}
+            ? 'Ensemble agent invocation model'
+            : `${providerLabel(props.provider)} agent invocation model`}
         </h4>
         {isEnsemble && (
           <p
@@ -753,9 +753,9 @@ function DelegationTab(props: InspectorProps) {
               margin: '0 0 var(--space-sm) 0'
             }}
           >
-            Delegation and subagent activity is audited across the enabled participant providers.
-            Native provider events remain provider-owned; AGBench displays the combined audit in one
-            inspector surface.
+            Agent invocation activity is audited across the enabled participant providers. Native
+            provider events remain provider-owned; AGBench displays them beside durable sub-thread
+            activity in one inspector language.
           </p>
         )}
         {isEnsemble && (
@@ -792,11 +792,11 @@ function DelegationTab(props: InspectorProps) {
 
       {activities.length === 0 ? (
         <div className="safety-card">
-          <h4>No child agents yet</h4>
+          <h4>No agent invocations yet</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
             {isEnsemble
-              ? 'Ask any Ensemble participant to spawn or delegate to subagents. AGBench will render native provider events here when they appear in the stream.'
-              : `Ask ${providerLabel(props.provider)} to spawn or delegate to subagents. AGBench will render native provider events here when they appear in the stream.`}
+              ? 'Ask any Ensemble participant to spawn or delegate an agent invocation. AGBench will render native provider events here when they appear in the stream.'
+              : `Ask ${providerLabel(props.provider)} to spawn or delegate an agent invocation. AGBench will render native provider events here when they appear in the stream.`}
           </p>
         </div>
       ) : (

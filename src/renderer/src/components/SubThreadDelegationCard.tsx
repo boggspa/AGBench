@@ -1,4 +1,10 @@
 import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/types'
+import {
+  agentInvocationRouteLabel,
+  agentInvocationSourceClassName,
+  agentInvocationSourceLabel,
+  providerDisplayName
+} from '../lib/AgentInvocationPresentation'
 import { resolveDelegationStatus, type DelegationCardStatus } from './SubThreadDelegationCardModel'
 
 interface SubThreadDelegationCardProps {
@@ -11,16 +17,6 @@ interface SubThreadDelegationCardProps {
    * this set. */
   runningChatIds?: string[]
   onOpenSubThread?: (chatId: string) => void
-}
-
-function providerLabel(provider?: ProviderId | string): string {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  if (provider === 'grok') return 'Grok'
-  if (provider === 'cursor') return 'Cursor'
-  if (provider === 'gemini') return 'Gemini'
-  return 'Sub-thread'
 }
 
 function textValue(value: unknown): string | undefined {
@@ -119,20 +115,28 @@ export function SubThreadDelegationCard({
       title={isClickable ? 'Open sub-thread' : undefined}
     >
       <header className="subthread-delegation-header">
-        <div className="subthread-delegation-arc" aria-hidden="true">
+        <div className="subthread-delegation-heading">
+          <span className="agent-invocation-label">Agent Invocation</span>
           <span
-            className={`subthread-delegation-chip provider-${parentProvider || 'unknown'}`}
-            style={{ background: parentColorVar }}
+            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('agbench-subthread')}`}
           >
-            {providerLabel(parentProvider)}
+            {agentInvocationSourceLabel('agbench-subthread')}
           </span>
-          <span className="subthread-delegation-arc-arrow">→</span>
-          <span
-            className={`subthread-delegation-chip provider-${targetProvider || 'unknown'}`}
-            style={{ background: targetColorVar }}
-          >
-            {providerLabel(targetProvider)}
-          </span>
+          <div className="subthread-delegation-arc" aria-hidden="true">
+            <span
+              className={`subthread-delegation-chip provider-${parentProvider || 'unknown'}`}
+              style={{ background: parentColorVar }}
+            >
+              {providerDisplayName(parentProvider)}
+            </span>
+            <span className="subthread-delegation-arc-arrow">→</span>
+            <span
+              className={`subthread-delegation-chip provider-${targetProvider || 'unknown'}`}
+              style={{ background: targetColorVar }}
+            >
+              {providerDisplayName(targetProvider)}
+            </span>
+          </div>
         </div>
         <span className={`subthread-delegation-status status-${status.kind}`}>
           <span className="subthread-delegation-status-glyph">{statusGlyph(status)}</span>
@@ -148,6 +152,10 @@ export function SubThreadDelegationCard({
             {promptPreview}
           </div>
         )}
+        <div className="agent-invocation-route-note">
+          {agentInvocationRouteLabel('agbench-subthread')}
+          {isClickable ? ' · opens as linked chat' : ''}
+        </div>
       </div>
       {resultReturned && (
         <div className="subthread-delegation-footer">

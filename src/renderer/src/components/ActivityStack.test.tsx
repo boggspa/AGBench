@@ -244,6 +244,41 @@ describe('ActivityStack compactDensity routing', () => {
   })
 })
 
+describe('ActivityStack agent invocation presentation', () => {
+  it('labels provider-native child-agent threads with unified invocation copy', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        provider="claude"
+        activities={[
+          makeWriteActivity({
+            id: 'task-1',
+            toolName: 'Task',
+            displayName: 'Task',
+            category: 'task',
+            status: 'running',
+            parameters: {
+              description: 'Review helper',
+              prompt: 'Review the current diff'
+            }
+          }),
+          makeWriteActivity({
+            id: 'child-read-1',
+            toolName: 'read_file',
+            displayName: 'Read file',
+            category: 'read',
+            parentToolCallId: 'task-1'
+          })
+        ]}
+      />
+    )
+
+    expect(html).toContain('Provider Native')
+    expect(html).toContain('Provider tool call in this transcript')
+    expect(html).toContain('Invocation prompt')
+    expect(html).toContain('Provider-native activity')
+  })
+})
+
 describe('ActivityStack controlled expansion (1.0.6-TV2)', () => {
   it('renders the row collapsed when the controlled set is empty', () => {
     const html = renderToStaticMarkup(

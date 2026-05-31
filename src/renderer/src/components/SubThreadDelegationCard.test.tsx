@@ -1,9 +1,11 @@
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   resolveDelegationStatus,
   isSubThreadDelegationMessage
 } from './SubThreadDelegationCardModel'
 import type { ChatMessage, ChatRecord } from '../../../main/store/types'
+import { SubThreadDelegationCard } from './SubThreadDelegationCard'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
@@ -130,5 +132,33 @@ describe('resolveDelegationStatus', () => {
   it('returns unknown when no chat record is available', () => {
     const status = resolveDelegationStatus(undefined, new Set())
     expect(status.kind).toBe('unknown')
+  })
+})
+
+describe('SubThreadDelegationCard', () => {
+  it('renders AGBench sub-threads as agent invocations with an explicit route', () => {
+    const msg: ChatMessage = {
+      id: 'm',
+      role: 'system',
+      content: '↪ Delegated to Kimi sub-thread.',
+      timestamp: 't',
+      metadata: {
+        kind: 'subThreadDelegation',
+        subThreadId: 'sub-1',
+        parentProvider: 'claude',
+        subThreadProvider: 'kimi',
+        subThreadTitle: 'Review helper',
+        delegationPromptPreview: 'Review the changed files'
+      }
+    }
+    const html = renderToStaticMarkup(
+      <SubThreadDelegationCard message={msg} chats={[makeChat()]} onOpenSubThread={() => {}} />
+    )
+
+    expect(html).toContain('Agent Invocation')
+    expect(html).toContain('AGBench Sub-thread')
+    expect(html).toContain('Durable sub-thread')
+    expect(html).toContain('opens as linked chat')
+    expect(html).toContain('Review helper')
   })
 })

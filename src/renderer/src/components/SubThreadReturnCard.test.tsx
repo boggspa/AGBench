@@ -44,7 +44,8 @@ describe('SubThreadReturnCard', () => {
     )
 
     expect(html).toContain('subthread-return-card')
-    expect(html).toContain('Result from')
+    expect(html).toContain('Invocation result from')
+    expect(html).toContain('AGBench Sub-thread')
     expect(html).toContain('Codex')
     expect(html).toContain('Build agent')
     expect(html).toContain('<strong>Done</strong>')

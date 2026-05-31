@@ -9,7 +9,7 @@ interface BackgroundTasksPanelProps {
 }
 
 /**
- * Inspector tab content listing live subagents for the active chat.
+ * Inspector tab content listing live provider-native agent invocations for the active chat.
  *
  * Renders a row per running/queued ChildAgentThread (colored status dot, name,
  * role, duration, and the latest activity stage). Clicking a row scrolls the
@@ -50,13 +50,13 @@ export function BackgroundTasksPanel({ chat, provider }: BackgroundTasksPanelPro
   return (
     <div className="background-tasks-panel">
       <div className="background-tasks-panel-header">
-        <h3 className="background-tasks-panel-title">Background tasks</h3>
+        <h3 className="background-tasks-panel-title">Agent invocations</h3>
         <span className="background-tasks-panel-count">
           {liveThreads.length === 0 ? 'idle' : `${liveThreads.length} running`}
         </span>
       </div>
       {liveThreads.length === 0 ? (
-        <div className="background-tasks-panel-empty">No background tasks running.</div>
+        <div className="background-tasks-panel-empty">No active agent invocations.</div>
       ) : (
         <ul className="background-tasks-panel-list">
           {liveThreads.map((thread) => (

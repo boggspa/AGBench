@@ -66,13 +66,13 @@ export function providerDelegationChips(
   const chips: string[] = []
 
   if (provider === 'codex') {
-    chips.push('Native subagents', 'App-server threads', 'Provider MCP')
+    chips.push('Provider-native invocations', 'App-server threads', 'Provider MCP')
   } else if (provider === 'claude') {
-    chips.push('Native Agent/Task', 'Provider-managed approvals', 'SDK audit when available')
+    chips.push('Provider-native Task', 'Provider-managed approvals', 'SDK audit when available')
   } else if (provider === 'kimi') {
-    chips.push('Native Agent tool', 'Wire SubagentEvent', 'Provider MCP')
+    chips.push('Provider-native Agent tool', 'Wire SubagentEvent', 'Provider MCP')
   } else {
-    chips.push('Native subagents', 'AGBench MCP bridge', 'Best-effort JSONL audit')
+    chips.push('Provider-native invocations', 'AGBench MCP bridge', 'Best-effort JSONL audit')
   }
 
   if (contract?.approvals.inAppApprovals) {

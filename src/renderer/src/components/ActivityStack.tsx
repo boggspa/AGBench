@@ -26,6 +26,13 @@ import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
+import {
+  agentInvocationRouteLabel,
+  agentInvocationSourceClassName,
+  agentInvocationSourceLabel,
+  childAgentInteractivityLabel,
+  childAgentStateLabel
+} from '../lib/AgentInvocationPresentation'
 
 interface ActivityStackProps {
   activities: ToolActivity[]
@@ -1214,10 +1221,8 @@ function ActivityImageBlocks({ blocks }: { blocks: ReturnType<typeof extractMcpI
 }
 
 /**
- * Spawn block — collapsed summary that precedes the individual
- * `ChildAgentThreadCard`s when 2+ subagents are spawned in the same message.
- * Mirrors Codex's "Spawned N agents" disclosure: one colored row per agent
- * with name + role + instructions preview, click to scroll to the card.
+ * Spawn block — collapsed summary that precedes the individual provider-native
+ * invocation cards when 2+ agents are spawned in the same message.
  */
 function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
   const [expanded, setExpanded] = useState(true)
@@ -1256,7 +1261,12 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
           <polyline points="3,4.5 6,7.5 9,4.5" />
         </svg>
         <span className="child-agent-spawn-block-title">
-          Spawned <strong>{threads.length}</strong> agents
+          Agent Invocations <strong>{threads.length}</strong>
+        </span>
+        <span
+          className={`agent-invocation-source-chip ${agentInvocationSourceClassName('provider-native')}`}
+        >
+          {agentInvocationSourceLabel('provider-native')}
         </span>
         {!expanded && (
           <span className="child-agent-spawn-block-collapsed-pills" aria-hidden>
@@ -1676,22 +1686,8 @@ function ChildAgentThreadCard({
   shimmerNow?: number
 }) {
   const [expanded, setExpanded] = useState(thread.state === 'running')
-  const interactivityLabel =
-    thread.interactivity === 'interactive'
-      ? 'Interactive'
-      : thread.interactivity === 'observe-only'
-        ? 'Observe-only'
-        : 'One-shot'
-  const stateLabel =
-    thread.state === 'running'
-      ? 'Running'
-      : thread.state === 'completed'
-        ? 'Completed'
-        : thread.state === 'failed'
-          ? 'Failed'
-          : thread.state === 'cancelled'
-            ? 'Cancelled'
-            : 'Queued'
+  const interactivityLabel = childAgentInteractivityLabel(thread.interactivity)
+  const stateLabel = childAgentStateLabel(thread.state)
 
   // Resolve identity (assigned via assignAgentIdentity during thread derive).
   // When present, the colored name + dot replace the generic "Task #N" label.
@@ -1744,6 +1740,11 @@ function ChildAgentThreadCard({
           {displayName}
         </span>
         {identityRole && <span className="child-agent-thread-role">{identityRole}</span>}
+        <span
+          className={`agent-invocation-source-chip ${agentInvocationSourceClassName('provider-native')}`}
+        >
+          {agentInvocationSourceLabel('provider-native')}
+        </span>
         <span className={`child-agent-thread-state state-${thread.state}`}>{stateLabel}</span>
         <span className="child-agent-thread-interactivity">{interactivityLabel}</span>
         {typeof thread.durationMs === 'number' && (
@@ -1766,15 +1767,20 @@ function ChildAgentThreadCard({
       </button>
       {expanded && (
         <div className="child-agent-thread-body">
+          <div className="agent-invocation-route-note">
+            {agentInvocationRouteLabel('provider-native')}
+          </div>
           {thread.seedPrompt && (
             <div className="child-agent-section">
-              <div className="child-agent-section-title">Seed prompt</div>
+              <div className="child-agent-section-title">Invocation prompt</div>
               <pre className="child-agent-seed-prompt">{thread.seedPrompt}</pre>
             </div>
           )}
           {activities.length > 0 && (
             <div className="child-agent-section">
-              <div className="child-agent-section-title">Child activity · {activities.length}</div>
+              <div className="child-agent-section-title">
+                Provider-native activity · {activities.length}
+              </div>
               <div className="child-agent-activities">
                 {activities.map((childActivity) => (
                   <ActivityRow
@@ -1796,12 +1802,12 @@ function ChildAgentThreadCard({
           )}
           {thread.finalResult && (
             <div className="child-agent-section">
-              <div className="child-agent-section-title">Final result</div>
+              <div className="child-agent-section-title">Invocation result</div>
               <div className="child-agent-result">{thread.finalResult}</div>
             </div>
           )}
           {!thread.seedPrompt && activities.length === 0 && !thread.finalResult && (
-            <div className="child-agent-empty">No child agent output captured yet.</div>
+            <div className="child-agent-empty">No agent invocation output captured yet.</div>
           )}
         </div>
       )}

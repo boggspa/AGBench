@@ -248,10 +248,10 @@ describe('Inspector capabilities', () => {
     expect(rawHtml).toContain('Reviewer / Claude')
 
     const delegationHtml = renderInspector({ rightTab: 'delegation', rawLogs })
-    expect(delegationHtml).toContain('Ensemble delegation audit')
-    expect(delegationHtml).toContain('Ensemble delegation model')
+    expect(delegationHtml).toContain('Ensemble agent invocation audit')
+    expect(delegationHtml).toContain('Ensemble agent invocation model')
     expect(delegationHtml).toContain('Review helper')
-    expect(delegationHtml).not.toContain('Codex delegation model')
+    expect(delegationHtml).not.toContain('Codex agent invocation model')
 
     const safetyHtml = renderInspector({ rightTab: 'safety' })
     expect(safetyHtml).toContain('Ensemble safety')
