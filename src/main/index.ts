@@ -1074,17 +1074,24 @@ interface HostCommandResult {
   durationMs: number
 }
 
+// NOTE: keep in sync with the renderer's CODEX_DEFAULT_MODELS (App.tsx:~4205).
+// This list is shipped to the renderer via `getAgentModels('codex')` and
+// becomes `codexModels`, which OVERRIDES the renderer's own fallback list —
+// so the renderer-side retiresAt edits are moot in normal operation unless
+// the same field is mirrored here. Structured-clone IPC carries `retiresAt`
+// through unchanged; the renderer-side typeof guard at App.tsx:~20566 then
+// surfaces it to the picker pill.
 const CODEX_STATIC_MODELS = [
   { id: 'gpt-5.5', label: 'GPT-5.5', description: 'Default Codex model', isDefault: true },
   { id: 'gpt-5.4', label: 'GPT-5.4' },
   { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', retiresAt: '2026-06-02' },
   {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     description: 'Research preview where available'
   },
-  { id: 'gpt-5.2', label: 'GPT-5.2' }
+  { id: 'gpt-5.2', label: 'GPT-5.2', retiresAt: '2026-06-02' }
 ]
 const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'off' },
