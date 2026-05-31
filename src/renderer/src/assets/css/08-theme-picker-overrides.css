@@ -7368,6 +7368,29 @@
   -webkit-text-fill-color: #ef4444 !important;
 }
 
+/* Stop the label ellipsizing on a retiring row. The MODEL column
+ * (.composer-combined-picker-models — NB plural, NOT "...-model") is pinned
+ * near its 140px min-width via the shared .composer-combined-picker-column
+ * rule above in this shard, so when BOTH the retirement pill AND the
+ * selected-row ✓ are present the flex:1 label is the only flexible element
+ * left, shrinks, and truncates ("GPT-5.3-Co…"). Scoped with :has() so the
+ * picker keeps its compact width whenever no pill is shown — only when a
+ * retirement pill actually exists do we let the column grow to fit the widest
+ * row's natural content width. (Chromium/Electron supports :has() +
+ * max-content.) */
+.composer-combined-picker-models:has(.composer-combined-picker-retirement-pill) {
+  min-width: max-content;
+}
+/* In a pill row specifically, the label must never be the element that gives
+ * way: the pill and ✓ are fixed-size and the column has grown to fit, so let
+ * the label take its natural width instead of being the flex shrink victim. */
+.composer-combined-picker-row:has(.composer-combined-picker-retirement-pill)
+  .composer-combined-picker-row-label {
+  flex: 0 0 auto;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* Fast-mode toggle row at the bottom of the Reasoning column. Same
  * row chrome as the reasoning options for visual consistency, plus
  * a slim top border so the user reads it as a distinct sub-section
