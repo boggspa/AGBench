@@ -5358,11 +5358,10 @@ interface WelcomeWorkspacePickerProps {
 /**
  * Number of most-recent workspaces to surface as inline chips before
  * the rest spill into the popover. Four chips comfortably cover the
- * typical 2-3 active projects + 1 recent without crowding the welcome
- * hero (was 5 in 1.0.3-1.0.4 — slightly too wide for the welcome
- * surface, reduced in 1.0.5).
+ * typical active projects without crowding the welcome hero. Reduced to 3
+ * once Global Chat became a permanent leading chip in 1.0.6.
  */
-const WELCOME_WORKSPACE_INLINE_LIMIT = 4
+const WELCOME_WORKSPACE_INLINE_LIMIT = 3
 
 function WelcomeWorkspacePicker({
   workspaces,
