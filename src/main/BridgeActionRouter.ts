@@ -16,6 +16,11 @@ import {
   type BridgeActionExecutionResult,
   type BridgeActionExecutor
 } from './BridgeActionExecutor'
+import {
+  createDefaultRemoteDeviceAuditLedger,
+  type RemoteDeviceAuditDecision,
+  type RemoteDeviceAuditLedgerWriter
+} from './remote/RemoteDeviceAuditLedger'
 
 /**
  * BridgeActionRouter — Electron-side handler for daemon→Electron requests.
@@ -177,6 +182,8 @@ export interface BridgeActionRouterOptions {
   now?: () => number
   /** How long actionIds without an explicit expiresAt remain replay-blocked. */
   replayRetentionMs?: number
+  /** Optional device-attributed audit sink for capability-gated remote actions. */
+  auditLedger?: RemoteDeviceAuditLedgerWriter | null
 }
 
 /** Error subclass the BridgeDaemonClient knows about — throwing one of these
@@ -195,6 +202,7 @@ export class BridgeActionRouter {
   private readonly ownershipValidator?: BridgeActionOwnershipValidator
   private readonly now: () => number
   private readonly replayRetentionMs: number
+  private readonly auditLedger?: RemoteDeviceAuditLedgerWriter
   private readonly seenActionIds = new Map<string, { seenAt: number; expiresAt: number }>()
 
   constructor(options: BridgeActionRouterOptions = {}) {
@@ -205,6 +213,10 @@ export class BridgeActionRouter {
     this.ownershipValidator = options.ownershipValidator
     this.now = options.now ?? (() => Date.now())
     this.replayRetentionMs = options.replayRetentionMs ?? 24 * 60 * 60 * 1000
+    this.auditLedger =
+      options.auditLedger === undefined
+        ? createDefaultRemoteDeviceAuditLedger({ log: this.log }) ?? undefined
+        : options.auditLedger ?? undefined
     if (this.permissiveDev) {
       this.log(
         '[BridgeActionRouter] WARN: permissive-dev mode is ON — every iOS action ack request will be accepted'
@@ -218,12 +230,20 @@ export class BridgeActionRouter {
     log?: (line: string) => void,
     allowlist?: RemoteWorkspaceAllowlist,
     executor?: BridgeActionExecutor,
-    ownershipValidator?: BridgeActionOwnershipValidator
+    ownershipValidator?: BridgeActionOwnershipValidator,
+    auditLedger?: RemoteDeviceAuditLedgerWriter | null
   ): BridgeActionRouter {
     const permissiveDev =
       process.env.AGBENCH_BRIDGE_PERMISSIVE === '1' ||
       process.env.AGBENCH_BRIDGE_PERMISSIVE === 'true'
-    return new BridgeActionRouter({ permissiveDev, log, allowlist, executor, ownershipValidator })
+    return new BridgeActionRouter({
+      permissiveDev,
+      log,
+      allowlist,
+      executor,
+      ownershipValidator,
+      auditLedger
+    })
   }
 
   /** Dispatch a daemon→Electron request to the right policy method. Throws
@@ -306,11 +326,19 @@ export class BridgeActionRouter {
     if (replayGuard) return replayGuard
 
     if (payloadRequiresWorkspaceGating(payload)) {
+      const capability = capabilityForPayload(payload)
       const workspaceId = workspaceIdFromPayload(payload)
       if (workspaceId === null) {
         this.log(
           `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} missing workspaceId`
         )
+        await this.auditActionDecision({
+          pairID,
+          payload,
+          capability,
+          decision: 'denied',
+          reason: 'Action payload is missing workspaceId'
+        })
         return this.buildActionAck({
           pairID,
           accepted: false,
@@ -321,7 +349,6 @@ export class BridgeActionRouter {
         })
       }
       if (this.allowlist) {
-        const capability = capabilityForPayload(payload)
         const decision = this.allowlist.evaluate({
           workspaceId,
           provider: providerFromPayload(payload),
@@ -336,6 +363,13 @@ export class BridgeActionRouter {
           this.log(
             `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${decision.reason}"`
           )
+          await this.auditActionDecision({
+            pairID,
+            payload,
+            capability,
+            decision: 'denied',
+            reason: decision.reason
+          })
           return this.buildActionAck({
             pairID,
             accepted: false,
@@ -351,6 +385,13 @@ export class BridgeActionRouter {
           this.log(
             `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} ownership="${ownershipDecision.reason}"`
           )
+          await this.auditActionDecision({
+            pairID,
+            payload,
+            capability,
+            decision: 'denied',
+            reason: ownershipDecision.reason
+          })
           return this.buildActionAck({
             pairID,
             accepted: false,
@@ -364,6 +405,13 @@ export class BridgeActionRouter {
         this.log(
           `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} — no allowlist configured`
         )
+        await this.auditActionDecision({
+          pairID,
+          payload,
+          capability,
+          decision: 'denied',
+          reason: 'iOS action routing not yet enabled — no workspace allowlist configured'
+        })
         return this.buildActionAck({
           pairID,
           accepted: false,
@@ -384,6 +432,13 @@ export class BridgeActionRouter {
     this.log(
       `[BridgeActionRouter] ACCEPT actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceIdForLog} executed=${dispatch.executed}`
     )
+    await this.auditActionDecision({
+      pairID,
+      payload,
+      capability: capabilityForPayload(payload),
+      decision: 'allowed',
+      reason: dispatch.message || 'accepted'
+    })
     return this.buildActionAck({
       pairID,
       accepted: true,
@@ -470,6 +525,13 @@ export class BridgeActionRouter {
       this.log(
         `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} — no allowlist configured`
       )
+      await this.auditPrepareStartTurnDecision({
+        pairID,
+        workspaceId: workspaceID,
+        threadId: threadID,
+        decision: 'denied',
+        reason: 'iOS-initiated turns not yet enabled — no workspace allowlist configured'
+      })
       return {
         v: 1,
         schemaVersion: 1,
@@ -510,6 +572,13 @@ export class BridgeActionRouter {
         this.log(
           `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} ownership="${ownershipDecision.reason}"`
         )
+        await this.auditPrepareStartTurnDecision({
+          pairID,
+          workspaceId: workspaceID,
+          threadId: threadID,
+          decision: 'denied',
+          reason: ownershipDecision.reason
+        })
         return {
           v: 1,
           schemaVersion: 1,
@@ -525,6 +594,13 @@ export class BridgeActionRouter {
       this.log(
         `[BridgeActionRouter] ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID} mode=${decision.entry.mode}`
       )
+      await this.auditPrepareStartTurnDecision({
+        pairID,
+        workspaceId: workspaceID,
+        threadId: threadID,
+        decision: 'allowed',
+        reason: `Workspace "${workspaceID}" allowed (${decision.entry.mode})`
+      })
       return {
         v: 1,
         schemaVersion: 1,
@@ -540,6 +616,13 @@ export class BridgeActionRouter {
     this.log(
       `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} reason="${decision.reason}"`
     )
+    await this.auditPrepareStartTurnDecision({
+      pairID,
+      workspaceId: workspaceID,
+      threadId: threadID,
+      decision: 'denied',
+      reason: decision.reason
+    })
     return {
       v: 1,
       schemaVersion: 1,
@@ -592,6 +675,62 @@ export class BridgeActionRouter {
       message: input.message,
       executed: input.executed,
       data: input.data
+    }
+  }
+
+  private async auditActionDecision(input: {
+    pairID: string
+    payload: BridgeActionPayload
+    capability: RemoteWorkspaceCapability | null
+    decision: RemoteDeviceAuditDecision
+    reason: string
+  }): Promise<void> {
+    if (!this.auditLedger || !input.capability) return
+    const descriptor = actionAckDescriptorFromPayload(input.payload)
+    const actionId = actionIdFromPayload(input.payload)
+    const deterministicId = actionId
+      ? `remote-action:${input.pairID}:${actionId}:${input.capability}:${input.decision}`
+      : undefined
+    try {
+      await this.auditLedger.append({
+        ...(deterministicId ? { id: deterministicId } : {}),
+        deviceId: input.pairID,
+        capability: input.capability,
+        action: input.payload.kind,
+        chatId: chatIdFromPayload(input.payload) ?? descriptor.threadId,
+        decision: input.decision,
+        reason: input.reason,
+        timestamp: formatTimestamp(this.now())
+      })
+    } catch (err) {
+      this.log(
+        `[BridgeActionRouter] remote device audit write failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+  }
+
+  private async auditPrepareStartTurnDecision(input: {
+    pairID: string
+    workspaceId: string
+    threadId?: string
+    decision: RemoteDeviceAuditDecision
+    reason: string
+  }): Promise<void> {
+    if (!this.auditLedger) return
+    try {
+      await this.auditLedger.append({
+        deviceId: input.pairID,
+        capability: 'startTurn',
+        action: 'prepareStartTurn',
+        chatId: input.threadId,
+        decision: input.decision,
+        reason: input.reason,
+        timestamp: formatTimestamp(this.now())
+      })
+    } catch (err) {
+      this.log(
+        `[BridgeActionRouter] remote device audit write failed: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 
@@ -696,6 +835,12 @@ function approvalModeFromPayload(payload: BridgeActionPayload): string | undefin
   return 'approvalMode' in payload && typeof payload.approvalMode === 'string'
     ? payload.approvalMode
     : undefined
+}
+
+function chatIdFromPayload(payload: BridgeActionPayload): string | undefined {
+  if ('threadId' in payload && typeof payload.threadId === 'string') return payload.threadId
+  if (payload.kind === 'togglePinChat') return payload.appChatId
+  return undefined
 }
 
 function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapability | null {

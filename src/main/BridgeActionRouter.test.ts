@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import type { BridgeActionExecutionResult, BridgeActionExecutor } from './BridgeActionExecutor'
+import type {
+  RemoteDeviceAuditLedgerWriter,
+  RemoteDeviceAuditRecord,
+  RemoteDeviceAuditRecordInput
+} from './remote/RemoteDeviceAuditLedger'
 
 /** Stub executor for router tests — captures method invocations + returns
  * configurable results. */
@@ -73,6 +78,32 @@ function makeStubExecutor(
     })
   }
   return { executor, calls }
+}
+
+function makeAuditLedger(): {
+  ledger: RemoteDeviceAuditLedgerWriter
+  records: RemoteDeviceAuditRecord[]
+} {
+  const records: RemoteDeviceAuditRecord[] = []
+  const ledger: RemoteDeviceAuditLedgerWriter = {
+    append: vi.fn(async (input: RemoteDeviceAuditRecordInput) => {
+      const record: RemoteDeviceAuditRecord = {
+        id: input.id || `audit-${records.length + 1}`,
+        deviceId: input.deviceId,
+        capability: input.capability,
+        action: input.action,
+        ...(input.chatId ? { chatId: input.chatId } : {}),
+        decision: input.decision,
+        reason: input.reason,
+        timestamp: input.timestamp || '2026-05-31T21:00:00.000Z'
+      }
+      const existing = records.find((row) => row.id === record.id)
+      if (existing) return existing
+      records.push(record)
+      return record
+    })
+  }
+  return { ledger, records }
 }
 
 describe('BridgeActionRouter', () => {
@@ -193,6 +224,30 @@ describe('BridgeActionRouter', () => {
       })) as { accepted: boolean; message?: string }
       expect(result.accepted).toBe(true)
       expect(result.message).toMatch(/read-write/i)
+    })
+
+    it('audits prepareStartTurn decisions by device id', async () => {
+      const allowlist = seedAllowlist()
+      const { ledger, records } = makeAuditLedger()
+      const router = new BridgeActionRouter({ allowlist, auditLedger: ledger })
+
+      const result = (await router.route('bridge.requestPrepareStartTurnAck', {
+        pairID: 'ipad-1',
+        workspaceID: 'ws-allowed',
+        threadID: 'thread-1'
+      })) as { accepted: boolean }
+
+      expect(result.accepted).toBe(true)
+      expect(records).toEqual([
+        expect.objectContaining({
+          deviceId: 'ipad-1',
+          capability: 'startTurn',
+          action: 'prepareStartTurn',
+          chatId: 'thread-1',
+          decision: 'allowed',
+          reason: expect.stringMatching(/allowed/i)
+        })
+      ])
     })
 
     it('denies prepareStartTurn when workspace is not on allowlist', async () => {
@@ -363,6 +418,41 @@ describe('BridgeActionRouter', () => {
       expect(result.message).toMatch(/composerPrompt|execution wiring pending/i)
     })
 
+    it('audits accepted capability-gated actionAck decisions by device id', async () => {
+      const allowlist = seedAllowlist()
+      const { ledger, records } = makeAuditLedger()
+      const router = new BridgeActionRouter({ allowlist, auditLedger: ledger })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'composerPrompt',
+          workspaceId: 'ws-allowed',
+          threadId: 't-1',
+          text: 'hello',
+          provider: 'gemini',
+          approvalMode: 'default',
+          actionId: 'compose-1'
+        }),
+        'utf-8'
+      ).toString('base64')
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'iphone-1',
+        payloadBase64: wire
+      })) as { accepted: boolean }
+
+      expect(result.accepted).toBe(true)
+      expect(records).toEqual([
+        expect.objectContaining({
+          id: 'remote-action:iphone-1:compose-1:startTurn:allowed',
+          deviceId: 'iphone-1',
+          capability: 'startTurn',
+          action: 'composerPrompt',
+          chatId: 't-1',
+          decision: 'allowed'
+        })
+      ])
+    })
+
     it('actionAck denies a composerPrompt for an unlisted workspace', async () => {
       const allowlist = seedAllowlist()
       const router = new BridgeActionRouter({ allowlist })
@@ -382,6 +472,39 @@ describe('BridgeActionRouter', () => {
       })) as { accepted: boolean; message?: string }
       expect(result.accepted).toBe(false)
       expect(result.message).toMatch(/not on the remote allowlist/i)
+    })
+
+    it('audits denied capability-gated actionAck decisions by device id', async () => {
+      const allowlist = seedAllowlist()
+      const { ledger, records } = makeAuditLedger()
+      const router = new BridgeActionRouter({ allowlist, auditLedger: ledger })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'setYoloMode',
+          workspaceId: 'ws-allowed',
+          enabled: true,
+          actionId: 'yolo-1'
+        }),
+        'utf-8'
+      ).toString('base64')
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'iphone-1',
+        payloadBase64: wire
+      })) as { accepted: boolean; reasonCode?: string }
+
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(records).toEqual([
+        expect.objectContaining({
+          id: 'remote-action:iphone-1:yolo-1:yolo:denied',
+          deviceId: 'iphone-1',
+          capability: 'yolo',
+          action: 'setYoloMode',
+          decision: 'denied',
+          reason: expect.stringMatching(/capability "yolo"/i)
+        })
+      ])
     })
 
     it('actionAck denies when provider is disallowed for the workspace', async () => {
