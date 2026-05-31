@@ -167,6 +167,7 @@ import {
 } from './components/CombinedPermissionsPicker'
 import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
 import { ComposerProviderPicker } from './components/ComposerProviderPicker'
+import { ContinuousHopsLimitChip } from './components/ContinuousHopsLimitChip'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
@@ -16442,6 +16443,34 @@ function App(): React.JSX.Element {
     [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
   )
 
+  // 1.0.6 — persist the user-set max handoff turns for continuous rounds onto
+  // chat.ensemble.maxContinuationHops. Range-clamped at the call site
+  // (ContinuousHopsLimitChip enforces 1–50); we still guard here so a malformed
+  // value never lands in the store. New value takes effect immediately for the
+  // NEXT round; an in-flight round keeps its captured cap (currentEnsembleMax-
+  // ContinuationHops reads `round.maxContinuationHops || chat.ensemble.max…`),
+  // which matches the rest of the per-round captured-config pattern in this app.
+  const updateCurrentEnsembleMaxContinuationHops = useCallback(
+    (nextMax: number) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      const safeMax = Math.max(1, Math.min(50, Math.round(Number(nextMax) || 0)))
+      if (!Number.isFinite(safeMax) || safeMax <= 0) return
+      updateChatById(currentChat.appChatId, (source) => {
+        if (!source.ensemble) return source
+        const patched: ChatRecord = {
+          ...source,
+          ensemble: {
+            ...source.ensemble,
+            maxContinuationHops: safeMax,
+            updatedAt: new Date().toISOString()
+          }
+        }
+        return withSessionActivityLedger(source, patched)
+      })
+    },
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
+  )
+
   // 1.0.4-AK2 — Work Session lifecycle callbacks wired to the setup
   // sheet + session strip. The sheet's confirm handler persists the
   // WorkSessionConfig onto the chat ensemble AND pre-fills the
@@ -20381,12 +20410,11 @@ function App(): React.JSX.Element {
                             Work Session
                           </button>
                           {activeEnsembleOrchestrationMode === 'continuous' && (
-                            <span
-                              className="composer-ensemble-hop-meter"
-                              title="Extra handoff turns used by this continuous round."
-                            >
-                              {currentEnsembleContinuationHops}/{currentEnsembleMaxContinuationHops}
-                            </span>
+                            <ContinuousHopsLimitChip
+                              hops={currentEnsembleContinuationHops}
+                              maxHops={currentEnsembleMaxContinuationHops}
+                              onSave={updateCurrentEnsembleMaxContinuationHops}
+                            />
                           )}
                         </span>
                       )}

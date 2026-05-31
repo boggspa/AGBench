@@ -31845,6 +31845,75 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent-color) 10%, transparent);
   color: color-mix(in srgb, var(--accent-color) 78%, var(--text-primary));
+  /* 1.0.6 — clickable chip variant for ContinuousHopsLimitChip. The chip is
+   * now a <button>, so strip browser-default styling on border + font-family
+   * (font-weight/font-size are asserted explicitly below). Subtle hover/open
+   * lift lives on the .is-clickable modifier so the non-interactive
+   * .ensemble-above-hop-meter sibling is unaffected. */
+  border: 0;
+  font-family: inherit;
+  cursor: default;
+}
+.composer-ensemble-hop-meter.is-clickable {
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+.composer-ensemble-hop-meter.is-clickable:hover:not(:disabled),
+.composer-ensemble-hop-meter.is-clickable.is-open {
+  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: color-mix(in srgb, var(--accent-color) 92%, var(--text-primary));
+}
+.composer-ensemble-hop-meter.is-clickable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.composer-ensemble-hop-meter.is-clickable:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 1.0.6 — popover surface for the continuous-hops chip. Reuses .welcome-
+ * workspace-popover chrome (glass + shadow + light-mode override) so it reads
+ * as a sibling of every other composer popover; this modifier just lays out
+ * the input + actions inside it. */
+.continuous-hops-popover .continuous-hops-popover-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+.continuous-hops-popover-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.continuous-hops-popover-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--surface-border, color-mix(in srgb, var(--panel-border) 80%, transparent));
+  background: color-mix(in srgb, var(--surface-1, var(--panel-bg-solid)) 92%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.continuous-hops-popover-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.continuous-hops-popover-help {
+  margin: 0;
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+.continuous-hops-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
