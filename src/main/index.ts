@@ -229,6 +229,7 @@ import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 // Kimi process sees the prompt). Module + tests live in
 // `src/main/lib/kimiSanitiser.ts`.
 import {
+  classifyAndRedactForKimi,
   formatKimiRetryDiagnostic,
   formatKimiRetryFailureDiagnostic,
   formatKimiSanitiserDiagnostic,
@@ -1268,6 +1269,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'welcomeHeatmapPrefs',
   'kimiSanitiserEnabled',
   'kimiSanitiserCustomKeywords',
+  'kimiClassifierEnabled',
   'agenticServices',
   'nativeSubAgentRequests',
   'geminiApiRuntime',
@@ -2101,6 +2103,12 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
       typeof sanitized.kimiSanitiserCustomKeywords === 'string'
         ? sanitized.kimiSanitiserCustomKeywords
         : ''
+  }
+  if ('kimiClassifierEnabled' in sanitized) {
+    sanitized.kimiClassifierEnabled =
+      typeof sanitized.kimiClassifierEnabled === 'boolean'
+        ? sanitized.kimiClassifierEnabled
+        : Boolean(sanitized.kimiClassifierEnabled)
   }
   if ('geminiApiRuntime' in sanitized) {
     const value = sanitized.geminiApiRuntime
@@ -8618,11 +8626,19 @@ async function runKimiWireProvider(
       const keywordCanRetry = Boolean(
         keywordResult?.redacted && keywordResult.text !== currentKimiPrompt
       )
+      const classifierResult = !kimiRetryPasses.includes('classifier')
+        ? classifyAndRedactForKimi(currentKimiPrompt, {
+            enabled: Boolean(settings.kimiClassifierEnabled)
+          })
+        : null
+      const classifierCanRetry = Boolean(
+        classifierResult?.redacted && classifierResult.text !== currentKimiPrompt
+      )
       const retryDecision = decideKimiContentFilterRetry({
         attemptedPasses: kimiRetryPasses,
         keywordCanRetry,
-        classifierAvailable: false,
-        classifierCanRetry: false
+        classifierAvailable: Boolean(classifierResult?.classifierAvailable),
+        classifierCanRetry
       })
 
       if (retryDecision.action === 'retry' && retryDecision.pass === 'keyword' && keywordResult) {
@@ -8638,6 +8654,29 @@ async function runKimiWireProvider(
           pass: 'keyword',
           attempt: kimiRetryPasses.length,
           triggers: keywordResult.matches.map((m) => m.trigger)
+        })
+        sendPrompt(currentKimiPrompt)
+        return true
+      }
+
+      if (
+        retryDecision.action === 'retry' &&
+        retryDecision.pass === 'classifier' &&
+        classifierResult
+      ) {
+        kimiRetryPasses.push('classifier')
+        currentKimiPrompt = classifierResult.text
+        sendAgentCompatLine(event.sender, 'kimi', {
+          type: 'provider_warning',
+          provider: 'kimi',
+          severity: 'warning',
+          title: 'Kimi safety filter rejected this prompt; retrying',
+          message: formatKimiRetryDiagnostic('classifier', classifierResult),
+          source: 'kimi-retry-envelope',
+          pass: 'classifier',
+          attempt: kimiRetryPasses.length,
+          classifierSource: classifierResult.source,
+          triggers: classifierResult.matches.map((m) => m.trigger)
         })
         sendPrompt(currentKimiPrompt)
         return true

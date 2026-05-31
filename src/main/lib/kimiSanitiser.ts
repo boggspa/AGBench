@@ -160,6 +160,38 @@ export interface KimiSanitiserResult {
   matches: ReadonlyArray<{ trigger: string; sentenceExcerpt: string }>
 }
 
+export interface KimiClassifierInput {
+  text: string
+  sentences: ReadonlyArray<string>
+}
+
+export interface KimiClassifierMatch {
+  sentenceIndex: number
+  trigger: string
+  confidence?: number
+}
+
+export type KimiClassifierResult =
+  | {
+      available: true
+      matches: ReadonlyArray<KimiClassifierMatch>
+      source?: string
+    }
+  | {
+      available: false
+      unavailableReason: 'disabled' | 'unavailable' | 'error'
+      message?: string
+      source?: string
+    }
+
+export type KimiContentClassifier = (input: KimiClassifierInput) => KimiClassifierResult
+
+export interface KimiClassifierRedactionResult extends KimiSanitiserResult {
+  classifierAvailable: boolean
+  unavailableReason?: 'disabled' | 'unavailable' | 'error'
+  source?: string
+}
+
 export type KimiContentFilterRetryFailureReason =
   | 'classifier_unavailable'
   | 'classifier_no_redaction'
@@ -169,8 +201,28 @@ export type KimiContentFilterRetryFailureReason =
 const SENTENCE_BOUNDARY_REGEX = /(?<=[.!?。！？])\s+/g
 const PLACEHOLDER =
   '[sentence redacted: AGBench Kimi compatibility filter detected content Moonshot rejects]'
+const CLASSIFIER_PLACEHOLDER =
+  '[sentence redacted: AGBench Kimi classifier flagged content Moonshot may reject]'
 const KIMI_CONTENT_FILTER_REJECTION_PATTERN =
   /Error code:\s*400[\s\S]*content_filter|["']?type["']?\s*:\s*["']content_filter["']?|content[_ -]?filter|considered high risk/i
+const KIMI_CLASSIFIER_PATTERNS: ReadonlyArray<{ trigger: string; pattern: RegExp }> = [
+  {
+    trigger: '1989 Beijing events',
+    pattern: /\b(1989\s+(beijing|student|square)|events?\s+(of|in)\s+1989)\b/i
+  },
+  {
+    trigger: 'western China detention framing',
+    pattern: /\b(re[-\s]?education camps?|mass internment|western china camps?)\b/i
+  },
+  {
+    trigger: 'cross-strait sovereignty framing',
+    pattern: /\bcross[-\s]?strait\b[\s\S]{0,80}\b(sovereignty|independence|status)\b/i
+  },
+  {
+    trigger: 'security-law protest framing',
+    pattern: /\b(national security law|one country[, ]+two systems)\b[\s\S]{0,80}\b(protest|crackdown|dissent)\b/i
+  }
+]
 
 export function isKimiContentFilterRejection(value: unknown): boolean {
   if (!value) return false
@@ -257,6 +309,92 @@ export function sanitiseForKimi(
     text: out.join(' '),
     redacted: matches.length > 0,
     matches
+  }
+}
+
+function defaultKimiContentClassifier(input: KimiClassifierInput): KimiClassifierResult {
+  const matches: KimiClassifierMatch[] = []
+  input.sentences.forEach((sentence, sentenceIndex) => {
+    const pattern = KIMI_CLASSIFIER_PATTERNS.find((entry) => entry.pattern.test(sentence))
+    if (!pattern) return
+    matches.push({ sentenceIndex, trigger: pattern.trigger, confidence: 0.72 })
+  })
+  return {
+    available: true,
+    matches,
+    source: 'local-heuristic'
+  }
+}
+
+export function classifyAndRedactForKimi(
+  text: string,
+  options: {
+    enabled?: boolean
+    classifier?: KimiContentClassifier
+  } = {}
+): KimiClassifierRedactionResult {
+  if (!text) {
+    return { text, redacted: false, matches: [], classifierAvailable: Boolean(options.enabled) }
+  }
+  if (!options.enabled) {
+    return {
+      text,
+      redacted: false,
+      matches: [],
+      classifierAvailable: false,
+      unavailableReason: 'disabled',
+      source: 'disabled'
+    }
+  }
+
+  const sentences = text.split(SENTENCE_BOUNDARY_REGEX)
+  let classifierResult: KimiClassifierResult
+  try {
+    classifierResult = (options.classifier || defaultKimiContentClassifier)({ text, sentences })
+  } catch (error) {
+    return {
+      text,
+      redacted: false,
+      matches: [],
+      classifierAvailable: false,
+      unavailableReason: 'error',
+      source: error instanceof Error ? error.message : 'classifier-error'
+    }
+  }
+  if (!classifierResult.available) {
+    return {
+      text,
+      redacted: false,
+      matches: [],
+      classifierAvailable: false,
+      unavailableReason: classifierResult.unavailableReason,
+      source: classifierResult.source
+    }
+  }
+
+  const matchBySentence = new Map<number, KimiClassifierMatch>()
+  for (const match of classifierResult.matches) {
+    if (!Number.isInteger(match.sentenceIndex)) continue
+    if (match.sentenceIndex < 0 || match.sentenceIndex >= sentences.length) continue
+    if (!matchBySentence.has(match.sentenceIndex)) {
+      matchBySentence.set(match.sentenceIndex, match)
+    }
+  }
+  const matches: { trigger: string; sentenceExcerpt: string }[] = []
+  const out = sentences.map((sentence, index) => {
+    const match = matchBySentence.get(index)
+    if (!match) return sentence
+    const excerpt = sentence.length > 120 ? `${sentence.slice(0, 117).trim()}…` : sentence.trim()
+    matches.push({ trigger: match.trigger, sentenceExcerpt: excerpt })
+    return CLASSIFIER_PLACEHOLDER
+  })
+
+  return {
+    text: out.join(' '),
+    redacted: matches.length > 0,
+    matches,
+    classifierAvailable: true,
+    source: classifierResult.source || 'local-heuristic'
   }
 }
 

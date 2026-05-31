@@ -143,6 +143,9 @@ const defaultSettings: AppSettings = {
   // topic. Custom keywords stay empty until the user adds any.
   kimiSanitiserEnabled: false,
   kimiSanitiserCustomKeywords: '',
+  // 1.0.7-M10 — second-pass classifier stays opt-in; when unset
+  // or false, the retry envelope remains keyword-only.
+  kimiClassifierEnabled: false,
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,

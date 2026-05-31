@@ -1368,6 +1368,41 @@ export function SettingsPanel({
   const [composerPreviewText, setComposerPreviewText] = useState('')
   const [mcpToolQuery, setMcpToolQuery] = useState('')
   const [keyCommandQuery, setKeyCommandQuery] = useState('')
+  const [kimiClassifierEnabled, setKimiClassifierEnabled] = useState(false)
+  const [kimiClassifierStatus, setKimiClassifierStatus] = useState('disabled')
+
+  useEffect(() => {
+    let cancelled = false
+    if (typeof window === 'undefined' || typeof window.api?.getSettings !== 'function') return
+    void window.api
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return
+        const enabled = Boolean(settings.kimiClassifierEnabled)
+        setKimiClassifierEnabled(enabled)
+        setKimiClassifierStatus(enabled ? 'enabled' : 'disabled')
+      })
+      .catch(() => {
+        if (!cancelled) setKimiClassifierStatus('unavailable')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const updateKimiClassifierEnabled = (enabled: boolean): void => {
+    setKimiClassifierEnabled(enabled)
+    setKimiClassifierStatus(enabled ? 'enabled' : 'disabled')
+    if (typeof window === 'undefined' || typeof window.api?.updateSettings !== 'function') {
+      setKimiClassifierStatus('unavailable')
+      return
+    }
+    void window.api.updateSettings({ kimiClassifierEnabled: enabled }).catch(() => {
+      setKimiClassifierEnabled(!enabled)
+      setKimiClassifierStatus('unavailable')
+    })
+  }
+
   const safeTurns = Number.isFinite(chatContextTurns)
     ? Math.max(0, Math.trunc(chatContextTurns))
     : 6
@@ -2753,6 +2788,28 @@ export function SettingsPanel({
                   placeholder so Kimi can still participate. Other panelists always see the
                   unfiltered prompt. Your transcript is never modified — only Kimi&apos;s view. A
                   diagnostic note appears whenever the filter fires.
+                </p>
+                <label
+                  className="settings-label"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-sm)',
+                    cursor: 'pointer',
+                    marginTop: 'var(--space-sm)'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={kimiClassifierEnabled}
+                    onChange={(e) => updateKimiClassifierEnabled(e.target.checked)}
+                  />
+                  Kimi classifier retry pass
+                </label>
+                <p className="settings-hint">
+                  When enabled, Kimi content-filter retries can escalate from keyword redaction to
+                  a local sentence classifier. Current state: {kimiClassifierStatus}. If disabled
+                  or unavailable, retries stay keyword-only and the failure diagnostic says so.
                 </p>
                 <label className="settings-label" style={{ marginTop: 'var(--space-sm)' }}>
                   Custom triggers (one per line)

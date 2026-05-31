@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   KIMI_DEFAULT_TRIGGER_KEYWORDS,
+  classifyAndRedactForKimi,
   formatKimiRetryDiagnostic,
   formatKimiRetryFailureDiagnostic,
   formatKimiSanitiserDiagnostic,
@@ -145,6 +146,69 @@ describe('kimiSanitiser', () => {
     })
     expect(diagnostic).toContain('Retry passes attempted: keyword')
     expect(diagnostic).toContain('classifier pass is disabled or unavailable')
+  })
+
+  it('keeps the classifier unavailable when it is disabled', () => {
+    const result = classifyAndRedactForKimi('The events of 1989 in Beijing came up.', {
+      enabled: false
+    })
+    expect(result.classifierAvailable).toBe(false)
+    expect(result.unavailableReason).toBe('disabled')
+    expect(result.redacted).toBe(false)
+  })
+
+  it('redacts classifier-flagged sentences when the classifier is enabled', () => {
+    const result = classifyAndRedactForKimi(
+      'A routine build note appeared. The events of 1989 in Beijing came up obliquely.'
+    )
+    expect(result.redacted).toBe(false)
+
+    const enabled = classifyAndRedactForKimi(
+      'A routine build note appeared. The events of 1989 in Beijing came up obliquely.',
+      { enabled: true }
+    )
+    expect(enabled.classifierAvailable).toBe(true)
+    expect(enabled.redacted).toBe(true)
+    expect(enabled.matches[0].trigger).toBe('1989 Beijing events')
+    expect(enabled.text).toContain('A routine build note appeared.')
+    expect(enabled.text).toContain('AGBench Kimi classifier flagged content')
+  })
+
+  it('supports deterministic mocked classifiers', () => {
+    const result = classifyAndRedactForKimi('First sentence. Second sentence.', {
+      enabled: true,
+      classifier: ({ sentences }) => ({
+        available: true,
+        source: 'mock',
+        matches: [{ sentenceIndex: sentences.length - 1, trigger: 'mock-trigger' }]
+      })
+    })
+    expect(result.source).toBe('mock')
+    expect(result.matches).toEqual([
+      {
+        trigger: 'mock-trigger',
+        sentenceExcerpt: 'Second sentence.'
+      }
+    ])
+    expect(result.text).toBe(
+      'First sentence. [sentence redacted: AGBench Kimi classifier flagged content Moonshot may reject]'
+    )
+  })
+
+  it('surfaces classifier-unavailable state without modifying text', () => {
+    const result = classifyAndRedactForKimi('First sentence.', {
+      enabled: true,
+      classifier: () => ({
+        available: false,
+        unavailableReason: 'unavailable',
+        source: 'mock-unavailable'
+      })
+    })
+    expect(result.text).toBe('First sentence.')
+    expect(result.redacted).toBe(false)
+    expect(result.classifierAvailable).toBe(false)
+    expect(result.unavailableReason).toBe('unavailable')
+    expect(result.source).toBe('mock-unavailable')
   })
 
   it('1.0.5-EW26b: catches diplomatic-summit / arms-package phrasings', () => {
