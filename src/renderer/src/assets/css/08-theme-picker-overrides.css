@@ -7332,6 +7332,42 @@
   opacity: 1;
 }
 
+/* 1.0.7-mini — retirement pill on a model picker row when option.retiresAt is
+ * set (Codex GPT-5.3-Codex + GPT-5.2 retiring 2026-06-02). Replaces the
+ * pre-1.0.7 "(retiring Jun 2)" baked into the label string, which flashed
+ * on first paint and was then resolved away by modelDisplayName.ts. Red is
+ * the global warning colour; `!important` defends against theme/shell rules
+ * that re-tint .composer-combined-picker-row descendants by permission-value
+ * (e.g. the codex auto_edit row colour). The pill is a semantic deprecation
+ * marker — its colour must not flip with theme. */
+.composer-combined-picker-retirement-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 6px 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ef4444 14%, transparent) !important;
+  color: #ef4444 !important;
+  -webkit-text-fill-color: #ef4444 !important;
+  font-size: calc(var(--font-size-xs) - 1px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.composer-combined-picker-retirement-pill svg {
+  flex-shrink: 0;
+  color: #ef4444 !important;
+}
+.composer-combined-picker-retirement-date {
+  /* Belt-and-suspenders: explicit colour assertion on the text node too, so
+   * theme overrides that target span descendants of the row can't repaint
+   * the date string. */
+  color: #ef4444 !important;
+  -webkit-text-fill-color: #ef4444 !important;
+}
+
 /* Fast-mode toggle row at the bottom of the Reasoning column. Same
  * row chrome as the reasoning options for visual consistency, plus
  * a slim top border so the user reads it as a distinct sub-section
