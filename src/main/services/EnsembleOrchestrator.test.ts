@@ -136,6 +136,8 @@ function makeHarness(
     probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
     scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
     cancelWakeupTimer?: (wakeupId: string) => void
+    persistSessionCheckpoint?: (chat: ChatRecord, reason: string) => void
+    completeSessionCheckpoint?: (chatId: string, roundId: string, status: string) => void
   } = {}
 ) {
   let chat = options.initialChat
@@ -164,7 +166,13 @@ function makeHarness(
     nowIso: () => `2026-05-24T00:00:0${counter}.000Z`,
     ...(probeParticipant ? { probeParticipant } : {}),
     ...(options.scheduleWakeupTimer ? { scheduleWakeupTimer: options.scheduleWakeupTimer } : {}),
-    ...(options.cancelWakeupTimer ? { cancelWakeupTimer: options.cancelWakeupTimer } : {})
+    ...(options.cancelWakeupTimer ? { cancelWakeupTimer: options.cancelWakeupTimer } : {}),
+    ...(options.persistSessionCheckpoint
+      ? { persistSessionCheckpoint: options.persistSessionCheckpoint }
+      : {}),
+    ...(options.completeSessionCheckpoint
+      ? { completeSessionCheckpoint: options.completeSessionCheckpoint }
+      : {})
   })
   return {
     get chat() {
@@ -209,6 +217,47 @@ describe('EnsembleOrchestrator', () => {
     )
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.dispatched[1].provider).toBe('codex')
+  })
+
+  it('persists an active-round checkpoint and retires it when the round completes', async () => {
+    const persisted: Array<{ chat: ChatRecord; reason: string }> = []
+    const completed: Array<{ chatId: string; roundId: string; status: string }> = []
+    const harness = makeHarness({
+      persistSessionCheckpoint: (chat, reason) => {
+        persisted.push({ chat, reason })
+      },
+      completeSessionCheckpoint: (chatId, roundId, status) => {
+        completed.push({ chatId, roundId, status })
+      }
+    })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Checkpoint this round.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(persisted.some((entry) => entry.reason === 'round-started')).toBe(true)
+    expect(persisted[persisted.length - 1].chat.ensemble?.activeRound?.status).toBe('running')
+    const roundId = harness.chat.ensemble!.activeRound!.roundId
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 5 } }
+    )
+
+    await vi.waitFor(() =>
+      expect(completed).toContainEqual({ chatId: 'ensemble-chat', roundId, status: 'completed' })
+    )
+    expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
   })
 
   it('dispatches duplicate-provider participants by participant id', async () => {

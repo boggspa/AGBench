@@ -75,6 +75,11 @@ import { EnsembleOrchestrator, type ParticipantProbeResult } from './services/En
 import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
 import { SoloChatWakeupService } from './SoloChatWakeupService'
 import {
+  createDefaultSessionCheckpointStore,
+  formatSessionCheckpointResumePrompt,
+  type SessionCheckpointStore
+} from './checkpoints/SessionCheckpoint'
+import {
   appendBugReport,
   type BugReportSubmission as BugReportSubmissionInput
 } from './services/BugReportService'
@@ -649,6 +654,7 @@ let approvalService: ApprovalService | null = null
 let runCoordinatorRef: RunCoordinator | null = null
 let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
+let sessionCheckpointStoreRef: SessionCheckpointStore | null = null
 // 1.0.5-EW37 — Solo-chat wakeup service. Extends the Phase N
 // wakeup infrastructure off the ensemble-only path so a solo chat
 // can also pause + resume itself via `schedule_wakeup`. Set in
@@ -23372,6 +23378,9 @@ if (isGeminiMcpBridgeProcess) {
     wakeupTimerServiceRef = new WakeupTimerService({
       onFire: handleEnsembleWakeupTimerFired
     })
+    sessionCheckpointStoreRef = createDefaultSessionCheckpointStore({
+      log: (line) => console.log(line)
+    })
     ensembleOrchestratorRef = new EnsembleOrchestrator({
       getChat: (chatId) => AppStore.getChat(chatId),
       saveChat: saveAndBroadcastChat,
@@ -23383,7 +23392,11 @@ if (isGeminiMcpBridgeProcess) {
       nowIso: () => new Date().toISOString(),
       probeParticipant: probeEnsembleParticipant,
       scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
-      cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId)
+      cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId),
+      persistSessionCheckpoint: (chat, reason) =>
+        sessionCheckpointStoreRef?.upsertFromChat(chat, reason),
+      completeSessionCheckpoint: (chatId, roundId, status) =>
+        sessionCheckpointStoreRef?.completeRound(chatId, roundId, status)
     })
     // 1.0.5-EW37 — Solo-chat wakeup service. Same shared timer +
     // recovery substrate as ensemble; dispatches a continuation
@@ -23477,6 +23490,29 @@ if (isGeminiMcpBridgeProcess) {
       return ensembleOrchestratorRef?.skipActiveParticipant(
         requireNonEmptyString(chatId, 'Ensemble chat id')
       )
+    })
+
+    // === 1.0.7 M7 — Ensemble session checkpoint recovery ===
+    ipcMain.handle('session-checkpoints:latest', async (_, chatId?: string) => {
+      const id = requireNonEmptyString(chatId, 'Chat id')
+      return sessionCheckpointStoreRef?.latestForChat(id) || null
+    })
+
+    ipcMain.handle('session-checkpoints:accept', async (_, checkpointId?: string) => {
+      const id = requireNonEmptyString(checkpointId, 'Checkpoint id')
+      const accepted = sessionCheckpointStoreRef?.accept(id) || null
+      if (!accepted) return { ok: false, error: 'No checkpoint matches.' }
+      return {
+        ok: true,
+        checkpoint: accepted.checkpoint,
+        resumePrompt: accepted.resumePrompt || formatSessionCheckpointResumePrompt(accepted.checkpoint)
+      }
+    })
+
+    ipcMain.handle('session-checkpoints:dismiss', async (_, checkpointId?: string) => {
+      const id = requireNonEmptyString(checkpointId, 'Checkpoint id')
+      const dismissed = sessionCheckpointStoreRef?.dismiss(id) || null
+      return dismissed ? { ok: true, checkpoint: dismissed } : { ok: false, error: 'No checkpoint matches.' }
     })
 
     // 1.0.5-N7 — User-initiated Wake-Now from the participant chip

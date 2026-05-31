@@ -48,6 +48,7 @@ import {
   appendEscalationSignals,
   detectComplexityEscalation
 } from '../escalation/ComplexityEscalation'
+import type { SessionCheckpointReason } from '../checkpoints/SessionCheckpoint'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -108,6 +109,12 @@ export interface EnsembleOrchestratorDeps {
   probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
   scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
   cancelWakeupTimer?: (wakeupId: string) => void
+  persistSessionCheckpoint?: (chat: ChatRecord, reason: SessionCheckpointReason) => void
+  completeSessionCheckpoint?: (
+    chatId: string,
+    roundId: string,
+    status: Extract<EnsembleRoundState['status'], 'completed' | 'cancelled' | 'failed'>
+  ) => void
 }
 
 /**
@@ -604,6 +611,29 @@ export class EnsembleOrchestrator {
 
   constructor(private deps: EnsembleOrchestratorDeps) {}
 
+  private saveChatWithCheckpoint(chat: ChatRecord, reason: SessionCheckpointReason): void {
+    this.deps.saveChat(chat)
+    if (chat.ensemble?.activeRound?.status !== 'running') return
+    try {
+      this.deps.persistSessionCheckpoint?.(chat, reason)
+    } catch {
+      // Checkpoints are recovery hints. A persistence failure must never
+      // interrupt the active ensemble run.
+    }
+  }
+
+  private completeCheckpoint(
+    chatId: string,
+    roundId: string,
+    status: Extract<EnsembleRoundState['status'], 'completed' | 'cancelled' | 'failed'>
+  ): void {
+    try {
+      this.deps.completeSessionCheckpoint?.(chatId, roundId, status)
+    } catch {
+      // Same invariant as writes: checkpoint cleanup is best-effort.
+    }
+  }
+
   startRound(input: {
     chatId: string
     prompt: string
@@ -730,9 +760,10 @@ export class EnsembleOrchestrator {
             queuedPrompts: [],
             activeParticipantId: undefined,
             endedAt: this.deps.nowIso()
-          }
+        }
         : round
     )
+    this.completeCheckpoint(chatId, roundId, 'cancelled')
     this.clearRuntimeIfCurrent(runtime)
     if (active) {
       await this.deps.cancelRun(active.participant.provider, active.runId).catch(() => undefined)
@@ -1195,7 +1226,7 @@ export class EnsembleOrchestrator {
     wakeup: EnsembleWakeupRecord
   ): void {
     if (!chat?.ensemble) return
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       ensemble: {
         ...chat.ensemble,
@@ -1206,7 +1237,7 @@ export class EnsembleOrchestrator {
         updatedAt: wakeup.firedAt || wakeup.cancelledAt || wakeup.expiredAt || wakeup.scheduledAt
       },
       updatedAt: this.deps.now()
-    })
+    }, 'round-updated')
   }
 
   private markWakeupCancelled(wakeup: EnsembleWakeupRecord, message: string): EnsembleWakeupRecord {
@@ -1297,7 +1328,7 @@ export class EnsembleOrchestrator {
         return participant
       })
     }
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       ensemble: {
         ...chat.ensemble,
@@ -1305,7 +1336,7 @@ export class EnsembleOrchestrator {
         updatedAt: this.deps.nowIso()
       },
       updatedAt: this.deps.now()
-    })
+    }, 'round-updated')
   }
 
   private findRuntimeByWakeupId(
@@ -1644,7 +1675,7 @@ export class EnsembleOrchestrator {
       },
       updatedAt: this.deps.now()
     }
-    this.deps.saveChat(updated)
+    this.saveChatWithCheckpoint(updated, 'round-started')
     const runtime: ActiveRoundRuntime = {
       chatId,
       roundId,
@@ -2175,7 +2206,7 @@ export class EnsembleOrchestrator {
     if (workSessionEnded === 'duration_exhausted' && chatNow && workSessionAtEnd) {
       const elapsedHours = (workSessionAtEnd.maxDurationMs / (1000 * 60 * 60)).toFixed(1)
       const reason = `Duration budget reached (${elapsedHours}h).`
-      this.deps.saveChat({
+      this.saveChatWithCheckpoint({
         ...chatNow,
         ensemble: {
           ...chatNow.ensemble!,
@@ -2186,7 +2217,7 @@ export class EnsembleOrchestrator {
             endedReason: reason
           }
         }
-      })
+      }, 'round-updated')
       this.appendRoundStatus(
         runtime.chatId,
         runtime.roundId,
@@ -2428,7 +2459,7 @@ export class EnsembleOrchestrator {
     }
     this.runsByRunId.set(runId, activeRun)
     const updatedRuns = [...chat.runs, run]
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       runs: updatedRuns,
       ensemble: {
@@ -2441,7 +2472,7 @@ export class EnsembleOrchestrator {
         updatedAt: startedAt
       },
       updatedAt: this.deps.now()
-    })
+    }, 'participant-updated')
     return activeRun
   }
 
@@ -2734,7 +2765,7 @@ export class EnsembleOrchestrator {
       ...(reason ? { reason } : {}),
       ...(final ? { endedAt: timestamp } : {})
     })
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       messages,
       runs,
@@ -2745,7 +2776,7 @@ export class EnsembleOrchestrator {
         updatedAt: timestamp
       },
       updatedAt: this.deps.now()
-    })
+    }, 'participant-updated')
   }
 
   private scheduleFlush(run: ActiveParticipantRun): void {
@@ -2800,7 +2831,11 @@ export class EnsembleOrchestrator {
     )
   }
 
-  private finishRound(chatId: string, roundId: string, status: EnsembleRoundState['status']): void {
+  private finishRound(
+    chatId: string,
+    roundId: string,
+    status: Extract<EnsembleRoundState['status'], 'completed' | 'cancelled' | 'failed'>
+  ): void {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) return
     const endedAt = this.deps.nowIso()
@@ -2876,31 +2911,39 @@ export class EnsembleOrchestrator {
       })
       nextEscalationSignals = appendEscalationSignals(chat.ensemble.escalationSignals, fresh)
     }
-    this.deps.saveChat({
-      ...chat,
-      ensemble: {
-        ...chat.ensemble,
-        activeRound: nextRound,
-        lastRoundSummary: summaryRecord ? summaryRecord.summary : undefined,
-        roundSummaries: summaryRecord
-          ? {
-              ...(chat.ensemble.roundSummaries || {}),
-              [roundId]: summaryRecord
-            }
-          : chat.ensemble.roundSummaries,
-        ...(nextBlackboard ? { blackboard: nextBlackboard } : {}),
-        ...(nextEscalationSignals ? { escalationSignals: nextEscalationSignals } : {}),
-        updatedAt: endedAt
+    this.saveChatWithCheckpoint(
+      {
+        ...chat,
+        ensemble: {
+          ...chat.ensemble,
+          activeRound: nextRound,
+          lastRoundSummary: summaryRecord ? summaryRecord.summary : undefined,
+          roundSummaries: summaryRecord
+            ? {
+                ...(chat.ensemble.roundSummaries || {}),
+                [roundId]: summaryRecord
+              }
+            : chat.ensemble.roundSummaries,
+          ...(nextBlackboard ? { blackboard: nextBlackboard } : {}),
+          ...(nextEscalationSignals ? { escalationSignals: nextEscalationSignals } : {}),
+          updatedAt: endedAt
+        },
+        updatedAt: this.deps.now()
       },
-      updatedAt: this.deps.now()
-    })
+      status === 'completed'
+        ? 'round-completed'
+        : status === 'cancelled'
+          ? 'round-cancelled'
+          : 'round-failed'
+    )
+    this.completeCheckpoint(chatId, roundId, status)
   }
 
   private appendRoundStatus(chatId: string, roundId: string, content: string): void {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) return
     const timestamp = this.deps.nowIso()
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       messages: [
         ...chat.messages,
@@ -2916,7 +2959,7 @@ export class EnsembleOrchestrator {
         }
       ],
       updatedAt: this.deps.now()
-    })
+    }, 'round-updated')
   }
 
   /**
@@ -2949,7 +2992,7 @@ export class EnsembleOrchestrator {
     }))
     const okCount = entries.filter((e) => e.status === 'ok').length
     const totalCount = entries.length
-    this.deps.saveChat({
+    this.saveChatWithCheckpoint({
       ...chat,
       messages: [
         ...chat.messages,
@@ -2972,7 +3015,7 @@ export class EnsembleOrchestrator {
         }
       ],
       updatedAt: this.deps.now()
-    })
+    }, 'round-updated')
   }
 
   private clearRuntimeIfCurrent(runtime: ActiveRoundRuntime): void {
@@ -2988,15 +3031,18 @@ export class EnsembleOrchestrator {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) return
     const activeRound = update(chat.ensemble.activeRound)
-    this.deps.saveChat({
-      ...chat,
-      ensemble: {
-        ...chat.ensemble,
-        ...(activeRound ? { activeRound } : {}),
-        updatedAt: this.deps.nowIso()
+    this.saveChatWithCheckpoint(
+      {
+        ...chat,
+        ensemble: {
+          ...chat.ensemble,
+          ...(activeRound ? { activeRound } : {}),
+          updatedAt: this.deps.nowIso()
+        },
+        updatedAt: this.deps.now()
       },
-      updatedAt: this.deps.now()
-    })
+      'round-updated'
+    )
   }
 
   private resolveParticipantPermissions(

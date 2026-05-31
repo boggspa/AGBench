@@ -46,6 +46,7 @@ import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
+import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -706,6 +707,19 @@ declare global {
       }) => Promise<{ status: string; roundId?: string }>
       cancelEnsembleRound: (chatId: string) => Promise<boolean>
       skipEnsembleParticipant: (chatId: string) => Promise<boolean>
+      getLatestSessionCheckpoint: (chatId: string) => Promise<SessionCheckpointRecord | null>
+      acceptSessionCheckpoint: (
+        checkpointId: string
+      ) => Promise<
+        | { ok: true; checkpoint: SessionCheckpointRecord; resumePrompt: string }
+        | { ok: false; error: string }
+      >
+      dismissSessionCheckpoint: (
+        checkpointId: string
+      ) => Promise<
+        | { ok: true; checkpoint: SessionCheckpointRecord }
+        | { ok: false; error: string }
+      >
       wakeEnsembleParticipantNow: (wakeupId: string) => Promise<boolean>
       cancelEnsembleParticipantWakeup: (
         wakeupId: string

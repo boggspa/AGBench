@@ -5,6 +5,7 @@ import type {
   WorkspaceActivitySnapshot
 } from '../main/store/types'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
+import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
 
 type ComposerImageAttachment = {
   id?: string
@@ -535,6 +536,18 @@ const api = {
   cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
   skipEnsembleParticipant: (chatId: string) =>
     ipcRenderer.invoke('skip-ensemble-participant', chatId),
+  getLatestSessionCheckpoint: (chatId: string) =>
+    ipcRenderer.invoke('session-checkpoints:latest', chatId) as Promise<SessionCheckpointRecord | null>,
+  acceptSessionCheckpoint: (checkpointId: string) =>
+    ipcRenderer.invoke('session-checkpoints:accept', checkpointId) as Promise<
+      | { ok: true; checkpoint: SessionCheckpointRecord; resumePrompt: string }
+      | { ok: false; error: string }
+    >,
+  dismissSessionCheckpoint: (checkpointId: string) =>
+    ipcRenderer.invoke('session-checkpoints:dismiss', checkpointId) as Promise<
+      | { ok: true; checkpoint: SessionCheckpointRecord }
+      | { ok: false; error: string }
+    >,
   wakeEnsembleParticipantNow: (wakeupId: string) =>
     ipcRenderer.invoke('wake-ensemble-participant-now', wakeupId) as Promise<boolean>,
   cancelEnsembleParticipantWakeup: (wakeupId: string) =>

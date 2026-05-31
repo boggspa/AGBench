@@ -133,6 +133,7 @@ import {
   getDefaultEnsembleParticipantConfig,
   resolveEnsembleParticipantSettings
 } from './lib/ensembleProviderDefaults'
+import type { SessionCheckpointRecord } from '../../main/checkpoints/SessionCheckpoint'
 import {
   rebindEnsembleChatToWorkspace,
   rebindWelcomeEnsembleChatToGlobal,
@@ -3123,6 +3124,21 @@ type AgentQuestionState = {
   options?: string[]
   context?: string
   askedAt: number
+}
+
+type SessionCheckpointPromptState = {
+  checkpoint: SessionCheckpointRecord
+  error?: string
+  loadedAt?: number
+}
+
+function formatSessionCheckpointTime(value: string): string {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return date.toLocaleString([], {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  })
 }
 
 const parsePlanModeChoice = (text: string): { question: string; options: string[] } | null => {
@@ -7893,6 +7909,8 @@ function App(): React.JSX.Element {
   // dismiss / cancellation. See AgentQuestionState type for shape.
   const [pendingAgentQuestionByChatId, setPendingAgentQuestionForChat] =
     usePerChatState<AgentQuestionState | null>(null)
+  const [pendingSessionCheckpointByChatId, setPendingSessionCheckpointForChat] =
+    usePerChatState<SessionCheckpointPromptState | null>(null)
   const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
   const [commandPaletteQueryByChatId, setCommandPaletteQueryForChat] = usePerChatState('')
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
@@ -8205,6 +8223,9 @@ function App(): React.JSX.Element {
     : null
   const pendingAgentQuestion = currentComposerChatId
     ? pendingAgentQuestionByChatId[currentComposerChatId] || null
+    : null
+  const pendingSessionCheckpoint = currentComposerChatId
+    ? pendingSessionCheckpointByChatId[currentComposerChatId] || null
     : null
   const isCommandPaletteOpen = currentComposerChatId
     ? Boolean(commandPaletteOpenByChatId[currentComposerChatId])
@@ -15702,6 +15723,48 @@ function App(): React.JSX.Element {
     [currentChat?.appChatId, setPendingAgentQuestionForChat]
   )
 
+  const handleSessionCheckpointLoad = useCallback(
+    async (checkpointId: string) => {
+      const targetChatId = currentChat?.appChatId
+      if (!targetChatId || typeof window.api.acceptSessionCheckpoint !== 'function') return
+      try {
+        const result = await window.api.acceptSessionCheckpoint(checkpointId)
+        if (!result.ok) {
+          setPendingSessionCheckpointForChat(targetChatId, (previous) =>
+            previous ? { ...previous, error: result.error } : previous
+          )
+          return
+        }
+        setPrompt(result.resumePrompt)
+        setPendingSessionCheckpointForChat(targetChatId, {
+          checkpoint: result.checkpoint,
+          loadedAt: Date.now()
+        })
+        requestAnimationFrame(() => composerTextareaRef.current?.focus())
+      } catch (error) {
+        setPendingSessionCheckpointForChat(targetChatId, (previous) =>
+          previous
+            ? { ...previous, error: error instanceof Error ? error.message : String(error) }
+            : previous
+        )
+      }
+    },
+    [currentChat?.appChatId, setPendingSessionCheckpointForChat, setPrompt]
+  )
+
+  const handleSessionCheckpointDismiss = useCallback(
+    (checkpointId: string) => {
+      const targetChatId = currentChat?.appChatId
+      if (targetChatId) {
+        setPendingSessionCheckpointForChat(targetChatId, null)
+      }
+      if (typeof window.api.dismissSessionCheckpoint === 'function') {
+        void window.api.dismissSessionCheckpoint(checkpointId).catch(() => {})
+      }
+    },
+    [currentChat?.appChatId, setPendingSessionCheckpointForChat]
+  )
+
   const handleRunFallback = async (fallbackModel: string) => {
     const capacityContext = getActiveRunContextForProvider('gemini')
     if (capacityContext?.capacityFallbackShown) {
@@ -16359,6 +16422,48 @@ function App(): React.JSX.Element {
   const isCurrentEnsembleChat = currentChat?.chatKind === 'ensemble'
   const isEnsembleModeEnabled = settings?.ensembleModeEnabled !== false
   const isCurrentComposerLocked = isCurrentChatRunning && !isCurrentEnsembleChat
+
+  useEffect(() => {
+    const chatId = currentChat?.appChatId
+    if (!chatId || currentChat?.chatKind !== 'ensemble') return
+    const activeRoundStatus = currentChat.ensemble?.activeRound?.status
+    const hasLiveRun = runningChatIds.has(chatId)
+    if (activeRoundStatus !== 'running' || hasLiveRun) {
+      setPendingSessionCheckpointForChat(chatId, null)
+      return
+    }
+    if (typeof window.api.getLatestSessionCheckpoint !== 'function') return
+    let cancelled = false
+    void window.api
+      .getLatestSessionCheckpoint(chatId)
+      .then((checkpoint) => {
+        if (cancelled) return
+        setPendingSessionCheckpointForChat(
+          chatId,
+          checkpoint ? { checkpoint } : null
+        )
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setPendingSessionCheckpointForChat(chatId, (previous) =>
+          previous
+            ? { ...previous, error: error instanceof Error ? error.message : String(error) }
+            : null
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    currentChat?.appChatId,
+    currentChat?.chatKind,
+    currentChat?.ensemble?.activeRound?.roundId,
+    currentChat?.ensemble?.activeRound?.status,
+    currentChat?.updatedAt,
+    runningChatIds,
+    setPendingSessionCheckpointForChat
+  ])
+
   // Slice F v2 (1.0.3) — which participant chip the composer pickers
   // currently target. Lives in App.tsx (not the chip-strip component)
   // because the composer's existing CombinedModelPicker /
@@ -19903,6 +20008,65 @@ function App(): React.JSX.Element {
                           aria-label="Dismiss trust mode banner"
                         >
                           ✕ Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {pendingSessionCheckpoint && (
+                    <div className="composer-permission-card">
+                      <div className="composer-permission-title">
+                        <span>Interrupted Ensemble checkpoint</span>
+                        <span className="composer-permission-source">
+                          {formatSessionCheckpointTime(
+                            pendingSessionCheckpoint.checkpoint.updatedAt
+                          )}
+                        </span>
+                      </div>
+                      <div className="composer-permission-message">
+                        {pendingSessionCheckpoint.loadedAt
+                          ? 'Resume draft loaded in the composer.'
+                          : 'A previous round stopped before AGBench could close it. Resume only after checking the current transcript and workspace state.'}
+                      </div>
+                      {pendingSessionCheckpoint.checkpoint.snapshot.openTasks.length > 0 && (
+                        <div className="composer-permission-paths">
+                          {pendingSessionCheckpoint.checkpoint.snapshot.openTasks
+                            .slice(0, 3)
+                            .map((task) => (
+                              <span key={task} className="composer-permission-path">
+                                {task}
+                              </span>
+                            ))}
+                        </div>
+                      )}
+                      {pendingSessionCheckpoint.error && (
+                        <div className="composer-permission-message">
+                          {pendingSessionCheckpoint.error}
+                        </div>
+                      )}
+                      <div className="composer-permission-actions">
+                        {!pendingSessionCheckpoint.loadedAt && (
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void handleSessionCheckpointLoad(
+                                pendingSessionCheckpoint.checkpoint.id
+                              )
+                            }
+                          >
+                            Load resume draft
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          type="button"
+                          onClick={() =>
+                            handleSessionCheckpointDismiss(
+                              pendingSessionCheckpoint.checkpoint.id
+                            )
+                          }
+                        >
+                          Dismiss
                         </button>
                       </div>
                     </div>
