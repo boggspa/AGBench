@@ -1,0 +1,2940 @@
+/* ============================================================
+ * Composer style variants
+ * Active via [data-composer-style="codex" | "claude"] on <html>.
+ * "default" leaves the existing composer styling untouched.
+ * Variants restructure layout to match Codex / Claude UIs.
+ * ============================================================ */
+
+/* ============== SHARED: hide AGBench-specific controls ============== */
+[data-composer-style="codex"] .composer-top-toggles,
+[data-composer-style="claude"] .composer-top-toggles,
+[data-composer-style="codex"] .composer-chips,
+/* Codex + Claude both keep the provider picker inline now (control parity).
+ * Anything else AGBench-specific in the left bar (model-aware reasoning
+ * pills, extra workspace chips, etc.) still gets hidden by these :not()
+ * allowlists. */
+[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]),
+[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+
+/* ============== CODEX STYLE ============== */
+[data-composer-style="codex"] .composer-surface {
+  border-radius: 22px;
+  padding: 14px 14px 10px;
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  border: 1px solid color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+[data-composer-style="codex"] .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.46);
+}
+/* 1.0.6-CS2 — Codex shell/interface, DARK themes only: remove the rim outline
+ * on the composer surface + the detached above rows / ensemble stack. "Dark" =
+ * the inverse of the codex light set (light/mist/sage), matching the codex
+ * light-scoped flatten elsewhere. The visible rim is a 1px border; the
+ * load-bearing one is set on `[data-interface-style="codex"] .composer-surface`
+ * with `!important` (~20920), and the ensemble upper area is a
+ * `.composer-above-bar-stack:has(.ensemble-above-row)` wrapper the light theme
+ * already flattens but dark didn't. `!important` + higher specificity (0,4,0)
+ * beats those; `transparent` keeps the 1px box (no reflow) and leaves the soft
+ * drop-shadow intact (it's a shadow, not an outline). */
+:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))
+  :is([data-composer-style="codex"], [data-interface-style="codex"])
+  :is(
+    .composer-surface,
+    .composer-surface:focus-within,
+    .composer-above-bar,
+    .ensemble-above-row,
+    .composer-create-pr-row,
+    .queued-messages-above-row,
+    .composer-above-bar-stack:has(.ensemble-above-row)
+  ) {
+  border-color: transparent !important;
+}
+[data-composer-style="codex"] .composer-textarea {
+  padding: 6px 6px 12px;
+  min-height: 58px;
+  font-size: calc(var(--font-size-md) - 1px);
+}
+[data-composer-style="codex"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ffffff 38%, transparent);
+}
+
+/* Codex bottom row: [+] [Permission ▾]   ...   [⚡ Model ▾] [Send] */
+[data-composer-style="codex"] .composer-inline-pickers {
+  margin-top: 0;
+}
+[data-composer-style="codex"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+[data-composer-style="codex"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="codex"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] { order: 2; }
+/* Provider sits between permission and the right-aligned model picker,
+ * styled as a low-key outlined chip matching the codex purple palette. */
+[data-composer-style="codex"] [data-composer-control="provider"] { order: 3; }
+/* 1.0.5-AR12 — Workspace sits between provider and the right-anchored
+ * model picker. Same satellite-text token treatment as the codex
+ * provider chip so it reads as a peer-control rather than a fresh
+ * chrome surface. */
+[data-composer-style="codex"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="codex"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+[data-composer-style="codex"] [data-composer-control="workspace"] {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 0;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  border-color: transparent;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"]::after {
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+[data-composer-style="codex"] [data-composer-control="provider"] {
+  /* 1.0.3 polish (Codex parity) — drop the indigo pill outline so
+   * the provider reads as a satellite text-token like the real
+   * Codex composer's "Full access ▾" / "5.5 Extra High ▾" pickers.
+   * Hover surface still appears subtly so the control is
+   * discoverable, but the resting state is naked text. */
+  min-height: 24px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 0;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="provider"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+[data-composer-style="codex"] [data-composer-control="provider"] select {
+  font: inherit;
+  color: inherit;
+}
+[data-composer-style="codex"] [data-composer-control="provider"]::after {
+  /* Mirror the chevron the permission + model pickers already wear
+   * (line 16210 / 16263) so the provider reads as a peer-token. */
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* Turn / Continuous toggle — Codex parity (1.0.3 polish).
+ *
+ * Pre-polish version had an indigo-outlined outer pill, which read
+ * as a competing container next to the naked permission / provider /
+ * model satellite tokens. Real Codex has nothing of the sort — the
+ * mode is just two adjacent text labels. We mirror that: drop the
+ * outer container, keep the segmented two-button pattern so users
+ * can still see both choices, and tint the active button without an
+ * outer pill. Active state uses the same quiet indigo highlight
+ * (8% bg) so it reads as "this one selected" without a competing
+ * container.
+ *
+ * Specificity: 0,2,0 (data-composer-style + data-composer-control)
+ * beats the base `.composer-ensemble-mode` (0,1,0) cleanly. */
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] {
+  min-height: 24px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  gap: 0;
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #8c80ff 18%, transparent);
+  font-weight: 600;
+}
+
+[data-composer-style="codex"] .composer-image-picker-btn {
+  /* 1.0.3 polish (Codex parity) — drop the rounded-circle container.
+   * The real Codex composer's `+` is a satellite glyph with a faint
+   * square hover surface, not a pill. Override the base
+   * `border-radius: 999px` so any hover bg renders as a tight
+   * rectangle instead of a circle. */
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+}
+[data-composer-style="codex"] .composer-image-picker-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+  color: #ffffff;
+}
+
+/* Permission picker styled like Codex's "Full access" warning chip */
+[data-composer-style="codex"] [data-composer-control="permission"] {
+  min-height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  color: #ff7a59;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="permission"]:hover {
+  background: color-mix(in srgb, #ff7a59 8%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="permission"] svg {
+  color: #ff7a59;
+}
+[data-composer-style="codex"] [data-composer-control="permission"]::after {
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.8;
+}
+
+/* Model picker styled like "5.5 Extra High" with lightning glyph */
+[data-composer-style="codex"] [data-composer-control="model"] {
+  min-height: 28px;
+  padding: 0 4px 0 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  position: relative;
+}
+[data-composer-style="codex"] [data-composer-control="model"]:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="model"] svg {
+  display: none;
+}
+/* Codex hallmark lightning bolt next to the model name in the
+ * chip. Gated to render ONLY when Fast mode is currently active
+ * for the selected model — pre-pre-ship the bolt rendered
+ * unconditionally and read as a permanent decoration regardless
+ * of whether Fast tier was actually engaged for the run. With
+ * the `data-fast-mode-active="true"` attribute (threaded through
+ * from CombinedModelPicker.tsx), the bolt now functions as a
+ * status indicator: present means "this run is using the paid
+ * Fast tier", absent means standard tier.
+ *
+ * Size bumped from 11×13 → 22×24 (≈2x) so the indicator reads
+ * more pronounced — matches the user's stated preference for the
+ * bolt to be a visually prominent badge rather than a subtle
+ * glyph. Vertical alignment uses translateY to centre against
+ * the chip text baseline. */
+[data-composer-style="codex"]
+  [data-composer-control="model"][data-fast-mode-active="true"]::before {
+  content: '';
+  display: inline-block;
+  width: 22px;
+  height: 24px;
+  margin-right: 5px;
+  vertical-align: middle;
+  transform: translateY(-1px);
+  background-color: color-mix(in srgb, var(--accent) 90%, #ffffff);
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M9 1 3 9h4l-1 6 6-8H8l1-6z' fill='currentColor'/></svg>") center/contain no-repeat;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M9 1 3 9h4l-1 6 6-8H8l1-6z' fill='currentColor'/></svg>") center/contain no-repeat;
+}
+[data-composer-style="codex"] [data-composer-control="model"]::after {
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* Send button: solid filled light circle with dark arrow up — Codex hallmark */
+[data-composer-style="codex"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 86%, transparent);
+  color: #0d0d0d;
+  border: 0;
+  box-shadow: none;
+}
+[data-composer-style="codex"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+[data-composer-style="codex"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 12%, transparent);
+  color: color-mix(in srgb, #ffffff 36%, transparent);
+  border: 0;
+  box-shadow: none;
+}
+[data-composer-style="codex"] .composer-action-btn.stop-btn,
+[data-composer-style="codex"] .composer-action-btn.run-btn.queue {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+}
+
+/* Codex footer chip row sitting below the composer surface */
+[data-composer-style="codex"] .composer-codex-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0 6px;
+}
+[data-composer-style="codex"] .composer-codex-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+  background: transparent;
+}
+[data-composer-style="codex"] .composer-codex-chip:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+}
+[data-composer-style="codex"] .composer-codex-chip svg:first-child {
+  opacity: 0.85;
+}
+[data-composer-style="codex"] .composer-codex-chip svg:last-child {
+  opacity: 0.55;
+}
+[data-composer-style="default"] .composer-codex-footer,
+[data-composer-style="claude"] .composer-codex-footer {
+  display: none;
+}
+
+/* Belt-and-braces: strip the footer chrome to transparent so the
+ * control row reads as floating satellite chips on the page background
+ * instead of a single dark rounded rect linking them. The composer
+ * surface itself keeps its Codex-purple aura — only the inner footer
+ * strip needs to disappear. Mirrors the Claude-shell treatment above. */
+[data-composer-style="codex"] .composer-control-footer,
+[data-composer-style="codex"] .composer-inline-pickers,
+[data-composer-style="codex"] .composer-inline-pickers-left,
+[data-composer-style="codex"] .composer-inline-actions {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ============== CLAUDE STYLE ============== */
+[data-composer-style="claude"] .composer-surface {
+  border-radius: 14px;
+  padding: 4px 12px 8px;
+  background: color-mix(in srgb, #161616 94%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+}
+[data-composer-style="claude"] .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #ffffff 20%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.36);
+}
+
+/* Top status row: branch/worktree chips look like Claude Code's top bar */
+[data-composer-style="claude"] .composer-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 6%, transparent);
+  margin-bottom: 6px;
+}
+[data-composer-style="claude"] .composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 58%, transparent);
+  font-size: calc(var(--font-size-xs) - 1px);
+}
+[data-composer-style="claude"] .composer-chip:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+}
+
+[data-composer-style="claude"] .composer-textarea {
+  padding: 6px 6px 10px;
+  min-height: 48px;
+  font-size: calc(var(--font-size-sm) + 1px);
+}
+[data-composer-style="claude"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ffffff 30%, transparent);
+}
+
+/* Claude bottom row: [Permission text]  [+] [...]   ...   [Model · Effort]  [Send/Spinner] */
+[data-composer-style="claude"] .composer-inline-pickers {
+  margin-top: 0;
+}
+[data-composer-style="claude"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+[data-composer-style="claude"] [data-composer-control="permission"] { order: 0; }
+[data-composer-style="claude"] [data-composer-control="attach"]    { order: 1; }
+/* Provider sits in the gap between `+` (attach) and the right-aligned model
+ * picker — replaces the previous satellite footer chip. */
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="claude"] [data-composer-control="provider"] { order: 3; }
+/* 1.0.5-AR12 — Workspace sits just before the right-anchored model
+ * picker. Same outlined-pill aesthetic as the claude provider chip
+ * so the controls cluster reads as a coherent peer-group. */
+[data-composer-style="claude"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="claude"] [data-composer-control="model"]    { order: 5; margin-left: auto; }
+
+[data-composer-style="claude"] [data-composer-control="workspace"] {
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  border-color: color-mix(in srgb, #ffffff 24%, transparent);
+}
+[data-composer-style="claude"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+
+/* Inline provider chip in claude mode — outlined pill, low-key, native-ish */
+[data-composer-style="claude"] [data-composer-control="provider"] {
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+}
+[data-composer-style="claude"] [data-composer-control="provider"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+[data-composer-style="claude"] [data-composer-control="provider"] select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Turn / Continuous toggle — matches the Claude shell's provider chip
+ * (transparent bg, faint white border, white-70% text). Claude's
+ * overall palette is whisper-quiet so the toggle stays neutral on
+ * active state — just a slight white tint, no provider-orange
+ * accent (orange is reserved for the permission label here). */
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] {
+  min-height: 24px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  padding: 2px 9px;
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #ffffff 12%, transparent);
+  font-weight: 600;
+}
+
+/* Permission as plain text label ("Plan mode" style) */
+[data-composer-style="claude"] [data-composer-control="permission"] {
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  color: color-mix(in srgb, #ffffff 80%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* 1.0.5-EW27 — Satellite "+" button in the Claude shell.
+ *
+ * Chris caught: in both light and dark mode, the Claude shell's
+ * `+` (composer-plus-picker) button rendered as a visible square
+ * container — visible border / background — which broke the
+ * "satellite chrome" aesthetic the rest of the Claude shell
+ * adopted in 1.0.4 (mention overlays, chip strip, etc. are all
+ * naked typography on the composer surface).
+ *
+ * Pre-EW27 the Claude rule already cleared the base
+ * `.composer-image-picker-btn`'s visible border + background, but
+ * the Claude `:hover` rule re-introduced a background fill — and
+ * focus state inherited container styling from the base rule.
+ *
+ * EW27 strips both default and hover container chrome. The "+"
+ * sits as a floating glyph with a hover *color* change only (no
+ * background fill, no border, no transform). Click target stays
+ * at 26x26 via the explicit dimensions so the touch area is
+ * unchanged. `transform: none` defeats the base rule's hover
+ * `translateY(-1px)` so the glyph doesn't bounce. */
+[data-composer-style="claude"] .composer-image-picker-btn {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  transform: none;
+}
+[data-composer-style="claude"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="claude"] .composer-image-picker-btn:focus-visible {
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  transform: none;
+}
+
+/* 1.0.5-EW27 light-mode follow-up — the generic light-theme rule
+ * at line ~23465 paints a soft-grey fill on `.composer-image-picker-btn`
+ * across ALL composer shells, and its specificity (0,2,0) matches
+ * the Claude rule above (also 0,2,0) so source-order makes it
+ * win in light mode. Chris caught it: dark mode satellite reads
+ * fine, light mode still showed a white square container.
+ *
+ * Bumping specificity here with stacked attribute selectors —
+ * `[data-theme=...][data-composer-style=...]` is (0,3,0) which
+ * beats the generic light rule's (0,2,0) regardless of source
+ * order. Hover follows the same pattern. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn {
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn:focus-visible {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+}
+
+/* Model picker styled like "Sonnet 4.6 · High" minimal */
+[data-composer-style="claude"] [data-composer-control="model"] {
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+}
+[data-composer-style="claude"] [data-composer-control="model"] svg {
+  display: none;
+}
+
+/* Send button: small squared enter-symbol — sits at right of the textarea row */
+[data-composer-style="claude"] .composer-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 58%, transparent);
+}
+
+/* 1.0.5-EW31 + EW31a — Nudge the Claude shell's send / stop /
+ * steer glyphs upward. Chris caught: the ↵ return-arrow
+ * (`ClaudeReturnSymbolIcon`'s SVG path-pair) sat slightly low
+ * inside its action button's bounding box in both light and
+ * dark mode. Cause is the SVG's own optical balance — the
+ * arrow tip sits at y=8.5–10.5 inside a 16x16 viewBox, so
+ * visual center is below geometric center.
+ *
+ * Iteration history:
+ *   - EW31  (1.5px) — too subtle to perceive at Retina scale.
+ *   - EW31a (3px + !important) — visible, but Chris pushed
+ *     for more punch; specificity flags retained from here
+ *     forward to defeat the base hover rule at
+ *     main.css:7674 which has (0,4,0) and would otherwise
+ *     beat the EW31-family rule's (0,3,0) on hover.
+ *   - EW31b (9px) — final value. Clearly nudged: the glyph
+ *     sits visibly higher in the corner rather than reading
+ *     as baseline-aligned with the surrounding chrome.
+ * `!important` sidesteps the specificity battle entirely so
+ * any future transform with higher source-order or unforeseen
+ * specificity can't sneak past. Hover combines nudge + scale
+ * via the second selector below. */
+[data-composer-style="claude"] .composer-action-btn .sf-symbol-icon {
+  transform: translateY(-9px) !important;
+}
+[data-composer-style="claude"] .composer-action-btn:hover:not(:disabled) .sf-symbol-icon {
+  transform: translateY(-9px) scale(1.06) !important;
+}
+
+/* 1.0.6 — Claude send/stop/steer focus ring sync. The global focus-visible
+ * outline (main.css:~142) is `outline`, which always hugs the button BORDER-BOX
+ * and ignores child transforms — but the Claude glyph is floated translateY(-9px)
+ * up (EW31b above), so the square blue ring read as vertically out of sync with
+ * the glyph. `outline` can't be offset vertically, so for the Claude shell only
+ * we replace it with a box-shadow ring shifted up by the SAME amount the glyph is
+ * nudged, tracking it. `--claude-send-glyph-nudge` keeps the ring offset and the
+ * glyph nudge in lock-step (tunable in one place). Scoped to the Claude shell —
+ * the -9px nudge is Claude-only, so no other shell's focus ring changes. */
+[data-composer-style="claude"] .composer-action-btn {
+  --claude-send-glyph-nudge: 9px;
+}
+[data-composer-style="claude"] .composer-action-btn:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: 0 calc(-1 * var(--claude-send-glyph-nudge)) 0 2px var(--focus-ring);
+}
+
+[data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+}
+[data-composer-style="claude"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+  color: #ffffff;
+}
+[data-composer-style="claude"] .composer-action-btn:disabled {
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 22%, transparent);
+}
+
+/* Claude shell satellite: native Claude Code renders branch / diff /
+ * commit info as free-floating chips above the composer. Three things
+ * make a chip cluster *read* as a rect vs as satellites:
+ *   1. A shared container background (covered by stripping above-bar chrome).
+ *   2. Chips with backgrounds dark enough to visually merge with their
+ *      neighbours into one continuous dark band.
+ *   3. Tight gaps + drop shadows that smear the chips together.
+ * So we strip the container, push chip backgrounds toward transparent
+ * with just a hairline outline, widen the gap, and zero out any shadow
+ * the chips inherit from their default styling. */
+[data-composer-style="claude"] .composer-above-bar.style-unified,
+[data-composer-style="claude"] .composer-above-bar {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 0 4px;
+  margin: 0 0 4px;
+  gap: 10px;
+}
+[data-composer-style="claude"] .composer-above-bar::before {
+  display: none;
+}
+[data-composer-style="claude"] .composer-above-bar-branch,
+[data-composer-style="claude"] .composer-above-bar-files,
+[data-composer-style="claude"] .composer-above-bar-stats,
+[data-composer-style="claude"] .composer-above-bar-summary {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  color: color-mix(in srgb, #ffffff 64%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  box-shadow: none;
+}
+[data-composer-style="claude"] .composer-above-bar-action {
+  /* Create-PR / Commit-changes pill: same hairline outline as the chips
+   * so it reads as part of the same satellite row rather than a button
+   * pinned to a tray. */
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: none;
+  color: color-mix(in srgb, #ffffff 84%, transparent);
+}
+/* The cross-provider WorkspaceAccessControls pills (External path,
+ * Tool grants, Worktree…) live INSIDE .composer-above-bar in the
+ * active-chat layout. They have their own dark fill from the shared
+ * styles — override in claude shell so they match the surrounding
+ * satellite chips instead of forming a darker sub-band.
+ *
+ * Phase K-followup — In the Claude shell, the composer surface uses
+ * a rectangular-rounded corner shape rather than the default
+ * capsule pills. Apply the same shape-language to the pills:
+ * rounded-rectangle (~10px radius) instead of fully-rounded 999px.
+ * The branch + files + stats pills + Create PR all pick up the same
+ * radius so the whole above-bar row reads as ONE cohesive band
+ * matching the textarea below. Only applies to the Claude shell. */
+[data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill {
+  background: transparent;
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: none;
+  color: color-mix(in srgb, #ffffff 64%, transparent);
+  border-radius: var(--radius-md, 10px);
+}
+[data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 5%, transparent);
+  border-color: color-mix(in srgb, #ffffff 20%, transparent);
+  color: #ffffff;
+}
+/* Other pills in the same row inherit the same shape so the band reads cohesively. */
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+  border-radius: var(--radius-md, 10px);
+}
+
+/* ============================================================
+ * Composer style: neutral color override
+ * Codex / Claude styles drop provider-tinted radial gradients
+ * and use neutral gray. Outer focus glow is preserved.
+ * ============================================================ */
+[data-composer-style="codex"] .app-transcript .composer-surface::before,
+[data-composer-style="claude"] .app-transcript .composer-surface::before {
+  background: none !important;
+  display: none !important;
+}
+[data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface,
+[data-composer-style="codex"] .app-transcript.provider-codex .composer-surface,
+[data-composer-style="codex"] .app-transcript.provider-claude .composer-surface,
+[data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface {
+  --composer-bg: color-mix(in srgb, #1a1a1a 92%, transparent);
+  --composer-border: color-mix(in srgb, #ffffff 10%, transparent);
+}
+/* Phase K-followup — Claude shell composer surface lifted a notch
+ * brighter than codex shell so the textarea sits more clearly against
+ * the page rather than melting into the surrounding dark band. The
+ * Claude-shell-specific value applies regardless of which provider
+ * is active; codex shell keeps its slightly darker palette above. */
+[data-composer-style="claude"] .app-transcript.provider-gemini .composer-surface,
+[data-composer-style="claude"] .app-transcript.provider-codex .composer-surface,
+[data-composer-style="claude"] .app-transcript.provider-claude .composer-surface,
+[data-composer-style="claude"] .app-transcript.provider-kimi .composer-surface {
+  --composer-bg: color-mix(in srgb, #262626 92%, transparent);
+  --composer-border: color-mix(in srgb, #ffffff 12%, transparent);
+}
+[data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface:focus-within,
+[data-composer-style="codex"] .app-transcript.provider-codex .composer-surface:focus-within,
+[data-composer-style="codex"] .app-transcript.provider-claude .composer-surface:focus-within,
+[data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface:focus-within,
+[data-composer-style="claude"] .app-transcript.provider-gemini .composer-surface:focus-within,
+[data-composer-style="claude"] .app-transcript.provider-codex .composer-surface:focus-within,
+[data-composer-style="claude"] .app-transcript.provider-claude .composer-surface:focus-within,
+[data-composer-style="claude"] .app-transcript.provider-kimi .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #ffffff 26%, transparent);
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px color-mix(in srgb, #ffffff 14%, transparent),
+    0 0 22px rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================================
+ * Above-composer bar (Codex diff summary / Claude branch + PR)
+ * Renders as a sibling above .composer-surface inside .composer-area
+ * ============================================================ */
+.composer-above-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Match the bubble width so the bar reads as a paired header — like the
+   * native Claude / Codex composers where status + actions span the bubble. */
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px 6px 14px;
+  margin: 0 0 6px;
+  border-radius: calc(var(--radius-lg) * 1.6);
+  background: var(--composer-bg);
+  border: 1px solid var(--composer-border);
+  box-shadow: var(--composer-shadow);
+  font-size: calc(var(--font-size-xs) + 1px);
+  color: color-mix(in srgb, #ffffff 80%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+.composer-above-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(17, 41, 89, 0.204), rgba(17, 41, 89, 0.108) 16%, transparent 33%, transparent 67%, rgba(17, 41, 89, 0.108) 84%, rgba(17, 41, 89, 0.204));
+  opacity: 0.92;
+  box-shadow: inset 36px 0 44px -28px rgba(17, 41, 89, 0.168), inset -36px 0 44px -28px rgba(17, 41, 89, 0.168);
+  z-index: 0;
+}
+.composer-above-bar > * {
+  position: relative;
+  z-index: 1;
+}
+.app-transcript.provider-gemini .composer-above-bar::before {
+  background: linear-gradient(90deg, rgba(7, 18, 48, 0.32), rgba(35, 91, 184, 0.2) 18%, transparent 36%, transparent 64%, rgba(28, 80, 172, 0.2) 82%, rgba(5, 13, 36, 0.34));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(16, 52, 122, 0.34),
+    inset -42px 0 52px -30px rgba(40, 92, 190, 0.3);
+}
+.app-transcript.provider-codex .composer-above-bar::before {
+  background: linear-gradient(90deg, rgba(9, 8, 18, 0.32), rgba(48, 40, 130, 0.2) 18%, transparent 36%, transparent 64%, rgba(42, 34, 118, 0.2) 82%, rgba(6, 5, 14, 0.34));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(17, 14, 38, 0.36),
+    inset -42px 0 52px -30px rgba(45, 36, 128, 0.32);
+}
+.app-transcript.provider-claude .composer-above-bar::before {
+  background: linear-gradient(90deg, rgba(38, 17, 5, 0.32), rgba(141, 68, 20, 0.18) 18%, transparent 36%, transparent 64%, rgba(144, 72, 22, 0.18) 82%, rgba(31, 13, 4, 0.32));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(68, 31, 9, 0.32),
+    inset -42px 0 52px -30px rgba(151, 72, 20, 0.26);
+}
+.app-transcript.provider-kimi .composer-above-bar::before {
+  background: linear-gradient(90deg, rgba(15, 24, 7, 0.32), rgba(91, 117, 34, 0.18) 18%, transparent 36%, transparent 64%, rgba(91, 117, 34, 0.18) 82%, rgba(11, 17, 5, 0.32));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(40, 55, 14, 0.34),
+    inset -42px 0 52px -30px rgba(117, 144, 38, 0.24);
+}
+/* Phase J1 composer-unification: the above-bar SHAPE is now identical
+ * across every provider. The previous `style-codex` / `style-claude` /
+ * `style-default` variants set their own radius / background / shadow.
+ * Those are kept (as visual flavour for users who pick a composerStyle
+ * other than their active provider's default) but the new
+ * `style-unified` variant lets the bar inherit from the base. Theme
+ * colour comes from the surrounding `[data-composer-style="..."]`
+ * scope instead of per-element overrides. */
+.composer-above-bar.style-unified {
+  border-radius: calc(var(--radius-lg) * 1.6);
+  padding: 8px 16px;
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
+}
+.composer-above-bar.style-codex {
+  border-radius: 20px;
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.composer-above-bar.style-claude {
+  border-radius: 14px;
+  padding: 6px 12px;
+  background: color-mix(in srgb, #161616 94%, transparent);
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+}
+/* Default composer style — match the surrounding bubble's deeper radius
+ * so the above-bar visually reads as a paired header sitting cleanly
+ * above the composer-surface rect. */
+.composer-above-bar.style-default {
+  border-radius: calc(var(--radius-lg) * 1.6);
+  padding: 8px 16px;
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
+}
+.composer-above-bar-summary,
+.composer-above-bar-branch,
+.composer-above-bar-stats,
+.composer-above-bar-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.composer-above-bar-files {
+  /* New (Phase J1): file-count chip pulled out of the codex-only
+   * summary span so the unified above-bar can show file/add/del/branch
+   * independently of any provider style. */
+  color: color-mix(in srgb, #ffffff 72%, transparent);
+}
+
+/* Light-theme override for the files-changed chip + its inner
+ * number strong. Without this the white-on-white from the dark
+ * default rule above renders as invisible "files changed" with
+ * an invisible numeral in light themes. Targeting both the chip
+ * text colour AND the `<strong>` so the bold count stays
+ * legible (some non-Codex shells used to bleed `<strong>` as
+ * white even when the surrounding text recoloured correctly). */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files {
+  color: rgba(29, 29, 31, 0.78);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files strong {
+  color: rgba(29, 29, 31, 0.94);
+}
+
+/* ============================================================
+ * Composer-unification (Phase J1): WorkspaceAccessControls pills
+ *
+ * Cross-provider External Path + Worktree pills, with two render
+ * variants:
+ *   .composer-workspace-access-satellite — floats just above the
+ *     composer surface in the welcome state (no chat activity yet).
+ *   .composer-workspace-access-inline    — sits inside the
+ *     .composer-above-bar alongside branch / diff stats / Create PR.
+ *
+ * Provider identity is expressed through the theme tokens that the
+ * surrounding `.interface-${provider}` / `[data-composer-style]`
+ * scope already supplies — colour/border/glow vary; SHAPE does not.
+ * ============================================================ */
+.composer-workspace-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+.composer-workspace-access-satellite {
+  /* In the welcome state we don't have the above-bar to live in, so
+   * the pills sit as a small floating cluster above the composer. */
+  align-self: flex-end;
+  margin: 0 12px 6px auto;
+  z-index: 2;
+}
+.composer-workspace-access-inline {
+  /* Inside the above-bar: just a horizontal cluster between the
+   * branch/diff stats group and the Create-PR action. The
+   * .composer-above-bar's flex layout handles spacing. */
+  margin-left: auto;
+}
+.composer-above-bar .composer-workspace-access-inline {
+  /* When inside the above-bar, push the Create-PR action to the far
+   * right by keeping our cluster on the left of `margin-left: auto`
+   * on the action button. */
+  margin-left: 8px;
+  margin-right: 0;
+}
+.composer-workspace-access-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+}
+.composer-workspace-access-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: #ffffff;
+  border-color: color-mix(in srgb, #ffffff 22%, transparent);
+}
+.composer-workspace-access-pill.is-active {
+  color: #6ddfa8;
+  border-color: color-mix(in srgb, #6ddfa8 36%, transparent);
+}
+.composer-workspace-access-pill.is-warning {
+  color: #f5c168;
+  border-color: color-mix(in srgb, #f5c168 36%, transparent);
+}
+.composer-workspace-access-pill.is-status {
+  cursor: default;
+  opacity: 0.78;
+}
+.composer-workspace-access-pill.is-status:hover {
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+.composer-workspace-access-pill svg {
+  opacity: 0.78;
+  flex-shrink: 0;
+}
+.composer-workspace-policy {
+  position: relative;
+  display: inline-flex;
+}
+.composer-workspace-policy-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(320px, calc(100vw - 36px));
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--composer-border) 90%, var(--text-primary) 10%);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 42%),
+    color-mix(in srgb, var(--composer-bg-solid) 92%, #000000 8%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent),
+    0 18px 46px rgba(0, 0, 0, 0.38);
+  color: color-mix(in srgb, #ffffff 86%, transparent);
+  z-index: 20;
+}
+.composer-workspace-policy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.composer-workspace-policy-header strong {
+  font-size: var(--font-size-sm);
+}
+.composer-workspace-policy-header span {
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-secondary) 82%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.composer-workspace-policy-popover p {
+  margin: 0 0 10px;
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+.composer-workspace-policy-list {
+  display: grid;
+  gap: 6px;
+}
+.composer-workspace-policy-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  cursor: pointer;
+}
+.composer-workspace-policy-row input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.composer-workspace-policy-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.composer-workspace-policy-row strong {
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+}
+.composer-workspace-policy-row small {
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+}
+.composer-workspace-access-pill .composer-workspace-access-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+.composer-workspace-access-pill .composer-workspace-access-select:disabled {
+  cursor: not-allowed;
+}
+.composer-workspace-access-pill .composer-workspace-access-select option {
+  /* macOS renders <option> children with the system colour palette,
+   * which can read white-on-white on dark themes. Force a readable
+   * combo for the dropdown menu. */
+  color: #1a1a1a;
+  background: #ffffff;
+}
+.composer-above-bar-branch svg {
+  opacity: 0.78;
+}
+.composer-above-bar strong {
+  font-weight: 600;
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+}
+.composer-diff-add {
+  color: #6ddfa8;
+  font-feature-settings: 'tnum';
+}
+.composer-diff-del {
+  color: #f08080;
+  font-feature-settings: 'tnum';
+}
+.composer-above-bar-action {
+  margin-left: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 13%, transparent);
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font: inherit;
+  font-size: calc(var(--font-size-xs) + 1px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+}
+.composer-above-bar-action:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: #ffffff;
+  border-color: color-mix(in srgb, #ffffff 22%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-action {
+  color: rgba(29, 29, 31, 0.86);
+  border-color: var(--surface-border);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-action:hover:not(:disabled) {
+  color: rgba(29, 29, 31, 0.96);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--surface-border));
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+}
+
+.composer-above-bar-action.is-pending {
+  opacity: 0.7;
+  cursor: progress;
+}
+.composer-above-bar-action.is-success {
+  color: #6ddfa8;
+  border-color: color-mix(in srgb, #6ddfa8 36%, transparent);
+}
+.composer-above-bar-action.is-error {
+  color: #f08080;
+  border-color: color-mix(in srgb, #f08080 36%, transparent);
+}
+.composer-above-bar-action:disabled {
+  cursor: not-allowed;
+}
+
+.composer-above-bar:has(.composer-diff-action-menu) {
+  overflow: visible;
+  /*
+   * 1.0.4 fix — composer-surface (z-index: 2 at main.css:5717) was
+   * painting over the open diff-action dropdown because the
+   * above-bar's `isolation: isolate` at line 16951 trapped the
+   * menu's `z-index: 30` inside the above-bar's own stacking
+   * context, AND the above-bar itself had no z-index (auto/0) vs
+   * the surface's z-index: 2. Lifting the above-bar to z-index: 5
+   * when the menu is open (matching the composer-area's z-index)
+   * ensures the dropdown paints above the textarea + runtime row
+   * below.
+   */
+  z-index: 5;
+}
+
+.composer-diff-action-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: auto;
+  z-index: 4;
+}
+
+.composer-diff-action-menu-wrap .composer-above-bar-action {
+  margin-left: 0;
+}
+
+.composer-diff-action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 184px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--composer-border) 86%, var(--text-primary) 10%);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 42%),
+    color-mix(in srgb, var(--composer-bg-solid) 94%, #05070c 6%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 10%, transparent),
+    0 16px 38px rgba(0, 0, 0, 0.36);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+  display: grid;
+  gap: 3px;
+  z-index: 30;
+}
+
+.composer-diff-action-menu button {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-align: left;
+  padding: 7px 9px;
+}
+
+.composer-diff-action-menu button:hover:not(:disabled),
+.composer-diff-action-menu button:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  outline: none;
+}
+
+.composer-diff-action-menu button:disabled {
+  color: color-mix(in srgb, var(--text-secondary) 52%, transparent);
+  cursor: not-allowed;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-diff-action-menu {
+  border-color: var(--surface-border);
+  background:
+    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
+    color-mix(in srgb, var(--surface-1) 94%, #ffffff 6%);
+  color: rgba(29, 29, 31, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 16px 38px rgba(0, 0, 0, 0.14);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-diff-action-menu button:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-diff-action-menu button:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-diff-action-menu button:disabled {
+  color: rgba(29, 29, 31, 0.38);
+}
+/* (Previously the default style hid the above-bar entirely; we now show it
+ * with the `.style-default` shape so workspace branch + diff + Create-PR
+ * are visible regardless of composer style.) */
+
+/* ============================================================
+ * Context wheel — small circular progress indicator in the
+ * composer's action area. Provider-agnostic.
+ * ============================================================ */
+.context-wheel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: color-mix(in srgb, #ffffff 65%, transparent);
+  flex-shrink: 0;
+}
+.context-wheel svg {
+  display: block;
+}
+[data-composer-style="codex"] .context-wheel {
+  order: -1;
+  margin-right: 4px;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+}
+[data-composer-style="claude"] .context-wheel {
+  order: -1;
+  margin-right: 6px;
+  color: #e6a960; /* tinted to read like Claude's amber indicator */
+}
+
+/* Light-theme override for the context donut. Base + Codex
+ * variants hardcode `color-mix(#ffffff 65|70%, transparent)`
+ * which renders as invisible white on light surfaces. Switch
+ * to dark tone so the donut + its dashed remainder ring read
+ * legibly. Claude's amber #e6a960 already works in both modes
+ * — no override needed there. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .context-wheel {
+  color: rgba(29, 29, 31, 0.62);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .context-wheel {
+  color: rgba(29, 29, 31, 0.66);
+}
+
+/* ============================================================
+ * Claude inside/outside aesthetic
+ * Textarea sits in its own bubble; control row visually floats below.
+ * ============================================================ */
+[data-composer-style="claude"] .composer-surface {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+[data-composer-style="claude"] .composer-surface:focus-within {
+  box-shadow: none !important;
+}
+[data-composer-style="claude"] .composer-chips {
+  display: none; /* Top status now lives in .composer-above-bar */
+}
+[data-composer-style="claude"] .composer-textarea {
+  background: color-mix(in srgb, #161616 94%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 56px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+}
+[data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+  border-color: color-mix(in srgb, #ffffff 22%, transparent);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.36),
+    0 0 0 1px color-mix(in srgb, #ffffff 14%, transparent);
+}
+[data-composer-style="claude"] .composer-control-footer {
+  background: transparent;
+  padding: 4px 4px 0;
+  margin-top: 0;
+}
+[data-composer-style="claude"] .composer-inline-pickers {
+  background: transparent;
+  border: 0;
+  padding: 6px 2px 2px;
+  gap: 8px;
+}
+
+/* Native Claude Code parks the send arrow at the right of the textarea's
+ * placeholder line, not in the footer row. Float the primary action
+ * button (run when idle, stop when busy) absolutely into the textarea
+ * bubble's top-right; .composer-surface is the positioning context. The
+ * surrounding footer pickers stay where they are but no longer have to
+ * carry the send button alongside them. */
+[data-composer-style="claude"] .composer-action-btn.run-btn,
+[data-composer-style="claude"] .composer-action-btn.stop-btn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 3;
+}
+
+/* Belt-and-braces: ensure nothing in the footer chrome carries a
+ * leftover background so the surrounding controls read as floating
+ * satellites instead of a contained rect. */
+[data-composer-style="claude"] .composer-control-footer,
+[data-composer-style="claude"] .composer-inline-pickers,
+[data-composer-style="claude"] .composer-inline-pickers-left,
+[data-composer-style="claude"] .composer-inline-actions {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ============================================================
+ * Claude-mode satellite footer (mirrors codex footer)
+ * Provider + workspace chips sit below the bubble + action row.
+ * ============================================================ */
+[data-composer-style="claude"] .composer-claude-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+[data-composer-style="default"] .composer-claude-footer,
+[data-composer-style="codex"]   .composer-claude-footer { display: none; }
+
+.composer-claude-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+  background: transparent;
+  cursor: pointer;
+  border: 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+.composer-claude-chip:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+}
+.composer-claude-chip svg:first-child { opacity: 0.85; }
+.composer-claude-chip > svg:last-child  { opacity: 0.55; }
+
+/* YOLO/Trust-mode chip — collapsed state of the dismissed
+ * .provider-yolo banner. Sits inline in the composer's action
+ * row so the user has a persistent reminder that auto-approve
+ * is on, without the full banner shoving the composer down. */
+.composer-yolo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #f4a261 60%, transparent);
+  background: color-mix(in srgb, #f4a261 14%, transparent);
+  color: color-mix(in srgb, #f4a261 88%, var(--text-primary) 12%);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 620;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.composer-yolo-chip:hover,
+.composer-yolo-chip:focus-visible {
+  background: color-mix(in srgb, #f4a261 22%, transparent);
+  border-color: color-mix(in srgb, #f4a261 80%, transparent);
+  outline: 0;
+}
+
+.composer-yolo-chip-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.composer-yolo-banner-dismiss {
+  margin-left: auto;
+}
+
+/* Inside provider chips, the leading icon may be wrapped in
+ * <span class="sf-symbol-icon">. Sync its opacity + size with the
+ * raw-svg icons used by the other chips so all chip glyphs match. */
+.composer-codex-chip .composer-control-icon,
+.composer-claude-chip .composer-control-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  opacity: 0.85;
+}
+.composer-codex-chip .composer-control-icon svg,
+.composer-claude-chip .composer-control-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* The existing svg:first-child / :last-child rules on the chip
+   * would otherwise dim this inner SVG; the wrapping span carries
+   * opacity, so we keep the inner SVG fully opaque. */
+  opacity: 1 !important;
+}
+
+/* Native <select> styled flat inside both Codex and Claude chips */
+.composer-codex-chip.is-provider,
+.composer-claude-chip.is-provider {
+  padding-right: 4px;
+  cursor: pointer;
+}
+.composer-codex-chip.is-provider select,
+.composer-claude-chip.is-provider select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0 2px 0 0;
+  cursor: pointer;
+  outline: none;
+}
+.composer-codex-chip.is-provider select:focus-visible,
+.composer-claude-chip.is-provider select:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+.composer-codex-chip.is-provider select:disabled,
+.composer-claude-chip.is-provider select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Light-theme override: invert chip text/hover for legibility */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-claude-chip,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-codex-chip {
+  color: color-mix(in srgb, #000000 60%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-claude-chip:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-codex-chip:hover {
+  background: color-mix(in srgb, #000000 6%, transparent);
+  color: color-mix(in srgb, #000000 88%, transparent);
+}
+
+/* ============================================================
+ * Codex shape refinement — keep textarea + controls inside a single bubble.
+ * Footer chips already sit below from earlier work.
+ * ============================================================ */
+[data-composer-style="codex"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  padding: 6px 6px 10px;
+}
+
+/* ============================================================
+ * GEMINI composer style
+ * Minimal rounded-pill composer with subtle blue focus glow.
+ * Model picker is a blue rounded pill on the right. Send button is a
+ * light circular arrow. No above-bar; no satellite footer chips.
+ * ============================================================ */
+[data-composer-style="gemini"] .composer-top-toggles,
+[data-composer-style="gemini"] .composer-chips,
+[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+/* Gemini shell — historically hid `.composer-above-bar` entirely
+ * because solo Gemini chats didn't have anything to surface there
+ * (no PR flow, no Create-PR-relevant workflow). Now that ensemble
+ * chats added the chip strip to the same stack — and Chris wants
+ * Create-PR parity across all shells — we re-enable the above-bar
+ * with the same composer-surface chrome the ensemble chip strip
+ * uses (28px radius / `#0e1218 94%` / `#5a8cff 18%` border /
+ * `0 4px 28px` shadow) so both rows in the stack read as siblings
+ * of the Gemini composer below. */
+[data-composer-style="gemini"] .composer-above-bar {
+  border-radius: 28px;
+  background: color-mix(in srgb, #0e1218 94%, transparent);
+  border: 1px solid color-mix(in srgb, #5a8cff 18%, transparent);
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.42);
+}
+/* Per-provider ::before gradient is too busy on the cleaner Gemini
+ * surface treatment — keep it suppressed (the base rule paints a
+ * navy gradient that fights the #0e1218 base + blue accent). */
+[data-composer-style="gemini"] .composer-above-bar::before {
+  display: none;
+}
+
+/* ============================================================
+ * 1.0.6-CS3 — GEMINI single-row CAPSULE rework.
+ *
+ * Reference (official Gemini composer): ONE rounded pill —
+ *     [ + ]   Ask Gemini …            [ model ]  [ send ]
+ * with permission / turn-mode / provider / workspace + the meta
+ * strip demoted to a transparent SATELLITE row below the capsule.
+ *
+ * THEME-CONSISTENCY (the headline fix — Gemini used to render
+ * wildly differently per theme): every theme family sets ONLY the
+ * `--gemini-capsule-*` palette tokens; all the structural rules are
+ * shared, so the capsule is identical in SHAPE across dark / light /
+ * alabaster / obsidian — only the palette differs.
+ *
+ * LAYOUT MECHANISM (CSS-only, no DOM change): the textarea and the
+ * buttons live in two stacked DOM containers (`.composer-textarea-wrap`
+ * above; the `.composer-inline-pickers` row below). To put +/model/send
+ * ON the textarea's visual row we LIFT them with `position: absolute`
+ * anchored to `.composer-surface` (`position: relative`) and top-pinned
+ * into the pill — same spirit as Obsidian's single send-button lift,
+ * extended here to three controls. The textarea reserves left/right
+ * gutters so its text never runs under them. The remaining controls
+ * flow normally as the transparent satellite row beneath.
+ * ============================================================ */
+
+/* ---- Capsule palette tokens (dark default; also covers obsidian +
+ * alabaster, whose Gemini chrome is intentionally dark navy). ---- */
+[data-composer-style="gemini"] {
+  --gemini-capsule-fill: linear-gradient(180deg, #141d30 0%, #0d1320 100%);
+  --gemini-capsule-border: color-mix(in srgb, #5a8cff 22%, transparent);
+  --gemini-capsule-border-focus: color-mix(in srgb, #5a8cff 58%, transparent);
+  --gemini-capsule-shadow: 0 6px 30px rgba(0, 0, 0, 0.42);
+  --gemini-capsule-shadow-focus:
+    0 6px 34px rgba(0, 0, 0, 0.46),
+    0 0 0 4px color-mix(in srgb, #5a8cff 12%, transparent);
+}
+
+/* Surface → invisible vertical shell. The capsule lives on the
+ * textarea-wrap; the satellite row + meta strip sit below it,
+ * transparent. `position: relative` + `overflow: visible` so the
+ * lifted +/model/send aren't clipped.
+ *
+ * `!important` on the fill/border/shadow is load-bearing: the
+ * `[data-appearance="native_glass"] :is(…, .composer-surface)` rule
+ * (line ~18337) paints a dark glass fill at (0,3,0), which beats this
+ * shell rule's (0,2,0) — without `!important` the surface re-appears
+ * as a sharp-cornered rectangle behind the capsule. Same approach the
+ * Modular/Satellite shells use to stay invisible under native glass. */
+[data-composer-style="gemini"] .composer-surface,
+[data-composer-style="gemini"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 1.0.6-CRUX22 — single-line capsule height, declared on the surface
+   * (an ANCESTOR of the lifted controls so the var inherits down to
+   * them). Used by the bottom-align lift below to convert the original
+   * TOP offsets into capsule-bottom-tracking offsets via `anchor()`.
+   * This MUST equal the rendered single-line `.composer-textarea-wrap`
+   * height, so it's expressed as the SAME formula that drives it rather
+   * than a brittle pixel literal: the textarea's single-line border-box
+   * is `min-height: calc(1.55em + 22px) !important` (field-sizing:
+   * content) where `em` is the shell's textarea `font-size:
+   * var(--font-size-md)`, i.e. 1.55·--font-size-md + 22px; plus the
+   * capsule's own 3px×2 padding + 1px×2 border = +8px. So:
+   *   1.55·--font-size-md + 22 + 8 = 1.55·--font-size-md + 30px.
+   * Because it tracks --font-size-md, single-line stays exact even if
+   * the composer font scale changes. Cursor shares identical geometry. */
+  --composer-capsule-single-h: calc(1.55 * var(--font-size-md) + 30px);
+}
+[data-composer-style="gemini"] .composer-surface::before {
+  content: none;
+}
+
+/* THE CAPSULE — the single rounded pill. Holds only the textarea;
+ * +/model/send are lifted into it (lift block below). */
+[data-composer-style="gemini"] .composer-textarea-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 3px 0;
+  background: var(--gemini-capsule-fill);
+  border: 1px solid var(--gemini-capsule-border);
+  border-radius: 26px;
+  box-shadow: var(--gemini-capsule-shadow);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  /* 1.0.6-CRUX22 — name the capsule so the lifted +/model/send can
+   * anchor to ITS bottom edge (not the surface's). The capsule grows
+   * downward with multi-line text, so anchoring here makes the three
+   * controls ride the last line. No-op for other shells (nobody else
+   * references this anchor name). */
+  anchor-name: --composer-capsule;
+}
+[data-composer-style="gemini"] .composer-textarea-wrap:focus-within {
+  border-color: var(--gemini-capsule-border-focus);
+  box-shadow: var(--gemini-capsule-shadow-focus);
+}
+[data-composer-style="gemini"] .composer-textarea {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  /* left gutter clears the [+]; right gutter clears [model][send] —
+   * sized for the widest realistic model label (e.g. "Claude Opus
+   * 4.7 1M") so the right-anchored model pill never overlaps text. */
+  padding: 9px 224px 9px 46px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+}
+[data-composer-style="gemini"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ffffff 38%, transparent);
+}
+
+/* SATELLITE row — the demoted controls (permission / turn-mode /
+ * provider / workspace) flow here, transparent, below the capsule.
+ * `.composer-control-footer` dissolves so `.composer-inline-pickers`
+ * becomes a direct column item of the surface (stable lift anchor). */
+[data-composer-style="gemini"] .composer-control-footer {
+  display: contents;
+}
+[data-composer-style="gemini"] .composer-inline-pickers {
+  margin-top: 0;
+  padding: 0 6px;
+  overflow: visible;
+}
+[data-composer-style="gemini"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  /* `overflow: visible` is load-bearing: the lifted [+] and [model]
+   * are abs-positioned children of this row and extend ABOVE it into
+   * the capsule. The base rule's `overflow-y: hidden` would clip them. */
+  overflow: visible;
+}
+/* Satellite ordering — the lifted +/model/send are removed from this
+ * flow, so only these four remain: permission · turn · provider · ws. */
+[data-composer-style="gemini"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="gemini"] [data-composer-control="provider"] { order: 3; }
+/* 1.0.5-AR12 — Workspace pill matches Gemini's softened outline-chip
+ * family (provider chip pattern at line 19060). */
+[data-composer-style="gemini"] [data-composer-control="workspace"] { order: 4; }
+
+/* ---- LIFT: +/model/send onto the capsule's row ----
+ * Anchored to `.composer-surface` (position:relative) as the containing
+ * block, but positioned against the CAPSULE's bottom edge via CSS
+ * anchor positioning (`anchor-name: --composer-capsule` on the wrap).
+ *
+ * 1.0.6-CRUX22 — bottom-align on multi-line. The capsule grows DOWNWARD
+ * as the textarea wraps, so the three controls must ride its bottom (the
+ * last line) like the official Gemini/Cursor composers. Each `top` is:
+ *     anchor(--composer-capsule bottom)  → the capsule's live bottom,
+ *                                          measured from the surface top
+ *   − var(--composer-capsule-single-h)   → its single-line height
+ *   + <original TOP offset>              → the hand-tuned single-line
+ *                                          inset (12 / 13 / 12 below)
+ * When single-line, anchor(bottom) == the single-line height, so the
+ * first two terms cancel and `top` collapses to EXACTLY the original
+ * pixel offset — single-line is byte-identical to before. When the
+ * capsule grows by Δ, anchor(bottom) grows by Δ and each control drops
+ * by Δ, holding a constant gap above the (new) capsule bottom. The
+ * textarea's 46px / 224px gutters still reserve the horizontal space. */
+[data-composer-style="gemini"] [data-composer-control="attach"] {
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 12px);
+  left: 10px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="gemini"] [data-composer-control="model"] {
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 13px);
+  right: 50px;
+  max-width: 172px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="gemini"] .composer-send-cluster {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 12px);
+  right: 12px;
+  z-index: 3;
+}
+
+[data-composer-style="gemini"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="gemini"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+  border-color: color-mix(in srgb, #5a8cff 30%, transparent);
+}
+[data-composer-style="gemini"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.78;
+}
+
+/* 1.0.6-CRUX19 — Gemini + button: SATELLITE (no bubble) + 2x glyph, matching
+ * the official Gemini composer's large borderless "+". Reverts CRUX12's tinted
+ * circle: transparent fill, no border, colour-only hover (no fill/transform),
+ * and the SF-symbol glyph doubled 14px → 28px. The button is lifted/absolute
+ * (not inside the capsule), so the larger glyph isn't clipped, and the 46px
+ * textarea left gutter still clears it. */
+[data-composer-style="gemini"] .composer-image-picker-btn {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 76%, transparent);
+  border-radius: 999px;
+}
+[data-composer-style="gemini"] .composer-image-picker-btn:hover:not(:disabled) {
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  transform: none;
+}
+[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon,
+[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Permission picker (Plan / Default approval) — plain text */
+[data-composer-style="gemini"] [data-composer-control="permission"] {
+  background: transparent;
+  border: 0;
+  padding: 0 6px;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="gemini"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* Model picker — Gemini's signature blue tier pill. (Lifted into the
+ * capsule's right edge by the CS3 lift block above; clamp + ellipsis
+ * so a long model label can never spill into the textarea gutter.) */
+[data-composer-style="gemini"] [data-composer-control="model"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #5a8cff 18%, transparent);
+  color: color-mix(in srgb, #b8ccff 95%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  border: 0;
+  overflow: hidden;
+}
+/* The trigger holds two inner spans (primary label + suffix), so
+ * `text-overflow` on the button itself can't reach them — ellipsize
+ * the primary span directly (safety net for very long model names;
+ * the 172px clamp + 224px textarea gutter already fit known ones). */
+[data-composer-style="gemini"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+[data-composer-style="gemini"] [data-composer-control="model"] .composer-combined-picker-trigger-suffix {
+  flex: 0 0 auto;
+}
+[data-composer-style="gemini"] [data-composer-control="model"]:hover {
+  background: color-mix(in srgb, #5a8cff 28%, transparent);
+}
+[data-composer-style="gemini"] [data-composer-control="model"] svg {
+  display: none;
+}
+
+/* Provider picker — softened outline pill */
+[data-composer-style="gemini"] [data-composer-control="provider"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="gemini"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+}
+
+/* Turn / Continuous toggle — matches the Gemini shell's provider
+ * chip (transparent bg, faint white border, white-70% text). Active
+ * state picks up a soft Gemini-blue tint so the choice reads in the
+ * shell's accent rather than a competing colour.
+ *
+ * Heights aligned with the provider chip (28px min) for visual
+ * rhythm across the footer row. */
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #5a8cff 22%, transparent);
+  font-weight: 600;
+}
+
+/* Send button — light filled circle with dark arrow */
+[data-composer-style="gemini"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 90%, transparent);
+  color: #0e1218;
+  border: 0;
+  box-shadow: none;
+}
+[data-composer-style="gemini"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+[data-composer-style="gemini"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 12%, transparent);
+  color: color-mix(in srgb, #ffffff 36%, transparent);
+  border: 0;
+}
+
+/* ============================================================
+ * KIMI composer style
+ * Dark rounded rectangle, green-yellow focus accent.
+ * Outlined model pill on the right. Filled circular send button.
+ * ============================================================ */
+[data-composer-style="kimi"] .composer-top-toggles,
+[data-composer-style="kimi"] .composer-chips,
+[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+/* Kimi shell — same parity move as Gemini above. Was hidden
+ * historically; now re-enabled with the Kimi composer-surface
+ * chrome (18px radius / `#0a0a0c 96%` / `#ffffff 8%` border /
+ * `0 4px 16px` shadow) so the Create-PR row matches the chip
+ * strip below it and both look like siblings of the Kimi
+ * composer textarea. */
+[data-composer-style="kimi"] .composer-above-bar {
+  border-radius: 18px;
+  background: color-mix(in srgb, #0a0a0c 96%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+[data-composer-style="kimi"] .composer-above-bar::before {
+  display: none;
+}
+
+[data-composer-style="kimi"] .composer-surface {
+  border-radius: 18px;
+  padding: 14px 16px 8px;
+  background: color-mix(in srgb, #0a0a0c 96%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+[data-composer-style="kimi"] .composer-surface::before {
+  /* The base composer edge gradient (~main.css 6566) is blue and the
+   * provider-tinted variants only override it on a matching transcript. The
+   * Kimi shell wants a solid dark/gray surface, so suppress the leaked edge
+   * entirely (its above-bar::before is already hidden above). */
+  display: none;
+}
+[data-composer-style="kimi"] .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #a9bd55 50%, transparent);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.55),
+    0 0 0 3px color-mix(in srgb, #a9bd55 10%, transparent);
+}
+[data-composer-style="kimi"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  padding: 6px 4px 12px;
+  min-height: 58px;
+  font-size: var(--font-size-md);
+}
+[data-composer-style="kimi"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ffffff 36%, transparent);
+}
+
+[data-composer-style="kimi"] .composer-inline-pickers {
+  margin-top: 0;
+}
+[data-composer-style="kimi"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+[data-composer-style="kimi"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="kimi"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="kimi"] [data-composer-control="provider"] { order: 3; }
+/* 1.0.5-AR12 — Workspace pill mirrors Kimi's outlined provider chip
+ * (line 19245) — slightly brighter than codex/gemini per Kimi's
+ * terminal aesthetic. */
+[data-composer-style="kimi"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="kimi"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+[data-composer-style="kimi"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="kimi"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  border-color: color-mix(in srgb, #a9bd55 40%, transparent);
+}
+[data-composer-style="kimi"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.78;
+}
+
+[data-composer-style="kimi"] .composer-image-picker-btn {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 56%, transparent);
+  border-radius: 999px;
+}
+[data-composer-style="kimi"] .composer-image-picker-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 10%, transparent);
+  color: #ffffff;
+}
+
+/* Permission picker — plain text, neutral */
+[data-composer-style="kimi"] [data-composer-control="permission"] {
+  background: transparent;
+  border: 0;
+  padding: 0 6px;
+  color: color-mix(in srgb, #ffffff 80%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="kimi"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* Model picker — outlined pill with chevron */
+[data-composer-style="kimi"] [data-composer-control="model"] {
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 18%, transparent);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="kimi"] [data-composer-control="model"]:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  border-color: color-mix(in srgb, #ffffff 28%, transparent);
+}
+[data-composer-style="kimi"] [data-composer-control="model"] svg {
+  display: none;
+}
+[data-composer-style="kimi"] [data-composer-control="model"]::after {
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
+/* Provider picker — matching outlined pill */
+[data-composer-style="kimi"] [data-composer-control="provider"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="kimi"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+
+/* Turn / Continuous toggle — matches the Kimi shell's provider chip
+ * (transparent bg, faint white border, white-78% text — slightly
+ * brighter than Codex/Gemini per Kimi's terminal aesthetic). Active
+ * state uses the olive (#a9bd55) accent so the choice reads in
+ * Kimi's signature colour rather than a neutral white. */
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 95%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: #0a0a0c;
+  background: color-mix(in srgb, #a9bd55 70%, transparent);
+  font-weight: 600;
+}
+
+/* Send button — filled circle, hover takes the Kimi accent */
+[data-composer-style="kimi"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 18%, transparent);
+  color: #ffffff;
+  border: 0;
+}
+[data-composer-style="kimi"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #a9bd55 65%, transparent);
+  color: #0a0a0c;
+}
+[data-composer-style="kimi"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 10%, transparent);
+  color: color-mix(in srgb, #ffffff 30%, transparent);
+  border: 0;
+}
+
+/* ============================================================
+ * Child Agent Thread card
+ * Renders inside the transcript beneath a Task/Agent activity to expose
+ * a sub-agent's own context (seed prompt, sub-tool-calls, final result).
+ * ============================================================ */
+.child-agent-thread {
+  margin: 6px 0 4px 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  overflow: hidden;
+}
+.child-agent-thread.state-running {
+  border-color: color-mix(in srgb, var(--tool-running) 38%, transparent);
+  background: color-mix(in srgb, var(--tool-running) 5%, transparent);
+}
+.child-agent-thread.state-failed {
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  background: color-mix(in srgb, var(--danger) 5%, transparent);
+}
+.child-agent-thread.state-completed {
+  border-color: color-mix(in srgb, var(--success) 26%, transparent);
+  background: color-mix(in srgb, var(--success) 4%, transparent);
+}
+
+.child-agent-thread-header {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  text-align: left;
+}
+.child-agent-thread-header:hover {
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.child-agent-thread-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-primary) 20%);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.child-agent-thread-avatar.status-running { color: var(--tool-running); background: color-mix(in srgb, var(--tool-running) 14%, transparent); }
+.child-agent-thread-avatar.status-completed { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.child-agent-thread-avatar.status-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.child-agent-thread-avatar :is(.agent-identicon, .agent-identity-icon) {
+  display: block;
+}
+
+.child-agent-thread-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.child-agent-thread-role {
+  color: var(--text-tertiary);
+  font-size: calc(var(--font-size-xs) - 1px);
+}
+.child-agent-thread-role::before {
+  content: '·';
+  margin-right: 6px;
+  opacity: 0.5;
+}
+.child-agent-thread .agent-invocation-source-chip {
+  margin-left: 2px;
+}
+.child-agent-thread-state {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: calc(var(--font-size-xs) - 1px);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+}
+.child-agent-thread-state.state-running { color: var(--tool-running); background: color-mix(in srgb, var(--tool-running) 14%, transparent); }
+.child-agent-thread-state.state-completed { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.child-agent-thread-state.state-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+.child-agent-thread-interactivity {
+  color: var(--text-tertiary);
+  font-size: calc(var(--font-size-xs) - 1px);
+}
+.child-agent-thread-duration {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: calc(var(--font-size-xs) - 1px);
+  font-variant-numeric: tabular-nums;
+}
+.child-agent-thread-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 180ms ease;
+}
+.child-agent-thread-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.child-agent-thread-body {
+  padding: 6px 12px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.child-agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.child-agent-section-title {
+  font-size: calc(var(--font-size-xs) - 1px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+.child-agent-seed-prompt {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--app-bg-sunken);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.child-agent-result {
+  padding: 8px 10px;
+  background: var(--app-bg-sunken);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.child-agent-activities {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.child-agent-empty {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
+/* ============================================================
+ * Provider shell parity
+ * Functional shell variants for Codex and Claude. These rules
+ * style the full workbench shell while keeping AGBench controls.
+ * ============================================================ */
+
+.provider-shell-status-row {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 0 4px;
+  margin: 0 0 6px;
+  color: color-mix(in srgb, #ffffff 62%, transparent);
+  font-size: calc(var(--font-size-xs) - 1px);
+  line-height: 1;
+  overflow: hidden;
+}
+
+.provider-shell-status-provider,
+.provider-shell-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  background: color-mix(in srgb, #141414 72%, transparent);
+  /* GPU: dropped on provider status chip — blur invisible at chip size. */
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.provider-shell-status-provider {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, #ffffff 86%, transparent);
+}
+
+.provider-shell-status-chip {
+  color: color-mix(in srgb, #ffffff 58%, transparent);
+}
+
+.provider-shell-status-row.style-codex .provider-shell-status-provider {
+  color: color-mix(in srgb, #ffffff 90%, transparent);
+}
+
+.provider-shell-status-row.style-claude .provider-shell-status-provider {
+  color: color-mix(in srgb, #ffb36c 86%, #ffffff 14%);
+}
+
+[data-interface-style="codex"] .app-sidebar,
+[data-interface-style="claude"] .app-sidebar {
+  --provider-shell-sidebar-line: color-mix(in srgb, #ffffff 9%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #202020 88%, transparent), color-mix(in srgb, #151515 92%, transparent)),
+    var(--sidebar-bg);
+  border-right-color: var(--provider-shell-sidebar-line);
+}
+
+[data-interface-style="claude"] .app-sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #1b211f 84%, transparent), color-mix(in srgb, #171717 94%, transparent)),
+    var(--sidebar-bg);
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-header-card,
+[data-interface-style="claude"] .app-sidebar .sidebar-header-card {
+  border-radius: 12px;
+  padding: 12px 12px 11px;
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  border-color: color-mix(in srgb, #ffffff 11%, transparent);
+  box-shadow: none;
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-section-header,
+[data-interface-style="claude"] .app-sidebar .sidebar-section-header {
+  margin: 10px 0 6px;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 44%, transparent);
+  letter-spacing: 0.03em;
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-workspace-item,
+[data-interface-style="codex"] .app-sidebar .sidebar-chat-item,
+[data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item,
+[data-interface-style="claude"] .app-sidebar .sidebar-workspace-item,
+[data-interface-style="claude"] .app-sidebar .sidebar-chat-item,
+[data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item {
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-workspace-item:hover,
+[data-interface-style="codex"] .app-sidebar .sidebar-chat-item:hover,
+[data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item:hover,
+[data-interface-style="claude"] .app-sidebar .sidebar-workspace-item:hover,
+[data-interface-style="claude"] .app-sidebar .sidebar-chat-item:hover,
+[data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-workspace-item.active,
+[data-interface-style="codex"] .app-sidebar .sidebar-chat-item.active,
+[data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #ffffff 10%, transparent);
+  border-color: color-mix(in srgb, #ffffff 11%, transparent);
+}
+
+[data-interface-style="claude"] .app-sidebar .sidebar-workspace-item.active,
+[data-interface-style="claude"] .app-sidebar .sidebar-chat-item.active,
+[data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #f4a35d 12%, #ffffff 5%);
+  border-color: color-mix(in srgb, #f4a35d 24%, transparent);
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-chat-title,
+[data-interface-style="claude"] .app-sidebar .sidebar-chat-title {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+[data-interface-style="codex"] .app-sidebar .sidebar-chat-subline,
+[data-interface-style="claude"] .app-sidebar .sidebar-chat-subline,
+[data-interface-style="codex"] .app-sidebar .sidebar-workspace-meta,
+[data-interface-style="claude"] .app-sidebar .sidebar-workspace-meta {
+  opacity: 0.66;
+}
+
+[data-interface-style="codex"] .app-transcript,
+[data-interface-style="claude"] .app-transcript {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 68%, transparent), color-mix(in srgb, #0d0d0d 72%, transparent)),
+    color-mix(in srgb, var(--content-bg) 60%, transparent);
+}
+
+/* Parity: transcript inherits the composer's max-width across themed shells
+ * so the chat bubbles and the composer line up at the same column edges.
+ * Previous override hardcoded 860px which left the chat narrower than the
+ * 980px composer after the width-equalization slice. */
+
+[data-interface-style="codex"] .message-group,
+[data-interface-style="claude"] .message-group {
+  margin-block: 18px;
+}
+
+[data-interface-style="codex"] .message-meta,
+[data-interface-style="claude"] .message-meta {
+  margin-bottom: 6px;
+  color: color-mix(in srgb, #ffffff 34%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+
+[data-interface-style="codex"] .message-bubble.assistant,
+[data-interface-style="claude"] .message-bubble.assistant {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+  line-height: 1.56;
+}
+
+[data-interface-style="codex"] .message-bubble.user,
+[data-interface-style="claude"] .message-bubble.user {
+  width: fit-content;
+  max-width: min(640px, 82%);
+  margin-left: auto;
+  padding: 9px 13px;
+  border-radius: 18px;
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: none;
+}
+
+/* Codex / Claude shells force a translucent-white bubble on top of
+ * their dark-glass composer chrome — that wins over the generic
+ * `.message-bubble.user` rule. Re-apply the user-bubble-base tint
+ * here so the picker also takes effect inside these shells. Mix
+ * directly into the translucent-white spec rather than the elevated
+ * surface to preserve the shell's signature look. */
+:is([data-interface-style="codex"], [data-interface-style="claude"])[data-user-bubble-color]:not([data-user-bubble-color="system"]) .message-bubble.user {
+  background: color-mix(in srgb, var(--user-bubble-base) 18%, color-mix(in srgb, #ffffff 8%, transparent));
+  border-color: color-mix(in srgb, var(--user-bubble-base) 34%, color-mix(in srgb, #ffffff 12%, transparent));
+}
+
+[data-interface-style="codex"] .activity-stack,
+[data-interface-style="claude"] .activity-stack {
+  margin-block: 8px;
+}
+
+[data-interface-style="codex"] .activity-row,
+[data-interface-style="claude"] .activity-row,
+[data-interface-style="codex"] .tool-activity-row,
+[data-interface-style="claude"] .tool-activity-row {
+  min-height: 22px;
+  color: color-mix(in srgb, #ffffff 48%, transparent);
+}
+
+[data-interface-style="codex"] .run-complete-card,
+[data-interface-style="claude"] .run-complete-card {
+  border-radius: 12px;
+  background: color-mix(in srgb, #151515 90%, transparent);
+  border-color: color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: none;
+}
+
+[data-interface-style="codex"] .composer-area,
+[data-interface-style="claude"] .composer-area {
+  /* Parity: themed shells inherit AGBench native width — color/border/typography
+   * differences still convey the codex / claude feel, but the composer footprint
+   * matches the rest of the app so users don't see the bar reflow when they
+   * switch themes. */
+  padding-bottom: 18px;
+}
+
+[data-interface-style="codex"] .composer-above-bar,
+[data-interface-style="claude"] .composer-above-bar {
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
+}
+
+[data-interface-style="codex"] .composer-above-bar {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%);
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.32);
+}
+
+[data-interface-style="claude"] .composer-above-bar {
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: #111111;
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+}
+
+/* Pair the Claude top row (branch/Detached, External path, Tool grants,
+ * Worktree, Create PR) with the textarea bubble below it: re-use the
+ * bubble's exact palette so the two stack as a matched composer header +
+ * body. Earlier rules at line 12984 (composer-style="claude") set this
+ * row to satellite-style with no container chrome; the interface-style
+ * rule directly above (line 14302) tried #111111 but it blends with the
+ * dark page background and the chips inside read as floating instead of
+ * contained. Override with the same #151515 fill + white-mix-9% hairline
+ * border + 14px radius + 0 4px 20px drop shadow that
+ * .composer-textarea now carries (see line ~14346), placed after the
+ * interface-style rule so the !importants win on source order. */
+[data-composer-style="claude"] .composer-above-bar {
+  background: #151515 !important;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32) !important;
+  padding: 8px 14px !important;
+}
+
+[data-interface-style="codex"] .composer-surface {
+  background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%) !important;
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
+  border-radius: 22px !important;
+  padding: 14px 14px 10px !important;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.36) !important;
+}
+
+[data-interface-style="codex"] .composer-control-footer {
+  padding-top: 0;
+}
+
+[data-interface-style="codex"] .composer-inline-pickers {
+  min-height: 34px;
+  align-items: center;
+  border-top: 0;
+  padding-top: 0;
+}
+
+[data-interface-style="codex"] .composer-codex-footer {
+  min-height: 24px;
+  margin-top: 7px;
+}
+
+/* Parity: claude shell keeps its palette but drops the split-box shape
+ * (forced 118px textarea + top-only / bottom-only corner radii on the
+ * textarea & control footer that mimicked Claude Code's two stacked
+ * rectangles). Shape now matches every other theme; the claude feel reads
+ * via colors, fonts, and the accent run-button tint defined below. */
+
+[data-interface-style="claude"] .composer-textarea {
+  background: #151515 !important;
+  border-color: color-mix(in srgb, #ffffff 10%, transparent) !important;
+}
+
+/* Move the visible bubble chrome (rounded rect, border, drop shadow,
+ * tinted backdrop) OFF .composer-surface — which contains BOTH the
+ * textarea + footer — and onto .composer-textarea alone, so only the
+ * upper composer reads as a contained translucent bubble and the
+ * footer chip row below floats free on the page background.
+ *
+ * - .composer-surface (+ :focus-within) loses background, border,
+ *   box-shadow, and the [data-prompt-surface="liquid_glass"] backdrop
+ *   blur, plus the ::before edge vignette.
+ * - .composer-textarea picks up border-radius / border / drop shadow,
+ *   reusing the #151515 fill the [data-interface-style="claude"] rule
+ *   directly above (line 14341) already declares.
+ *
+ * No !important on the textarea promotion so the focus-within rule at
+ * line 13471 (which lights up the textarea border/box-shadow on focus
+ * via higher specificity) still wins during focus and the bubble glows
+ * when the user clicks in. */
+[data-composer-style="claude"] .composer-surface,
+[data-composer-style="claude"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="claude"] .composer-surface::before {
+  display: none !important;
+}
+[data-composer-style="claude"] .composer-textarea {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+  padding: 18px 14px;
+}
+
+/* The footer chrome (.composer-control-footer + inline pickers) is the
+ * "satellite chip row" — it must stay transparent so the chips read as
+ * floating on the page background. The composer-style="claude" block
+ * already forces transparent !important on this selector, but since
+ * data-interface-style and data-composer-style always carry the same
+ * value (see useAppearance.ts), any background declared here would win
+ * by source order and undo that intent. Leave the footer alone. */
+
+[data-interface-style="claude"] .composer-claude-footer {
+  min-height: 24px;
+  margin-top: 6px;
+}
+
+[data-interface-style="codex"] .composer-picker-label select,
+[data-interface-style="claude"] .composer-picker-label select {
+  max-width: 180px;
+}
+
+[data-interface-style="codex"] .composer-picker-label[data-composer-control="permission"] select,
+[data-interface-style="claude"] .composer-picker-label[data-composer-control="permission"] select {
+  max-width: 170px;
+}
+
+/* Parity: provider picker stays visible across all themed shells so the
+ * user can switch providers without leaving the inline composer. Previous
+ * codex/claude rules hid it for "feels native" reasons, but theme is now
+ * pure cosmetics — the control set is invariant. */
+
+[data-interface-style="codex"] .composer-picker-command,
+[data-interface-style="claude"] .composer-picker-command {
+  border-color: transparent;
+  background: transparent;
+}
+
+[data-interface-style="codex"] .composer-discovery-card,
+[data-interface-style="codex"] .composer-permission-card,
+[data-interface-style="claude"] .composer-discovery-card,
+[data-interface-style="claude"] .composer-permission-card {
+  background: color-mix(in srgb, #151515 96%, transparent);
+  border-color: color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+}
+
+[data-interface-style="codex"] .composer-action-btn.run-btn:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 90%, transparent) !important;
+}
+
+[data-interface-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
+  color: color-mix(in srgb, #ffb36c 82%, #ffffff 18%) !important;
+}
+
+[data-interface-style="codex"] .welcome-hero,
+[data-interface-style="claude"] .welcome-hero {
+  opacity: 0.92;
+}
+
+[data-interface-style="codex"] .welcome-suggestion-btn,
+[data-interface-style="claude"] .welcome-suggestion-btn {
+  background: color-mix(in srgb, #151515 88%, transparent);
+  border-color: color-mix(in srgb, #ffffff 10%, transparent);
+  box-shadow: none;
+}
+
+/* Light-theme override for the Codex / Claude shell welcome
+ * suggestion cards. The shell-scoped rule above hardcodes a dark
+ * fill (`#151515 88%`) for every theme; in light themes that
+ * dark resting state surfaced regardless of the cards' hover
+ * state appearing correctly light. Cascade specificity (0,2,0)
+ * tied the hardcoded rule and our earlier `[data-theme="light"]`
+ * override at line 4110, with the later rule winning. This
+ * stacked-attribute selector lifts our specificity to (0,3,0)
+ * so the light fill sticks in both resting + hover states. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn {
+  background: var(--surface-1);
+  border-color: var(--surface-border);
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--surface-text, rgba(29, 29, 31, 0.86)) 22%, var(--surface-border));
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-label {
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-description,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-description {
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+}
+
+/* 1.0.6 — Obsidian + Codex/Claude shell welcome starter cards. Obsidian gives
+ * the Codex/Claude COMPOSER a light surface (it overrides --text-secondary etc.
+ * to dark charcoal for that block, main.css:32436), but the starter cards sit on
+ * the dark Obsidian PAGE and the shell rule above still paints them a near-black
+ * #151515 fill — so the inherited charcoal text rendered dark-on-dark. The
+ * `[data-theme="light"]` rescue above excludes Obsidian, so it never recovered.
+ * Match Obsidian's inverted-composer treatment: a light card with dark text,
+ * specificity (0,3,0) to beat the (0,2,0) shell fill. Scoped to
+ * obsidian + codex/claude only — no reach into any other theme/shell. */
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f3ef 100%);
+  border-color: rgba(18, 21, 27, 0.14);
+  color: rgba(18, 21, 27, 0.72);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn:hover,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #eeede8 100%);
+  border-color: rgba(18, 21, 27, 0.22);
+  color: rgba(18, 21, 27, 0.94);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-label,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-label {
+  color: rgba(18, 21, 27, 0.94);
+}
+[data-theme="obsidian"][data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-description,
+[data-theme="obsidian"][data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-description {
+  color: rgba(18, 21, 27, 0.6);
+}
+
+@media (max-width: 980px) {
+  /* Composer-area width is now inherited from the default .composer-area
+   * rule; we keep the narrow-viewport status-row tweaks because those are
+   * about chip overflow, not bubble width. */
+  [data-interface-style="codex"] .provider-shell-status-row,
+  [data-interface-style="claude"] .provider-shell-status-row {
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  [data-interface-style="codex"] .provider-shell-status-row::-webkit-scrollbar,
+  [data-interface-style="claude"] .provider-shell-status-row::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ============================================================
+ * GEMINI app-wide chrome
+ * Deep dark-blue sidebar, transparent assistant bubbles, centered
+ * welcome hero, blue glow accents. Mirrors codex/claude shape but
+ * with Gemini's signature blue identity.
+ * ============================================================ */
+[data-interface-style="gemini"] .app-sidebar {
+  background: color-mix(in srgb, #0a1020 92%, transparent);
+  border-right: 1px solid color-mix(in srgb, #5a8cff 8%, transparent);
+}
+[data-interface-style="gemini"] .app-sidebar .sidebar-header-card {
+  background: transparent;
+  border: 0;
+}
+[data-interface-style="gemini"] .app-sidebar .sidebar-section-header {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, #ffffff 38%, transparent);
+}
+[data-interface-style="gemini"] .app-sidebar .sidebar-workspace-item,
+[data-interface-style="gemini"] .app-sidebar .sidebar-chat-item,
+[data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item {
+  background: transparent;
+  border-radius: 10px;
+  border: 0;
+}
+[data-interface-style="gemini"] .app-sidebar .sidebar-workspace-item:hover,
+[data-interface-style="gemini"] .app-sidebar .sidebar-chat-item:hover,
+[data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: color-mix(in srgb, #5a8cff 8%, transparent);
+}
+[data-interface-style="gemini"] .app-sidebar .sidebar-chat-item.active,
+[data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #5a8cff 14%, transparent);
+}
+
+[data-interface-style="gemini"] .app-transcript {
+  background: color-mix(in srgb, #0a1020 88%, transparent);
+}
+[data-interface-style="gemini"] .message-bubble.user {
+  background: color-mix(in srgb, #2a3344 88%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  border-radius: 18px;
+}
+[data-interface-style="gemini"] .message-bubble.assistant {
+  background: transparent;
+  border: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+[data-interface-style="gemini"] .welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-interface-style="gemini"] .welcome-hero h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+[data-interface-style="gemini"] .welcome-hero h1 strong {
+  font-weight: 500;
+  color: color-mix(in srgb, #5a8cff 90%, transparent);
+  text-shadow: 0 0 24px color-mix(in srgb, #5a8cff 30%, transparent);
+}
+[data-interface-style="gemini"] .welcome-hero p {
+  text-align: center;
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+}
+
+[data-interface-style="gemini"] .activity-row-inline .activity-detail:hover {
+  background: color-mix(in srgb, #5a8cff 6%, transparent);
+}
+
+/* ============================================================
+ * KIMI app-wide chrome
+ * Near-black sidebar, transparent assistant bubbles, centered welcome
+ * hero, green-yellow accent highlights.
+ * ============================================================ */
+[data-interface-style="kimi"] .app-sidebar {
+  background: color-mix(in srgb, #080808 96%, transparent);
+  border-right: 1px solid color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-interface-style="kimi"] .app-sidebar .sidebar-header-card {
+  background: transparent;
+  border: 0;
+}
+[data-interface-style="kimi"] .app-sidebar .sidebar-section-header {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, #ffffff 40%, transparent);
+}
+[data-interface-style="kimi"] .app-sidebar .sidebar-workspace-item,
+[data-interface-style="kimi"] .app-sidebar .sidebar-chat-item,
+[data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item {
+  background: transparent;
+  border-radius: 10px;
+  border: 0;
+}
+[data-interface-style="kimi"] .app-sidebar .sidebar-workspace-item:hover,
+[data-interface-style="kimi"] .app-sidebar .sidebar-chat-item:hover,
+[data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-interface-style="kimi"] .app-sidebar .sidebar-chat-item.active,
+[data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #a9bd55 12%, transparent);
+}
+
+[data-interface-style="kimi"] .app-transcript {
+  background: color-mix(in srgb, #080808 92%, transparent);
+}
+[data-interface-style="kimi"] .message-bubble.user {
+  background: color-mix(in srgb, #1c1c1e 90%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  border-radius: 14px;
+}
+[data-interface-style="kimi"] .message-bubble.assistant {
+  background: transparent;
+  border: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+[data-interface-style="kimi"] .welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-interface-style="kimi"] .welcome-hero h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+[data-interface-style="kimi"] .welcome-hero h1 strong {
+  font-weight: 500;
+  color: color-mix(in srgb, #a9bd55 95%, transparent);
+  text-shadow: 0 0 24px color-mix(in srgb, #a9bd55 28%, transparent);
+}
+[data-interface-style="kimi"] .welcome-hero p {
+  text-align: center;
+  color: color-mix(in srgb, #ffffff 60%, transparent);
+}
+
+[data-interface-style="kimi"] .activity-row-inline .activity-detail:hover {
+  background: color-mix(in srgb, #ffffff 5%, transparent);
+}
+
