@@ -1409,14 +1409,31 @@ export function SettingsPanel({
               'AGBench web bridge — web_fetch + web_search for write-mode runs. Register it once in Cursor → Tools & MCPs → Add Custom MCP to enable.'
           }
         : null
+    // 1.0.6 — Grok is a first-class provider whose tools are provider-managed
+    // (resolved by the Grok agent CLI), not surfaced through an AGBench MCP
+    // server. Describe that plainly rather than letting it fall through to the
+    // generic "MCP status is not available yet" + a `gated` pill, which read as
+    // second-class. No bridge to install — its tools come with the CLI.
+    const grokProviderManaged =
+      provider === 'grok'
+        ? {
+            source: 'provider-managed',
+            serverName: 'Grok CLI',
+            message:
+              'Grok resolves its own tools through the Grok agent CLI — no AGBench MCP server to install. First-class provider; tools ship with the CLI.'
+          }
+        : null
     const mcp = contract?.mcp
     const available = Boolean(mcp?.available ?? status?.available ?? bridge?.available)
     const enabled = Boolean(mcp?.enabled ?? bridge?.enabled ?? available)
     const installed = Boolean(mcp?.installed ?? bridge?.installed ?? available)
+    // First-class state mapping. Cursor's web bridge IS its connected surface →
+    // `available`. Grok is provider-managed → `available` too (it's connected via
+    // the CLI; the tools just aren't AGBench-hosted). Neither should read `gated`.
     const state =
       mcp?.state ??
-      (cursorWebBridge
-        ? 'gated'
+      (cursorWebBridge || grokProviderManaged
+        ? 'available'
         : available
           ? 'available'
           : enabled || installed
@@ -1439,17 +1456,20 @@ export function SettingsPanel({
       source:
         mcp?.source ||
         cursorWebBridge?.source ||
+        grokProviderManaged?.source ||
         (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'agentbench'),
       serverName:
         mcp?.serverName ||
         bridge?.serverName ||
         cursorWebBridge?.serverName ||
+        grokProviderManaged?.serverName ||
         (available ? 'AGBench' : 'not connected'),
       toolCount,
       message:
         mcp?.message ||
         bridge?.message ||
         cursorWebBridge?.message ||
+        grokProviderManaged?.message ||
         status?.message ||
         status?.error ||
         (available
