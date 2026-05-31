@@ -5333,9 +5333,9 @@ interface AgentQuestionCardProps {
  *     success the parent's `handleSelectWorkspace` then refreshes the
  *     workspace list and switches over.
  *
- * Hidden on the *global* chat surface — the global chat is intentionally
- * workspace-less, so showing a "pick a folder" affordance there is
- * confusing. Sidebar still has the picker for that case.
+ * Shown on both workspace and global welcome surfaces. "Global Chat" is
+ * always the first chip, followed by recent workspaces, so users can choose
+ * the final scope before the first message is sent.
  */
 interface WelcomeWorkspacePickerProps {
   workspaces: WorkspaceRecord[]
@@ -5455,14 +5455,20 @@ function WelcomeWorkspacePicker({
     setTimeout(callback, 0)
   }
 
-  if (isGlobalChat) return null
-
   return (
     <div className="welcome-workspace-picker">
-      <span className="welcome-workspace-picker-label">
-        {currentWorkspace ? 'Switch folder' : 'Open a folder'}:
-      </span>
+      <span className="welcome-workspace-picker-label">Switch folder:</span>
       <div className="welcome-workspace-picker-chips">
+        <button
+          type="button"
+          className={`welcome-workspace-picker-chip welcome-workspace-picker-global ${isGlobalChat ? 'is-active' : ''}`}
+          onClick={onSelectNoWorkspace}
+          disabled={isGlobalChat}
+          aria-current={isGlobalChat ? 'page' : undefined}
+          title="Use a workspace-less global chat"
+        >
+          <span className="welcome-workspace-picker-chip-name">Global Chat</span>
+        </button>
         {inline.map((ws) => (
           <button
             key={ws.id}

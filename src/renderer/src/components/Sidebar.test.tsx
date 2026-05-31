@@ -144,6 +144,34 @@ describe('Sidebar ensembles section', () => {
     expect(html).not.toContain('sidebar-ensembles-section')
     expect(html).not.toContain('sidebar-ensemble-create')
   })
+
+  it('uses the silver ensemble dot in ensemble and pinned chat rows', () => {
+    stubSidebarStorage({})
+
+    const html = renderSidebar([
+      makeChat({
+        appChatId: 'ensemble-1',
+        chatKind: 'ensemble',
+        title: 'Workspace ensemble',
+        provider: 'codex',
+        createdAt: 3,
+        updatedAt: 3
+      }),
+      makeChat({
+        appChatId: 'pinned-ensemble-1',
+        chatKind: 'ensemble',
+        title: 'Pinned ensemble',
+        provider: 'claude',
+        pinned: true,
+        createdAt: 4,
+        updatedAt: 4
+      })
+    ])
+
+    expect(html).toContain('sidebar-ensemble-item')
+    expect(html).toContain('sidebar-pinned-item')
+    expect((html.match(/sidebar-provider-dot-ensemble/g) || []).length).toBe(2)
+  })
 })
 
 describe('Sidebar Chats section', () => {

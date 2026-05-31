@@ -1305,6 +1305,13 @@ export function Sidebar({
       />
     )
   }
+
+  const renderChatProviderDot = (chat: ChatRecord): ReactNode => {
+    if (chat.chatKind === 'ensemble') {
+      return <span className="sidebar-provider-dot sidebar-provider-dot-ensemble" aria-hidden />
+    }
+    return renderProviderDot(chat.provider)
+  }
   // Phase F1: index child chats by parentChatId so we can render
   // each parent immediately followed by its children, indented. We
   // build it once per render — sidebar size is bounded so cost is
@@ -1897,7 +1904,7 @@ export function Sidebar({
                       }}
                       title={chat.title}
                     >
-                      {renderProviderDot(chat.provider)}
+                      {renderChatProviderDot(chat)}
                       <SidebarChatTitleEditable
                         chat={chat}
                         className="sidebar-pinned-label"
@@ -1975,7 +1982,7 @@ export function Sidebar({
                         title={chat.title}
                         {...getChatTileDragProps(chat)}
                       >
-                        {renderProviderDot(chat.provider)}
+                        {renderChatProviderDot(chat)}
                         <SidebarChatTitleEditable
                           chat={chat}
                           className="sidebar-recents-label"
@@ -2070,6 +2077,7 @@ export function Sidebar({
                           onClick={() => onSelectChat(chat)}
                           {...getChatTileDragProps(chat)}
                         >
+                          {renderChatProviderDot(chat)}
                           <span className="sidebar-chat-copy" title={chat.title}>
                             <span className="sidebar-chat-title-line">
                               <span className="sidebar-provider-label provider-ensemble">
