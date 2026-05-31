@@ -181,14 +181,27 @@ function staleAggregateResetShiftThreshold(windowEntry: NormalizedProviderUsageW
 
 function isStaleCodexAggregateWindow(
   aggregateWindow: NormalizedProviderUsageWindow,
-  additionalWindows: NormalizedProviderUsageWindow[]
+  additionalWindows: NormalizedProviderUsageWindow[],
+  now: number = Date.now()
 ): boolean {
   const aggregateTotal = Number(aggregateWindow.limitWindowSeconds || 0)
   const aggregateReset = codexResetMs(aggregateWindow)
   if (
     aggregateTotal <= 0 ||
     aggregateReset === null ||
-    codexUsageFraction(aggregateWindow) < 0.98
+    codexUsageFraction(aggregateWindow) < 0.98 ||
+    // 1.0.6 — a saturated aggregate window whose reset is still in the FUTURE
+    // is legitimately maxed-out, not stale data. The pre-existing predicate
+    // (≥98% used + same-bucket Spark sibling at ≤20% with a later reset) was
+    // suppressing the Codex Session/5h meter the moment it hit 100%, because
+    // the Spark sibling's reset clock is naturally a few minutes-to-hours
+    // later than Session's, easily clearing the small (30 min for 5h windows)
+    // structural threshold. Stale data is when the BACKEND still reports 100%
+    // even though the bucket has already rolled over — i.e. the reset has
+    // PASSED. Gate the suppression on that condition so a saturated current
+    // window keeps showing while genuinely-stale post-rollover reads still
+    // get filtered (testable via the injected `now` arg).
+    aggregateReset > now
   ) {
     return false
   }

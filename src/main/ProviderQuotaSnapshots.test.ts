@@ -59,13 +59,22 @@ describe('ProviderQuotaSnapshots', () => {
   })
 
   it('suppresses stale Codex aggregate windows when named limits have reset', () => {
+    // The aggregate's reset is genuinely in the PAST (60s ago), yet the backend
+    // still reports 100% used — that's actually-stale data (the bucket has
+    // already rolled over). The named limit shows a fresh roll-over (0% used,
+    // reset 7 days out), so the function correctly suppresses the stale
+    // aggregate. (Pre-1.0.6 this test used hardcoded 2030 timestamps; the
+    // suppression also fired for legitimately-saturated current windows, which
+    // hid the Codex Session/5h meter the moment it hit 100% — see the
+    // companion "preserves a saturated aggregate ..." test below.)
+    const nowSec = Math.floor(Date.now() / 1000)
     const snapshot = normalizeCodexUsagePayload({
       rate_limit: {
         secondary_window: {
           used_percent: 100,
           limit_window_seconds: 604_800,
-          reset_after_seconds: 172_800,
-          reset_at: 1_893_628_800
+          reset_after_seconds: 0,
+          reset_at: nowSec - 60
         }
       },
       additional_rate_limits: [
@@ -76,7 +85,7 @@ describe('ProviderQuotaSnapshots', () => {
               used_percent: 0,
               limit_window_seconds: 604_800,
               reset_after_seconds: 604_800,
-              reset_at: 1_894_060_800
+              reset_at: nowSec + 604_800
             }
           }
         }
@@ -84,6 +93,44 @@ describe('ProviderQuotaSnapshots', () => {
     })
 
     expect(snapshot.windows?.map((windowEntry) => windowEntry.label)).toEqual(['GPT-5.5 Weekly'])
+  })
+
+  it('preserves a saturated Codex aggregate window when its reset is still in the future', () => {
+    // The user-reported bug: Session/5h vanished the moment it hit 100% used.
+    // Saturated current window — aggregate at 100% with reset still ~30 min
+    // away — must keep showing even though a same-bucket Spark sibling has low
+    // usage and a slightly-later reset (very common: Spark was first used
+    // later in the cycle so its clock trails Session's by a few hours, easily
+    // clearing the structural 30-min threshold). The stale-detector only
+    // suppresses when the aggregate's reset has already PASSED.
+    const nowSec = Math.floor(Date.now() / 1000)
+    const snapshot = normalizeCodexUsagePayload({
+      rate_limit: {
+        primary_window: {
+          used_percent: 100,
+          limit_window_seconds: 18_000,
+          reset_after_seconds: 1_800,
+          reset_at: nowSec + 1_800
+        }
+      },
+      additional_rate_limits: [
+        {
+          limit_name: 'GPT-5.3-Codex-Spark',
+          rate_limit: {
+            primary_window: {
+              used_percent: 5,
+              limit_window_seconds: 18_000,
+              reset_after_seconds: 18_000,
+              reset_at: nowSec + 18_000
+            }
+          }
+        }
+      ]
+    })
+
+    const labels = snapshot.windows?.map((windowEntry) => windowEntry.label)
+    expect(labels).toContain('Session')
+    expect(labels).toContain('GPT-5.3-Codex-Spark 5h')
   })
 
   it('renders Claude Sonnet utilization even without a reset timestamp', () => {
