@@ -21284,7 +21284,11 @@ function App(): React.JSX.Element {
             )}
             {shouldShowWelcomeUsageDashboard && (
               <div className="welcome-standalone-heatmaps">
-                <UsageHeatmap dayCount={90} className="usage-heatmap--welcome-standalone" />
+                <UsageHeatmap
+                  dayCount={90}
+                  title="AGBench Activity"
+                  className="usage-heatmap--welcome-standalone"
+                />
                 <UsageHeatmap
                   dayCount={90}
                   usageSource="external"
