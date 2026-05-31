@@ -173,3 +173,84 @@ export function formatBlackboardForPrompt(entries: BlackboardEntry[]): string {
   }
   return lines.join('\n')
 }
+
+/**
+ * M4 — map a synthesizer round-summary block onto blackboard entries.
+ *
+ * The summary block (produced by the AT8 synthesizer machinery and parsed by
+ * `extractRoundSummaryBlock` in EnsembleRoundSummary.ts) carries four labelled
+ * sections — Decisions / Corrections / Open risks / Next action. We turn each
+ * non-empty section into ONE session-scoped entry under a stable key, so each
+ * round's summary UPSERTS over the previous (the blackboard reflects the panel's
+ * *current* agreed state, while `roundSummaries` keeps the full history). Pure +
+ * deterministic: the caller injects `makeId` so there's no Date/random here.
+ */
+const SUMMARY_SECTIONS: { label: string; category: BlackboardCategory; key: string }[] = [
+  { label: 'Decisions', category: 'decision', key: 'round-decisions' },
+  { label: 'Corrections', category: 'do-not-repeat', key: 'round-corrections' },
+  { label: 'Open risks', category: 'risk', key: 'round-open-risks' },
+  { label: 'Next action', category: 'note', key: 'round-next-action' }
+]
+
+export interface DeriveBlackboardInput {
+  summary: string
+  chatId: string
+  roundId: string
+  participantId: string
+  createdAt: string
+  /** Deterministic id factory — called with a 0-based section index. */
+  makeId: (seq: number) => string
+}
+
+export function deriveBlackboardFromRoundSummary(input: DeriveBlackboardInput): BlackboardEntry[] {
+  if (!input.summary || typeof input.summary !== 'string') return []
+  const lines = input.summary.replace(/\r\n/g, '\n').split('\n')
+  const sectionText = new Map<string, string[]>()
+  let current: string | null = null
+  for (const raw of lines) {
+    const line = raw.trim().replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '')
+    if (!line) continue
+    const lower = line.toLowerCase()
+    if (/^round summary\s*:/.test(lower)) {
+      current = null
+      continue
+    }
+    let matched = false
+    for (const section of SUMMARY_SECTIONS) {
+      const prefix = `${section.label.toLowerCase()}:`
+      if (lower.startsWith(prefix)) {
+        const after = line.slice(section.label.length + 1).trim()
+        sectionText.set(section.label, after ? [after] : [])
+        current = section.label
+        matched = true
+        break
+      }
+    }
+    if (matched) continue
+    if (current) sectionText.get(current)?.push(line)
+  }
+
+  const entries: BlackboardEntry[] = []
+  let seq = 0
+  for (const section of SUMMARY_SECTIONS) {
+    const value = (sectionText.get(section.label) || []).join(' ').trim()
+    if (!value) continue
+    const entry = makeBlackboardEntry({
+      id: input.makeId(seq),
+      chatId: input.chatId,
+      roundId: input.roundId,
+      participantId: input.participantId,
+      key: section.key,
+      value,
+      category: section.category,
+      scope: 'session',
+      derivedFrom: `round-summary:${input.roundId}`,
+      createdAt: input.createdAt
+    })
+    if (entry) {
+      entries.push(entry)
+      seq += 1
+    }
+  }
+  return entries
+}

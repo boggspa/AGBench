@@ -3,6 +3,7 @@ import type { BlackboardEntry } from '../store/types'
 import {
   BLACKBOARD_MAX_ENTRIES,
   BLACKBOARD_MAX_VALUE_LEN,
+  deriveBlackboardFromRoundSummary,
   formatBlackboardForPrompt,
   makeBlackboardEntry,
   normalizeBlackboardCategory,
@@ -182,5 +183,83 @@ describe('formatBlackboardForPrompt', () => {
     expect(out).toContain('Verified facts:')
     expect(out).not.toContain('Decisions:')
     expect(out).not.toContain('Open risks:')
+  })
+})
+
+describe('deriveBlackboardFromRoundSummary', () => {
+  const base = {
+    chatId: 'chat-1',
+    roundId: 'round-7',
+    participantId: 'Codex',
+    createdAt: '2026-05-31T00:00:00.000Z',
+    makeId: (seq: number) => `id-${seq}`
+  }
+
+  const summary = [
+    'Round summary:',
+    'Decisions: ship the picker pill; use ISO dates',
+    'Corrections: GPT-5.2 was mislabelled last round',
+    'Open risks: notarization profile may be stale',
+    'Next action: run validate:release'
+  ].join('\n')
+
+  it('maps each labelled section to a session-scoped entry under a stable key', () => {
+    const out = deriveBlackboardFromRoundSummary({ ...base, summary })
+    expect(out).toHaveLength(4)
+    const byKey = Object.fromEntries(out.map((e) => [e.key, e]))
+    expect(byKey['round-decisions']).toMatchObject({
+      category: 'decision',
+      scope: 'session',
+      value: 'ship the picker pill; use ISO dates',
+      participantId: 'Codex'
+    })
+    expect(byKey['round-corrections']).toMatchObject({ category: 'do-not-repeat' })
+    expect(byKey['round-open-risks']).toMatchObject({ category: 'risk' })
+    expect(byKey['round-next-action']).toMatchObject({ category: 'note' })
+  })
+
+  it('stamps provenance + deterministic ids from makeId', () => {
+    const out = deriveBlackboardFromRoundSummary({ ...base, summary })
+    expect(out[0].id).toBe('id-0')
+    expect(out[0].derivedFrom).toBe('round-summary:round-7')
+    expect(out.every((e) => e.roundId === 'round-7')).toBe(true)
+  })
+
+  it('skips sections that are empty, and returns [] for a blank summary', () => {
+    const partial = ['Round summary:', 'Decisions: only this one', 'Open risks:'].join('\n')
+    const out = deriveBlackboardFromRoundSummary({ ...base, summary: partial })
+    expect(out.map((e) => e.key)).toEqual(['round-decisions'])
+    expect(deriveBlackboardFromRoundSummary({ ...base, summary: '' })).toEqual([])
+    expect(deriveBlackboardFromRoundSummary({ ...base, summary: '   ' })).toEqual([])
+  })
+
+  it('captures multi-line section bodies', () => {
+    const multi = [
+      'Round summary:',
+      'Decisions: first decision',
+      'continued onto a second line',
+      'Open risks: a risk'
+    ].join('\n')
+    const out = deriveBlackboardFromRoundSummary({ ...base, summary: multi })
+    const decisions = out.find((e) => e.key === 'round-decisions')
+    expect(decisions?.value).toBe('first decision continued onto a second line')
+  })
+
+  it('round-trips through upsert so a later round replaces the prior derived entries', () => {
+    const first = deriveBlackboardFromRoundSummary({ ...base, summary })
+    let board = first.reduce((acc, e) => upsertBlackboardEntry(acc, e), [] as ReturnType<typeof entry>[])
+    expect(board).toHaveLength(4)
+    const round8 = deriveBlackboardFromRoundSummary({
+      ...base,
+      roundId: 'round-8',
+      createdAt: '2026-05-31T01:00:00.000Z',
+      summary: ['Round summary:', 'Decisions: new decision', 'Corrections: c', 'Open risks: r', 'Next action: n'].join(
+        '\n'
+      )
+    })
+    board = round8.reduce((acc, e) => upsertBlackboardEntry(acc, e), board)
+    // Same keys + same author → upsert, not growth.
+    expect(board).toHaveLength(4)
+    expect(board.find((e) => e.key === 'round-decisions')?.value).toBe('new decision')
   })
 })

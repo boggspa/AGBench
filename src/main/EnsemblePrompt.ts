@@ -26,6 +26,10 @@ import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
 // only knew `@Sonnet 4.6`, which Codex / Claude would dutifully
 // follow into a routing failure.
 import { getParticipantAliases } from './services/EnsembleMentionAlias'
+// M4 (1.0.7) — shared blackboard digest. Surfaced above the prior-round
+// summary so every participant opens its turn with the panel's agreed
+// decisions / risks / corrections as compact context.
+import { formatBlackboardForPrompt, selectBlackboardForRound } from './blackboard/Blackboard'
 
 // 1.0.4-AR2 — mirror of the renderer ceiling
 // (`EnsembleParticipantsAboveRow.MAX_ENSEMBLE_PARTICIPANTS`). Keep
@@ -437,6 +441,18 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // each participant to respond to the prior participant's
     // last paragraph rather than re-answer the user.
     ...formatRoundModeInstructions(input.config, input.participant.id),
+    // M4 (1.0.7) — ensemble blackboard digest. A compact, category-grouped
+    // view of the shared scratchpad (decisions / facts / risks / do-not-repeat
+    // / notes), filtered to entries in-scope for this round. Auto-populated
+    // from each round's synthesizer summary, so it propagates agreed context
+    // without re-dumping the transcript. Empty digest (no entries, or only
+    // foreign round-scoped ones) skips the section entirely.
+    ...(() => {
+      const digest = formatBlackboardForPrompt(
+        selectBlackboardForRound(input.config.blackboard || [], input.roundId)
+      )
+      return digest ? ['', digest] : []
+    })(),
     // 1.0.4-AT8 — prior round summary block. When the config has a
     // non-empty `lastRoundSummary` from the previous round's
     // synthesizer, prepend it so every participant sees the same

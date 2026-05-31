@@ -34,6 +34,13 @@ import {
 } from '../EnsembleErrors'
 import type { ScoutBriefRecord } from '../ScoutBrief'
 import { findTerminalSynthesizerRoundSummary } from '../EnsembleRoundSummary'
+// M4 (1.0.7) — auto-derive blackboard entries from the synthesizer's
+// round summary at round end, so the panel's agreed decisions / risks /
+// corrections propagate to next round's prompts as a compact digest.
+import {
+  deriveBlackboardFromRoundSummary,
+  upsertBlackboardEntry
+} from '../blackboard/Blackboard'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -2820,6 +2827,29 @@ export class EnsembleOrchestrator {
             capturedAt: endedAt
           })
         : null
+    // M4 — derive blackboard entries from the synthesizer summary and upsert
+    // them onto the shared scratchpad. Session-scoped + stable-keyed, so each
+    // round's summary replaces the prior round's derived entries (the
+    // blackboard reflects the panel's *current* agreed state; full per-round
+    // history stays in `roundSummaries`). Deterministic ids (roundId + seq) so
+    // there's no clock/random dependence here. Skipped when no summary.
+    let nextBlackboard = chat.ensemble.blackboard
+    if (summaryRecord) {
+      const derived = deriveBlackboardFromRoundSummary({
+        summary: summaryRecord.summary,
+        chatId: chat.appChatId,
+        roundId,
+        participantId: summaryRecord.participantId,
+        createdAt: endedAt,
+        makeId: (seq) => `${roundId}-bb-${seq}`
+      })
+      if (derived.length > 0) {
+        nextBlackboard = derived.reduce(
+          (acc, entry) => upsertBlackboardEntry(acc, entry),
+          chat.ensemble.blackboard || []
+        )
+      }
+    }
     this.deps.saveChat({
       ...chat,
       ensemble: {
@@ -2832,6 +2862,7 @@ export class EnsembleOrchestrator {
               [roundId]: summaryRecord
             }
           : chat.ensemble.roundSummaries,
+        ...(nextBlackboard ? { blackboard: nextBlackboard } : {}),
         updatedAt: endedAt
       },
       updatedAt: this.deps.now()

@@ -796,6 +796,15 @@ export interface EnsembleConfig {
    * restart recovery; timers are only in-memory accelerators.
    */
   wakeups?: Record<string, EnsembleWakeupRecord>
+  /**
+   * M4 (1.0.7) — cross-participant shared scratchpad. Entries are
+   * auto-derived from each round's synthesizer summary (decisions /
+   * corrections / open risks / next action) and surfaced to every
+   * participant's prompt next round as a compact digest, so shared
+   * context propagates without dumping full transcript memory. TTL-
+   * pruned per round/session/chat. See src/main/blackboard/Blackboard.ts.
+   */
+  blackboard?: BlackboardEntry[]
 }
 
 /**
