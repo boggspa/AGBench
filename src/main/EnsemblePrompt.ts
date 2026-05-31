@@ -30,6 +30,10 @@ import { getParticipantAliases } from './services/EnsembleMentionAlias'
 // summary so every participant opens its turn with the panel's agreed
 // decisions / risks / corrections as compact context.
 import { formatBlackboardForPrompt, selectBlackboardForRound } from './blackboard/Blackboard'
+// M6 (1.0.7) — thinking-ephemerality. Defensive strip of inlined reasoning
+// chains from ephemeral-reasoning providers' messages before they enter
+// future-round transcript context (Codex reasoning is retained).
+import { stripReasoningChains } from './EnsembleThinkingEphemerality'
 
 // 1.0.4-AR2 — mirror of the renderer ceiling
 // (`EnsembleParticipantsAboveRow.MAX_ENSEMBLE_PARTICIPANTS`). Keep
@@ -567,7 +571,16 @@ function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): s
   let used = 0
   for (const message of relevant) {
     const tag = messageTag(message)
-    const text = sanitizeText(message.content).slice(0, MAX_MESSAGE_CHARS)
+    // M6 (1.0.7) — thinking-ephemerality. Strip any inlined reasoning chain
+    // from a message authored by an ephemeral-reasoning provider before it
+    // enters FUTURE-round context, keyed on the message's own authoring
+    // provider (Codex reasoning is durable and retained). Today this is a
+    // no-op — `.content` carries no reasoning fences — but it pins the
+    // invariant so a future provider adapter that starts inlining a thinking
+    // block can't silently leak it into the panel's shared transcript.
+    const authoringProvider = message.metadata?.ensembleProvider as ProviderId | undefined
+    const ephemeral = stripReasoningChains(message.content, authoringProvider)
+    const text = sanitizeText(ephemeral).slice(0, MAX_MESSAGE_CHARS)
     // 1.0.4-AR7 — surface a compact tool-trace summary on every
     // message that has one, prepended to the content so downstream
     // participants can see at a glance what tools were used to
