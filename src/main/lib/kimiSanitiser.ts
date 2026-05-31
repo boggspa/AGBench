@@ -160,9 +160,23 @@ export interface KimiSanitiserResult {
   matches: ReadonlyArray<{ trigger: string; sentenceExcerpt: string }>
 }
 
+export type KimiContentFilterRetryFailureReason =
+  | 'classifier_unavailable'
+  | 'classifier_no_redaction'
+  | 'keyword_unavailable'
+  | 'retry_passes_exhausted'
+
 const SENTENCE_BOUNDARY_REGEX = /(?<=[.!?。！？])\s+/g
 const PLACEHOLDER =
   '[sentence redacted: AGBench Kimi compatibility filter detected content Moonshot rejects]'
+const KIMI_CONTENT_FILTER_REJECTION_PATTERN =
+  /Error code:\s*400[\s\S]*content_filter|["']?type["']?\s*:\s*["']content_filter["']?|content[_ -]?filter|considered high risk/i
+
+export function isKimiContentFilterRejection(value: unknown): boolean {
+  if (!value) return false
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return KIMI_CONTENT_FILTER_REJECTION_PATTERN.test(text)
+}
 
 /**
  * Parse the user's `customKeywords` settings string into a
@@ -267,4 +281,40 @@ export function formatKimiSanitiserDiagnostic(result: KimiSanitiserResult): stri
   }
   lines.push('Other participants (Codex / Claude / Gemini) saw the full unfiltered prompt.')
   return lines.join('\n')
+}
+
+export function formatKimiRetryDiagnostic(
+  pass: 'keyword' | 'classifier',
+  result: KimiSanitiserResult
+): string {
+  const passLabel = pass === 'keyword' ? 'keyword compatibility filter' : 'classifier redaction'
+  const lines = [
+    `Kimi rejected this prompt with Moonshot's content filter. AGBench is retrying once with ${passLabel}.`
+  ]
+  const sanitiserDiagnostic = formatKimiSanitiserDiagnostic(result)
+  if (sanitiserDiagnostic) lines.push(sanitiserDiagnostic)
+  return lines.join('\n\n')
+}
+
+export function formatKimiRetryFailureDiagnostic(input: {
+  attemptedPasses: ReadonlyArray<'keyword' | 'classifier'>
+  reason: KimiContentFilterRetryFailureReason
+}): string {
+  const attempted = input.attemptedPasses.length
+    ? input.attemptedPasses.join(' → ')
+    : 'none'
+  const reasonText =
+    input.reason === 'classifier_unavailable'
+      ? 'the classifier pass is disabled or unavailable, so no second redaction pass could be produced'
+      : input.reason === 'classifier_no_redaction'
+        ? 'the classifier did not identify any additional sentence to redact'
+        : input.reason === 'retry_passes_exhausted'
+          ? 'both retry passes were already attempted'
+          : 'the keyword sanitiser could not produce a changed prompt'
+  return [
+    "Kimi (Moonshot) rejected this turn with a content-filter response after AGBench's retry envelope ran.",
+    `Retry passes attempted: ${attempted}.`,
+    `Final reason: ${reasonText}.`,
+    'No user transcript content was changed; only Kimi retry prompts are sanitised.'
+  ].join('\n')
 }

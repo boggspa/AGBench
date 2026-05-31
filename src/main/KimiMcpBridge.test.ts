@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   KIMI_AGENTBENCH_SERVER_NAME,
   KIMI_AGENTBENCH_TOOL_NAMES,
+  buildKimiWirePromptRequest,
   buildKimiMcpBridgeAddArgs,
   redactKimiMcpBridgeAddArgs
 } from './KimiMcpBridge'
@@ -146,5 +147,37 @@ describe('redactKimiMcpBridgeAddArgs', () => {
     expect(redacted).toContain('--socket')
     expect(redacted).toContain('/run/agentbench.sock')
     expect(redacted).toContain('AGENTBENCH_PARENT_PROVIDER=kimi')
+  })
+})
+
+describe('buildKimiWirePromptRequest', () => {
+  it('builds a plain text Kimi wire prompt request', () => {
+    expect(buildKimiWirePromptRequest({ id: 'prompt-1', prompt: 'hello' })).toEqual({
+      jsonrpc: '2.0',
+      id: 'prompt-1',
+      method: 'prompt',
+      params: { user_input: 'hello' }
+    })
+  })
+
+  it('preserves image attachments in Kimi wire prompt requests', () => {
+    expect(
+      buildKimiWirePromptRequest({
+        id: 'prompt-2',
+        prompt: 'inspect this',
+        imagePaths: ['/tmp/a.png', '/tmp/b.png']
+      })
+    ).toEqual({
+      jsonrpc: '2.0',
+      id: 'prompt-2',
+      method: 'prompt',
+      params: {
+        user_input: [
+          { type: 'text', text: 'inspect this' },
+          { type: 'image_url', image_url: { url: '/tmp/a.png' } },
+          { type: 'image_url', image_url: { url: '/tmp/b.png' } }
+        ]
+      }
+    })
   })
 })

@@ -42,6 +42,29 @@ export interface KimiWireCloseDecision {
   resolveWire: boolean
 }
 
+export type KimiContentFilterRetryPass = 'keyword' | 'classifier'
+
+export interface KimiContentFilterRetryInputs {
+  attemptedPasses: ReadonlyArray<KimiContentFilterRetryPass>
+  keywordCanRetry: boolean
+  classifierAvailable: boolean
+  classifierCanRetry: boolean
+}
+
+export type KimiContentFilterRetryDecision =
+  | {
+      action: 'retry'
+      pass: KimiContentFilterRetryPass
+    }
+  | {
+      action: 'fail'
+      reason:
+        | 'keyword_unavailable'
+        | 'classifier_unavailable'
+        | 'classifier_no_redaction'
+        | 'retry_passes_exhausted'
+    }
+
 export function decideKimiWireClose(inputs: KimiWireCloseInputs): KimiWireCloseDecision {
   if (inputs.settled) {
     return {
@@ -88,5 +111,35 @@ export function decideKimiWireClose(inputs: KimiWireCloseInputs): KimiWireCloseD
     emitExit: true,
     terminalStatus: inputs.code === 0 ? 'completed' : 'failed',
     resolveWire: true
+  }
+}
+
+export function decideKimiContentFilterRetry(
+  inputs: KimiContentFilterRetryInputs
+): KimiContentFilterRetryDecision {
+  const attempted = new Set(inputs.attemptedPasses)
+
+  if (!attempted.has('keyword')) {
+    if (inputs.keywordCanRetry) {
+      return { action: 'retry', pass: 'keyword' }
+    }
+    if (!inputs.classifierAvailable) {
+      return { action: 'fail', reason: 'classifier_unavailable' }
+    }
+  }
+
+  if (!attempted.has('classifier')) {
+    if (!inputs.classifierAvailable) {
+      return { action: 'fail', reason: 'classifier_unavailable' }
+    }
+    if (inputs.classifierCanRetry) {
+      return { action: 'retry', pass: 'classifier' }
+    }
+    return { action: 'fail', reason: 'classifier_no_redaction' }
+  }
+
+  return {
+    action: 'fail',
+    reason: inputs.keywordCanRetry ? 'retry_passes_exhausted' : 'keyword_unavailable'
   }
 }

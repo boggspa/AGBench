@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   KIMI_DEFAULT_TRIGGER_KEYWORDS,
+  formatKimiRetryDiagnostic,
+  formatKimiRetryFailureDiagnostic,
   formatKimiSanitiserDiagnostic,
+  isKimiContentFilterRejection,
   parseCustomKeywords,
   sanitiseForKimi
 } from './kimiSanitiser'
@@ -116,6 +119,32 @@ describe('kimiSanitiser', () => {
     expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Tiananmen')
     expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Xinjiang')
     expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Falun Gong')
+  })
+
+  it('detects Moonshot content-filter rejection text', () => {
+    expect(
+      isKimiContentFilterRejection(
+        "Error code: 400 - {'error': {'type': 'content_filter', 'message': 'blocked'}}"
+      )
+    ).toBe(true)
+    expect(isKimiContentFilterRejection('request considered high risk')).toBe(true)
+    expect(isKimiContentFilterRejection('plain stderr')).toBe(false)
+  })
+
+  it('formats retry diagnostics with the selected sanitisation pass', () => {
+    const result = sanitiseForKimi('A Tiananmen mention appeared. Other work continues.')
+    const diagnostic = formatKimiRetryDiagnostic('keyword', result)
+    expect(diagnostic).toContain('retrying once with keyword compatibility filter')
+    expect(diagnostic).toContain('Trigger "Tiananmen"')
+  })
+
+  it('formats final failure diagnostics when no retry pass can recover', () => {
+    const diagnostic = formatKimiRetryFailureDiagnostic({
+      attemptedPasses: ['keyword'],
+      reason: 'classifier_unavailable'
+    })
+    expect(diagnostic).toContain('Retry passes attempted: keyword')
+    expect(diagnostic).toContain('classifier pass is disabled or unavailable')
   })
 
   it('1.0.5-EW26b: catches diplomatic-summit / arms-package phrasings', () => {

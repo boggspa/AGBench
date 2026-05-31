@@ -44,6 +44,12 @@ export interface KimiMcpBridgeAddArgsInput {
   bridgeArgs: string[]
 }
 
+export interface KimiWirePromptRequestInput {
+  id: string
+  prompt: string
+  imagePaths?: ReadonlyArray<string>
+}
+
 /**
  * Build the argv passed to `kimi mcp add` for registering the
  * agentbench bridge as a stdio MCP server. The exact shape is:
@@ -86,4 +92,25 @@ export function buildKimiMcpBridgeAddArgs(input: KimiMcpBridgeAddArgsInput): str
  */
 export function redactKimiMcpBridgeAddArgs(args: string[]): string[] {
   return args.map((arg, index) => (args[index - 1] === '--token' ? '[redacted-token]' : arg))
+}
+
+export function buildKimiWirePromptRequest(input: KimiWirePromptRequestInput): Record<string, unknown> {
+  const imagePaths = input.imagePaths || []
+  const userInput =
+    imagePaths.length > 0
+      ? [
+          { type: 'text', text: input.prompt },
+          ...imagePaths.map((imagePath) => ({
+            type: 'image_url',
+            image_url: { url: imagePath }
+          }))
+        ]
+      : input.prompt
+
+  return {
+    jsonrpc: '2.0',
+    id: input.id,
+    method: 'prompt',
+    params: { user_input: userInput }
+  }
 }

@@ -170,7 +170,11 @@ import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './Di
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
 import { isPathInsideWorkspace } from './AgenticPolicy'
 import { RunManager } from './RunManager'
-import { decideKimiWireClose } from './KimiWireExitDecision'
+import {
+  decideKimiContentFilterRetry,
+  decideKimiWireClose,
+  type KimiContentFilterRetryPass
+} from './KimiWireExitDecision'
 import { RunRepository } from './RunRepository'
 import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
@@ -225,7 +229,10 @@ import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 // Kimi process sees the prompt). Module + tests live in
 // `src/main/lib/kimiSanitiser.ts`.
 import {
+  formatKimiRetryDiagnostic,
+  formatKimiRetryFailureDiagnostic,
   formatKimiSanitiserDiagnostic,
+  isKimiContentFilterRejection,
   parseCustomKeywords,
   sanitiseForKimi
 } from './lib/kimiSanitiser'
@@ -256,7 +263,11 @@ import {
   extendClaudeCliArgsWithAgentbenchMcp,
   type ClaudeAgentbenchMcpInput
 } from './ClaudeAgentbenchMcp'
-import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcpBridge'
+import {
+  buildKimiMcpBridgeAddArgs,
+  buildKimiWirePromptRequest,
+  redactKimiMcpBridgeAddArgs
+} from './KimiMcpBridge'
 import { tryRunGeminiApi } from './GeminiApiProvider'
 import { redactGeminiProfileForMcp } from './GeminiAuthRedaction'
 import { handleEnsembleContinue } from './EnsembleContinue'
@@ -7181,10 +7192,9 @@ function runCliProviderProcess(
   // parked for 1.0.6. This is the small defensive note Chris
   // approved for 1.0.5.
   let kimiContentFilterWarned = false
-  const kimiContentFilterPattern = /Error code: 400[\s\S]*content_filter|considered high risk/i
   child.stderr?.on('data', (chunk) => {
     const text = chunk.toString()
-    if (provider === 'kimi' && !kimiContentFilterWarned && kimiContentFilterPattern.test(text)) {
+    if (provider === 'kimi' && !kimiContentFilterWarned && isKimiContentFilterRejection(text)) {
       kimiContentFilterWarned = true
       sendAgentCompatLine(
         event.sender,
@@ -8539,6 +8549,11 @@ async function runKimiWireProvider(
     let stdoutBuffer = ''
     let settled = false
     let promptSent = false
+    let planModeSent = false
+    let promptSequence = 0
+    let activePromptId = ''
+    let currentKimiPrompt = payload.prompt
+    const kimiRetryPasses: KimiContentFilterRetryPass[] = []
     // Bug fix: every Kimi exit path MUST publish an `agent-exit` IPC
     // event, otherwise the renderer never invokes `clearActiveRunContext`
     // and the sidebar keeps painting "Running". `state.completed` flips
@@ -8557,7 +8572,6 @@ async function runKimiWireProvider(
       sendAgentCompatExit(event.sender, 'kimi', code, state)
     }
     const initializeId = `initialize-${Date.now()}`
-    const promptId = `prompt-${Date.now()}`
     const timeout = setTimeout(() => {
       if (settled || promptSent) return
       settled = true
@@ -8567,10 +8581,12 @@ async function runKimiWireProvider(
       resolveWire(false)
     }, 7_000)
 
-    const sendPrompt = (): void => {
-      if (promptSent) return
+    const sendPrompt = (promptText: string): void => {
       promptSent = true
-      if (payload.approvalMode === 'plan') {
+      promptSequence += 1
+      activePromptId = `prompt-${Date.now()}-${promptSequence}`
+      if (payload.approvalMode === 'plan' && !planModeSent) {
+        planModeSent = true
         child.stdin?.write(
           JSON.stringify({
             jsonrpc: '2.0',
@@ -8580,23 +8596,68 @@ async function runKimiWireProvider(
           }) + '\n'
         )
       }
-      const promptInput: any = payload.imagePaths?.length
-        ? [
-            { type: 'text', text: payload.prompt },
-            ...payload.imagePaths.map((imagePath) => ({
-              type: 'image_url',
-              image_url: { url: imagePath }
-            }))
-          ]
-        : payload.prompt
       child.stdin?.write(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: promptId,
-          method: 'prompt',
-          params: { user_input: promptInput }
-        }) + '\n'
+        JSON.stringify(
+          buildKimiWirePromptRequest({
+            id: activePromptId,
+            prompt: promptText,
+            imagePaths: payload.imagePaths
+          })
+        ) + '\n'
       )
+    }
+
+    const maybeRetryKimiContentFilter = (promptErrorMessage: string): boolean => {
+      if (!isKimiContentFilterRejection(promptErrorMessage)) return false
+      const settings = AppStore.getSettings()
+      const keywordResult = !kimiRetryPasses.includes('keyword')
+        ? sanitiseForKimi(currentKimiPrompt, {
+            customKeywords: parseCustomKeywords(settings.kimiSanitiserCustomKeywords)
+          })
+        : null
+      const keywordCanRetry = Boolean(
+        keywordResult?.redacted && keywordResult.text !== currentKimiPrompt
+      )
+      const retryDecision = decideKimiContentFilterRetry({
+        attemptedPasses: kimiRetryPasses,
+        keywordCanRetry,
+        classifierAvailable: false,
+        classifierCanRetry: false
+      })
+
+      if (retryDecision.action === 'retry' && retryDecision.pass === 'keyword' && keywordResult) {
+        kimiRetryPasses.push('keyword')
+        currentKimiPrompt = keywordResult.text
+        sendAgentCompatLine(event.sender, 'kimi', {
+          type: 'provider_warning',
+          provider: 'kimi',
+          severity: 'warning',
+          title: 'Kimi safety filter rejected this prompt; retrying',
+          message: formatKimiRetryDiagnostic('keyword', keywordResult),
+          source: 'kimi-retry-envelope',
+          pass: 'keyword',
+          attempt: kimiRetryPasses.length,
+          triggers: keywordResult.matches.map((m) => m.trigger)
+        })
+        sendPrompt(currentKimiPrompt)
+        return true
+      }
+
+      const failureReason =
+        retryDecision.action === 'fail' ? retryDecision.reason : 'retry_passes_exhausted'
+      sendAgentCompatLine(event.sender, 'kimi', {
+        type: 'provider_warning',
+        provider: 'kimi',
+        severity: 'warning',
+        title: 'Kimi safety filter rejected this prompt',
+        message: formatKimiRetryFailureDiagnostic({
+          attemptedPasses: kimiRetryPasses,
+          reason: failureReason
+        }),
+        source: 'kimi-retry-envelope',
+        reason: failureReason
+      })
+      return false
     }
 
     child.stdout?.on('data', (chunk) => {
@@ -8610,10 +8671,10 @@ async function runKimiWireProvider(
           const message = JSON.parse(trimmed)
           if (message.id === initializeId) {
             updateCliProviderSession(state, extractProviderSessionId(message), true)
-            sendPrompt()
+            sendPrompt(currentKimiPrompt)
             continue
           }
-          if (message.id === promptId) {
+          if (message.id === activePromptId) {
             const promptError = message.error
             const promptErrorMessage = promptError
               ? typeof promptError === 'string'
@@ -8622,6 +8683,10 @@ async function runKimiWireProvider(
                   ? promptError.message
                   : JSON.stringify(promptError)
               : ''
+            if (promptErrorMessage && maybeRetryKimiContentFilter(promptErrorMessage)) {
+              updateCliProviderSession(state, extractProviderSessionId(message), false)
+              continue
+            }
             if (promptErrorMessage) {
               sendAgentCompatError(event.sender, 'kimi', promptErrorMessage, state)
             }

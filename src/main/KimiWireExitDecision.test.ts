@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { decideKimiWireClose } from './KimiWireExitDecision'
+import { decideKimiContentFilterRetry, decideKimiWireClose } from './KimiWireExitDecision'
 
 describe('decideKimiWireClose', () => {
   it('ignores the close event when the run is already settled', () => {
@@ -88,5 +88,62 @@ describe('decideKimiWireClose', () => {
       code: 0
     })
     expect(decision.terminalStatus).toBe('completed')
+  })
+})
+
+describe('decideKimiContentFilterRetry', () => {
+  it('retries first with the keyword sanitiser when it can change the prompt', () => {
+    expect(
+      decideKimiContentFilterRetry({
+        attemptedPasses: [],
+        keywordCanRetry: true,
+        classifierAvailable: false,
+        classifierCanRetry: false
+      })
+    ).toEqual({ action: 'retry', pass: 'keyword' })
+  })
+
+  it('fails safely when keyword sanitisation cannot help and classifier is unavailable', () => {
+    expect(
+      decideKimiContentFilterRetry({
+        attemptedPasses: [],
+        keywordCanRetry: false,
+        classifierAvailable: false,
+        classifierCanRetry: false
+      })
+    ).toEqual({ action: 'fail', reason: 'classifier_unavailable' })
+  })
+
+  it('escalates to classifier redaction after the keyword pass has already been tried', () => {
+    expect(
+      decideKimiContentFilterRetry({
+        attemptedPasses: ['keyword'],
+        keywordCanRetry: false,
+        classifierAvailable: true,
+        classifierCanRetry: true
+      })
+    ).toEqual({ action: 'retry', pass: 'classifier' })
+  })
+
+  it('fails explicitly when classifier redaction is available but cannot change the prompt', () => {
+    expect(
+      decideKimiContentFilterRetry({
+        attemptedPasses: ['keyword'],
+        keywordCanRetry: false,
+        classifierAvailable: true,
+        classifierCanRetry: false
+      })
+    ).toEqual({ action: 'fail', reason: 'classifier_no_redaction' })
+  })
+
+  it('stops after both retry passes have been attempted', () => {
+    expect(
+      decideKimiContentFilterRetry({
+        attemptedPasses: ['keyword', 'classifier'],
+        keywordCanRetry: true,
+        classifierAvailable: true,
+        classifierCanRetry: true
+      })
+    ).toEqual({ action: 'fail', reason: 'retry_passes_exhausted' })
   })
 })
