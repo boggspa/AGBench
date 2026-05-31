@@ -1,0 +1,2223 @@
+/* ──────────────────────────────────────────────────────────────
+ * 1.0.4-AK2 — Work Session setup sheet + session strip header
+ *
+ * Modal pattern + form chrome for the supervised multi-round
+ * autonomy feature. Layered between bug-report (9120) and
+ * approval modal (10000) — z-index 9130 wins over bug-report
+ * (the rarer surface) but yields to genuine approval prompts.
+ * ────────────────────────────────────────────────────────────── */
+.work-session-setup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9130;
+  padding: 32px 24px;
+}
+.work-session-setup-panel {
+  width: min(620px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 18px;
+  box-shadow: 0 36px 96px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px 28px 22px;
+}
+.work-session-setup-header h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.work-session-setup-subhead {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.work-session-setup-subhead code {
+  font-size: 11.5px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.work-session-setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.work-session-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+}
+.work-session-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.work-session-field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.work-session-field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+/* 1.0.4-AT9 — preset chip row at the top of the Work Session setup
+ * sheet. Each chip is a one-click apply of the named preset's
+ * permission preset + budgets + scout-pass toggle (etc.). Chip
+ * styling mirrors the other inline picker chips in the sheet —
+ * subtle neutral background, accent border on hover. */
+.work-session-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.work-session-preset-chip {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border-color));
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.work-session-preset-chip:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color));
+}
+.work-session-field-textarea,
+.work-session-field-input,
+.work-session-field-select {
+  font: inherit;
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  color: var(--text-1);
+  resize: vertical;
+}
+.work-session-field-textarea {
+  min-height: 56px;
+  line-height: 1.45;
+}
+.work-session-field-textarea:focus,
+.work-session-field-input:focus,
+.work-session-field-select:focus {
+  outline: none;
+  border-color: var(--accent, #6aa6ff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #6aa6ff) 25%, transparent);
+}
+.work-session-participants-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+}
+.work-session-participant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.work-session-participant-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-1);
+}
+.work-session-participant-label {
+  flex: 1;
+}
+.work-session-lead-toggle {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+.work-session-lead-toggle:hover:not(:disabled) {
+  border-color: var(--accent, #6aa6ff);
+  color: var(--text-1);
+}
+.work-session-lead-toggle.is-lead {
+  background: color-mix(in srgb, var(--accent, #6aa6ff) 22%, transparent);
+  color: var(--text-1);
+  border-color: transparent;
+}
+.work-session-lead-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.work-session-participants-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.work-session-duration-row {
+  display: flex;
+  gap: 6px;
+}
+.work-session-duration-button {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+.work-session-duration-button:hover {
+  color: var(--text-1);
+}
+.work-session-duration-button.is-active {
+  background: color-mix(in srgb, var(--accent, #6aa6ff) 22%, transparent);
+  border-color: var(--accent, #6aa6ff);
+  color: var(--text-1);
+}
+.work-session-scout-toggle {
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-1);
+  cursor: pointer;
+}
+.work-session-scout-toggle input {
+  margin-top: 2px;
+}
+.work-session-errors {
+  background: color-mix(in srgb, var(--danger, #ff6363) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger, #ff6363) 28%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-1);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.work-session-setup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+}
+.work-session-button {
+  font: inherit;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.work-session-button-cancel {
+  background: transparent;
+  border-color: var(--surface-border, rgba(255, 255, 255, 0.1));
+  color: var(--text-muted);
+}
+.work-session-button-cancel:hover {
+  color: var(--text-1);
+  border-color: var(--text-1);
+}
+.work-session-button-confirm {
+  background: var(--accent, #6aa6ff);
+  color: #fff;
+}
+.work-session-button-confirm:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.work-session-button-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Session strip header — sits above the participant chip strip
+ * when chat.ensemble.workSession.status is 'active' / 'paused'.
+ * Mirrors the row spacing of the participants strip so it reads
+ * as a single header band. */
+.work-session-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 0 0 6px;
+  background: color-mix(in srgb, var(--accent, #6aa6ff) 12%, var(--surface-2, rgba(255, 255, 255, 0.04)));
+  border: 1px solid color-mix(in srgb, var(--accent, #6aa6ff) 28%, transparent);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.work-session-strip[data-status='paused'] {
+  background: color-mix(in srgb, var(--warning, #f7c96b) 14%, var(--surface-2, rgba(255, 255, 255, 0.04)));
+  border-color: color-mix(in srgb, var(--warning, #f7c96b) 32%, transparent);
+}
+.work-session-strip[data-status='completed'],
+.work-session-strip[data-status='cancelled'],
+.work-session-strip[data-status='limit_reached'] {
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border-color: var(--surface-border, rgba(255, 255, 255, 0.08));
+  color: var(--text-muted);
+}
+.work-session-strip-glyph {
+  font-size: 14px;
+}
+.work-session-strip-objective {
+  flex: 1;
+  min-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.work-session-strip-meta {
+  display: flex;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.work-session-strip-actions {
+  display: flex;
+  gap: 6px;
+}
+.work-session-strip-action {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.work-session-strip-action:hover {
+  border-color: var(--text-1);
+  color: var(--text-1);
+}
+.work-session-strip-action--stop:hover {
+  border-color: var(--danger, #ff6363);
+  color: var(--danger, #ff6363);
+}
+
+/* Composer "Work Session" toggle button — sits next to Turn /
+ * Continuous in the ensemble-mode group. Same shape, distinct
+ * glyph (🎯) to distinguish from the row-orchestration modes. */
+.composer-ensemble-mode-button.work-session-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.composer-ensemble-mode-button.work-session-mode-button.is-active {
+  background: color-mix(in srgb, var(--accent, #6aa6ff) 22%, transparent);
+  color: var(--text-1);
+}
+
+/* 1.0.4-AK4 — "+N more" badge in the approval card title row.
+ * Shows queue depth when parallel runs each block on their own
+ * approval gate. Small + understated — common case (single
+ * approval) shows nothing, multi-approval surfaces a warning-
+ * coloured chip so the user knows their decisions cascade. */
+.composer-permission-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-left: 6px;
+  background: color-mix(in srgb, var(--warning, #f7c96b) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #f7c96b) 38%, transparent);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-1);
+  letter-spacing: 0.02em;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * 1.0.4-AQ4 — per-message Copy + Delete action chip
+ *
+ * Hover-revealed group anchored to the top-right of each bubble.
+ * Two icon-only buttons; Copy = clipboard write, Delete = remove
+ * from transcript (host gates with confirm()).
+ *
+ * Sits at the bubble corner via `position: absolute` over the
+ * existing `position: relative` bubble base. Hidden by default
+ * (`opacity: 0` + `pointer-events: none`) and revealed when the
+ * bubble itself is hovered or any child is focused — keeps the
+ * resting transcript clean while remaining discoverable.
+ *
+ * The user-bubble variant rounds its corner to follow the bubble
+ * tail; the assistant variant gets a neutral pill.
+ * ────────────────────────────────────────────────────────────── */
+.message-actions-chip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--surface-1, rgba(0, 0, 0, 0.6)) 88%, transparent);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.message-bubble:hover .message-actions-chip,
+.message-bubble:focus-within .message-actions-chip,
+.message-actions-chip:hover,
+.message-actions-chip:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-actions-chip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.message-actions-chip-button:hover,
+.message-actions-chip-button:focus-visible {
+  outline: none;
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+.message-actions-chip-button--delete:hover,
+.message-actions-chip-button--delete:focus-visible {
+  color: var(--danger, #ff6363);
+  background: color-mix(in srgb, var(--danger, #ff6363) 18%, transparent);
+}
+.message-actions-chip svg {
+  display: block;
+}
+
+/* ============================================================
+ * 1.0.6-EW76 — System-theme composer-shell compatibility.
+ *
+ * Alabaster / Obsidian are APP system themes, not composer shells.
+ * The composer-shell rules above are intentionally distinctive, but
+ * these two app themes sit at the contrast extremes and can leak light
+ * or dark token assumptions into provider shells. Keep this section
+ * narrowly scoped to the four provider shells Chris called out:
+ * Codex, Claude, Gemini, and Kimi. The signed-off Obsidian and
+ * Alabaster composer shells are untouched by these selectors.
+ * ============================================================ */
+
+/* Alabaster app theme: Codex + Claude composer shells keep their dark
+ * textarea/surface treatment, with explicit dark-subtree tokens so typed
+ * text, the mention overlay, and inline controls stay readable. */
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-area,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-above-bar,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .ensemble-above-row,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .queued-messages-above-row,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-create-pr-row {
+  --text-primary: rgba(255, 255, 255, 0.94);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-tertiary: rgba(255, 255, 255, 0.54);
+  --text-muted: rgba(255, 255, 255, 0.44);
+  --surface-text: rgba(255, 255, 255, 0.92);
+  --surface-text-muted: rgba(255, 255, 255, 0.52);
+  --panel-bg: #151519;
+  --panel-elevated-bg: #1c1c21;
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --composer-bg: #151519;
+  --composer-bg-solid: #151519;
+  --composer-glass-bg: rgba(21, 21, 25, 0.98);
+  --composer-glass-border: rgba(255, 255, 255, 0.14);
+  --composer-border: rgba(255, 255, 255, 0.14);
+  --provider-grok-color: rgba(255, 255, 255, 0.86);
+  color: rgba(255, 255, 255, 0.9);
+  color-scheme: dark;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface {
+  background: linear-gradient(180deg, #1c1c21 0%, #151519 100%) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight-content {
+  color: rgba(255, 255, 255, 0.94) !important;
+  caret-color: rgba(255, 255, 255, 0.96);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.42) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="ensemble-mode"], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-ensemble-mode-button.is-active {
+  color: rgba(255, 255, 255, 0.96) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, #1b1b20 0%, #151519 100%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+/* Obsidian app theme: Codex + Claude swap to a light-mode surface so
+ * their provider shell identity remains legible on the near-black app
+ * background. This is intentionally NOT applied to the Obsidian composer
+ * shell, which stays theme-immune. */
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-area,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-above-bar,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .ensemble-above-row,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .queued-messages-above-row,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-create-pr-row {
+  --text-primary: rgba(18, 21, 27, 0.94);
+  --text-secondary: rgba(18, 21, 27, 0.72);
+  --text-tertiary: rgba(18, 21, 27, 0.56);
+  --text-muted: rgba(18, 21, 27, 0.46);
+  --surface-text: rgba(18, 21, 27, 0.92);
+  --surface-text-muted: rgba(18, 21, 27, 0.54);
+  --panel-bg: #f7f6f2;
+  --panel-elevated-bg: #ffffff;
+  --panel-border: rgba(18, 21, 27, 0.14);
+  --composer-bg: #f7f6f2;
+  --composer-bg-solid: #f7f6f2;
+  --composer-glass-bg: rgba(247, 246, 242, 0.98);
+  --composer-glass-border: rgba(18, 21, 27, 0.14);
+  --composer-border: rgba(18, 21, 27, 0.14);
+  --provider-grok-color: rgba(18, 21, 27, 0.86);
+  color: rgba(18, 21, 27, 0.9);
+  color-scheme: light;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f2ee 100%) !important;
+  border-color: rgba(18, 21, 27, 0.15) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight-content {
+  color: rgba(18, 21, 27, 0.94) !important;
+  caret-color: rgba(18, 21, 27, 0.96);
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea::placeholder {
+  color: rgba(18, 21, 27, 0.42) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.42) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="ensemble-mode"], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(18, 21, 27, 0.82) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-ensemble-mode-button.is-active {
+  color: rgba(18, 21, 27, 0.96) !important;
+  background: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f3ef 100%) !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+  color: rgba(18, 21, 27, 0.9) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-action-btn.run-btn:not(:disabled) {
+  background: rgba(18, 21, 27, 0.12) !important;
+  color: rgba(18, 21, 27, 0.92) !important;
+}
+
+/* Gemini/Kimi provider shells should keep their own provider chrome in
+ * both extreme app themes. Late light/glass rules otherwise make the
+ * two upper rows look like AGBench native rows while the textarea keeps
+ * the provider shell. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-area,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-above-bar,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .ensemble-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .queued-messages-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-create-pr-row {
+  --text-primary: rgba(246, 249, 255, 0.94);
+  --text-secondary: rgba(246, 249, 255, 0.72);
+  --text-muted: rgba(246, 249, 255, 0.46);
+  --surface-text: rgba(246, 249, 255, 0.92);
+  --surface-text-muted: rgba(246, 249, 255, 0.52);
+  --panel-border: rgba(118, 152, 255, 0.26);
+  --composer-border: rgba(118, 152, 255, 0.28);
+  color: rgba(246, 249, 255, 0.9);
+  color-scheme: dark;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(90, 140, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(14, 22, 48, 0.98), rgba(6, 10, 24, 0.98)) !important;
+  border-color: rgba(118, 152, 255, 0.28) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32) !important;
+  color: rgba(246, 249, 255, 0.9) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-textarea, .composer-textarea-highlight, .composer-textarea-highlight-content) {
+  color: rgba(246, 249, 255, 0.94) !important;
+  caret-color: rgba(246, 249, 255, 0.96);
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.94) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-textarea::placeholder {
+  color: rgba(246, 249, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(246, 249, 255, 0.84) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  .composer-ensemble-mode-button.is-active {
+  background: rgba(90, 140, 255, 0.24) !important;
+  color: #ffffff !important;
+}
+
+/* 1.0.6-CS3 — Gemini CAPSULE in the alabaster/obsidian app themes. The
+ * capsule pill (`.composer-textarea-wrap`, dark navy via the default
+ * `--gemini-capsule-*` tokens) replaces the old surface rect, so the
+ * surface must go transparent here too — beat the `!important` navy
+ * fill that the rule above paints onto `.composer-surface`. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 1.0.6-CS3 follow-up — ALABASTER ONLY: white-on-white satellite row.
+ * The Gemini capsule rework moved the satellite controls (the bottom
+ * row + meta strip) OUT of the dark navy capsule onto the light cream
+ * Alabaster app background. The block far above paints ALL Gemini-
+ * composer text near-white with `!important` — correct inside the navy
+ * capsule and for Obsidian's dark app bg, but invisible on Alabaster's
+ * cream. So (a) re-darken the satellite containers + their contents to
+ * Alabaster's charcoal, then (b) re-lighten the [+] and model pill,
+ * which are lifted INTO the navy capsule (they sit on dark navy, not the
+ * cream bg). The send button is deliberately NOT re-lit: it's a white
+ * circle with a dark arrow, so (a)'s charcoal arrow reads fine on it —
+ * forcing it light would make the arrow invisible on white.
+ * Obsidian (dark app) is deliberately untouched. */
+[data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row),
+[data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row) * {
+  color: rgba(18, 21, 27, 0.82) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.82) !important;
+}
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"]),
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"]) * {
+  color: rgba(246, 249, 255, 0.92) !important;
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.92) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-area,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-above-bar,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .ensemble-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .queued-messages-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-create-pr-row {
+  --text-primary: rgba(246, 246, 246, 0.94);
+  --text-secondary: rgba(246, 246, 246, 0.72);
+  --text-muted: rgba(246, 246, 246, 0.46);
+  --surface-text: rgba(246, 246, 246, 0.92);
+  --surface-text-muted: rgba(246, 246, 246, 0.52);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --composer-border: rgba(255, 255, 255, 0.14);
+  color: rgba(246, 246, 246, 0.9);
+  color-scheme: dark;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, rgba(35, 35, 35, 0.98), rgba(22, 22, 22, 0.98)) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34) !important;
+  color: rgba(246, 246, 246, 0.9) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-textarea, .composer-textarea-highlight, .composer-textarea-highlight-content) {
+  color: rgba(246, 246, 246, 0.94) !important;
+  caret-color: rgba(246, 246, 246, 0.96);
+  -webkit-text-fill-color: rgba(246, 246, 246, 0.94) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-textarea::placeholder {
+  color: rgba(246, 246, 246, 0.42) !important;
+  -webkit-text-fill-color: rgba(246, 246, 246, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(246, 246, 246, 0.84) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  .composer-ensemble-mode-button.is-active {
+  background: rgba(169, 189, 85, 0.7) !important;
+  color: #0a0a0c !important;
+}
+
+/* 1.0.6-EW77 — Final extreme-theme polish for provider shells.
+ * Keep this after EW76: these are deliberately narrower overrides for
+ * the last screenshots Chris flagged. */
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  /* EW79 — the base codex tab tucks under the surface via
+   * `margin-bottom: -10px` + a 14px `padding-bottom` that the dark
+   * tab fill normally occupies. Once obsidian makes the tab
+   * transparent that padding becomes a page-coloured gap between
+   * the ensemble row and the composer surface. Zero it so the last
+   * row sits flush and the opaque surface (z-index 2) paints over
+   * the small residual overlap. */
+  padding-bottom: 0;
+}
+
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) > * {
+  margin-bottom: 0;
+}
+
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) > *:not(:first-child) {
+  border-top-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+/* Claude's shell is intentionally a textarea bubble plus satellite
+ * footer. EW76's shared Codex/Claude container paint made the footer
+ * look like a second filled panel in Alabaster/Obsidian; restore the
+ * split treatment and explicitly invert footer text against the page. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="claude"] .composer-surface {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-textarea {
+  background: #1d1d20 !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  caret-color: rgba(255, 255, 255, 0.96) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.42) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-textarea {
+  background: #f6f5f1 !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  color: rgba(18, 21, 27, 0.94) !important;
+  caret-color: rgba(18, 21, 27, 0.96) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-textarea::placeholder {
+  color: rgba(18, 21, 27, 0.42) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-bottom-controls) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-telemetry-row, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally) {
+  color: rgba(18, 21, 27, 0.86) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-telemetry-row, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally) {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="model"], [data-composer-control="ensemble-mode"]) {
+  border-color: rgba(18, 21, 27, 0.16) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="model"], [data-composer-control="ensemble-mode"]) {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  background: rgba(18, 21, 27, 0.12) !important;
+  color: rgba(18, 21, 27, 0.96) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled),
+[data-theme="alabaster"][data-composer-style="claude"] .composer-action-btn.stop-btn:not(:disabled) {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled),
+[data-theme="obsidian"][data-composer-style="claude"] .composer-action-btn.stop-btn:not(:disabled) {
+  color: rgba(18, 21, 27, 0.72) !important;
+}
+
+/* Kimi keeps the Kimi solid-gray shell on extreme app themes. The
+ * previous compatibility pass used a translucent gradient, which let
+ * Gemini-like system ambience bleed through the upper rows. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: #1f2023 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::after {
+  display: none !important;
+  background: none !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  .composer-surface {
+  background: #202124 !important;
+}
+
+/* 1.0.6-EW78 — final Alabaster/Codex seam, summary-card contrast,
+ * and Kimi solid-shell enforcement. */
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  /* EW79 — see the obsidian twin above: kill the 14px tab padding
+   * that turns into a page-coloured gap once the tab is
+   * transparent, so the ensemble row sits flush against the
+   * composer surface. */
+  padding-bottom: 0;
+}
+
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > * {
+  margin-bottom: 0;
+}
+
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child) {
+  border-top-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card {
+  color: rgba(18, 21, 27, 0.78) !important;
+  background: rgba(255, 254, 250, 0.9) !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  box-shadow: 0 18px 44px rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card
+  :is(
+    .run-complete-metadata strong,
+    .run-complete-summary-header strong,
+    .file-change-summary-header strong,
+    .run-complete-summary-item strong
+  ) {
+  color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card
+  :is(
+    .run-complete-metadata span,
+    .run-complete-time-row,
+    .run-complete-summary-item,
+    .file-change-summary-meta,
+    .file-change-summary-path,
+    .file-change-summary-status
+  ) {
+  color: rgba(44, 48, 58, 0.72) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.run-complete-summary-card, .file-change-summary-card) {
+  background: rgba(255, 255, 252, 0.58) !important;
+  border-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.run-complete-summary-grid, .file-change-summary-header, .file-change-summary-item) {
+  border-color: rgba(18, 21, 27, 0.1) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-copy-btn {
+  color: rgba(18, 21, 27, 0.74) !important;
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  color: rgba(235, 237, 242, 0.88) !important;
+  background: #202124 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before,
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .composer-surface {
+  background: #202124 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: #1f2023 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================
+ * 1.0.6-EW79 — Claude shell on Alabaster / Obsidian system themes:
+ * the two residual control outliers + the invisible branch label.
+ * (The rest of the Claude shell is already theme-correct under
+ * EW76/EW77/EW78.)
+ *
+ *  (a) The Permissions ("Default Approval") and Model/Reasoning
+ *      ("5.5 Medium") triggers both carry
+ *      `.composer-combined-picker-trigger`. The model chip fills
+ *      from `--panel-bg` — which EW76 sets OPPOSITE to the page
+ *      (dark on alabaster, light on obsidian) — and the permission
+ *      chip uses a hardcoded white tint, so both read as FILLED
+ *      boxes sitting among the transparent OUTLINED pills used by
+ *      provider / workspace / Turn-Continuous. Normalise both to
+ *      the same outlined-pill treatment with page-appropriate ink
+ *      so the footer reads as one coherent control group.
+ *
+ *  (b) The Create-PR row's "workspace · branch" label inherits the
+ *      Claude bare-text colour (faded WHITE, ~line 27496) whose
+ *      light-mode counterpart only covers light/mist/sage — NOT
+ *      obsidian, whose Codex/Claude above-bar is painted WHITE by
+ *      EW76. White-on-white = invisible. Recolour dark for obsidian
+ *      (alabaster keeps a dark above-bar, so faded-white still
+ *      reads there and is left alone).
+ * ============================================================ */
+
+/* (a) Alabaster — light page, so dark ink + dark hairline. */
+[data-theme="alabaster"][data-composer-style="claude"] .composer-combined-picker-trigger {
+  background: transparent !important;
+  border-color: rgba(18, 21, 27, 0.16) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: rgba(18, 21, 27, 0.05) !important;
+  border-color: rgba(18, 21, 27, 0.24) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-primary {
+  color: rgba(18, 21, 27, 0.88) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-suffix {
+  color: rgba(18, 21, 27, 0.56) !important;
+}
+
+/* (a) Obsidian — dark page, so light ink + light hairline. */
+[data-theme="obsidian"][data-composer-style="claude"] .composer-combined-picker-trigger {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-primary {
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-suffix {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+/* (b) Obsidian Create-PR row — recolour the workspace/branch label
+ * dark so it reads on the white above-bar. The `<em>` branch name
+ * inherits this. NOTE: only the BARE-TEXT elements (branch +
+ * summary) — `.composer-above-bar-files` / `-stats` are dark #3a3a3a
+ * pills in the Claude shell (with their own light text), so they're
+ * deliberately excluded to avoid dark-on-dark. */
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(
+    .composer-above-bar-branch,
+    .composer-above-bar-summary
+  ) {
+  color: rgba(18, 21, 27, 0.84) !important;
+}
+
+/* (c) Alabaster Create-PR row — the files/stats pills are #3a3a3a
+ * (line 27990/28001) sitting on the DARK (#1b1b20) Claude above-bar
+ * in alabaster, so the pill barely separates from the bar and the
+ * thin "files changed" / "+95 -0" labels read soft. On obsidian the
+ * same pill sits on a WHITE bar and pops, which is why this only
+ * needs fixing here. Lift the label to near-white and give the pill
+ * a clearer hairline so it reads crisply. (The +/- diff spans keep
+ * their own green/red — this only colours the element + its
+ * <strong> count.) */
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(.composer-above-bar-files, .composer-above-bar-stats) strong {
+  color: rgba(255, 255, 255, 0.98) !important;
+}
+
+/* ============================================================
+ * GROK composer style — visual-only shell.
+ *
+ * Copies the Gemini pill layout + control ordering, but strips
+ * ALL chroma (no blue/green/red/etc.), ALL glass (no
+ * backdrop-filter / translucent fills), and ALL gradients. The
+ * result is strictly monochrome black/white.
+ *
+ * Theme-immune like Obsidian/Alabaster, but bidirectional: a
+ * single `grok` style that reads white-on-black on dark themes
+ * (the default below) and black-on-white on light themes (the
+ * `:is(light, mist, sage, alabaster)` + `prefers-color-scheme`
+ * overrides). All chrome pulls from the `--grok-*` tokens, which
+ * are declared on `[data-composer-style="grok"]` (the <html>
+ * root) so they cascade to the composer, the app-wide
+ * `[data-interface-style="grok"]` chrome, AND the body-portaled
+ * popovers alike.
+ *
+ * Appended at the file foot so its source order beats the broad
+ * light-mode / native-glass shell overrides earlier in the file;
+ * `!important` on the colour-bearing props covers the few of
+ * those that out-specify a plain shell selector (e.g. the
+ * (0,4,0) native-glass light-frost on `.composer-surface`).
+ * ============================================================ */
+
+/* Monochrome token set — dark default (white-on-black). */
+[data-composer-style="grok"] {
+  --grok-bg: #000000;
+  --grok-surface: #111111;
+  --grok-fg: #ffffff;
+  --grok-muted: rgba(255, 255, 255, 0.58);
+  --grok-faint: rgba(255, 255, 255, 0.34);
+  --grok-border: rgba(255, 255, 255, 0.16);
+  --grok-border-strong: rgba(255, 255, 255, 0.5);
+  --grok-hover: rgba(255, 255, 255, 0.08);
+  --grok-fill: rgba(255, 255, 255, 0.1);
+  /* Bright top-edge rim shine — light catching the lip. */
+  --grok-rim: rgba(255, 255, 255, 0.78);
+  --grok-rim-strong: rgba(255, 255, 255, 1);
+}
+/* Light themes flip to black-on-white. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])[data-composer-style="grok"] {
+  --grok-bg: #ffffff;
+  --grok-surface: #f7f7f7;
+  --grok-fg: #000000;
+  --grok-muted: rgba(0, 0, 0, 0.58);
+  --grok-faint: rgba(0, 0, 0, 0.34);
+  --grok-border: rgba(0, 0, 0, 0.16);
+  --grok-border-strong: rgba(0, 0, 0, 0.42);
+  --grok-hover: rgba(0, 0, 0, 0.06);
+  --grok-fill: rgba(0, 0, 0, 0.08);
+  /* Glossy near-white top lip lifting the surface off the page. */
+  --grok-rim: rgba(255, 255, 255, 0.95);
+  --grok-rim-strong: #ffffff;
+}
+/* `system` theme follows the OS appearance. */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"][data-composer-style="grok"] {
+    --grok-bg: #ffffff;
+    --grok-surface: #f7f7f7;
+    --grok-fg: #000000;
+    --grok-muted: rgba(0, 0, 0, 0.58);
+    --grok-faint: rgba(0, 0, 0, 0.34);
+    --grok-border: rgba(0, 0, 0, 0.16);
+    --grok-border-strong: rgba(0, 0, 0, 0.42);
+    --grok-hover: rgba(0, 0, 0, 0.06);
+    --grok-fill: rgba(0, 0, 0, 0.08);
+    --grok-rim: rgba(255, 255, 255, 0.95);
+    --grok-rim-strong: #ffffff;
+  }
+}
+
+/* Hide the same extra controls Gemini hides. */
+[data-composer-style="grok"] .composer-top-toggles,
+[data-composer-style="grok"] .composer-chips,
+[data-composer-style="grok"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+
+/* Detached rows above the composer — flat monochrome panels with a
+ * bright top-edge rim shine. */
+[data-composer-style="grok"][data-composer-style="grok"]
+  :is(.composer-above-bar, .ensemble-above-row, .composer-create-pr-row, .queued-messages-above-row) {
+  border-radius: 22px !important;
+  background: var(--grok-surface) !important;
+  border: 1px solid var(--grok-border-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Kill every provider/theme gradient overlay painted on the
+ * composer + its detached rows — the ensemble chip strip's
+ * `::before` tint is the one Grok was still leaking. */
+[data-composer-style="grok"] .composer-above-bar::before,
+[data-composer-style="grok"] .composer-surface::before,
+[data-composer-style="grok"] .ensemble-above-row::before,
+[data-composer-style="grok"] .ensemble-above-row::after,
+[data-composer-style="grok"] .composer-create-pr-row::before,
+[data-composer-style="grok"] .queued-messages-above-row::before {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+/* Composer surface — flat fill, bright top-edge rim shine, no
+ * glow/glass. The rim is a crisp monochrome highlight (light
+ * catching the lip), not a coloured glow. */
+[data-composer-style="grok"][data-composer-style="grok"] .composer-surface {
+  border-radius: 24px !important;
+  padding: 14px 18px 8px;
+  background: var(--grok-surface) !important;
+  border: 1px solid var(--grok-border-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-surface:focus-within {
+  border-color: var(--grok-rim-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim-strong) !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-textarea {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 6px 6px 10px;
+  min-height: 48px;
+  font-size: var(--font-size-md);
+  color: var(--grok-fg) !important;
+  -webkit-text-fill-color: var(--grok-fg) !important;
+  caret-color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-textarea::placeholder {
+  color: var(--grok-faint) !important;
+  -webkit-text-fill-color: var(--grok-faint) !important;
+}
+
+/* Control row — identical ordering to Gemini. */
+[data-composer-style="grok"] .composer-inline-pickers {
+  margin-top: 0;
+}
+[data-composer-style="grok"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+[data-composer-style="grok"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="grok"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="grok"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="grok"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="grok"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+/* Workspace — no container pill; bare label + icon. (Hover gives a
+ * transient highlight, not a persistent outline.) */
+[data-composer-style="grok"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-muted) !important;
+  border: 0 !important;
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="grok"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.7;
+}
+
+[data-composer-style="grok"] .composer-image-picker-btn {
+  width: 30px;
+  height: 30px;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--grok-muted) !important;
+  border-radius: 999px;
+}
+[data-composer-style="grok"] .composer-image-picker-btn:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+
+/* Permission — plain text label. */
+[data-composer-style="grok"] [data-composer-control="permission"] {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 6px;
+  color: var(--grok-muted) !important;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="grok"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* Model / Reasoning — no container pill; bare label (primary at full
+ * fg, reasoning suffix muted), like the reference. Hover = transient
+ * highlight only. */
+[data-composer-style="grok"] [data-composer-control="model"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-fg) !important;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  border: 0 !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"]:hover {
+  background: var(--grok-hover) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] .composer-combined-picker-trigger-suffix {
+  color: var(--grok-muted) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] svg {
+  display: none;
+}
+/* Dropdown chevron — drawn with borders (no extra DOM), monochrome.
+ * The trigger is an inline-flex with `gap`, so this `::after` sits
+ * just past the model/reasoning label like the reference. */
+[data-composer-style="grok"] [data-composer-control="model"]::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--grok-muted);
+  border-bottom: 1.5px solid var(--grok-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+[data-composer-style="grok"] [data-composer-control="model"]:hover::after {
+  border-color: var(--grok-fg);
+}
+
+/* Provider — no container pill; bare label. */
+[data-composer-style="grok"] [data-composer-control="provider"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-muted) !important;
+  border: 0 !important;
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="grok"] [data-composer-control="provider"]:hover {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+
+/* Turn / Continuous toggle — outline pill, inverse-fill on active. */
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-muted) !important;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: var(--grok-muted) !important;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: var(--grok-fg) !important;
+  background: var(--grok-hover) !important;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: var(--grok-bg) !important;
+  background: var(--grok-fg) !important;
+  font-weight: 600;
+}
+
+/* Send button — inverse-of-surface filled circle (white-on-black
+ * flips to black-on-white via the tokens). No coloured shadow. */
+[data-composer-style="grok"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fg) !important;
+  color: var(--grok-bg) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: var(--grok-fg) !important;
+  opacity: 0.85;
+}
+[data-composer-style="grok"] .composer-action-btn.stop-btn:not(:disabled),
+[data-composer-style="grok"] .composer-action-btn.steer-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fill) !important;
+  color: var(--grok-fg) !important;
+  border: 1px solid var(--grok-border) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fill) !important;
+  color: var(--grok-faint) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Above-bar contents — monochrome pills + branch text. */
+[data-composer-style="grok"] .composer-above-bar :is(.composer-above-bar-branch, .composer-above-bar-summary),
+[data-composer-style="grok"] .composer-above-bar-secondary-branch {
+  color: var(--grok-muted) !important;
+}
+[data-composer-style="grok"] .composer-above-bar :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] .composer-above-bar-action {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-above-bar-action:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  border-color: var(--grok-border-strong) !important;
+}
+[data-composer-style="grok"] .composer-workspace-access-pill {
+  background: transparent !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-muted) !important;
+}
+
+/* Create-PR above-row layout — mirror the Codex shell's 3-zone grid so
+ * the row reads: workspace · branch (left), files-changed + diff (centre),
+ * Review/Commit/Create-PR action (right). The default flex layout grouped
+ * the diff next to the branch and split the action into the centre, which
+ * was the wrong order on the Grok shell. Scoped to `.composer-above-bar`
+ * only — the ensemble chip strip + queued rows keep their own layout. */
+[data-composer-style="grok"] .composer-above-bar.style-unified,
+[data-composer-style="grok"] .composer-above-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 0;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-branch {
+  grid-column: 1;
+  justify-self: start;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-files-cluster {
+  grid-column: 2;
+  justify-self: center;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+[data-composer-style="grok"] .composer-above-bar-files-cluster .composer-above-bar-files {
+  order: 1 !important;
+}
+[data-composer-style="grok"] .composer-above-bar-files-cluster .composer-above-bar-stats {
+  order: 2 !important;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-action,
+[data-composer-style="grok"] .composer-above-bar > .composer-diff-action-menu-wrap {
+  grid-column: 3;
+  justify-self: end;
+  margin-left: 0;
+}
+/* The inline WorkspaceAccessControls renders an empty div for non-Gemini
+ * providers; hide it so it doesn't claim a phantom 4th grid track and
+ * shove the action button off-axis (same treatment as the Codex shell). */
+[data-composer-style="grok"] .composer-above-bar > .composer-workspace-access {
+  display: none;
+}
+
+/* Diff signal — coloured to match every other shell: +N green,
+ * −N red (the canonical `.composer-diff-add/del` hues). Keep the
+ * heavier Grok weight for crispness against the monochrome chrome. */
+[data-composer-style="grok"] .composer-diff-add {
+  color: #6ddfa8 !important;
+  font-weight: 600;
+}
+[data-composer-style="grok"] .composer-diff-del {
+  color: #f08080 !important;
+  font-weight: 600;
+}
+
+/* Inline Review-changes / Create-PR menu (not portaled). */
+[data-composer-style="grok"] .composer-diff-action-menu {
+  background: var(--grok-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="grok"] .composer-diff-action-menu button:hover:not(:disabled),
+[data-composer-style="grok"] .composer-diff-action-menu button:focus-visible:not(:disabled) {
+  background: var(--grok-hover) !important;
+}
+
+/* ---- App-wide chrome (`data-interface-style="grok"`) — flat
+ * monochrome sidebar / transcript / bubbles / centred hero. ---- */
+[data-interface-style="grok"] .app-sidebar {
+  background: var(--grok-bg) !important;
+  background-image: none !important;
+  border-right: 1px solid var(--grok-border) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-interface-style="grok"] .app-sidebar .sidebar-header-card {
+  background: transparent !important;
+  border: 0 !important;
+}
+[data-interface-style="grok"] .app-sidebar .sidebar-section-header {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--grok-faint) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item) {
+  background: transparent !important;
+  border-radius: 10px;
+  border: 0 !important;
+  color: var(--grok-muted) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item):hover {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-chat-item, .sidebar-global-chat-item).active {
+  background: var(--grok-fill) !important;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .app-transcript {
+  background: var(--grok-bg) !important;
+  background-image: none !important;
+}
+[data-interface-style="grok"] .app-transcript::after {
+  display: none !important;
+}
+[data-interface-style="grok"] .message-bubble.user {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  border-radius: 18px;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .message-bubble.assistant {
+  background: transparent !important;
+  border: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+[data-interface-style="grok"] .welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-interface-style="grok"] .welcome-hero h1 {
+  font-size: clamp(22px, 2.45vw, 30px);
+  font-weight: 430;
+  color: var(--text-primary);
+  letter-spacing: 0;
+  line-height: 1.22;
+  text-align: center;
+}
+[data-interface-style="grok"] .welcome-hero h1 strong {
+  font-weight: 720;
+}
+[data-interface-style="grok"] .welcome-hero p {
+  text-align: center;
+  color: var(--grok-muted) !important;
+}
+
+/* ---- Portaled menus — inherit the Grok monochrome palette
+ * (like the `.shell-obsidian` / `.shell-alabaster` rules). The
+ * `--grok-*` tokens resolve because they're declared on <html>,
+ * an ancestor of the body-portaled popover. ---- */
+.composer-combined-picker-popover.shell-grok,
+.composer-plus-picker-popover.shell-grok,
+.composer-workspace-popover.shell-grok,
+.composer-slash-menu.shell-grok,
+.agent-mention-menu.shell-grok {
+  --text-primary: var(--grok-fg);
+  --text-secondary: var(--grok-muted);
+  --text-tertiary: var(--grok-faint);
+  --text-muted: var(--grok-faint);
+  --surface-text: var(--grok-fg);
+  --surface-text-muted: var(--grok-muted);
+  --panel-bg: var(--grok-surface);
+  --panel-elevated-bg: var(--grok-surface);
+  --panel-border: var(--grok-border);
+  --surface-1: var(--grok-surface);
+  --surface-2: var(--grok-bg);
+  --surface-border: var(--grok-border);
+  --accent: var(--grok-fg);
+  background: var(--grok-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Selected/highlighted rows use an inverse-neutral wash, not the
+ * accent tint. */
+.composer-combined-picker-popover.shell-grok .composer-combined-picker-row:hover,
+.composer-combined-picker-popover.shell-grok .composer-combined-picker-row.is-highlighted,
+.composer-workspace-popover.shell-grok .composer-workspace-row:hover,
+.agent-mention-menu.shell-grok .agent-mention-item.is-active,
+.composer-slash-menu.shell-grok .composer-slash-item.is-active {
+  background: var(--grok-hover) !important;
+}
+
+/* ============================================================
+ * CURSOR composer style — VISUAL-ONLY shell.
+ *
+ * ⚠️ This is the `ComposerStyle 'cursor'` (a chat's visual shell),
+ * NOT the `ProviderId 'cursor'` runtime. A chat's shell is
+ * independent of its provider — exactly how the `grok` shell above
+ * coexists with the `grok` provider. Nothing here keys off the
+ * provider; the flat-gray chrome applies to any provider a chat runs.
+ *
+ * Mirrors the Gemini shell's single-row CAPSULE layout + control
+ * arrangement (the shape closest to the official Cursor composer —
+ * see the composer block below), but strips ALL chroma (no
+ * blue/green/mustard/etc.), ALL glass (no backdrop-filter /
+ * translucent fills), and ALL gradients. The result is a flat,
+ * neutral GRAY. The app-wide chrome + popovers stay flat gray too.
+ *
+ * Theme-immune like Obsidian/Alabaster, and gray in EVERY system
+ * theme: it reads light-gray-on-dark-gray on dark themes (the
+ * default below) and dark-gray-on-light-gray on light themes (the
+ * `:is(light, mist, sage, alabaster)` + `prefers-color-scheme`
+ * overrides) — gray throughout, never black/white, never the
+ * mustard `--provider-cursor-color` accent. All chrome pulls from
+ * the `--cursor-shell-*` tokens (distinct from the provider's
+ * `--provider-cursor-*`), declared on `[data-composer-style="cursor"]`
+ * (the <html> root) so they cascade to the composer, the app-wide
+ * `[data-interface-style="cursor"]` chrome, AND the body-portaled
+ * popovers alike.
+ *
+ * Appended at the file foot so its source order beats the broad
+ * light-mode / native-glass shell overrides earlier in the file;
+ * `!important` on the colour-bearing props covers the few of
+ * those that out-specify a plain shell selector (e.g. the
+ * (0,4,0) native-glass light-frost on `.composer-surface`).
+ * ============================================================ */
+
+/* Neutral-gray token set — dark default (light-gray-on-dark-gray). */
+[data-composer-style="cursor"] {
+  --cursor-shell-bg: #1f1f1f;
+  --cursor-shell-surface: #2a2a2a;
+  --cursor-shell-fg: #d8d8d8;
+  --cursor-shell-muted: rgba(216, 216, 216, 0.6);
+  --cursor-shell-faint: rgba(216, 216, 216, 0.38);
+  --cursor-shell-border: rgba(216, 216, 216, 0.16);
+  --cursor-shell-border-strong: rgba(216, 216, 216, 0.42);
+  --cursor-shell-hover: rgba(216, 216, 216, 0.09);
+  --cursor-shell-fill: rgba(216, 216, 216, 0.1);
+  /* Flat, quiet top-edge rim — a faint neutral lip, not a bright shine. */
+  --cursor-shell-rim: rgba(216, 216, 216, 0.22);
+  --cursor-shell-rim-strong: rgba(216, 216, 216, 0.42);
+}
+/* Light themes flip to dark-gray-on-light-gray (still gray, not white). */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])[data-composer-style="cursor"] {
+  --cursor-shell-bg: #ededed;
+  --cursor-shell-surface: #f4f4f4;
+  --cursor-shell-fg: #2e2e2e;
+  --cursor-shell-muted: rgba(46, 46, 46, 0.62);
+  --cursor-shell-faint: rgba(46, 46, 46, 0.4);
+  --cursor-shell-border: rgba(46, 46, 46, 0.16);
+  --cursor-shell-border-strong: rgba(46, 46, 46, 0.4);
+  --cursor-shell-hover: rgba(46, 46, 46, 0.06);
+  --cursor-shell-fill: rgba(46, 46, 46, 0.08);
+  /* Faint neutral lip — flat, no gloss. */
+  --cursor-shell-rim: rgba(46, 46, 46, 0.14);
+  --cursor-shell-rim-strong: rgba(46, 46, 46, 0.3);
+}
+/* `system` theme follows the OS appearance. */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"][data-composer-style="cursor"] {
+    --cursor-shell-bg: #ededed;
+    --cursor-shell-surface: #f4f4f4;
+    --cursor-shell-fg: #2e2e2e;
+    --cursor-shell-muted: rgba(46, 46, 46, 0.62);
+    --cursor-shell-faint: rgba(46, 46, 46, 0.4);
+    --cursor-shell-border: rgba(46, 46, 46, 0.16);
+    --cursor-shell-border-strong: rgba(46, 46, 46, 0.4);
+    --cursor-shell-hover: rgba(46, 46, 46, 0.06);
+    --cursor-shell-fill: rgba(46, 46, 46, 0.08);
+    --cursor-shell-rim: rgba(46, 46, 46, 0.14);
+    --cursor-shell-rim-strong: rgba(46, 46, 46, 0.3);
+  }
+}
+
+/* ============================================================
+ * CURSOR composer — Gemini CAPSULE layout, flat neutral-gray skin.
+ *
+ * Mirrors the Gemini shell's single-row capsule (1.0.6-CS3): ONE
+ * rounded pill —  [ + ]  Enter prompt …  [ model ]  [ send ]  — with
+ * permission / turn-mode / provider / workspace demoted to a
+ * transparent satellite row below. Identical SHAPE to Gemini (closest
+ * to the official Cursor composer); only the palette differs — all
+ * chrome routes through `--cursor-shell-*`, which flip per theme, so
+ * no per-theme override blocks are needed (unlike Gemini, which
+ * hard-codes blue/white and needs light-theme overrides).
+ * ============================================================ */
+
+/* Hide the same extra controls Gemini hides. */
+[data-composer-style="cursor"] .composer-top-toggles,
+[data-composer-style="cursor"] .composer-chips,
+[data-composer-style="cursor"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+
+/* Above-bar (PR / ensemble chip strip) — flat gray panel sibling of
+ * the capsule. */
+[data-composer-style="cursor"] .composer-above-bar {
+  border-radius: 26px !important;
+  background: var(--cursor-shell-surface) !important;
+  border: 1px solid var(--cursor-shell-border-strong) !important;
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.32) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="cursor"] .composer-above-bar::before,
+[data-composer-style="cursor"] .ensemble-above-row::before,
+[data-composer-style="cursor"] .ensemble-above-row::after,
+[data-composer-style="cursor"] .composer-create-pr-row::before,
+[data-composer-style="cursor"] .queued-messages-above-row::before {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+/* Surface → invisible vertical shell: the capsule lives on the
+ * textarea-wrap; the satellite row + meta strip sit below it,
+ * transparent. `position: relative` + `overflow: visible` so the
+ * lifted +/model/send aren't clipped. `!important` mirrors Gemini's
+ * (beats the native-glass `.composer-surface` fill). */
+[data-composer-style="cursor"] .composer-surface,
+[data-composer-style="cursor"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 1.0.6-CRUX22 — single-line capsule height (see the matching Gemini
+   * note for the derivation). Cursor shares the capsule geometry
+   * (min-height 50, padding 3px 0, border 1px) and the same textarea
+   * `font-size: var(--font-size-md)` + `line-height: 1.55` + base
+   * `min-height: calc(1.55em + 22px) !important`, so its single-line
+   * height is the identical formula. Declared on the surface so it
+   * inherits down to the lifted controls for the lift below. */
+  --composer-capsule-single-h: calc(1.55 * var(--font-size-md) + 30px);
+}
+[data-composer-style="cursor"] .composer-surface::before {
+  content: none !important;
+}
+
+/* THE CAPSULE — the single rounded pill; holds the textarea, with
+ * +/model/send lifted into it (lift block below). Flat gray fill,
+ * faint neutral rim, no gradient/glow. */
+[data-composer-style="cursor"] .composer-textarea-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 3px 0;
+  background: var(--cursor-shell-surface);
+  border: 1px solid var(--cursor-shell-border-strong);
+  border-radius: 26px;
+  box-shadow: inset 0 1px 0 var(--cursor-shell-rim);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  /* 1.0.6-CRUX22 — anchor target for the lifted +/model/send so they
+   * ride the capsule's bottom edge on multi-line (see Gemini note). */
+  anchor-name: --composer-capsule;
+}
+[data-composer-style="cursor"] .composer-textarea-wrap:focus-within {
+  border-color: var(--cursor-shell-rim-strong);
+  box-shadow: inset 0 1px 0 var(--cursor-shell-rim-strong);
+}
+[data-composer-style="cursor"] .composer-textarea {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  /* left gutter clears the [+]; right gutter clears [model][send] —
+   * sized like Gemini for the widest realistic model label. The top/bottom
+   * padding is redistributed (13/5 rather than 9/9, same 18px total so the
+   * capsule height is unchanged) to drop the single-line text ~4px and align
+   * it with the lowered +/model/send. */
+  padding: 13px 224px 5px 46px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+  color: var(--cursor-shell-fg);
+}
+[data-composer-style="cursor"] .composer-textarea::placeholder {
+  color: var(--cursor-shell-faint);
+}
+
+/* SATELLITE row — permission / turn-mode / provider / workspace flow
+ * here, transparent, below the capsule. */
+[data-composer-style="cursor"] .composer-control-footer {
+  display: contents;
+}
+[data-composer-style="cursor"] .composer-inline-pickers {
+  margin-top: 0;
+  padding: 0 6px;
+  overflow: visible;
+}
+[data-composer-style="cursor"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  /* load-bearing: the lifted [+]/[model] extend ABOVE this row. */
+  overflow: visible;
+}
+[data-composer-style="cursor"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="cursor"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="cursor"] [data-composer-control="workspace"] { order: 4; }
+
+/* ---- LIFT: +/model/send onto the capsule's row ----
+ * Containing block is `.composer-surface` (position:relative); the
+ * controls position against the CAPSULE's bottom edge via anchor
+ * positioning so they bottom-align on multi-line. See the Gemini lift
+ * note for the `top: calc(anchor(bottom) - single-h + <offset>)` math —
+ * single-line collapses to the original 16/17/16 px insets exactly, and
+ * multi-line tracks the capsule bottom. The textarea's 46px / 224px
+ * gutters reserve the horizontal space. */
+[data-composer-style="cursor"] [data-composer-control="attach"] {
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 16px);
+  left: 10px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="cursor"] [data-composer-control="model"] {
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 17px);
+  right: 50px;
+  max-width: 172px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="cursor"] .composer-send-cluster {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 16px);
+  right: 12px;
+  z-index: 3;
+}
+
+/* Workspace chip (satellite) — flat gray outline pill. */
+[data-composer-style="cursor"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cursor-shell-muted);
+  border: 1px solid var(--cursor-shell-border);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="cursor"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: var(--cursor-shell-hover);
+  border-color: var(--cursor-shell-border-strong);
+}
+[data-composer-style="cursor"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.78;
+}
+
+/* + button — clean circular icon button. Improved layout: a 30px
+ * circle with a subtle persistent surface so it reads as a button
+ * (like the official Cursor composer), not a bare glyph. */
+[data-composer-style="cursor"] .composer-image-picker-btn {
+  width: 30px;
+  height: 30px;
+  background: var(--cursor-shell-fill);
+  border: 1px solid var(--cursor-shell-border);
+  color: var(--cursor-shell-muted);
+  border-radius: 999px;
+  transform: none;
+}
+[data-composer-style="cursor"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="cursor"] .composer-image-picker-btn:focus-visible {
+  background: var(--cursor-shell-hover);
+  border-color: var(--cursor-shell-border-strong);
+  color: var(--cursor-shell-fg);
+  transform: none;
+}
+
+/* Permission picker (Plan / Default approval) — plain text. */
+[data-composer-style="cursor"] [data-composer-control="permission"] {
+  background: transparent;
+  border: 0;
+  padding: 0 6px;
+  color: var(--cursor-shell-muted);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="cursor"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* Model picker — gray tier pill (lifted into the capsule's right edge;
+ * clamp + ellipsis so a long label never spills into the gutter). */
+/* Model / Reasoning — INLINE (no container pill), with a CSS-drawn chevron,
+ * matching the official Cursor composer: bare model label + ⌄ riding the
+ * capsule's right edge (satellite), not a filled pill. Hover = transient
+ * highlight only. */
+[data-composer-style="cursor"] [data-composer-control="model"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cursor-shell-fg);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  border: 0;
+  overflow: visible;
+}
+[data-composer-style="cursor"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+[data-composer-style="cursor"] [data-composer-control="model"] .composer-combined-picker-trigger-suffix {
+  flex: 0 0 auto;
+  color: var(--cursor-shell-muted);
+}
+[data-composer-style="cursor"] [data-composer-control="model"]:hover {
+  background: var(--cursor-shell-hover);
+}
+[data-composer-style="cursor"] [data-composer-control="model"] svg {
+  display: none;
+}
+/* Dropdown chevron — drawn with borders (no extra DOM), neutral gray; sits
+ * just past the model/reasoning label like the reference. */
+[data-composer-style="cursor"] [data-composer-control="model"]::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--cursor-shell-muted);
+  border-bottom: 1.5px solid var(--cursor-shell-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+[data-composer-style="cursor"] [data-composer-control="model"]:hover::after {
+  border-color: var(--cursor-shell-fg);
+}
+
+/* Provider picker — gray outline pill. */
+[data-composer-style="cursor"] [data-composer-control="provider"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cursor-shell-muted);
+  border: 1px solid var(--cursor-shell-border);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="cursor"] [data-composer-control="provider"]:hover {
+  background: var(--cursor-shell-hover);
+}
+
+/* Turn / Continuous toggle — gray outline; inverse-fill on active. */
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--cursor-shell-border);
+  color: var(--cursor-shell-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: var(--cursor-shell-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: var(--cursor-shell-fg);
+  background: var(--cursor-shell-hover);
+}
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: var(--cursor-shell-bg);
+  background: var(--cursor-shell-fg);
+  font-weight: 600;
+}
+
+/* Send button — gray filled circle (inverse-of-surface), dark arrow. */
+[data-composer-style="cursor"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--cursor-shell-fg);
+  color: var(--cursor-shell-bg);
+  border: 0;
+  box-shadow: none;
+}
+[data-composer-style="cursor"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: var(--cursor-shell-fg);
+  opacity: 0.85;
+}
+[data-composer-style="cursor"] .composer-action-btn.stop-btn:not(:disabled),
+[data-composer-style="cursor"] .composer-action-btn.steer-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--cursor-shell-fill);
+  color: var(--cursor-shell-fg);
+  border: 1px solid var(--cursor-shell-border);
+  box-shadow: none;
+}
+[data-composer-style="cursor"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--cursor-shell-fill);
+  color: var(--cursor-shell-faint);
+  border: 0;
+  box-shadow: none;
+}
+
+/* Diff signal — canonical +N/−N hues (kept coloured across all shells). */
+[data-composer-style="cursor"] .composer-diff-add {
+  color: #6ddfa8 !important;
+  font-weight: 600;
+}
+[data-composer-style="cursor"] .composer-diff-del {
+  color: #f08080 !important;
+  font-weight: 600;
+}
+
+/* Above-bar contents (PR / ensemble strip) — gray pills + branch text. */
+[data-composer-style="cursor"] .composer-above-bar :is(.composer-above-bar-branch, .composer-above-bar-summary),
+[data-composer-style="cursor"] .composer-above-bar-secondary-branch {
+  color: var(--cursor-shell-muted) !important;
+}
+[data-composer-style="cursor"] .composer-above-bar :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  background: var(--cursor-shell-fill) !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--cursor-shell-fg) !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-action {
+  background: var(--cursor-shell-fill) !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  color: var(--cursor-shell-fg) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-action:hover:not(:disabled) {
+  background: var(--cursor-shell-hover) !important;
+  border-color: var(--cursor-shell-border-strong) !important;
+}
+[data-composer-style="cursor"] .composer-workspace-access-pill {
+  background: transparent !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  color: var(--cursor-shell-muted) !important;
+}
+
+/* Inline Review-changes / Create-PR menu (not portaled). */
+[data-composer-style="cursor"] .composer-diff-action-menu {
+  background: var(--cursor-shell-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  color: var(--cursor-shell-fg) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="cursor"] .composer-diff-action-menu button:hover:not(:disabled),
+[data-composer-style="cursor"] .composer-diff-action-menu button:focus-visible:not(:disabled) {
+  background: var(--cursor-shell-hover) !important;
+}
+
+/* ---- App-wide chrome (`data-interface-style="cursor"`) — flat neutral-gray
+ * sidebar / transcript / bubbles / centred hero. ---- */
+[data-interface-style="cursor"] .app-sidebar {
+  background: var(--cursor-shell-bg) !important;
+  background-image: none !important;
+  border-right: 1px solid var(--cursor-shell-border) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-interface-style="cursor"] .app-sidebar .sidebar-header-card {
+  background: transparent !important;
+  border: 0 !important;
+}
+[data-interface-style="cursor"] .app-sidebar .sidebar-section-header {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--cursor-shell-faint) !important;
+}
+[data-interface-style="cursor"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item) {
+  background: transparent !important;
+  border-radius: 10px;
+  border: 0 !important;
+  color: var(--cursor-shell-muted) !important;
+}
+[data-interface-style="cursor"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item):hover {
+  background: var(--cursor-shell-hover) !important;
+  color: var(--cursor-shell-fg) !important;
+}
+[data-interface-style="cursor"] .app-sidebar :is(.sidebar-chat-item, .sidebar-global-chat-item).active {
+  background: var(--cursor-shell-fill) !important;
+  color: var(--cursor-shell-fg) !important;
+}
+[data-interface-style="cursor"] .app-transcript {
+  background: var(--cursor-shell-bg) !important;
+  background-image: none !important;
+}
+[data-interface-style="cursor"] .app-transcript::after {
+  display: none !important;
+}
+[data-interface-style="cursor"] .message-bubble.user {
+  background: var(--cursor-shell-fill) !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  border-radius: 18px;
+  color: var(--cursor-shell-fg) !important;
+}
+[data-interface-style="cursor"] .message-bubble.assistant {
+  background: transparent !important;
+  border: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+[data-interface-style="cursor"] .welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-interface-style="cursor"] .welcome-hero h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  color: var(--cursor-shell-fg) !important;
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+[data-interface-style="cursor"] .welcome-hero h1 strong {
+  font-weight: 600;
+  color: var(--cursor-shell-fg) !important;
+  text-shadow: none !important;
+}
+[data-interface-style="cursor"] .welcome-hero p {
+  text-align: center;
+  color: var(--cursor-shell-muted) !important;
+}
+
+/* ---- Portaled menus — inherit the Cursor neutral-gray palette
+ * (like the `.shell-obsidian` / `.shell-alabaster` rules). The
+ * `--cursor-shell-*` tokens resolve because they're declared on <html>,
+ * an ancestor of the body-portaled popover. ---- */
+.composer-combined-picker-popover.shell-cursor,
+.composer-plus-picker-popover.shell-cursor,
+.composer-workspace-popover.shell-cursor,
+.composer-slash-menu.shell-cursor,
+.agent-mention-menu.shell-cursor {
+  --text-primary: var(--cursor-shell-fg);
+  --text-secondary: var(--cursor-shell-muted);
+  --text-tertiary: var(--cursor-shell-faint);
+  --text-muted: var(--cursor-shell-faint);
+  --surface-text: var(--cursor-shell-fg);
+  --surface-text-muted: var(--cursor-shell-muted);
+  --panel-bg: var(--cursor-shell-surface);
+  --panel-elevated-bg: var(--cursor-shell-surface);
+  --panel-border: var(--cursor-shell-border);
+  --surface-1: var(--cursor-shell-surface);
+  --surface-2: var(--cursor-shell-bg);
+  --surface-border: var(--cursor-shell-border);
+  --accent: var(--cursor-shell-fg);
+  background: var(--cursor-shell-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  color: var(--cursor-shell-fg) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Selected/highlighted rows use an inverse-neutral wash, not the
+ * accent tint. */
+.composer-combined-picker-popover.shell-cursor .composer-combined-picker-row:hover,
+.composer-combined-picker-popover.shell-cursor .composer-combined-picker-row.is-highlighted,
+.composer-workspace-popover.shell-cursor .composer-workspace-row:hover,
+.agent-mention-menu.shell-cursor .agent-mention-item.is-active,
+.composer-slash-menu.shell-cursor .composer-slash-item.is-active {
+  background: var(--cursor-shell-hover) !important;
+}
