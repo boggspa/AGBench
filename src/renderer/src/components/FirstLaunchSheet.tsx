@@ -87,8 +87,10 @@ export interface FirstLaunchSheetProps {
   /** Deep-link callback. Closes the sheet and opens the Settings
    * panel — the user finishes provider sign-in there. */
   onOpenSettings: () => void
-  /** 1.0.6-CRUX42 — open a Terminal running the Cursor/Grok CLI login. */
+  /** 1.0.6-CRUX42 — open a Terminal running provider-owned CLI auth. */
   onProviderLogin?: (provider: OnboardingProviderId) => void
+  onProviderLogout?: (provider: OnboardingProviderId) => void
+  onGeminiLogout?: (profileId: string) => void
   /** Codex CLI status. Pulled from `agentStatusByProvider.codex` or
    * the top-level `codexStatus` in App.tsx. Used to decide whether
    * to show "signed in" / "binary not found" / "not authenticated".
@@ -302,6 +304,8 @@ export function FirstLaunchSheet({
   onDismiss,
   onOpenSettings,
   onProviderLogin,
+  onProviderLogout,
+  onGeminiLogout,
   codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
@@ -471,6 +475,9 @@ export function FirstLaunchSheet({
                 row={row}
                 onOpenSettings={onOpenSettings}
                 onProviderLogin={onProviderLogin}
+                onProviderLogout={onProviderLogout}
+                onGeminiLogout={onGeminiLogout}
+                geminiActiveProfileId={geminiAuthStatus?.activeProfileId || null}
               />
             ))}
           </div>
@@ -860,15 +867,20 @@ export function FirstLaunchSheet({
 interface ProviderCardProps {
   row: ProviderRowSpec
   onOpenSettings: () => void
-  // 1.0.6-CRUX42 — Cursor / Grok sign in via an interactive CLI login; the host
-  // opens a Terminal running it. Only those two cards surface this button.
+  // 1.0.6-CRUX42 — provider CLI auth opens in Terminal when available.
   onProviderLogin?: (provider: OnboardingProviderId) => void
+  onProviderLogout?: (provider: OnboardingProviderId) => void
+  onGeminiLogout?: (profileId: string) => void
+  geminiActiveProfileId?: string | null
 }
 
 function ProviderCard({
   row,
   onOpenSettings,
-  onProviderLogin
+  onProviderLogin,
+  onProviderLogout,
+  onGeminiLogout,
+  geminiActiveProfileId
 }: ProviderCardProps): React.JSX.Element {
   const classes = [
     'first-launch-sheet-provider-card',
@@ -914,7 +926,7 @@ function ProviderCard({
       <p className="first-launch-sheet-provider-card-description">{row.description}</p>
       <p className="first-launch-sheet-provider-card-hint">{row.hint}</p>
       <div className="first-launch-sheet-provider-card-actions">
-        {(row.id === 'cursor' || row.id === 'grok') && onProviderLogin && (
+        {row.id !== 'gemini' && onProviderLogin && (
           <button
             type="button"
             className="btn btn-sm btn-primary"
@@ -924,6 +936,29 @@ function ProviderCard({
             Sign in
           </button>
         )}
+        {row.variant === 'signed-in' && row.id !== 'gemini' && onProviderLogout && (
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => onProviderLogout(row.id)}
+            aria-label={`Sign out of ${row.label}`}
+          >
+            Sign out
+          </button>
+        )}
+        {row.variant === 'signed-in' &&
+          row.id === 'gemini' &&
+          geminiActiveProfileId &&
+          onGeminiLogout && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => onGeminiLogout(geminiActiveProfileId)}
+              aria-label={`Sign out of ${row.label}`}
+            >
+              Sign out
+            </button>
+          )}
         <button
           type="button"
           className="btn btn-sm"

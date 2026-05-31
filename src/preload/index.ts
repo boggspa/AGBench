@@ -181,6 +181,7 @@ const api = {
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
   openWorkspacePopout: (input: { kind: 'file-editor' | 'diff-studio'; workspacePath: string }) =>
     ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
+  quitApp: () => ipcRenderer.invoke('app:quit') as Promise<boolean>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
   readWorkspaceFile: (workspace: string, path: string) =>
     ipcRenderer.invoke('read-workspace-file', workspace, path),
@@ -286,6 +287,11 @@ const api = {
   // sign-in (Cursor / Grok). Main writes + opens a one-shot .command.
   openProviderLoginTerminal: (provider: ProviderId) =>
     ipcRenderer.invoke('provider:open-login-terminal', provider) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
+  openProviderLogoutTerminal: (provider: ProviderId) =>
+    ipcRenderer.invoke('provider:open-logout-terminal', provider) as Promise<{
       ok: boolean
       error?: string
     }>,

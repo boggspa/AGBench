@@ -18137,6 +18137,24 @@ function App(): React.JSX.Element {
                 ensembleModeEnabled={isEnsembleModeEnabled}
                 onSelectChat={handleSelectChat}
                 onOpenSettings={() => setShowSettings(true)}
+                appearanceQuickSettings={{
+                  composerStyle: appearance.composerStyle,
+                  themeAccentStyle: appearance.themeAccentStyle,
+                  themeAppearance: appearance.themeAppearance,
+                  toolIconAccent: appearance.toolIconAccent
+                }}
+                onAppearanceQuickChange={handleSettingsChange}
+                canOpenWorkspacePopout={Boolean(
+                  currentWorkspace?.path || currentChat?.workspacePath
+                )}
+                onOpenWorkspacePopout={(kind) => {
+                  const workspacePath = currentWorkspace?.path || currentChat?.workspacePath
+                  if (!workspacePath) return
+                  void window.api.openWorkspacePopout({ kind, workspacePath })
+                }}
+                onQuitApp={() => {
+                  void window.api.quitApp?.()
+                }}
                 onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
                 onTogglePinChat={handleTogglePinChat}
                 onTogglePinWorkspace={handleTogglePinWorkspace}
@@ -18261,6 +18279,11 @@ function App(): React.JSX.Element {
               onProviderLogin={(provider) => {
                 void window.api.openProviderLoginTerminal(provider).then((r) => {
                   if (!r?.ok) console.warn('[provider sign-in] could not open Terminal:', r?.error)
+                })
+              }}
+              onProviderLogout={(provider) => {
+                void window.api.openProviderLogoutTerminal(provider).then((r) => {
+                  if (!r?.ok) console.warn('[provider sign-out] could not open Terminal:', r?.error)
                 })
               }}
               onSetDefaultGeminiAuthProfile={(profileId) =>
@@ -21495,6 +21518,12 @@ function App(): React.JSX.Element {
             if (!r?.ok) console.warn('[provider sign-in] could not open Terminal:', r?.error)
           })
         }}
+        onProviderLogout={(provider) => {
+          void window.api.openProviderLogoutTerminal(provider).then((r) => {
+            if (!r?.ok) console.warn('[provider sign-out] could not open Terminal:', r?.error)
+          })
+        }}
+        onGeminiLogout={(profileId) => void handleDeleteGeminiAuthProfile(profileId)}
         codexStatus={codexStatus}
         claudeAuthStatus={claudeAuthStatus}
         kimiAuthStatus={kimiAuthStatus}

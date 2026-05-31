@@ -374,6 +374,7 @@ declare global {
         kind: 'file-editor' | 'diff-studio'
         workspacePath: string
       }) => Promise<{ ok: true }>
+      quitApp: () => Promise<boolean>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
       readWorkspaceFile: (workspace: string, path: string) => Promise<WorkspaceFileReadResult>
       writeWorkspaceFile: (
@@ -435,6 +436,9 @@ declare global {
       }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       openProviderLoginTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
+      openProviderLogoutTerminal: (
+        provider: ProviderId
+      ) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>

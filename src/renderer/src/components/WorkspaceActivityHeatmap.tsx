@@ -9,6 +9,21 @@ import {
 
 const TIME_LABELS = ['00', '04', '08', '12', '16', '20']
 
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
+function scheduleWorkspaceActivityRefresh(callback: () => void): () => void {
+  const idleWindow = window as IdleWindow
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: 700 })
+    return () => idleWindow.cancelIdleCallback?.(handle)
+  }
+  const handle = window.setTimeout(callback, 0)
+  return () => window.clearTimeout(handle)
+}
+
 function WorkspaceActivityCellTile({ cell }: { cell: WorkspaceActivityHeatmapCell }) {
   const style = cell.active
     ? {
@@ -50,7 +65,7 @@ export function WorkspaceActivityHeatmap({
 
   useEffect(() => {
     let cancelled = false
-    const frame = window.requestAnimationFrame(() => {
+    const cancelRefresh = scheduleWorkspaceActivityRefresh(() => {
       if (cancelled) return
       setLoading(true)
       window.api
@@ -67,7 +82,7 @@ export function WorkspaceActivityHeatmap({
     })
     return () => {
       cancelled = true
-      window.cancelAnimationFrame(frame)
+      cancelRefresh()
     }
   }, [workspacePath, dayCount, refreshKey])
 

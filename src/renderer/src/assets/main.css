@@ -5695,10 +5695,7 @@ button.sidebar-item {
 
 .welcome-usage-dashboard {
   width: 100%;
-  /* Narrowed from the shared composer width to keep the heatmap chips closer
-   * to a 1:1 aspect ratio. Combined with the taller hour-cell height below,
-   * each chip reads as a small square rather than a wide band. */
-  max-width: min(720px, 88vw);
+  max-width: min(100%, var(--composer-content-max-width));
   margin: 0 auto;
   /* 1.0.6-CRUX33/CRUX35/CRUX38 — HARD fixed-height flex column so all four
    * auto-cycling tabs (Statistics / Model Comparisons / Workspaces / Providers)
@@ -17171,6 +17168,13 @@ input:disabled, select:disabled, textarea:disabled {
   align-items: center;
 }
 
+.sidebar-footer-settings-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
 .sidebar-footer-settings {
   appearance: none;
   -webkit-appearance: none;
@@ -17192,6 +17196,128 @@ input:disabled, select:disabled, textarea:disabled {
   min-width: 0;
   width: auto;
   -webkit-app-region: no-drag;
+}
+
+.sidebar-settings-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 90;
+  width: min(260px, calc(var(--sidebar-width, 280px) - 28px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 90%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow:
+    0 1px 0 inset color-mix(in srgb, #ffffff 10%, transparent),
+    0 18px 46px rgba(0, 0, 0, 0.38),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: sidebar-new-menu-fade-in 140ms ease-out;
+  transform-origin: bottom left;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-settings-menu {
+  border-color: var(--surface-border);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  color: var(--surface-text);
+  box-shadow:
+    0 1px 0 inset rgba(255, 255, 255, 0.72),
+    0 18px 46px rgba(0, 0, 0, 0.16),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.sidebar-settings-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  text-align: left;
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.sidebar-settings-menu-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-settings-menu-item {
+  color: var(--surface-text);
+}
+
+.sidebar-settings-menu-item:hover:not(:disabled),
+.sidebar-settings-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 0;
+}
+
+.sidebar-settings-menu-item-danger {
+  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
+}
+
+.sidebar-settings-menu-item-danger:hover:not(:disabled),
+.sidebar-settings-menu-item-danger:focus-visible {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.sidebar-settings-menu-back {
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sidebar-settings-menu-choice.is-active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-settings-menu-item .sf-symbol-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
+.sidebar-settings-menu-check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+}
+
+.sidebar-settings-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-settings-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--panel-border) 64%, transparent);
 }
 
 .sidebar-footer-settings:hover {
@@ -27026,6 +27152,7 @@ input:disabled, select:disabled, textarea:disabled {
   --surface-1: var(--obsidian-composer-fill);
   --surface-2: var(--obsidian-composer-fill);
   --surface-border: var(--obsidian-composer-border);
+  --provider-grok-color: rgba(255, 255, 255, 0.86);
   color: rgba(255, 255, 255, 0.86);
   /* Tell the browser this subtree is dark — affects native
    * form controls (date picker, scrollbars) so they don't
@@ -27497,6 +27624,7 @@ input:disabled, select:disabled, textarea:disabled {
   --surface-1: var(--alabaster-composer-fill);
   --surface-2: var(--alabaster-composer-fill);
   --surface-border: var(--alabaster-composer-border);
+  --provider-grok-color: rgba(18, 21, 27, 0.86);
   color: rgba(18, 21, 27, 0.86);
   color-scheme: light;
 }
@@ -32683,6 +32811,7 @@ input:disabled, select:disabled, textarea:disabled {
   --composer-glass-bg: rgba(21, 21, 25, 0.98);
   --composer-glass-border: rgba(255, 255, 255, 0.14);
   --composer-border: rgba(255, 255, 255, 0.14);
+  --provider-grok-color: rgba(255, 255, 255, 0.86);
   color: rgba(255, 255, 255, 0.9);
   color-scheme: dark;
 }
@@ -32749,6 +32878,7 @@ input:disabled, select:disabled, textarea:disabled {
   --composer-glass-bg: rgba(247, 246, 242, 0.98);
   --composer-glass-border: rgba(18, 21, 27, 0.14);
   --composer-border: rgba(18, 21, 27, 0.14);
+  --provider-grok-color: rgba(18, 21, 27, 0.86);
   color: rgba(18, 21, 27, 0.9);
   color-scheme: light;
 }

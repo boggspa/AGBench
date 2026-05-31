@@ -185,6 +185,7 @@ interface SettingsPanelProps {
   // 1.0.6-CRUX42 — open a Terminal running the provider's interactive CLI login
   // (Cursor / Grok). The host wires this to window.api.openProviderLoginTerminal.
   onProviderLogin?: (provider: ProviderId) => void
+  onProviderLogout?: (provider: ProviderId) => void
   onSetDefaultGeminiAuthProfile?: (profileId: string | null) => void
   onDeleteGeminiAuthProfile?: (profileId: string) => void
   onRemoveAgenticWorkspaceGrant?: (
@@ -1324,6 +1325,7 @@ export function SettingsPanel({
   onStartGeminiOAuthLogin,
   onCancelGeminiOAuthLogin,
   onProviderLogin,
+  onProviderLogout,
   onSetDefaultGeminiAuthProfile,
   onDeleteGeminiAuthProfile,
   onRemoveAgenticWorkspaceGrant,
@@ -2910,6 +2912,24 @@ export function SettingsPanel({
                       <span>Run once in Terminal for official Codex CLI runtime auth.</span>
                     </div>
                     <div className="settings-provider-auth-action-row">
+                      {onProviderLogin && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          onClick={() => onProviderLogin('codex')}
+                        >
+                          Open Terminal to sign in
+                        </button>
+                      )}
+                      {onProviderLogout && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => onProviderLogout('codex')}
+                        >
+                          Open Terminal to sign out
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-sm"
@@ -2950,6 +2970,24 @@ export function SettingsPanel({
                           ? 'Opening browser...'
                           : 'Login with Claude'}
                       </button>
+                      {onProviderLogout && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => onProviderLogout('claude')}
+                        >
+                          Sign out
+                        </button>
+                      )}
+                      {claudeAuthStatus?.apiKeyConfigured && onClearClaudeApiKey && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={onClearClaudeApiKey}
+                        >
+                          Clear API key
+                        </button>
+                      )}
                     </div>
                     <p className="settings-provider-auth-footnote">
                       API key and CLI path controls are below.
@@ -2999,6 +3037,15 @@ export function SettingsPanel({
                           Cancel
                         </button>
                       )}
+                      {selectedGeminiAuthProfile && onDeleteGeminiAuthProfile && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => onDeleteGeminiAuthProfile(selectedGeminiAuthProfile.id)}
+                        >
+                          Sign out active profile
+                        </button>
+                      )}
                     </div>
                     <p className="settings-provider-auth-footnote">
                       API key, Vertex, and runtime controls are below.
@@ -3012,6 +3059,35 @@ export function SettingsPanel({
                     description="Moonshot Kimi for wire-protocol runs and structured tool calls."
                     optional
                   >
+                    <div className="settings-provider-auth-action-row">
+                      {onProviderLogin && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => onProviderLogin('kimi')}
+                        >
+                          Open Terminal to sign in
+                        </button>
+                      )}
+                      {onProviderLogout && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => onProviderLogout('kimi')}
+                        >
+                          Sign out
+                        </button>
+                      )}
+                      {kimiAuthStatus?.apiKeyConfigured && onClearKimiApiKey && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={onClearKimiApiKey}
+                        >
+                          Clear API key
+                        </button>
+                      )}
+                    </div>
                     <p className="settings-provider-auth-footnote">
                       Paste a Moonshot API key in the Kimi section below.
                     </p>
@@ -3034,6 +3110,14 @@ export function SettingsPanel({
                       disabled={!onProviderLogin}
                     >
                       Open Terminal to sign in
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => onProviderLogout?.('cursor')}
+                      disabled={!onProviderLogout}
+                    >
+                      Open Terminal to sign out
                     </button>
                     <p className="settings-provider-auth-footnote">
                       Write-mode runs are contained by a workspace-local deny-list and surfaced
@@ -3061,6 +3145,14 @@ export function SettingsPanel({
                       disabled={!onProviderLogin}
                     >
                       Open Terminal to sign in
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => onProviderLogout?.('grok')}
+                      disabled={!onProviderLogout}
+                    >
+                      Open Terminal to sign out
                     </button>
                     <p className="settings-provider-auth-footnote">
                       Enabled by default; set <code>AGBENCH_DISABLE_GROK=1</code> to hide.
