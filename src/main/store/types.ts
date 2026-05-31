@@ -1300,6 +1300,15 @@ export interface AppSettings {
      */
     autoCycleSeconds?: number
   }
+  /**
+   * Welcome-screen standalone heatmap visibility. All three heatmaps
+   * default to visible; a stored `false` hides only that heatmap.
+   */
+  welcomeHeatmapPrefs?: {
+    workspaceActivityEnabled?: boolean
+    agbenchActivityEnabled?: boolean
+    externalActivityEnabled?: boolean
+  }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are
    * scanned by `src/main/lib/kimiSanitiser.ts` and any sentence

@@ -132,6 +132,11 @@ const defaultSettings: AppSettings = {
   // General lets the user dial 0–25%. Applied in `formatCost.ts`
   // before FX conversion so the bias is currency-agnostic.
   currencyOverestimatePercent: 0,
+  welcomeHeatmapPrefs: {
+    workspaceActivityEnabled: true,
+    agbenchActivityEnabled: true,
+    externalActivityEnabled: true
+  },
   // 1.0.5-EW26 — Kimi compatibility filter defaults. Off by
   // default; the user opts in from Settings → General when they
   // hit a Moonshot content_filter rejection on an incidental
@@ -380,6 +385,10 @@ export class AppStore {
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
+      },
+      welcomeHeatmapPrefs: {
+        ...defaultSettings.welcomeHeatmapPrefs,
+        ...(stored.welcomeHeatmapPrefs || {})
       },
       agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants)
         ? stored.agenticWorkspaceGrants

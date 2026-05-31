@@ -1225,8 +1225,15 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'funFxEnabled',
   'funFxMode',
   'advancedFx',
+  'currency',
+  'currencyOverestimatePercent',
+  'dashboardStatPrefs',
+  'welcomeHeatmapPrefs',
+  'kimiSanitiserEnabled',
+  'kimiSanitiserCustomKeywords',
   'agenticServices',
   'nativeSubAgentRequests',
+  'geminiApiRuntime',
   'geminiMcpBridgeEnabled',
   'geminiMcpBridgeLastStatus',
   'bridgeDaemonEnabled',
@@ -1977,6 +1984,91 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
         current.subThreadDelegation
       ),
       networkAccess: sanitizeAgenticNetworkPolicy(services.networkAccess, current.networkAccess)
+    }
+  }
+  if ('currency' in sanitized) {
+    const value = sanitized.currency
+    if (value !== 'USD' && value !== 'GBP' && value !== 'EUR') delete sanitized.currency
+  }
+  if ('currencyOverestimatePercent' in sanitized) {
+    const value = Number(sanitized.currencyOverestimatePercent)
+    if (Number.isFinite(value)) {
+      sanitized.currencyOverestimatePercent = Math.max(0, Math.min(25, Math.round(value)))
+    } else {
+      delete sanitized.currencyOverestimatePercent
+    }
+  }
+  if ('dashboardStatPrefs' in sanitized) {
+    const prefs = isRecord(sanitized.dashboardStatPrefs) ? sanitized.dashboardStatPrefs : {}
+    const current = AppStore.getSettings().dashboardStatPrefs || {}
+    const visibility = isRecord(prefs.visibility) ? prefs.visibility : current.visibility
+    sanitized.dashboardStatPrefs = {
+      ...current,
+      ...(visibility
+        ? {
+            visibility: Object.fromEntries(
+              Object.entries(visibility).filter(
+                (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+              )
+            )
+          }
+        : {}),
+      ...(Number.isFinite(Number(prefs.resetAt))
+        ? { resetAt: Math.max(0, Number(prefs.resetAt)) }
+        : {}),
+      ...(typeof prefs.workspacesTabEnabled === 'boolean'
+        ? { workspacesTabEnabled: prefs.workspacesTabEnabled }
+        : {}),
+      ...(Number.isFinite(Number(prefs.workspacesShown))
+        ? { workspacesShown: Math.max(4, Math.min(20, Math.round(Number(prefs.workspacesShown)))) }
+        : {}),
+      ...(typeof prefs.providersTabEnabled === 'boolean'
+        ? { providersTabEnabled: prefs.providersTabEnabled }
+        : {}),
+      ...(Number.isFinite(Number(prefs.autoCycleSeconds))
+        ? {
+            autoCycleSeconds: Math.max(
+              0,
+              Math.min(3600, Math.round(Number(prefs.autoCycleSeconds)))
+            )
+          }
+        : {})
+    }
+  }
+  if ('welcomeHeatmapPrefs' in sanitized) {
+    const prefs = isRecord(sanitized.welcomeHeatmapPrefs) ? sanitized.welcomeHeatmapPrefs : {}
+    const current = AppStore.getSettings().welcomeHeatmapPrefs || {}
+    sanitized.welcomeHeatmapPrefs = {
+      workspaceActivityEnabled:
+        typeof prefs.workspaceActivityEnabled === 'boolean'
+          ? prefs.workspaceActivityEnabled
+          : current.workspaceActivityEnabled,
+      agbenchActivityEnabled:
+        typeof prefs.agbenchActivityEnabled === 'boolean'
+          ? prefs.agbenchActivityEnabled
+          : current.agbenchActivityEnabled,
+      externalActivityEnabled:
+        typeof prefs.externalActivityEnabled === 'boolean'
+          ? prefs.externalActivityEnabled
+          : current.externalActivityEnabled
+    }
+  }
+  if ('kimiSanitiserEnabled' in sanitized) {
+    sanitized.kimiSanitiserEnabled =
+      typeof sanitized.kimiSanitiserEnabled === 'boolean'
+        ? sanitized.kimiSanitiserEnabled
+        : Boolean(sanitized.kimiSanitiserEnabled)
+  }
+  if ('kimiSanitiserCustomKeywords' in sanitized) {
+    sanitized.kimiSanitiserCustomKeywords =
+      typeof sanitized.kimiSanitiserCustomKeywords === 'string'
+        ? sanitized.kimiSanitiserCustomKeywords
+        : ''
+  }
+  if ('geminiApiRuntime' in sanitized) {
+    const value = sanitized.geminiApiRuntime
+    if (value !== 'auto' && value !== 'always' && value !== 'never') {
+      delete sanitized.geminiApiRuntime
     }
   }
   if ('nativeSubAgentRequests' in sanitized) {

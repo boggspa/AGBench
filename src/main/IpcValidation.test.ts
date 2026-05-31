@@ -228,6 +228,23 @@ describe('IpcValidation', () => {
     )
   })
 
+  it('validates welcome heatmap setting patches', () => {
+    expect(() =>
+      validateIpcArgs('update-settings', [
+        {
+          welcomeHeatmapPrefs: {
+            workspaceActivityEnabled: true,
+            agbenchActivityEnabled: false,
+            externalActivityEnabled: true
+          }
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('update-settings', [{ welcomeHeatmapPrefs: 'disabled' }])).toThrow(
+      /welcomeHeatmapPrefs/
+    )
+  })
+
   it('accepts explicit PTY stop requests', () => {
     expect(() => validateIpcArgs('stop-pty', ['terminal-1'])).not.toThrow()
   })

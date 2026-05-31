@@ -120,6 +120,7 @@ interface SettingsPanelProps {
      * client-side. */
     autoCycleSeconds?: number
   }
+  welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
   /** 1.0.5-EW26 — User's additional trigger keywords (newline-
@@ -239,6 +240,7 @@ interface SettingsPanelProps {
        * seconds (0 disables, undefined defaults to 180s). */
       autoCycleSeconds?: number
     }
+    welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
     /** 1.0.5-EW26 — User additions to the trigger keyword list. */
@@ -1280,6 +1282,7 @@ export function SettingsPanel({
   currency,
   currencyOverestimatePercent,
   dashboardStatPrefs,
+  welcomeHeatmapPrefs,
   kimiSanitiserEnabled,
   kimiSanitiserCustomKeywords,
   claudeBinaryPath,
@@ -2340,6 +2343,66 @@ export function SettingsPanel({
                     ? `+${currencyOverestimatePercent ?? 0}% safety bias applied to all cost displays. Useful when you want the on-screen running total to safely over-shoot the real bill.`
                     : 'Optional. Multiplies every cost display by 1 + your chosen percent (0–25%) so the displayed running total is a safe upper bound rather than the literal billed amount. Defaults to 0 (no bias).'}
                 </p>
+              </div>
+
+              {/*
+                Welcome standalone heatmaps. Defaults are visible
+                for all three; each toggle only controls the
+                new-chat welcome-screen heatmap stack under the
+                composer, not sidebar model usage.
+              */}
+              <div className="settings-group settings-dashboard-stats">
+                <label className="settings-label">Welcome activity heatmaps</label>
+                <p className="settings-hint">
+                  Toggle the standalone 90-day heatmaps shown underneath the composer on new chat
+                  welcome screens. Sidebar activity stays unchanged.
+                </p>
+                <ul className="settings-dashboard-stats-list">
+                  {[
+                    {
+                      key: 'workspaceActivityEnabled' as const,
+                      label: 'Workspace Activity',
+                      description: 'Git and filesystem activity for the selected workspace.'
+                    },
+                    {
+                      key: 'agbenchActivityEnabled' as const,
+                      label: 'AGBench Activity',
+                      description: 'Usage recorded inside AGBench chats.'
+                    },
+                    {
+                      key: 'externalActivityEnabled' as const,
+                      label: 'External Activity',
+                      description: 'Usage imported from local provider telemetry.'
+                    }
+                  ].map((heatmap) => {
+                    const enabled = welcomeHeatmapPrefs?.[heatmap.key] !== false
+                    return (
+                      <li key={heatmap.key} className="settings-dashboard-stats-row">
+                        <span className="settings-dashboard-stats-name">
+                          {heatmap.label}
+                          <small>{heatmap.description}</small>
+                        </span>
+                        <label className="settings-toggle">
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(e) => {
+                              onChange({
+                                welcomeHeatmapPrefs: {
+                                  ...(welcomeHeatmapPrefs || {}),
+                                  [heatmap.key]: e.target.checked
+                                }
+                              })
+                            }}
+                          />
+                          <span className="settings-toggle-label">
+                            {enabled ? 'Visible' : 'Hidden'}
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
               </div>
 
               {/*

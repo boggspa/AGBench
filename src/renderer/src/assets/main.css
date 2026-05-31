@@ -12226,6 +12226,13 @@ button.diff-file-row {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
 }
+.settings-dashboard-stats-name small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+}
 .settings-dashboard-stats-reset {
   margin-top: var(--space-md);
   padding-top: var(--space-sm);

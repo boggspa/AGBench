@@ -7277,12 +7277,15 @@ type SettingsPanelUpdate = {
   chatContextTurns?: number
   /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
   currency?: AppSettings['currency']
+  /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
+  currencyOverestimatePercent?: AppSettings['currencyOverestimatePercent']
   /**
    * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
    * visibility map + global "reset all" timestamp). See
    * AppSettings.dashboardStatPrefs for the persisted shape.
    */
   dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
+  welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
   /** 1.0.5-EW26 — Kimi compatibility filter. */
   kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
   kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
@@ -9277,6 +9280,9 @@ function App(): React.JSX.Element {
     if (next.currency !== undefined) {
       settingsPatch.currency = next.currency
     }
+    if (next.currencyOverestimatePercent !== undefined) {
+      settingsPatch.currencyOverestimatePercent = next.currencyOverestimatePercent
+    }
     // 1.0.5-EW49 — Dashboard stat prefs (visibility map / global
     // reset timestamp). The patch sets the whole object at once
     // so partial updates still need the caller to spread the
@@ -9287,6 +9293,9 @@ function App(): React.JSX.Element {
     // `settings?.dashboardStatPrefs` directly on each render.
     if (next.dashboardStatPrefs !== undefined) {
       settingsPatch.dashboardStatPrefs = next.dashboardStatPrefs
+    }
+    if (next.welcomeHeatmapPrefs !== undefined) {
+      settingsPatch.welcomeHeatmapPrefs = next.welcomeHeatmapPrefs
     }
 
     // 1.0.5-EW26 — Kimi compatibility filter. Same persist-only
@@ -17527,12 +17536,20 @@ function App(): React.JSX.Element {
   // copy lives INSIDE the dashboard, gated on `hasActivity`.
   const shouldShowWelcomeUsageDashboard =
     isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
+  const welcomeWorkspaceHeatmapEnabled =
+    settings?.welcomeHeatmapPrefs?.workspaceActivityEnabled !== false
+  const welcomeAgbenchHeatmapEnabled =
+    settings?.welcomeHeatmapPrefs?.agbenchActivityEnabled !== false
+  const welcomeExternalHeatmapEnabled =
+    settings?.welcomeHeatmapPrefs?.externalActivityEnabled !== false
   const welcomeWorkspaceActivityPath =
-    isWelcomeChat && !isCurrentGlobalChat
+    isWelcomeChat && !isCurrentGlobalChat && welcomeWorkspaceHeatmapEnabled
       ? currentWorkspace?.path || currentChat?.workspacePath
       : ''
   const shouldShowWelcomeStandaloneHeatmaps =
-    Boolean(welcomeWorkspaceActivityPath) || shouldShowWelcomeUsageDashboard
+    Boolean(welcomeWorkspaceActivityPath) ||
+    (shouldShowWelcomeUsageDashboard &&
+      (welcomeAgbenchHeatmapEnabled || welcomeExternalHeatmapEnabled))
   const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
     const style: CSSProperties = {}
     if (showGeminiTerminal && currentProvider === 'gemini') {
@@ -18195,6 +18212,7 @@ function App(): React.JSX.Element {
               currency={displayCurrency}
               currencyOverestimatePercent={overestimatePercent}
               dashboardStatPrefs={settings?.dashboardStatPrefs}
+              welcomeHeatmapPrefs={settings?.welcomeHeatmapPrefs}
               kimiSanitiserEnabled={settings?.kimiSanitiserEnabled ?? false}
               kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}
@@ -21313,17 +21331,21 @@ function App(): React.JSX.Element {
                 )}
                 {shouldShowWelcomeUsageDashboard && (
                   <>
-                    <UsageHeatmap
-                      dayCount={90}
-                      title="AGBench Activity"
-                      className="usage-heatmap--welcome-standalone"
-                    />
-                    <UsageHeatmap
-                      dayCount={90}
-                      usageSource="external"
-                      title="External Activity"
-                      className="usage-heatmap--welcome-standalone"
-                    />
+                    {welcomeAgbenchHeatmapEnabled && (
+                      <UsageHeatmap
+                        dayCount={90}
+                        title="AGBench Activity"
+                        className="usage-heatmap--welcome-standalone"
+                      />
+                    )}
+                    {welcomeExternalHeatmapEnabled && (
+                      <UsageHeatmap
+                        dayCount={90}
+                        usageSource="external"
+                        title="External Activity"
+                        className="usage-heatmap--welcome-standalone"
+                      />
+                    )}
                   </>
                 )}
               </div>
