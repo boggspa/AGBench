@@ -13,6 +13,10 @@ import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 // 1.0.5-EW25 — User-currency cost formatting helper.
 import { formatCost, setFxRatesPerUsd, type DisplayCurrency } from './lib/formatCost'
+import {
+  decideMeasurePass,
+  MAX_MEASURE_REWRITE_PASSES
+} from './lib/transcriptMeasureConvergence'
 import { computeCumulativeRunBaseMs } from './lib/cumulativeRunTimecode'
 import {
   AppSettings,
@@ -6369,6 +6373,16 @@ function useTranscriptVirtualization(params: {
   const observerRef = useRef<ResizeObserver | null>(null)
   const measureRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
+  // 1.0.7 — convergence guard for the pre-paint measurement effect. Counts
+  // consecutive passes that only REWROTE existing measurement keys (no new
+  // keys). A row whose measured height oscillates between two values for the
+  // same key — seen mid-chat in Ensemble (concurrent participant streams +
+  // scrollbar/sub-pixel reflow) — would otherwise bump setState on every
+  // synchronous pass forever and trip React's nested-update limit, crashing
+  // the transcript surface. `measureWarnedRef` makes the diagnostic one-shot
+  // per oscillation episode. See lib/transcriptMeasureConvergence.ts.
+  const measureRewritePassesRef = useRef(0)
+  const measureWarnedRef = useRef(false)
   // Flips true the first time the scroller reports a real scroll position
   // (the chat-switch snap-to-bottom counts). Before that, `scrollTopRef`
   // is still 0, so we force the bottom window to avoid flashing the top;
@@ -6554,7 +6568,8 @@ function useTranscriptVirtualization(params: {
     const bucket = bucketRef.current
     const mountedRows = rowsRef.current.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     const spacerBottom = spacerBottomRef.current
-    let changed = false
+    let sawNewKey = false
+    let sawRewrite = false
     for (let i = 0; i < mountedRows.length; i++) {
       const row = mountedRows[i]
       const el = blockElsRef.current.get(row.id)
@@ -6570,12 +6585,34 @@ function useTranscriptVirtualization(params: {
         expandedRowIds?.has(row.id) ?? false
       )
       const prev = measurements.get(key)
-      if (prev === undefined || Math.abs(prev - slot) > 0.5) {
+      if (prev === undefined) {
         measurements.set(key, slot)
-        changed = true
+        sawNewKey = true
+      } else if (Math.abs(prev - slot) > 0.5) {
+        measurements.set(key, slot)
+        sawRewrite = true
       }
     }
-    if (changed) bumpMeasure()
+    // 1.0.7 — gate the re-measure bump through the convergence guard. A new key
+    // (genuine content/growth) always converges and resets the budget; a run of
+    // rewrite-only passes (oscillation) is capped so it can't spin React's
+    // nested-update limit and crash the transcript surface.
+    const decision = decideMeasurePass({
+      sawNewKey,
+      sawRewrite,
+      rewritePasses: measureRewritePassesRef.current,
+      alreadyWarned: measureWarnedRef.current
+    })
+    measureRewritePassesRef.current = decision.nextRewritePasses
+    measureWarnedRef.current = decision.nextAlreadyWarned
+    if (decision.shouldWarn) {
+      console.warn(
+        '[transcript] measurement did not converge after ' +
+          `${MAX_MEASURE_REWRITE_PASSES} passes; freezing heights to avoid a render loop. ` +
+          'A mounted row height is likely oscillating (concurrent streams / scrollbar reflow).'
+      )
+    }
+    if (decision.bump) bumpMeasure()
   })
 
   const blockRef = useCallback((el: HTMLDivElement | null) => {
