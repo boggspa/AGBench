@@ -9,7 +9,7 @@
  *
  * Data path: pull all `UsageRecord` entries via the existing
  * `window.api.getUsage` IPC, run them through the pure
- * `buildHeatmapGrid` helper, render the grid + the 24h / 7D / 30D
+ * `buildHeatmapGrid` helper, render the grid + the 24h / 7D / window
  * total chips.
  *
  * Mirrors another-project's `LLMActivityHeatmapView`
@@ -58,18 +58,25 @@ interface UsageHeatmapProps {
    * heatmap to re-query. Defaults to a stable timestamp so the
    * heatmap only loads once on mount when omitted. */
   refreshKey?: number
-  /** Render the "Activity" title + 24h / 7D / 30D total chips. The
+  /** Render the "Activity" title + 24h / 7D / rendered-window total chips. The
    * sidebar Model Usage card surfaces them inline; embeds in the
    * welcome dashboard (where total-tokens already lives in the
    * headline stat grid above) hide the header to avoid duplication.
    * Defaults to true. */
   showHeader?: boolean
+  /** Number of day columns to render. Defaults to the sidebar's 30-day window. */
+  dayCount?: number
   /** Class name appended to the root `<div>` — lets callers retune
    * sizing without forking the component. */
   className?: string
 }
 
-export function UsageHeatmap({ refreshKey = 0, showHeader = true, className }: UsageHeatmapProps) {
+export function UsageHeatmap({
+  refreshKey = 0,
+  showHeader = true,
+  dayCount = HEATMAP_COLUMNS,
+  className
+}: UsageHeatmapProps) {
   const [records, setRecords] = useState<UsageRecord[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -102,7 +109,11 @@ export function UsageHeatmap({ refreshKey = 0, showHeader = true, className }: U
     }
   }, [refreshKey])
 
-  const grid: HeatmapGrid = useMemo(() => buildHeatmapGrid(records), [records])
+  const grid: HeatmapGrid = useMemo(() => buildHeatmapGrid(records, new Date(), dayCount), [
+    records,
+    dayCount
+  ])
+  const windowLabel = grid.columns === HEATMAP_COLUMNS ? '30D' : `${grid.columns}D`
 
   return (
     <div
@@ -119,7 +130,7 @@ export function UsageHeatmap({ refreshKey = 0, showHeader = true, className }: U
             7D <strong>{formatTokenCount(grid.totals.last7d)}</strong>
           </span>
           <span className="usage-heatmap-chip">
-            30D <strong>{formatTokenCount(grid.totals.last30d)}</strong>
+            {windowLabel} <strong>{formatTokenCount(grid.totals.window)}</strong>
           </span>
         </div>
       )}
@@ -134,7 +145,8 @@ export function UsageHeatmap({ refreshKey = 0, showHeader = true, className }: U
         <div
           className="usage-heatmap-grid"
           style={{
-            gridTemplateColumns: `repeat(${HEATMAP_COLUMNS}, 1fr)`,
+            aspectRatio: `${grid.columns} / ${HEATMAP_ROWS}`,
+            gridTemplateColumns: `repeat(${grid.columns}, 1fr)`,
             gridTemplateRows: `repeat(${HEATMAP_ROWS}, 1fr)`
           }}
         >

@@ -22,9 +22,10 @@ function makeRecord(
 describe('buildHeatmapGrid', () => {
   it('emits exactly HEATMAP_COLUMNS × HEATMAP_ROWS cells', () => {
     const grid = buildHeatmapGrid([], new Date('2026-05-22T15:00:00Z'))
+    expect(grid.columns).toBe(HEATMAP_COLUMNS)
     expect(grid.cells).toHaveLength(HEATMAP_COLUMNS * HEATMAP_ROWS)
     expect(grid.cells.every((c) => c.color === null && c.intensity === 0)).toBe(true)
-    expect(grid.totals).toEqual({ last24h: 0, last7d: 0, last30d: 0 })
+    expect(grid.totals).toEqual({ last24h: 0, last7d: 0, last30d: 0, window: 0 })
   })
 
   it('places an event in the correct (column, row) bucket', () => {
@@ -94,6 +95,29 @@ describe('buildHeatmapGrid', () => {
     expect(grid.totals.last24h).toBe(3000) // 1000 + 2000
     expect(grid.totals.last7d).toBe(7000) // 3000 + 4000
     expect(grid.totals.last30d).toBe(15000) // all four
+    expect(grid.totals.window).toBe(15000) // all four
+  })
+
+  it('supports wider standalone windows without changing the rolling 30-day total', () => {
+    const now = new Date('2026-05-22T15:00:00Z')
+    const sixtyDaysAgo = now.getTime() - 60 * 24 * 60 * 60 * 1000
+    const tenDaysAgo = now.getTime() - 10 * 24 * 60 * 60 * 1000
+    const grid = buildHeatmapGrid(
+      [
+        makeRecord({ timestamp: sixtyDaysAgo, totalTokens: 9000, provider: 'gemini' }),
+        makeRecord({ timestamp: tenDaysAgo, totalTokens: 1000, provider: 'codex' })
+      ],
+      now,
+      90
+    )
+
+    expect(grid.columns).toBe(90)
+    expect(grid.cells).toHaveLength(90 * HEATMAP_ROWS)
+    expect(grid.totals.last30d).toBe(1000)
+    expect(grid.totals.window).toBe(10000)
+    expect(grid.cells.some((c) => c.totalTokens === 9000 && c.dominantProvider === 'gemini')).toBe(
+      true
+    )
   })
 })
 

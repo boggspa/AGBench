@@ -1,7 +1,7 @@
 /*
  * UsageHeatmap — Phase L6 slice 5.
  *
- * Pure helper that buckets `UsageRecord` events into a 30-day × 12
+ * Pure helper that buckets `UsageRecord` events into a day-count × 12
  * (2-hour) grid for the activity heatmap, plus computes per-cell
  * colour and opacity. Mirrors another-project's
  * `LLMActivityHeatmapView` bucketing (`Shared/Views/
@@ -13,9 +13,10 @@
 
 import type { ProviderId, UsageRecord } from '../../../main/store/types'
 
-export const HEATMAP_COLUMNS = 30 // days
+export const HEATMAP_COLUMNS = 30 // days (default sidebar window)
 export const HEATMAP_ROWS = 12 // 2-hour buckets per day (00-02, 02-04, …, 22-24)
 const BUCKET_HOURS = 24 / HEATMAP_ROWS
+const MAX_HEATMAP_COLUMNS = 180
 
 /** Per-provider hex used for colouring heatmap cells. Mirrors the
  * Limit Counter palette + the AGBench `--provider-{id}-color`
@@ -37,7 +38,7 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
 }
 
 export interface HeatmapCell {
-  /** 0..HEATMAP_COLUMNS-1 — 0 is the OLDEST day, HEATMAP_COLUMNS-1 is today. */
+  /** 0..columns-1 — 0 is the OLDEST day, columns-1 is today. */
   column: number
   /** 0..HEATMAP_ROWS-1 — 0 is `00:00-02:00`, 11 is `22:00-24:00`. */
   row: number
@@ -58,6 +59,8 @@ export interface HeatmapCell {
 }
 
 export interface HeatmapGrid {
+  /** Number of day columns in the rendered window. */
+  columns: number
   cells: HeatmapCell[]
   /** Token totals across known time windows, derived from the same
    * event list so the header chips don't need an independent query. */
@@ -65,25 +68,30 @@ export interface HeatmapGrid {
     last24h: number
     last7d: number
     last30d: number
+    window: number
   }
   /** ISO date of the column-0 origin (the oldest column shown). */
   startDay: string
-  /** ISO date of the column-29 (today) anchor. */
+  /** ISO date of the last-column (today) anchor. */
   endDay: string
 }
 
 /**
- * Bucket usage records into the 30×12 heatmap grid relative to a
- * reference `now`. Records older than 30 days are dropped; future-
+ * Bucket usage records into the day-count × 12 heatmap grid relative to a
+ * reference `now`. Records older than the requested window are dropped; future-
  * timestamped records (clock skew) are dropped too. Column 0 is the
- * oldest day shown; column `HEATMAP_COLUMNS - 1` is the day
- * containing `now`.
+ * oldest day shown; column `columns - 1` is the day containing `now`.
  */
-export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date()): HeatmapGrid {
+export function buildHeatmapGrid(
+  records: UsageRecord[],
+  now: Date = new Date(),
+  columnCount: number = HEATMAP_COLUMNS
+): HeatmapGrid {
+  const columns = Math.max(1, Math.min(MAX_HEATMAP_COLUMNS, Math.round(columnCount)))
   const endOfDay = new Date(now)
   endOfDay.setHours(23, 59, 59, 999)
   const startOfWindow = new Date(endOfDay)
-  startOfWindow.setDate(startOfWindow.getDate() - (HEATMAP_COLUMNS - 1))
+  startOfWindow.setDate(startOfWindow.getDate() - (columns - 1))
   startOfWindow.setHours(0, 0, 0, 0)
 
   const startMs = startOfWindow.getTime()
@@ -98,8 +106,10 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
   let last24h = 0
   let last7d = 0
   let last30d = 0
+  let window = 0
   const now24hMs = now.getTime() - 24 * 60 * 60 * 1000
   const now7dMs = now.getTime() - 7 * oneDayMs
+  const now30dMs = now.getTime() - 30 * oneDayMs
 
   for (const record of records) {
     if (!Number.isFinite(record.timestamp)) continue
@@ -109,7 +119,7 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
 
     const eventDate = new Date(record.timestamp)
     const dayOffset = Math.floor((eventDate.getTime() - startMs) / oneDayMs)
-    const column = Math.max(0, Math.min(HEATMAP_COLUMNS - 1, dayOffset))
+    const column = Math.max(0, Math.min(columns - 1, dayOffset))
     const row = Math.max(
       0,
       Math.min(HEATMAP_ROWS - 1, Math.floor(eventDate.getHours() / BUCKET_HOURS))
@@ -129,7 +139,8 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
       )
     }
 
-    last30d += tokens
+    window += tokens
+    if (record.timestamp >= now30dMs) last30d += tokens
     if (record.timestamp >= now7dMs) last7d += tokens
     if (record.timestamp >= now24hMs) last24h += tokens
   }
@@ -153,7 +164,7 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
   // left rail. (Previously column-major, which scrambled the axes vs the labels.)
   const cells: HeatmapCell[] = []
   for (let row = 0; row < HEATMAP_ROWS; row += 1) {
-    for (let column = 0; column < HEATMAP_COLUMNS; column += 1) {
+    for (let column = 0; column < columns; column += 1) {
       const key = `${column}-${row}`
       const bucket = cellMap.get(key)
       if (!bucket) {
@@ -193,8 +204,9 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
   }
 
   return {
+    columns,
     cells,
-    totals: { last24h, last7d, last30d },
+    totals: { last24h, last7d, last30d, window },
     startDay: startOfWindow.toISOString().slice(0, 10),
     endDay: endOfDay.toISOString().slice(0, 10)
   }

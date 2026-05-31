@@ -2559,6 +2559,20 @@ function WelcomeUsageDashboard({
   const denseStatItems = denseStatItemsAll.filter((item) =>
     isDashboardStatVisible(dashboardStatVisibility, item.key)
   )
+  const overviewStatItems = [
+    ...heroStatItems.map((item) => ({
+      key: item.label,
+      label: item.label,
+      value: item.value,
+      title: item.title
+    })),
+    ...denseStatItems.map((item) => ({
+      key: item.key,
+      label: item.label,
+      value: item.value,
+      title: item.label
+    }))
+  ]
 
   return (
     <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
@@ -2635,40 +2649,18 @@ function WelcomeUsageDashboard({
         </div>
       ) : tab === 'overview' ? (
         <>
-          <div className="welcome-usage-stat-hero">
-            {heroStatItems.map((item) => (
-              <div
-                key={item.label}
-                className="welcome-usage-stat welcome-usage-stat--hero"
-                style={chipRailStyle}
-                title={item.title}
-              >
+          <div
+            className="welcome-usage-stat-list"
+            style={chipRailStyle}
+            aria-label="Usage statistics"
+          >
+            {overviewStatItems.map((item) => (
+              <div key={item.key} className="welcome-usage-stat-list-row" title={item.title}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
               </div>
             ))}
           </div>
-          <div className="welcome-usage-stat-grid welcome-usage-stat-grid--dense">
-            {denseStatItems.map((item) => (
-              <div
-                key={item.label}
-                className="welcome-usage-stat welcome-usage-stat--dense"
-                style={chipRailStyle}
-                /* Surface the full label on hover so a 2-line wrap (or
-                 * any rare future overflow past the line-clamp) stays
-                 * inspectable. Cheap accessibility win. */
-                title={item.label}
-              >
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-          {/* Welcome dashboard now shares the sidebar's UsageHeatmap so
-              the rich logarithmic intensity + dominant-provider colours
-              show up here too. Header chips are suppressed because the
-              headline stat grid above already surfaces the totals. */}
-          <UsageHeatmap showHeader={false} className="usage-heatmap--welcome" />
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
       ) : tab === 'models' ? (
@@ -21237,6 +21229,11 @@ function App(): React.JSX.Element {
                     <span className="welcome-suggestion-description">{starter.description}</span>
                   </button>
                 ))}
+              </div>
+            )}
+            {shouldShowWelcomeUsageDashboard && (
+              <div className="welcome-standalone-heatmap">
+                <UsageHeatmap dayCount={90} className="usage-heatmap--welcome-standalone" />
               </div>
             )}
           </div>
