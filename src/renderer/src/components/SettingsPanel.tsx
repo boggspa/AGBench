@@ -1077,40 +1077,29 @@ export const SETTINGS_TABS: Array<{
   label: string
   group: SettingsTabGroup
 }> = [
-  { id: 'appearance', label: 'Appearance', group: 'settings' },
-  // "General" merges the legacy "Behavior" + "System" tabs. Both
-  // covered operational defaults (chat behaviour, approval timeouts,
-  // product update channel, diagnostics) — splitting them across two
-  // tabs was always arbitrary. The `system` id has been dropped from
-  // the SettingsTab union now that the post-1.0.2 build is in the
-  // wild; the canonical id is `behavior`.
+  // 1.0.6 — explicit order requested by Chris: General, Appearance, Approvals,
+  // Key commands, Providers, MCP, Workspaces, Devices. All one group so NO
+  // divider renders (the sidebar inserts a divider only when `group` changes;
+  // keeping every tab in `settings` collapses the old settings/devices split).
+  // "General" merges the legacy "Behavior" + "System" tabs (canonical id
+  // `behavior`).
   { id: 'behavior', label: 'General', group: 'settings' },
-  // "Workspaces" — Codex Environments-style page that lists every
-  // workspace the user has loaded into AGBench. Clicking a row opens
-  // that workspace in a fresh chat surface (closes Settings on the
-  // way out). The chat sidebar's workspace tree is still the primary
-  // surface for active use; this tab is the project-wide manage-and-
-  // re-open page.
-  { id: 'workspaces', label: 'Workspaces', group: 'settings' },
+  { id: 'appearance', label: 'Appearance', group: 'settings' },
+  { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
+  { id: 'key-commands', label: 'Key commands', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
   { id: 'mcp', label: 'MCP', group: 'settings' },
-  { id: 'key-commands', label: 'Key commands', group: 'settings' },
-  // "Model usage" — richer cross-provider usage page. Reuses the
-  // sidebar's ModelUsageCard (quota meters per provider + 30-day
-  // heatmap) with extra context tiles on top (cumulative tokens,
-  // run counts, cost estimates). Sister to the welcome dashboard
-  // but available without leaving Settings.
+  // "Workspaces" — Codex Environments-style page listing every workspace loaded
+  // into AGBench; a row opens it in a fresh chat surface.
+  { id: 'workspaces', label: 'Workspaces', group: 'settings' },
+  // "Model usage" — richer cross-provider usage page (quota meters + context
+  // tiles). Not in Chris's explicit order list, kept at the tail of the settings
+  // group rather than dropped.
   { id: 'model-usage', label: 'Model usage', group: 'settings' },
-  { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
-  // "Devices" merges the legacy "Pairing" + "Remote Workspaces" +
-  // "Bridge Networking" tabs into one device-management page. Pair a
-  // fresh iPhone / iPad at the top, manage its workspace allowlist
-  // in the middle, configure the daemon + APNs at the bottom — all
-  // the same conceptual workflow (LAN / off-LAN reach to paired iOS
-  // devices). The `remote-workspaces` + `bridge-networking` ids have
-  // been dropped from the SettingsTab union now that the post-1.0.2
-  // build is in the wild; the canonical id is `pairing`.
-  { id: 'pairing', label: 'Devices', group: 'devices' }
+  // "Devices" merges the legacy Pairing + Remote Workspaces + Bridge Networking
+  // tabs (canonical id `pairing`). Same `settings` group now → no divider above
+  // it, per the requested layout.
+  { id: 'pairing', label: 'Devices', group: 'settings' }
 ]
 
 type LocalFontData = {
