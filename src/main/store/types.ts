@@ -727,6 +727,37 @@ export interface BlackboardEntry {
   createdAt: string
 }
 
+/** M5 — what a complexity-escalation signal is flagging.
+ * - `stuck`                    : round completed but no participant produced an answer
+ * - `looping`                  : round exhausted its handoff budget without returning to the user
+ * - `disagreement-unresolved`  : multiple answers, no synthesizer to reconcile them
+ * - `tool-error-cluster`       : a cluster of participants failed / were unreachable */
+export type ComplexityEscalationKind =
+  | 'stuck'
+  | 'looping'
+  | 'disagreement-unresolved'
+  | 'tool-error-cluster'
+
+/** M5 — the orchestrator's *recommended* response. Advisory only: the
+ * orchestrator NEVER auto-acts on a signal — the renderer surfaces these as
+ * chips and the user (or a future policy gate) decides. */
+export type ComplexityEscalationAction = 'extend-rounds' | 'call-synthesizer' | 'pause-for-user'
+
+/** M5 — a single complexity-escalation signal emitted at round end by the
+ * heuristic in src/main/escalation/ComplexityEscalation.ts. Persisted on
+ * `EnsembleConfig.escalationSignals` and broadcast to the renderer via the
+ * existing `chat-updated` channel. */
+export interface ComplexityEscalationSignal {
+  id: string
+  chatId: string
+  roundId: string
+  kind: ComplexityEscalationKind
+  /** Human-readable explanation of why the signal fired. */
+  evidence: string
+  recommendedAction: ComplexityEscalationAction
+  createdAt: string
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
@@ -805,6 +836,15 @@ export interface EnsembleConfig {
    * pruned per round/session/chat. See src/main/blackboard/Blackboard.ts.
    */
   blackboard?: BlackboardEntry[]
+  /**
+   * M5 (1.0.7) — complexity-escalation signals emitted by the orchestrator
+   * heuristic at round end (stuck / looping / disagreement-unresolved /
+   * tool-error-cluster). Events ONLY — the orchestrator never auto-acts on
+   * them; the renderer surfaces them as advisory chips with a recommended
+   * action. Capped to the most recent few. See
+   * src/main/escalation/ComplexityEscalation.ts.
+   */
+  escalationSignals?: ComplexityEscalationSignal[]
 }
 
 /**

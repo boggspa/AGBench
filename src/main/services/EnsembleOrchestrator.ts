@@ -41,6 +41,13 @@ import {
   deriveBlackboardFromRoundSummary,
   upsertBlackboardEntry
 } from '../blackboard/Blackboard'
+// M5 (1.0.7) — emit advisory complexity-escalation signals at round end
+// (stuck / looping / disagreement-unresolved / tool-error-cluster). Events
+// only — never auto-acted on; the renderer surfaces them as chips.
+import {
+  appendEscalationSignals,
+  detectComplexityEscalation
+} from '../escalation/ComplexityEscalation'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -2850,6 +2857,25 @@ export class EnsembleOrchestrator {
         )
       }
     }
+    // M5 — run the complexity-escalation heuristic over the finished round's
+    // end-state and append any signals. Advisory ONLY: we persist + broadcast
+    // (via the saveChat → 'chat-updated' path) but never auto-act. Deterministic
+    // ids (roundId + kind) keep this clock/random-free. Skipped for cancelled
+    // rounds (a user Stop isn't a complexity event).
+    let nextEscalationSignals = chat.ensemble.escalationSignals
+    if (status === 'completed') {
+      const fresh = detectComplexityEscalation({
+        chatId: chat.appChatId,
+        roundId,
+        participants: nextRound.participants,
+        continuationHops: nextRound.continuationHops,
+        maxContinuationHops: nextRound.maxContinuationHops,
+        hasSynthesizer: Boolean(chat.ensemble.synthesizerParticipantId),
+        createdAt: endedAt,
+        makeId: (kind) => `${roundId}-esc-${kind}`
+      })
+      nextEscalationSignals = appendEscalationSignals(chat.ensemble.escalationSignals, fresh)
+    }
     this.deps.saveChat({
       ...chat,
       ensemble: {
@@ -2863,6 +2889,7 @@ export class EnsembleOrchestrator {
             }
           : chat.ensemble.roundSummaries,
         ...(nextBlackboard ? { blackboard: nextBlackboard } : {}),
+        ...(nextEscalationSignals ? { escalationSignals: nextEscalationSignals } : {}),
         updatedAt: endedAt
       },
       updatedAt: this.deps.now()
