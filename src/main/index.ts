@@ -1074,24 +1074,42 @@ interface HostCommandResult {
   durationMs: number
 }
 
-// NOTE: keep in sync with the renderer's CODEX_DEFAULT_MODELS (App.tsx:~4205).
-// This list is shipped to the renderer via `getAgentModels('codex')` and
-// becomes `codexModels`, which OVERRIDES the renderer's own fallback list —
-// so the renderer-side retiresAt edits are moot in normal operation unless
-// the same field is mirrored here. Structured-clone IPC carries `retiresAt`
-// through unchanged; the renderer-side typeof guard at App.tsx:~20566 then
-// surfaces it to the picker pill.
+// Codex models the provider has announced for retirement, keyed by canonical
+// model id. Surfaced to the renderer as `retiresAt` (ISO yyyy-mm-dd) so the
+// composer model picker can render a retirement pill. THIS is the single
+// source of truth and it is applied in TWO places:
+//   1. the static fallback list below, and
+//   2. the live `model/list` normalize step in the `get-agent-models` handler.
+// Both are required: on the normal path the renderer's `codexModels` is built
+// from the CLI's `model/list` response (see `get-agent-models`), which copies
+// only an explicit allow-list of fields — so a literal on the fallback list
+// alone never reaches the renderer when the CLI is reachable. That gap is
+// exactly what hid the retirement pill on the live dev build.
+const CODEX_MODEL_RETIREMENTS: Record<string, string> = {
+  'gpt-5.3-codex': '2026-06-02',
+  'gpt-5.2': '2026-06-02'
+}
+
+// Fallback model list — used ONLY when the live Codex CLI `model/list` query
+// fails or returns nothing (see `get-agent-models`). On the normal path the
+// renderer's `codexModels` comes from the CLI-derived `normalized` list, not
+// from here. Retirement metadata is sourced from CODEX_MODEL_RETIREMENTS so
+// the fallback and live paths can never drift.
 const CODEX_STATIC_MODELS = [
   { id: 'gpt-5.5', label: 'GPT-5.5', description: 'Default Codex model', isDefault: true },
   { id: 'gpt-5.4', label: 'GPT-5.4' },
   { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', retiresAt: '2026-06-02' },
+  {
+    id: 'gpt-5.3-codex',
+    label: 'GPT-5.3 Codex',
+    retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.3-codex']
+  },
   {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     description: 'Research preview where available'
   },
-  { id: 'gpt-5.2', label: 'GPT-5.2', retiresAt: '2026-06-02' }
+  { id: 'gpt-5.2', label: 'GPT-5.2', retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.2'] }
 ]
 const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'off' },
@@ -23202,7 +23220,13 @@ if (isGeminiMcpBridgeProcess) {
             isDefault: Boolean(model.isDefault),
             supportedReasoningEfforts: model.supportedReasoningEfforts || [],
             defaultReasoningEffort: model.defaultReasoningEffort || null,
-            additionalSpeedTiers: model.additionalSpeedTiers || []
+            additionalSpeedTiers: model.additionalSpeedTiers || [],
+            // Inject retirement metadata the CLI doesn't carry. Without this
+            // the renderer never sees `retiresAt` on the normal (CLI-backed)
+            // path and the picker retirement pill silently never renders.
+            ...(CODEX_MODEL_RETIREMENTS[model.id]
+              ? { retiresAt: CODEX_MODEL_RETIREMENTS[model.id] }
+              : {})
           }))
         return normalized.length > 0 ? normalized : CODEX_STATIC_MODELS
       } catch {
