@@ -1554,6 +1554,7 @@ export function Sidebar({
           </label>
         </div>
 
+        <div className="sidebar-hierarchy-scroll">
         {/* Active runs — permanently pinned under Search, above Pinned. */}
         <ActiveRunsSection
           chats={chats}
@@ -2285,6 +2286,7 @@ export function Sidebar({
               </div>
             )}
           </div>
+        </div>
         </div>
 
         {/* Phase L6 slice 1 — Model Usage card extracted to its own

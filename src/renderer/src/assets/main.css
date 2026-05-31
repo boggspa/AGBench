@@ -599,7 +599,7 @@ body {
   margin-left: 2px;
 }
 
-.sidebar-workspace-scroll {
+.sidebar-hierarchy-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -607,6 +607,27 @@ body {
   flex-direction: column;
   gap: var(--space-sm);
   padding-right: 2px;
+}
+
+.sidebar-hierarchy-scroll > :is(
+  .sidebar-active-runs-section,
+  .sidebar-pinned-section,
+  .sidebar-recents-section,
+  .sidebar-ensembles-section,
+  .sidebar-workspace-scroll,
+  .sidebar-pin-drop-placeholder
+) {
+  margin-bottom: 0;
+}
+
+.sidebar-workspace-scroll {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-right: 0;
 }
 
 .sidebar-workspace-list {
@@ -16760,12 +16781,18 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
 }
 
+.app-sidebar .sidebar-hierarchy-scroll,
 .app-sidebar .sidebar-workspace-scroll {
   gap: 10px;
 }
 
 .app-sidebar .sidebar-workspace-list {
   gap: 6px;
+}
+
+.app-sidebar .sidebar-hierarchy-scroll .sidebar-section-header {
+  position: static;
+  top: auto;
 }
 
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
@@ -18912,6 +18939,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Sidebar containment: keep long workspace/thread names inside their cards. */
 .app-sidebar,
 .app-sidebar .sidebar-content,
+.app-sidebar .sidebar-hierarchy-scroll,
 .app-sidebar .sidebar-workspace-scroll,
 .app-sidebar .sidebar-workspace-list,
 .app-sidebar .sidebar-workspace-group,
@@ -24628,10 +24656,12 @@ input:disabled, select:disabled, textarea:disabled {
    list so the inline glass-pill treatment below applies uniformly. */
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header.sidebar-chats-header,
+.app-sidebar .sidebar-active-runs-section .sidebar-section-header,
 .app-sidebar .sidebar-recents-section .sidebar-section-header,
 .app-sidebar .sidebar-pinned-section .sidebar-section-header,
 .app-sidebar .sidebar-ensembles-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-active-runs-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-pinned-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-ensembles-section .sidebar-section-header {
   background: transparent !important;
