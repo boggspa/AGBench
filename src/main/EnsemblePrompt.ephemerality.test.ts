@@ -18,7 +18,7 @@ import type {
 } from './store/types'
 
 function participant(id: string, provider: ProviderId, role: string, order: number): EnsembleParticipant {
-  return { id, provider, role, enabled: true, order }
+  return { id, provider, role, enabled: true, order, instructions: '', permissionPresetId: 'read_only' }
 }
 
 function assistantMessage(provider: ProviderId, role: string, content: string): ChatMessage {
@@ -44,7 +44,7 @@ function makeChat(messages: ChatMessage[]): ChatRecord {
     messages,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z'
-  } as ChatRecord
+  } as unknown as ChatRecord
 }
 
 const participants = [
