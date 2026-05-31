@@ -1,0 +1,877 @@
+/* Sidebar */
+.app-sidebar {
+  --font-size-xs: calc(0.936rem * 1.17);
+  --font-size-sm: calc(1.066rem * 1.17);
+  --font-size-md: calc(1.196rem * 1.17);
+  --font-size-lg: calc(1.365rem * 1.17);
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: transparent;
+  border-right: 1px solid color-mix(in srgb, var(--sidebar-border) 72%, transparent);
+  padding-top: 36px;
+  overflow: hidden;
+}
+
+.workspace-sidebar-resize-handle {
+  width: 8px;
+  flex: 0 0 8px;
+  align-self: stretch;
+  cursor: col-resize;
+  position: relative;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-sidebar-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--sidebar-border);
+}
+
+.workspace-sidebar-resize-handle:hover::before,
+.is-resizing-workspace-sidebar .workspace-sidebar-resize-handle::before {
+  background: color-mix(in srgb, var(--accent) 72%, var(--sidebar-border));
+}
+
+.workspace-sidebar-resize-handle:focus-visible::before {
+  width: 2px;
+  left: 3px;
+  background: var(--focus-ring);
+  box-shadow: 0 0 0 4px var(--focus-glow);
+}
+
+[data-appearance="solid"] .app-sidebar {
+  background: color-mix(in srgb, var(--sidebar-bg) 88%, transparent);
+}
+
+[data-appearance="soft_glass"] .app-sidebar {
+  /* Frosted-material tint: subtle white wash on top of a low-opacity sidebar color.
+     Because the window now uses macOS sidebar vibrancy under this mode, this lets
+     the system blur the desktop behind the sidebar — pure ultraThinMaterial feel. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    color-mix(in srgb, var(--sidebar-bg) 28%, transparent);
+  /* GPU: halved from blur(44px) saturate(1.8) brightness(1.05) — Chromium
+   * switches to a multi-pass filter above ~22px so 18px keeps the soft-glass
+   * aesthetic at a fraction of the per-frame compositor cost. saturate/brightness
+   * dropped: each was a second compositor pass per element with negligible visual
+   * payoff at this opacity. */
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    inset -1px 0 0 rgba(255, 255, 255, 0.012);
+}
+
+[data-appearance="native_glass"] .app-sidebar {
+  /* Native vibrancy handles the blur itself — no CSS backdrop-filter needed */
+  background: transparent;
+  border-right-color: rgba(255, 255, 255, 0.24);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-appearance="native_glass"] .app-sidebar::before {
+  content: none;
+}
+
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* --- Sidebar: Pinned + Recents sections ------------------------------- */
+.sidebar-pinned-section,
+.sidebar-recents-section,
+.sidebar-active-runs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+}
+
+/* Quiet empty-state when the persistent Active runs section has nothing
+ * running — keeps the section anchored under Search without shouting. */
+.sidebar-active-runs-empty {
+  padding: 3px var(--space-sm, 8px);
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--sidebar-text-secondary, var(--text-secondary)) 62%, transparent);
+}
+
+/*
+ * 1.0.5-SB5 — Drag-and-drop pin affordances.
+ *
+ * - `[data-dragging="true"]` on the chat tile being dragged
+ *   dims + rotates slightly so the user has feedback the
+ *   pointer is carrying a payload.
+ * - `[data-pin-drop="active"]` on the Pinned section
+ *   container (or the empty-state placeholder) glows in the
+ *   accent colour so the drop target is unmistakable.
+ * - `.sidebar-pin-drop-placeholder` is the empty-state hint
+ *   that surfaces above Recents when the Pinned section has
+ *   no entries yet and a non-pinned chat is being dragged.
+ */
+.sidebar-recents-item[data-dragging='true'],
+.sidebar-ensemble-item[data-dragging='true'],
+.sidebar-chat-item[data-dragging='true'] {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  transition:
+    opacity 80ms ease-out,
+    transform 80ms ease-out;
+}
+.sidebar-pinned-section[data-pin-drop='active'] {
+  outline: 2px dashed var(--accent, color-mix(in srgb, var(--text-primary) 50%, transparent));
+  outline-offset: 4px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--accent, var(--text-primary)) 6%, transparent);
+}
+.sidebar-pin-drop-placeholder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 14px var(--space-md);
+  margin-bottom: var(--space-sm);
+  border: 2px dashed color-mix(in srgb, var(--text-primary) 28%, transparent);
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+  font-size: var(--font-size-xs);
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out,
+    color 120ms ease-out;
+}
+.sidebar-pin-drop-placeholder[data-pin-drop='active'] {
+  border-color: var(--accent, var(--text-primary));
+  background: color-mix(in srgb, var(--accent, var(--text-primary)) 10%, transparent);
+  color: var(--text-primary);
+}
+.sidebar-pin-drop-placeholder-glyph {
+  font-size: 1.05em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--accent, var(--text-primary)) 80%, transparent);
+}
+.sidebar-pin-drop-placeholder-copy {
+  flex: 1;
+}
+
+.sidebar-pinned-list,
+.sidebar-recents-list,
+.sidebar-active-runs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-pinned-item,
+.sidebar-recents-item,
+.sidebar-active-run-row {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--sidebar-text) 86%, transparent);
+  font: inherit;
+  font-size: var(--sidebar-row-font-size);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 140ms cubic-bezier(0.22, 1, 0.36, 1), color 140ms ease;
+}
+
+.sidebar-pinned-item:hover,
+.sidebar-recents-item:hover,
+.sidebar-active-run-row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.sidebar-pinned-item:focus-visible,
+.sidebar-recents-item:focus-visible,
+.sidebar-active-run-row:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
+.sidebar-pinned-item.active,
+.sidebar-recents-item.active,
+.sidebar-active-run-row.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 17%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 60%,
+    transparent 100%
+  );
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sidebar-pinned-item.active::before,
+.sidebar-recents-item.active::before,
+.sidebar-active-run-row.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.sidebar-pinned-label,
+.sidebar-recents-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* 1.0.3 polish — sidebar chat-title fonts 15% smaller across all
+   * sections (Pinned / Recents / Ensembles / Workspaces / Sub-threads /
+   * Global). 0.85em scales relative to the parent's inherited size so
+   * it adapts to any per-section tweaks the user makes via Settings.
+   * Subtitle / status tokens are unaffected (they live in
+   * `.sidebar-chat-subline` and read their own size).
+   *
+   * Sub-thread provider prefix (`.sidebar-chat-title-line
+   * .sidebar-provider-label`) gets the matching scale below so
+   * "Provider / Title" stays visually balanced. Model Usage card
+   * + Settings tabs are NOT touched (they use different class
+   * names entirely). */
+  font-size: 0.85em;
+}
+
+.sidebar-provider-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sidebar-provider-dot-ensemble {
+  background: linear-gradient(135deg, #f8fafc 0%, #c7cdd6 42%, #838b98 100%);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.34),
+    0 0 8px rgba(205, 213, 224, 0.22);
+}
+
+.sidebar-recents-item .sidebar-chat-age {
+  opacity: 0.6;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-active-runs-count {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-active-run-row:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.sidebar-active-run-provider {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.2;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.sidebar-active-run-provider.provider-gemini { color: #8eb1ff; }
+.sidebar-active-run-provider.provider-codex { color: #aaa0ff; }
+.sidebar-active-run-provider.provider-claude { color: #ffad64; }
+.sidebar-active-run-provider.provider-kimi { color: #bbcf66; }
+.sidebar-active-run-provider.provider-grok { color: var(--provider-grok-color); }
+.sidebar-active-run-provider.provider-cursor { color: var(--provider-cursor-color); }
+
+.sidebar-active-run-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-active-run-workspace {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-active-run-elapsed {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pin / unpin button — appears on hover for regular rows, always
+ * visible when the row is pinned so the user can find it again. */
+.sidebar-pin-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-hit-sm);
+  height: var(--control-hit-sm);
+  min-width: var(--control-hit-sm);
+  min-height: var(--control-hit-sm);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.sidebar-pin-toggle.is-pinned {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.sidebar-pinned-item:hover .sidebar-pin-toggle,
+.sidebar-pinned-item:focus-within .sidebar-pin-toggle,
+.sidebar-recents-item:hover .sidebar-pin-toggle,
+.sidebar-recents-item:focus-within .sidebar-pin-toggle,
+.sidebar-chat-item:hover .sidebar-pin-toggle,
+.sidebar-chat-item:focus-within .sidebar-pin-toggle {
+  opacity: 1;
+}
+
+.sidebar-pin-toggle:hover,
+.sidebar-pin-toggle:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  outline: none;
+}
+
+.sidebar-pin-toggle.is-pinned:hover,
+.sidebar-pin-toggle.is-pinned:focus-visible {
+  color: var(--accent);
+}
+
+.sidebar-chat-pin {
+  margin-left: 2px;
+}
+
+.sidebar-hierarchy-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-right: 2px;
+}
+
+.sidebar-hierarchy-scroll > :is(
+  .sidebar-active-runs-section,
+  .sidebar-pinned-section,
+  .sidebar-recents-section,
+  .sidebar-ensembles-section,
+  .sidebar-workspace-scroll,
+  .sidebar-pin-drop-placeholder
+) {
+  margin-bottom: 0;
+}
+
+.sidebar-workspace-scroll {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-right: 0;
+}
+
+.sidebar-workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-search-section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-search-header {
+  margin-bottom: 0;
+}
+
+.sidebar-search-result-count {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sidebar-text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  font-size: var(--sidebar-row-meta-font-size);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar-search-field {
+  height: 34px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 82%, transparent);
+  transition: border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sidebar-search-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--sidebar-border));
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.sidebar-search-field input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--sidebar-text);
+  font: inherit;
+  font-size: var(--sidebar-row-font-size);
+}
+
+.sidebar-search-field input::placeholder {
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 78%, transparent);
+}
+
+.sidebar-search-field input::-webkit-search-decoration,
+.sidebar-search-field input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.sidebar-search-clear {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 var(--control-hit-sm);
+  width: var(--control-hit-sm);
+  height: var(--control-hit-sm);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 90%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sidebar-search-clear:hover,
+.sidebar-search-clear:focus-visible {
+  color: var(--sidebar-text);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.sidebar-section-title {
+  /* 1.0.3 polish — top-level sidebar hierarchy pills (Pinned / Recents
+   * / Ensembles / Workspaces / Chats) scaled down 15% to match the
+   * chat-title reduction. Was `var(--font-size-xs)`; calc'd
+   * relative-to-the-token so theme overrides still propagate. */
+  font-size: calc(var(--font-size-xs) * 0.85);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sidebar-text-secondary);
+  margin: 0;
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.sidebar-section-header-with-action {
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+/* Section-header toggle button. Wraps `ChevronSymbolIcon` + the
+ * `<h4>` title so the whole left-side cluster is a single click target
+ * that collapses / expands the section. The `+` button on the
+ * Workspaces section is intentionally kept as a sibling (not nested
+ * inside this button) so clicking the picker does not toggle collapse. */
+.sidebar-section-header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  /* Reset default <button> baselines so the inner <h4> doesn't
+   * inherit weird padding or text-transform mismatches. */
+  text-align: left;
+  line-height: 1.15;
+}
+
+.sidebar-section-header-toggle:hover .sidebar-section-title,
+.sidebar-section-header-toggle:focus-visible .sidebar-section-title {
+  color: var(--text-primary);
+}
+
+.sidebar-section-header-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 56%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--composer-bubble-radius, 18px);
+}
+
+/* Keep the chevron quietly compact next to the title pill — the
+ * pill carries its own padding; the chevron should not push the pill
+ * off-center vertically. */
+.sidebar-section-header-toggle .sidebar-tree-chevron {
+  width: 12px;
+  height: 12px;
+  color: color-mix(in srgb, var(--sidebar-text) 56%, transparent);
+}
+
+.sidebar-section-header-toggle:hover .sidebar-tree-chevron,
+.sidebar-section-header-toggle:focus-visible .sidebar-tree-chevron {
+  color: color-mix(in srgb, var(--sidebar-text) 88%, transparent);
+}
+
+.sidebar-section-header-action {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sidebar-text) 6%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 76%, transparent);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.sidebar-section-header-action .sf-symbol-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.sidebar-section-header-action:hover,
+.sidebar-section-header-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--sidebar-text);
+  outline: 0;
+}
+
+/* First-launch onboarding hint. Sits between the "Workspaces"
+ * section header and the (empty) workspace list when fresh
+ * users open the app. Faint so it doesn't compete visually
+ * with the rest of the sidebar — its job is to point an
+ * inexperienced user at the `+` button right above it. */
+.sidebar-onboarding-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--sidebar-text) 22%, transparent);
+  background: color-mix(in srgb, var(--sidebar-bg, transparent) 60%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 72%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.42;
+}
+.sidebar-onboarding-hint-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+.sidebar-onboarding-hint-body strong {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--sidebar-text) 92%, transparent);
+}
+.sidebar-onboarding-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-onboarding-hint-dismiss {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--sidebar-text) 55%, transparent);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.sidebar-onboarding-hint-dismiss:hover {
+  background: color-mix(in srgb, var(--sidebar-text) 12%, transparent);
+  color: var(--sidebar-text);
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--sidebar-text) 86%, transparent);
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+  outline: none;
+  box-shadow: none;
+  position: relative;
+}
+
+.sidebar-workspace-list > .sidebar-workspace-group > .sidebar-item,
+.sidebar-chat-item {
+  font-size: var(--sidebar-row-font-size);
+}
+
+button.sidebar-item {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.sidebar-item:focus,
+.sidebar-item:focus-visible,
+.sidebar-item:active,
+.sidebar-item:focus-within {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.sidebar-item:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.sidebar-item.active {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: none;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.sidebar-workspace-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-workspace-group:not(:last-child) {
+  /* Flattened sidebar: no divider line between workspace groups —
+   * matches the gap-only separation used by Pinned/Recents lists. */
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.sidebar-tree-toggle {
+  width: var(--control-hit-sm);
+  height: var(--control-hit-sm);
+  min-width: var(--control-hit-sm);
+  min-height: var(--control-hit-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  box-shadow: none;
+}
+
+.sidebar-tree-toggle:focus,
+.sidebar-tree-toggle:focus-visible,
+.sidebar-tree-toggle:active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.sidebar-tree-toggle:hover {
+  background: transparent;
+}
+
+.sidebar-tree-toggle.spacer {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.sidebar-item-action:hover,
+.sidebar-item-action:focus-visible {
+  background: transparent;
+}
+
+.sidebar-tree-chevron {
+  transition: transform 0.15s ease;
+}
+
+.sidebar-tree-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
+.sidebar-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 4px;
+}
+
+.sidebar-chat-item {
+  padding-left: 30px;
+}
+
+.sidebar-chat-item.running {
+  color: var(--text-primary);
+}
+
+.sidebar-chat-item .sidebar-item-text {
+  font-size: var(--sidebar-row-font-size);
+}
+
+.sidebar-chat-busy {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 42%, transparent);
+  animation: sidebarBusyPulse 1.25s ease-in-out infinite;
+}
+
+.sidebar-chat-age {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--sidebar-text-secondary);
+  font-size: var(--sidebar-row-meta-font-size);
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0.78;
+}
+
+.sidebar-chat-item.active .sidebar-chat-age {
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
+@keyframes sidebarBusyPulse {
+  0%, 100% {
+    transform: scale(0.82);
+    opacity: 0.64;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.sidebar-item-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sidebar-empty-state {
+  padding: 12px 10px;
+  color: var(--sidebar-text-secondary);
+  font-size: var(--sidebar-row-font-size);
+  line-height: 1.35;
+}
+
+.sidebar-footer {
+  padding: var(--space-md);
+  border-top: 1px solid var(--sidebar-border);
+  display: flex;
+  gap: var(--space-sm);
+}
+
