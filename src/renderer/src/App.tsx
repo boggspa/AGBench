@@ -1520,6 +1520,14 @@ interface CodexModelOption {
   supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>
   defaultReasoningEffort?: string | null
   additionalSpeedTiers?: string[]
+  /** 1.0.7-mini — ISO date (YYYY-MM-DD) when this model is retired by the
+   * provider. When set, the model picker renders a small clock + ordinal-
+   * date pill on the row (red, !important-styled so theme/shell rules can't
+   * override the warning colour). Pre-1.0.7 this was baked into `label` as
+   * "(retiring Jun 2)" which (a) flashed on first paint then resolved away
+   * via `modelDisplayName.ts` and (b) wasn't machine-readable. Drop this
+   * field once the model is actually removed from the list. */
+  retiresAt?: string
 }
 
 type UsageModelEntry = {
@@ -4236,7 +4244,8 @@ const CODEX_DEFAULT_MODELS = [
   },
   {
     id: 'gpt-5.3-codex',
-    label: 'GPT-5.3 Codex (retiring Jun 2)',
+    label: 'GPT-5.3 Codex',
+    retiresAt: '2026-06-02',
     supportedReasoningEfforts: [
       { reasoningEffort: 'medium' },
       { reasoningEffort: 'high' },
@@ -4245,6 +4254,8 @@ const CODEX_DEFAULT_MODELS = [
     defaultReasoningEffort: 'medium'
     // Note: 5.3 no longer carries `additionalSpeedTiers: ['fast']` —
     // per product spec only 5.5 + 5.4 retain the paid Fast tier.
+    // Retirement: rendered as a separate clock+date pill in the picker (see
+    // CombinedModelPicker) — keeps the label clean + machine-readable.
   },
   {
     id: 'gpt-5.3-codex-spark',
@@ -4255,7 +4266,8 @@ const CODEX_DEFAULT_MODELS = [
   },
   {
     id: 'gpt-5.2',
-    label: 'GPT-5.2 (retiring Jun 2)',
+    label: 'GPT-5.2',
+    retiresAt: '2026-06-02',
     supportedReasoningEfforts: [
       { reasoningEffort: 'low' },
       { reasoningEffort: 'medium' },
@@ -4263,7 +4275,8 @@ const CODEX_DEFAULT_MODELS = [
       { reasoningEffort: 'xhigh' }
     ],
     defaultReasoningEffort: 'medium'
-    // Older model — no Fast tier.
+    // Older model — no Fast tier. Retirement rendered as a clock+date pill
+    // in the picker (see CombinedModelPicker).
   }
 ] satisfies CodexModelOption[]
 const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id
@@ -20551,10 +20564,21 @@ function App(): React.JSX.Element {
                             : claudeFastMode
 
                         const combinedModelOptions: CombinedModelPickerModelOption[] = [
-                          ...effectiveModelOptionsRaw.map((model) => ({
-                            id: model.id,
-                            label: model.label || model.id
-                          })),
+                          ...effectiveModelOptionsRaw.map((model) => {
+                            // 1.0.7-mini — forward the optional retiresAt only
+                            // when it's actually a string. Non-Codex provider
+                            // model shapes don't carry the field; the cast
+                            // narrows safely via the runtime typeof guard so
+                            // bad data can't leak into the picker.
+                            const retiresAtRaw = (model as { retiresAt?: unknown }).retiresAt
+                            const retiresAt =
+                              typeof retiresAtRaw === 'string' ? retiresAtRaw : undefined
+                            return {
+                              id: model.id,
+                              label: model.label || model.id,
+                              ...(retiresAt ? { retiresAt } : {})
+                            }
+                          }),
                           ...(effectiveProvider !== 'kimi'
                             ? [{ id: 'custom', label: 'Custom…' }]
                             : [])

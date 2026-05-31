@@ -32,6 +32,60 @@ import { formatComposerModelChip, reasoningDisplayLabel } from '../lib/composerC
 export interface CombinedModelPickerModelOption {
   id: string
   label: string
+  /** 1.0.7-mini — ISO date (YYYY-MM-DD) when the provider is retiring this
+   * model. When present, the picker row renders a small clock + ordinal-
+   * date pill in red to flag the deprecation without baking it into the
+   * label string (which previously flashed on first paint then resolved
+   * away via modelDisplayName, and wasn't machine-readable). Optional;
+   * non-retiring models pass undefined. */
+  retiresAt?: string
+}
+
+/** Format an ISO date (YYYY-MM-DD) as an English ordinal day + month name,
+ * e.g. '2026-06-02' → '2nd June'. Returns the input unchanged on a malformed
+ * value so a bad date can never crash the picker. Pure + side-effect free. */
+function formatRetirementLabel(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!match) return iso
+  const month = Number.parseInt(match[2], 10) - 1
+  const day = Number.parseInt(match[3], 10)
+  if (!Number.isInteger(month) || month < 0 || month > 11) return iso
+  if (!Number.isInteger(day) || day < 1 || day > 31) return iso
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ]
+  const ordinal = (n: number): string => {
+    if (n >= 11 && n <= 13) return `${n}th`
+    const last = n % 10
+    if (last === 1) return `${n}st`
+    if (last === 2) return `${n}nd`
+    if (last === 3) return `${n}rd`
+    return `${n}th`
+  }
+  return `${ordinal(day)} ${months[month]}`
+}
+
+/** Small clock glyph for the retirement pill. 11×11 reads cleanly at the
+ * picker row's small font size without dominating the row layout. */
+function RetirementClockIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <circle cx="8" cy="8" r="6.4" />
+      <path d="M8 4.6 V8 L10.2 9.4" />
+    </svg>
+  )
 }
 
 export interface CombinedModelPickerReasoningOption {
@@ -351,6 +405,18 @@ export function CombinedModelPicker({
               }}
             >
               <span className="composer-combined-picker-row-label">{option.label}</span>
+              {option.retiresAt && (
+                <span
+                  className="composer-combined-picker-retirement-pill"
+                  title={`Retiring ${formatRetirementLabel(option.retiresAt)}`}
+                  aria-label={`Retiring ${formatRetirementLabel(option.retiresAt)}`}
+                >
+                  <RetirementClockIcon />
+                  <span className="composer-combined-picker-retirement-date">
+                    {formatRetirementLabel(option.retiresAt)}
+                  </span>
+                </span>
+              )}
               {supportsFast && (
                 <span
                   className="composer-combined-picker-fast-indicator"
