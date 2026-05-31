@@ -2884,6 +2884,14 @@ button.sidebar-item {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.usage-heatmap--with-provider-filter .usage-heatmap-header {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(160px, 1fr);
+  column-gap: 10px;
+  row-gap: 5px;
+}
+
 .usage-heatmap-title {
   font-size: 10.5px;
   font-weight: 700;
@@ -2892,6 +2900,98 @@ button.sidebar-item {
   color: var(--text-tertiary);
   margin-right: auto;
 }
+
+.usage-heatmap--with-provider-filter .usage-heatmap-title {
+  margin-right: 0;
+  min-width: 0;
+}
+
+.usage-heatmap-provider-filter {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  overflow: hidden;
+}
+
+.usage-heatmap-provider-filter-tab {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 17px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-tertiary) 88%, transparent);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.usage-heatmap-provider-filter-tab:hover,
+.usage-heatmap-provider-filter-tab:focus-visible {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  outline: none;
+}
+
+.usage-heatmap-provider-filter-tab[data-active="true"] {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-codex[data-active="true"] {
+  color: var(--provider-codex-color);
+  background: color-mix(in srgb, var(--provider-codex-color) 12%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-claude[data-active="true"] {
+  color: var(--provider-claude-color);
+  background: color-mix(in srgb, var(--provider-claude-color) 12%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-gemini[data-active="true"] {
+  color: var(--provider-gemini-color);
+  background: color-mix(in srgb, var(--provider-gemini-color) 12%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-kimi[data-active="true"] {
+  color: var(--provider-kimi-color);
+  background: color-mix(in srgb, var(--provider-kimi-color) 12%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-grok[data-active="true"] {
+  color: var(--provider-grok-color);
+  background: color-mix(in srgb, var(--provider-grok-color) 12%, transparent);
+}
+
+.usage-heatmap-provider-filter-tab.provider-cursor[data-active="true"] {
+  color: var(--provider-cursor-color);
+  background: color-mix(in srgb, var(--provider-cursor-color) 12%, transparent);
+}
+
+.usage-heatmap-chips {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.usage-heatmap--with-provider-filter .usage-heatmap-chips {
+  min-width: 0;
+  margin-left: 0;
+}
+
 .usage-heatmap-chip {
   display: inline-flex;
   align-items: baseline;
@@ -2908,6 +3008,19 @@ button.sidebar-item {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+@media (max-width: 980px) {
+  .usage-heatmap--with-provider-filter .usage-heatmap-header {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-heatmap--with-provider-filter .usage-heatmap-title,
+  .usage-heatmap-provider-filter,
+  .usage-heatmap--with-provider-filter .usage-heatmap-chips {
+    justify-self: start;
+  }
+}
+
 .usage-heatmap-grid-wrapper {
   display: grid;
   grid-template-columns: 14px 1fr;
@@ -17201,10 +17314,23 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .sidebar-footer-action-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   width: 100%;
+  padding-bottom: 7px;
+}
+
+.sidebar-footer-action-row::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-md));
+  right: calc(-1 * var(--space-md));
+  bottom: 0;
+  height: 1px;
+  background: var(--sidebar-border);
+  pointer-events: none;
 }
 
 .sidebar-footer-settings-wrap {

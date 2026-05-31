@@ -20,14 +20,25 @@ import { useEffect, useMemo, useState } from 'react'
 import type { UsageRecord } from '../../../main/store/types'
 import {
   buildHeatmapGrid,
+  buildProviderFilteredHeatmapGrid,
   formatTokenCount,
   HEATMAP_COLUMNS,
   HEATMAP_ROWS,
+  type HeatmapProviderFilter,
   type HeatmapCell,
   type HeatmapGrid
 } from '../lib/UsageHeatmap'
 
 const TIME_LABELS = ['00', '04', '08', '12', '16', '20'] // hour-of-day ticks shown on the left rail
+const PROVIDER_FILTERS: Array<{ id: HeatmapProviderFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'claude', label: 'Claude' },
+  { id: 'gemini', label: 'Gemini' },
+  { id: 'kimi', label: 'Kimi' },
+  { id: 'grok', label: 'Grok' },
+  { id: 'cursor', label: 'Cursor' }
+]
 
 /** A single cell. Pulled out so React.memo can short-circuit
  * re-renders when the cell's bucket data hasn't changed. */
@@ -76,6 +87,8 @@ interface UsageHeatmapProps {
   title?: string
   /** Optional accessible label override. */
   ariaLabel?: string
+  /** Show a compact provider-isolation segmented control in the header. */
+  showProviderFilter?: boolean
   /** Class name appended to the root `<div>` — lets callers retune
    * sizing without forking the component. */
   className?: string
@@ -88,10 +101,12 @@ export function UsageHeatmap({
   usageSource = 'agbench',
   title = 'Activity',
   ariaLabel,
+  showProviderFilter = false,
   className
 }: UsageHeatmapProps) {
   const [records, setRecords] = useState<UsageRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [providerFilter, setProviderFilter] = useState<HeatmapProviderFilter>('all')
 
   useEffect(() => {
     let cancelled = false
@@ -125,28 +140,53 @@ export function UsageHeatmap({
     }
   }, [refreshKey, usageSource])
 
-  const grid: HeatmapGrid = useMemo(() => buildHeatmapGrid(records, new Date(), dayCount), [
-    records,
-    dayCount
-  ])
+  const grid: HeatmapGrid = useMemo(
+    () =>
+      showProviderFilter
+        ? buildProviderFilteredHeatmapGrid(records, new Date(), dayCount, providerFilter)
+        : buildHeatmapGrid(records, new Date(), dayCount),
+    [records, dayCount, showProviderFilter, providerFilter]
+  )
   const windowLabel = grid.columns === HEATMAP_COLUMNS ? '30D' : `${grid.columns}D`
+  const rootClassName = [
+    'usage-heatmap',
+    showProviderFilter ? 'usage-heatmap--with-provider-filter' : '',
+    className
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
-    <div
-      className={`usage-heatmap${className ? ` ${className}` : ''}`}
-      aria-label={ariaLabel || `${title} usage activity heatmap`}
-    >
+    <div className={rootClassName} aria-label={ariaLabel || `${title} usage activity heatmap`}>
       {showHeader && (
         <div className="usage-heatmap-header">
           <span className="usage-heatmap-title">{title}</span>
-          <span className="usage-heatmap-chip">
-            24h <strong>{formatTokenCount(grid.totals.last24h)}</strong>
-          </span>
-          <span className="usage-heatmap-chip">
-            7D <strong>{formatTokenCount(grid.totals.last7d)}</strong>
-          </span>
-          <span className="usage-heatmap-chip">
-            {windowLabel} <strong>{formatTokenCount(grid.totals.window)}</strong>
+          {showProviderFilter && (
+            <div className="usage-heatmap-provider-filter" aria-label={`${title} provider filter`}>
+              {PROVIDER_FILTERS.map((filter) => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  aria-pressed={providerFilter === filter.id}
+                  className={`usage-heatmap-provider-filter-tab provider-${filter.id}`}
+                  data-active={providerFilter === filter.id ? 'true' : undefined}
+                  onClick={() => setProviderFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <span className="usage-heatmap-chips" aria-label={`${title} all-provider totals`}>
+            <span className="usage-heatmap-chip">
+              24h <strong>{formatTokenCount(grid.totals.last24h)}</strong>
+            </span>
+            <span className="usage-heatmap-chip">
+              7D <strong>{formatTokenCount(grid.totals.last7d)}</strong>
+            </span>
+            <span className="usage-heatmap-chip">
+              {windowLabel} <strong>{formatTokenCount(grid.totals.window)}</strong>
+            </span>
           </span>
         </div>
       )}

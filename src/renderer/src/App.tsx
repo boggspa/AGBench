@@ -21358,6 +21358,7 @@ function App(): React.JSX.Element {
                       <UsageHeatmap
                         dayCount={90}
                         title="AGBench Activity"
+                        showProviderFilter
                         className="usage-heatmap--welcome-standalone"
                       />
                     )}
@@ -21366,6 +21367,7 @@ function App(): React.JSX.Element {
                         dayCount={90}
                         usageSource="external"
                         title="External Activity"
+                        showProviderFilter
                         className="usage-heatmap--welcome-standalone"
                       />
                     )}

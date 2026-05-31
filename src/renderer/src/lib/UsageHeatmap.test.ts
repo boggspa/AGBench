@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { UsageRecord } from '../../../main/store/types'
-import { buildHeatmapGrid, formatTokenCount, HEATMAP_COLUMNS, HEATMAP_ROWS } from './UsageHeatmap'
+import {
+  buildHeatmapGrid,
+  buildProviderFilteredHeatmapGrid,
+  formatTokenCount,
+  HEATMAP_COLUMNS,
+  HEATMAP_ROWS
+} from './UsageHeatmap'
 
 function makeRecord(
   overrides: Partial<UsageRecord> & { timestamp: number; totalTokens: number }
@@ -140,6 +146,27 @@ describe('buildHeatmapGrid', () => {
     expect(cell!.dominantProvider).toBe('cursor')
     expect(cell!.intensity).toBeGreaterThan(0)
     expect(grid.totals.window).toBe(0)
+  })
+
+  it('can isolate provider tiles while preserving all-provider chip totals', () => {
+    const now = new Date('2026-05-22T15:00:00')
+    const bucketTime = new Date('2026-05-22T14:30:00').getTime()
+    const grid = buildProviderFilteredHeatmapGrid(
+      [
+        makeRecord({ timestamp: bucketTime, totalTokens: 1000, provider: 'codex' }),
+        makeRecord({ timestamp: bucketTime, totalTokens: 4000, provider: 'claude' })
+      ],
+      now,
+      HEATMAP_COLUMNS,
+      'codex'
+    )
+
+    const cell = grid.cells.find((c) => c.column === HEATMAP_COLUMNS - 1 && c.row === 7)
+    expect(cell).toBeDefined()
+    expect(cell!.totalTokens).toBe(1000)
+    expect(cell!.dominantProvider).toBe('codex')
+    expect(grid.totals.last24h).toBe(5000)
+    expect(grid.totals.window).toBe(5000)
   })
 })
 

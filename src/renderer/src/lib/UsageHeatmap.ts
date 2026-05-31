@@ -76,6 +76,8 @@ export interface HeatmapGrid {
   endDay: string
 }
 
+export type HeatmapProviderFilter = 'all' | ProviderId
+
 /**
  * Bucket usage records into the day-count × 12 heatmap grid relative to a
  * reference `now`. Records older than the requested window are dropped; future-
@@ -224,6 +226,31 @@ export function buildHeatmapGrid(
     totals: { last24h, last7d, last30d, window },
     startDay: startOfWindow.toISOString().slice(0, 10),
     endDay: endOfDay.toISOString().slice(0, 10)
+  }
+}
+
+/**
+ * Build a provider-scoped visual grid while keeping header totals anchored to
+ * the full source dataset. The welcome heatmap tabs use this so "Codex" reveals
+ * Codex-only tiles, but the 24h / 7D / 90D chips remain all-provider totals.
+ */
+export function buildProviderFilteredHeatmapGrid(
+  records: UsageRecord[],
+  now: Date = new Date(),
+  columnCount: number = HEATMAP_COLUMNS,
+  providerFilter: HeatmapProviderFilter = 'all'
+): HeatmapGrid {
+  const allProviderGrid = buildHeatmapGrid(records, now, columnCount)
+  if (providerFilter === 'all') return allProviderGrid
+
+  const filteredGrid = buildHeatmapGrid(
+    records.filter((record) => record.provider === providerFilter),
+    now,
+    columnCount
+  )
+  return {
+    ...filteredGrid,
+    totals: allProviderGrid.totals
   }
 }
 
