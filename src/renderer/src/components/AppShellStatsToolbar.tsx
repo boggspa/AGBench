@@ -90,6 +90,7 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
         aria-label={`AGBench Electron CPU ${cpuLabel}`}
       >
         <CpuIcon />
+        <span className="app-shell-stat-label">CPU</span>
         <span className="app-shell-stat-value">{cpuLabel}</span>
       </span>
       <span
@@ -98,6 +99,7 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
         aria-label={`AGBench Electron RAM ${fullRamLabel}`}
       >
         <RamIcon />
+        <span className="app-shell-stat-label">Memory</span>
         <span className="app-shell-stat-value">{ramLabel}</span>
         {ramGBLabel && <span className="app-shell-stat-detail">{ramGBLabel}</span>}
       </span>
@@ -107,6 +109,7 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
         aria-label={`Running AGBench threads ${threadLabel}`}
       >
         <ThreadIcon />
+        <span className="app-shell-stat-label">Threads</span>
         <span className="app-shell-stat-value">{threadLabel}</span>
       </span>
     </div>

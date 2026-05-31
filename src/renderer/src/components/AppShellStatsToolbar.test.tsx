@@ -23,6 +23,9 @@ describe('AppShellStatsToolbar', () => {
     expect(html).toContain('AGBench Electron CPU --')
     expect(html).toContain('AGBench Electron RAM --')
     expect(html).toContain('Running AGBench threads 0')
+    expect(html).toContain('>CPU</span>')
+    expect(html).toContain('>Memory</span>')
+    expect(html).toContain('>Threads</span>')
     expect(html).not.toContain('app-shell-stat-detail')
   })
 
