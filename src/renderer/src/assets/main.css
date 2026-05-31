@@ -17391,7 +17391,7 @@ input:disabled, select:disabled, textarea:disabled {
   height: 24px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  gap: 6px;
   -webkit-app-region: no-drag;
 }
 
@@ -17402,10 +17402,7 @@ input:disabled, select:disabled, textarea:disabled {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 5px;
-  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  padding: 0 2px;
   color: var(--sidebar-text-secondary);
   font-size: 10.5px;
   font-weight: 650;
@@ -17438,6 +17435,12 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .app-shell-stat-value {
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.app-shell-stat-detail {
+  opacity: 0.72;
   overflow: hidden;
   text-overflow: clip;
 }

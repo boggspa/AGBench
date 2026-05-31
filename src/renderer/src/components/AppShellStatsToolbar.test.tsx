@@ -23,6 +23,7 @@ describe('AppShellStatsToolbar', () => {
     expect(html).toContain('AGBench Electron CPU --')
     expect(html).toContain('AGBench Electron RAM --')
     expect(html).toContain('Running AGBench threads 0')
+    expect(html).not.toContain('app-shell-stat-detail')
   })
 
   it('renders compact app-only CPU, RAM, and running-thread values', () => {
@@ -42,7 +43,7 @@ describe('AppShellStatsToolbar', () => {
     )
 
     expect(html).toContain('3.8%')
-    expect(html).toContain('12.4%')
+    expect(html).toContain('AGBench Electron RAM 12.4% 2.0GB')
     expect(html).toContain('Running AGBench threads 2')
   })
 })

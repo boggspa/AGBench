@@ -15,6 +15,11 @@ function formatCount(value: number | null | undefined): string {
   return String(Math.max(0, Math.floor(value)))
 }
 
+function formatRamGB(value: number | null | undefined): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return `${(Math.max(0, value) / 1024).toFixed(1)}GB`
+}
+
 function CpuIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden>
@@ -73,6 +78,8 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
 
   const cpuLabel = formatPercent(snapshot?.cpuPercent ?? null)
   const ramLabel = formatPercent(snapshot?.ramPercent ?? null)
+  const ramGBLabel = formatRamGB(snapshot?.ramUsedMB)
+  const fullRamLabel = ramGBLabel ? `${ramLabel} ${ramGBLabel}` : ramLabel
   const threadLabel = formatCount(snapshot?.activeThreadCount)
 
   return (
@@ -88,10 +95,11 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
       <span
         className="app-shell-stat app-shell-stat--ram"
         title="AGBench Electron RAM"
-        aria-label={`AGBench Electron RAM ${ramLabel}`}
+        aria-label={`AGBench Electron RAM ${fullRamLabel}`}
       >
         <RamIcon />
         <span className="app-shell-stat-value">{ramLabel}</span>
+        {ramGBLabel && <span className="app-shell-stat-detail">{ramGBLabel}</span>}
       </span>
       <span
         className="app-shell-stat app-shell-stat--threads"
