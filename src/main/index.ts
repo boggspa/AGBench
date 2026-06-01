@@ -49,7 +49,6 @@ import {
   type RemoteWorkspaceCapability
 } from './RemoteWorkspaceAllowlist'
 import {
-  createBridgeApnsPusher,
   type BridgeApnsPusher,
   type BridgeRemoteAttentionPushPayload
 } from './BridgeApnsPusher'
@@ -99,15 +98,7 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
 import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
-import {
-  hasProviderUsageSnapshotContent,
-  normalizeClaudeUsageSnapshot,
-  normalizeCodexUsagePayload,
-  normalizeKimiUsageSnapshot,
-  projectStaleSnapshotForward,
-  redactAccountId,
-  type NormalizedProviderUsageSnapshot
-} from './ProviderQuotaSnapshots'
+import type { NormalizedProviderUsageSnapshot } from './ProviderQuotaSnapshots'
 import { summarizeProviderUsage, type ProviderUsageSummary } from './ProviderUsageStatus'
 import {
   canonicalizeExternalPathGrantMetadata,
@@ -167,9 +158,6 @@ import {
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
-  GeminiAuthProfile,
-  GeminiAuthProfileKind,
-  GeminiAuthProfileSummary,
   GeminiAuthStatus,
   GeminiOAuthLoginStatus,
   UsageRecord,
@@ -204,7 +192,6 @@ import {
   captureProcessOutput,
   createCliEnv,
   expandHomePath,
-  fileExists,
   getAgentMcpStatusSnapshotDirect as getAgentMcpStatusSnapshotDirectViaCliRuntime,
   getAgentStatusSnapshotDirect as getAgentStatusSnapshotDirectViaCliRuntime,
   getCliProviderStatus as getCliProviderStatusViaCliRuntime,
@@ -215,6 +202,35 @@ import {
   resolveCliProviderBinary,
   runtimeSettings
 } from './providers/CliProviderRuntime'
+import {
+  buildBridgeApnsPusherFromSettings,
+  cancelGeminiOAuthLogin,
+  clearCodexUsageCredential,
+  DEFAULT_APNS_BUNDLE_ID,
+  decryptApiKey,
+  deleteGeminiAuthProfile,
+  encryptApiKey,
+  ensureGeminiAuthProfileMaterialized as ensureGeminiAuthProfileMaterializedViaProviderAuth,
+  fetchClaudeUsageSnapshot,
+  fetchCodexUsageSnapshot,
+  fetchCursorUsageSnapshot,
+  fetchGeminiUsageSnapshot,
+  fetchKimiUsageSnapshot,
+  getDefaultGeminiAuthProfileId,
+  getGeminiAuthProfiles,
+  getGeminiAuthStatusSnapshot as getGeminiAuthStatusSnapshotViaProviderAuth,
+  getGeminiOAuthLoginStatus,
+  getStoredClaudeApiKey,
+  getStoredKimiApiKey,
+  importCodexUsageCredential,
+  markGeminiAuthProfileUsed,
+  resolveGeminiAuthProfileEnv,
+  saveGeminiAuthProfile,
+  setDefaultGeminiAuthProfile,
+  startGeminiOAuthLogin as startGeminiOAuthLoginViaProviderAuth,
+  summarizeGeminiAuthProfile,
+  type GeminiAuthUsageDeps
+} from './providers/ProviderAuthUsage'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -246,13 +262,6 @@ import {
   CURSOR_MCP_SERVER_NAME,
   CURSOR_WEB_FETCH_MCP_SERVER_SOURCE
 } from './cursor/CursorMcpBridge'
-import {
-  loadCursorUsageSnapshot,
-  cursorStateDbCandidates,
-  CURSOR_ACCESS_TOKEN_KEY,
-  CURSOR_USAGE_ENDPOINT,
-  type CursorUsageSnapshot
-} from './cursor/CursorUsage'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
   probeGrokUsage,
@@ -542,13 +551,6 @@ type McpToolExecutionResult = {
   content?: McpToolContentBlock[]
 }
 
-type GeminiOAuthLoginRun = GeminiOAuthLoginStatus & {
-  child?: ChildProcess
-  output?: string
-}
-
-const geminiOAuthLoginRuns = new Map<string, GeminiOAuthLoginRun>()
-
 // Phase J3: session-scoped YOLO mode. When the user clicks "Trust this
 // session" on any approval modal, every subsequent `requestAgenticServiceApproval`
 // auto-allows AND every Codex MCP elicitation auto-accepts — until the
@@ -816,6 +818,19 @@ async function persistStickyAppWatchStore(next: StickyAppWatchStore): Promise<vo
   } catch (err) {
     console.error('[sticky-appwatch] persist failed:', err)
   }
+}
+
+async function readJsonFile(filePath: string): Promise<any | null> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+async function writeJsonFile(filePath: string, value: any): Promise<void> {
+  await fs.mkdir(dirname(filePath), { recursive: true })
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
 interface BackgroundSubThreadTranscriptState {
@@ -1651,15 +1666,6 @@ function getRunRepository(): RunRepository {
   }
   return runRepository
 }
-
-interface CodexUsageCredential {
-  accessToken: string
-  accountId: string
-  importedAt?: string
-  source?: string
-}
-
-let inMemoryCodexUsageCredential: CodexUsageCredential | null = null
 
 function emitRunQueueChanged(): void {
   // 1.0.4-AQ1 — same disposed-frame race; fires from
@@ -3895,675 +3901,50 @@ async function emitProviderCapabilityWarnings(
   }
 }
 
-function parseCodexUsageCredential(raw: string, source: string): CodexUsageCredential {
-  const parsed = JSON.parse(raw)
-  const tokens = parsed?.tokens && typeof parsed.tokens === 'object' ? parsed.tokens : parsed
-  const accessToken = String(tokens?.access_token || tokens?.accessToken || '').trim()
-  const accountId = String(
-    tokens?.account_id || tokens?.accountId || tokens?.accountID || ''
-  ).trim()
-  if (!accessToken) {
-    throw new Error('Codex auth JSON did not contain an access_token.')
-  }
-  if (!accountId) {
-    throw new Error('Codex auth JSON did not contain an account_id.')
-  }
-  return {
-    accessToken,
-    accountId,
-    importedAt: new Date().toISOString(),
-    source
-  }
-}
-
-function storedCodexUsageCredential(): CodexUsageCredential | null {
-  if (inMemoryCodexUsageCredential) {
-    return inMemoryCodexUsageCredential
-  }
-  const stored = AppStore.getSettings().codexUsageCredential
-  if (!stored?.encryptedAccessToken || !stored.accountId || !safeStorage.isEncryptionAvailable()) {
-    return null
-  }
-  try {
-    const accessToken = safeStorage
-      .decryptString(Buffer.from(stored.encryptedAccessToken, 'base64'))
-      .trim()
-    if (!accessToken) return null
+const providerAuthUsageDeps: GeminiAuthUsageDeps = {
+  resolveCliProviderBinary: async () => {
+    const resolved = await resolveCliProviderBinary('gemini')
     return {
-      accessToken,
-      accountId: stored.accountId,
-      importedAt: stored.importedAt,
-      source: stored.source
+      binaryPath: resolved.binaryPath || undefined,
+      error: resolved.error
     }
-  } catch {
-    return null
-  }
-}
-
-function encryptApiKey(value: string): string | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  if (!safeStorage.isEncryptionAvailable()) return trimmed
-  return safeStorage.encryptString(trimmed).toString('base64')
-}
-
-function decryptApiKey(stored?: string | null): string | null {
-  if (!stored) return null
-  if (!safeStorage.isEncryptionAvailable()) return stored
-  try {
-    return safeStorage.decryptString(Buffer.from(stored, 'base64'))
-  } catch {
-    return null
-  }
-}
-
-function getStoredClaudeApiKey(): string | null {
-  return decryptApiKey(AppStore.getSettings().claudeApiKey)
-}
-
-function getStoredKimiApiKey(): string | null {
-  return decryptApiKey(AppStore.getSettings().kimiApiKey)
-}
-
-function sanitizeGeminiAuthProfileKind(value: unknown): GeminiAuthProfileKind {
-  return value === 'vertex-ai' || value === 'google-oauth' ? value : 'api-key'
-}
-
-function getGeminiAuthProfiles(): GeminiAuthProfile[] {
-  const profiles = AppStore.getSettings().geminiAuthProfiles
-  return Array.isArray(profiles)
-    ? profiles.filter((profile) => profile && typeof profile.id === 'string')
-    : []
-}
-
-function geminiAuthProfileDirName(profileId: string): string {
-  return profileId.replace(/[^a-zA-Z0-9._-]/g, '_') || 'profile'
-}
-
-function geminiOAuthProfilesRoot(): string {
-  return join(app.getPath('userData'), 'gemini-oauth-profiles')
-}
-
-function geminiOAuthProfileHome(profileId: string): string {
-  return join(geminiOAuthProfilesRoot(), geminiAuthProfileDirName(profileId), 'home')
-}
-
-function geminiOAuthProfileGeminiDir(profileId: string): string {
-  return join(geminiOAuthProfileHome(profileId), '.gemini')
-}
-
-function geminiOAuthProfileSettingsPath(profileId: string): string {
-  return join(geminiOAuthProfileGeminiDir(profileId), 'settings.json')
-}
-
-function geminiOAuthProfileCredentialsPath(profileId: string): string {
-  return join(geminiOAuthProfileGeminiDir(profileId), 'oauth_creds.json')
-}
-
-function geminiOAuthProfileAccountsPath(profileId: string): string {
-  return join(geminiOAuthProfileGeminiDir(profileId), 'google_accounts.json')
-}
-
-function readJsonFileSync(filePath: string): any | null {
-  try {
-    return JSON.parse(fsSync.readFileSync(filePath, 'utf8'))
-  } catch {
-    return null
-  }
-}
-
-function readGeminiOAuthProfileCredentialsSync(
-  profileId: string
-): { accessToken: string; refreshToken?: string; expiresAt?: number } | null {
-  const parsed = readJsonFileSync(geminiOAuthProfileCredentialsPath(profileId))
-  const accessToken = String(parsed?.access_token || '').trim()
-  if (!accessToken) return null
-  const refreshToken =
-    typeof parsed?.refresh_token === 'string' ? parsed.refresh_token.trim() : undefined
-  const expiryDate = Number(parsed?.expiry_date || 0)
-  return {
-    accessToken,
-    refreshToken: refreshToken || undefined,
-    expiresAt: Number.isFinite(expiryDate) && expiryDate > 0 ? expiryDate : undefined
-  }
-}
-
-function readGeminiOAuthProfileEmail(profileId: string): string | undefined {
-  const parsed = readJsonFileSync(geminiOAuthProfileAccountsPath(profileId))
-  const active = typeof parsed?.active === 'string' ? parsed.active.trim() : ''
-  return active || undefined
-}
-
-function getDefaultGeminiAuthProfileId(): string | null {
-  const settings = AppStore.getSettings()
-  const configured = optionalStringOrNull(settings.defaultGeminiAuthProfileId)
-  if (!configured) return null
-  return getGeminiAuthProfiles().some((profile) => profile.id === configured) ? configured : null
-}
-
-function summarizeGeminiAuthProfile(
-  profile: GeminiAuthProfile,
-  defaultProfileId: string | null
-): GeminiAuthProfileSummary {
-  const hasApiKey = Boolean(decryptApiKey(profile.encryptedApiKey))
-  const oauthConfigured =
-    profile.kind === 'google-oauth'
-      ? Boolean(readGeminiOAuthProfileCredentialsSync(profile.id))
-      : undefined
-  const configured =
-    profile.kind === 'api-key'
-      ? hasApiKey
-      : profile.kind === 'vertex-ai'
-        ? Boolean(profile.vertexProject?.trim())
-        : Boolean(oauthConfigured)
-  const login = geminiOAuthLoginRuns.get(profile.id)
-  return {
-    id: profile.id,
-    label: profile.label || profile.kind,
-    kind: profile.kind,
-    configured,
-    isDefault: profile.id === defaultProfileId,
-    authState: configured
-      ? profile.kind
-      : profile.kind === 'google-oauth'
-        ? 'oauth-login-required'
-        : 'incomplete',
-    createdAt: profile.createdAt,
-    updatedAt: profile.updatedAt,
-    lastUsedAt: profile.lastUsedAt,
-    vertexProject: profile.vertexProject,
-    vertexLocation: profile.vertexLocation,
-    ...(profile.kind === 'google-oauth'
-      ? {
-          oauthConfigured: Boolean(oauthConfigured),
-          oauthEmail: readGeminiOAuthProfileEmail(profile.id),
-          ...(login ? { oauthLogin: publicGeminiOAuthLoginStatus(login) } : {})
-        }
-      : {})
-  }
+  },
+  readResolvedCliVersion: (resolved) =>
+    readResolvedCliVersion({
+      provider: 'gemini',
+      binaryPath: resolved.binaryPath || null,
+      source: resolved.binaryPath ? 'path' : 'missing',
+      error: resolved.error
+    }),
+  createCliEnv
 }
 
 async function getGeminiAuthStatusSnapshot(): Promise<GeminiAuthStatus> {
-  const encryptionAvailable = safeStorage.isEncryptionAvailable()
-  const resolved = await resolveCliProviderBinary('gemini')
-  const defaultProfileId = getDefaultGeminiAuthProfileId()
-  const profiles = getGeminiAuthProfiles().map((profile) =>
-    summarizeGeminiAuthProfile(profile, defaultProfileId)
-  )
-  const activeProfile = profiles.find((profile) => profile.id === defaultProfileId)
-  const localOauthConfigured = await readGeminiOAuthCredentials()
-    .then(Boolean)
-    .catch(() => false)
-  const apiKeyConfigured = Boolean(activeProfile?.configured && activeProfile.kind === 'api-key')
-  const authState = activeProfile
-    ? activeProfile.authState
-    : localOauthConfigured
-      ? 'google-oauth'
-      : 'unknown'
-  const version = resolved.binaryPath
-    ? await readResolvedCliVersion(resolved).catch(() => undefined)
-    : undefined
-  return {
-    available: Boolean(resolved.binaryPath),
-    authState,
-    apiKeyConfigured,
-    encryptionAvailable,
-    version,
-    binaryPath: resolved.binaryPath || null,
-    activeProfileId: defaultProfileId,
-    activeProfileLabel: activeProfile?.label,
-    profiles,
-    ...(defaultProfileId && geminiOAuthLoginRuns.has(defaultProfileId)
-      ? { oauthLogin: publicGeminiOAuthLoginStatus(geminiOAuthLoginRuns.get(defaultProfileId)!) }
-      : {})
-  }
-}
-
-function saveGeminiAuthProfile(input: unknown): GeminiAuthProfileSummary {
-  const source = requireRecord(input, 'Gemini auth profile')
-  const profiles = getGeminiAuthProfiles()
-  const now = new Date().toISOString()
-  const id = optionalString(source.id) || `gemini-auth-${randomBytes(8).toString('hex')}`
-  const existing = profiles.find((profile) => profile.id === id)
-  const kind = sanitizeGeminiAuthProfileKind(source.kind || existing?.kind)
-  const label =
-    optionalString(source.label) ||
-    existing?.label ||
-    (kind === 'api-key' ? 'Gemini API key' : kind === 'vertex-ai' ? 'Vertex AI' : 'Google login')
-  const rawApiKey = optionalString(source.apiKey)
-  const encryptedApiKey =
-    kind === 'api-key'
-      ? rawApiKey
-        ? encryptApiKey(rawApiKey) || existing?.encryptedApiKey
-        : existing?.encryptedApiKey
-      : undefined
-  const nextProfile: GeminiAuthProfile = {
-    id,
-    label,
-    kind,
-    createdAt: existing?.createdAt || now,
-    updatedAt: now,
-    lastUsedAt: existing?.lastUsedAt,
-    ...(encryptedApiKey ? { encryptedApiKey } : {}),
-    ...(kind === 'vertex-ai'
-      ? {
-          vertexProject: optionalString(source.vertexProject) || existing?.vertexProject,
-          vertexLocation:
-            optionalString(source.vertexLocation) || existing?.vertexLocation || 'us-central1'
-        }
-      : {})
-  }
-  const nextProfiles = existing
-    ? profiles.map((profile) => (profile.id === id ? nextProfile : profile))
-    : [...profiles, nextProfile]
-  const currentDefault = getDefaultGeminiAuthProfileId()
-  const makeDefault =
-    source.makeDefault !== false && (!currentDefault || source.makeDefault === true || !existing)
-  const defaultGeminiAuthProfileId = makeDefault ? id : currentDefault
-  AppStore.updateSettings({ geminiAuthProfiles: nextProfiles, defaultGeminiAuthProfileId })
-  return summarizeGeminiAuthProfile(nextProfile, defaultGeminiAuthProfileId)
-}
-
-async function deleteGeminiAuthProfile(profileId: unknown): Promise<boolean> {
-  const id = requireNonEmptyString(profileId, 'Gemini auth profile id')
-  const profiles = getGeminiAuthProfiles()
-  const nextProfiles = profiles.filter((profile) => profile.id !== id)
-  if (nextProfiles.length === profiles.length) return false
-  const loginRun = geminiOAuthLoginRuns.get(id)
-  if (loginRun?.status === 'running') {
-    loginRun.child?.kill()
-    geminiOAuthLoginRuns.set(id, {
-      ...loginRun,
-      child: undefined,
-      status: 'cancelled',
-      finishedAt: new Date().toISOString(),
-      message: 'Gemini Google login was cancelled because the profile was deleted.'
-    })
-  }
-  const currentDefault = getDefaultGeminiAuthProfileId()
-  AppStore.updateSettings({
-    geminiAuthProfiles: nextProfiles,
-    defaultGeminiAuthProfileId: currentDefault === id ? nextProfiles[0]?.id || null : currentDefault
-  })
-  await removeGeminiOAuthProfileFiles(id)
-  return true
-}
-
-function setDefaultGeminiAuthProfile(profileId: unknown): GeminiAuthProfileSummary | null {
-  const id = optionalStringOrNull(profileId)
-  if (!id) {
-    AppStore.updateSettings({ defaultGeminiAuthProfileId: null })
-    return null
-  }
-  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
-  if (!profile) {
-    throw new Error('Gemini auth profile was not found.')
-  }
-  AppStore.updateSettings({ defaultGeminiAuthProfileId: id })
-  return summarizeGeminiAuthProfile(profile, id)
-}
-
-function markGeminiAuthProfileUsed(profileId?: string | null): void {
-  if (!profileId) return
-  const profiles = getGeminiAuthProfiles()
-  if (!profiles.some((profile) => profile.id === profileId)) return
-  const now = new Date().toISOString()
-  AppStore.updateSettings({
-    geminiAuthProfiles: profiles.map((profile) =>
-      profile.id === profileId ? { ...profile, lastUsedAt: now, updatedAt: now } : profile
-    )
-  })
+  return getGeminiAuthStatusSnapshotViaProviderAuth(providerAuthUsageDeps)
 }
 
 async function startGeminiOAuthLogin(input: unknown): Promise<GeminiOAuthLoginStatus> {
-  const source =
-    input && typeof input === 'object' && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {}
-  const requestedId = optionalString(source.profileId) || optionalString(source.id)
-  const profiles = getGeminiAuthProfiles()
-  let profile = requestedId ? profiles.find((candidate) => candidate.id === requestedId) : undefined
-  if (profile && profile.kind !== 'google-oauth') {
-    throw new Error('Selected Gemini auth profile is not a Google login profile.')
-  }
-  if (!profile) {
-    const saved = saveGeminiAuthProfile({
-      id: requestedId,
-      label: optionalString(source.label) || 'Google login',
-      kind: 'google-oauth',
-      makeDefault: source.makeDefault !== false
-    })
-    profile = getGeminiAuthProfiles().find((candidate) => candidate.id === saved.id)
-  } else if (source.makeDefault !== false) {
-    AppStore.updateSettings({ defaultGeminiAuthProfileId: profile.id })
-  }
-  if (!profile) {
-    throw new Error('Gemini Google login profile could not be created.')
-  }
-
-  const activeRun = geminiOAuthLoginRuns.get(profile.id)
-  if (activeRun?.status === 'running') {
-    return publicGeminiOAuthLoginStatus(activeRun)
-  }
-
-  const resolved = await resolveCliProviderBinary('gemini')
-  if (!resolved.binaryPath) {
-    throw new Error(resolved.error || 'Gemini CLI is not configured.')
-  }
-
-  await ensureGeminiOAuthProfileSettings(profile.id)
-  const startedAt = new Date().toISOString()
-  const run: GeminiOAuthLoginRun = {
-    profileId: profile.id,
-    status: 'running',
-    startedAt,
-    message: 'Opening Google login in the browser.',
-    output: ''
-  }
-  geminiOAuthLoginRuns.set(profile.id, run)
-
-  const child = spawn(resolved.binaryPath, ['--list-sessions'], {
-    cwd: app.getPath('home'),
-    shell: false,
-    env: createCliEnv(
-      {
-        ...GEMINI_AUTH_CLEAR_ENV,
-        FORCE_COLOR: '0',
-        NO_COLOR: '1',
-        GEMINI_CLI_HOME: geminiOAuthProfileHome(profile.id),
-        GEMINI_DEFAULT_AUTH_TYPE: 'oauth-personal',
-        GOOGLE_APPLICATION_CREDENTIALS: '',
-        GOOGLE_GENAI_USE_GCA: 'true',
-        AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id
-      },
-      resolved.binaryPath
-    )
-  })
-  run.child = child
-
-  const capture = (chunk: Buffer | string): void => {
-    const text = chunk.toString()
-    run.output = `${run.output || ''}${text}`.slice(-12_000)
-    const urlMatch = text.match(/https:\/\/accounts\.google\.com\/[^\s]+/)
-    if (urlMatch) {
-      run.authUrl = urlMatch[0]
-      run.message = 'Google login is waiting for browser approval.'
-    }
-  }
-
-  child.stdout?.on('data', capture)
-  child.stderr?.on('data', capture)
-  child.stdin?.write('y\n')
-  child.stdin?.end()
-  child.on('error', (error) => {
-    geminiOAuthLoginRuns.set(profile!.id, {
-      ...run,
-      child: undefined,
-      status: 'error',
-      finishedAt: new Date().toISOString(),
-      message: `Failed to start Gemini Google login: ${error.message}`
-    })
-  })
-  child.on('close', (code) => {
-    const credentials = readGeminiOAuthProfileCredentialsSync(profile!.id)
-    const email = readGeminiOAuthProfileEmail(profile!.id)
-    const finishedAt = new Date().toISOString()
-    if (credentials) {
-      geminiOAuthLoginRuns.set(profile!.id, {
-        ...run,
-        child: undefined,
-        status: 'success',
-        finishedAt,
-        exitCode: code,
-        message: email ? `Signed in as ${email}.` : 'Google login completed.'
-      })
-      markGeminiAuthProfileUsed(profile!.id)
-      return
-    }
-    const output = (run.output || '').trim()
-    geminiOAuthLoginRuns.set(profile!.id, {
-      ...run,
-      child: undefined,
-      status: code === null ? 'cancelled' : 'error',
-      finishedAt,
-      exitCode: code,
-      message: output
-        ? output.split(/\r?\n/).slice(-4).join(' ').slice(0, 500)
-        : `Gemini Google login exited with code ${code ?? 'unknown'} before credentials were saved.`
-    })
-  })
-
-  return publicGeminiOAuthLoginStatus(run)
-}
-
-function getGeminiOAuthLoginStatus(profileId: unknown): GeminiOAuthLoginStatus | null {
-  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
-  if (!id) return null
-  const run = geminiOAuthLoginRuns.get(id)
-  return run ? publicGeminiOAuthLoginStatus(run) : null
-}
-
-function cancelGeminiOAuthLogin(profileId: unknown): GeminiOAuthLoginStatus | null {
-  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
-  if (!id) return null
-  const run = geminiOAuthLoginRuns.get(id)
-  if (!run) return null
-  if (run.status === 'running') {
-    run.child?.kill()
-    const next = {
-      ...run,
-      child: undefined,
-      status: 'cancelled' as const,
-      finishedAt: new Date().toISOString(),
-      message: 'Gemini Google login was cancelled.'
-    }
-    geminiOAuthLoginRuns.set(id, next)
-    return publicGeminiOAuthLoginStatus(next)
-  }
-  return publicGeminiOAuthLoginStatus(run)
-}
-
-function publicGeminiOAuthLoginStatus(run: GeminiOAuthLoginRun): GeminiOAuthLoginStatus {
-  return {
-    profileId: run.profileId,
-    status: run.status,
-    startedAt: run.startedAt,
-    finishedAt: run.finishedAt,
-    message: run.message,
-    authUrl: run.authUrl,
-    exitCode: run.exitCode
-  }
-}
-
-async function readJsonFile(filePath: string): Promise<any | null> {
-  try {
-    return JSON.parse(await fs.readFile(filePath, 'utf8'))
-  } catch {
-    return null
-  }
-}
-
-async function writeJsonFile(filePath: string, value: any): Promise<void> {
-  await fs.mkdir(dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
-
-function withNestedValue(base: any, pathParts: string[], value: unknown): any {
-  const root = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {}
-  let cursor = root
-  for (let index = 0; index < pathParts.length - 1; index += 1) {
-    const key = pathParts[index]
-    const existing = cursor[key]
-    cursor[key] =
-      existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {}
-    cursor = cursor[key]
-  }
-  cursor[pathParts[pathParts.length - 1]] = value
-  return root
-}
-
-async function ensureGeminiOAuthProfileSettings(
-  profileId: string,
-  options: { includeMcp?: boolean } = {}
-): Promise<void> {
-  const settingsPath = geminiOAuthProfileSettingsPath(profileId)
-  const existing = await readJsonFile(settingsPath)
-  let next = withNestedValue(existing, ['security', 'auth', 'selectedType'], 'oauth-personal')
-  if (options.includeMcp) {
-    next = {
-      ...next,
-      mcpServers: {
-        ...(next.mcpServers &&
-        typeof next.mcpServers === 'object' &&
-        !Array.isArray(next.mcpServers)
-          ? next.mcpServers
-          : {}),
-        [GEMINI_MCP_SERVER_NAME]: {
-          command: process.execPath,
-          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath()),
-          trust: true,
-          includeTools: [...AGENTBENCH_MCP_TOOLS]
-        }
-      }
-    }
-  } else if (
-    next.mcpServers &&
-    typeof next.mcpServers === 'object' &&
-    !Array.isArray(next.mcpServers)
-  ) {
-    const mcpServers = { ...next.mcpServers }
-    delete mcpServers[GEMINI_MCP_SERVER_NAME]
-    next = { ...next, mcpServers }
-  }
-  await writeJsonFile(settingsPath, next)
-}
-
-async function removeGeminiOAuthProfileFiles(profileId: string): Promise<void> {
-  await fs
-    .rm(join(geminiOAuthProfilesRoot(), geminiAuthProfileDirName(profileId)), {
-      recursive: true,
-      force: true
-    })
-    .catch(() => {})
+  return startGeminiOAuthLoginViaProviderAuth(input, providerAuthUsageDeps)
 }
 
 async function ensureGeminiAuthProfileMaterialized(
   profileId?: string | null,
   options: { includeMcp?: boolean } = {}
 ): Promise<void> {
-  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
-  if (!id) return
-  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
-  if (!profile || profile.kind !== 'google-oauth') return
-  await ensureGeminiOAuthProfileSettings(profile.id, options)
-}
-
-const GEMINI_AUTH_CLEAR_ENV: Record<string, string> = {
-  GEMINI_API_KEY: '',
-  GOOGLE_API_KEY: '',
-  GOOGLE_GENAI_API_KEY: '',
-  GOOGLE_GENAI_USE_VERTEXAI: '',
-  GOOGLE_GENAI_USE_GCA: '',
-  GOOGLE_CLOUD_PROJECT: '',
-  GOOGLE_CLOUD_LOCATION: '',
-  GOOGLE_CLOUD_REGION: ''
-}
-
-function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<string, string> {
-  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
-  if (!id) return {}
-  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
-  if (!profile) return {}
-  if (profile.kind === 'api-key') {
-    const apiKey = decryptApiKey(profile.encryptedApiKey)
-    return {
-      ...GEMINI_AUTH_CLEAR_ENV,
-      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
-      ...(apiKey ? { GEMINI_API_KEY: apiKey } : {})
-    }
-  }
-  if (profile.kind === 'vertex-ai') {
-    return {
-      ...GEMINI_AUTH_CLEAR_ENV,
-      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
-      GOOGLE_GENAI_USE_VERTEXAI: 'true',
-      ...(profile.vertexProject ? { GOOGLE_CLOUD_PROJECT: profile.vertexProject } : {}),
-      ...(profile.vertexLocation
-        ? {
-            GOOGLE_CLOUD_LOCATION: profile.vertexLocation,
-            GOOGLE_CLOUD_REGION: profile.vertexLocation
+  await ensureGeminiAuthProfileMaterializedViaProviderAuth(
+    profileId,
+    options.includeMcp
+      ? {
+          includeMcp: true,
+          mcp: {
+            serverName: GEMINI_MCP_SERVER_NAME,
+            command: process.execPath,
+            args: agentbenchMcpBridgeArgs(geminiMcpSocketPath()),
+            includeTools: [...AGENTBENCH_MCP_TOOLS]
           }
-        : {})
-    }
-  }
-  return {
-    ...GEMINI_AUTH_CLEAR_ENV,
-    AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
-    GEMINI_CLI_HOME: geminiOAuthProfileHome(profile.id),
-    GOOGLE_APPLICATION_CREDENTIALS: '',
-    GOOGLE_GENAI_USE_GCA: 'true'
-  }
-}
-
-/* ============================================================
- * Phase E1 (iOS bridge gap #1) — APNs Settings-UI persistence
- *
- * Encrypted .p8 auth-key storage via Electron `safeStorage`. The
- * Settings panel lets the user pick a .p8 file from Apple Developer;
- * we read its contents, encrypt with the OS keychain, and store as
- * base64 in `AppSettings.apnsConfig.encryptedAuthKey`. On boot (and
- * on every settings update) `buildBridgeApnsPusherFromSettings`
- * decrypts and constructs the real Http2ApnsPusher.
- * ============================================================ */
-
-const DEFAULT_APNS_BUNDLE_ID = 'com.example.AGBench.ios'
-
-function decryptApnsAuthKey(): string | null {
-  const config = AppStore.getSettings().apnsConfig
-  if (!config?.encryptedAuthKey) return null
-  if (!safeStorage.isEncryptionAvailable()) return null
-  try {
-    const pem = safeStorage.decryptString(Buffer.from(config.encryptedAuthKey, 'base64'))
-    return pem && pem.includes('BEGIN PRIVATE KEY') ? pem : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Build the right BridgeApnsPusher from current settings. Resolution
- * priority (high → low):
- *   1. AppSettings.apnsConfig (Settings UI) — highest priority because
- *      the user explicitly configured it via the in-app picker. The
- *      .p8 PEM is decrypted from safeStorage and passed in-memory.
- *   2. AGBENCH_APNS_* env vars — fallback for headless / scripted
- *      setups (CI, dev shells).
- *   3. No credentials → NoopApnsPusher logs intent + returns
- *      `delivered: false`.
- */
-function buildBridgeApnsPusherFromSettings(): BridgeApnsPusher {
-  const config = AppStore.getSettings().apnsConfig
-  const log = (line: string) => {
-    console.log(line)
-  }
-  if (config?.encryptedAuthKey && config.keyId && config.teamId) {
-    const pem = decryptApnsAuthKey()
-    if (pem) {
-      return createBridgeApnsPusher({
-        log,
-        credentials: {
-          authKeyPem: pem,
-          keyId: config.keyId,
-          teamId: config.teamId,
-          bundleId: config.bundleId || DEFAULT_APNS_BUNDLE_ID
         }
-      })
-    }
-    log(
-      '[BridgeApnsPusher] apnsConfig is set but the encrypted auth-key failed to decrypt; falling back to env-var resolution.'
-    )
-  }
-  return createBridgeApnsPusher({ log })
+      : options
+  )
 }
 
 /**
@@ -4583,773 +3964,12 @@ function rebuildBridgeApnsPusherFromSettings(): void {
   bridgeApnsPusherRef = buildBridgeApnsPusherFromSettings()
 }
 
-function storeCodexUsageCredential(credential: CodexUsageCredential) {
-  inMemoryCodexUsageCredential = credential
-  const encryptionAvailable = safeStorage.isEncryptionAvailable()
-  const encryptedAccessToken = encryptionAvailable
-    ? safeStorage.encryptString(credential.accessToken).toString('base64')
-    : undefined
-  AppStore.updateSettings({
-    codexUsageCredential: {
-      encryptedAccessToken,
-      accountId: credential.accountId,
-      importedAt: credential.importedAt || new Date().toISOString(),
-      source: credential.source,
-      encryptionAvailable
-    }
-  })
-}
-
-function clearCodexUsageCredential() {
-  inMemoryCodexUsageCredential = null
-  AppStore.updateSettings({ codexUsageCredential: undefined as any })
-}
-
-function cacheProviderUsageSnapshot(provider: ProviderId, snapshot: any) {
-  if (!snapshot?.error && hasProviderUsageSnapshotContent(snapshot)) {
-    AppStore.storeProviderUsageSnapshot(provider, snapshot)
-  }
-}
-
-function usageSnapshotWithPersistedFallback(provider: ProviderId, fallback: any) {
-  const cached = AppStore.getProviderUsageSnapshot(provider)
-  if (hasProviderUsageSnapshotContent(cached)) {
-    // 1.0.3 — when the persisted snapshot's window reset timestamps
-    // are in the past (auth's been stale for a while, no fresh fetch
-    // landed), project them forward by whole window-durations so the
-    // meter stays sensible: "5% used, resets in 4h" instead of
-    // "5% used, reset 9pm last Wednesday". Matches the Limit Counter
-    // app's behaviour. Windows without a known `limitWindowSeconds`
-    // rollover cadence are left untouched. Critical for Kimi where
-    // CLI auth typically expires within an hour of last activity.
-    const projected = projectStaleSnapshotForward(cached)
-    return {
-      ...projected,
-      provider,
-      configured: fallback?.configured ?? projected.configured,
-      source: projected.source ?? fallback?.source ?? null,
-      stale: true,
-      error: fallback?.error || projected.error
-    }
-  }
-  return fallback
-}
-
-async function resolveCodexUsageImportPath(
-  event: Electron.IpcMainInvokeEvent,
-  requestedPath?: string | null
-): Promise<string | null> {
-  const explicitPath = expandHomePath(requestedPath)
-  if (explicitPath) return explicitPath
-  const defaultPath = join(os.homedir(), '.codex', 'auth.json')
-  if (await fileExists(defaultPath)) {
-    return defaultPath
-  }
-  const parentWindow = BrowserWindow.fromWebContents(event.sender)
-  const dialogOptions = {
-    title: 'Import Codex usage session',
-    message: 'Select Codex auth.json to import usage limits.',
-    properties: ['openFile'],
-    filters: [{ name: 'JSON', extensions: ['json'] }]
-  } as Electron.OpenDialogOptions
-  const result = parentWindow
-    ? await dialog.showOpenDialog(parentWindow, dialogOptions)
-    : await dialog.showOpenDialog(dialogOptions)
-  if (result.canceled || result.filePaths.length === 0) {
-    return null
-  }
-  return result.filePaths[0]
-}
-
-async function fetchCodexUsageSnapshot(): Promise<any> {
-  const credential = storedCodexUsageCredential()
-  if (!credential) {
-    const stored = AppStore.getSettings().codexUsageCredential
-    return usageSnapshotWithPersistedFallback('codex', {
-      provider: 'codex',
-      configured: Boolean(stored?.accountId),
-      source: stored?.source || null,
-      accountId: redactAccountId(stored?.accountId),
-      importedAt: stored?.importedAt,
-      encryptionAvailable: stored?.encryptionAvailable ?? safeStorage.isEncryptionAvailable(),
-      error: stored?.accountId
-        ? 'Codex usage token is not available in this session. Re-import Codex auth to refresh usage.'
-        : 'Codex usage import is not configured.'
-    })
-  }
-
-  try {
-    const response = await fetch('https://chatgpt.com/backend-api/wham/usage', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${credential.accessToken}`,
-        'chatgpt-account-id': credential.accountId,
-        Accept: 'application/json'
-      }
-    })
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('Imported Codex session is expired or not authorized.')
-    }
-    if (response.status === 429) {
-      throw new Error('Codex usage endpoint is rate limited.')
-    }
-    if (!response.ok) {
-      throw new Error(`Codex usage endpoint returned HTTP ${response.status}.`)
-    }
-    const payload = await response.json()
-    const snapshot = normalizeCodexUsagePayload(payload, credential)
-    cacheProviderUsageSnapshot('codex', snapshot)
-    return snapshot
-  } catch (error) {
-    const fallback = usageSnapshotWithPersistedFallback('codex', {
-      provider: 'codex',
-      configured: true,
-      source: 'chatgpt-wham',
-      accountId: redactAccountId(credential.accountId),
-      importedAt: credential.importedAt,
-      error: error instanceof Error ? error.message : 'Codex usage fetch failed.'
-    })
-    if (hasProviderUsageSnapshotContent(fallback)) return fallback
-    throw error
-  }
-}
-
-const GEMINI_OAUTH_CLIENT_ID =
-  '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com'
-const GEMINI_OAUTH_CLIENT_SECRET = '__OAUTH_SECRET_REMOVED__'
-const GEMINI_QUOTA_FRESH_TTL_MS = 90_000
-const GEMINI_QUOTA_STALE_TTL_MS = 30 * 60_000
-const GEMINI_OAUTH_REFRESH_BUFFER_MS = 5 * 60_000
-const GEMINI_OAUTH_REFRESH_RETRY_MS = 60_000
-
-let geminiQuotaCache: { snapshot: any; fetchedAt: number } | null = null
-let geminiRefreshedToken: { accessToken: string; expiresAt: number } | null = null
-let geminiRefreshPromise: Promise<string | null> | null = null
-let geminiLastRefreshFailureAt = 0
-
-function geminiCliRootPath(): string {
-  const configuredHome = process.env.GEMINI_CLI_HOME
-  if (configuredHome && configuredHome.trim()) {
-    return join(expandHomePath(configuredHome.trim()), '.gemini')
-  }
-  const configuredRoot = process.env.GEMINI_HOME
-  return configuredRoot && configuredRoot.trim()
-    ? expandHomePath(configuredRoot.trim())
-    : join(os.homedir(), '.gemini')
-}
-
-async function readGeminiOAuthCredentials(): Promise<{
-  accessToken: string
-  refreshToken?: string
-  expiresAt?: number
-} | null> {
-  try {
-    const raw = await fs.readFile(join(geminiCliRootPath(), 'oauth_creds.json'), 'utf8')
-    const parsed = JSON.parse(raw)
-    const accessToken = String(parsed?.access_token || '').trim()
-    if (!accessToken) return null
-    const refreshToken =
-      typeof parsed?.refresh_token === 'string' ? parsed.refresh_token.trim() : undefined
-    const expiryDate = Number(parsed?.expiry_date || 0)
-    return {
-      accessToken,
-      refreshToken: refreshToken || undefined,
-      expiresAt: Number.isFinite(expiryDate) && expiryDate > 0 ? expiryDate : undefined
-    }
-  } catch {
-    return null
-  }
-}
-
-async function refreshGeminiAccessToken(refreshToken: string): Promise<string | null> {
-  if (geminiRefreshPromise) {
-    return geminiRefreshPromise
-  }
-  geminiRefreshPromise = (async () => {
-    try {
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json'
-        },
-        body: new URLSearchParams({
-          client_id: GEMINI_OAUTH_CLIENT_ID,
-          client_secret: GEMINI_OAUTH_CLIENT_SECRET,
-          refresh_token: refreshToken,
-          grant_type: 'refresh_token'
-        })
-      })
-      if (!response.ok) {
-        geminiLastRefreshFailureAt = Date.now()
-        return null
-      }
-      const payload = await response.json()
-      const accessToken = String(payload?.access_token || '').trim()
-      if (!accessToken) {
-        geminiLastRefreshFailureAt = Date.now()
-        return null
-      }
-      const expiresInSeconds = Math.max(60, Number(payload?.expires_in || 3600))
-      geminiRefreshedToken = {
-        accessToken,
-        expiresAt: Date.now() + expiresInSeconds * 1000
-      }
-      geminiLastRefreshFailureAt = 0
-      return accessToken
-    } catch {
-      geminiLastRefreshFailureAt = Date.now()
-      return null
-    } finally {
-      geminiRefreshPromise = null
-    }
-  })()
-  return geminiRefreshPromise
-}
-
-async function getGeminiAccessToken(): Promise<string | null> {
-  if (
-    geminiRefreshedToken &&
-    Date.now() + GEMINI_OAUTH_REFRESH_BUFFER_MS < geminiRefreshedToken.expiresAt
-  ) {
-    return geminiRefreshedToken.accessToken
-  }
-
-  const credentials = await readGeminiOAuthCredentials()
-  if (!credentials) return null
-
-  if (
-    !credentials.expiresAt ||
-    Date.now() + GEMINI_OAUTH_REFRESH_BUFFER_MS < credentials.expiresAt
-  ) {
-    return credentials.accessToken
-  }
-
-  if (
-    !credentials.refreshToken ||
-    Date.now() - geminiLastRefreshFailureAt < GEMINI_OAUTH_REFRESH_RETRY_MS
-  ) {
-    return credentials.accessToken
-  }
-
-  return (await refreshGeminiAccessToken(credentials.refreshToken)) || credentials.accessToken
-}
-
-function parseGeminiQuotaReset(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !value.trim()) return undefined
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
-}
-
-function geminiQuotaPriority(modelId: string): number {
-  const id = modelId.toLowerCase()
-  const generation = id.includes('3.1')
-    ? 0
-    : id.includes('3-') || id.endsWith('-3')
-      ? 10
-      : id.includes('2.5')
-        ? 20
-        : 30
-  const family = id.includes('flash-lite')
-    ? 2
-    : id.includes('flash')
-      ? 1
-      : id.includes('pro')
-        ? 0
-        : 3
-  return generation + family
-}
-
-function geminiQuotaDisplayName(modelId: string): string {
-  const id = modelId.toLowerCase()
-  const family = id.includes('flash-lite')
-    ? 'Flash Lite'
-    : id.includes('flash')
-      ? 'Flash'
-      : id.includes('pro')
-        ? 'Pro'
-        : modelId
-  const generation = id.includes('3.1')
-    ? '3.1'
-    : id.includes('3-') || id.endsWith('-3')
-      ? '3'
-      : id.includes('2.5')
-        ? '2.5'
-        : ''
-  const base = [family, generation].filter(Boolean).join(' ')
-  return id.includes('preview') ? `${base} (preview)` : base
-}
-
-function normalizeGeminiQuotaSnapshot(payload: any): any {
-  const buckets = Array.isArray(payload?.buckets) ? payload.buckets : []
-  const sorted = buckets.slice().sort((a: any, b: any) => {
-    const aModel = String(a?.modelId || '')
-    const bModel = String(b?.modelId || '')
-    const priorityDelta = geminiQuotaPriority(aModel) - geminiQuotaPriority(bModel)
-    if (priorityDelta !== 0) return priorityDelta
-    const aUsed = 1 - Number(a?.remainingFraction ?? 1)
-    const bUsed = 1 - Number(b?.remainingFraction ?? 1)
-    return bUsed - aUsed
-  })
-  const windows = sorted.flatMap((bucket: any, index: number) => {
-    const modelId = String(bucket?.modelId || '').trim()
-    const remainingFraction = Number(bucket?.remainingFraction)
-    if (!modelId || !Number.isFinite(remainingFraction)) return []
-    const remainingPercent = Math.max(0, Math.min(100, remainingFraction * 100))
-    const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
-    return [
-      {
-        id: `gemini-${modelId || index}`,
-        label: geminiQuotaDisplayName(modelId),
-        runs: 0,
-        totalTokens: 0,
-        limitLabel: `${Math.round(remainingPercent)}% remaining`,
-        resetAt: parseGeminiQuotaReset(bucket?.resetTime),
-        trackingOnly: false,
-        // Bar fills with USED capacity to match Codex / Claude / Kimi (the
-        // earlier shape mistakenly stored remaining-% under usedPercent, so
-        // Gemini's bar visualised the inverse of every other provider's).
-        usedPercent,
-        remainingPercent,
-        sourceModelId: modelId
-      }
-    ]
-  })
-  return {
-    provider: 'gemini',
-    source: 'gemini-live-quota',
-    configured: true,
-    fetchedAt: new Date().toISOString(),
-    windows
-  }
-}
-
-async function fetchGeminiUsageSnapshot(): Promise<any> {
-  const now = Date.now()
-  if (geminiQuotaCache && now - geminiQuotaCache.fetchedAt < GEMINI_QUOTA_FRESH_TTL_MS) {
-    return geminiQuotaCache.snapshot
-  }
-
-  const accessToken = await getGeminiAccessToken()
-  if (!accessToken) {
-    return usageSnapshotWithPersistedFallback('gemini', {
-      provider: 'gemini',
-      source: 'gemini-live-quota',
-      configured: false,
-      error:
-        'Gemini OAuth credentials were not found. Run Gemini CLI once to refresh ~/.gemini/oauth_creds.json.'
-    })
-  }
-
-  try {
-    const response = await fetch(
-      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify({ project: 'default' })
-      }
-    )
-    if (!response.ok) {
-      throw new Error(`Gemini live quota endpoint returned HTTP ${response.status}.`)
-    }
-    const payload = await response.json()
-    const snapshot = normalizeGeminiQuotaSnapshot(payload)
-    geminiQuotaCache = { snapshot, fetchedAt: Date.now() }
-    cacheProviderUsageSnapshot('gemini', snapshot)
-    return snapshot
-  } catch (error) {
-    if (geminiQuotaCache && now - geminiQuotaCache.fetchedAt < GEMINI_QUOTA_STALE_TTL_MS) {
-      return {
-        ...geminiQuotaCache.snapshot,
-        stale: true,
-        error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
-      }
-    }
-    return usageSnapshotWithPersistedFallback('gemini', {
-      provider: 'gemini',
-      source: 'gemini-live-quota',
-      configured: true,
-      error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
-    })
-  }
-}
-
-const KIMI_USAGE_FRESH_TTL_MS = 90_000
-const KIMI_USAGE_STALE_TTL_MS = 30 * 60_000
-
-let kimiUsageCache: { snapshot: NormalizedProviderUsageSnapshot; fetchedAt: number } | null = null
-
-async function readKimiOAuthAccessToken(): Promise<string | null> {
-  try {
-    const raw = await fs.readFile(
-      join(os.homedir(), '.kimi', 'credentials', 'kimi-code.json'),
-      'utf8'
-    )
-    const parsed = JSON.parse(raw)
-    const accessToken = String(parsed?.access_token || '').trim()
-    if (!accessToken) return null
-    const expiresAt = Number(parsed?.expires_at || 0)
-    if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt * 1000 <= Date.now()) {
-      return null
-    }
-    return accessToken
-  } catch {
-    return null
-  }
-}
-
-async function getKimiUsageAccessToken(): Promise<string | null> {
-  return getStoredKimiApiKey() || (await readKimiOAuthAccessToken())
-}
-
-async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot> {
-  const now = Date.now()
-  if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_FRESH_TTL_MS) {
-    return kimiUsageCache.snapshot
-  }
-
-  const accessToken = await getKimiUsageAccessToken()
-  if (!accessToken) {
-    return usageSnapshotWithPersistedFallback('kimi', {
-      provider: 'kimi',
-      source: 'kimi-live-usage',
-      configured: false,
-      error: 'Kimi credentials were not found. Run Kimi Code once or configure a Kimi API token.'
-    })
-  }
-
-  try {
-    const response = await fetch('https://api.kimi.com/coding/v1/usages', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json'
-      }
-    })
-    if (!response.ok) {
-      throw new Error(`Kimi usage endpoint returned HTTP ${response.status}.`)
-    }
-    const payload = await response.json()
-    const snapshot = normalizeKimiUsageSnapshot(payload)
-    kimiUsageCache = { snapshot, fetchedAt: Date.now() }
-    cacheProviderUsageSnapshot('kimi', snapshot)
-    return snapshot
-  } catch (error) {
-    if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_STALE_TTL_MS) {
-      return {
-        ...kimiUsageCache.snapshot,
-        stale: true,
-        error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
-      }
-    }
-    return usageSnapshotWithPersistedFallback('kimi', {
-      provider: 'kimi',
-      source: 'kimi-live-usage',
-      configured: true,
-      error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
-    })
-  }
-}
-
-// --- Cursor (Composer 2.5) subscription usage -----------------------------
-// cursor-agent has no usage command, so mirror the Limit Counter approach:
-// read the Cursor *editor's* access token from its local SQLite state DB and
-// POST Cursor's dashboard RPC. See src/main/cursor/CursorUsage.ts for the
-// pure parser; this section supplies the real (read-only) token read + fetch.
-const CURSOR_USAGE_FRESH_TTL_MS = 2 * 60_000
-const CURSOR_USAGE_STALE_TTL_MS = 4 * 60 * 60_000
-let cursorUsageCache: { snapshot: CursorUsageSnapshot; fetchedAt: number } | null = null
-
 // 1.0.6-CRUX15 — cache the (expensive) SuperGrok PTY usage probe so the
 // sidebar GrokCreditsMeter and the Settings Provider-Telemetry card share a
 // single real probe instead of each spawning the TUI. Only `observed`
 // snapshots are cached; non-observed results fall through to a fresh probe.
 const GROK_USAGE_FRESH_TTL_MS = 2 * 60_000
 let grokUsageProbeCache: { snapshot: GrokUsageSnapshot; fetchedAt: number } | null = null
-
-/** Run a single-scalar read-only sqlite3 query; resolves trimmed value or null. */
-function runCursorSqliteScalar(dbPath: string, query: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const opts = { timeout: 8_000, maxBuffer: 1024 * 1024 }
-    execFile('/usr/bin/sqlite3', ['-readonly', dbPath, query], opts, (err, stdout) => {
-      if (!err) {
-        const value = String(stdout || '').trim()
-        resolve(value || null)
-        return
-      }
-      // The live DB may be locked while Cursor runs — read a temp copy.
-      void (async () => {
-        let tmpDir: string | null = null
-        try {
-          tmpDir = await fs.mkdtemp(join(os.tmpdir(), 'cursor-usage-'))
-          const tmpDb = join(tmpDir, 'state.vscdb')
-          await fs.copyFile(dbPath, tmpDb)
-          execFile('/usr/bin/sqlite3', ['-readonly', tmpDb, query], opts, (err2, stdout2) => {
-            const dir = tmpDir
-            if (dir) void fs.rm(dir, { recursive: true, force: true }).catch(() => {})
-            if (err2) {
-              resolve(null)
-              return
-            }
-            resolve(String(stdout2 || '').trim() || null)
-          })
-        } catch {
-          if (tmpDir) void fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
-          resolve(null)
-        }
-      })()
-    })
-  })
-}
-
-/** Read the Cursor editor bearer token from its state DB (read-only). */
-async function readCursorEditorAccessToken(): Promise<string | null> {
-  const query = `SELECT value FROM ItemTable WHERE key='${CURSOR_ACCESS_TOKEN_KEY}' LIMIT 1;`
-  for (const dbPath of cursorStateDbCandidates(os.homedir())) {
-    try {
-      await fs.access(dbPath)
-    } catch {
-      continue
-    }
-    const token = await runCursorSqliteScalar(dbPath, query)
-    if (token) return token
-  }
-  return null
-}
-
-async function fetchCursorUsageRpc(token: string): Promise<unknown> {
-  const response = await fetch(CURSOR_USAGE_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Connect-Protocol-Version': '1'
-    },
-    body: '{}'
-  })
-  if (!response.ok) {
-    throw new Error(`Cursor usage endpoint returned HTTP ${response.status}.`)
-  }
-  return response.json()
-}
-
-async function fetchCursorUsageSnapshot(): Promise<CursorUsageSnapshot | null> {
-  // Cursor is default-on; only the kill-switch suppresses it.
-  if (!experimentalCursorProviderEnabled()) return null
-  const now = Date.now()
-  if (cursorUsageCache && now - cursorUsageCache.fetchedAt < CURSOR_USAGE_FRESH_TTL_MS) {
-    return cursorUsageCache.snapshot
-  }
-  const snapshot = await loadCursorUsageSnapshot({
-    readAccessToken: readCursorEditorAccessToken,
-    fetchUsageRpc: fetchCursorUsageRpc,
-    now: () => Date.now()
-  })
-  if (snapshot.configured && !snapshot.error) {
-    cursorUsageCache = { snapshot, fetchedAt: Date.now() }
-    return snapshot
-  }
-  // Transient failure: serve the last good snapshot if still fresh-ish.
-  if (cursorUsageCache && now - cursorUsageCache.fetchedAt < CURSOR_USAGE_STALE_TTL_MS) {
-    return { ...cursorUsageCache.snapshot, stale: true, error: snapshot.error }
-  }
-  return snapshot
-}
-
-const CLAUDE_USAGE_FRESH_TTL_MS = 2 * 60_000
-const CLAUDE_USAGE_STALE_TTL_MS = 4 * 60 * 60_000
-let claudeUsageCache: { snapshot: any; fetchedAt: number } | null = null
-
-interface ClaudeOAuthCredential {
-  accessToken: string
-  subscriptionType?: string
-  expiresAt?: number
-}
-
-async function readClaudeCredentialsFile(): Promise<ClaudeOAuthCredential | null> {
-  const candidates = [
-    join(os.homedir(), '.claude', '.credentials.json'),
-    join(os.homedir(), '.claude', 'credentials.json'),
-    join(os.homedir(), '.config', 'claude', 'credentials.json')
-  ]
-  for (const path of candidates) {
-    try {
-      const raw = await fs.readFile(path, 'utf8')
-      const parsed = JSON.parse(raw)
-      const inner = parsed?.claudeAiOauth || parsed?.claude_ai_oauth || parsed
-      const accessToken = String(inner?.accessToken || inner?.access_token || '').trim()
-      if (!accessToken) continue
-      const expiresAt = Number(inner?.expiresAt || inner?.expires_at || 0)
-      if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < Date.now()) {
-        continue
-      }
-      const subscriptionType =
-        String(inner?.subscriptionType || inner?.subscription_type || '').toLowerCase() || undefined
-      return {
-        accessToken,
-        subscriptionType,
-        expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : undefined
-      }
-    } catch {
-      continue
-    }
-  }
-  return null
-}
-
-async function readClaudeKeychainCredential(): Promise<ClaudeOAuthCredential | null> {
-  if (process.platform !== 'darwin') return null
-  return new Promise((resolve) => {
-    try {
-      const proc = spawn('security', [
-        'find-generic-password',
-        '-s',
-        'Claude Code-credentials',
-        '-w'
-      ])
-      let out = ''
-      proc.stdout.on('data', (chunk: Buffer) => {
-        out += chunk.toString('utf8')
-      })
-      proc.on('error', () => resolve(null))
-      proc.on('close', (code: number) => {
-        if (code !== 0) return resolve(null)
-        const raw = out.trim()
-        if (!raw) return resolve(null)
-        try {
-          const parsed = JSON.parse(raw)
-          const inner = parsed?.claudeAiOauth || parsed?.claude_ai_oauth || parsed
-          const accessToken = String(inner?.accessToken || inner?.access_token || raw).trim()
-          if (!accessToken) return resolve(null)
-          const expiresAt = Number(inner?.expiresAt || inner?.expires_at || 0)
-          if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < Date.now()) {
-            return resolve(null)
-          }
-          const subscriptionType =
-            String(inner?.subscriptionType || inner?.subscription_type || '').toLowerCase() ||
-            undefined
-          resolve({
-            accessToken,
-            subscriptionType,
-            expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : undefined
-          })
-        } catch {
-          resolve({ accessToken: raw })
-        }
-      })
-    } catch {
-      resolve(null)
-    }
-  })
-}
-
-async function readClaudeLegacyTokenFile(): Promise<ClaudeOAuthCredential | null> {
-  try {
-    const raw = await fs.readFile(join(os.homedir(), '.claude', '.oauth_token'), 'utf8')
-    const token = raw.trim()
-    if (!token) return null
-    return { accessToken: token }
-  } catch {
-    return null
-  }
-}
-
-async function getClaudeOAuthCredential(): Promise<ClaudeOAuthCredential | null> {
-  return (
-    (await readClaudeCredentialsFile()) ||
-    (await readClaudeKeychainCredential()) ||
-    (await readClaudeLegacyTokenFile())
-  )
-}
-
-async function fetchClaudeUsageSnapshot(): Promise<any> {
-  const now = Date.now()
-  if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_FRESH_TTL_MS) {
-    return claudeUsageCache.snapshot
-  }
-
-  const credential = await getClaudeOAuthCredential()
-  if (!credential) {
-    return usageSnapshotWithPersistedFallback('claude', {
-      provider: 'claude',
-      source: 'claude-oauth-usage',
-      configured: false,
-      error:
-        'Claude OAuth credentials were not found. Run Claude Code once to populate ~/.claude/.credentials.json.'
-    })
-  }
-
-  try {
-    const response = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${credential.accessToken}`,
-        'anthropic-beta': 'oauth-2025-04-20',
-        Accept: 'application/json'
-      }
-    })
-    if (!response.ok) {
-      throw new Error(`Claude OAuth usage endpoint returned HTTP ${response.status}.`)
-    }
-    const payload = await response.json()
-    const snapshot = normalizeClaudeUsageSnapshot(payload, credential)
-    claudeUsageCache = { snapshot, fetchedAt: Date.now() }
-    cacheProviderUsageSnapshot('claude', snapshot)
-    return snapshot
-  } catch (error) {
-    if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_STALE_TTL_MS) {
-      return {
-        ...claudeUsageCache.snapshot,
-        stale: true,
-        error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
-      }
-    }
-    return usageSnapshotWithPersistedFallback('claude', {
-      provider: 'claude',
-      source: 'claude-oauth-usage',
-      configured: true,
-      error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
-    })
-  }
-}
-
-async function importCodexUsageCredential(
-  event: Electron.IpcMainInvokeEvent,
-  requestedPath?: string | null
-) {
-  const credentialPath = await resolveCodexUsageImportPath(event, requestedPath)
-  if (!credentialPath) {
-    return { imported: false, cancelled: true }
-  }
-  const raw = await fs.readFile(credentialPath, 'utf8')
-  const credential = parseCodexUsageCredential(raw, credentialPath)
-  storeCodexUsageCredential(credential)
-  let snapshot: any = null
-  try {
-    snapshot = await fetchCodexUsageSnapshot()
-  } catch (error) {
-    snapshot = {
-      configured: true,
-      source: 'chatgpt-wham',
-      accountId: redactAccountId(credential.accountId),
-      importedAt: credential.importedAt,
-      error: error instanceof Error ? error.message : String(error)
-    }
-  }
-  return {
-    imported: true,
-    accountId: redactAccountId(credential.accountId),
-    importedAt: credential.importedAt,
-    source: credentialPath,
-    encryptionAvailable: safeStorage.isEncryptionAvailable(),
-    snapshot
-  }
-}
 
 function getStaticProviderModels(provider: ProviderId) {
   if (provider === 'claude') return CLAUDE_STATIC_MODELS
