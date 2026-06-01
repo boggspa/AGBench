@@ -326,6 +326,45 @@ describe('EnsembleOrchestrator', () => {
     expect(recorded).toHaveLength(0)
   })
 
+  it('1.0.7 — emits UNIQUE ids for every round-status message in a round', async () => {
+    // Regression: pre-1.0.7 every status line in a round shared the id
+    // `ensemble-round-status-${roundId}`, so a round that emitted MULTIPLE
+    // status lines (each yield/handoff appends one) produced several messages
+    // with the SAME id → duplicate React keys + a collision in the transcript's
+    // id-keyed measurement Map → scrambled render order (old status lines
+    // surfacing above newer messages, exposed once the transcript virtualised).
+    // Each appendRoundStatus call must now mint a distinct id.
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Split this work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    // Emit several round-status lines on the SAME active run+round — the exact
+    // shape that pre-1.0.7 collided on `ensemble-round-status-${roundId}`.
+    // `appendStatusForRun` is the public route through the private
+    // `appendRoundStatus` (the `ensembleRoundStatus`-kind emitter).
+    const runId = harness.dispatched[0].appRunId!
+    expect(harness.orchestrator.appendStatusForRun(runId, 'Handoff 1/12.')).toBe(true)
+    expect(harness.orchestrator.appendStatusForRun(runId, 'Handoff 2/12.')).toBe(true)
+    expect(
+      harness.orchestrator.appendStatusForRun(runId, 'Yielded back to gemini (gemini).')
+    ).toBe(true)
+
+    const statusIds = harness.chat.messages
+      .filter((m) => m.metadata?.kind === 'ensembleRoundStatus')
+      .map((m) => m.id)
+    // Three status messages, all with distinct ids (pre-1.0.7 they'd be equal).
+    expect(statusIds.length).toBe(3)
+    expect(new Set(statusIds).size).toBe(3)
+    // And ALL message ids in the chat are unique — the actual invariant the
+    // transcript renderer + measurement cache rely on.
+    const allIds = harness.chat.messages.map((m) => m.id)
+    expect(new Set(allIds).size).toBe(allIds.length)
+  })
+
   it('dispatches duplicate-provider participants by participant id', async () => {
     const harness = makeHarness()
     harness.chat.ensemble!.maxParticipants = 6

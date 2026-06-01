@@ -3008,12 +3008,23 @@ export class EnsembleOrchestrator {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) return
     const timestamp = this.deps.nowIso()
+    // 1.0.7 — UNIQUE id per status message. Pre-1.0.7 every status line in a
+    // round shared `ensemble-round-status-${roundId}`, so a round that emitted
+    // multiple ("Yielded back…", "@-mention: extra turn…", handoff 1/12, 2/12…)
+    // produced several messages with the SAME id. Duplicate React keys +
+    // collisions in the transcript's id-keyed measurement Map scrambled render
+    // order (old status lines surfacing above newer messages) — exposed badly
+    // once the virtualised transcript keys rows by message id. Append a
+    // monotonic-ish suffix (matches the `${Date.now()}-${random}` idiom used
+    // for tool rows / wakeups / round ids elsewhere in this file). The
+    // `ensembleRoundId` metadata still carries the round association.
+    const id = `ensemble-round-status-${roundId}-${this.deps.now()}-${this.nextStatusSeq()}`
     this.saveChatWithCheckpoint({
       ...chat,
       messages: [
         ...chat.messages,
         {
-          id: `ensemble-round-status-${roundId}`,
+          id,
           role: 'system',
           content,
           timestamp,
@@ -3025,6 +3036,19 @@ export class EnsembleOrchestrator {
       ],
       updatedAt: this.deps.now()
     }, 'round-updated')
+  }
+
+  /**
+   * 1.0.7 — monotonic counter to disambiguate status-message ids emitted within
+   * the same `now()` tick (the unit-test harness uses a fixed clock, and two
+   * statuses can land on the same millisecond in production). Guarantees a
+   * unique id per `appendRoundStatus` call without relying on Math.random
+   * (keeps ids deterministic-ish + greppable).
+   */
+  private statusSeqCounter = 0
+  private nextStatusSeq(): number {
+    this.statusSeqCounter += 1
+    return this.statusSeqCounter
   }
 
   /**
