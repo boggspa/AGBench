@@ -4,11 +4,9 @@ import Foundation
 ///
 /// The daemon writes three kinds of lines to stdout:
 ///   1. JSON-RPC 2.0 responses to inbound Electron requests (built by
-///      `JSONRPCDispatcher` and emitted from the synchronous read loop).
-///   2. JSON-RPC 2.0 notifications (emitted by `BridgeNotifier` from any
-///      `@Sendable` handler closure).
-///   3. JSON-RPC 2.0 requests (emitted by `BridgeRequester` when the daemon
-///      needs to ask Electron something and await an answer).
+///      `JSONRPCDispatcher` and emitted from handler queues).
+///   2. Future JSON-RPC 2.0 notifications emitted by daemon-owned local
+///      helpers.
 ///
 /// All three need to use the same `\n`-terminated framing, and writes from
 /// different threads must not interleave inside a single line. A single

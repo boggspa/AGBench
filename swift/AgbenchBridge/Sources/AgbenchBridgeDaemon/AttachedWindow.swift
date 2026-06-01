@@ -57,9 +57,8 @@ final class AttachedWindowEntry: @unchecked Sendable {
 }
 
 /// In-memory handle table. Lives for the daemon process lifetime — never
-/// persisted to disk, dropped on process exit. Mirrors the structural choice
-/// in `FileTrustedDeviceStore`/`InMemoryTrustedDeviceStore` but kept simple
-/// because the table is small and ephemeral by design.
+/// persisted to disk, dropped on process exit. Kept simple because the table
+/// is small and ephemeral by design.
 actor AttachedWindowStore {
     private var entries: [String: AttachedWindowEntry] = [:]
     private var currentHandle: String?

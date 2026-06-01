@@ -12,13 +12,11 @@ import { createInterface, type Interface as ReadlineInterface } from 'readline'
  *   1. Locate the daemon binary (`swift/AgbenchBridge/.build/debug/...`).
  *   2. Spawn it with piped stdio (mirrors `CodexAppServerClient.start()`).
  *   3. Read the first stdout line — a single `daemon-hello` JSON announcement
- *      that confirms the daemon imported BridgeCore with the AGBench
- *      product configuration.
+ *      that confirms the self-contained AGBench daemon started.
  *   4. Surface the announcement to a caller-provided handler for telemetry.
  *
- * No actual bridge work (pairing, transport, action dispatch) happens here.
- * That arrives in Phase C1+ when stdio JSON-RPC + the BridgeServiceProtocol
- * are wired up.
+ * The daemon is now local-only: Screen Watch, creative-app helpers, editor
+ * opening, Finder reveal, and stdio JSON-RPC diagnostics.
  *
  * The client is gated externally — `main/index.ts` only constructs it when
  * `AGBENCH_BRIDGE_DAEMON=1` is set in the environment. Production builds
@@ -46,18 +44,15 @@ export interface BridgeDaemonClientOptions {
   onStderr?: (text: string) => void
   /** Daemon exited unexpectedly. `code` is `null` when killed by signal. */
   onExit?: (code: number | null) => void
-  /** Optional notification handler — server-pushed messages with no `id`.
-   * Phase C2+ will use this for pairing acceptance, transport state changes,
-   * incoming iOS actions. */
+  /** Optional notification handler — server-pushed messages with no `id`. */
   onNotification?: (method: string, params: unknown) => void
   /** Optional inbound-request handler — Phase C3.5+. The daemon issues
    * `{id, method, params}` envelopes when it needs to ASK the host for
-   * something and await an answer (e.g. "should I accept this iOS action?").
+   * something and await an answer.
    * Return a value (sync or via Promise); the client encodes a JSON-RPC
    * result envelope and writes it back on stdin. Throw a `BridgeDaemonError`
-   * to send a structured JSON-RPC error (the daemon's awaiter will rethrow
-   * a matching `BridgeRequester.RequesterError.remote`). Throwing any other
-   * Error sends a generic `-32603 internalError`. If no handler is set, the
+   * to send a structured JSON-RPC error. Throwing any other Error sends a
+   * generic `-32603 internalError`. If no handler is set, the
    * client responds with `-32601 methodNotFound` so the daemon awaiter
    * doesn't hang. */
   onRequest?: (method: string, params: unknown) => unknown | Promise<unknown>
@@ -312,8 +307,8 @@ export class BridgeDaemonClient {
    *   per-call via `options.timeoutMs` for methods like the attached-window
    *   picker that legitimately block on user gesture).
    *
-   * Phase C1 supported methods: `bridge.ping`, `bridge.status`,
-   * `bridge.getProductConfiguration`. Additional methods land in later phases.
+   * Supported methods include `bridge.ping`, `bridge.status`, Screen Watch,
+   * creative-app helpers, editor opening, and Finder reveal.
    */
   async request<T = unknown>(
     method: string,
@@ -362,9 +357,8 @@ export class BridgeDaemonClient {
   /**
    * Handle a daemon → host inbound request. Invokes the caller-supplied
    * `onRequest` handler and writes a JSON-RPC response back to stdin so the
-   * daemon's `BridgeRequester` awaiter resolves. If no handler is registered
-   * we respond with method-not-found so the daemon doesn't hang on its
-   * configured timeout.
+   * daemon-side awaiter resolves. If no handler is registered we respond with
+   * method-not-found so the daemon doesn't hang on its configured timeout.
    */
   private async handleInboundRequest(id: string, method: string, params: unknown): Promise<void> {
     if (!this.options.onRequest) {

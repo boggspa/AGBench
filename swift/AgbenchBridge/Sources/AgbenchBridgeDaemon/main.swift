@@ -6,75 +6,28 @@ import AppKit
 // flow (no cross-thread mutation), so `@preconcurrency` downgrades the
 // strict-mode complaints to warnings without papering over real races.
 @preconcurrency import ScreenCaptureKit
-import BridgeCore
-import BridgeCryptoPrimitives
-import BridgeCryptoPairing
-import BridgeLANTransport
 
-/// AgbenchBridgeDaemon — Phase C0 proof-of-life entry point.
+/// AgbenchBridgeDaemon — self-contained stdio JSON-RPC helper.
 ///
-/// At this stage the daemon does nothing beyond:
-///   1. Configure `BridgeProductConfiguration.current` with AGBench's
-///      product identifiers (so the BridgeCore transport stack uses the
-///      right ALPN / Keychain entries / Bonjour service name when we wire
-///      it up in Phase C2).
-///   2. Print a single JSON line on stdout so the Electron parent can
-///      confirm the daemon spawned successfully and read its protocol
-///      capabilities.
-///   3. Stay alive on stdin (blocks until stdin closes — i.e. parent dies).
-///
-/// Phase C1 will replace the print-and-block loop with a real JSON-RPC
-/// dispatch over stdio. For now, this is enough to prove:
-///   - The package compiles cleanly against BridgeCore.
-///   - `BridgeProductConfiguration` accepts an AGBench preset and the
-///     transport identifiers swap correctly.
-///   - Electron can spawn + monitor the daemon process.
+/// The daemon now owns only the local macOS surfaces that do not require the
+/// removed remote-iOS transport layer: Screen Watch / Appwatch, creative-app
+/// dispatch, editor opening, Finder reveal, and process status/ping.
 
 // MARK: - AGBench product preset
 
-/// Identifiers the AGBench iOS bridge will use. Mirrors the shape of
-/// `BridgeProductConfiguration.codex` but with AGBench-specific values.
-/// Bundle IDs / app group / Bonjour service names / Keychain scopes all
-/// distinct so a single iPhone can pair with both companions without
-/// identifier collisions.
-private let agBenchConfiguration = BridgeProductConfiguration(
-    displayName: "AGBench",
-    macBundleIdentifier: "com.chrisizatt.agbench.mac",
-    iosBundleIdentifier: "com.chrisizatt.agbench.ios",
-    appGroupIdentifier: "group.com.chrisizatt.agbench",
-    // Upstream BridgeProductConfiguration dropped `cloudKitContainerIdentifier`;
-    // keeping the old product-specific identifier here would re-introduce the
-    // build break. CloudKit is not used by AGBench's daemon path.
-    keychainServiceIdentifier: "com.chrisizatt.agbench",
-    bonjourServiceType: "_agbench._tcp",
-    bonjourQUICServiceType: "_agbench-quic._udp",
-    directTCPPort: 38747,
-    directQUICPort: 38747,
-    quicTransport: QUICTransportIdentifiers(
-        alpn: "agbench-live-v1",
-        p12Password: "agbench-local-quic",
-        keychainLabel: "AGBench QUIC Transport Identity",
-        keychainDescription: "AGBench local QUIC transport identity",
-        keychainServiceIdentifier: "com.chrisizatt.agbench.quicTransportIdentity",
-        identityFileBasename: "AGBenchQUICIdentity",
-        certificateCommonName: "AGBench QUIC",
-        supportDirectoryName: "AGBench"
-    )
-)
-
-// Install the AGBench preset BEFORE any BridgeCore consumer reads
-// `.current`. Subsequent transport spin-up (Phase C2) will pick this up.
-BridgeProductConfiguration.current = agBenchConfiguration
+private let daemonDisplayName = "AGBench"
+private let bonjourServiceType = "_agbench._tcp"
+private let bonjourQUICServiceType = "_agbench-quic._udp"
+private let quicALPN = "agbench-live-v1"
 
 // MARK: - Lifetime + helpers
 
 let startupTime = Date()
-let protocolVersion = "0.0.11-phase-d1-pair"
+let protocolVersion = "0.1.0-stdio-local"
 
 /// Single serialized stdout sink shared by hello, the dispatcher's responses,
-/// `BridgeNotifier`, and `BridgeRequester`. Constructed early because the
-/// daemon-hello announcement should go through it too — once the hello is on
-/// the wire, any background-thread writes will already be properly serialized.
+/// and any future notification writers. Constructed early because the
+/// daemon-hello announcement should go through it too.
 let stdoutWriter = BridgeStdoutWriter()
 
 func writeLine(_ line: String) {
@@ -82,39 +35,6 @@ func writeLine(_ line: String) {
 }
 
 // MARK: - Proof-of-life announcement
-
-let tailscaleEndpointResolver = TailscaleEndpointResolver()
-let startupTailscaleEndpoint = tailscaleEndpointResolver.current()
-
-struct DaemonDirectEndpoint: Encodable {
-    let kind: String
-    let transport: String
-    let host: String?
-    let port: UInt16
-    let serviceName: String?
-}
-
-func advertisedDirectEndpoints(tailscaleEndpoint: TailscaleEndpoint) -> [DaemonDirectEndpoint] {
-    var endpoints = [
-        DaemonDirectEndpoint(
-            kind: "quicBonjour",
-            transport: "quic",
-            host: nil,
-            port: BridgeProductConfiguration.current.directQUICPort,
-            serviceName: BridgeProductConfiguration.current.bonjourQUICServiceType
-        )
-    ]
-    if let ipv4 = tailscaleEndpoint.ipv4 {
-        endpoints.append(DaemonDirectEndpoint(
-            kind: "quicTailscale",
-            transport: "quic",
-            host: ipv4,
-            port: BridgeProductConfiguration.current.directQUICPort,
-            serviceName: nil
-        ))
-    }
-    return endpoints
-}
 
 struct DaemonHello: Encodable {
     let kind: String
@@ -124,8 +44,7 @@ struct DaemonHello: Encodable {
     let bonjourServiceType: String
     let bonjourQUICServiceType: String
     let quicALPN: String
-    let directEndpoints: [DaemonDirectEndpoint]
-    let tailscaleEndpoint: TailscaleEndpoint
+    let remoteTransportEnabled: Bool
     let pid: Int32
     let timestamp: String
 }
@@ -134,12 +53,11 @@ let hello = DaemonHello(
     kind: "daemon-hello",
     daemon: "AgbenchBridgeDaemon",
     protocolVersion: protocolVersion,
-    displayName: agBenchConfiguration.displayName,
-    bonjourServiceType: agBenchConfiguration.bonjourServiceType,
-    bonjourQUICServiceType: agBenchConfiguration.bonjourQUICServiceType,
-    quicALPN: BridgeProductConfiguration.current.quicTransport.alpn,
-    directEndpoints: advertisedDirectEndpoints(tailscaleEndpoint: startupTailscaleEndpoint),
-    tailscaleEndpoint: startupTailscaleEndpoint,
+    displayName: daemonDisplayName,
+    bonjourServiceType: bonjourServiceType,
+    bonjourQUICServiceType: bonjourQUICServiceType,
+    quicALPN: quicALPN,
+    remoteTransportEnabled: false,
     pid: ProcessInfo.processInfo.processIdentifier,
     timestamp: ISO8601DateFormatter().string(from: Date())
 )
@@ -153,177 +71,6 @@ if let helloData = try? encoder.encode(hello),
     // be a straight line-reader (no custom framing).
     writeLine(helloLine)
 }
-
-// MARK: - Pairing coordinator
-
-// Persistent device store rooted at
-// ~/Library/Application Support/<supportDirectoryName>/trusted-devices.json
-let trustedDeviceStore: TrustedDeviceStore
-do {
-    trustedDeviceStore = try FileTrustedDeviceStore()
-} catch {
-    // Fall back to an in-memory store so the daemon still starts; the user
-    // will see "0 trusted devices" but pairing operations still work for
-    // this session. A real diagnostic event lands here in Phase C-late.
-    FileHandle.standardError.write(Data("[AgbenchBridgeDaemon] WARN: file-backed device store unavailable: \(error.localizedDescription)\n".utf8))
-    trustedDeviceStore = InMemoryTrustedDeviceStore()
-}
-
-// Mac identity signing key — generated fresh per daemon process for Phase C2.
-// Persistence (Keychain) lands in Phase C-late. The identityKeyID derived
-// from this key gets baked into each `TrustedDeviceRecord`, so today's
-// regeneration on every restart means existing records lose the link to the
-// signing key. Acceptable for v1 since we don't verify response signatures
-// yet; the contract changes when signature verification is added.
-let macIdentitySigningKey = DeviceIdentitySigningKey()
-let macDeviceID = DeviceID(UUID().uuidString.lowercased())
-
-// SecretStore — Keychain in production, in-memory fallback for tests / when
-// Keychain is unavailable. `KeychainSecretStore` lives in BridgeCryptoPairing
-// and uses the configured service identifier so a second host (the future
-// AGBench companion shipping outside the daemon) can share the namespace.
-// `allowsAuthenticationUI: false` so the daemon never prompts — items are
-// stored with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (the
-// KeychainSecretStore default), accessible after first unlock per boot.
-let secretStore: SecretStore = KeychainSecretStore(
-    service: BridgeProductConfiguration.current.keychainServiceIdentifier,
-    accessGroup: nil,
-    allowsAuthenticationUI: false
-)
-
-let pairingCoordinator = PairingCoordinator(
-    deviceStore: trustedDeviceStore,
-    secretStore: secretStore,
-    macDeviceID: macDeviceID,
-    macIdentitySigningKey: macIdentitySigningKey,
-    tailscaleEndpointHintProvider: { @Sendable () -> String? in
-        tailscaleEndpointResolver.current().quicEndpointHint(
-            port: BridgeProductConfiguration.current.directQUICPort
-        )
-    }
-)
-
-// Notifier for daemon → Electron JSON-RPC notifications. Used by the
-// transport listener's @Sendable handlers (which can fire from arbitrary
-// threads) to publish `bridge.didReceive*` events. Owning it here keeps
-// the daemon's notification surface in one place — future inbound paths
-// (RunService events, approval prompts) reuse the same notifier.
-let bridgeNotifier = BridgeNotifier(writer: stdoutWriter)
-
-// Requester for daemon → Electron JSON-RPC requests (Phase C3.5). Pairs an
-// outbound request with an awaitable response so transport handlers can
-// actually consult Electron before building an ack (instead of returning the
-// Phase C3 placeholder). Shares the stdout writer with the notifier so a
-// request line can never split a notification line (or vice versa) at the
-// byte level.
-let bridgeRequester = BridgeRequester(writer: stdoutWriter)
-
-let transportListener = TransportListener(
-    deviceStore: trustedDeviceStore,
-    secretStore: secretStore,
-    macDeviceID: macDeviceID,
-    notifier: bridgeNotifier,
-    requester: bridgeRequester,
-    tailscaleEndpointProvider: { @Sendable () -> TailscaleEndpoint in
-        tailscaleEndpointResolver.current()
-    }
-)
-let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener)
-
-// Boot-time activation: if any trusted devices already exist from prior
-// pairings (the common case after Electron restarts), bind the QUIC
-// listener immediately so the iPad's reconnect attempts find a live
-// peer without the user having to re-pair. When no trusted devices
-// exist, this is a no-op — the listener stays cold until the first
-// pair completes and `ensurePostPairTransportReady` activates it via
-// the pairing-finalize path.
-Task.detached { [transportListener] in
-    do {
-        try await transportListener.ensureRunningWithCurrentTrustedControllers()
-        let status = await transportListener.status()
-        FileHandle.standardError.write(Data(
-            "[QUIC pipeline] boot activation OK running=\(status.running) trustedControllers=\(status.trustedControllerCount) service=\(status.bonjourServiceType) port=\(status.port.map(String.init) ?? "nil")\n".utf8
-        ))
-    } catch TransportListener.TransportListenerError.noTrustedDevices {
-        FileHandle.standardError.write(Data(
-            "[QUIC pipeline] boot activation skipped reason=no-trusted-devices (listener will start on first pair)\n".utf8
-        ))
-    } catch {
-        FileHandle.standardError.write(Data(
-            "[QUIC pipeline] WARN: boot activation failed error=\(error.localizedDescription)\n".utf8
-        ))
-    }
-}
-
-func localMacDisplayName() -> String {
-    // Optional-typed array so Swift can infer the closure parameter as
-    // `String?` and resolve `.whitespacesAndNewlines` against the
-    // `CharacterSet` namespace cleanly. Prior version relied on implicit
-    // contextual lookup that broke when the array's element type became
-    // ambiguous after a BridgeCore drift.
-    let candidates: [String?] = [
-        Host.current().localizedName,
-        ProcessInfo.processInfo.hostName,
-        agBenchConfiguration.displayName
-    ]
-    return candidates
-        .compactMap { (value: String?) in value?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-        .first { !$0.isEmpty } ?? agBenchConfiguration.displayName
-}
-
-func logQUICPipeline(_ message: String) {
-    FileHandle.standardError.write(Data("[QUIC pipeline] \(message)\n".utf8))
-}
-
-func ensurePostPairTransportReady(
-    result: PairingCoordinator.FinalizePairingResult,
-    transportListener: TransportListener,
-    source: String
-) async {
-    guard let decision = result.finalDecision, decision.accepted else { return }
-    let pairID = decision.pairID ?? "nil"
-    logQUICPipeline("post-pair activation requested source=\(source) pairID=\(pairID)")
-    do {
-        try await transportListener.ensureRunningWithCurrentTrustedControllers()
-        let status = await transportListener.status()
-        logQUICPipeline(
-            "post-pair transport ready source=\(source) pairID=\(pairID) running=\(status.running) trustedControllers=\(status.trustedControllerCount) service=\(status.bonjourServiceType) port=\(status.port.map(String.init) ?? "nil")"
-        )
-    } catch {
-        logQUICPipeline("WARN: post-pair transport activation failed source=\(source) pairID=\(pairID) error=\(error.localizedDescription)")
-    }
-}
-
-// Phase D1-pair: TCP pairing listener for the iOS pairing handshake.
-// Advertised via Bonjour at the AGBench TCP service type so the
-// iPhone's PairingChannelClient can NWBrowser-discover us. The listener
-// itself is unauthenticated by design (pair-derived keys don't exist
-// until pairing completes); security relies on the session-id being
-// unguessable + the 6-digit transcript code matching on both ends.
-let pairingChannelListener = PairingChannelListener(
-    bonjourServiceType: BridgeProductConfiguration.current.bonjourServiceType,
-    port: 0, // ephemeral; Bonjour publishes the resolved port
-    iosFinalDecisionHandler: { @Sendable sessionID, accepted, message in
-        let result = try await pairingCoordinator.recordIOSFinalDecision(
-            pairingSessionID: sessionID,
-            accepted: accepted,
-            message: message
-        )
-        guard let decision = result.finalDecision else { return nil }
-        if decision.accepted {
-            await ensurePostPairTransportReady(
-                result: result,
-                transportListener: transportListener,
-                source: "ios-final-decision"
-            )
-        }
-        return PairingChannelListener.PairingFinalDecisionFrame(
-            accepted: decision.accepted,
-            message: decision.message,
-            pairID: decision.pairID
-        )
-    }
-)
 
 /// Re-encode a `Codable` Swift value as a Foundation tree (Dictionary / Array
 /// / scalars) so it's compatible with `JSONSerialization` and therefore with
@@ -348,10 +95,9 @@ func decodeParams<T: Decodable>(_ params: Any, as type: T.Type) throws -> T {
 }
 
 /// Block until an async value resolves. The dispatcher's handler signature is
-/// synchronous (`(Any) throws -> Any`), but PairingCoordinator is an actor —
-/// every call into it is async. Bridge via DispatchSemaphore: only one
-/// request is in flight at a time (single-threaded readLine loop) so there's
-/// no contention risk.
+/// synchronous (`(Any) throws -> Any`), while ScreenCaptureKit/Appwatch state
+/// is actor-backed and async. Bridge via DispatchSemaphore from the handler
+/// queue without blocking AppKit's main runloop.
 func runBlocking<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) throws -> T {
     let semaphore = DispatchSemaphore(value: 0)
     var result: Result<T, Error>!
@@ -391,49 +137,9 @@ func runBlockingOnMain<T: Sendable>(
     return try result.get()
 }
 
-// Map `PairingCoordinator.PairingError` cases to JSON-RPC error codes.
-func rpcError(from pairingError: PairingCoordinator.PairingError) -> JSONRPCError {
-    switch pairingError {
-    case .sessionNotFound(let sid):
-        return JSONRPCError(code: JSONRPCErrorCode.bridgeUnavailable, message: "Pairing session not found: \(sid)")
-    case .sessionAlreadyConfirmed(let sid):
-        return JSONRPCError(code: JSONRPCErrorCode.invalidRequest, message: "Pairing session already confirmed: \(sid)")
-    case .sessionExpired(let sid):
-        return JSONRPCError(code: JSONRPCErrorCode.bridgeUnavailable, message: "Pairing session expired: \(sid)")
-    case .malformedPublicKey:
-        return JSONRPCError(code: JSONRPCErrorCode.invalidParams, message: "Malformed public key in pairing response")
-    case .missingResponseForFinalize(let sid):
-        return JSONRPCError(code: JSONRPCErrorCode.invalidRequest, message: "Cannot finalize pairing before confirmPairing: \(sid)")
-    }
-}
-
 // MARK: - JSON-RPC dispatcher
 
 let dispatcher = JSONRPCDispatcher()
-
-func registerSummaryBroadcast(_ method: String, kind: SummaryBroadcastKind) {
-    dispatcher.register(method) { rawParams in
-        do {
-            let eventJSON = try SummaryBroadcaster.makeEventJSON(
-                kind: kind,
-                params: rawParams,
-                publishedAt: Date()
-            )
-            let threadID = SummaryBroadcaster.threadID(kind: kind, params: rawParams)
-            Task.detached { @Sendable [summaryBroadcaster, eventJSON, threadID] in
-                await summaryBroadcaster.broadcast(eventJSON, threadID: threadID)
-            }
-            FileHandle.standardError.write(Data(
-                "[\(method)] broadcast channel=\(RemoteProjectionEnvelope.channel) kind=\(kind.projectionKind) bytes=\(eventJSON.count) threadID=\(threadID ?? "nil")\n".utf8
-            ))
-        } catch {
-            FileHandle.standardError.write(Data(
-                "[\(method)] WARN: \(String(describing: error))\n".utf8
-            ))
-        }
-        return [String: Any]()
-    }
-}
 
 /// `bridge.ping` — keep-alive heartbeat. Returns `{ "pong": true }`. Useful
 /// for end-to-end round-trip tests and for the Electron client to verify the
@@ -443,400 +149,18 @@ dispatcher.register("bridge.ping") { _ in
 }
 
 /// `bridge.status` — diagnostic snapshot of the daemon process state.
-/// Mirrors what the Electron-side `BridgeDaemonClient.status()` returns plus
-/// daemon-internal details (uptime, protocol version, paired devices, pending
-/// pairing sessions).
 dispatcher.register("bridge.status") { _ in
     let uptimeSeconds = Int(Date().timeIntervalSince(startupTime))
-    let (pairedDeviceCount, pendingSessionCount, transportRunning) = try runBlocking { @Sendable [pairingCoordinator, trustedDeviceStore, transportListener] in
-        let pending = await pairingCoordinator.pendingSessionCount()
-        let paired: Int
-        if let fileStore = trustedDeviceStore as? FileTrustedDeviceStore {
-            paired = await fileStore.snapshot().filter { $0.pairingState == .active }.count
-        } else {
-            paired = 0
-        }
-        let running = await transportListener.isRunning()
-        return (paired, pending, running)
-    }
     return [
         "daemon": "AgbenchBridgeDaemon",
         "protocolVersion": protocolVersion,
         "pid": Int(ProcessInfo.processInfo.processIdentifier),
         "uptimeSeconds": uptimeSeconds,
         "startupTime": ISO8601DateFormatter().string(from: startupTime),
-        "transportRunning": transportRunning,
-        "pairedDeviceCount": pairedDeviceCount,
-        "pendingPairingSessions": pendingSessionCount
-    ]
-}
-
-// MARK: - Pairing RPCs (Phase C2)
-
-struct BeginPairingParams: Decodable {
-    let controllerDisplayName: String?
-}
-
-/// `bridge.beginPairing` — generates an ephemeral keypair + nonce, returns
-/// a `PairingBootstrapPayload` the caller renders as a QR code. The session
-/// id ties the subsequent `confirmPairing` and `finalizePairing` calls.
-dispatcher.register("bridge.beginPairing") { params in
-    let parsed: BeginPairingParams = (try? decodeParams(params, as: BeginPairingParams.self)) ?? BeginPairingParams(controllerDisplayName: nil)
-    let displayName = parsed.controllerDisplayName ?? "iOS device"
-    let result = try runBlocking { @Sendable [pairingCoordinator] in
-        await pairingCoordinator.beginPairing(controllerDisplayName: displayName)
-    }
-    var object = try encodeAsJSONObject(result) as? [String: Any]
-    if var bootstrap = object?["bootstrapPayload"] as? [String: Any] {
-        bootstrap["macDisplayName"] = localMacDisplayName()
-        object?["bootstrapPayload"] = bootstrap
-    }
-    if let object {
-        return object
-    }
-    return try encodeAsJSONObject(result)
-}
-
-struct ConfirmPairingParams: Decodable {
-    let response: PairingResponsePayload
-}
-
-/// `bridge.confirmPairing` — receives the iPhone's response, derives shared
-/// keys, computes the 6-digit confirmation code. Returns the code for the
-/// user to verify on both ends.
-dispatcher.register("bridge.confirmPairing") { params in
-    let parsed: ConfirmPairingParams
-    do {
-        parsed = try decodeParams(params, as: ConfirmPairingParams.self)
-    } catch {
-        throw JSONRPCError(code: JSONRPCErrorCode.invalidParams, message: "Invalid confirmPairing params: \(error.localizedDescription)")
-    }
-    let result: PairingCoordinator.ConfirmPairingResult
-    do {
-        result = try runBlocking { @Sendable [pairingCoordinator] in
-            try await pairingCoordinator.confirmPairing(response: parsed.response)
-        }
-    } catch let pairingError as PairingCoordinator.PairingError {
-        throw rpcError(from: pairingError)
-    }
-    return try encodeAsJSONObject(result)
-}
-
-struct FinalizePairingParams: Decodable {
-    let pairingSessionID: String
-    let userConfirmed: Bool
-}
-
-/// `bridge.finalizePairing` — if the user reports the codes matched on both
-/// ends, persists a `TrustedDeviceRecord`. Otherwise discards the session.
-/// Phase D1-pair: also signals the iOS pairing channel listener to ship
-/// the final decision frame back over the still-open TCP connection so
-/// the iPhone learns whether pairing succeeded.
-dispatcher.register("bridge.finalizePairing") { params in
-    let parsed: FinalizePairingParams
-    do {
-        parsed = try decodeParams(params, as: FinalizePairingParams.self)
-    } catch {
-        throw JSONRPCError(code: JSONRPCErrorCode.invalidParams, message: "Invalid finalizePairing params: \(error.localizedDescription)")
-    }
-    let result: PairingCoordinator.FinalizePairingResult
-    do {
-        result = try runBlocking { @Sendable [pairingCoordinator] in
-            try await pairingCoordinator.finalizePairing(
-                pairingSessionID: parsed.pairingSessionID,
-                userConfirmed: parsed.userConfirmed
-            )
-        }
-    } catch let pairingError as PairingCoordinator.PairingError {
-        throw rpcError(from: pairingError)
-    }
-    // Phase D1-pair: record the desktop-side decision. If this completes
-    // finalisation (either because both sides accepted, or because the Mac
-    // rejected), relay the final frame to iOS. Otherwise keep the TCP
-    // connection open until iOS sends its own final-decision frame.
-    let sessionID = parsed.pairingSessionID
-    let pairID = result.finalDecision?.pairID
-    logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(parsed.userConfirmed) pairID=\(pairID ?? "nil") waitingFor=\(result.waitingFor ?? "none")")
-    if let decision = result.finalDecision {
-        // Run post-pair transport activation + final-decision delivery off the
-        // IPC's hot path. Two reasons:
-        //   1. The renderer's `BridgeDaemonClient.request` has a 10s timeout.
-        //      QUIC listener startup can exceed that when Tailscale binding
-        //      flakes (NWError 22), and the Mac UI then shows a stuck modal
-        //      while the daemon actually succeeded. Returning immediately lets
-        //      the renderer dismiss the modal.
-        //   2. Final-decision frame still has to wait for the listener so iOS
-        //      finds a bound port to connect to — so the activation + frame
-        //      send live in the same detached task in order.
-        Task.detached { @Sendable [transportListener, result, pairingChannelListener, sessionID, decision] in
-            if decision.accepted {
-                await ensurePostPairTransportReady(
-                    result: result,
-                    transportListener: transportListener,
-                    source: "mac-finalize"
-                )
-            }
-            await pairingChannelListener.sendFinalDecision(
-                sessionID: sessionID,
-                accepted: decision.accepted,
-                message: decision.message,
-                pairID: decision.pairID
-            )
-        }
-    }
-    return try encodeAsJSONObject(result)
-}
-
-/// `bridge.listTrustedDevices` — full snapshot of the persisted device store.
-dispatcher.register("bridge.listTrustedDevices") { _ in
-    let records = try runBlocking { @Sendable [trustedDeviceStore] in
-        if let fileStore = trustedDeviceStore as? FileTrustedDeviceStore {
-            return await fileStore.snapshot()
-        }
-        // InMemory fallback — no public snapshot, so we synthesize via a
-        // lookup of the empty set (records start at zero and persistence
-        // wouldn't survive a restart anyway). Phase C-late will add a
-        // protocol-level snapshot method to TrustedDeviceStore.
-        // 1.0.6 — `Array<…>()` long form: Swift 6.2+ parses the `[T]()` short
-        // form as a call on `[T.Type]` (an array literal of metatypes) and
-        // fails "cannot call value of non-function type." Same fix already
-        // applied at FileTrustedDeviceStore.swift:135.
-        return Array<TrustedDeviceRecord>()
-    }
-    return try encodeAsJSONObject(records)
-}
-
-struct RevokeDeviceParams: Decodable {
-    let deviceID: String
-}
-
-/// `bridge.revokeDevice` — marks a device record as revoked. The next
-/// connection attempt from that pairID will be rejected by the transport
-/// layer (Phase C3).
-dispatcher.register("bridge.revokeDevice") { params in
-    let parsed: RevokeDeviceParams
-    do {
-        parsed = try decodeParams(params, as: RevokeDeviceParams.self)
-    } catch {
-        throw JSONRPCError(code: JSONRPCErrorCode.invalidParams, message: "Invalid revokeDevice params: \(error.localizedDescription)")
-    }
-    let deviceID = DeviceID(parsed.deviceID)
-    let revokedRecord: TrustedDeviceRecord? = try runBlocking { @Sendable [trustedDeviceStore] in
-        await trustedDeviceStore.revoke(deviceID: deviceID, at: Date())
-        return await trustedDeviceStore.record(for: deviceID)
-    }
-    return [
-        "deviceID": parsed.deviceID,
-        "revoked": revokedRecord?.pairingState == .revoked
-    ]
-}
-
-// MARK: - Transport RPCs (Phase C3)
-
-/// `bridge.startListening` — bind the QUIC port, publish via Bonjour, accept
-/// paired controllers. Rejects with `bridgeUnavailable` when no devices are
-/// paired yet (a server with zero trusted controllers can't authenticate
-/// anyone, so the bind would be useless).
-dispatcher.register("bridge.startListening") { _ in
-    do {
-        try runBlocking { @Sendable [transportListener] in
-            try await transportListener.start()
-        }
-    } catch let err as TransportListener.TransportListenerError {
-        switch err {
-        case .alreadyRunning:
-            throw JSONRPCError(code: JSONRPCErrorCode.invalidRequest, message: err.description)
-        case .notRunning:
-            throw JSONRPCError(code: JSONRPCErrorCode.invalidRequest, message: err.description)
-        case .noTrustedDevices:
-            throw JSONRPCError(code: JSONRPCErrorCode.bridgeUnavailable, message: err.description)
-        case .underlying:
-            throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: err.description)
-        }
-    }
-    let status = try runBlocking { @Sendable [transportListener] in
-        await transportListener.status()
-    }
-    return try encodeAsJSONObject(status)
-}
-
-/// `bridge.stopListening` — tear down the QUIC server + un-publish Bonjour.
-/// In-flight sessions are torn down by the underlying `LANBridgeServer.stop()`.
-dispatcher.register("bridge.stopListening") { _ in
-    do {
-        try runBlocking { @Sendable [transportListener] in
-            try await transportListener.stop()
-        }
-    } catch let err as TransportListener.TransportListenerError {
-        switch err {
-        case .notRunning:
-            throw JSONRPCError(code: JSONRPCErrorCode.invalidRequest, message: err.description)
-        default:
-            throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: err.description)
-        }
-    }
-    let status = try runBlocking { @Sendable [transportListener] in
-        await transportListener.status()
-    }
-    return try encodeAsJSONObject(status)
-}
-
-/// `bridge.listenerStatus` — read-only snapshot of the listener state.
-/// Useful for the Electron settings UI to poll without trying to start.
-dispatcher.register("bridge.listenerStatus") { _ in
-    let status = try runBlocking { @Sendable [transportListener] in
-        await transportListener.status()
-    }
-    return try encodeAsJSONObject(status)
-}
-
-// MARK: - Pairing channel diagnostic RPC (Phase D1-pair)
-
-/// `bridge.pairingListenerStatus` — read-only snapshot for diagnostics
-/// and the Electron-side pairing UI ("waiting for iPhone…" indicator).
-dispatcher.register("bridge.pairingListenerStatus") { _ in
-    let port = try runBlocking { @Sendable [pairingChannelListener] in
-        await pairingChannelListener.boundPort()
-    }
-    return [
-        "bonjourServiceType": BridgeProductConfiguration.current.bonjourServiceType,
-        "running": port != nil,
-        "port": port as Any
-    ]
-}
-
-// MARK: - Diagnostic RPCs (Phase C1, extended for C2)
-
-/// `bridge.getProductConfiguration` — full snapshot of the active
-/// `BridgeProductConfiguration`. Used by the Electron-side settings UI to
-/// display "what identifiers will iOS clients pair against", and by tests
-/// to confirm the AGBench preset is in effect (vs accidentally falling
-/// back to the Codex `.default`).
-dispatcher.register("bridge.getProductConfiguration") { _ in
-    let cfg = BridgeProductConfiguration.current
-    return [
-        "displayName": cfg.displayName,
-        "macBundleIdentifier": cfg.macBundleIdentifier,
-        "iosBundleIdentifier": cfg.iosBundleIdentifier,
-        "appGroupIdentifier": cfg.appGroupIdentifier,
-        // `cloudKitContainerIdentifier` was dropped from upstream
-        // BridgeProductConfiguration during BridgeCore drift; the renderer
-        // settings panel no longer reads it.
-        "keychainServiceIdentifier": cfg.keychainServiceIdentifier,
-        "bonjourServiceType": cfg.bonjourServiceType,
-        "bonjourQUICServiceType": cfg.bonjourQUICServiceType,
-        "directTCPPort": Int(cfg.directTCPPort),
-        "directQUICPort": Int(cfg.directQUICPort),
-        "quicTransport": [
-            "alpn": cfg.quicTransport.alpn,
-            "keychainLabel": cfg.quicTransport.keychainLabel,
-            "keychainServiceIdentifier": cfg.quicTransport.keychainServiceIdentifier,
-            "certificateCommonName": cfg.quicTransport.certificateCommonName,
-            "supportDirectoryName": cfg.quicTransport.supportDirectoryName
-            // Note: p12Password and keychainDescription deliberately omitted
-            // from the snapshot — the password is a secret and the description
-            // is implementation-internal. Add if a real consumer needs them.
-        ]
-    ]
-}
-
-// MARK: - Notification RPCs (Phase C3-late)
-
-/// `bridge.testNotify` — synthesize a daemon→Electron notification on demand.
-/// Phase C3-late.3 smoke test: lets a Node-side client verify the notifier
-/// path works end-to-end without needing a real iOS connection. The Electron
-/// `BridgeDaemonClient.onNotification` callback should observe the message
-/// with the given (or default) method + params.
-///
-/// We read params as a raw Foundation tree (`[String: Any]`) rather than via
-/// a `Codable` intermediate so we don't need a custom JSON-tree decoder.
-/// Earlier `AnyCodable` attempts tripped a Swift runtime trap (silent SIGTRAP
-/// with no stderr) when scalar values came in via JSONDecoder's single-value
-/// container probing — passing the dispatcher's already-decoded tree through
-/// directly avoids the whole class of issue.
-dispatcher.register("bridge.testNotify") { rawParams in
-    let dict = (rawParams as? [String: Any]) ?? [:]
-    let method = (dict["method"] as? String) ?? "bridge.testNotification"
-    let payload: [String: Any] = (dict["payload"] as? [String: Any]) ?? [
-        "ok": true,
-        "source": "bridge.testNotify"
-    ]
-    bridgeNotifier.publish(method: method, params: payload)
-    return [
-        "published": true,
-        "method": method
-    ]
-}
-
-/// `bridge.testFireRequest` — synthesize a daemon→Electron REQUEST (not a
-/// notification) on demand and await the response. Phase C3.5.4 smoke test:
-/// proves the full round-trip works (stdout request → Electron handles →
-/// stdin response → daemon awaiter resumed → final result returned).
-///
-/// Used by the round-trip smoke. Returns
-///   `{ outboundMethod, daemonReceivedFromElectron: <whatever Electron replied with> }`
-/// so the smoke can inspect both halves of the trip with one RPC call.
-dispatcher.register("bridge.testFireRequest") { rawParams in
-    // Read raw Foundation tree (same approach as bridge.testNotify) so we
-    // don't need an AnyCodable-style intermediary for the loose JSON value.
-    guard let dict = rawParams as? [String: Any],
-          let outboundMethod = dict["outboundMethod"] as? String else {
-        throw JSONRPCError(
-            code: JSONRPCErrorCode.invalidParams,
-            message: "Invalid testFireRequest params: missing outboundMethod"
-        )
-    }
-    let outboundParams = (dict["outboundParams"] as? [String: Any]) ?? [:]
-    let outboundParamsJSON: Data
-    do {
-        outboundParamsJSON = try JSONSerialization.data(
-            withJSONObject: outboundParams,
-            options: [.sortedKeys]
-        )
-    } catch {
-        throw JSONRPCError(
-            code: JSONRPCErrorCode.invalidParams,
-            message: "Failed to encode outboundParams: \(error.localizedDescription)"
-        )
-    }
-    let method = outboundMethod
-    let timeout = (dict["timeoutSeconds"] as? NSNumber)?.doubleValue
-    let resultData: Data
-    do {
-        resultData = try runBlocking { @Sendable [bridgeRequester, outboundParamsJSON, method, timeout] in
-            try await bridgeRequester.request(
-                method: method,
-                paramsJSON: outboundParamsJSON,
-                timeoutSeconds: timeout
-            )
-        }
-    } catch let err as BridgeRequester.RequesterError {
-        switch err {
-        case .timeout:
-            throw JSONRPCError(
-                code: JSONRPCErrorCode.bridgeUnavailable,
-                message: err.description
-            )
-        case .remote(let code, let message, _):
-            throw JSONRPCError(code: code, message: message)
-        case .encodingFailed:
-            throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: err.description)
-        case .daemonShuttingDown:
-            throw JSONRPCError(code: JSONRPCErrorCode.bridgeUnavailable, message: err.description)
-        }
-    }
-    // Decode the Sendable Data back to a Foundation tree for the outer
-    // dispatcher response. `.fragmentsAllowed` because the result might be
-    // a scalar (e.g. `true`) rather than an object.
-    let receivedFromElectron: Any
-    if let decoded = try? JSONSerialization.jsonObject(with: resultData, options: [.fragmentsAllowed]) {
-        receivedFromElectron = decoded
-    } else {
-        receivedFromElectron = NSNull()
-    }
-    return [
-        "outboundMethod": outboundMethod,
-        "daemonReceivedFromElectron": receivedFromElectron
+        "remoteTransportEnabled": false,
+        "screenWatchEnabled": true,
+        "creativeAppsEnabled": true,
+        "editorOpenEnabled": true
     ]
 }
 
@@ -1599,216 +923,14 @@ dispatcher.register("workspace.revealInFinder") { params in
     return try FinderReveal.reveal(filePath: filePath)
 }
 
-// MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
-
-// Summary broadcasts (workspace/thread sidebar data) ride the same
-// BridgeRunEvent stream as live run events. Electron sends these as
-// fire-and-forget JSON-RPC notifications whenever desktop state changes.
-registerSummaryBroadcast("bridge.broadcastWorkspaceList", kind: .workspaceList)
-registerSummaryBroadcast("bridge.broadcastThreadList", kind: .threadList)
-registerSummaryBroadcast("bridge.broadcastWorkspaceUpdated", kind: .workspaceUpdated)
-registerSummaryBroadcast("bridge.broadcastThreadUpdated", kind: .threadUpdated)
-
-/// `bridge.remoteProjection` — generic typed Remote Task Console projection.
-/// Electron can send `{kind, payload, threadId?}` and the daemon forwards it
-/// over the same direct event path as run events using one
-/// `{channel:"remote-projection", kind, payload}` envelope.
-dispatcher.register("bridge.remoteProjection") { rawParams in
-    do {
-        let projection = try SummaryBroadcaster.makeRemoteProjectionEventJSON(
-            params: rawParams,
-            publishedAt: Date()
-        )
-        Task.detached { @Sendable [summaryBroadcaster, projection] in
-            await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
-        }
-        FileHandle.standardError.write(Data(
-            "[bridge.remoteProjection] broadcast bytes=\(projection.data.count) threadID=\(projection.threadID ?? "nil")\n".utf8
-        ))
-    } catch {
-        FileHandle.standardError.write(Data(
-            "[bridge.remoteProjection] WARN: \(String(describing: error))\n".utf8
-        ))
-    }
-    return [String: Any]()
-}
-
-/// `bridge.broadcastRemoteProjection` — Electron already built a
-/// RemoteProjectionEnvelope and asks the daemon to rebroadcast it to iOS.
-/// Keep the envelope intact as the event payload so iOS decodes the same
-/// source-of-truth projection the Mac generated.
-dispatcher.register("bridge.broadcastRemoteProjection") { rawParams in
-    do {
-        let projection = try SummaryBroadcaster.makeRemoteProjectionEventJSON(
-            params: rawParams,
-            publishedAt: Date()
-        )
-        Task.detached { @Sendable [summaryBroadcaster, projection] in
-            await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
-        }
-        FileHandle.standardError.write(Data(
-            "[bridge.broadcastRemoteProjection] broadcast bytes=\(projection.data.count) threadID=\(projection.threadID ?? "nil")\n".utf8
-        ))
-    } catch {
-        FileHandle.standardError.write(Data(
-            "[bridge.broadcastRemoteProjection] WARN: \(String(describing: error))\n".utf8
-        ))
-    }
-    return [String: Any]()
-}
-
-/// `bridge.broadcastRemoteProjectionSnapshot` — Electron sends a bounded
-/// list of current projection envelopes after subscribe/resume. Expand the
-/// batch into individual remote-projection events so the iOS reducer can
-/// apply each card/snapshot normally.
-dispatcher.register("bridge.broadcastRemoteProjectionSnapshot") { rawParams in
-    do {
-        let projections = try SummaryBroadcaster.makeRemoteProjectionSnapshotEvents(
-            params: rawParams,
-            publishedAt: Date()
-        )
-        for projection in projections {
-            Task.detached { @Sendable [summaryBroadcaster, projection] in
-                await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
-            }
-        }
-        FileHandle.standardError.write(Data(
-            "[bridge.broadcastRemoteProjectionSnapshot] broadcast count=\(projections.count)\n".utf8
-        ))
-    } catch {
-        FileHandle.standardError.write(Data(
-            "[bridge.broadcastRemoteProjectionSnapshot] WARN: \(String(describing: error))\n".utf8
-        ))
-    }
-    return [String: Any]()
-}
-
-/// `bridge.runEvent` — inbound notification (no id). Electron forwards every
-/// run-bus event here via `BridgeRunEventSink`. For each event the daemon
-/// re-encodes the params dict to JSON bytes and broadcasts via
-/// `TransportListener.broadcastRunEvent`, which wraps in a
-/// `BridgeTransportPayload.eventRecord(Data)` envelope and writes to every
-/// connected iOS peer's QUIC connection. When no peers are connected
-/// (typical until the iOS companion app exists), broadcast is a no-op.
-///
-/// Params shape: `{channel, provider, payload, publishedAt}`.
-///
-/// Dispatcher returns are discarded for notifications (no id); the empty
-/// dict here is a no-op write.
-dispatcher.register("bridge.runEvent") { rawParams in
-    let dict = (rawParams as? [String: Any]) ?? [:]
-    let channel = (dict["channel"] as? String) ?? "?"
-    let provider = (dict["provider"] as? String) ?? "?"
-    // `threadId` is a top-level hint the Electron-side sink extracts
-    // from the payload's `appChatId`. When present, the daemon scopes
-    // the QUIC broadcast to iOS pairs that have explicitly opted in to
-    // events for that thread via sendWatchedThreads. When nil, the
-    // daemon broadcasts to all connected pairs (backward-compat for
-    // pre-subscription clients).
-    let threadID = dict["threadId"] as? String
-    // Re-encode the whole params dict to JSON bytes for the wire payload.
-    // Sorted keys to make on-the-wire bytes stable for debugging / hashing.
-    guard let payloadJSON = try? JSONSerialization.data(
-        withJSONObject: dict,
-        options: [.sortedKeys]
-    ) else {
-        FileHandle.standardError.write(Data(
-            "[bridge.runEvent] WARN: failed to re-encode params for channel=\(channel) — dropping\n".utf8
-        ))
-        return [String: Any]()
-    }
-    // Off-thread broadcast — the dispatch loop must not block on async
-    // actor calls (same dispatch-queue pattern the handler loop uses).
-    Task.detached { @Sendable [transportListener, payloadJSON, threadID] in
-        await transportListener.broadcastRunEvent(payloadJSON, threadID: threadID)
-    }
-    FileHandle.standardError.write(Data(
-        "[bridge.runEvent] broadcast channel=\(channel) provider=\(provider) bytes=\(payloadJSON.count) threadID=\(threadID ?? "nil")\n".utf8
-    ))
-    return [String: Any]()
-}
-
-// MARK: - Pairing channel listener bootstrap (Phase D1-pair)
-
-// Start the iOS pairing channel listener early so iPhones can pair
-// from app launch. The listener binds an ephemeral TCP port + Bonjour-
-// advertises at the AGBench service type; iOS-side
-// `PairingChannelClient` discovers via the same name.
-Task.detached { @Sendable [pairingChannelListener] in
-    do {
-        try await pairingChannelListener.start()
-        if let port = await pairingChannelListener.boundPort() {
-            FileHandle.standardError.write(Data(
-                "[PairingChannelListener] started on port \(port) (Bonjour: \(BridgeProductConfiguration.current.bonjourServiceType))\n".utf8
-            ))
-        }
-    } catch {
-        FileHandle.standardError.write(Data(
-            "[PairingChannelListener] WARN: failed to start: \(error.localizedDescription)\n".utf8
-        ))
-    }
-}
-
-// Drive the listener's incomingResponses stream through PairingCoordinator
-// for code derivation, ship the code back to iOS, and notify Electron so
-// the desktop UI surfaces the code for user verification. On any error,
-// reject the pairing back to iOS with a structured message.
-Task.detached { @Sendable [pairingChannelListener, pairingCoordinator, bridgeNotifier] in
-    logPairingPipeline("incomingResponses consumer started")
-    for await incoming in pairingChannelListener.incomingResponses {
-        do {
-            logPairingPipeline("iPad response received by consumer session=\(incoming.sessionID)")
-            let result = try await pairingCoordinator.confirmPairing(response: incoming.response)
-            logPairingPipeline("confirmPairing succeeded session=\(result.pairingSessionID) code=\(result.confirmationCode)")
-            let notification = PairingCoordinator.PairingResponseNotification(result: result)
-            logPairingPipeline("emitting \(PairingCoordinator.PairingResponseNotification.method) upstream session=\(result.pairingSessionID)")
-            bridgeNotifier.publish(method: PairingCoordinator.PairingResponseNotification.method, params: notification.params)
-            await pairingChannelListener.sendConfirmationCode(sessionID: incoming.sessionID, code: result.confirmationCode)
-        } catch let pairingError as PairingCoordinator.PairingError {
-            // Tell the iPhone why and close the connection.
-            let reason: String
-            switch pairingError {
-            case .sessionNotFound(let s): reason = "Unknown pairing session: \(s)"
-            case .sessionAlreadyConfirmed(let s): reason = "Pairing session already confirmed: \(s)"
-            case .sessionExpired(let s): reason = "Pairing session expired: \(s)"
-            case .malformedPublicKey: reason = "Malformed public key"
-            case .missingResponseForFinalize: reason = "Internal: missing response for finalize"
-            }
-            await pairingChannelListener.sendFinalDecision(
-                sessionID: incoming.sessionID,
-                accepted: false,
-                message: reason
-            )
-            logPairingPipeline("rejected session=\(incoming.sessionID) reason=\(reason)")
-        } catch {
-            await pairingChannelListener.sendFinalDecision(
-                sessionID: incoming.sessionID,
-                accepted: false,
-                message: "Mac-side coordinator error: \(error.localizedDescription)"
-            )
-            logPairingPipeline("rejected session=\(incoming.sessionID) error=\(error.localizedDescription)")
-        }
-    }
-}
-
 // MARK: - Dispatch loop
 
 // Read JSON-RPC traffic one-line-per-message from stdin. Three kinds of
 // inbound lines:
-//   1. Response to one of our OUTBOUND requests (id-correlated by
-//      `BridgeRequester`). Handled there, dispatcher never sees it.
-//   2. Inbound request (`{id, method, params}`) — `JSONRPCDispatcher`
+//   1. Inbound request (`{id, method, params}`) — `JSONRPCDispatcher`
 //      handles it and we write the response back.
-//   3. Inbound notification (`{method, params}` with no id) — dispatched
+//   2. Inbound notification (`{method, params}` with no id) — dispatched
 //      and the dispatcher returns nil.
-//
-// CRITICAL: handler dispatch MUST happen off the reader thread. Some
-// handlers (e.g. `bridge.testFireRequest`) call `runBlocking` to await a
-// `BridgeRequester.request(...)` — but the response that unblocks them
-// arrives on stdin, which is the reader's job to consume. Running the
-// handler inline would deadlock the daemon. Fan out to a concurrent
-// dispatch queue so the read loop stays free to deliver responses to
-// `handleResponseLine`.
 //
 // Concurrency model:
 //   - Main thread: hosts NSApplication's run loop. `attachedWindow.requestPick`
@@ -1832,9 +954,6 @@ let stdinReaderQueue = DispatchQueue(label: "com.chrisizatt.agbench.daemon.stdin
 
 stdinReaderQueue.async {
     while let line = readLine(strippingNewline: false) {
-        if bridgeRequester.handleResponseLine(line) {
-            continue
-        }
         handlerQueue.async {
             if let response = dispatcher.handleLine(line) {
                 stdoutWriter.writeLine(response)
@@ -1864,9 +983,7 @@ NSApplication.shared.run()
 // order the prior in-place loop did:
 //   1. Wait for in-flight handlers so a ping issued right before EOF isn't
 //      silently dropped.
-//   2. Cancel pending outbound requests so awaiters see a structured error.
-//   3. Flush the stdout writer so the last batch of responses /
+//   2. Flush the stdout writer so the last batch of responses /
 //      notifications actually reaches the parent before the pipe closes.
 handlerQueue.sync(flags: .barrier) {}
-bridgeRequester.shutdown()
 stdoutWriter.flush()

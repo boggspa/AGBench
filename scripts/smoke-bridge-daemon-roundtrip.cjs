@@ -3,28 +3,10 @@
 /**
  * smoke-bridge-daemon-roundtrip
  *
- * Phase C3.5.6 smoke test. Exercises the full bidirectional JSON-RPC path:
- *
- *   smoke → daemon:   `bridge.testFireRequest`
- *   daemon → smoke:   `ui.testEcho`     (the daemon's outbound request)
- *   smoke → daemon:   response to `ui.testEcho`
- *   daemon → smoke:   response to `bridge.testFireRequest` containing what
- *                     the smoke answered above
- *
- * This proves:
- *   - BridgeStdoutWriter doesn't interleave concurrent emissions.
- *   - BridgeRequester correctly issues an outbound request and awaits.
- *   - The dispatch loop routes inbound stdin lines to either the requester
- *     (responses) or the dispatcher (requests/notifications).
- *   - The Electron-side `onRequest` handler in BridgeDaemonClient is mirrored
- *     correctly here: any peer that participates in JSON-RPC over stdio can
- *     answer a daemon request.
- *
- * Usage:
- *   node scripts/smoke-bridge-daemon-roundtrip.cjs
- *
- * Prereq: `swift build` has been run inside `swift/AgbenchBridge` so the
- * `.build/debug/AgbenchBridgeDaemon` binary exists.
+ * Self-contained daemon smoke. Spawns AgbenchBridgeDaemon, waits for the
+ * daemon-hello line, then verifies the inbound stdio JSON-RPC request/response
+ * path with bridge.ping and bridge.status. The removed remote-iOS transport
+ * layer no longer emits daemon-originated requests or run-event broadcasts.
  */
 
 const { spawn } = require('child_process')
@@ -42,7 +24,7 @@ const BIN_PATH = join(
   'debug',
   'AgbenchBridgeDaemon'
 )
-const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 10_000)
+const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 8000)
 
 if (!existsSync(BIN_PATH)) {
   console.error(`[smoke-bridge-daemon-roundtrip] daemon binary not found at ${BIN_PATH}`)
@@ -50,52 +32,19 @@ if (!existsSync(BIN_PATH)) {
   process.exit(2)
 }
 
-// Test payload — the daemon will echo this back via the round-trip.
-const echoMethod = 'ui.testEcho'
-const echoPayload = {
-  kind: 'roundtrip-smoke',
-  number: 7,
-  list: [1, 'two', false, null],
-  nested: { deep: { ok: true } }
-}
-// The daemon-side handler will return this exact object; the smoke then
-// verifies it propagates through `daemonReceivedFromElectron`.
-const smokeAnswer = {
-  echoed: echoPayload,
-  fromSmoke: true,
-  greeting: 'hello-from-smoke'
-}
-
-const fireRequestId = randomUUID()
-const fakeTailscaleStatus = {
-  Version: '1.56.1-smoke',
-  TailscaleIPs: ['100.64.10.20', 'fd7a:115c:a1e0::1'],
-  Self: {
-    HostName: 'smoke-mac',
-    DNSName: 'smoke-mac.tail-smoke.ts.net',
-    TailscaleIPs: ['100.64.10.20', 'fd7a:115c:a1e0::1']
-  },
-  BackendState: 'Running'
-}
+const pingId = randomUUID()
+const statusId = randomUUID()
 
 let helloSeen = false
-let tailnetEndpointSeen = false
-let inboundEchoHandled = false
-let fireRequestResponseSeen = false
+let pingSeen = false
+let statusSeen = false
 let stderrTail = ''
 
-const proc = spawn(BIN_PATH, [], {
-  shell: false,
-  stdio: 'pipe',
-  env: {
-    ...process.env,
-    AGBENCH_BRIDGE_TAILSCALE_STATUS_JSON: JSON.stringify(fakeTailscaleStatus)
-  }
-})
+const proc = spawn(BIN_PATH, [], { shell: false, stdio: 'pipe' })
 
 const timer = setTimeout(() => {
   fail(
-    `Timed out after ${TIMEOUT_MS}ms. helloSeen=${helloSeen} tailnetEndpointSeen=${tailnetEndpointSeen} inboundEchoHandled=${inboundEchoHandled} fireRequestResponseSeen=${fireRequestResponseSeen}`
+    `Timed out after ${TIMEOUT_MS}ms. helloSeen=${helloSeen} pingSeen=${pingSeen} statusSeen=${statusSeen}`
   )
 }, TIMEOUT_MS)
 timer.unref?.()
@@ -120,7 +69,7 @@ function teardown() {
 
 function pass() {
   teardown()
-  console.log('[smoke-bridge-daemon-roundtrip] OK — full bidirectional round-trip observed')
+  console.log('[smoke-bridge-daemon-roundtrip] OK — hello + ping + status observed')
   process.exit(0)
 }
 
@@ -135,7 +84,7 @@ function fail(reason) {
 }
 
 function maybeFinish() {
-  if (helloSeen && tailnetEndpointSeen && inboundEchoHandled && fireRequestResponseSeen) pass()
+  if (helloSeen && pingSeen && statusSeen) pass()
 }
 
 function writeStdinLine(envelope) {
@@ -146,31 +95,9 @@ function writeStdinLine(envelope) {
   }
 }
 
-function sendFireRequest() {
-  writeStdinLine({
-    jsonrpc: '2.0',
-    id: fireRequestId,
-    method: 'bridge.testFireRequest',
-    params: {
-      outboundMethod: echoMethod,
-      outboundParams: echoPayload,
-      timeoutSeconds: 5
-    }
-  })
-}
-
-function deepEqual(a, b) {
-  if (a === b) return true
-  if (a === null || b === null) return false
-  if (typeof a !== 'object' || typeof b !== 'object') return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  const aKeys = Object.keys(a)
-  const bKeys = Object.keys(b)
-  if (aKeys.length !== bKeys.length) return false
-  for (const k of aKeys) {
-    if (!deepEqual(a[k], b[k])) return false
-  }
-  return true
+function sendRequests() {
+  writeStdinLine({ jsonrpc: '2.0', id: pingId, method: 'bridge.ping', params: {} })
+  writeStdinLine({ jsonrpc: '2.0', id: statusId, method: 'bridge.status', params: {} })
 }
 
 const stdoutReader = createInterface({ input: proc.stdout })
@@ -186,66 +113,42 @@ stdoutReader.on('line', (line) => {
   }
   if (!parsed || typeof parsed !== 'object') return
 
-  // Daemon hello (one-shot, first line)
   if (parsed.kind === 'daemon-hello') {
+    if (parsed.daemon !== 'AgbenchBridgeDaemon') {
+      fail(`hello had unexpected daemon field: ${JSON.stringify(parsed)}`)
+      return
+    }
+    if (parsed.remoteTransportEnabled !== false) {
+      fail(`hello did not report remoteTransportEnabled=false: ${JSON.stringify(parsed)}`)
+      return
+    }
     helloSeen = true
-    const endpoints = Array.isArray(parsed.directEndpoints) ? parsed.directEndpoints : []
-    const tailnetEndpoint = endpoints.find(
-      (endpoint) =>
-        endpoint &&
-        endpoint.kind === 'quicTailscale' &&
-        endpoint.host === '100.64.10.20' &&
-        endpoint.port === 38747
-    )
-    if (!tailnetEndpoint || parsed.tailscaleEndpoint?.ipv4 !== '100.64.10.20') {
-      fail(`daemon hello did not advertise fake tailnet endpoint: ${JSON.stringify(parsed)}`)
-      return
-    }
-    tailnetEndpointSeen = true
-    sendFireRequest()
+    sendRequests()
     return
   }
 
-  // Inbound request from the daemon: daemon is asking us `ui.testEcho`.
-  // Same classification logic as BridgeDaemonClient — id + method + no result/error.
-  const hasId = typeof parsed.id === 'string' || typeof parsed.id === 'number'
-  const hasResultOrError = 'result' in parsed || 'error' in parsed
-  if (hasId && parsed.method && !hasResultOrError) {
-    if (parsed.method !== echoMethod) {
-      fail(`unexpected inbound request method: ${parsed.method}`)
+  if (String(parsed.id) === pingId) {
+    if (parsed.error || parsed.result?.pong !== true) {
+      fail(`bridge.ping returned unexpected response: ${JSON.stringify(parsed)}`)
       return
     }
-    if (!deepEqual(parsed.params, echoPayload)) {
-      fail(`inbound request params lost fidelity: ${JSON.stringify(parsed.params)}`)
-      return
-    }
-    // Answer the daemon's request. The response envelope is what
-    // BridgeDaemonClient.respondResult writes.
-    writeStdinLine({ jsonrpc: '2.0', id: String(parsed.id), result: smokeAnswer })
-    inboundEchoHandled = true
-    return
-  }
-
-  // Response to our outbound `bridge.testFireRequest`.
-  if (hasId && String(parsed.id) === fireRequestId) {
-    if (parsed.error) {
-      fail(`bridge.testFireRequest returned error: ${JSON.stringify(parsed.error)}`)
-      return
-    }
-    const result = parsed.result
-    if (!result || result.outboundMethod !== echoMethod) {
-      fail(`testFireRequest result shape unexpected: ${JSON.stringify(result)}`)
-      return
-    }
-    if (!deepEqual(result.daemonReceivedFromElectron, smokeAnswer)) {
-      fail(
-        `daemon did not receive our answer faithfully. got=${JSON.stringify(result.daemonReceivedFromElectron)} expected=${JSON.stringify(smokeAnswer)}`
-      )
-      return
-    }
-    fireRequestResponseSeen = true
+    pingSeen = true
     maybeFinish()
     return
+  }
+
+  if (String(parsed.id) === statusId) {
+    if (
+      parsed.error ||
+      parsed.result?.daemon !== 'AgbenchBridgeDaemon' ||
+      parsed.result?.remoteTransportEnabled !== false ||
+      parsed.result?.screenWatchEnabled !== true
+    ) {
+      fail(`bridge.status returned unexpected response: ${JSON.stringify(parsed)}`)
+      return
+    }
+    statusSeen = true
+    maybeFinish()
   }
 })
 
@@ -255,13 +158,7 @@ proc.stderr.on('data', (chunk) => {
 })
 
 proc.on('exit', (code, signal) => {
-  const incomplete = !(
-    helloSeen &&
-    tailnetEndpointSeen &&
-    inboundEchoHandled &&
-    fireRequestResponseSeen
-  )
-  if (incomplete) {
+  if (!(helloSeen && pingSeen && statusSeen)) {
     fail(`daemon exited early (code=${code} signal=${signal})`)
   }
 })

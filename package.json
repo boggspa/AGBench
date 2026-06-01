@@ -26,7 +26,7 @@
     "smoke:gemini-api-sdk": "node scripts/smoke-gemini-api-sdk.cjs",
     "smoke:package": "node scripts/smoke-packaged-electron.cjs",
     "smoke:apns": "node scripts/smoke-apns-push.cjs",
-    "smoke:bridge-daemon": "npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && node scripts/smoke-bridge-daemon-runevent.cjs && node scripts/smoke-bridge-daemon-notify.cjs",
+    "smoke:bridge-daemon": "npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs",
     "prebuild:bridge-daemon": "node scripts/build-bridge-daemon.cjs",
     "test:swift:bridge": "cd swift/AgbenchBridge && swift test",
     "test:swift:ios": "cd ios/GuiGeminiCompanion && swift test",

@@ -2,9 +2,9 @@ import Foundation
 
 /// Minimal JSON-RPC 2.0 dispatcher for the daemon's stdio control channel.
 ///
-/// Phase C1 ships read-only diagnostic methods (`bridge.status`, `bridge.ping`,
-/// `bridge.getProductConfiguration`). Phase C2+ piles transport / pairing /
-/// action-ingestion methods on top without changing this dispatch surface.
+/// The bridge ships a small local-control surface (`bridge.status`,
+/// `bridge.ping`, Screen Watch, creative-app, and editor helpers) without
+/// taking a dependency on the removed remote-iOS transport layer.
 ///
 /// Wire format: one JSON object per stdin/stdout line, terminated by `\n`.
 /// Matches the framing used by `CodexAppServerClient` so a single line-reader

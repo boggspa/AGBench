@@ -39,22 +39,11 @@ import { BridgeBroadcaster } from './BridgeBroadcaster'
 import { RemoteQuestionRegistry, type RemoteQuestionResolution } from './RemoteQuestionRegistry'
 import {
   buildMobileQuestionCard,
-  buildRemoteEnsembleState,
-  buildRemoteProjectionEnvelope,
-  buildRemoteShellAppearance,
-  buildRemoteTaskCard,
-  type RemoteTaskCard,
-  type RemoteTaskCapabilities,
-  type RemoteProjectionEnvelope
+  buildRemoteProjectionEnvelope
 } from './RemoteTaskProjection'
-import { projectRemoteThread } from './RemoteThreadProjection'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
-import {
-  capabilitiesForRemoteWorkspaceEntry,
-  RemoteWorkspaceAllowlist,
-  type RemoteWorkspaceCapability
-} from './RemoteWorkspaceAllowlist'
+import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import {
   type BridgeApnsPusher,
   type BridgeRemoteAttentionPushPayload
@@ -103,7 +92,6 @@ import {
   probeAllProviderRates
 } from './services/ProviderRateService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
-import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
 import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 import {
@@ -401,32 +389,6 @@ const remoteQuestionRegistry = new RemoteQuestionRegistry({
   defaultTtlMs: AGENT_QUESTION_TIMEOUT_MS
 })
 let bridgeBroadcasterRef: BridgeBroadcaster | null = null
-const remoteTaskAttentionKeys = new Map<string, string>()
-
-function maybeNotifyRemoteTaskNeedsAttention(taskCard: RemoteTaskCard): void {
-  const needsAttention =
-    taskCard.status === 'awaitingApproval' || taskCard.status === 'awaitingQuestion'
-  const attentionKey = [
-    taskCard.status,
-    taskCard.runId || taskCard.latestRunId || '',
-    taskCard.pendingApprovalCount,
-    taskCard.pendingQuestionCount
-  ].join(':')
-  const previousKey = remoteTaskAttentionKeys.get(taskCard.id)
-  if (previousKey === attentionKey) return
-  remoteTaskAttentionKeys.set(taskCard.id, attentionKey)
-  if (!needsAttention) return
-
-  remoteAttentionApnsFanoutRef?.notify({
-    reason: 'taskNeedsAttention',
-    workspaceId: taskCard.workspaceId,
-    threadId: taskCard.threadId,
-    runId: taskCard.runId || taskCard.latestRunId,
-    taskId: taskCard.id,
-    projectionKind: 'RemoteTaskCard',
-    generatedAt: new Date().toISOString()
-  })
-}
 
 /**
  * Cancel every outstanding question tied to a run. Called when the
@@ -13698,204 +13660,6 @@ if (isGeminiMcpBridgeProcess) {
       }
     }
 
-    const remoteTaskCapabilitiesForWorkspace = (
-      workspaceId: string | null | undefined
-    ): RemoteTaskCapabilities => {
-      const empty: RemoteTaskCapabilities = {
-        monitor: false,
-        approve: false,
-        answer: false,
-        cancel: false,
-        startTurn: false,
-        diffReview: false,
-        steer: false,
-        pin: false,
-        yolo: false,
-        cancelRound: false,
-        skipActiveParticipant: false,
-        wakeNow: false,
-        cancelWakeup: false,
-        queuePrompt: false
-      }
-      if (!workspaceId) return empty
-      const decision = bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' })
-      if (!decision.allowed) return empty
-      const capabilities = new Set<RemoteWorkspaceCapability>(
-        capabilitiesForRemoteWorkspaceEntry(decision.entry)
-      )
-      return {
-        monitor: capabilities.has('monitor'),
-        approve: capabilities.has('approve'),
-        answer: capabilities.has('answer'),
-        cancel: capabilities.has('cancel'),
-        startTurn: capabilities.has('startTurn'),
-        diffReview: capabilities.has('diffReview'),
-        steer: capabilities.has('steer'),
-        pin: capabilities.has('pin'),
-        yolo: capabilities.has('yolo'),
-        cancelRound: capabilities.has('cancel'),
-        skipActiveParticipant: capabilities.has('steer'),
-        wakeNow: capabilities.has('steer'),
-        cancelWakeup: capabilities.has('cancel'),
-        queuePrompt: capabilities.has('steer')
-      }
-    }
-
-    const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
-      if (!workspaceId) return false
-      return bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' }).allowed
-    }
-
-    const listRemoteProjectionEnvelopes = (): RemoteProjectionEnvelope[] => {
-      const chats = AppStore.getChats().filter((chat) => remoteWorkspaceIsVisible(chat.workspaceId))
-      const approvalCards = (approvalService?.listProjectionCards() ?? []).filter((approval) =>
-        remoteWorkspaceIsVisible(approval.workspaceId)
-      )
-      const questionCards = remoteQuestionRegistry
-        .listProjectionCards()
-        .filter((question) => remoteWorkspaceIsVisible(question.workspaceId))
-      const generatedAt = new Date().toISOString()
-      const questionCounts = new Map<string, number>()
-      for (const question of questionCards) {
-        if (!question.threadId) continue
-        questionCounts.set(question.threadId, (questionCounts.get(question.threadId) ?? 0) + 1)
-      }
-      const approvalCounts = new Map<string, number>()
-      for (const approval of approvalCards) {
-        if (!approval.threadId) continue
-        approvalCounts.set(approval.threadId, (approvalCounts.get(approval.threadId) ?? 0) + 1)
-      }
-      const envelopes: RemoteProjectionEnvelope[] = []
-      envelopes.push(
-        buildRemoteProjectionEnvelope({
-          kind: 'shellAppearance',
-          payload: buildRemoteShellAppearance(AppStore.getSettings(), { generatedAt }),
-          generatedAt,
-          envelopeId: 'remote-shell-appearance:global'
-        })
-      )
-      const sortedChats = [...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-      for (const chat of sortedChats) {
-        const capabilities = remoteTaskCapabilitiesForWorkspace(chat.workspaceId)
-        const taskCard = buildRemoteTaskCard(chat, {
-          generatedAt,
-          pendingQuestionCount: questionCounts.get(chat.appChatId) ?? 0,
-          pendingApprovalCount: approvalCounts.get(chat.appChatId) ?? 0,
-          capabilities
-        })
-        maybeNotifyRemoteTaskNeedsAttention(taskCard)
-        envelopes.push(
-          buildRemoteProjectionEnvelope({
-            kind: 'taskCard',
-            payload: taskCard,
-            generatedAt,
-            workspaceId: chat.workspaceId ?? null,
-            workspacePath: chat.workspacePath,
-            threadId: chat.appChatId,
-            runId: taskCard.runId,
-            envelopeId: `remote-task:${chat.appChatId}:${taskCard.runId || 'no-run'}`
-          })
-        )
-
-        const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
-          threadId: chat.appChatId,
-          mode: { kind: 'latestN', n: 24 },
-          previewMaxChars: 320,
-          generatedAt
-        })
-        envelopes.push(
-          buildRemoteProjectionEnvelope({
-            kind: 'threadSnapshot',
-            payload: {
-              ...threadSnapshot,
-              taskId: chat.appChatId,
-              workspaceId: chat.workspaceId ?? null,
-              provider: chat.provider
-            },
-            generatedAt,
-            workspaceId: chat.workspaceId ?? null,
-            workspacePath: chat.workspacePath,
-            threadId: chat.appChatId,
-            runId: threadSnapshot.runSummary?.runId,
-            envelopeId: `remote-thread:${chat.appChatId}:${threadSnapshot.runSummary?.runId || 'no-run'}`
-          })
-        )
-
-        if (taskCard.diffSummary) {
-          envelopes.push(
-            buildRemoteProjectionEnvelope({
-              kind: 'diffSummary',
-              payload: taskCard.diffSummary,
-              generatedAt,
-              workspaceId: chat.workspaceId ?? null,
-              workspacePath: chat.workspacePath,
-              threadId: chat.appChatId,
-              runId: taskCard.diffSummary.runId,
-              envelopeId: `remote-diff:${chat.appChatId}:${taskCard.diffSummary.runId}`
-            })
-          )
-        }
-
-        const ensembleState = taskCard.ensembleState ?? buildRemoteEnsembleState(chat)
-        if (ensembleState) {
-          envelopes.push(
-            buildRemoteProjectionEnvelope({
-              kind: 'ensembleState',
-              payload: {
-                ...ensembleState,
-                taskId: chat.appChatId,
-                workspaceId: chat.workspaceId ?? null,
-                capabilities
-              },
-              generatedAt,
-              workspaceId: chat.workspaceId ?? null,
-              workspacePath: chat.workspacePath,
-              threadId: chat.appChatId,
-              runId: taskCard.runId,
-              envelopeId: `remote-ensemble:${chat.appChatId}:${ensembleState.roundId || 'idle'}`
-            })
-          )
-        }
-      }
-
-      for (const approval of approvalCards) {
-        envelopes.push(
-          buildRemoteProjectionEnvelope({
-            kind: 'approvalCard',
-            payload: {
-              ...approval,
-              taskId: approval.threadId
-            },
-            generatedAt,
-            workspaceId: approval.workspaceId,
-            workspacePath: approval.workspacePath,
-            threadId: approval.threadId,
-            runId: approval.runId,
-            envelopeId: `remote-approval:${approval.toolCallId}:pending`
-          })
-        )
-      }
-
-      for (const question of questionCards) {
-        envelopes.push(
-          buildRemoteProjectionEnvelope({
-            kind: 'questionCard',
-            payload: {
-              ...question,
-              taskId: question.threadId
-            },
-            generatedAt,
-            workspaceId: question.workspaceId,
-            workspacePath: question.workspacePath,
-            threadId: question.threadId,
-            runId: question.runId,
-            envelopeId: `remote-question:${question.questionId}:${question.status}`
-          })
-        )
-      }
-      return envelopes
-    }
-
     const createBridgeActionExecutor = (): MainProcessActionExecutor => {
       // Phase C-late: action executor wires policy-cleared actions to real
       // main-process services. Wired today: `cancelRun`, `approvalReply`,
@@ -14167,19 +13931,12 @@ if (isGeminiMcpBridgeProcess) {
       })
     }
 
-    const subscribeBridgeRunEvents = (daemon: BridgeDaemonClient): void => {
+    const subscribeBridgeRunEvents = (_daemon: BridgeDaemonClient): void => {
       if (unsubscribeBridgeRunSink) return
-      // Phase C-late: forward every RunEventBus event to the daemon. The
-      // sink uses the bus's fan-out infrastructure (designed for exactly
-      // this in Phase B) so adapter call sites don't change. The daemon
-      // re-publishes inbound `bridge.runEvent` notifications to any
-      // connected iOS devices via QUIC (Swift slice, separate).
-      unsubscribeBridgeRunSink = runEventBus.subscribe(
-        makeBridgeRunEventSink({
-          notifier: { notify: (method, params) => daemon.notify(method, params) },
-          log: process.env.AGBENCH_DEBUG_BUS === '1' ? (line) => console.log(line) : undefined
-        })
-      )
+      // Remote-iOS run-event forwarding was removed from the bridge daemon.
+      // Keep this hook as a no-op so lifecycle code can stay structurally
+      // unchanged while Screen Watch continues to use the same daemon process.
+      unsubscribeBridgeRunSink = () => {}
     }
 
     const unsubscribeBridgeRunEvents = (): void => {
@@ -14234,64 +13991,24 @@ if (isGeminiMcpBridgeProcess) {
             bridgeDaemonLastError = `Bridge daemon exited with code ${code ?? 'unknown'}`
           }
         },
-        // Phase C3-late: surface daemon-pushed notifications. Today these are
-        // `bridge.didReceive*` from the QUIC transport (ActionWake, ActionRecord,
-        // PrepareStartTurn, WatchedThreads) plus arbitrary `bridge.testNotify`
-        // emissions. Logging only for now — Phase C-late will route into
-        // RunService / ApprovalService.
+        // Surface daemon-pushed notifications. The self-contained daemon's
+        // kept Screen Watch / creative / editor surface is request/response
+        // only today, so this is diagnostic-only.
         onNotification: (method, params) => {
           console.log(`[BridgeDaemon notif] ${method}`, JSON.stringify(params))
-          if (
-            method === 'bridge.didReceivePairingResponse' &&
-            mainWindow &&
-            !mainWindow.isDestroyed() &&
-            !mainWindow.webContents.isDestroyed()
-          ) {
-            mainWindow.webContents.send('bridge-pairing-response-received', params)
-          }
-          // Phase E-late: when the Swift daemon reports a freshly
-          // subscribed iOS client, push a full workspace + thread
-          // snapshot so the companion has something to render
-          // immediately (rather than staying empty until the next
-          // user-initiated mutation). The daemon-side emission of this
-          // notification lands in a parallel commit — until then this
-          // branch never fires.
-          if (method === 'bridge.iosClientSubscribed' && bridgeBroadcaster) {
-            try {
-              bridgeBroadcaster.broadcastSnapshot()
-            } catch (err) {
-              console.error('[BridgeBroadcaster] snapshot on subscribe failed:', err)
-            }
-          }
         },
-        // Phase C3.6: daemon-issued requests (e.g. `bridge.requestActionAck`,
-        // `bridge.requestPrepareStartTurnAck`) flow into the router. The router
-        // returns a JSON object the client wraps into a JSON-RPC response and
-        // writes back on stdin; the daemon's `BridgeRequester` awaiter resumes
-        // and the typed Swift `BridgeActionAck` (or PrepareStartTurnAck) is
-        // built from it. Until C4 lands, every decision is deny-by-default.
+        // Kept for protocol compatibility if future local-only daemon helpers
+        // need to ask Electron for data. The current self-contained Swift
+        // daemon does not issue remote action requests.
         onRequest: (method, params) => bridgeActionRouter.route(method, params)
       })
       bridgeDaemon = daemon
       bridgeDaemonRef = daemon
-      // Phase E-late: instantiate the workspace/thread summary
-      // broadcaster alongside the daemon. The broadcaster only emits
-      // when the daemon is up; on `stopBridgeDaemon` we clear the ref so
-      // the helpers near the IPC handlers become no-ops. iOS clients
-      // start receiving snapshots once Codex's daemon-side handlers for
-      // `bridge.broadcastWorkspaceList` / etc. land in a parallel commit.
-      bridgeBroadcaster = new BridgeBroadcaster({
-        daemon: { notify: (m, p) => daemon.notify(m, p) },
-        appStore: AppStore,
-        allowlist: bridgeAllowlist,
-        projectionSource: {
-          listRemoteProjectionEnvelopes
-        },
-        log: (line) => {
-          console.log(line)
-        }
-      })
-      bridgeBroadcasterRef = bridgeBroadcaster
+      // Remote-iOS projection broadcasting was removed with the bridge
+      // transport layer. Leave the refs null so existing mutation hooks are
+      // no-ops while Screen Watch continues to use the daemon.
+      bridgeBroadcaster = null
+      bridgeBroadcasterRef = null
       const startPromise = daemon
         .start()
         .then(() => {
@@ -14547,39 +14264,22 @@ if (isGeminiMcpBridgeProcess) {
       'bridge-finalize-pairing',
       async (_, sessionID: string, userConfirmed: boolean) => {
         const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')
-        if (!bridgeDaemon?.status().running) {
-          throw new Error('Bridge daemon is not running')
+        void pairingSessionID
+        void userConfirmed
+        return {
+          ok: false,
+          error: 'Remote iOS pairing is not available in this build.'
         }
-        return bridgeDaemon.request('bridge.finalizePairing', {
-          pairingSessionID,
-          userConfirmed: Boolean(userConfirmed)
-        })
       }
     )
 
-    // Initiates a pairing session on the daemon side and returns the
-    // bootstrap payload the renderer should render as a QR (and copy as
-    // JSON for the iOS "Paste JSON instead" fallback). The daemon
-    // generates an ephemeral keypair + nonce and stores them keyed by
-    // `pairingSessionID`. Subsequent `bridge.confirmPairing` and
-    // `bridge.finalizePairing` calls tie back via that id.
+    // Remote iOS pairing was removed with the Swift transport layer. Keep
+    // the IPC shape stable so older renderer surfaces fail gracefully.
     ipcMain.handle('bridge-begin-pairing', async (_, displayName?: string) => {
-      if (!bridgeDaemon?.status().running) {
-        return {
-          ok: false,
-          error: 'Bridge daemon is not running. Enable it in Settings → Bridge Networking.'
-        }
-      }
-      try {
-        const result = await bridgeDaemon.request('bridge.beginPairing', {
-          controllerDisplayName:
-            typeof displayName === 'string' && displayName.trim()
-              ? displayName.trim()
-              : 'iOS device'
-        })
-        return { ok: true, bootstrap: result }
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      void displayName
+      return {
+        ok: false,
+        error: 'Remote iOS pairing is not available in this build.'
       }
     })
 

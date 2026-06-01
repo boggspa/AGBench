@@ -2,24 +2,15 @@
 import PackageDescription
 
 /// AgbenchBridge — Mac-side daemon that bridges the AGBench Electron app
-/// to BridgeCore (transport + pairing + replay primitives lifted from
-/// CodexBridge in Phase A).
+/// to native macOS Screen Watch, creative-app, editor, and stdio JSON-RPC
+/// helpers.
 ///
 /// Architecture:
 ///   - Electron main process spawns the `AgbenchBridgeDaemon` executable
 ///     as a subprocess (mirrors the existing `CodexAppServerClient` spawn
 ///     pattern in `src/main/CodexAppServerClient.ts`).
-///   - The daemon communicates with Electron over stdio JSON-RPC (Phase C1).
-///   - The daemon owns the BridgeCore transport stack: QUIC + Bonjour
-///     listening, pairing acceptance, trusted-device verification, and the
-///     subscription/replay primitives.
-///   - Incoming iOS actions are translated to Electron-side `RunService` calls;
-///     outgoing run events from the `RunEventBus` are forwarded to subscribed
-///     iOS clients.
-///
-/// BridgeCore is consumed via a path-relative dependency on the local
-/// CodexBridge checkout. Once BridgeCore lives in its own repo, this becomes
-/// a Git URL dependency.
+///   - The daemon communicates with Electron over stdio JSON-RPC.
+///   - The package is self-contained and has no sibling-checkout dependency.
 let package = Package(
     name: "AgbenchBridge",
     platforms: [
@@ -31,23 +22,9 @@ let package = Package(
             targets: ["AgbenchBridgeDaemon"]
         )
     ],
-    dependencies: [
-        // BridgeCore lives in the sibling CodexBridge checkout. Path is
-        // relative to this Package.swift (swift/AgbenchBridge/) — three
-        // hops up to ~/Documents/, then into CodexBridge.
-        .package(path: "../../../CodexBridge")
-    ],
     targets: [
         .executableTarget(
-            name: "AgbenchBridgeDaemon",
-            dependencies: [
-                .product(name: "BridgeCore", package: "CodexBridge"),
-                .product(name: "BridgeCryptoPrimitives", package: "CodexBridge"),
-                .product(name: "BridgeCryptoPairing", package: "CodexBridge"),
-                .product(name: "BridgeLANTransport", package: "CodexBridge"),
-                .product(name: "WorkspaceSecurity", package: "CodexBridge"),
-                .product(name: "GitBridge", package: "CodexBridge")
-            ]
+            name: "AgbenchBridgeDaemon"
         ),
         .testTarget(
             name: "AgbenchBridgeDaemonTests",
