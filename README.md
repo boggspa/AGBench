@@ -6,6 +6,7 @@ provider CLIs and SDK-backed workflows while keeping execution, history, and
 workspace state on the user's machine.
 
 <img width="1525" height="2160" alt="Screenshot 2026-06-01 at 20 54 50" src="https://github.com/user-attachments/assets/17ccc7cb-d98c-4333-954b-90a3bab38ea9" />
+<img width="1525" height="2160" alt="Screenshot 2026-06-01 at 21 05 54" src="https://github.com/user-attachments/assets/2fdfbf22-79c2-40c2-bab8-fa22d5b3d9c0" />
 
 
 
