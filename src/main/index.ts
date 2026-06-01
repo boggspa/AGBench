@@ -231,6 +231,11 @@ import {
   summarizeGeminiAuthProfile,
   type GeminiAuthUsageDeps
 } from './providers/ProviderAuthUsage'
+import {
+  createWorkspaceToolExecutors,
+  WORKSPACE_MCP_TOOL_NAMES,
+  type WorkspaceMcpToolName
+} from './mcp/WorkspaceToolExecutors'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -1665,6 +1670,31 @@ function getRunRepository(): RunRepository {
     })
   }
   return runRepository
+}
+
+const workspaceToolExecutors = createWorkspaceToolExecutors({
+  host: {
+    runHostCommand,
+    getTempDir: () => app.getPath('temp')
+  },
+  store: {
+    getChat: (chatId) => AppStore.getChat(chatId) ?? undefined,
+    getChildChats: (parentChatId) => AppStore.getChildChats(parentChatId),
+    getRunQueueJobs: (filter) => AppStore.getRunQueueJobs(filter)
+  },
+  runs: {
+    getActiveByProvider: (provider) => runManager.getActiveByProvider(provider),
+    getRunEvents: (filter) => getRunRepository().getRunEvents(filter),
+    cancelProviderRun,
+    saveAndBroadcastChat,
+    getSubThreadResumeSessionId
+  }
+})
+
+const WORKSPACE_MCP_TOOL_NAME_SET = new Set<string>(WORKSPACE_MCP_TOOL_NAMES)
+
+function isWorkspaceMcpToolName(toolName: AGBenchMcpToolName): toolName is WorkspaceMcpToolName {
+  return WORKSPACE_MCP_TOOL_NAME_SET.has(toolName)
 }
 
 function emitRunQueueChanged(): void {
@@ -10741,12 +10771,6 @@ function clampInteger(value: unknown, fallback: number, min: number, max: number
   return Math.max(min, Math.min(max, Math.trunc(parsed)))
 }
 
-function truncateText(value: string, max = MAX_MCP_TEXT_CHARS): string {
-  return value.length <= max
-    ? value
-    : `${value.slice(0, max)}\n...truncated ${value.length - max} chars`
-}
-
 function mcpStructuredJsonResult(
   value: Record<string, unknown>,
   extraContent: McpToolContentBlock[] = []
@@ -10791,296 +10815,6 @@ function mcpToolCallResponseFromBrokerResult(result: unknown): {
     content,
     ...(structuredContent ? { structuredContent } : {}),
     isError: record.ok === false || record.isError === true
-  }
-}
-
-async function runCommandArgs(
-  command: string[],
-  cwd: string,
-  timeoutMs = 600_000
-): Promise<HostCommandResult> {
-  return runHostCommand(command, cwd, timeoutMs)
-}
-
-async function executeWorkspaceSearch(
-  args: Record<string, any>,
-  context: GeminiToolContext,
-  cwd: string
-) {
-  const query = requireNonEmptyString(args.query || args.pattern, 'Search query')
-  const target = args.path || args.directory || '.'
-  const targetPath = resolveGeminiMcpScopedPath(context, String(target))
-  const maxResults = clampInteger(args.maxResults ?? args.limit, 100, 1, 500)
-  const contextLines = clampInteger(args.contextLines ?? args.context, 0, 0, 5)
-  const rgArgs = [
-    '--json',
-    '--line-number',
-    '--column',
-    '--hidden',
-    '--glob',
-    '!.git/**',
-    '--glob',
-    '!node_modules/**',
-    ...(contextLines > 0 ? ['--context', String(contextLines)] : []),
-    ...toStringArray(args.globs || args.glob).flatMap((glob) => ['--glob', glob]),
-    '--',
-    query,
-    targetPath
-  ]
-  const result = await runCommandArgs(['rg', ...rgArgs], cwd, 60_000)
-  const matches: any[] = []
-  for (const line of result.stdout.split(/\r?\n/)) {
-    if (!line.trim()) continue
-    try {
-      const event = JSON.parse(line)
-      if (event.type !== 'match') continue
-      matches.push({
-        path: workspaceRelativeForContext(context, String(event.data?.path?.text || '')),
-        line: event.data?.line_number,
-        column: event.data?.submatches?.[0]?.start + 1,
-        text: String(event.data?.lines?.text || '').replace(/\r?\n$/, ''),
-        submatches: Array.isArray(event.data?.submatches) ? event.data.submatches : []
-      })
-      if (matches.length >= maxResults) break
-    } catch {
-      // Ignore malformed rg JSON lines; stderr is returned separately.
-    }
-  }
-  return {
-    query,
-    cwd,
-    target: workspaceRelativeForContext(context, targetPath),
-    ok: result.exitCode === 0 || result.exitCode === 1,
-    exitCode: result.exitCode,
-    timedOut: result.timedOut,
-    count: matches.length,
-    truncated: matches.length >= maxResults,
-    matches,
-    stderr: truncateText(result.stderr, 20_000),
-    error: result.error
-  }
-}
-
-function workspaceRelativeForContext(context: GeminiToolContext, filePath: string): string {
-  if (!filePath) return ''
-  try {
-    return formatScopedPath(context, resolve(filePath))
-  } catch {
-    return filePath
-  }
-}
-
-function extractUnifiedPatchPaths(patch: string): string[] {
-  const paths = new Set<string>()
-  for (const line of patch.split(/\r?\n/)) {
-    const gitMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
-    if (gitMatch) {
-      paths.add(gitMatch[1])
-      paths.add(gitMatch[2])
-      continue
-    }
-    if (!line.startsWith('--- ') && !line.startsWith('+++ ')) continue
-    const rawPath = line.slice(4).trim().split('\t')[0]
-    if (!rawPath || rawPath === '/dev/null') continue
-    paths.add(rawPath.replace(/^[ab]\//, ''))
-  }
-  return [...paths].filter(Boolean)
-}
-
-function assertPatchPathsInScope(context: GeminiToolContext, cwd: string, patch: string): string[] {
-  const patchPaths = extractUnifiedPatchPaths(patch)
-  const workspaceRoot = resolve(context.workspacePath || context.cwd)
-  for (const patchPath of patchPaths) {
-    if (isAbsolute(patchPath) || patchPath.split(/[\\/]+/).includes('..')) {
-      throw new Error(`Patch path must stay inside the workspace: ${patchPath}`)
-    }
-    const resolvedPath = resolve(cwd, patchPath)
-    if (context.scope !== 'global' && !isPathInsideWorkspace(workspaceRoot, resolvedPath)) {
-      throw new Error(`Patch path is outside the workspace: ${patchPath}`)
-    }
-  }
-  return patchPaths
-}
-
-async function executeApplyPatch(
-  args: Record<string, any>,
-  context: GeminiToolContext,
-  cwd: string
-) {
-  const patch = requireNonEmptyString(args.patch || args.diff, 'Patch')
-  const patchPaths = assertPatchPathsInScope(context, cwd, patch)
-  const dryRun = args.dryRun === true || args.check === true || args.preview === true
-  const patchPath = join(
-    app.getPath('temp'),
-    `agbench-mcp-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
-  )
-  await fs.writeFile(patchPath, patch, 'utf8')
-  try {
-    const check = await runCommandArgs(['git', 'apply', '--check', patchPath], cwd, 30_000)
-    if (check.exitCode !== 0) {
-      return {
-        ok: false,
-        dryRun,
-        paths: patchPaths,
-        check,
-        message: 'Patch does not apply cleanly.'
-      }
-    }
-    if (dryRun) {
-      return {
-        ok: true,
-        dryRun: true,
-        paths: patchPaths,
-        message: 'Patch applies cleanly.',
-        check
-      }
-    }
-    const applied = await runCommandArgs(['git', 'apply', patchPath], cwd, 30_000)
-    return {
-      ok: applied.exitCode === 0,
-      dryRun: false,
-      paths: patchPaths,
-      applied,
-      message: applied.exitCode === 0 ? 'Patch applied.' : 'Patch apply failed after check.'
-    }
-  } finally {
-    await fs.rm(patchPath, { force: true }).catch(() => {})
-  }
-}
-
-async function executeGitStatus(cwd: string) {
-  const [shortStatus, branchStatus] = await Promise.all([
-    runCommandArgs(['git', 'status', '--short', '--branch'], cwd, 30_000),
-    runCommandArgs(['git', 'branch', '--show-current'], cwd, 30_000)
-  ])
-  return {
-    cwd,
-    branch: branchStatus.stdout.trim(),
-    exitCode: shortStatus.exitCode,
-    stdout: shortStatus.stdout,
-    stderr: shortStatus.stderr,
-    clean:
-      shortStatus.exitCode === 0 &&
-      shortStatus.stdout
-        .trim()
-        .split(/\r?\n/)
-        .every((line) => line.startsWith('##'))
-  }
-}
-
-async function executeGitDiff(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
-  const diffArgs = ['git', 'diff']
-  if (args.cached === true || args.staged === true) diffArgs.push('--cached')
-  if (args.stat === true) diffArgs.push('--stat')
-  const paths = toStringArray(args.paths || (args.path ? [args.path] : []))
-  if (paths.length)
-    diffArgs.push('--', ...paths.map((pathArg) => resolveGeminiMcpScopedPath(context, pathArg)))
-  const result = await runCommandArgs(diffArgs, cwd, 60_000)
-  return {
-    cwd,
-    command: diffArgs,
-    exitCode: result.exitCode,
-    stdout: truncateText(result.stdout),
-    stderr: truncateText(result.stderr, 20_000),
-    timedOut: result.timedOut
-  }
-}
-
-async function executeGitStage(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
-  const patch = optionalString(args.patch)
-  if (patch) {
-    const patchPaths = assertPatchPathsInScope(context, cwd, patch)
-    const patchPath = join(
-      app.getPath('temp'),
-      `agbench-mcp-stage-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
-    )
-    await fs.writeFile(patchPath, patch, 'utf8')
-    try {
-      const check = await runCommandArgs(
-        ['git', 'apply', '--cached', '--check', patchPath],
-        cwd,
-        30_000
-      )
-      if (check.exitCode !== 0) {
-        return {
-          ok: false,
-          mode: 'patch',
-          paths: patchPaths,
-          check,
-          message: 'Patch does not stage cleanly.'
-        }
-      }
-      const result = await runCommandArgs(['git', 'apply', '--cached', patchPath], cwd, 30_000)
-      const status = await executeGitStatus(cwd)
-      return { ok: result.exitCode === 0, mode: 'patch', paths: patchPaths, result, status }
-    } finally {
-      await fs.rm(patchPath, { force: true }).catch(() => {})
-    }
-  }
-  const all = args.all === true || args.update === true
-  const paths = toStringArray(args.paths || (args.path ? [args.path] : []))
-  if (!all && paths.length === 0) {
-    throw new Error('git_stage requires paths, patch, or all=true.')
-  }
-  const gitArgs = ['git', 'add']
-  if (all) gitArgs.push(args.update === true ? '-u' : '-A')
-  if (paths.length)
-    gitArgs.push('--', ...paths.map((pathArg) => resolveGeminiMcpScopedPath(context, pathArg)))
-  const result = await runCommandArgs(gitArgs, cwd, 30_000)
-  const status = await executeGitStatus(cwd)
-  return { command: gitArgs, result, status }
-}
-
-async function executeGitCommit(args: Record<string, any>, cwd: string) {
-  const message = requireNonEmptyString(args.message, 'Commit message')
-  const gitArgs = ['git', 'commit', '-m', message]
-  const result = await runCommandArgs(gitArgs, cwd, 60_000)
-  return {
-    command: ['git', 'commit', '-m', '[message]'],
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    timedOut: result.timedOut
-  }
-}
-
-async function executeRunTask(args: Record<string, any>, cwd: string) {
-  const task = requireNonEmptyString(args.task || args.script || args.name, 'Task')
-  const packageJson = await readJsonFile(join(cwd, 'package.json'))
-  let command: string[]
-  if (
-    packageJson?.scripts &&
-    typeof packageJson.scripts === 'object' &&
-    task in packageJson.scripts
-  ) {
-    command = ['npm', 'run', task]
-    const script = String(packageJson.scripts[task] || '')
-    if (task === 'test' && /\bvitest\b/.test(script) && !/\s--run\b/.test(script)) {
-      command.push('--', '--run')
-    }
-  } else if (task === 'test' && fsSync.existsSync(join(cwd, 'Package.swift'))) {
-    command = ['swift', 'test']
-  } else if (task === 'build' && fsSync.existsSync(join(cwd, 'Package.swift'))) {
-    command = ['swift', 'build']
-  } else {
-    throw new Error(`No known task "${task}" in this workspace.`)
-  }
-  command.push(...toStringArray(args.args))
-  // Default 600s (10 min) for the tool when the agent doesn't specify
-  // a timeout — matches the new `runHostCommand` default. Agents can
-  // still override anywhere in [1s, 30min] via the `timeoutMs` arg.
-  const timeoutMs = clampInteger(args.timeoutMs, 600_000, 1_000, 30 * 60_000)
-  const result = await runCommandArgs(command, cwd, timeoutMs)
-  return {
-    task,
-    command,
-    cwd,
-    exitCode: result.exitCode,
-    timedOut: result.timedOut,
-    durationMs: result.durationMs,
-    stdout: truncateText(result.stdout),
-    stderr: truncateText(result.stderr),
-    summary: summarizeTestOutput(`${result.stdout}\n${result.stderr}`)
   }
 }
 
@@ -11132,410 +10866,6 @@ function summarizeTestOutput(output: string) {
         : status === 'passed'
           ? `${totals.passedCount || 'Some'} test(s) passed.`
           : 'No clear test result summary found.'
-  }
-}
-
-function latestAssistantMessage(chat: ChatRecord): ChatMessage | undefined {
-  return [...(chat.messages || [])].reverse().find((message) => message.role === 'assistant')
-}
-
-function latestChatRun(chat: ChatRecord): ChatRun | undefined {
-  return [...(chat.runs || [])].reverse()[0]
-}
-
-function summarizeChatRun(run?: ChatRun) {
-  if (!run) return null
-  return {
-    runId: run.runId,
-    provider: run.provider,
-    status: run.status,
-    startedAt: run.startedAt,
-    endedAt: run.endedAt,
-    requestedModel: run.requestedModel,
-    actualModel: run.actualModel,
-    approvalMode: run.approvalMode,
-    providerThreadId: run.providerThreadId,
-    providerRunId: run.providerRunId,
-    cancelled: run.cancelled === true,
-    runtimeProfileId: run.runtimeProfileId,
-    geminiAuthProfileId: run.geminiAuthProfileId
-  }
-}
-
-type SubThreadLifecycleState =
-  | 'created'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'returned'
-
-function isActiveSubThreadRunStatus(status: unknown): boolean {
-  return (
-    status === 'running' ||
-    status === 'queued' ||
-    status === 'starting' ||
-    status === 'active' ||
-    status === 'paused'
-  )
-}
-
-function isCompletedSubThreadRunStatus(status: unknown): boolean {
-  return status === 'success' || status === 'success_with_warnings' || status === 'completed'
-}
-
-function subThreadLifecycle(chat: ChatRecord): {
-  state: SubThreadLifecycleState
-  runStatus: string
-  activeRunId?: string
-  latestRunId?: string
-  returnedAt?: number
-  resultAvailable: boolean
-  canRecall: boolean
-  canCancel: boolean
-  reason?: string
-} {
-  const assistant = latestAssistantMessage(chat)
-  const activeSession = (chat.provider ? runManager.getActiveByProvider(chat.provider) : []).find(
-    (session) => session.appChatId === chat.appChatId
-  )
-  const activeQueueJob = AppStore.getRunQueueJobs({ chatId: chat.appChatId }).find((job) =>
-    isActiveSubThreadRunStatus(job.status)
-  )
-  const latestRun = latestChatRun(chat)
-  const rawStatus = activeSession?.status || activeQueueJob?.status || latestRun?.status || 'idle'
-  const returnedAt = chat.delegationContext?.resultReturnedAt
-  const assistantTimestamp = assistant ? Date.parse(assistant.timestamp) : NaN
-  const latestAssistantReturned = Boolean(
-    returnedAt &&
-    assistant &&
-    (!Number.isFinite(assistantTimestamp) || assistantTimestamp <= returnedAt)
-  )
-  const resultAvailable = Boolean(assistant?.content?.trim())
-  const canCancel = Boolean(
-    activeSession || activeQueueJob || isActiveSubThreadRunStatus(latestRun?.status)
-  )
-  const canRecall = Boolean(getSubThreadResumeSessionId(chat) && !canCancel && !chat.archived)
-
-  if (canCancel) {
-    return {
-      state: 'running',
-      runStatus: rawStatus,
-      activeRunId: activeSession?.runId || activeQueueJob?.runId || latestRun?.runId,
-      latestRunId: latestRun?.runId,
-      resultAvailable,
-      canRecall: false,
-      canCancel
-    }
-  }
-  if (latestAssistantReturned) {
-    return {
-      state: 'returned',
-      runStatus: rawStatus,
-      activeRunId: activeSession?.runId || activeQueueJob?.runId,
-      latestRunId: latestRun?.runId,
-      returnedAt,
-      resultAvailable,
-      canRecall,
-      canCancel
-    }
-  }
-  if (chat.delegationContext?.dispatchError) {
-    return {
-      state: 'failed',
-      runStatus: rawStatus,
-      latestRunId: latestRun?.runId,
-      resultAvailable,
-      canRecall,
-      canCancel: false,
-      reason: chat.delegationContext.dispatchError.message
-    }
-  }
-  if (latestRun?.cancelled || latestRun?.status === 'cancelled') {
-    return {
-      state: 'cancelled',
-      runStatus: rawStatus,
-      latestRunId: latestRun.runId,
-      resultAvailable,
-      canRecall,
-      canCancel: false
-    }
-  }
-  if (latestRun?.status === 'failed' || latestRun?.status === 'error') {
-    return {
-      state: 'failed',
-      runStatus: rawStatus,
-      latestRunId: latestRun.runId,
-      resultAvailable,
-      canRecall,
-      canCancel: false
-    }
-  }
-  if (isCompletedSubThreadRunStatus(latestRun?.status)) {
-    return {
-      state: 'completed',
-      runStatus: rawStatus,
-      latestRunId: latestRun?.runId,
-      resultAvailable,
-      canRecall,
-      canCancel: false
-    }
-  }
-  return {
-    state: 'created',
-    runStatus: rawStatus,
-    latestRunId: latestRun?.runId,
-    resultAvailable,
-    canRecall,
-    canCancel: false
-  }
-}
-
-function assertOwnedSubThread(context: GeminiToolContext, subThreadId: string): ChatRecord {
-  const chat = AppStore.getChat(requireNonEmptyString(subThreadId, 'Sub-thread id'))
-  if (!chat || chat.parentChatId !== context.appChatId) {
-    throw new Error('Sub-thread was not found under this parent chat.')
-  }
-  return chat
-}
-
-function executeListSubthreads(context: GeminiToolContext, args: Record<string, any>) {
-  const parentChatId = optionalString(args.parentChatId) || context.appChatId
-  if (!parentChatId || parentChatId !== context.appChatId) {
-    throw new Error('list_subthreads can only read sub-threads for the active parent chat.')
-  }
-  const includeArchived = args.includeArchived === true
-  const includePrompt = args.includePrompt === true
-  const subthreads = AppStore.getChildChats(parentChatId)
-    .filter((chat) => includeArchived || !chat.archived)
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .map((chat) => {
-      const lifecycle = subThreadLifecycle(chat)
-      const latestAssistant = latestAssistantMessage(chat)
-      return {
-        id: chat.appChatId,
-        title: chat.title,
-        provider: chat.provider,
-        status: lifecycle.state,
-        lifecycle,
-        readyToRead:
-          lifecycle.resultAvailable &&
-          (lifecycle.state === 'completed' || lifecycle.state === 'returned'),
-        archived: chat.archived,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        workspaceId: chat.workspaceId,
-        workspacePath: chat.workspacePath,
-        delegationContext: chat.delegationContext
-          ? {
-              createdAt: chat.delegationContext.createdAt,
-              parentProvider: chat.delegationContext.parentProvider,
-              returnResultToParent: chat.delegationContext.returnResultToParent,
-              resultReturnedAt: chat.delegationContext.resultReturnedAt,
-              dispatchError: chat.delegationContext.dispatchError,
-              delegationPromptPreview: chat.delegationContext.delegationPrompt.slice(0, 500),
-              ...(includePrompt
-                ? { delegationPrompt: chat.delegationContext.delegationPrompt }
-                : {})
-            }
-          : undefined,
-        latestRun: summarizeChatRun(latestChatRun(chat)),
-        latestAssistantPreview: latestAssistant?.content?.slice(0, 500),
-        messageCount: chat.messages?.length || 0,
-        runCount: chat.runs?.length || 0
-      }
-    })
-  return {
-    parentChatId,
-    count: subthreads.length,
-    subthreads
-  }
-}
-
-function executeReadSubthreadResult(context: GeminiToolContext, args: Record<string, any>) {
-  const chat = assertOwnedSubThread(context, String(args.subThreadId || args.id || ''))
-  const assistant = latestAssistantMessage(chat)
-  const messageLimit = clampInteger(args.messageLimit ?? args.maxMessages, 20, 1, 200)
-  const requestedDepth = optionalString(args.depth) || 'final-only'
-  const depth = ['summary', 'final-only', 'full', 'events-only'].includes(requestedDepth)
-    ? requestedDepth
-    : 'final-only'
-  const includeRuns = args.includeRuns === true || depth === 'full'
-  const includeMessages = args.includeMessages === true || depth === 'full'
-  const includeEvents = args.includeEvents === true || depth === 'full' || depth === 'events-only'
-  const includeResult = depth !== 'summary' && depth !== 'events-only'
-  const eventLimit = clampInteger(args.eventLimit, 50, 1, 500)
-  const lifecycle = subThreadLifecycle(chat)
-  const runEvents = includeEvents
-    ? (chat.runs || [])
-        .flatMap((run) => getRunRepository().getRunEvents({ runId: run.runId, limit: eventLimit }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-        .slice(-eventLimit)
-    : undefined
-  return {
-    id: chat.appChatId,
-    title: chat.title,
-    provider: chat.provider,
-    status: lifecycle.state,
-    lifecycle,
-    depth,
-    readyToRead:
-      lifecycle.resultAvailable &&
-      (lifecycle.state === 'completed' || lifecycle.state === 'returned'),
-    archived: chat.archived,
-    createdAt: chat.createdAt,
-    updatedAt: chat.updatedAt,
-    delegationContext: chat.delegationContext
-      ? {
-          createdAt: chat.delegationContext.createdAt,
-          parentProvider: chat.delegationContext.parentProvider,
-          returnResultToParent: chat.delegationContext.returnResultToParent,
-          resultReturnedAt: chat.delegationContext.resultReturnedAt,
-          dispatchError: chat.delegationContext.dispatchError
-        }
-      : undefined,
-    latestRun: summarizeChatRun(latestChatRun(chat)),
-    latestAssistantMessage:
-      includeResult && assistant
-        ? assistant
-        : assistant
-          ? {
-              id: assistant.id,
-              role: assistant.role,
-              timestamp: assistant.timestamp,
-              runId: assistant.runId,
-              metadata: assistant.metadata,
-              contentPreview: assistant.content.slice(0, 500)
-            }
-          : null,
-    result: includeResult ? assistant?.content || null : undefined,
-    resultPreview: assistant?.content?.slice(0, 500) || null,
-    messageCount: chat.messages?.length || 0,
-    runCount: chat.runs?.length || 0,
-    runs: includeRuns ? (chat.runs || []).map((run) => summarizeChatRun(run)) : undefined,
-    messages: includeMessages
-      ? (chat.messages || []).slice(-messageLimit).map((message) => ({
-          id: message.id,
-          role: message.role,
-          timestamp: message.timestamp,
-          runId: message.runId,
-          metadata: message.metadata,
-          content: message.content
-        }))
-      : undefined,
-    runEvents
-  }
-}
-
-async function executeCancelSubthread(context: GeminiToolContext, args: Record<string, any>) {
-  const chat = assertOwnedSubThread(context, String(args.subThreadId || args.id || ''))
-  const provider = chat.provider || 'gemini'
-  const activeSession = runManager
-    .getActiveByProvider(provider)
-    .find((session) => session.appChatId === chat.appChatId)
-  const activeQueueJob = AppStore.getRunQueueJobs({ chatId: chat.appChatId }).find(
-    (job) =>
-      job.status === 'queued' ||
-      job.status === 'paused' ||
-      job.status === 'starting' ||
-      job.status === 'active'
-  )
-  const activeRun = [...(chat.runs || [])]
-    .reverse()
-    .find(
-      (run) =>
-        run.status === 'running' ||
-        run.status === 'queued' ||
-        run.status === 'starting' ||
-        run.status === 'active'
-    )
-  const runId = activeSession?.runId || activeQueueJob?.runId || activeRun?.runId
-  if (!runId) {
-    return {
-      ok: false,
-      message: 'Sub-thread has no active running run.',
-      subThreadId: chat.appChatId
-    }
-  }
-  const ok = await cancelProviderRun(provider, runId)
-  if (ok) {
-    const endedAt = new Date().toISOString()
-    const updated: ChatRecord = {
-      ...chat,
-      runs: (chat.runs || []).map((run) =>
-        run.runId === runId
-          ? { ...run, status: 'cancelled', cancelled: true, endedAt: run.endedAt || endedAt }
-          : run
-      ),
-      updatedAt: Date.now()
-    }
-    saveAndBroadcastChat(updated)
-  }
-  return {
-    ok,
-    subThreadId: chat.appChatId,
-    runId,
-    provider,
-    previousStatus:
-      activeSession?.status || activeQueueJob?.status || activeRun?.status || 'unknown'
-  }
-}
-
-async function executeWorkspaceSymbols(
-  args: Record<string, any>,
-  context: GeminiToolContext,
-  cwd: string
-) {
-  const query = String(args.query || '')
-    .trim()
-    .toLowerCase()
-  const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || '.'))
-  const pattern =
-    '^\\s*(?:(?:export|public|private|internal|open|final|static)\\s+)*(class|function|interface|type|enum|const|let|var|struct|actor|protocol|func)\\s+[A-Za-z_][A-Za-z0-9_]*'
-  const result = await runCommandArgs(
-    [
-      'rg',
-      '--line-number',
-      '--column',
-      '--hidden',
-      '--glob',
-      '!.git/**',
-      '--glob',
-      '!node_modules/**',
-      pattern,
-      targetPath
-    ],
-    cwd,
-    60_000
-  )
-  const symbols = result.stdout
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .slice(0, 1000)
-    .map((line) => {
-      const match = line.match(/^(.*?):(\d+):(\d+):(.*)$/)
-      const text = match?.[4]?.trim() || line
-      const name = text.match(
-        /\b(?:class|function|interface|type|enum|const|let|var|struct|actor|protocol|func)\s+([A-Za-z_][A-Za-z0-9_]*)/
-      )?.[1]
-      return {
-        path: match ? workspaceRelativeForContext(context, match[1]) : '',
-        line: match ? Number(match[2]) : undefined,
-        column: match ? Number(match[3]) : undefined,
-        name,
-        text
-      }
-    })
-    .filter(
-      (symbol) =>
-        !query ||
-        symbol.name?.toLowerCase().includes(query) ||
-        symbol.text.toLowerCase().includes(query)
-    )
-  return {
-    count: symbols.length,
-    symbols: symbols.slice(0, clampInteger(args.maxResults ?? args.limit, 200, 1, 1000)),
-    stderr: result.stderr
   }
 }
 
@@ -13929,38 +13259,10 @@ async function executeGeminiMcpTool(
       return { text, isError }
     }
 
-    if (toolName === 'workspace_search') {
-      const result = await executeWorkspaceSearch(args, context, cwd)
-      toolIsError = result.ok === false || Boolean(result.timedOut || result.error)
-      text = mcpJson(result)
-    } else if (toolName === 'apply_patch') {
-      const result = await executeApplyPatch(args, context, cwd)
-      toolIsError = result.ok === false
-      text = mcpJson(result)
-    } else if (toolName === 'git_status') {
-      const result = await executeGitStatus(cwd)
-      toolIsError = result.exitCode !== 0
-      text = mcpJson(result)
-    } else if (toolName === 'git_diff') {
-      const result = await executeGitDiff(args, context, cwd)
-      toolIsError = result.exitCode !== 0 || result.timedOut === true
-      text = mcpJson(result)
-    } else if (toolName === 'git_stage') {
-      const result = await executeGitStage(args, context, cwd)
-      const stageExitCode =
-        'result' in result && result.result && typeof result.result === 'object'
-          ? (result.result as HostCommandResult).exitCode
-          : null
-      toolIsError = result.ok === false || (stageExitCode !== null && stageExitCode !== 0)
-      text = mcpJson(result)
-    } else if (toolName === 'git_commit') {
-      const result = await executeGitCommit(args, cwd)
-      toolIsError = result.exitCode !== 0 || result.timedOut === true
-      text = mcpJson(result)
-    } else if (toolName === 'run_task') {
-      const result = await executeRunTask(args, cwd)
-      toolIsError = (result.exitCode !== null && result.exitCode !== 0) || result.timedOut === true
-      text = mcpJson(result)
+    if (isWorkspaceMcpToolName(toolName)) {
+      const result = await workspaceToolExecutors.executeWorkspaceMcpTool(toolName, args, context, cwd)
+      toolIsError = result.isError
+      text = mcpJson(result.result)
     } else if (toolName === 'test_result_summary') {
       const runId = optionalString(args.runId)
       const sourceOutput =
@@ -13972,16 +13274,6 @@ async function executeGeminiMcpTool(
               .join('\n')
           : '')
       text = mcpJson(summarizeTestOutput(sourceOutput))
-    } else if (toolName === 'list_subthreads') {
-      text = mcpJson(executeListSubthreads(context, args))
-    } else if (toolName === 'read_subthread_result') {
-      text = mcpJson(executeReadSubthreadResult(context, args))
-    } else if (toolName === 'cancel_subthread') {
-      const result = await executeCancelSubthread(context, args)
-      toolIsError = result.ok === false
-      text = mcpJson(result)
-    } else if (toolName === 'workspace_symbols') {
-      text = mcpJson(await executeWorkspaceSymbols(args, context, cwd))
     } else if (
       toolName === 'browser_open' ||
       toolName === 'browser_click' ||
