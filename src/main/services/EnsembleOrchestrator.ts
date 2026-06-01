@@ -21,7 +21,8 @@ import type {
   ExternalPathGrant,
   ProviderId,
   ToolActivity,
-  ToolActivityStatus
+  ToolActivityStatus,
+  UsageRecord
 } from '../store/types'
 import { findFirstMention, resolvePhraseToParticipant } from './EnsembleMentionAlias'
 import {
@@ -49,8 +50,21 @@ import {
   detectComplexityEscalation
 } from '../escalation/ComplexityEscalation'
 import type { SessionCheckpointReason } from '../checkpoints/SessionCheckpoint'
+// 1.0.7 — pure builder turning a finished participant run's stats into the
+// recordUsage payload, so ensemble runs reach usage.json (wall-clock + heatmaps
+// + provider totals). Ensemble runs complete here, not via handleProviderExit.
+import { buildEnsembleUsageRecord } from '../ensembleUsageRecord'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
+
+/**
+ * 1.0.7 — sentinel workspace id for global-chat ensemble usage records. MUST
+ * stay byte-identical to the renderer's `GLOBAL_USAGE_WORKSPACE_ID`
+ * (App.tsx) so global-chat ensemble usage buckets into the same workspace
+ * tally the solo path uses. Hard-coded (not imported) because the renderer
+ * const isn't reachable from the main process.
+ */
+const ENSEMBLE_GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
 
 const DEFAULT_CONTINUATION_HOP_LIMIT = 6
 const MAX_CONTINUATION_HOP_LIMIT = 12
@@ -109,6 +123,15 @@ export interface EnsembleOrchestratorDeps {
   probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
   scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
   cancelWakeupTimer?: (wakeupId: string) => void
+  /**
+   * 1.0.7 — record a finished participant run's usage into the shared usage
+   * store. Ensemble runs complete inside the orchestrator (not via the
+   * renderer's handleProviderExit), so without this hook they never reach
+   * usage.json — and go missing from the welcome wall-clock, the activity
+   * heatmaps, and the Providers-tab token totals. Optional so the unit-test
+   * harness can omit it (recording is then a no-op).
+   */
+  recordUsage?: (entry: Omit<UsageRecord, 'id' | 'timestamp'>) => void
   persistSessionCheckpoint?: (chat: ChatRecord, reason: SessionCheckpointReason) => void
   completeSessionCheckpoint?: (
     chatId: string,
@@ -1553,6 +1576,13 @@ export class EnsembleOrchestrator {
     if (payload?.type === 'result') {
       run.stats = payload.stats
       const failed = payload.status === 'failed' || payload.subtype === 'error'
+      // 1.0.7 — record this participant's usage into the shared store so
+      // ensemble runs count toward the welcome wall-clock, activity heatmaps,
+      // and Providers-tab token totals (solo runs record via the renderer's
+      // handleProviderExit; ensemble runs complete here instead). Skipped/
+      // already-recorded runs return null from the builder. Best-effort: a
+      // recording failure must never break round finalisation.
+      this.recordParticipantUsage(run)
       this.finalizeRun(run, failed ? 'failed' : run.content.trim() ? 'answered' : 'skipped')
       return true
     }
@@ -2547,6 +2577,41 @@ export class EnsembleOrchestrator {
         (entry): entry is { participant: EnsembleParticipant; result: ParticipantProbeResult } =>
           !entry.result.reachable
       )
+    }
+  }
+
+  /**
+   * 1.0.7 — record a finished participant run's usage. Ensemble participant
+   * runs complete here (not via the renderer's handleProviderExit), so this is
+   * what gets them into usage.json → welcome wall-clock + activity heatmaps +
+   * Providers-tab token totals. The builder returns null for already-recorded
+   * or empty runs (no double-count, no junk rows). Best-effort: a failure must
+   * never break round finalisation.
+   */
+  private recordParticipantUsage(run: ActiveParticipantRun): void {
+    const record = this.deps.recordUsage
+    if (!record) return
+    try {
+      const chat = this.deps.getChat(run.chatId)
+      const workspaceId =
+        chat?.scope === 'global' || !chat?.workspaceId
+          ? ENSEMBLE_GLOBAL_USAGE_WORKSPACE_ID
+          : chat.workspaceId
+      const fallbackDurationMs = run.startedAt
+        ? Math.max(0, this.deps.now() - new Date(run.startedAt).getTime())
+        : 0
+      const entry = buildEnsembleUsageRecord({
+        provider: run.participant.provider,
+        model: run.actualModel || run.participant.model || 'unknown',
+        workspaceId,
+        chatId: run.chatId,
+        runId: run.runId,
+        stats: run.stats as Record<string, unknown> | undefined,
+        fallbackDurationMs
+      })
+      if (entry) record(entry)
+    } catch {
+      // Usage recording is best-effort; never block round finalisation.
     }
   }
 

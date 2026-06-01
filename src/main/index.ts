@@ -23396,7 +23396,12 @@ if (isGeminiMcpBridgeProcess) {
       persistSessionCheckpoint: (chat, reason) =>
         sessionCheckpointStoreRef?.upsertFromChat(chat, reason),
       completeSessionCheckpoint: (chatId, roundId, status) =>
-        sessionCheckpointStoreRef?.completeRound(chatId, roundId, status)
+        sessionCheckpointStoreRef?.completeRound(chatId, roundId, status),
+      // 1.0.7 — persist ensemble participant usage so ensemble runs reach
+      // usage.json (welcome wall-clock + activity heatmaps + Providers-tab
+      // token totals). Solo runs record via the renderer's handleProviderExit;
+      // ensemble runs complete inside the orchestrator and never hit that path.
+      recordUsage: (entry) => AppStore.recordUsage(entry)
     })
     // 1.0.5-EW37 — Solo-chat wakeup service. Same shared timer +
     // recovery substrate as ensemble; dispatches a continuation

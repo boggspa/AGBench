@@ -10,7 +10,8 @@ import type {
   ChatRecord,
   EnsembleConfig,
   EnsembleParticipant,
-  EnsembleWakeupRecord
+  EnsembleWakeupRecord,
+  UsageRecord
 } from '../store/types'
 
 const ensemble: EnsembleConfig = {
@@ -138,6 +139,7 @@ function makeHarness(
     cancelWakeupTimer?: (wakeupId: string) => void
     persistSessionCheckpoint?: (chat: ChatRecord, reason: string) => void
     completeSessionCheckpoint?: (chatId: string, roundId: string, status: string) => void
+    recordUsage?: (entry: Omit<UsageRecord, 'id' | 'timestamp'>) => void
   } = {}
 ) {
   let chat = options.initialChat
@@ -172,7 +174,8 @@ function makeHarness(
       : {}),
     ...(options.completeSessionCheckpoint
       ? { completeSessionCheckpoint: options.completeSessionCheckpoint }
-      : {})
+      : {}),
+    ...(options.recordUsage ? { recordUsage: options.recordUsage } : {})
   })
   return {
     get chat() {
@@ -258,6 +261,69 @@ describe('EnsembleOrchestrator', () => {
       expect(completed).toContainEqual({ chatId: 'ensemble-chat', roundId, status: 'completed' })
     )
     expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+  })
+
+  it('1.0.7 — records participant usage into the shared store on run completion', async () => {
+    const recorded: Array<Omit<UsageRecord, 'id' | 'timestamp'>> = []
+    const harness = makeHarness({
+      recordUsage: (entry) => {
+        recorded.push(entry)
+      }
+    })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Do the work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 120, duration_ms: 4200 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    // The first participant's usage was recorded with its provider + tokens +
+    // duration so it counts toward the wall-clock / heatmaps / provider totals.
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      provider: 'claude',
+      chatId: 'ensemble-chat',
+      usageKind: 'run',
+      totalTokens: 120,
+      durationMs: 4200
+    })
+  })
+
+  it('1.0.7 — does NOT double-record usage already recorded upstream', async () => {
+    const recorded: Array<Omit<UsageRecord, 'id' | 'timestamp'>> = []
+    const harness = makeHarness({
+      recordUsage: (entry) => {
+        recorded.push(entry)
+      }
+    })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Do the work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: { total_tokens: 50, duration_ms: 1000, _agentbench_usage_recorded: true }
+      }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    expect(recorded).toHaveLength(0)
   })
 
   it('dispatches duplicate-provider participants by participant id', async () => {

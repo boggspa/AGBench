@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest'
+import { buildEnsembleUsageRecord, type EnsembleUsageInput } from './ensembleUsageRecord'
+
+function base(stats: Record<string, unknown> | undefined): EnsembleUsageInput {
+  return {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+    workspaceId: 'ws-1',
+    chatId: 'chat-1',
+    runId: 'run-1',
+    stats
+  }
+}
+
+describe('buildEnsembleUsageRecord', () => {
+  it('extracts canonical snake_case token + duration fields', () => {
+    const rec = buildEnsembleUsageRecord(
+      base({ input_tokens: 100, output_tokens: 40, total_tokens: 140, duration_ms: 5000 })
+    )
+    expect(rec).toMatchObject({
+      provider: 'codex',
+      model: 'gpt-5.3-codex',
+      workspaceId: 'ws-1',
+      chatId: 'chat-1',
+      runId: 'run-1',
+      usageKind: 'run',
+      inputTokens: 100,
+      outputTokens: 40,
+      totalTokens: 140,
+      durationMs: 5000
+    })
+  })
+
+  it('falls back to camelCase token keys', () => {
+    const rec = buildEnsembleUsageRecord(base({ inputTokens: 10, outputTokens: 5, durationMs: 1200 }))
+    expect(rec).toMatchObject({ inputTokens: 10, outputTokens: 5, totalTokens: 15, durationMs: 1200 })
+  })
+
+  it('derives total from input+output when total is absent', () => {
+    const rec = buildEnsembleUsageRecord(base({ input_tokens: 30, output_tokens: 20, duration_ms: 100 }))
+    expect(rec?.totalTokens).toBe(50)
+  })
+
+  it('uses the wall-clock fallback when stats carry no duration', () => {
+    const rec = buildEnsembleUsageRecord({
+      ...base({ total_tokens: 12 }),
+      fallbackDurationMs: 8000
+    })
+    expect(rec?.durationMs).toBe(8000)
+  })
+
+  it('prefers stats duration over the fallback', () => {
+    const rec = buildEnsembleUsageRecord({
+      ...base({ total_tokens: 12, duration_ms: 3000 }),
+      fallbackDurationMs: 8000
+    })
+    expect(rec?.durationMs).toBe(3000)
+  })
+
+  it('returns null when usage was already recorded upstream (dedup)', () => {
+    expect(
+      buildEnsembleUsageRecord(base({ total_tokens: 100, duration_ms: 5000, _agentbench_usage_recorded: true }))
+    ).toBeNull()
+  })
+
+  it('returns null for a run with no tokens AND no duration', () => {
+    expect(buildEnsembleUsageRecord(base({}))).toBeNull()
+    expect(buildEnsembleUsageRecord(base(undefined))).toBeNull()
+  })
+
+  it('records a duration-only run (tokens absent but time spent)', () => {
+    const rec = buildEnsembleUsageRecord(base({ duration_ms: 4000 }))
+    expect(rec).not.toBeNull()
+    expect(rec).toMatchObject({ totalTokens: 0, durationMs: 4000 })
+  })
+
+  it('includes token limits only when present + positive', () => {
+    const withLimits = buildEnsembleUsageRecord(
+      base({ total_tokens: 100, duration_ms: 10, total_tokens_limit: 400000 })
+    )
+    expect(withLimits).toHaveProperty('totalTokenLimit', 400000)
+    const without = buildEnsembleUsageRecord(base({ total_tokens: 100, duration_ms: 10 }))
+    expect(without).not.toHaveProperty('totalTokenLimit')
+  })
+
+  it('defaults a missing model to "unknown"', () => {
+    const rec = buildEnsembleUsageRecord({ ...base({ total_tokens: 5, duration_ms: 5 }), model: '' })
+    expect(rec?.model).toBe('unknown')
+  })
+})
