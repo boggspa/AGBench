@@ -6669,14 +6669,21 @@ function useTranscriptVirtualization(params: {
     let sawRewrite = false
     for (let i = 0; i < mountedRows.length; i++) {
       const row = mountedRows[i]
-      const el = blockElsRef.current.get(row.id)
+      // 1.0.7 — element + measurement maps key on `rowKey` (`${id}#${index}`),
+      // NOT the bare message id. Historical/imported data can carry duplicate
+      // message ids; keying on id alone collapsed those rows to one element +
+      // one measurement slot, scrambling heights + order (the load/unload,
+      // System-rows-pinned-to-top bug). `rowKey` is unique per list position.
+      const el = blockElsRef.current.get(row.rowKey)
       if (!el || !el.isConnected) continue
       const nextEl =
-        i + 1 < mountedRows.length ? blockElsRef.current.get(mountedRows[i + 1].id) : spacerBottom
+        i + 1 < mountedRows.length
+          ? blockElsRef.current.get(mountedRows[i + 1].rowKey)
+          : spacerBottom
       const slot = nextEl && nextEl.isConnected ? nextEl.offsetTop - el.offsetTop : el.offsetHeight
       if (!(slot > 0)) continue
       const key = measurementKey(
-        row.id,
+        row.rowKey,
         row.contentVersion,
         bucket,
         expandedRowIds?.has(row.id) ?? false
@@ -6718,9 +6725,12 @@ function useTranscriptVirtualization(params: {
 
   const blockRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
-    const id = el.dataset.vrowId
-    if (!id) return
-    blockElsRef.current.set(id, el)
+    // `data-vrow-id` carries the collision-proof `rowKey` (`${id}#${index}`),
+    // so `blockElsRef` is keyed by rowKey — duplicate message ids can't share
+    // an element entry.
+    const rowKey = el.dataset.vrowId
+    if (!rowKey) return
+    blockElsRef.current.set(rowKey, el)
     observerRef.current?.observe(el)
   }, [])
 
@@ -6895,15 +6905,20 @@ export const TranscriptPanel = memo(
       compactDensity,
       expandedRowIds
     })
-    // Messages mounted this frame: the window slice when virtualised,
-    // else the full list. Mapped via `row.index` so the slice stays
-    // correct even if `projectRows` skipped a malformed message.
-    const renderedMessages: ChatMessage[] = virtualizeEnabled
+    // Messages mounted this frame, each paired with its collision-proof
+    // `rowKey` (`${id}#${index}`). The window slice when virtualised, else the
+    // full list. Keying React + the element map on `rowKey` (not `msg.id`)
+    // means duplicate message ids — which exist in historical/imported data —
+    // can never make two rows share a DOM node / measurement slot.
+    const renderedRows: Array<{ msg: ChatMessage; rowKey: string }> = virtualizeEnabled
       ? virtualRows
           .slice(virtualWindow.startIndex, virtualWindow.endIndex)
-          .map((r) => visibleMessages[r.index])
-          .filter((m): m is ChatMessage => Boolean(m))
-      : visibleMessages
+          .map((r) => {
+            const msg = visibleMessages[r.index]
+            return msg ? { msg, rowKey: r.rowKey } : null
+          })
+          .filter((r): r is { msg: ChatMessage; rowKey: string } => Boolean(r))
+      : visibleMessages.map((msg, index) => ({ msg, rowKey: `${msg.id}#${index}` }))
 
     return (
       <div className="transcript-scroll" ref={scrollRef}>
@@ -6918,15 +6933,15 @@ export const TranscriptPanel = memo(
               aria-hidden
             />
           )}
-          {renderedMessages.map((msg) => {
+          {renderedRows.map(({ msg, rowKey }) => {
             const isDelegationCard = isSubThreadDelegationMessage(msg)
             const isReturnCard = isSubThreadReturnMessage(msg)
             const boundaryRun = runBoundaryByMessageId.get(msg.id)
             return (
               <div
-                key={`message-block-${msg.id}`}
+                key={`message-block-${rowKey}`}
                 className="transcript-message-block"
-                data-vrow-id={msg.id}
+                data-vrow-id={rowKey}
                 ref={virtualizeEnabled ? virtualBlockRef : undefined}
               >
                 {boundaryRun && (

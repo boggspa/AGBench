@@ -307,6 +307,7 @@ describe('TranscriptVirtualWindow', () => {
   describe('getRowHeight', () => {
     const row: VirtualRow = {
       id: 'm1',
+      rowKey: 'm1#0',
       index: 0,
       rowType: 'assistant',
       contentVersion: 'a:5',
@@ -315,13 +316,14 @@ describe('TranscriptVirtualWindow', () => {
     }
 
     it('returns the measured height when the cache holds the exact key', () => {
-      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 321]])
+      // getRowHeight keys on row.rowKey, not row.id.
+      const cache = new Map<string, number>([[measurementKey('m1#0', 'a:5', 8, false), 321]])
       expect(getRowHeight(row, cache, 8, false)).toBe(321)
     })
 
     it('falls back to the estimate when the geometry key differs', () => {
       // Measured at a different width bucket → not comparable → estimate.
-      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 321]])
+      const cache = new Map<string, number>([[measurementKey('m1#0', 'a:5', 8, false), 321]])
       expect(getRowHeight(row, cache, 9, false)).toBe(row.estimatedHeight)
     })
 
@@ -330,15 +332,50 @@ describe('TranscriptVirtualWindow', () => {
     })
 
     it('rejects a corrupt (negative / NaN) cached measurement', () => {
-      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), Number.NaN]])
+      const cache = new Map<string, number>([[measurementKey('m1#0', 'a:5', 8, false), Number.NaN]])
       expect(getRowHeight(row, cache, 8, false)).toBe(row.estimatedHeight)
-      const neg = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), -5]])
+      const neg = new Map<string, number>([[measurementKey('m1#0', 'a:5', 8, false), -5]])
       expect(getRowHeight(row, neg, 8, false)).toBe(row.estimatedHeight)
     })
 
     it('accepts a measured height of 0 (a genuinely collapsed row)', () => {
-      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 0]])
+      const cache = new Map<string, number>([[measurementKey('m1#0', 'a:5', 8, false), 0]])
       expect(getRowHeight(row, cache, 8, false)).toBe(0)
+    })
+
+    it('1.0.7 — two rows with the SAME message id get DISTINCT rowKeys + cache slots', () => {
+      // Duplicate message ids (historical/imported data) must not collide. Two
+      // rows sharing id 'dup' at different indices have distinct rowKeys, so
+      // their measurements live in separate cache slots and never overwrite.
+      const rowA: VirtualRow = { ...row, id: 'dup', rowKey: 'dup#3', index: 3 }
+      const rowB: VirtualRow = { ...row, id: 'dup', rowKey: 'dup#7', index: 7 }
+      const cache = new Map<string, number>([
+        [measurementKey('dup#3', 'a:5', 8, false), 100],
+        [measurementKey('dup#7', 'a:5', 8, false), 900]
+      ])
+      expect(getRowHeight(rowA, cache, 8, false)).toBe(100)
+      expect(getRowHeight(rowB, cache, 8, false)).toBe(900)
+    })
+  })
+
+  describe('projectRows — rowKey collision-proofing', () => {
+    it('1.0.7 — assigns a unique rowKey even when message ids DUPLICATE', () => {
+      // The real bug: pre-1.0.7 ensemble round-status messages all shared
+      // `ensemble-round-status-${roundId}`. projectRows must still yield unique
+      // rowKeys so the renderer keys + measurement maps never collide.
+      const dupId = 'ensemble-round-status-round-1'
+      const messages: ChatMessage[] = [
+        { id: dupId, role: 'system', content: 'Handoff 1/12.', timestamp: '2026-01-01T00:00:00Z' },
+        { id: dupId, role: 'system', content: 'Handoff 2/12.', timestamp: '2026-01-01T00:00:01Z' },
+        { id: dupId, role: 'system', content: 'Yielded back.', timestamp: '2026-01-01T00:00:02Z' }
+      ]
+      const rows = projectRows(messages)
+      expect(rows).toHaveLength(3)
+      const rowKeys = rows.map((r) => r.rowKey)
+      expect(new Set(rowKeys).size).toBe(3) // all distinct
+      expect(rowKeys).toEqual([`${dupId}#0`, `${dupId}#1`, `${dupId}#2`])
+      // The bare id stays shared (content-cache identity), only rowKey disambiguates.
+      expect(rows.every((r) => r.id === dupId)).toBe(true)
     })
   })
 

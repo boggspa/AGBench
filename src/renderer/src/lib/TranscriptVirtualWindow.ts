@@ -40,9 +40,19 @@ export type VirtualRowType =
   | 'return'
 
 export interface VirtualRow {
-  /** Stable, persisted message id — already the React key in the
-   *  renderer, so it survives reload + matches TV6 remote row ids. */
+  /** Stable, persisted message id. NOT guaranteed unique — historical /
+   *  imported data can carry duplicate message ids (e.g. pre-1.0.7 ensemble
+   *  round-status messages all shared `ensemble-round-status-${roundId}`). Use
+   *  `rowKey` for React keys / DOM-element + measurement maps; `id` is for
+   *  content/measurement-cache identity only. */
   id: string
+  /** Collision-proof row key: `${id}#${index}`. The index disambiguates
+   *  duplicate message ids so React keys, the `blockElsRef` element map, and
+   *  the `data-vrow-id` lookups can never collide — a duplicate id would
+   *  otherwise make multiple rows share one DOM node + one measurement slot,
+   *  scrambling render order and heights (the "System rows pinned to top" /
+   *  load-unload bug). Stable for a given message list. */
+  rowKey: string
   /** Position in the source `visibleMessages` list. */
   index: number
   rowType: VirtualRowType
@@ -233,6 +243,7 @@ export function projectRows(
     const contentLength = message.role === 'tool' ? 0 : (message.content || '').length
     rows.push({
       id: message.id,
+      rowKey: `${message.id}#${index}`,
       index,
       rowType,
       contentVersion: contentVersion(message),
@@ -244,19 +255,21 @@ export function projectRows(
 }
 
 /**
- * Cache key for a row's measured height. Combines the stable id, the
- * content token, the width bucket, and the expansion bit so a cached
- * measurement is reused ONLY when the geometry is comparable. A streamed
- * token (new contentVersion), a width reflow (new bucket), or an
- * expand/collapse (new bit) each yields a fresh key → fresh measurement.
+ * Cache key for a row's measured height. Combines a collision-proof ROW KEY
+ * (`rowKey = ${id}#${index}`, NOT the bare message id — duplicate message ids
+ * would otherwise share one measurement slot), the content token, the width
+ * bucket, and the expansion bit so a cached measurement is reused ONLY when the
+ * geometry is comparable. A streamed token (new contentVersion), a width reflow
+ * (new bucket), or an expand/collapse (new bit) each yields a fresh key → fresh
+ * measurement.
  */
 export function measurementKey(
-  rowId: string,
+  rowKey: string,
   rowContentVersion: string,
   bucket: number,
   expanded: boolean
 ): string {
-  return `${rowId}|${rowContentVersion}|${bucket}|${expanded ? 1 : 0}`
+  return `${rowKey}|${rowContentVersion}|${bucket}|${expanded ? 1 : 0}`
 }
 
 /**
@@ -270,7 +283,9 @@ export function getRowHeight(
   bucket: number,
   expanded: boolean
 ): number {
-  const measured = measurements.get(measurementKey(row.id, row.contentVersion, bucket, expanded))
+  const measured = measurements.get(
+    measurementKey(row.rowKey, row.contentVersion, bucket, expanded)
+  )
   if (typeof measured === 'number' && Number.isFinite(measured) && measured >= 0) return measured
   return row.estimatedHeight
 }
