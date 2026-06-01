@@ -963,7 +963,12 @@ export async function fetchCodexUsageSnapshot(): Promise<NormalizedProviderUsage
 
 const GEMINI_OAUTH_CLIENT_ID =
   '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com'
-const GEMINI_OAUTH_CLIENT_SECRET = '__OAUTH_SECRET_REMOVED__'
+// Gemini "Sign in with Google" OAuth client secret. Injected at build time from
+// a gitignored `.env` via electron.vite.config.ts (`define`), so the literal
+// lives only in your local .env — never in source or git. Empty when no .env is
+// present (e.g. a fresh clone): the Google-login token refresh then fails
+// gracefully, and API-key auth is unaffected.
+const GEMINI_OAUTH_CLIENT_SECRET = process.env.GEMINI_OAUTH_CLIENT_SECRET ?? ''
 const GEMINI_QUOTA_FRESH_TTL_MS = 90_000
 const GEMINI_QUOTA_STALE_TTL_MS = 30 * 60_000
 const GEMINI_OAUTH_REFRESH_BUFFER_MS = 5 * 60_000
