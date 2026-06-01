@@ -1,6 +1,6 @@
 import XCTest
 import CoreGraphics
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 /// Metadata-shape tests for the attached-window store. The store's full
 /// attach/detach/current behavior is exercised end-to-end during manual

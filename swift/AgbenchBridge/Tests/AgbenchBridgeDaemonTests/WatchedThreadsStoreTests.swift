@@ -1,6 +1,6 @@
 import XCTest
 import BridgeCore
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 final class WatchedThreadsStoreTests: XCTestCase {
     func testUpdateTracksLastSeenRevisionAndFiltering() async {

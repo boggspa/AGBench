@@ -28,7 +28,7 @@
     "smoke:apns": "node scripts/smoke-apns-push.cjs",
     "smoke:bridge-daemon": "npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && node scripts/smoke-bridge-daemon-runevent.cjs && node scripts/smoke-bridge-daemon-notify.cjs",
     "prebuild:bridge-daemon": "node scripts/build-bridge-daemon.cjs",
-    "test:swift:bridge": "cd swift/GuiGeminiBridge && swift test",
+    "test:swift:bridge": "cd swift/AgbenchBridge && swift test",
     "test:swift:ios": "cd ios/GuiGeminiCompanion && swift test",
     "build:ios:sim": "node scripts/build-ios-simulator.cjs",
     "validate:codexbridge-seam": "node scripts/check-codexbridge-seam.cjs",

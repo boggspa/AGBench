@@ -4,7 +4,7 @@ import type { RemoteProjectionEnvelope } from './RemoteTaskProjection'
 
 /**
  * BridgeBroadcaster — pushes workspace + thread summaries from the
- * Electron main process to the GuiGeminiBridge daemon over JSON-RPC,
+ * Electron main process to the AgbenchBridge daemon over JSON-RPC,
  * which then forwards them to paired iOS companion clients.
  *
  * Why this exists

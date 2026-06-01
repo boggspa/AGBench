@@ -263,8 +263,8 @@ export class CodexAppServerClient {
       'initialize',
       {
         clientInfo: {
-          name: 'guigemini',
-          title: 'GUIGemini',
+          name: 'agbench',
+          title: 'AGBench',
           version: appVersion
         },
         capabilities: {

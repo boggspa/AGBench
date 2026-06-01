@@ -1,5 +1,5 @@
 import XCTest
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 final class SummaryBroadcasterTests: XCTestCase {
     func testWorkspaceListBroadcastEnvelopePreservesPayload() throws {

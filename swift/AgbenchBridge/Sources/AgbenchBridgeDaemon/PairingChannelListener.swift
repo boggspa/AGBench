@@ -7,7 +7,7 @@ import BridgeCryptoPairing
 /// PairingChannelListener — Mac-side TCP listener for the iOS pairing
 /// handshake.
 ///
-/// Counterpart to `GuiGeminiCompanionCore.PairingChannelClient` on iOS.
+/// Counterpart to the companion-side `PairingChannelClient` on iOS.
 /// Wire protocol (length-prefixed JSON frames, 4-byte BE length + payload):
 ///
 ///   1. Client (iPhone) → Server (Mac): `PairingResponsePayload` JSON

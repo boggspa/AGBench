@@ -16,7 +16,7 @@ import BridgeLANTransport
 ///   - Wires placeholder handlers (logging only) so accepted connections
 ///     don't crash, but no actual bridge work happens yet.
 ///
-/// Phase C3-late wires the handlers to GUIGemini's RunService via JSON-RPC
+/// Wires the handlers to AGBench's RunService via JSON-RPC
 /// notifications back to Electron (`bridge.actionWake`, `bridge.actionRecord`,
 /// etc. as server-pushed notifications).
 public actor TransportListener {

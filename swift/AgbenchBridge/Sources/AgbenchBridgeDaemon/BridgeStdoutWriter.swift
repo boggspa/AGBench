@@ -16,7 +16,7 @@ import Foundation
 /// locking. Callers serialize their JSON encoding before handing the line
 /// string off; only the `write` itself enters the queue.
 public final class BridgeStdoutWriter: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.example.AGBench.daemon.stdout")
+    private let queue = DispatchQueue(label: "com.chrisizatt.agbench.daemon.stdout")
 
     public init() {}
 

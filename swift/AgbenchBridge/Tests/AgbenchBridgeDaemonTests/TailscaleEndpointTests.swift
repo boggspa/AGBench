@@ -2,7 +2,7 @@ import XCTest
 import BridgeCore
 import BridgeCryptoPrimitives
 import BridgeCryptoPairing
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 final class TailscaleEndpointTests: XCTestCase {
     func testParsesSelfTailscaleIPs() {

@@ -7,7 +7,7 @@ import BridgeCore
 // re-exports through Pairing, so the test target needs the explicit import.
 import BridgeCryptoPrimitives
 import BridgeCryptoPairing
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 final class PairingPipelineTests: XCTestCase {
     func testFrameLengthDecodeIsByteBased() throws {

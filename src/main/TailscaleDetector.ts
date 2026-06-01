@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile)
  * (CodexBridge already supports `quicTailscale` as a transport route).
  *
  * Scope: detection only. The actual daemon-side bind-on-tailnet-IP
- * lives in the Swift `GuiGeminiBridgeDaemon` and isn't part of this
+ * lives in the Swift `AgbenchBridgeDaemon` and isn't part of this
  * module. Once that ships, this module's output drives which IP the
  * daemon advertises.
  *

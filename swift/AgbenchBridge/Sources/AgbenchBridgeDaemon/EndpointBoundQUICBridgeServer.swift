@@ -8,7 +8,7 @@ import BridgeLANTransport
 /// QUIC listener scoped to one explicit local host address.
 ///
 /// CodexBridge's shared `QUICBridgeServer` intentionally publishes a Bonjour
-/// listener and does not expose a local-address bind option. GUIGemini needs a
+/// listener and does not expose a local-address bind option. AGBench needs a
 /// second, non-Bonjour Tailnet route, so the daemon owns this small adapter and
 /// keeps it protocol-compatible with the shared LAN session/envelope stack.
 actor EndpointBoundQUICBridgeServer {
@@ -415,7 +415,7 @@ private final class EndpointBoundQUICListener: @unchecked Sendable {
     private let macDeviceID: DeviceID
     private let keyResolver: KeyResolver
     private let sessionHandler: SessionHandler
-    private let queue = DispatchQueue(label: "guigemini.bridge.tailscale.quic.listener")
+    private let queue = DispatchQueue(label: "agbench.bridge.tailscale.quic.listener")
 
     private var listener: NWListener?
     private var connectionGroups: [NWConnectionGroup] = []

@@ -11,7 +11,7 @@ import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 import BridgeLANTransport
 
-/// GuiGeminiBridgeDaemon — Phase C0 proof-of-life entry point.
+/// AgbenchBridgeDaemon — Phase C0 proof-of-life entry point.
 ///
 /// At this stage the daemon does nothing beyond:
 ///   1. Configure `BridgeProductConfiguration.current` with AGBench's
@@ -37,35 +37,34 @@ import BridgeLANTransport
 /// Bundle IDs / app group / Bonjour service names / Keychain scopes all
 /// distinct so a single iPhone can pair with both companions without
 /// identifier collisions.
-private let guiGeminiConfiguration = BridgeProductConfiguration(
+private let agBenchConfiguration = BridgeProductConfiguration(
     displayName: "AGBench",
-    macBundleIdentifier: "com.example.AGBench.mac",
-    iosBundleIdentifier: "com.example.AGBench.ios",
-    appGroupIdentifier: "group.com.example.AGBench",
-    // Upstream BridgeProductConfiguration dropped `cloudKitContainerIdentifier`
-    // in the BridgeCore drift before Phase M; keeping the GUIGemini-specific
-    // identifier here would re-introduce the build break. CloudKit is not
-    // used by AGBench's daemon path.
-    keychainServiceIdentifier: "com.example.AGBench",
-    bonjourServiceType: "_guigemini._tcp",
-    bonjourQUICServiceType: "_guigemini-quic._udp",
+    macBundleIdentifier: "com.chrisizatt.agbench.mac",
+    iosBundleIdentifier: "com.chrisizatt.agbench.ios",
+    appGroupIdentifier: "group.com.chrisizatt.agbench",
+    // Upstream BridgeProductConfiguration dropped `cloudKitContainerIdentifier`;
+    // keeping the old product-specific identifier here would re-introduce the
+    // build break. CloudKit is not used by AGBench's daemon path.
+    keychainServiceIdentifier: "com.chrisizatt.agbench",
+    bonjourServiceType: "_agbench._tcp",
+    bonjourQUICServiceType: "_agbench-quic._udp",
     directTCPPort: 38747,
     directQUICPort: 38747,
     quicTransport: QUICTransportIdentifiers(
-        alpn: "guigemini-live-v1",
-        p12Password: "guigemini-local-quic",
-        keychainLabel: "GUIGemini QUIC Transport Identity",
-        keychainDescription: "GUIGemini local QUIC transport identity",
-        keychainServiceIdentifier: "com.example.AGBench.quicTransportIdentity",
-        identityFileBasename: "GUIGeminiQUICIdentity",
-        certificateCommonName: "GUIGemini QUIC",
-        supportDirectoryName: "GUIGemini"
+        alpn: "agbench-live-v1",
+        p12Password: "agbench-local-quic",
+        keychainLabel: "AGBench QUIC Transport Identity",
+        keychainDescription: "AGBench local QUIC transport identity",
+        keychainServiceIdentifier: "com.chrisizatt.agbench.quicTransportIdentity",
+        identityFileBasename: "AGBenchQUICIdentity",
+        certificateCommonName: "AGBench QUIC",
+        supportDirectoryName: "AGBench"
     )
 )
 
 // Install the AGBench preset BEFORE any BridgeCore consumer reads
 // `.current`. Subsequent transport spin-up (Phase C2) will pick this up.
-BridgeProductConfiguration.current = guiGeminiConfiguration
+BridgeProductConfiguration.current = agBenchConfiguration
 
 // MARK: - Lifetime + helpers
 
@@ -133,11 +132,11 @@ struct DaemonHello: Encodable {
 
 let hello = DaemonHello(
     kind: "daemon-hello",
-    daemon: "GuiGeminiBridgeDaemon",
+    daemon: "AgbenchBridgeDaemon",
     protocolVersion: protocolVersion,
-    displayName: guiGeminiConfiguration.displayName,
-    bonjourServiceType: guiGeminiConfiguration.bonjourServiceType,
-    bonjourQUICServiceType: guiGeminiConfiguration.bonjourQUICServiceType,
+    displayName: agBenchConfiguration.displayName,
+    bonjourServiceType: agBenchConfiguration.bonjourServiceType,
+    bonjourQUICServiceType: agBenchConfiguration.bonjourQUICServiceType,
     quicALPN: BridgeProductConfiguration.current.quicTransport.alpn,
     directEndpoints: advertisedDirectEndpoints(tailscaleEndpoint: startupTailscaleEndpoint),
     tailscaleEndpoint: startupTailscaleEndpoint,
@@ -166,7 +165,7 @@ do {
     // Fall back to an in-memory store so the daemon still starts; the user
     // will see "0 trusted devices" but pairing operations still work for
     // this session. A real diagnostic event lands here in Phase C-late.
-    FileHandle.standardError.write(Data("[GuiGeminiBridgeDaemon] WARN: file-backed device store unavailable: \(error.localizedDescription)\n".utf8))
+    FileHandle.standardError.write(Data("[AgbenchBridgeDaemon] WARN: file-backed device store unavailable: \(error.localizedDescription)\n".utf8))
     trustedDeviceStore = InMemoryTrustedDeviceStore()
 }
 
@@ -182,7 +181,7 @@ let macDeviceID = DeviceID(UUID().uuidString.lowercased())
 // SecretStore — Keychain in production, in-memory fallback for tests / when
 // Keychain is unavailable. `KeychainSecretStore` lives in BridgeCryptoPairing
 // and uses the configured service identifier so a second host (the future
-// GuiGemini companion shipping outside the daemon) can share the namespace.
+// AGBench companion shipping outside the daemon) can share the namespace.
 // `allowsAuthenticationUI: false` so the daemon never prompts — items are
 // stored with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (the
 // KeychainSecretStore default), accessible after first unlock per boot.
@@ -265,11 +264,11 @@ func localMacDisplayName() -> String {
     let candidates: [String?] = [
         Host.current().localizedName,
         ProcessInfo.processInfo.hostName,
-        guiGeminiConfiguration.displayName
+        agBenchConfiguration.displayName
     ]
     return candidates
         .compactMap { (value: String?) in value?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-        .first { !$0.isEmpty } ?? guiGeminiConfiguration.displayName
+        .first { !$0.isEmpty } ?? agBenchConfiguration.displayName
 }
 
 func logQUICPipeline(_ message: String) {
@@ -296,7 +295,7 @@ func ensurePostPairTransportReady(
 }
 
 // Phase D1-pair: TCP pairing listener for the iOS pairing handshake.
-// Advertised via Bonjour at the GUIGemini TCP service type so the
+// Advertised via Bonjour at the AGBench TCP service type so the
 // iPhone's PairingChannelClient can NWBrowser-discover us. The listener
 // itself is unauthenticated by design (pair-derived keys don't exist
 // until pairing completes); security relies on the session-id being
@@ -461,7 +460,7 @@ dispatcher.register("bridge.status") { _ in
         return (paired, pending, running)
     }
     return [
-        "daemon": "GuiGeminiBridgeDaemon",
+        "daemon": "AgbenchBridgeDaemon",
         "protocolVersion": protocolVersion,
         "pid": Int(ProcessInfo.processInfo.processIdentifier),
         "uptimeSeconds": uptimeSeconds,
@@ -711,7 +710,7 @@ dispatcher.register("bridge.pairingListenerStatus") { _ in
 /// `bridge.getProductConfiguration` — full snapshot of the active
 /// `BridgeProductConfiguration`. Used by the Electron-side settings UI to
 /// display "what identifiers will iOS clients pair against", and by tests
-/// to confirm the GUIGemini preset is in effect (vs accidentally falling
+/// to confirm the AGBench preset is in effect (vs accidentally falling
 /// back to the Codex `.default`).
 dispatcher.register("bridge.getProductConfiguration") { _ in
     let cfg = BridgeProductConfiguration.current
@@ -1733,7 +1732,7 @@ dispatcher.register("bridge.runEvent") { rawParams in
 
 // Start the iOS pairing channel listener early so iPhones can pair
 // from app launch. The listener binds an ephemeral TCP port + Bonjour-
-// advertises at the GUIGemini service type; iOS-side
+// advertises at the AGBench service type; iOS-side
 // `PairingChannelClient` discovers via the same name.
 Task.detached { @Sendable [pairingChannelListener] in
     do {
@@ -1826,10 +1825,10 @@ Task.detached { @Sendable [pairingChannelListener, pairingCoordinator, bridgeNot
 // On stdin EOF the reader thread terminates NSApplication, which returns
 // from `NSApp.run()` and runs the post-loop shutdown.
 let handlerQueue = DispatchQueue(
-    label: "com.example.AGBench.daemon.handler",
+    label: "com.chrisizatt.agbench.daemon.handler",
     attributes: .concurrent
 )
-let stdinReaderQueue = DispatchQueue(label: "com.example.AGBench.daemon.stdin-reader")
+let stdinReaderQueue = DispatchQueue(label: "com.chrisizatt.agbench.daemon.stdin-reader")
 
 stdinReaderQueue.async {
     while let line = readLine(strippingNewline: false) {

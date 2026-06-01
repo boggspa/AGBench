@@ -25,7 +25,7 @@ files:
   - '!.claude/**'
   - '!docs/**'
   # Native/mobile source trees are development inputs only. The mac app
-  # receives the release GuiGeminiBridgeDaemon via `mac.extraResources`
+  # receives the release AgbenchBridgeDaemon via `mac.extraResources`
   # below; packaging the full Swift/iOS `.build` trees into app.asar
   # bloated debug builds by hundreds of megabytes.
   - '!swift/**'
@@ -51,7 +51,7 @@ mac:
   # which means macOS never sees any of the usage-description keys at
   # the root path where it actually checks them. That's why prior
   # builds quietly failed to prompt for permissions and why the
-  # _guigemini-quic._udp carrier was being dropped before reaching
+  # _agbench-quic._udp carrier was being dropped before reaching
   # the daemon: NSBonjourServices was sitting under "5", not at root.
   extendInfo:
     NSCameraUsageDescription: Application requests access to the device's camera.
@@ -67,18 +67,18 @@ mac:
     # every AppleScript call with errAEEventNotPermitted (-1743).
     NSAppleEventsUsageDescription: AGBench sends AppleScript automation commands to Final Cut Pro and Logic Pro on your behalf — only after you approve each action in the in-app modal. Every dispatch is auditable in the approval log.
     NSBonjourServices:
-      - _guigemini._tcp
-      - _guigemini-quic._udp
+      - _agbench._tcp
+      - _agbench-quic._udp
   notarize: false
-  # Bundle the Swift GuiGeminiBridgeDaemon as an extraResource so the
+  # Bundle the Swift AgbenchBridgeDaemon as an extraResource so the
   # main process can spawn it from the packaged .app. The binary is
   # compiled by `scripts/build-bridge-daemon.cjs` (run via the
   # `prebuild:bridge-daemon` npm script in all mac build targets).
   # macOS-only: the daemon uses Apple Network framework + Bonjour +
   # CryptoKit and is not built on other platforms.
   extraResources:
-    - from: swift/GuiGeminiBridge/.build/release/GuiGeminiBridgeDaemon
-      to: bridge/GuiGeminiBridgeDaemon
+    - from: swift/AgbenchBridge/.build/release/AgbenchBridgeDaemon
+      to: bridge/AgbenchBridgeDaemon
 dmg:
   artifactName: AGBench-${version}.${ext}
 linux:

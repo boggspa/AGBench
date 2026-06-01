@@ -234,7 +234,7 @@ actor AttachedWindowStream {
         config.capturesAudio = false
 
         let queue = DispatchQueue(
-            label: "com.example.AGBench.daemon.appwatch.stream",
+            label: "com.chrisizatt.agbench.daemon.appwatch.stream",
             qos: .userInitiated
         )
         // Strong reference held inside `output`. The delegate hand-off uses

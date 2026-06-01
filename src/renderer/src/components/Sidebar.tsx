@@ -146,8 +146,8 @@ interface SidebarProps {
   onShowPairingSheet?: () => void
 }
 
-const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
-const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
+const EXPANDED_WORKSPACES_STORAGE_KEY = 'agbench-sidebar-expanded-workspace-ids'
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-thread-parent-ids'
 /**
  * Collapsed-section memory for the top-level sidebar lists
  * (Pinned / Recents / Ensembles / Workspaces / Chats). Set semantics: an id
@@ -158,7 +158,7 @@ const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-su
  * per-workspace chat-list expansion within the Workspaces section;
  * this one tracks the section header itself.
  */
-const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sections'
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
 type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
 const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
   'pinned',

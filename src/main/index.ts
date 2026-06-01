@@ -6464,7 +6464,7 @@ async function runKimiWireProvider(
         method: 'initialize',
         params: {
           protocol_version: wireProtocol.protocolVersion,
-          client: { name: 'GUIGemini', version: app.getVersion() },
+          client: { name: 'AGBench', version: app.getVersion() },
           capabilities: { supports_question: false, supports_plan_mode: true }
         }
       }) + '\n'
@@ -13649,7 +13649,7 @@ if (isGeminiMcpBridgeProcess) {
       log: (line) => console.log(line)
     })
 
-    // Phase E2: GuiGeminiBridge daemon supervisor. Default-on by setting,
+    // Phase E2: AgbenchBridge daemon supervisor. Default-on by setting,
     // with AGBENCH_BRIDGE_DAEMON preserving explicit force-on/force-off
     // override semantics for staging and emergency disable.
     let bridgeDaemon: BridgeDaemonClient | null = null
@@ -14377,7 +14377,7 @@ if (isGeminiMcpBridgeProcess) {
         pid: status.pid,
         startedAt: status.startedAt,
         lastError: bridgeDaemonLastError,
-        bonjourServiceType: '_guigemini-bridge._tcp',
+        bonjourServiceType: '_agbench._tcp',
         // Hostname the daemon broadcasts under. Currently the OS
         // hostname; future revs may make this configurable.
         hostname: os.hostname()

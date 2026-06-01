@@ -3,7 +3,7 @@
 /**
  * build-bridge-daemon
  *
- * Pre-build step that compiles the Swift GuiGeminiBridgeDaemon as a
+ * Pre-build step that compiles the Swift AgbenchBridgeDaemon as a
  * release binary so electron-builder can bundle it as an extraResource
  * in the packaged .app. macOS-only; no-op (with a friendly log) on
  * other platforms because the daemon uses Apple Network framework +
@@ -18,7 +18,7 @@ const { existsSync } = require('fs')
 const { join } = require('path')
 
 const REPO_ROOT = join(__dirname, '..')
-const PACKAGE_PATH = join(REPO_ROOT, 'swift', 'GuiGeminiBridge')
+const PACKAGE_PATH = join(REPO_ROOT, 'swift', 'AgbenchBridge')
 
 if (process.platform !== 'darwin') {
   console.log(
@@ -42,7 +42,7 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
-const binaryPath = join(PACKAGE_PATH, '.build', 'release', 'GuiGeminiBridgeDaemon')
+const binaryPath = join(PACKAGE_PATH, '.build', 'release', 'AgbenchBridgeDaemon')
 if (!existsSync(binaryPath)) {
   console.error(`[build-bridge-daemon] Expected binary not found at ${binaryPath}`)
   process.exit(3)

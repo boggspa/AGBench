@@ -16,7 +16,7 @@
  * Usage:
  *   node scripts/smoke-bridge-daemon-runevent.cjs
  *
- * Prereq: `swift build` has been run inside `swift/GuiGeminiBridge`.
+ * Prereq: `swift build` has been run inside `swift/AgbenchBridge`.
  */
 
 const { spawn } = require('child_process')
@@ -28,16 +28,16 @@ const REPO_ROOT = join(__dirname, '..')
 const BIN_PATH = join(
   REPO_ROOT,
   'swift',
-  'GuiGeminiBridge',
+  'AgbenchBridge',
   '.build',
   'debug',
-  'GuiGeminiBridgeDaemon'
+  'AgbenchBridgeDaemon'
 )
 const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 8000)
 
 if (!existsSync(BIN_PATH)) {
   console.error(`[smoke-bridge-daemon-runevent] daemon binary not found at ${BIN_PATH}`)
-  console.error('Run: (cd swift/GuiGeminiBridge && swift build) and try again.')
+  console.error('Run: (cd swift/AgbenchBridge && swift build) and try again.')
   process.exit(2)
 }
 

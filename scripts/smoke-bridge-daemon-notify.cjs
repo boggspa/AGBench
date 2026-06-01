@@ -3,7 +3,7 @@
 /**
  * smoke-bridge-daemon-notify
  *
- * Phase C3-late.4 smoke test. Spawns the `GuiGeminiBridgeDaemon` Swift binary
+ * Phase C3-late.4 smoke test. Spawns the `AgbenchBridgeDaemon` Swift binary
  * directly, reads its stdout line-by-line, and verifies the JSON-RPC
  * notification path works end-to-end:
  *
@@ -22,8 +22,8 @@
  * Usage:
  *   node scripts/smoke-bridge-daemon-notify.cjs
  *
- * Prereq: `swift build` has been run inside `swift/GuiGeminiBridge` so the
- * `.build/debug/GuiGeminiBridgeDaemon` binary exists.
+ * Prereq: `swift build` has been run inside `swift/AgbenchBridge` so the
+ * `.build/debug/AgbenchBridgeDaemon` binary exists.
  */
 
 const { spawn } = require('child_process')
@@ -36,16 +36,16 @@ const REPO_ROOT = join(__dirname, '..')
 const BIN_PATH = join(
   REPO_ROOT,
   'swift',
-  'GuiGeminiBridge',
+  'AgbenchBridge',
   '.build',
   'debug',
-  'GuiGeminiBridgeDaemon'
+  'AgbenchBridgeDaemon'
 )
 const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 8000)
 
 if (!existsSync(BIN_PATH)) {
   console.error(`[smoke-bridge-daemon-notify] daemon binary not found at ${BIN_PATH}`)
-  console.error('Run: (cd swift/GuiGeminiBridge && swift build) and try again.')
+  console.error('Run: (cd swift/AgbenchBridge && swift build) and try again.')
   process.exit(2)
 }
 
@@ -144,7 +144,7 @@ stdoutReader.on('line', (line) => {
 
   // 1) Daemon hello announcement (one-shot).
   if (parsed.kind === 'daemon-hello') {
-    if (typeof parsed.daemon !== 'string' || parsed.daemon !== 'GuiGeminiBridgeDaemon') {
+    if (typeof parsed.daemon !== 'string' || parsed.daemon !== 'AgbenchBridgeDaemon') {
       fail(`hello had unexpected daemon field: ${JSON.stringify(parsed)}`)
       return
     }

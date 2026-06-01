@@ -7,7 +7,7 @@ import { dirname } from 'path'
  *
  * Phase C4 v1. Mirrors the shape of `CodexBridge/Sources/WorkspaceSecurity/
  * WorkspaceAllowlist.swift` (the prior-art our plan references), but the
- * model lives Electron-side because GUIGemini's main process owns the
+ * model lives Electron-side because AGBench's main process owns the
  * workspace list and the agent runtime. The Swift bridge daemon never has
  * to know about workspaces directly; it just relays a `workspaceID` in
  * `bridge.requestPrepareStartTurnAck` and BridgeActionRouter consults this
@@ -142,7 +142,7 @@ export const REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS: Record<
 }
 
 export interface RemoteWorkspaceEntry {
-  /** Stable id used by GUIGemini's internal workspace registry. */
+  /** Stable id used by AGBench's internal workspace registry. */
   workspaceId: string
   /** Absolute path on disk. Informational; not used for evaluation today. */
   path: string

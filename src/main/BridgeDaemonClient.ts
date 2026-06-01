@@ -5,14 +5,14 @@ import { join } from 'path'
 import { createInterface, type Interface as ReadlineInterface } from 'readline'
 
 /**
- * BridgeDaemonClient — Phase C0 Electron-side bridge to the
- * `GuiGeminiBridgeDaemon` Swift binary.
+ * BridgeDaemonClient — Electron-side bridge to the
+ * `AgbenchBridgeDaemon` Swift binary.
  *
  * At this stage the client only verifies the spawn pipeline:
- *   1. Locate the daemon binary (`swift/GuiGeminiBridge/.build/debug/...`).
+ *   1. Locate the daemon binary (`swift/AgbenchBridge/.build/debug/...`).
  *   2. Spawn it with piped stdio (mirrors `CodexAppServerClient.start()`).
  *   3. Read the first stdout line — a single `daemon-hello` JSON announcement
- *      that confirms the daemon imported BridgeCore with the GUIGemini
+ *      that confirms the daemon imported BridgeCore with the AGBench
  *      product configuration.
  *   4. Surface the announcement to a caller-provided handler for telemetry.
  *
@@ -112,11 +112,11 @@ export class BridgeDaemonClient {
    * Resolution order:
    *   1. Explicit `options.binaryPath` (tests / smokes override this).
    *   2. Packaged Electron build: `process.resourcesPath/bridge/
-   *      GuiGeminiBridgeDaemon`. `electron-builder.yml`'s mac
+   *      AgbenchBridgeDaemon`. `electron-builder.yml`'s mac
    *      `extraResources` block places the release binary there, and
    *      `scripts/build-bridge-daemon.cjs` builds it just before
    *      electron-builder packs.
-   *   3. Dev tree: `swift/GuiGeminiBridge/.build/debug/...` (after
+   *   3. Dev tree: `swift/AgbenchBridge/.build/debug/...` (after
    *      `swift build`) or `.../release/...` (after `swift build -c
    *      release`).
    *
@@ -132,7 +132,7 @@ export class BridgeDaemonClient {
     // dev (electron-vite), it points at electron's vendored resources
     // and our daemon won't be there — fall through to the dev path.
     if (process.resourcesPath) {
-      const bundled = join(process.resourcesPath, 'bridge', 'GuiGeminiBridgeDaemon')
+      const bundled = join(process.resourcesPath, 'bridge', 'AgbenchBridgeDaemon')
       if (existsSync(bundled)) return bundled
     }
 
@@ -143,10 +143,10 @@ export class BridgeDaemonClient {
       '..',
       '..',
       'swift',
-      'GuiGeminiBridge',
+      'AgbenchBridge',
       '.build',
       'debug',
-      'GuiGeminiBridgeDaemon'
+      'AgbenchBridgeDaemon'
     )
     if (existsSync(devDebug)) return devDebug
     return join(
@@ -154,10 +154,10 @@ export class BridgeDaemonClient {
       '..',
       '..',
       'swift',
-      'GuiGeminiBridge',
+      'AgbenchBridge',
       '.build',
       'release',
-      'GuiGeminiBridgeDaemon'
+      'AgbenchBridgeDaemon'
     )
   }
 
@@ -170,7 +170,7 @@ export class BridgeDaemonClient {
     const binaryPath = this.resolveBinaryPath()
     if (!existsSync(binaryPath)) {
       throw new Error(
-        `BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/GuiGeminiBridge first.`
+        `BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/AgbenchBridge first.`
       )
     }
 

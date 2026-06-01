@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types'
 import { Sidebar } from './Sidebar'
 
-const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
-const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
-const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sections'
+const EXPANDED_WORKSPACES_STORAGE_KEY = 'agbench-sidebar-expanded-workspace-ids'
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-thread-parent-ids'
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
 
 function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   return {

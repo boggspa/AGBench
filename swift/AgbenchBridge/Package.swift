@@ -1,12 +1,12 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-/// GuiGeminiBridge — Mac-side daemon that bridges the GUIGemini Electron app
+/// AgbenchBridge — Mac-side daemon that bridges the AGBench Electron app
 /// to BridgeCore (transport + pairing + replay primitives lifted from
 /// CodexBridge in Phase A).
 ///
 /// Architecture:
-///   - Electron main process spawns the `GuiGeminiBridgeDaemon` executable
+///   - Electron main process spawns the `AgbenchBridgeDaemon` executable
 ///     as a subprocess (mirrors the existing `CodexAppServerClient` spawn
 ///     pattern in `src/main/CodexAppServerClient.ts`).
 ///   - The daemon communicates with Electron over stdio JSON-RPC (Phase C1).
@@ -21,25 +21,25 @@ import PackageDescription
 /// CodexBridge checkout. Once BridgeCore lives in its own repo, this becomes
 /// a Git URL dependency.
 let package = Package(
-    name: "GuiGeminiBridge",
+    name: "AgbenchBridge",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .executable(
-            name: "GuiGeminiBridgeDaemon",
-            targets: ["GuiGeminiBridgeDaemon"]
+            name: "AgbenchBridgeDaemon",
+            targets: ["AgbenchBridgeDaemon"]
         )
     ],
     dependencies: [
         // BridgeCore lives in the sibling CodexBridge checkout. Path is
-        // relative to this Package.swift (swift/GuiGeminiBridge/) — three
+        // relative to this Package.swift (swift/AgbenchBridge/) — three
         // hops up to ~/Documents/, then into CodexBridge.
         .package(path: "../../../CodexBridge")
     ],
     targets: [
         .executableTarget(
-            name: "GuiGeminiBridgeDaemon",
+            name: "AgbenchBridgeDaemon",
             dependencies: [
                 .product(name: "BridgeCore", package: "CodexBridge"),
                 .product(name: "BridgeCryptoPrimitives", package: "CodexBridge"),
@@ -50,8 +50,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "GuiGeminiBridgeDaemonTests",
-            dependencies: ["GuiGeminiBridgeDaemon"]
+            name: "AgbenchBridgeDaemonTests",
+            dependencies: ["AgbenchBridgeDaemon"]
         )
     ]
 )

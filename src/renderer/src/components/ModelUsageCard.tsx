@@ -44,7 +44,7 @@ interface ModelUsageCardProps {
 }
 
 const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
-const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'guigemini-sidebar-model-usage-height'
+const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'agbench-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
 const SIDEBAR_USAGE_MIN_HEIGHT = 220
 // Six providers (gemini/codex/claude/kimi/cursor/grok) make the meter list

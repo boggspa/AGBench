@@ -433,7 +433,7 @@ const DEFAULT_WORKSPACE_SIDEBAR_WIDTH = 260
 const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
 const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
 const FX_BURST_DURATION_MS = 1150
-const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
+const GHOST_COMPANION_STORAGE_KEY = 'agbench.ghostCompanionEnabled'
 /**
  * Set to `'true'` after the user explicitly dismisses the
  * first-launch onboarding hint (the faint "Click + above to add
@@ -442,7 +442,7 @@ const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
  * the `?` button in the chat-corner-controls-left still manually
  * re-opens it.
  */
-const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'guiGemini.onboardingHintDismissed'
+const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'agbench.onboardingHintDismissed'
 /**
  * Set to `'true'` after the user explicitly dismisses the
  * full-modal FirstLaunchSheet (provider sign-in checklist,
@@ -453,7 +453,7 @@ const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'guiGemini.onboardingHintDismissed
  * had only dismissed the inline T1b sidebar hint still get the
  * richer sheet shown to them once after upgrading.
  */
-const FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY = 'guiGemini.firstLaunchSheetDismissed'
+const FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY = 'agbench.firstLaunchSheetDismissed'
 /**
  * Lifetime of the post-dismissal pointer animation on the sidebar
  * `+` workspace button. After the sheet closes for the first
@@ -1427,7 +1427,7 @@ const clampWorkspaceSidebarWidth = (value: number): number => {
 
 const getStoredFileEditorWidth = (): number => {
   try {
-    const stored = window.localStorage.getItem('guiGemini.fileEditorWidth')
+    const stored = window.localStorage.getItem('agbench.fileEditorWidth')
     const parsed = stored ? Number(stored) : DEFAULT_FILE_EDITOR_WIDTH
     return Number.isFinite(parsed) ? clampPanelWidth(parsed) : DEFAULT_FILE_EDITOR_WIDTH
   } catch {
@@ -1437,7 +1437,7 @@ const getStoredFileEditorWidth = (): number => {
 
 const getStoredWorkspaceSidebarWidth = (): number => {
   try {
-    const stored = window.localStorage.getItem('guiGemini.workspaceSidebarWidth')
+    const stored = window.localStorage.getItem('agbench.workspaceSidebarWidth')
     const parsed = stored ? Number(stored) : DEFAULT_WORKSPACE_SIDEBAR_WIDTH
     return Number.isFinite(parsed)
       ? clampWorkspaceSidebarWidth(parsed)
@@ -1486,7 +1486,7 @@ const getStoredFirstLaunchSheetDismissed = (): boolean => {
   }
 }
 
-const SKY_VISUAL_FX_STORAGE_KEY = 'guiGemini.skyVisualFxEnabled'
+const SKY_VISUAL_FX_STORAGE_KEY = 'agbench.skyVisualFxEnabled'
 const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 const MIN_GEMINI_TERMINAL_HEIGHT = 150
 const DEFAULT_GEMINI_TERMINAL_HEIGHT = 260
@@ -1591,7 +1591,7 @@ const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
   const fullDiffText = collectReviewDiffText(diffObj)
   const diffText =
     fullDiffText.length > MAX_REVIEW_DIFF_CHARS
-      ? `${fullDiffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[Diff truncated by GUIGemini before sending to Gemini. Inspect the workspace with read-only commands if needed.]`
+      ? `${fullDiffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[Diff truncated by AGBench before sending to Gemini. Inspect the workspace with read-only commands if needed.]`
       : fullDiffText
 
   const diffBlock = diffText
@@ -13215,7 +13215,7 @@ function App(): React.JSX.Element {
 
   const handleRestoreCheckpoint = async () => {
     const confirmed = window.confirm(
-      'Open Gemini /restore in the persistent session? This only opens Gemini CLI restore selection; restore is not executed by GUIGemini.'
+      'Open Gemini /restore in the persistent session? This only opens Gemini CLI restore selection; restore is not executed by AGBench.'
     )
     if (!confirmed) {
       return
@@ -13744,7 +13744,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('guiGemini.fileEditorWidth', String(fileEditorWidth))
+      window.localStorage.setItem('agbench.fileEditorWidth', String(fileEditorWidth))
     } catch {
       // Local persistence is best-effort only.
     }
@@ -13752,7 +13752,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('guiGemini.workspaceSidebarWidth', String(workspaceSidebarWidth))
+      window.localStorage.setItem('agbench.workspaceSidebarWidth', String(workspaceSidebarWidth))
     } catch {
       // Local persistence is best-effort only.
     }
@@ -15454,7 +15454,7 @@ function App(): React.JSX.Element {
           (task) => task.status === 'pending' || task.status === 'due' || task.status === 'running'
         )
   const welcomeCopy = buildWelcomeCopy({
-    workspaceName: isCurrentGlobalChat ? 'Chats' : currentWorkspace?.displayName || 'GUIGemini',
+    workspaceName: isCurrentGlobalChat ? 'Chats' : currentWorkspace?.displayName || 'AGBench',
     providerLabel: currentProviderLabel,
     permissionModeLabel,
     isGlobalChat: isCurrentGlobalChat,
@@ -16757,7 +16757,7 @@ function App(): React.JSX.Element {
                         <>
                           <span>New Ensemble chat in </span>
                           <strong className={workspaceNameClass}>
-                            {currentWorkspace?.displayName || 'GUIGemini'}
+                            {currentWorkspace?.displayName || 'AGBench'}
                           </strong>
                           <span> Workspace.</span>
                         </>

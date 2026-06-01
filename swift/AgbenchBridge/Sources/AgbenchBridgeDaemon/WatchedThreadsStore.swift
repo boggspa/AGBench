@@ -33,7 +33,7 @@ import BridgeCore
 ///     source-of-truth map.
 ///
 /// Lifecycle: the shared BridgeCore server still does not expose every
-/// disconnect event to GUIGemini, so this store also records per-pair
+/// disconnect event to AGBench, so this store also records per-pair
 /// `lastSeenAt` timestamps. The listener can prune very old subscriptions
 /// opportunistically without requiring a BridgeCore API change.
 public actor WatchedThreadsStore {

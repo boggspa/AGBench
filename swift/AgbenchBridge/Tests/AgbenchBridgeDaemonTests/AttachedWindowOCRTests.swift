@@ -2,7 +2,7 @@ import XCTest
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
-@testable import GuiGeminiBridgeDaemon
+@testable import AgbenchBridgeDaemon
 
 /// OCR plumbing tests. We don't exercise Vision's text-recognition accuracy
 /// here — that's Apple's responsibility and unit tests with synthetic glyphs

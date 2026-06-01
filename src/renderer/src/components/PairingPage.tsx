@@ -39,7 +39,7 @@ interface BootstrapState {
   qrSvg: string
 }
 
-const DISPLAY_NAME_STORAGE_KEY = 'guigemini-pairing-display-name'
+const DISPLAY_NAME_STORAGE_KEY = 'agbench-pairing-display-name'
 
 export function PairingPage(): JSX.Element {
   const [displayName, setDisplayName] = useState<string>(() => {
