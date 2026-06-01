@@ -263,6 +263,17 @@ import { buildRunDiffByPath } from './lib/RunWorkspaceDiff'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { buildWelcomeCopy } from './lib/welcomeCopy'
+import {
+  collectDroppedAttachmentPaths,
+  dedupePaths,
+  getImageName,
+  getImagePreviewSrc,
+  isImageAttachmentPath,
+  MAX_IMAGE_ATTACHMENTS,
+  mergeImageAttachments,
+  sanitizeImagePath,
+  type ImageAttachment
+} from './lib/imageAttachments'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
 import {
   buildParticipantToolGrantPatch,
@@ -375,12 +386,6 @@ type UsageModelEntry = {
   durationMs?: number
 }
 
-type ImageAttachment = {
-  id: string
-  path: string
-  name: string
-}
-
 type RunCompleteNotice = {
   timestamp: string
   exitCode: number
@@ -426,8 +431,6 @@ type GeminiMemoryFile = {
   error?: string
 }
 
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|avif|tiff|tif|svg|jfif)(\?.*)?$/i
-const MAX_IMAGE_ATTACHMENTS = 5
 const MEMORY_PREVIEW_CHARS = 6000
 // DEFAULT_CONTEXT_TURNS, MAX_CONTEXT_TURNS moved to src/main/PromptComposition.ts.
 // MAX_CONTEXT_CHARS_PER_TURN, MAX_CONTEXT_BLOCK_CHARS moved to src/main/PromptComposition.ts.
@@ -773,9 +776,6 @@ const buildEnsembleRoundSummaryRows = (
 
   return rows
 }
-
-const sanitizeImagePath = (value: string): string =>
-  value.trim().replace(/^\s*["'`]|["'`]\s*$/g, '')
 
 const toDateTimeLocalValue = (date: Date): string => {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -1522,69 +1522,6 @@ function WelcomeUsageDashboard({
   )
 }
 
-const getImageName = (value: string): string => {
-  return value.split(/[/\\]/).filter(Boolean).pop() || value
-}
-
-const isImageAttachmentPath = (path: string): boolean => IMAGE_EXT.test(path)
-
-const dedupePaths = (values: string[]): string[] => {
-  const seen = new Set<string>()
-  const next: string[] = []
-  for (const item of values) {
-    const normalized = sanitizeImagePath(item)
-    if (!normalized || seen.has(normalized)) {
-      continue
-    }
-    seen.add(normalized)
-    next.push(normalized)
-  }
-  return next
-}
-
-const collectDroppedAttachmentPaths = (dataTransfer?: DataTransfer | null): string[] => {
-  if (!dataTransfer) {
-    return []
-  }
-  const paths: string[] = []
-
-  const fileList = dataTransfer.files
-  for (let i = 0; i < fileList.length; i += 1) {
-    const file = fileList.item(i)
-    if (!file) continue
-    const asFile = file as File & { path?: string }
-    const candidate = sanitizeImagePath(asFile.path || file.name)
-    if (candidate) {
-      paths.push(candidate)
-    }
-  }
-
-  if (paths.length > 0) {
-    return dedupePaths(paths)
-  }
-
-  const uriList = dataTransfer.getData('text/uri-list')
-  if (!uriList) {
-    return []
-  }
-
-  const uriCandidates = uriList
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => line.startsWith('file://'))
-    .map((line) => {
-      try {
-        return sanitizeImagePath(decodeURIComponent(line.replace(/^file:\/\//, '')))
-      } catch {
-        return sanitizeImagePath(line.replace(/^file:\/\//, ''))
-      }
-    })
-    .filter(Boolean)
-
-  return dedupePaths(uriCandidates)
-}
-
 type PlanChoiceState = {
   messageId: string
   question: string
@@ -1696,33 +1633,6 @@ const parsePlanModeChoice = (text: string): { question: string; options: string[
     question: question || 'Please choose one option to continue.',
     options: uniqueOptions
   }
-}
-
-const getImagePreviewSrc = (imagePath: string): string => {
-  const normalized = sanitizeImagePath(imagePath).replace(/\\/g, '/')
-  return /^[A-Za-z]:\//.test(normalized)
-    ? `file:///${normalized}`
-    : `file://${normalized.startsWith('/') ? '' : '/'}${normalized}`
-}
-
-const dedupeAttachments = (incoming: ImageAttachment[]): ImageAttachment[] => {
-  const seen = new Set<string>()
-  const next: ImageAttachment[] = []
-  for (const item of incoming) {
-    const key = sanitizeImagePath(item.path)
-    if (!seen.has(key)) {
-      seen.add(key)
-      next.push(item)
-    }
-  }
-  return next
-}
-
-const mergeImageAttachments = (
-  current: ImageAttachment[],
-  additions: ImageAttachment[]
-): ImageAttachment[] => {
-  return dedupeAttachments([...current, ...additions]).slice(-MAX_IMAGE_ATTACHMENTS)
 }
 
 const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
