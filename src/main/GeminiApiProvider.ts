@@ -82,7 +82,7 @@
 
 import { promises as fsPromises } from 'fs'
 import { extname } from 'path'
-import type { AgentRunPayload, AgentRunRoute } from './index'
+import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
 import { geminiUsageMetadataToStats } from './ProviderRunStats'
 import type {
   AppSettings,

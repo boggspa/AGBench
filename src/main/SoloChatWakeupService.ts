@@ -43,7 +43,7 @@
  */
 
 import type { ChatMessage, ChatRecord, ProviderId, SoloChatWakeupRecord } from './store/types'
-import type { AgentRunPayload } from './index'
+import type { AgentRunPayload } from './run/AgentRunTypes'
 
 /**
  * Pure validator + builder. Resolves the requested wake target

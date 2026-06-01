@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { RunCoordinator, type RunCoordinatorDeps, type RunDispatchEvent } from './RunCoordinator'
 import type { ProviderId } from '../store/types'
 import type { ProviderAdapter } from '../ProviderAdapters'
-import type { AgentRunPayload, AgentRunRoute } from '../index'
+import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 
 /**
  * Phase B1 — unit tests for the RunCoordinator extraction.

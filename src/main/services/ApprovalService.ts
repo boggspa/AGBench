@@ -6,7 +6,7 @@ import type {
   RunEventKind,
   RunEventPhase
 } from '../store/types'
-import type { AgentRunRoute } from '../index'
+import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager } from '../RunManager'
 import type { PermissionService } from '../PermissionService'
 import type { ApprovalTimeoutScheduler, ApprovalTimeoutReason } from '../ApprovalTimeoutScheduler'

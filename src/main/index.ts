@@ -178,6 +178,26 @@ import {
   EnsembleParticipant,
   EnsembleWakeupRecord
 } from './store/types'
+import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
+import {
+  DEFAULT_WINDOW_HEIGHT,
+  DEFAULT_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+  assertProviderId,
+  availableProviderIds,
+  createMainSanitizers,
+  imageAttachmentSnapshots,
+  isRecord,
+  normalizeEnsembleRunIdentity,
+  optionalNumber,
+  optionalString,
+  optionalStringOrNull,
+  requireNonEmptyString,
+  requireRecord,
+  sanitizeWindowBounds,
+  stringArray
+} from './settings/MainSanitizers'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -1015,42 +1035,6 @@ const HOST_WEATHER_TIMEOUT_MS = 5_000
 let hostWeatherCache: HostWeatherState | null = null
 let hostWeatherCacheAt = 0
 
-// Phase B1: AgentRunPayload + AgentRunRoute exported so the extracted
-// `services/RunCoordinator.ts` can type its public surface without an
-// awkward import-from-index. Future Phase B slices will follow the
-// same pattern.
-export interface AgentRunRoute {
-  appRunId?: string
-  appChatId?: string
-}
-
-export interface AgentRunPayload {
-  provider: ProviderId
-  scope: ChatScope
-  workspace?: string
-  prompt: string
-  appRunId?: string
-  appChatId?: string
-  model?: string
-  reasoningEffort?: string | null
-  serviceTier?: string | null
-  claudeReasoningEffort?: string | null
-  claudeFastMode?: boolean | null
-  kimiThinking?: boolean | null
-  approvalMode?: string
-  imagePaths?: string[]
-  providerSessionId?: string | null
-  externalPathGrants?: ExternalPathGrant[]
-  sessionTrust?: boolean
-  geminiWorktree?: GeminiWorktreeLaunchOption
-  runtimeProfileId?: string
-  geminiAuthProfileId?: string | null
-  handoffSourceRunId?: string
-  runtimeProfile?: RuntimeProfile
-  effectivePermissions?: EffectiveRunPermissions
-  ensembleRun?: EnsembleRunIdentity
-}
-
 interface CodexRunState {
   sender: Electron.WebContents
   threadId: string
@@ -1262,179 +1246,6 @@ const agenticSessionGrants = new Set<string>()
 let activeCodexRunState: CodexRunState | null = null
 const cliProviderProcesses = new Map<ProviderId, ChildProcess>()
 const cliProviderAbortControllers = new Map<ProviderId, AbortController>()
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
-const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
-  shellCommands: 'workspace',
-  fileChanges: 'ask',
-  mcpTools: 'ask',
-  subThreadDelegation: 'ask',
-  networkAccess: 'allow'
-}
-const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
-  'activeProvider',
-  'windowBounds',
-  'claudeBinaryPath',
-  'kimiBinaryPath',
-  'codexUsageCredential',
-  'storeLocalChatHistory',
-  'storeRawEvents',
-  'storePromptResponseInUsage',
-  'ensembleModeEnabled',
-  'geminiCheckpointingEnabled',
-  'chatContextTurns',
-  'appearanceMode',
-  'visualEffectStyle',
-  'themeAppearance',
-  'themeCornerStyle',
-  'themeAccentStyle',
-  'promptSurfaceStyle',
-  'composerStyle',
-  'transcriptFontFamily',
-  'composerFontFamily',
-  'reduceTransparency',
-  'reduceMotion',
-  'compactDensity',
-  'showInspector',
-  'inspectorWidth',
-  'sidebarWidth',
-  'funFxEnabled',
-  'funFxMode',
-  'advancedFx',
-  'currency',
-  'currencyOverestimatePercent',
-  'dashboardStatPrefs',
-  'welcomeHeatmapPrefs',
-  'kimiSanitiserEnabled',
-  'kimiSanitiserCustomKeywords',
-  'kimiClassifierEnabled',
-  'agenticServices',
-  'nativeSubAgentRequests',
-  'geminiApiRuntime',
-  'geminiMcpBridgeEnabled',
-  'geminiMcpBridgeLastStatus',
-  'bridgeDaemonEnabled',
-  'codexSandboxFallback',
-  'updateChannel'
-])
-const MIN_INSPECTOR_WIDTH = 300
-const MAX_INSPECTOR_WIDTH = 720
-const MIN_SIDEBAR_WIDTH = 220
-const MAX_SIDEBAR_WIDTH = 440
-const DEFAULT_WINDOW_WIDTH = 1400
-const DEFAULT_WINDOW_HEIGHT = 900
-const MIN_WINDOW_WIDTH = 900
-const MIN_WINDOW_HEIGHT = 600
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`${label} must be an object.`)
-  }
-  return value
-}
-
-function assertProviderId(value: unknown): ProviderId {
-  if (typeof value === 'string' && PROVIDER_IDS.has(value as ProviderId)) {
-    return value as ProviderId
-  }
-  // 1.0.6-G3c — grok is accepted only when the experimental gate is on.
-  if (value === 'grok' && experimentalGrokProviderEnabled()) {
-    return 'grok'
-  }
-  // CR — cursor is first-class (gate default-on) but kept out of the frozen
-  // PROVIDER_IDS baseline so the status/broadcast iteration arrays stay 5-wide;
-  // admitted here per-call (gate #2).
-  if (value === 'cursor' && experimentalCursorProviderEnabled()) {
-    return 'cursor'
-  }
-  throw new Error('Provider is invalid.')
-}
-
-/**
- * 1.0.6-CRUX26 — provider ids currently available in this process: the frozen
- * core four plus grok/cursor when their gates are on. Use for model-facing MCP
- * enums and "all providers" sweeps so gated providers are advertised/iterated
- * when present. Env gates are stable per-process, so calling this at
- * schema-build time captures the right set.
- */
-function availableProviderIds(): ProviderId[] {
-  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
-  if (experimentalGrokProviderEnabled()) ids.push('grok')
-  if (experimentalCursorProviderEnabled()) ids.push('cursor')
-  return ids
-}
-
-function requireNonEmptyString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`${label} is required.`)
-  }
-  return value
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
-}
-
-function optionalStringOrNull(value: unknown): string | null | undefined {
-  if (value === null) return null
-  return optionalString(value)
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : []
-}
-
-function imageAttachmentSnapshots(
-  value: unknown
-): Array<{ id?: string; path: string; name?: string }> {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const record = item as Record<string, unknown>
-      const path = typeof record.path === 'string' ? record.path.trim() : ''
-      if (!path) return null
-      return {
-        ...(typeof record.id === 'string' && record.id.trim() ? { id: record.id.trim() } : {}),
-        path,
-        ...(typeof record.name === 'string' && record.name.trim()
-          ? { name: record.name.trim() }
-          : {})
-      }
-    })
-    .filter((item): item is { id?: string; path: string; name?: string } => Boolean(item))
-}
-
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function clampDimension(value: unknown, min: number, max: number, fallback = 0): number {
-  const next = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
-  if (!Number.isFinite(next)) return fallback
-  return Math.max(min, Math.min(max, Math.round(next)))
-}
-
-function sanitizeWindowBounds(value: unknown): AppSettings['windowBounds'] | undefined {
-  if (!isRecord(value)) return undefined
-  const width = clampDimension(value.width, MIN_WINDOW_WIDTH, 10_000, DEFAULT_WINDOW_WIDTH)
-  const height = clampDimension(value.height, MIN_WINDOW_HEIGHT, 10_000, DEFAULT_WINDOW_HEIGHT)
-  const x = optionalNumber(value.x)
-  const y = optionalNumber(value.y)
-  return {
-    ...(x !== undefined ? { x: Math.round(x) } : {}),
-    ...(y !== undefined ? { y: Math.round(y) } : {}),
-    width,
-    height,
-    ...(typeof value.isMaximized === 'boolean' ? { isMaximized: value.isMaximized } : {})
-  }
-}
-
 function canonicalPath(value: string): string {
   return resolve(expandHomePath(value))
 }
@@ -1562,6 +1373,23 @@ function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'):
   return normalized
 }
 
+const {
+  sanitizeScheduledTaskForSave,
+  sanitizeScheduledTaskPatch,
+  sanitizeRuntimeProfileForSave,
+  sanitizeHandoffCardForSave,
+  sanitizeHandoffCardPatch,
+  sanitizeHandoffCardFilter,
+  sanitizeSettingsPatch
+} = createMainSanitizers({
+  getSettings: () => AppStore.getSettings(),
+  getScheduledTasks: () => AppStore.getScheduledTasks(),
+  findRegisteredWorkspace,
+  requireRegisteredWorkspace,
+  canonicalPath,
+  normalizeExternalPathGrants
+})
+
 function externalGrantSigningPayload(
   grant: Pick<
     ExternalPathGrant,
@@ -1608,22 +1436,6 @@ function isMainIssuedExternalPathGrant(grant: ExternalPathGrant): boolean {
   const expected = Buffer.from(signExternalPathGrant(grant), 'hex')
   const actual = Buffer.from(grant.signature, 'hex')
   return expected.length === actual.length && timingSafeEqual(expected, actual)
-}
-
-function sanitizeAgenticServicePolicy(
-  value: unknown,
-  fallback: 'ask' | 'workspace' | 'allow' | 'deny'
-): 'ask' | 'workspace' | 'allow' | 'deny' {
-  return value === 'ask' || value === 'workspace' || value === 'allow' || value === 'deny'
-    ? value
-    : fallback
-}
-
-function sanitizeAgenticNetworkPolicy(
-  value: unknown,
-  fallback: 'allow' | 'deny'
-): 'allow' | 'deny' {
-  return value === 'allow' || value === 'deny' ? value : fallback
 }
 
 function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
@@ -1684,17 +1496,6 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
       ? (payload.effectivePermissions as unknown as EffectiveRunPermissions)
       : undefined,
     ensembleRun: normalizeEnsembleRunIdentity(payload.ensembleRun)
-  }
-}
-
-function normalizeEnsembleRunIdentity(value: unknown): EnsembleRunIdentity | undefined {
-  if (!isRecord(value)) return undefined
-  return {
-    roundId: requireNonEmptyString(value.roundId, 'Ensemble round id'),
-    participantId: requireNonEmptyString(value.participantId, 'Ensemble participant id'),
-    provider: assertProviderId(value.provider),
-    role: optionalString(value.role) || 'Participant',
-    order: optionalNumber(value.order) ?? 0
   }
 }
 
@@ -1759,461 +1560,6 @@ async function ensureProviderRunPreflight(
   sendAgentCompatError(sender, payload.provider, preflight.reason, route)
   sendAgentCompatExit(sender, payload.provider, -1, route)
   return false
-}
-
-function normalizeScheduledTaskExternalGrants(value: unknown): ExternalPathGrant[] | undefined {
-  const rawGrants = Array.isArray(value) ? (value as ExternalPathGrant[]) : []
-  const grants = normalizeExternalPathGrants(rawGrants)
-  if (rawGrants.length && grants.length !== rawGrants.length) {
-    throw new Error(
-      'Scheduled task external path grants must be issued by AGBench in this app session.'
-    )
-  }
-  return grants.length ? grants : undefined
-}
-
-function assertScheduledTaskWorkspaceIdentity(
-  workspacePath: string,
-  workspaceId?: unknown
-): WorkspaceRecord {
-  const registeredPath = requireRegisteredWorkspace(workspacePath, 'Scheduled task workspace')
-  const workspace = findRegisteredWorkspace(registeredPath)
-  if (!workspace) {
-    throw new Error('Scheduled task workspace must be registered.')
-  }
-  if (typeof workspaceId === 'string' && workspaceId && workspaceId !== workspace.id) {
-    throw new Error('Scheduled task workspace id does not match the registered workspace.')
-  }
-  return workspace
-}
-
-function sanitizeScheduledTaskForSave(
-  task: unknown
-): Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
-  Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>> {
-  const input = requireRecord(task, 'Scheduled task')
-  const workspace = assertScheduledTaskWorkspaceIdentity(
-    requireNonEmptyString(input.workspacePath, 'Scheduled task workspace'),
-    input.workspaceId
-  )
-  return {
-    ...input,
-    workspaceId: workspace.id,
-    workspacePath: canonicalPath(workspace.path),
-    provider: assertProviderId(input.provider),
-    externalPathGrants: normalizeScheduledTaskExternalGrants(input.externalPathGrants),
-    claudeFastMode: typeof input.claudeFastMode === 'boolean' ? input.claudeFastMode : undefined,
-    runtimeProfileId: optionalString(input.runtimeProfileId),
-    geminiAuthProfileId: optionalStringOrNull(input.geminiAuthProfileId),
-    handoffSourceRunId: optionalString(input.handoffSourceRunId)
-  } as Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
-    Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
-}
-
-function sanitizeScheduledTaskPatch(id: string, partial: unknown): Partial<ScheduledTask> | null {
-  const input = requireRecord(partial, 'Scheduled task update')
-  const existing = AppStore.getScheduledTasks().find((task) => task.id === id)
-  if (!existing) return null
-  const workspace = assertScheduledTaskWorkspaceIdentity(
-    existing.workspacePath,
-    existing.workspaceId
-  )
-  if (
-    'workspacePath' in input &&
-    input.workspacePath !== undefined &&
-    canonicalPath(String(input.workspacePath)) !== canonicalPath(workspace.path)
-  ) {
-    throw new Error('Scheduled task workspace path cannot be changed by the renderer.')
-  }
-  if (
-    'workspaceId' in input &&
-    input.workspaceId !== undefined &&
-    input.workspaceId !== workspace.id
-  ) {
-    throw new Error('Scheduled task workspace id cannot be changed by the renderer.')
-  }
-
-  const sanitized: Partial<ScheduledTask> = {
-    ...(input as Partial<ScheduledTask>),
-    workspaceId: workspace.id,
-    workspacePath: canonicalPath(workspace.path)
-  }
-  if ('provider' in input && input.provider !== undefined) {
-    sanitized.provider = assertProviderId(input.provider)
-  }
-  if ('externalPathGrants' in input) {
-    sanitized.externalPathGrants = normalizeScheduledTaskExternalGrants(input.externalPathGrants)
-  }
-  if ('claudeFastMode' in input) {
-    sanitized.claudeFastMode =
-      typeof input.claudeFastMode === 'boolean' ? input.claudeFastMode : undefined
-  }
-  if ('runtimeProfileId' in input) {
-    sanitized.runtimeProfileId = optionalString(input.runtimeProfileId)
-  }
-  if ('geminiAuthProfileId' in input) {
-    sanitized.geminiAuthProfileId = optionalStringOrNull(input.geminiAuthProfileId)
-  }
-  if ('handoffSourceRunId' in input) {
-    sanitized.handoffSourceRunId = optionalString(input.handoffSourceRunId)
-  }
-  return sanitized
-}
-
-function sanitizeRuntimeProfileForSave(
-  profile: unknown
-): Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'> {
-  const input = requireRecord(profile, 'Runtime profile')
-  const env: Record<string, string> = {}
-  if (isRecord(input.env)) {
-    for (const [key, value] of Object.entries(input.env)) {
-      if (typeof key === 'string' && key.trim() && typeof value === 'string') {
-        env[key] = value
-      }
-    }
-  }
-  const workspaceMode =
-    input.workspaceMode === 'worktree' || input.workspaceMode === 'container'
-      ? input.workspaceMode
-      : 'local'
-  const networkPolicy =
-    input.networkPolicy === 'allow' || input.networkPolicy === 'deny'
-      ? input.networkPolicy
-      : 'inherit'
-  const persistence = input.persistence === 'ephemeral' ? 'ephemeral' : 'reusable'
-  return {
-    id: optionalString(input.id),
-    name: requireNonEmptyString(input.name, 'Runtime profile name'),
-    provider: assertProviderId(input.provider),
-    scope: input.scope === 'global' ? 'global' : 'workspace',
-    workspaceMode,
-    binaryPath: optionalString(input.binaryPath),
-    env,
-    mcpProfileId: optionalString(input.mcpProfileId),
-    approvalMode: optionalString(input.approvalMode),
-    agenticServices: isRecord(input.agenticServices)
-      ? {
-          shellCommands: sanitizeAgenticServicePolicy(
-            input.agenticServices.shellCommands,
-            DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.shellCommands
-          ),
-          fileChanges: sanitizeAgenticServicePolicy(
-            input.agenticServices.fileChanges,
-            DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.fileChanges
-          ),
-          mcpTools: sanitizeAgenticServicePolicy(
-            input.agenticServices.mcpTools,
-            DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.mcpTools
-          ),
-          subThreadDelegation: sanitizeAgenticServicePolicy(
-            input.agenticServices.subThreadDelegation,
-            DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.subThreadDelegation
-          ),
-          networkAccess: sanitizeAgenticNetworkPolicy(
-            input.agenticServices.networkAccess,
-            DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.networkAccess
-          )
-        }
-      : undefined,
-    networkPolicy,
-    persistence,
-    containerConfig: isRecord(input.containerConfig)
-      ? {
-          image: optionalString(input.containerConfig.image),
-          workdir: optionalString(input.containerConfig.workdir),
-          mounts: Array.isArray(input.containerConfig.mounts)
-            ? input.containerConfig.mounts.filter(isRecord).map((mount) => ({
-                source: requireNonEmptyString(mount.source, 'Runtime mount source'),
-                target: requireNonEmptyString(mount.target, 'Runtime mount target'),
-                access: mount.access === 'write' ? 'write' : 'read'
-              }))
-            : undefined
-        }
-      : undefined
-  }
-}
-
-function sanitizeHandoffStatus(value: unknown): HandoffCard['status'] {
-  return value === 'dispatched' || value === 'archived' ? value : 'draft'
-}
-
-function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value
-        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-        .map((item) => item.trim())
-    : []
-}
-
-function sanitizeHandoffCardForSave(
-  card: unknown
-): Partial<HandoffCard> &
-  Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'> {
-  const input = requireRecord(card, 'Handoff card')
-  const sourceChatId = requireNonEmptyString(input.sourceChatId, 'Handoff source chat')
-  const sourceProvider = assertProviderId(input.sourceProvider)
-  const recommendedProvider =
-    input.recommendedProvider === undefined
-      ? undefined
-      : assertProviderId(input.recommendedProvider)
-  return {
-    id: optionalString(input.id),
-    status: sanitizeHandoffStatus(input.status),
-    sourceChatId,
-    sourceRunId: optionalString(input.sourceRunId),
-    sourceProvider,
-    workspaceId: optionalString(input.workspaceId),
-    workspacePath: optionalString(input.workspacePath),
-    summary: requireNonEmptyString(input.summary, 'Handoff summary'),
-    selectedFiles: stringList(input.selectedFiles),
-    workspaceChangeSetIds: stringList(input.workspaceChangeSetIds),
-    rawEventRunIds: stringList(input.rawEventRunIds),
-    recommendedProvider,
-    recommendedModel: optionalString(input.recommendedModel),
-    recommendedApprovalMode: optionalString(input.recommendedApprovalMode),
-    targetChatId: optionalString(input.targetChatId),
-    dispatchedRunId: optionalString(input.dispatchedRunId),
-    finalPrompt: requireNonEmptyString(input.finalPrompt, 'Handoff prompt'),
-    dispatchedAt: optionalString(input.dispatchedAt)
-  }
-}
-
-function sanitizeHandoffCardPatch(partial: unknown): Partial<HandoffCard> {
-  const input = requireRecord(partial, 'Handoff card update')
-  const sanitized: Partial<HandoffCard> = {}
-  if ('status' in input) sanitized.status = sanitizeHandoffStatus(input.status)
-  if ('summary' in input && input.summary !== undefined)
-    sanitized.summary = requireNonEmptyString(input.summary, 'Handoff summary')
-  if ('finalPrompt' in input && input.finalPrompt !== undefined)
-    sanitized.finalPrompt = requireNonEmptyString(input.finalPrompt, 'Handoff prompt')
-  if ('sourceRunId' in input) sanitized.sourceRunId = optionalString(input.sourceRunId)
-  if ('selectedFiles' in input) sanitized.selectedFiles = stringList(input.selectedFiles)
-  if ('workspaceChangeSetIds' in input)
-    sanitized.workspaceChangeSetIds = stringList(input.workspaceChangeSetIds)
-  if ('rawEventRunIds' in input) sanitized.rawEventRunIds = stringList(input.rawEventRunIds)
-  if ('recommendedProvider' in input)
-    sanitized.recommendedProvider =
-      input.recommendedProvider === undefined
-        ? undefined
-        : assertProviderId(input.recommendedProvider)
-  if ('recommendedModel' in input)
-    sanitized.recommendedModel = optionalString(input.recommendedModel)
-  if ('recommendedApprovalMode' in input)
-    sanitized.recommendedApprovalMode = optionalString(input.recommendedApprovalMode)
-  if ('targetChatId' in input) sanitized.targetChatId = optionalString(input.targetChatId)
-  if ('dispatchedRunId' in input) sanitized.dispatchedRunId = optionalString(input.dispatchedRunId)
-  if ('dispatchedAt' in input) sanitized.dispatchedAt = optionalString(input.dispatchedAt)
-  return sanitized
-}
-
-function sanitizeHandoffCardFilter(filter: unknown): HandoffCardFilter {
-  if (!isRecord(filter)) return {}
-  return {
-    sourceChatId: optionalString(filter.sourceChatId),
-    sourceRunId: optionalString(filter.sourceRunId),
-    status:
-      filter.status === 'draft' || filter.status === 'dispatched' || filter.status === 'archived'
-        ? filter.status
-        : undefined
-  }
-}
-
-function sanitizeAdvancedFxSettings(
-  value: unknown,
-  current: AppSettings['advancedFx']
-): AppSettings['advancedFx'] {
-  const source = isRecord(value) ? value : {}
-  const rawIntensity = source.intensity
-  const intensity =
-    rawIntensity === 'subtle' || rawIntensity === 'cinematic' || rawIntensity === 'epic'
-      ? rawIntensity
-      : current.intensity || 'cinematic'
-
-  return {
-    agentAura: 'agentAura' in source ? Boolean(source.agentAura) : current.agentAura,
-    livingWorkspace:
-      'livingWorkspace' in source ? Boolean(source.livingWorkspace) : current.livingWorkspace,
-    dataViz: 'dataViz' in source ? Boolean(source.dataViz) : current.dataViz,
-    intensity
-  }
-}
-
-function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
-  const input = requireRecord(partial, 'Settings patch')
-  const sanitized: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(input)) {
-    if (!SETTINGS_PATCH_KEYS.has(key as keyof AppSettings)) continue
-    sanitized[key] = value
-  }
-  if ('activeProvider' in sanitized && sanitized.activeProvider !== undefined) {
-    sanitized.activeProvider = assertProviderId(sanitized.activeProvider)
-  }
-  if ('agenticServices' in sanitized) {
-    const services = requireRecord(sanitized.agenticServices, 'Agentic services')
-    const current = AppStore.getSettings().agenticServices
-    sanitized.agenticServices = {
-      shellCommands: sanitizeAgenticServicePolicy(services.shellCommands, current.shellCommands),
-      fileChanges: sanitizeAgenticServicePolicy(services.fileChanges, current.fileChanges),
-      mcpTools: sanitizeAgenticServicePolicy(services.mcpTools, current.mcpTools),
-      subThreadDelegation: sanitizeAgenticServicePolicy(
-        services.subThreadDelegation,
-        current.subThreadDelegation
-      ),
-      networkAccess: sanitizeAgenticNetworkPolicy(services.networkAccess, current.networkAccess)
-    }
-  }
-  if ('currency' in sanitized) {
-    const value = sanitized.currency
-    if (value !== 'USD' && value !== 'GBP' && value !== 'EUR') delete sanitized.currency
-  }
-  if ('currencyOverestimatePercent' in sanitized) {
-    const value = Number(sanitized.currencyOverestimatePercent)
-    if (Number.isFinite(value)) {
-      sanitized.currencyOverestimatePercent = Math.max(0, Math.min(25, Math.round(value)))
-    } else {
-      delete sanitized.currencyOverestimatePercent
-    }
-  }
-  if ('dashboardStatPrefs' in sanitized) {
-    const prefs = isRecord(sanitized.dashboardStatPrefs) ? sanitized.dashboardStatPrefs : {}
-    const current = AppStore.getSettings().dashboardStatPrefs || {}
-    const visibility = isRecord(prefs.visibility) ? prefs.visibility : current.visibility
-    sanitized.dashboardStatPrefs = {
-      ...current,
-      ...(visibility
-        ? {
-            visibility: Object.fromEntries(
-              Object.entries(visibility).filter(
-                (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
-              )
-            )
-          }
-        : {}),
-      ...(Number.isFinite(Number(prefs.resetAt))
-        ? { resetAt: Math.max(0, Number(prefs.resetAt)) }
-        : {}),
-      ...(typeof prefs.workspacesTabEnabled === 'boolean'
-        ? { workspacesTabEnabled: prefs.workspacesTabEnabled }
-        : {}),
-      ...(Number.isFinite(Number(prefs.workspacesShown))
-        ? { workspacesShown: Math.max(4, Math.min(20, Math.round(Number(prefs.workspacesShown)))) }
-        : {}),
-      ...(typeof prefs.providersTabEnabled === 'boolean'
-        ? { providersTabEnabled: prefs.providersTabEnabled }
-        : {}),
-      ...(Number.isFinite(Number(prefs.autoCycleSeconds))
-        ? {
-            autoCycleSeconds: Math.max(
-              0,
-              Math.min(3600, Math.round(Number(prefs.autoCycleSeconds)))
-            )
-          }
-        : {})
-    }
-  }
-  if ('welcomeHeatmapPrefs' in sanitized) {
-    const prefs = isRecord(sanitized.welcomeHeatmapPrefs) ? sanitized.welcomeHeatmapPrefs : {}
-    const current = AppStore.getSettings().welcomeHeatmapPrefs || {}
-    sanitized.welcomeHeatmapPrefs = {
-      workspaceActivityEnabled:
-        typeof prefs.workspaceActivityEnabled === 'boolean'
-          ? prefs.workspaceActivityEnabled
-          : current.workspaceActivityEnabled,
-      agbenchActivityEnabled:
-        typeof prefs.agbenchActivityEnabled === 'boolean'
-          ? prefs.agbenchActivityEnabled
-          : current.agbenchActivityEnabled,
-      externalActivityEnabled:
-        typeof prefs.externalActivityEnabled === 'boolean'
-          ? prefs.externalActivityEnabled
-          : current.externalActivityEnabled
-    }
-  }
-  if ('kimiSanitiserEnabled' in sanitized) {
-    sanitized.kimiSanitiserEnabled =
-      typeof sanitized.kimiSanitiserEnabled === 'boolean'
-        ? sanitized.kimiSanitiserEnabled
-        : Boolean(sanitized.kimiSanitiserEnabled)
-  }
-  if ('kimiSanitiserCustomKeywords' in sanitized) {
-    sanitized.kimiSanitiserCustomKeywords =
-      typeof sanitized.kimiSanitiserCustomKeywords === 'string'
-        ? sanitized.kimiSanitiserCustomKeywords
-        : ''
-  }
-  if ('kimiClassifierEnabled' in sanitized) {
-    sanitized.kimiClassifierEnabled =
-      typeof sanitized.kimiClassifierEnabled === 'boolean'
-        ? sanitized.kimiClassifierEnabled
-        : Boolean(sanitized.kimiClassifierEnabled)
-  }
-  if ('geminiApiRuntime' in sanitized) {
-    const value = sanitized.geminiApiRuntime
-    if (value !== 'auto' && value !== 'always' && value !== 'never') {
-      delete sanitized.geminiApiRuntime
-    }
-  }
-  if ('nativeSubAgentRequests' in sanitized) {
-    sanitized.nativeSubAgentRequests =
-      sanitized.nativeSubAgentRequests === 'provider' ||
-      sanitized.nativeSubAgentRequests === 'agbench'
-        ? sanitized.nativeSubAgentRequests
-        : 'ask'
-  }
-  if ('advancedFx' in sanitized) {
-    sanitized.advancedFx = sanitizeAdvancedFxSettings(
-      sanitized.advancedFx,
-      AppStore.getSettings().advancedFx
-    )
-  }
-  if ('windowBounds' in sanitized) {
-    const bounds = sanitizeWindowBounds(sanitized.windowBounds)
-    if (bounds) {
-      sanitized.windowBounds = bounds
-    } else {
-      delete sanitized.windowBounds
-    }
-  }
-  for (const key of ['chatContextTurns', 'inspectorWidth', 'sidebarWidth'] as const) {
-    if (key in sanitized) {
-      const value = Number(sanitized[key])
-      if (Number.isFinite(value)) {
-        if (key === 'chatContextTurns') {
-          sanitized[key] = Math.max(0, Math.trunc(value))
-        } else if (key === 'inspectorWidth') {
-          sanitized[key] = clampDimension(value, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH)
-        } else if (key === 'sidebarWidth') {
-          sanitized[key] = clampDimension(value, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
-        } else {
-          sanitized[key] = Math.max(0, Math.trunc(value))
-        }
-      } else {
-        delete sanitized[key]
-      }
-    }
-  }
-
-  if ('funFxEnabled' in sanitized) {
-    const value = sanitized.funFxEnabled
-    sanitized.funFxEnabled = typeof value === 'boolean' ? value : Boolean(value)
-  }
-  if ('bridgeDaemonEnabled' in sanitized) {
-    const value = sanitized.bridgeDaemonEnabled
-    sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
-  }
-  if ('ensembleModeEnabled' in sanitized) {
-    const value = sanitized.ensembleModeEnabled
-    sanitized.ensembleModeEnabled = typeof value === 'boolean' ? value : Boolean(value)
-  }
-  if ('funFxMode' in sanitized) {
-    const value = sanitized.funFxMode
-    if (value === 'off' || value === 'subtle' || value === 'cinematic' || value === 'epic') {
-      sanitized.funFxMode = value
-    } else {
-      delete sanitized.funFxMode
-    }
-  }
-  return sanitized as Partial<AppSettings>
 }
 
 interface ResolvedProviderBinary {

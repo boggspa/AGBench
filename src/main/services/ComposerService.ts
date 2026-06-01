@@ -1,4 +1,4 @@
-import type { AgentRunPayload } from '../index'
+import type { AgentRunPayload } from '../run/AgentRunTypes'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'

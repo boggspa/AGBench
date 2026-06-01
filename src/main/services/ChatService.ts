@@ -1,4 +1,4 @@
-import type { AgentRunRoute } from '../index'
+import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type { ChatRecord, ProviderId, RunEventInput, WorkspaceRecord } from '../store/types'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'

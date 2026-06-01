@@ -1,4 +1,4 @@
-import type { AgentRunRoute } from '../index'
+import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager } from '../RunManager'
 import type {
   AgentApprovalAction,

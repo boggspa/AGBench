@@ -1,4 +1,4 @@
-import type { AgentRunPayload, AgentRunRoute } from '../index'
+import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
 import {
   buildEnsembleParticipantPrompt,

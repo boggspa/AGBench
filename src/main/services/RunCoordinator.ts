@@ -1,6 +1,6 @@
 import type { ProviderId } from '../store/types'
 import type { ProviderAdapter } from '../ProviderAdapters'
-import type { AgentRunPayload, AgentRunRoute } from '../index'
+import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 
 /**
  * RunCoordinator — Phase B1 extraction.

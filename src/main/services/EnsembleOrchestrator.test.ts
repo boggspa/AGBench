@@ -4,7 +4,7 @@ import {
   parseSelfReflectivePrefix,
   type ParticipantProbeResult
 } from './EnsembleOrchestrator'
-import type { AgentRunPayload } from '../index'
+import type { AgentRunPayload } from '../run/AgentRunTypes'
 import type {
   AppSettings,
   ChatRecord,

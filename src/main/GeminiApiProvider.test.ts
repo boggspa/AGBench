@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import { chunkTextForTest, tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
 import { AppStore } from './store'
-import type { AgentRunPayload, AgentRunRoute } from './index'
+import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
 import type {
   AppSettings,
   ChatMessage,
