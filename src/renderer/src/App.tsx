@@ -7994,6 +7994,23 @@ function App(): React.JSX.Element {
   // Swift daemon re-attach plumbing that's more than this slice can
   // safely land.
   const attachedWindowOwnerChatIdRef = useRef<string | null>(null)
+  // M11 (1.0.7) — sticky AppWatch. When the current chat has a remembered
+  // attachment (stashed on a prior auto-detach, persisted across restart), this
+  // holds its metadata so the composer can offer a one-tap "Resume watching
+  // <app>". Null when the current chat has no stash. macOS can't silently
+  // re-grant the window, so resume re-opens the picker — this is the affordance,
+  // not a live attachment.
+  const [resumeAppWatchSnapshot, setResumeAppWatchSnapshot] = useState<{
+    chatId: string
+    windowMeta: {
+      windowID: number
+      title: string
+      bundleID: string
+      applicationName: string
+      pid: number
+    }
+    wasStreaming: boolean
+  } | null>(null)
   useEffect(() => {
     if (!diffActionMenuOpen) return
     const closeFromPointer = (event: MouseEvent): void => {
@@ -11186,7 +11203,13 @@ function App(): React.JSX.Element {
         setAttachedWindow(result.snapshot)
         // 1.0.5-AU — Record the chat that owns this attachment so
         // the cross-chat auto-detach effect knows when to clear.
-        attachedWindowOwnerChatIdRef.current = currentChat?.appChatId || null
+        const ownerChatId = currentChat?.appChatId || null
+        attachedWindowOwnerChatIdRef.current = ownerChatId
+        // M11 — a fresh attach supersedes any remembered stash for this chat.
+        if (ownerChatId) {
+          setResumeAppWatchSnapshot((prev) => (prev?.chatId === ownerChatId ? null : prev))
+          void window.api.stickyAppWatchClear?.(ownerChatId)
+        }
       }
     } finally {
       setIsAttachingWindow(false)
@@ -11194,10 +11217,17 @@ function App(): React.JSX.Element {
   }
 
   const handleDetachWindow = async () => {
+    // M11 — a USER-initiated detach is intentional: clear any sticky stash for
+    // this chat so we don't offer to resume something they deliberately stopped.
+    const ownerChatId = attachedWindowOwnerChatIdRef.current
     setAttachedWindow(null)
     // 1.0.5-AU — Clear ownership marker too so a subsequent
     // chat-switch effect doesn't try to detach again.
     attachedWindowOwnerChatIdRef.current = null
+    if (ownerChatId) {
+      setResumeAppWatchSnapshot((prev) => (prev?.chatId === ownerChatId ? null : prev))
+      void window.api.stickyAppWatchClear?.(ownerChatId)
+    }
     try {
       await window.api.attachWindowDetach()
     } catch {
@@ -11213,6 +11243,12 @@ function App(): React.JSX.Element {
   // "Watching <app>" anymore, and Chat B's tools should not be
   // able to observe Chat A's stream.
   //
+  // M11 (1.0.7) — sticky AppWatch: BEFORE the auto-detach clears state, stash
+  // the attachment metadata keyed by the owner chat (persisted main-side). When
+  // the user returns to that chat the resume-loader effect below surfaces a
+  // one-tap "Resume watching <app>". A USER detach (handleDetachWindow) clears
+  // the stash instead — only an auto-detach-on-switch is "sticky".
+  //
   // Triggered on every `currentChat?.appChatId` change, including
   // initial mount (no-op when no attachment exists yet) and chat
   // creation (when switching from null to a new chat — also a
@@ -11224,11 +11260,47 @@ function App(): React.JSX.Element {
     if (!attachedWindow) return
     if (!ownerChatId) return
     if (ownerChatId === currentChatId) return
-    // Different chat is active — detach. handleDetachWindow clears
-    // both the React state and the ref + sends the IPC.
-    void handleDetachWindow()
+    // Different chat is active — stash for resume, then detach. The detach
+    // clears React state + the ref + sends the IPC; stashing first preserves
+    // what the owner chat was watching.
+    void window.api.stickyAppWatchStash?.({
+      chatId: ownerChatId,
+      windowMeta: attachedWindow.windowMeta,
+      attachedAt: attachedWindow.attachedAt,
+      wasStreaming: Boolean(attachedWindow.streaming)
+    })
+    // Detach WITHOUT clearing the stash (handleDetachWindow clears it, so do
+    // the detach inline here).
+    setAttachedWindow(null)
+    attachedWindowOwnerChatIdRef.current = null
+    void window.api.attachWindowDetach().catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChat?.appChatId])
+
+  // M11 (1.0.7) — resume loader. On switching TO a chat, fetch its remembered
+  // sticky-AppWatch snapshot (if any) so the composer can offer to resume.
+  // Cleared while an attachment is live (the chip shows "Watching" instead).
+  useEffect(() => {
+    const chatId = currentChat?.appChatId || null
+    if (!chatId || attachedWindow) {
+      setResumeAppWatchSnapshot(null)
+      return
+    }
+    let cancelled = false
+    void window.api.stickyAppWatchGet?.(chatId).then((res) => {
+      if (cancelled) return
+      const snap = res?.snapshot
+      setResumeAppWatchSnapshot(
+        snap && snap.chatId === chatId
+          ? { chatId: snap.chatId, windowMeta: snap.windowMeta, wasStreaming: snap.wasStreaming }
+          : null
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChat?.appChatId, attachedWindow])
 
   const handleComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -21582,8 +21654,11 @@ function App(): React.JSX.Element {
                   "live capture" cue from the old pill). */}
                   <button
                     type="button"
-                    className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}`}
+                    className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}${!attachedWindow && resumeAppWatchSnapshot ? ' is-resumable' : ''}`}
                     onClick={() => {
+                      // M11 — both "attach fresh" and "resume" route through the
+                      // picker (macOS requires a gesture to re-grant a window);
+                      // handleAttachWindow clears the stash on success.
                       if (attachedWindow) void handleDetachWindow()
                       else void handleAttachWindow()
                     }}
@@ -21592,18 +21667,29 @@ function App(): React.JSX.Element {
                         ? attachedWindow.streaming
                           ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
                           : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
-                        : 'Screen Watch — click to pick a window for the AI to see'
+                        : resumeAppWatchSnapshot
+                          ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}${resumeAppWatchSnapshot.windowMeta.title ? ` — ${resumeAppWatchSnapshot.windowMeta.title}` : ''} · click to re-pick`
+                          : 'Screen Watch — click to pick a window for the AI to see'
                     }
                     aria-label={
                       attachedWindow
                         ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
-                        : 'Open Screen Watch picker'
+                        : resumeAppWatchSnapshot
+                          ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}`
+                          : 'Open Screen Watch picker'
                     }
                     data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
+                    data-resumable={!attachedWindow && resumeAppWatchSnapshot ? 'true' : 'false'}
                   >
                     <ScreenWatchSymbolIcon />
                     {attachedWindow?.streaming && (
                       <span className="composer-screen-watch-button-dot" aria-hidden="true" />
+                    )}
+                    {!attachedWindow && resumeAppWatchSnapshot && (
+                      <span
+                        className="composer-screen-watch-button-dot composer-screen-watch-button-dot--resume"
+                        aria-hidden="true"
+                      />
                     )}
                   </button>
                   {/* 1.0.5-AR12c — Workspace switcher in its new home.

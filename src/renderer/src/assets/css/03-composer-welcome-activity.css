@@ -2947,6 +2947,20 @@
   50% { opacity: 0.45; }
 }
 
+/* M11 (1.0.7) — sticky AppWatch resume affordance. When the current chat has a
+ * remembered (auto-detached) attachment, the button gets a quiet, NON-pulsing
+ * tint + a static dot so it reads as "you can resume here" without shouting
+ * like a live capture. Re-pick on click (macOS can't silently re-grant). */
+.composer-screen-watch-button.is-resumable {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-secondary));
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.composer-screen-watch-button-dot--resume {
+  /* Static (no pulse) + softer so it's an affordance hint, not an alarm. */
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: none;
+}
+
 .composer-thread-token-tally {
   max-width: min(260px, 28vw);
   color: color-mix(in srgb, var(--text-secondary) 82%, transparent);

@@ -248,6 +248,10 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'attach-window:pick': [],
   'attach-window:detach': [],
   'attach-window:status': [],
+  // M11 (1.0.7) — sticky AppWatch per-chat attachment snapshots.
+  'sticky-appwatch:get': ['chatId'],
+  'sticky-appwatch:stash': ['object'],
+  'sticky-appwatch:clear': ['chatId'],
   /* Slash-picker `/clear` — non-destructive of the chat record, only of
    * its message + run history. Mirrors deleteChat's arg shape. */
   'truncate-chat': ['chatId'],

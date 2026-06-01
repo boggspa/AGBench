@@ -434,6 +434,37 @@ const api = {
         }
       } | null
     }>,
+  // M11 (1.0.7) — sticky AppWatch per-chat attachment snapshots.
+  stickyAppWatchGet: (chatId: string) =>
+    ipcRenderer.invoke('sticky-appwatch:get', chatId) as Promise<{
+      snapshot: {
+        chatId: string
+        windowMeta: {
+          windowID: number
+          title: string
+          bundleID: string
+          applicationName: string
+          pid: number
+        }
+        attachedAt: string
+        stashedAt: string
+        wasStreaming: boolean
+      } | null
+    }>,
+  stickyAppWatchStash: (input: {
+    chatId: string
+    windowMeta: {
+      windowID: number
+      title: string
+      bundleID: string
+      applicationName: string
+      pid: number
+    }
+    attachedAt: string
+    wasStreaming: boolean
+  }) => ipcRenderer.invoke('sticky-appwatch:stash', input) as Promise<{ ok: boolean }>,
+  stickyAppWatchClear: (chatId: string) =>
+    ipcRenderer.invoke('sticky-appwatch:clear', chatId) as Promise<{ ok: boolean }>,
   onAttachedWindowChanged: (
     callback: (
       snapshot: {

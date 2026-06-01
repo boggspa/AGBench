@@ -121,6 +121,14 @@ import {
   type RunEventChannel
 } from './RunEventBus'
 import { AppStore } from './store'
+// M11 (1.0.7) — sticky AppWatch per-chat attachment snapshots (pure store logic).
+import {
+  clearStickyAppWatch,
+  getStickyAppWatch,
+  normalizeStickyAppWatchStore,
+  stashStickyAppWatch,
+  type StickyAppWatchStore
+} from './stickyAppWatch'
 import {
   AppSettings,
   WorkspaceRecord,
@@ -750,6 +758,29 @@ type AttachedWindowSnapshot = {
   streaming?: AttachedWindowStreamingSnapshot
 }
 let attachedWindowSnapshot: AttachedWindowSnapshot | null = null
+
+// M11 (1.0.7) — sticky AppWatch: per-chat remembered attachment snapshots,
+// persisted so they survive an app restart. The pure store logic lives in
+// `stickyAppWatch.ts`; here we hold the in-memory copy + its json file. Loaded
+// lazily on first access; written best-effort on every change.
+let stickyAppWatchStore: StickyAppWatchStore | null = null
+function stickyAppWatchPath(): string {
+  return join(app.getPath('userData'), 'sticky-appwatch.json')
+}
+async function loadStickyAppWatchStore(): Promise<StickyAppWatchStore> {
+  if (stickyAppWatchStore) return stickyAppWatchStore
+  const raw = await readJsonFile(stickyAppWatchPath())
+  stickyAppWatchStore = normalizeStickyAppWatchStore(raw)
+  return stickyAppWatchStore
+}
+async function persistStickyAppWatchStore(next: StickyAppWatchStore): Promise<void> {
+  stickyAppWatchStore = next
+  try {
+    await writeJsonFile(stickyAppWatchPath(), next)
+  } catch (err) {
+    console.error('[sticky-appwatch] persist failed:', err)
+  }
+}
 
 interface BackgroundSubThreadTranscriptState {
   runId: string
@@ -21681,6 +21712,46 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle('attach-window:status', () => {
       return { snapshot: attachedWindowSnapshot }
+    })
+
+    // M11 (1.0.7) — sticky AppWatch. The renderer stashes a chat's attachment
+    // metadata on auto-detach and asks for it back when the user returns to the
+    // owning chat (to offer "Resume watching <app>"). Persisted so it survives a
+    // restart. macOS can't silently re-grant a window (SCContentSharingPicker is
+    // interactive), so this is metadata for the resume affordance, never a live
+    // grant.
+    ipcMain.handle('sticky-appwatch:get', async (_event, chatId: string) => {
+      const store = await loadStickyAppWatchStore()
+      return { snapshot: getStickyAppWatch(store, String(chatId || '')) }
+    })
+    ipcMain.handle(
+      'sticky-appwatch:stash',
+      async (
+        _event,
+        input: {
+          chatId: string
+          windowMeta: StickyAppWatchStore[string]['windowMeta']
+          attachedAt: string
+          wasStreaming: boolean
+        }
+      ) => {
+        const store = await loadStickyAppWatchStore()
+        const next = stashStickyAppWatch(store, {
+          chatId: String(input?.chatId || ''),
+          windowMeta: input?.windowMeta,
+          attachedAt: String(input?.attachedAt || new Date().toISOString()),
+          wasStreaming: Boolean(input?.wasStreaming),
+          stashedAt: new Date().toISOString()
+        })
+        await persistStickyAppWatchStore(next)
+        return { ok: true }
+      }
+    )
+    ipcMain.handle('sticky-appwatch:clear', async (_event, chatId: string) => {
+      const store = await loadStickyAppWatchStore()
+      const next = clearStickyAppWatch(store, String(chatId || ''))
+      if (next !== store) await persistStickyAppWatchStore(next)
+      return { ok: true }
     })
 
     // QMOD (1.0.3) — receive the user's answer to an `ask_user_question`
