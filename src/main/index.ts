@@ -15,7 +15,7 @@ import type {
   WebContentsConsoleMessageEventParams
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
-import { dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
@@ -88,6 +88,7 @@ import { WorkspaceService } from './services/WorkspaceService'
 import { AppShellStatsService } from './services/AppShellStatsService'
 import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
+import { getCachedHostWeather } from './services/HostWeatherService'
 import {
   getCurrentProviderRates,
   loadPersistedProbeResults,
@@ -127,8 +128,6 @@ import {
   AppearanceMode,
   WorkspaceFileEntry,
   WorkspaceFileReadResult,
-  GeminiSessionListResult,
-  GeminiSessionSummary,
   GeminiWorktreeLaunchOption,
   ProviderId,
   ExternalPathGrant,
@@ -243,6 +242,11 @@ import {
   mcpToolCallResponseFromBrokerResult as mcpBridgeToolCallResponseFromBrokerResult,
   startGeminiMcpBridgeProcess as startGeminiMcpBridgeProcessWithDeps
 } from './mcp/McpBridgeRuntime'
+import {
+  createGeminiDiscoveryHelpers,
+  type GeminiCommandDiscoveryRecord,
+  type GeminiMemoryDiscoveryRecord
+} from './gemini/GeminiDiscovery'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -567,11 +571,6 @@ const FILE_ICON_CACHE = new Map<string, string | null>()
 const MAX_EDITOR_FILE_BYTES = 1_500_000
 const MAX_EDITOR_FILES = 900
 const MAX_EDITOR_DEPTH = 6
-const MAX_GEMINI_SESSION_LINES = 200
-const MAX_GEMINI_SESSION_LINE_LENGTH = 600
-const MAX_GEMINI_DISCOVERY_FILES = 40
-const MAX_GEMINI_DISCOVERY_DEPTH = 5
-const MAX_GEMINI_MEMORY_FILES = 30
 const SKIP_EDITOR_DIRS = new Set([
   '.git',
   'node_modules',
@@ -634,6 +633,18 @@ const mcpBridgeRuntime = createMcpBridgeRuntime({
   installGeminiToolContextForRun,
   sendAgentCompatLine
 })
+
+const geminiDiscoveryHelpers = createGeminiDiscoveryHelpers({
+  resolveCliProviderBinary,
+  createCliEnv
+})
+const {
+  assertTextBuffer,
+  normalizeGeminiResumeTarget,
+  listGeminiSessions,
+  discoverGeminiCommands,
+  discoverGeminiMemory
+} = geminiDiscoveryHelpers
 
 function agentbenchMcpBridgeArgs(socketPath: string = geminiMcpSocketPath()): string[] {
   return mcpBridgeRuntime.agentbenchMcpBridgeArgs(socketPath)
@@ -1039,35 +1050,6 @@ interface GeminiCapabilityProcessResult {
   error?: string
   truncated?: boolean
 }
-
-type HostWeatherKind =
-  | 'clear'
-  | 'partly_cloudy'
-  | 'cloudy'
-  | 'overcast'
-  | 'rain'
-  | 'heavy_rain'
-  | 'snow'
-  | 'mist'
-  | 'fog'
-  | 'storm'
-  | 'unknown'
-
-interface HostWeatherState {
-  kind: HostWeatherKind
-  description: string
-  temperatureC?: number
-  location?: string
-  isDay: boolean
-  updatedAt: string
-  source: 'wttr' | 'fallback'
-  error?: string
-}
-
-const HOST_WEATHER_CACHE_MS = 30 * 60 * 1000
-const HOST_WEATHER_TIMEOUT_MS = 5_000
-let hostWeatherCache: HostWeatherState | null = null
-let hostWeatherCacheAt = 0
 
 interface CodexRunState {
   sender: Electron.WebContents
@@ -10083,224 +10065,6 @@ async function runGeminiCapabilityCommand(
   })
 }
 
-function localDaylightState(): boolean {
-  const hour = new Date().getHours()
-  return hour >= 7 && hour < 19
-}
-
-function parseLocalAstronomyTime(value?: string): Date | null {
-  const raw = typeof value === 'string' ? value.trim() : ''
-  if (!raw) return null
-
-  const match = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
-  if (!match) return null
-
-  let hour = Number(match[1])
-  const minute = Number(match[2])
-  const meridiem = match[3]?.toUpperCase()
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) {
-    return null
-  }
-
-  if (meridiem === 'PM' && hour < 12) hour += 12
-  if (meridiem === 'AM' && hour === 12) hour = 0
-  if (hour < 0 || hour > 23) return null
-
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0)
-}
-
-function resolveAstronomyDaylight(sunrise?: string, sunset?: string): boolean | null {
-  const sunriseAt = parseLocalAstronomyTime(sunrise)
-  const sunsetAt = parseLocalAstronomyTime(sunset)
-  if (!sunriseAt || !sunsetAt) return null
-
-  const now = new Date()
-  const effectiveSunset =
-    sunsetAt <= sunriseAt ? new Date(sunsetAt.getTime() + 24 * 60 * 60 * 1000) : sunsetAt
-
-  return now >= sunriseAt && now < effectiveSunset
-}
-
-function createFallbackHostWeather(error?: string): HostWeatherState {
-  const fallback: HostWeatherState = {
-    kind: 'unknown',
-    description: localDaylightState() ? 'Local daytime sky' : 'Local night sky',
-    isDay: localDaylightState(),
-    updatedAt: new Date().toISOString(),
-    source: 'fallback'
-  }
-  if (error) {
-    fallback.error = error
-  }
-  return fallback
-}
-
-function classifyHostWeather(weatherCode: number | null, description: string): HostWeatherKind {
-  const normalizedDescription = description.toLowerCase()
-
-  if (
-    [200, 386, 389, 392, 395].includes(weatherCode ?? -1) ||
-    /thunder|storm/.test(normalizedDescription)
-  ) {
-    return 'storm'
-  }
-
-  if (
-    [
-      179, 227, 230, 317, 320, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377, 392,
-      395
-    ].includes(weatherCode ?? -1) ||
-    /snow|sleet|blizzard|ice|freezing/.test(normalizedDescription)
-  ) {
-    return 'snow'
-  }
-
-  if (
-    [302, 305, 308, 356, 359].includes(weatherCode ?? -1) ||
-    /heavy|torrential|downpour/.test(normalizedDescription)
-  ) {
-    return 'heavy_rain'
-  }
-
-  if (
-    [
-      176, 182, 185, 263, 266, 281, 284, 293, 296, 299, 302, 305, 308, 311, 314, 353, 356, 359, 386,
-      389
-    ].includes(weatherCode ?? -1) ||
-    /rain|drizzle|shower/.test(normalizedDescription)
-  ) {
-    return 'rain'
-  }
-
-  if ([248, 260].includes(weatherCode ?? -1) || /fog/.test(normalizedDescription)) {
-    return 'fog'
-  }
-
-  if (weatherCode === 143 || /mist|haze/.test(normalizedDescription)) {
-    return 'mist'
-  }
-
-  if (weatherCode === 116 || /partly|patchy/.test(normalizedDescription)) {
-    return 'partly_cloudy'
-  }
-
-  if (weatherCode === 122 || /overcast/.test(normalizedDescription)) {
-    return 'overcast'
-  }
-
-  if (weatherCode === 119 || /cloud/.test(normalizedDescription)) {
-    return 'cloudy'
-  }
-
-  if (weatherCode === 113 || /sunny|clear/.test(normalizedDescription)) {
-    return 'clear'
-  }
-
-  return 'unknown'
-}
-
-function runHostWeatherCommand(): Promise<{ stdout: string; error?: string }> {
-  return new Promise((resolve) => {
-    const command = os.platform() === 'darwin' ? '/usr/bin/curl' : 'curl'
-    const args = ['-fsSL', '--max-time', '5', 'https://wttr.in/?format=j1']
-    let stdout = ''
-    let stderr = ''
-    let finished = false
-    let timedOut = false
-    const finish = (error?: string): void => {
-      if (finished) return
-      finished = true
-      clearTimeout(timeout)
-      resolve({ stdout, error })
-    }
-
-    let proc: ChildProcess
-    try {
-      proc = spawn(command, args, { shell: false })
-    } catch (error) {
-      resolve({ stdout, error: error instanceof Error ? error.message : String(error) })
-      return
-    }
-
-    const timeout = setTimeout(() => {
-      timedOut = true
-      proc.kill('SIGTERM')
-      finish('weather command timed out')
-    }, HOST_WEATHER_TIMEOUT_MS)
-
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      if (stdout.length < 1_000_000) {
-        stdout += chunk.toString('utf8')
-      }
-    })
-
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      if (stderr.length < 20_000) {
-        stderr += chunk.toString('utf8')
-      }
-    })
-
-    proc.on('error', (error) => finish(error.message))
-    proc.on('close', (code) => {
-      if (timedOut) return
-      finish(code === 0 ? undefined : stderr.trim() || `weather command exited with ${code}`)
-    })
-  })
-}
-
-async function readHostWeather(): Promise<HostWeatherState> {
-  const result = await runHostWeatherCommand()
-  if (result.error) {
-    return createFallbackHostWeather(result.error)
-  }
-
-  try {
-    const parsed = JSON.parse(result.stdout)
-    const current = Array.isArray(parsed?.current_condition) ? parsed.current_condition[0] : null
-    const nearestArea = Array.isArray(parsed?.nearest_area) ? parsed.nearest_area[0] : null
-    const todayWeather = Array.isArray(parsed?.weather) ? parsed.weather[0] : null
-    const astronomy = Array.isArray(todayWeather?.astronomy) ? todayWeather.astronomy[0] : null
-    const description = current?.weatherDesc?.[0]?.value || 'Local sky'
-    const weatherCode = Number.isFinite(Number(current?.weatherCode))
-      ? Number(current.weatherCode)
-      : null
-    const temperatureC = Number.isFinite(Number(current?.temp_C))
-      ? Number(current.temp_C)
-      : undefined
-    const areaName = nearestArea?.areaName?.[0]?.value
-    const region = nearestArea?.region?.[0]?.value
-    const country = nearestArea?.country?.[0]?.value
-    const location = [areaName, region, country].filter(Boolean).join(', ') || undefined
-    const isDay =
-      resolveAstronomyDaylight(astronomy?.sunrise, astronomy?.sunset) ?? localDaylightState()
-
-    return {
-      kind: classifyHostWeather(weatherCode, description),
-      description,
-      isDay,
-      updatedAt: new Date().toISOString(),
-      source: 'wttr',
-      ...(temperatureC !== undefined ? { temperatureC } : {}),
-      ...(location ? { location } : {})
-    }
-  } catch (error) {
-    return createFallbackHostWeather(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function getCachedHostWeather(): Promise<HostWeatherState> {
-  const now = Date.now()
-  if (hostWeatherCache && now - hostWeatherCacheAt < HOST_WEATHER_CACHE_MS) {
-    return hostWeatherCache
-  }
-
-  hostWeatherCache = await readHostWeather()
-  hostWeatherCacheAt = now
-  return hostWeatherCache
-}
-
 async function readTextFileIfAvailable(filePath: string): Promise<string | undefined> {
   try {
     return await fs.readFile(filePath, 'utf8')
@@ -13517,178 +13281,6 @@ async function listWorkspaceFileEntries(workspace: string): Promise<WorkspaceFil
   return entries
 }
 
-function assertTextBuffer(buffer: Buffer): void {
-  const sample = buffer.subarray(0, Math.min(buffer.length, 4096))
-  if (sample.includes(0)) {
-    throw new Error('This looks like a binary file, so the basic editor will not open it.')
-  }
-}
-
-function normalizeGeminiResumeTarget(value?: string | null): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  const target = value.trim()
-  if (!target || target.toLowerCase() === 'unknown') {
-    return null
-  }
-
-  return /^[a-zA-Z0-9][a-zA-Z0-9._:@/-]{0,511}$/.test(target) ? target : null
-}
-
-function sanitizeGeminiSessionLine(line: string): string {
-  return stripAnsi(line)
-    .replace(new RegExp(String.raw`[\u0000-\u001F\u007F]`, 'g'), '')
-    .trim()
-    .slice(0, MAX_GEMINI_SESSION_LINE_LENGTH)
-}
-
-function normalizeSessionField(value: unknown): string | undefined {
-  if (typeof value !== 'string' && typeof value !== 'number') {
-    return undefined
-  }
-
-  const normalized = sanitizeGeminiSessionLine(String(value))
-  return normalized || undefined
-}
-
-function collectGeminiSessionRawLines(...outputs: string[]): string[] {
-  const lines = outputs
-    .flatMap((output) => output.split(/\r?\n/))
-    .map(sanitizeGeminiSessionLine)
-    .filter(Boolean)
-
-  return lines.slice(0, MAX_GEMINI_SESSION_LINES)
-}
-
-function parseGeminiSessionJson(stdout: string): GeminiSessionSummary[] {
-  const trimmed = stdout.trim()
-  if (!trimmed || !/^[{[]/.test(trimmed)) {
-    return []
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed)
-    const entries = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.sessions)
-        ? parsed.sessions
-        : Array.isArray(parsed?.data)
-          ? parsed.data
-          : []
-
-    return entries
-      .map((entry: unknown): GeminiSessionSummary | null => {
-        if (typeof entry === 'string' || typeof entry === 'number') {
-          const id = normalizeSessionField(entry)
-          return id ? { id } : null
-        }
-
-        if (!entry || typeof entry !== 'object') {
-          return null
-        }
-
-        const session = entry as Record<string, unknown>
-        const id = normalizeSessionField(
-          session.session_id ?? session.sessionId ?? session.id ?? session.name
-        )
-        if (!id) {
-          return null
-        }
-
-        return {
-          id,
-          title: normalizeSessionField(session.title ?? session.label ?? session.description),
-          createdAt: normalizeSessionField(session.created_at ?? session.createdAt),
-          updatedAt: normalizeSessionField(
-            session.updated_at ?? session.updatedAt ?? session.last_modified ?? session.lastModified
-          )
-        }
-      })
-      .filter((entry): entry is GeminiSessionSummary => Boolean(entry))
-      .slice(0, MAX_GEMINI_SESSION_LINES)
-  } catch {
-    return []
-  }
-}
-
-async function listGeminiSessions(): Promise<GeminiSessionListResult> {
-  const resolved = await resolveCliProviderBinary('gemini')
-  if (!resolved.binaryPath) {
-    return {
-      ok: false,
-      sessions: [],
-      rawLines: [],
-      error: resolved.error || 'Gemini CLI is not configured.'
-    }
-  }
-  const geminiBinaryPath = resolved.binaryPath
-
-  return new Promise((resolve) => {
-    const proc: ChildProcess = spawn(geminiBinaryPath, ['--list-sessions'], {
-      shell: false,
-      env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, geminiBinaryPath)
-    })
-    let stdout = ''
-    let stderr = ''
-    let settled = false
-    const finish = (result: GeminiSessionListResult): void => {
-      if (settled) {
-        return
-      }
-      settled = true
-      clearTimeout(timeout)
-      resolve(result)
-    }
-
-    const timeout = setTimeout(() => {
-      proc.kill()
-      finish({
-        ok: false,
-        sessions: [],
-        rawLines: collectGeminiSessionRawLines(stdout, stderr),
-        error: 'gemini --list-sessions timed out.'
-      })
-    }, 8000)
-
-    proc.stdout?.on('data', (data) => {
-      stdout += data.toString()
-    })
-    proc.stderr?.on('data', (data) => {
-      stderr += data.toString()
-    })
-    proc.on('close', (code) => {
-      const rawLines = collectGeminiSessionRawLines(stdout, stderr)
-      if (code !== 0) {
-        finish({
-          ok: false,
-          sessions: [],
-          rawLines,
-          error:
-            sanitizeGeminiSessionLine(stderr) ||
-            `gemini --list-sessions exited with code ${code ?? 'unknown'}.`
-        })
-        return
-      }
-
-      finish({
-        ok: true,
-        sessions: parseGeminiSessionJson(stdout),
-        rawLines
-      })
-    })
-    proc.on('error', (err) => {
-      finish({
-        ok: false,
-        sessions: [],
-        rawLines: collectGeminiSessionRawLines(stdout, stderr),
-        error: `Failed to list Gemini sessions: ${sanitizeGeminiSessionLine(err.message)}`
-      })
-    })
-  })
-}
-
 function appendGeminiCliSessionArgs(
   args: string[],
   model: string = 'cli-default',
@@ -13768,242 +13360,6 @@ function appendGeminiCliSessionArgs(
   }
 
   return null
-}
-
-type GeminiCommandDiscoveryRecord = {
-  command: string
-  label: string
-  description?: string
-  scope: 'workspace' | 'global'
-  sourcePath: string
-}
-
-type GeminiMemoryDiscoveryRecord = {
-  id: string
-  scope: 'workspace' | 'global'
-  path: string
-  displayPath: string
-  content?: string
-  sizeBytes?: number
-  error?: string
-}
-
-async function geminiDiscoveryFileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function readTextFileForGeminiDiscovery(
-  filePath: string
-): Promise<{ content?: string; sizeBytes?: number; error?: string }> {
-  try {
-    const fileStat = await fs.stat(filePath)
-    if (!fileStat.isFile()) {
-      return { error: 'Not a file.' }
-    }
-    if (fileStat.size > MAX_EDITOR_FILE_BYTES) {
-      return { sizeBytes: fileStat.size, error: 'File is too large to inspect.' }
-    }
-
-    const buffer = await fs.readFile(filePath)
-    assertTextBuffer(buffer)
-    return {
-      content: buffer.toString('utf8'),
-      sizeBytes: fileStat.size
-    }
-  } catch (error) {
-    return { error: String(error) }
-  }
-}
-
-function parseGeminiCommandMetadata(content: string): { command?: string; description?: string } {
-  const commandMatch = content.match(/^\s*(?:command|name)\s*=\s*["']([^"']+)["']/m)
-  const descriptionMatch = content.match(/^\s*description\s*=\s*["']([^"']+)["']/m)
-  const headingMatch = content.match(/^\s*#\s+(.+)$/m)
-
-  return {
-    command: commandMatch?.[1]?.trim(),
-    description: descriptionMatch?.[1]?.trim() || headingMatch?.[1]?.trim()
-  }
-}
-
-function inferGeminiCommandName(scope: 'workspace' | 'global', relativeFilePath: string): string {
-  const normalized = relativeFilePath.replace(/\\/g, '/')
-  const ext = extname(normalized)
-  const withoutExt = ext ? normalized.slice(0, -ext.length) : normalized
-  const namespace = withoutExt
-    .split('/')
-    .map((segment) => segment.trim().replace(/\s+/g, '-'))
-    .filter(Boolean)
-    .join(':')
-  const prefix = scope === 'global' ? 'user' : 'project'
-  return `/${prefix}:${namespace}`
-}
-
-async function discoverGeminiCommandDir(
-  rootPath: string,
-  displayRoot: string,
-  scope: 'workspace' | 'global'
-): Promise<GeminiCommandDiscoveryRecord[]> {
-  const commands: GeminiCommandDiscoveryRecord[] = []
-  if (!(await geminiDiscoveryFileExists(rootPath))) {
-    return commands
-  }
-
-  async function walk(dirPath: string, depth: number): Promise<void> {
-    if (commands.length >= MAX_GEMINI_DISCOVERY_FILES || depth > MAX_GEMINI_DISCOVERY_DEPTH) {
-      return
-    }
-
-    let entries
-    try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true })
-    } catch {
-      return
-    }
-
-    entries.sort((a, b) => a.name.localeCompare(b.name))
-
-    for (const entry of entries) {
-      if (commands.length >= MAX_GEMINI_DISCOVERY_FILES) {
-        break
-      }
-      if (entry.name.startsWith('.')) {
-        continue
-      }
-
-      const fullPath = join(dirPath, entry.name)
-      if (entry.isDirectory()) {
-        await walk(fullPath, depth + 1)
-        continue
-      }
-      if (!entry.isFile() || !/\.(toml|md|markdown)$/i.test(entry.name)) {
-        continue
-      }
-
-      const relPath = relative(rootPath, fullPath).replace(/\\/g, '/')
-      const readResult = await readTextFileForGeminiDiscovery(fullPath)
-      const metadata = parseGeminiCommandMetadata(readResult.content || '')
-      const command = metadata.command
-        ? metadata.command.startsWith('/')
-          ? metadata.command
-          : `/${metadata.command}`
-        : inferGeminiCommandName(scope, relPath)
-
-      commands.push({
-        command,
-        label: command,
-        description:
-          metadata.description || `Custom ${scope} command discovered from ${displayRoot}.`,
-        scope,
-        sourcePath: `${displayRoot}/${relPath}`
-      })
-    }
-  }
-
-  await walk(rootPath, 0)
-  return commands
-}
-
-async function discoverGeminiCommands(workspace: string): Promise<GeminiCommandDiscoveryRecord[]> {
-  const workspaceRoot = resolve(workspace)
-  const homeRoot = os.homedir()
-  const discovered = [
-    ...(await discoverGeminiCommandDir(
-      join(workspaceRoot, '.gemini', 'commands'),
-      '.gemini/commands',
-      'workspace'
-    )),
-    ...(await discoverGeminiCommandDir(
-      join(homeRoot, '.gemini', 'commands'),
-      '~/.gemini/commands',
-      'global'
-    ))
-  ]
-  const seen = new Set<string>()
-
-  return discovered.filter((item) => {
-    const key = item.command.toLowerCase()
-    if (seen.has(key)) {
-      return false
-    }
-    seen.add(key)
-    return true
-  })
-}
-
-async function discoverGeminiMemory(workspace: string): Promise<GeminiMemoryDiscoveryRecord[]> {
-  const workspaceRoot = resolve(workspace)
-  const homeRoot = os.homedir()
-  const records: GeminiMemoryDiscoveryRecord[] = []
-  const seen = new Set<string>()
-
-  const addMemoryFile = async (
-    filePath: string,
-    scope: 'workspace' | 'global',
-    displayPath: string
-  ): Promise<void> => {
-    if (records.length >= MAX_GEMINI_MEMORY_FILES) {
-      return
-    }
-    const resolvedPath = resolve(filePath)
-    if (seen.has(resolvedPath) || !(await geminiDiscoveryFileExists(resolvedPath))) {
-      return
-    }
-    seen.add(resolvedPath)
-
-    const readResult = await readTextFileForGeminiDiscovery(resolvedPath)
-    records.push({
-      id: `${scope}:${displayPath}`,
-      scope,
-      path: resolvedPath,
-      displayPath,
-      ...readResult
-    })
-  }
-
-  await addMemoryFile(join(homeRoot, '.gemini', 'GEMINI.md'), 'global', '~/.gemini/GEMINI.md')
-  await addMemoryFile(join(workspaceRoot, 'GEMINI.md'), 'workspace', 'GEMINI.md')
-  await addMemoryFile(join(workspaceRoot, '.gemini', 'GEMINI.md'), 'workspace', '.gemini/GEMINI.md')
-
-  async function walk(dirPath: string, depth: number): Promise<void> {
-    if (records.length >= MAX_GEMINI_MEMORY_FILES || depth > MAX_EDITOR_DEPTH) {
-      return
-    }
-
-    let entries
-    try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true })
-    } catch {
-      return
-    }
-
-    for (const entry of entries) {
-      if (records.length >= MAX_GEMINI_MEMORY_FILES) {
-        break
-      }
-      if (entry.name.startsWith('.') && entry.name !== '.gemini') {
-        continue
-      }
-      if (entry.isDirectory() && SKIP_EDITOR_DIRS.has(entry.name)) {
-        continue
-      }
-
-      const fullPath = join(dirPath, entry.name)
-      if (entry.isDirectory()) {
-        await walk(fullPath, depth + 1)
-      } else if (entry.isFile() && entry.name.toLowerCase() === 'gemini.md') {
-        await addMemoryFile(fullPath, 'workspace', toWorkspaceRelativePath(workspaceRoot, fullPath))
-      }
-    }
-  }
-
-  await walk(workspaceRoot, 0)
-  return records
 }
 
 const applyNativeGlassToWindow = (targetWindow: BrowserWindow, settings: AppSettings): void => {
