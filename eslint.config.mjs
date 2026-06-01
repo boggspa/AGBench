@@ -71,6 +71,25 @@ export default defineConfig(
     }
   },
   {
+    // The `^_` unused-vars exemptions above are scoped to *.{ts,tsx}; mirror
+    // them onto plain JS / build scripts (e.g. design-assets/*.mjs generators)
+    // so the standard "destructure-to-omit a key" idiom — `const { drop: _drop,
+    // ...rest } = obj` — and `_`-prefixed throwaways don't error there too.
+    files: ['**/*.{js,jsx,cjs,mjs}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+          varsIgnorePattern: '^_'
+        }
+      ]
+    }
+  },
+  {
     files: ['**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off'
