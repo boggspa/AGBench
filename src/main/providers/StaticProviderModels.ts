@@ -1,0 +1,191 @@
+import type { ProviderId } from '../store/types'
+
+// Codex models the provider has announced for retirement, keyed by canonical
+// model id. Surfaced to the renderer as `retiresAt` (ISO yyyy-mm-dd) so the
+// composer model picker can render a retirement pill. THIS is the single
+// source of truth and it is applied in TWO places:
+//   1. the static fallback list below, and
+//   2. the live `model/list` normalize step in the `get-agent-models` handler.
+// Both are required: on the normal path the renderer's `codexModels` is built
+// from the CLI's `model/list` response (see `get-agent-models`), which copies
+// only an explicit allow-list of fields — so a literal on the fallback list
+// alone never reaches the renderer when the CLI is reachable. That gap is
+// exactly what hid the retirement pill on the live dev build.
+export const CODEX_MODEL_RETIREMENTS: Record<string, string> = {
+  'gpt-5.3-codex': '2026-06-02',
+  'gpt-5.2': '2026-06-02'
+}
+
+// Fallback model list — used ONLY when the live Codex CLI `model/list` query
+// fails or returns nothing (see `get-agent-models`). On the normal path the
+// renderer's `codexModels` comes from the CLI-derived `normalized` list, not
+// from here. Retirement metadata is sourced from CODEX_MODEL_RETIREMENTS so
+// the fallback and live paths can never drift.
+export const CODEX_STATIC_MODELS = [
+  { id: 'gpt-5.5', label: 'GPT-5.5', description: 'Default Codex model', isDefault: true },
+  { id: 'gpt-5.4', label: 'GPT-5.4' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  {
+    id: 'gpt-5.3-codex',
+    label: 'GPT-5.3 Codex',
+    retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.3-codex']
+  },
+  {
+    id: 'gpt-5.3-codex-spark',
+    label: 'GPT-5.3 Codex Spark',
+    description: 'Research preview where available'
+  },
+  { id: 'gpt-5.2', label: 'GPT-5.2', retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.2'] }
+]
+const CLAUDE_THINKING_EFFORTS = [
+  { reasoningEffort: 'off' },
+  { reasoningEffort: 'low' },
+  { reasoningEffort: 'medium' },
+  { reasoningEffort: 'high' }
+]
+export const CLAUDE_THINKING_BUDGET: Record<string, number> = { low: 2048, medium: 8000, high: 16000 }
+// NOTE: keep in sync with the renderer's CLAUDE_DEFAULT_MODELS (App.tsx).
+// This list is served to the renderer via `getAgentModels('claude')` and
+// becomes `agentModelsByProvider.claude`, which OVERRIDES the renderer's own
+// fallback list — so a stale entry here is what the composer/welcome picker
+// actually shows. `additionalSpeedTiers` must be carried through so the
+// renderer knows which models offer the paid Fast tier.
+const CLAUDE_STATIC_MODELS = [
+  {
+    id: 'default',
+    label: 'Default',
+    description: 'Claude Code configured default',
+    isDefault: true,
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
+    description: 'Most capable — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-8-1m',
+    label: 'Claude Opus 4.8 1M',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6',
+    description: 'Balanced — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7 Legacy',
+    description: 'Previous Opus — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-7-1m',
+    label: 'Claude Opus 4.7 1M Legacy',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
+    id: 'claude-opus-4-6',
+    label: 'Claude Opus 4.6 Legacy',
+    description: 'Previous Opus generation',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  { id: 'custom', label: 'Custom model ID' }
+]
+const KIMI_STATIC_MODELS = [
+  {
+    id: 'kimi-k2.6',
+    label: 'Kimi K2.6',
+    description: 'Kimi Code CLI configured default model',
+    isDefault: true
+  }
+]
+const KIMI_DEFAULT_MODEL = 'kimi-k2.6'
+const KIMI_CLI_MODEL_IDS = new Set(KIMI_STATIC_MODELS.map((model) => model.id))
+const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
+  ['default', 'kimi-k2.6'],
+  ['cli-default', 'kimi-k2.6'],
+  ['custom', 'kimi-k2.6'],
+  ['best', 'kimi-k2.6'],
+  ['kimi-latest', 'kimi-k2.6'],
+  ['kimi-k2', 'kimi-k2.6'],
+  ['kimi-k2-1t', 'kimi-k2.6'],
+  ['kimi-thinking-preview', 'kimi-k2.6'],
+  ['kimi-k2.5', 'kimi-k2.6'],
+  ['kimi-k2-thinking-turbo', 'kimi-k2.6'],
+  ['kimi-k2-thinking', 'kimi-k2.6'],
+  ['kimi-k2-turbo-preview', 'kimi-k2.6'],
+  ['kimi-k2-0905-preview', 'kimi-k2.6'],
+  ['kimi-k2-0711-preview', 'kimi-k2.6'],
+  ['kimi-k2-0905', 'kimi-k2.6'],
+  ['kimi-k2-0711', 'kimi-k2.6'],
+  ['kimi-k2-turbo', 'kimi-k2.6']
+])
+
+export function getStaticProviderModels(provider: ProviderId) {
+  if (provider === 'claude') return CLAUDE_STATIC_MODELS
+  if (provider === 'kimi') return KIMI_STATIC_MODELS
+  return [
+    { id: 'cli-default', label: 'CLI Default', isDefault: true },
+    { id: 'auto', label: 'Auto' },
+    { id: 'pro', label: 'Pro' },
+    { id: 'flash', label: 'Flash' },
+    { id: 'flash-lite', label: 'Flash Lite' }
+  ]
+}
+
+export function normalizeCliProviderModel(provider: ProviderId, model?: string | null): string {
+  const trimmed = typeof model === 'string' ? model.trim() : ''
+  const lowered = trimmed.toLowerCase()
+  if (provider === 'kimi') {
+    if (!lowered) return KIMI_DEFAULT_MODEL
+    const alias = KIMI_CLI_MODEL_ALIASES.get(lowered)
+    if (alias) return alias
+    if (KIMI_CLI_MODEL_IDS.has(lowered)) return lowered
+    return KIMI_DEFAULT_MODEL
+  }
+  if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best')
+    return 'default'
+  if (provider === 'claude') {
+    if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
+    if (trimmed.startsWith('claude-')) {
+      // The `-1m` suffix is an AGBench-internal marker for the 1M-context
+      // variant — it drives the context-window meter (contextWindows.ts) and
+      // the rate table, but it is NOT a real Claude CLI/SDK model name. The
+      // CLI only accepts the base id (e.g. `claude-opus-4-8`), so `--model
+      // claude-opus-4-8-1m` fails with "model not found". Strip it here so the
+      // base model is dispatched (the 1M window is entitlement-based on the
+      // base model, not a distinct model id).
+      return trimmed.endsWith('-1m') ? trimmed.slice(0, -'-1m'.length) : trimmed
+    }
+  }
+  return trimmed || 'default'
+}
+
+export function appendKimiThinkingArgs(args: string[], kimiThinking?: boolean | null): void {
+  args.push(kimiThinking === false ? '--no-thinking' : '--thinking')
+}
+
+function kimiCliModelArg(model: string): string | null {
+  const normalized = model.trim().toLowerCase()
+  if (!normalized || normalized === 'default' || normalized === KIMI_DEFAULT_MODEL) return null
+  return model
+}
+
+export function appendKimiModelArgs(args: string[], model: string): void {
+  const cliModel = kimiCliModelArg(model)
+  if (cliModel) args.push('--model', cliModel)
+}
+
+export function claudePermissionModeForApproval(approvalMode?: string): string {
+  if (approvalMode === 'plan') return 'plan'
+  return 'acceptEdits'
+}
