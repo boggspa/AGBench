@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
+  computeContinuousHopsPopoverPosition,
   CONTINUOUS_HOPS_RANGE,
   ContinuousHopsLimitChip
 } from './ContinuousHopsLimitChip'
@@ -64,5 +65,32 @@ describe('ContinuousHopsLimitChip', () => {
     // value never under/over-flows the editor.
     expect(CONTINUOUS_HOPS_RANGE.min).toBeLessThanOrEqual(6)
     expect(CONTINUOUS_HOPS_RANGE.max).toBeGreaterThanOrEqual(6)
+  })
+
+  it('positions the edit popover above the trigger', () => {
+    const position = computeContinuousHopsPopoverPosition({
+      triggerRect: { left: 760, top: 920, width: 34 },
+      popoverHeight: 154,
+      viewportWidth: 1280
+    })
+
+    expect(position.top).toBeLessThan(920)
+    expect(position.top).toBe(760)
+  })
+
+  it('keeps the edit popover horizontally inside the viewport', () => {
+    const leftEdge = computeContinuousHopsPopoverPosition({
+      triggerRect: { left: 2, top: 920, width: 34 },
+      popoverHeight: 154,
+      viewportWidth: 1280
+    })
+    const rightEdge = computeContinuousHopsPopoverPosition({
+      triggerRect: { left: 1264, top: 920, width: 34 },
+      popoverHeight: 154,
+      viewportWidth: 1280
+    })
+
+    expect(leftEdge.left).toBe(8)
+    expect(rightEdge.left).toBe(1012)
   })
 })

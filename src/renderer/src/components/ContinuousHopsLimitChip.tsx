@@ -24,6 +24,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type FormEvent
 } from 'react'
@@ -33,6 +34,7 @@ const MIN_HOPS = 1
 const MAX_HOPS = 50
 const POPOVER_WIDTH = 260
 const POPOVER_GAP = 6
+const POPOVER_FALLBACK_HEIGHT = 154
 
 interface ContinuousHopsLimitChipProps {
   /** Hops used so far in the current round (the numerator — read-only). */
@@ -48,6 +50,25 @@ interface ContinuousHopsLimitChipProps {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
+}
+
+export function computeContinuousHopsPopoverPosition(input: {
+  triggerRect: Pick<DOMRect, 'left' | 'top' | 'width'>
+  popoverHeight: number
+  viewportWidth: number
+  margin?: number
+}): { left: number; top: number } {
+  const margin = input.margin ?? 8
+  const popoverHeight = input.popoverHeight > 0 ? input.popoverHeight : POPOVER_FALLBACK_HEIGHT
+  const idealLeft = input.triggerRect.left + input.triggerRect.width / 2 - POPOVER_WIDTH / 2
+  const clampedLeft = Math.max(
+    margin,
+    Math.min(input.viewportWidth - POPOVER_WIDTH - margin, idealLeft)
+  )
+  return {
+    left: clampedLeft,
+    top: Math.max(margin, input.triggerRect.top - popoverHeight - POPOVER_GAP)
+  }
 }
 
 export function ContinuousHopsLimitChip({
@@ -104,7 +125,8 @@ export function ContinuousHopsLimitChip({
     }
   }, [open])
 
-  // Position the portaled popover under the trigger; clamp to viewport.
+  // Position the portaled popover above the trigger; clamp horizontally to the
+  // viewport. The composer sits at the bottom edge, so opening downward clips.
   useLayoutEffect(() => {
     if (!open) {
       setPopoverPosition(null)
@@ -114,13 +136,14 @@ export function ContinuousHopsLimitChip({
       const trigger = triggerRef.current
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
-      const margin = 8
-      const idealLeft = rect.left + rect.width / 2 - POPOVER_WIDTH / 2
-      const clampedLeft = Math.max(
-        margin,
-        Math.min(window.innerWidth - POPOVER_WIDTH - margin, idealLeft)
+      const popoverHeight = popoverRef.current?.offsetHeight || POPOVER_FALLBACK_HEIGHT
+      setPopoverPosition(
+        computeContinuousHopsPopoverPosition({
+          triggerRect: rect,
+          popoverHeight,
+          viewportWidth: window.innerWidth
+        })
       )
-      setPopoverPosition({ left: clampedLeft, top: rect.bottom + POPOVER_GAP })
     }
     computePosition()
     window.addEventListener('resize', computePosition)
@@ -156,6 +179,12 @@ export function ContinuousHopsLimitChip({
 
   const parsed = Number.parseInt(draft, 10)
   const draftValid = Number.isInteger(parsed) && parsed >= MIN_HOPS && parsed <= MAX_HOPS
+  const popoverStyle: CSSProperties = {
+    left: popoverPosition?.left ?? 0,
+    top: popoverPosition?.top ?? 0,
+    width: POPOVER_WIDTH,
+    visibility: popoverPosition ? 'visible' : 'hidden'
+  }
 
   return (
     <>
@@ -171,14 +200,14 @@ export function ContinuousHopsLimitChip({
       >
         {hops}/{maxHops}
       </button>
-      {open && popoverPosition
+      {open
         ? createPortal(
             <div
               ref={popoverRef}
               role="dialog"
               aria-label="Continuous round max handoff turns"
               className="welcome-workspace-popover welcome-workspace-popover--portaled continuous-hops-popover"
-              style={{ left: popoverPosition.left, top: popoverPosition.top, width: POPOVER_WIDTH }}
+              style={popoverStyle}
             >
               <form className="continuous-hops-popover-form" onSubmit={handleSubmit}>
                 <label className="continuous-hops-popover-label" htmlFor="continuous-hops-input">
