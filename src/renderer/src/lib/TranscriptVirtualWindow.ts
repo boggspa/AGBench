@@ -171,8 +171,40 @@ export function contentVersion(message: ChatMessage): string {
   return `${message.role[0] || 'x'}:${len}`
 }
 
-export function estimatedHeightFor(rowType: VirtualRowType, hasRunBoundary: boolean): number {
-  return ESTIMATED_ROW_HEIGHT_PX[rowType] + (hasRunBoundary ? RUN_BOUNDARY_HEIGHT_PX : 0)
+/**
+ * 1.0.7 — content-scaled estimate. The flat per-type estimates badly
+ * under-shoot dense rows: an ensemble participant answer is commonly
+ * 600–1200px but `assistant` estimates 220px (~4–5×). That gap is the fuel
+ * for the windowing oscillation — the window mounts a wide span off the small
+ * estimate, the rows measure huge, the window collapses to the short System
+ * rows, and it limit-cycles. Scaling text-row estimates by content length
+ * makes the FIRST window land close, so it converges in one settle frame
+ * instead of flickering. Tool rows keep the flat estimate (their height is
+ * driven by activity count, not text length).
+ *
+ * ~0.42px/char ≈ one ~980px-wide wrapped line (~40px) per ~95 chars. Floored
+ * at the per-type estimate (short rows unchanged) and capped so a pathological
+ * message can't size the spacer to absurd values.
+ */
+export const CONTENT_PX_PER_CHAR = 0.42
+export const CONTENT_SCALE_CAP_PX = 1400
+const CONTENT_SCALED_TYPES: ReadonlySet<VirtualRowType> = new Set([
+  'assistant',
+  'user',
+  'system',
+  'error'
+])
+
+export function estimatedHeightFor(
+  rowType: VirtualRowType,
+  hasRunBoundary: boolean,
+  contentLength = 0
+): number {
+  const base = ESTIMATED_ROW_HEIGHT_PX[rowType]
+  const scaled = CONTENT_SCALED_TYPES.has(rowType)
+    ? Math.min(CONTENT_SCALE_CAP_PX, Math.max(base, Math.round(contentLength * CONTENT_PX_PER_CHAR)))
+    : base
+  return scaled + (hasRunBoundary ? RUN_BOUNDARY_HEIGHT_PX : 0)
 }
 
 /**
@@ -196,12 +228,15 @@ export function projectRows(
     if (!message || typeof message.id !== 'string') continue
     const rowType = classifyRowType(message)
     const hasRunBoundary = runBoundaryIds ? runBoundaryIds.has(message.id) : false
+    // Tool rows size by activity count, not text length, so they keep the flat
+    // estimate (contentLength 0); text rows scale with their content length.
+    const contentLength = message.role === 'tool' ? 0 : (message.content || '').length
     rows.push({
       id: message.id,
       index,
       rowType,
       contentVersion: contentVersion(message),
-      estimatedHeight: estimatedHeightFor(rowType, hasRunBoundary),
+      estimatedHeight: estimatedHeightFor(rowType, hasRunBoundary, contentLength),
       hasRunBoundary
     })
   }

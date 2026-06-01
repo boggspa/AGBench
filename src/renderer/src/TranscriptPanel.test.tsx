@@ -146,13 +146,12 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(bottom.includes('UNIQUEMARK_119 ')).toBe(true)
   })
 
-  it('1.0.7 — FORCES virtualisation off for ensemble chats even when virtualize=true', () => {
-    // Regression guard: the 1.0.7 transcript-crash fix (convergence budget)
-    // stopped the synchronous setState crash, but ensemble transcripts still
-    // suffered an async window↔measurement oscillation (~50ms flicker that
-    // settled on the System-only slice). Ensemble panel conversations are
-    // bounded, so virtualisation is force-disabled for them — the full list
-    // renders with no windowing, exactly like the non-virtualised path.
+  it('1.0.7 — KEEPS virtualisation ON for ensemble chats (oscillation fixed at source)', () => {
+    // e4feee5 had force-disabled windowing for ensembles to dodge a flicker;
+    // the flicker's root cause is now fixed (content-scaled estimates +
+    // scrollbar-gutter + stable window snapshot + one-shot anchor), so
+    // ensembles window like any other chat — preserving the benefit for the
+    // densest transcripts.
     const html = renderToStaticMarkup(
       <TranscriptPanel
         {...makeProps({
@@ -162,19 +161,15 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
         })}
       />
     )
-    // Every block mounts; no spacers; no virtualised class hook.
-    expect(countBlocks(html)).toBe(MESSAGES.length)
-    expect(html).not.toContain('vlist-spacer-top')
-    expect(html).not.toContain('vlist-spacer-bottom')
-    expect(html).not.toContain('transcript-virtualized')
-    // Both ends of the list are present — nothing collapsed into a window.
+    expect(html).toContain('transcript-virtualized')
+    // Far fewer blocks than the full list — the window is active.
+    expect(countBlocks(html)).toBeLessThan(40)
+    // Top mounted; far end collapsed into the bottom spacer.
     expect(html).toContain('UNIQUEMARK_0 ')
-    expect(html).toContain('UNIQUEMARK_119 ')
+    expect(html).not.toContain('UNIQUEMARK_119 ')
   })
 
-  it('1.0.7 — keeps virtualisation ON for non-ensemble chats', () => {
-    // The ensemble gate must not regress solo chats: a single chat with
-    // virtualize=true still windows.
+  it('1.0.7 — keeps virtualisation ON for non-ensemble chats too', () => {
     const html = renderToStaticMarkup(
       <TranscriptPanel
         {...makeProps({

@@ -1560,6 +1560,12 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* 1.0.7 — reserve the scrollbar gutter so its appear/disappear can't change
+   * clientWidth → widthBucket → invalidate the whole transcript measurement
+   * cache. That bucket flip was one leg of the ensemble virtualization flicker
+   * (a scrollbar toggle reverted every cached row height to its estimate for a
+   * frame, feeding the window↔measurement oscillation). */
+  scrollbar-gutter: stable;
   box-sizing: border-box;
   padding: calc(var(--space-lg) * 7.5) var(--chat-side-gutter)
     var(--composer-scroll-under-padding);

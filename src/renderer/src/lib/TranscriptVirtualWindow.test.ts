@@ -3,6 +3,8 @@ import type { ChatMessage, ToolActivity } from '../../../main/store/types'
 import {
   ESTIMATED_ROW_HEIGHT_PX,
   RUN_BOUNDARY_HEIGHT_PX,
+  CONTENT_PX_PER_CHAR,
+  CONTENT_SCALE_CAP_PX,
   DEFAULT_OVERSCAN_PX,
   WIDTH_BUCKET_PX,
   TRANSCRIPT_VIRTUALIZATION_ENABLED,
@@ -183,6 +185,36 @@ describe('TranscriptVirtualWindow', () => {
     it('adds the run-boundary band when a RunCard renders above the block', () => {
       expect(estimatedHeightFor('assistant', true)).toBe(
         ESTIMATED_ROW_HEIGHT_PX.assistant + RUN_BOUNDARY_HEIGHT_PX
+      )
+    })
+
+    it('1.0.7 — defaults contentLength to 0 so the bare per-type estimate is unchanged', () => {
+      // Back-compat: the 2-arg form (and contentLength 0) still floors at the
+      // per-type estimate, so existing window math is byte-identical.
+      expect(estimatedHeightFor('assistant', false, 0)).toBe(ESTIMATED_ROW_HEIGHT_PX.assistant)
+      expect(estimatedHeightFor('assistant', false)).toBe(ESTIMATED_ROW_HEIGHT_PX.assistant)
+    })
+
+    it('1.0.7 — scales a long text row well above the flat estimate', () => {
+      // A dense ensemble participant answer (~2000 chars) should estimate far
+      // larger than the 220px flat assistant estimate, so the first window
+      // lands close and converges instead of oscillating.
+      const long = estimatedHeightFor('assistant', false, 2000)
+      expect(long).toBeGreaterThan(ESTIMATED_ROW_HEIGHT_PX.assistant)
+      expect(long).toBe(Math.round(2000 * CONTENT_PX_PER_CHAR))
+    })
+
+    it('1.0.7 — caps the scaled estimate so a pathological message stays bounded', () => {
+      expect(estimatedHeightFor('assistant', false, 100000)).toBe(CONTENT_SCALE_CAP_PX)
+    })
+
+    it('1.0.7 — does NOT scale tool rows (height is activity-driven, not text-length)', () => {
+      expect(estimatedHeightFor('tool', false, 5000)).toBe(ESTIMATED_ROW_HEIGHT_PX.tool)
+    })
+
+    it('1.0.7 — adds the run-boundary band on top of a scaled estimate', () => {
+      expect(estimatedHeightFor('assistant', true, 2000)).toBe(
+        Math.round(2000 * CONTENT_PX_PER_CHAR) + RUN_BOUNDARY_HEIGHT_PX
       )
     })
   })

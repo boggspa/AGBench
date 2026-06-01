@@ -6356,6 +6356,14 @@ function useTranscriptVirtualization(params: {
   enabled: boolean
   rows: VirtualRow[]
   scrollRef: React.RefObject<HTMLDivElement | null>
+  /**
+   * 1.0.7 — the `.transcript-inner` element (capped at
+   * --composer-content-max-width). Width is bucketed off THIS, not the scroll
+   * container, so a scrollbar appear/disappear (which changes the scroller's
+   * clientWidth but not the capped inner's) can't flip the width bucket and
+   * invalidate the measurement cache. Falls back to the scroller when absent.
+   */
+  contentRef?: React.RefObject<HTMLDivElement | null>
   autoFollowRef?: React.MutableRefObject<boolean>
   compactDensity: boolean
   /**
@@ -6370,7 +6378,8 @@ function useTranscriptVirtualization(params: {
   blockRef: (el: HTMLDivElement | null) => void
   spacerBottomRef: React.RefObject<HTMLDivElement | null>
 } {
-  const { enabled, rows, scrollRef, autoFollowRef, compactDensity, expandedRowIds } = params
+  const { enabled, rows, scrollRef, contentRef, autoFollowRef, compactDensity, expandedRowIds } =
+    params
 
   const measurementsRef = useRef<Map<string, number>>(new Map())
   const scrollTopRef = useRef(0)
@@ -6399,6 +6408,13 @@ function useTranscriptVirtualization(params: {
   // per oscillation episode. See lib/transcriptMeasureConvergence.ts.
   const measureRewritePassesRef = useRef(0)
   const measureWarnedRef = useRef(false)
+  // 1.0.7 — set true immediately before the anchor correction writes
+  // `scroller.scrollTop`, so the passive scroll listener can recognise that
+  // scroll event as our OWN write and skip re-baselining the anchor / bumping.
+  // Without this the programmatic write re-enters the listener → re-baseline
+  // from a mid-convergence heights snapshot → non-zero delta → another write,
+  // which is the async (~50ms) leg of the ensemble flicker loop.
+  const anchorWriteRef = useRef(false)
   // Flips true the first time the scroller reports a real scroll position
   // (the chat-switch snap-to-bottom counts). Before that, `scrollTopRef`
   // is still 0, so we force the bottom window to avoid flashing the top;
@@ -6444,17 +6460,36 @@ function useTranscriptVirtualization(params: {
   const effectiveScrollTop = forceBottomOnLoad
     ? Math.max(0, totalHeight - viewportRef.current)
     : scrollTopRef.current
+  // 1.0.7 — window selection from a STABLE heights snapshot. This is the core
+  // fix for the ensemble virtualization oscillation. Previously the window was
+  // selected from live `heights`, which recompute on every `measureTick` — so
+  // the instant a mounted row reported its real (large) height, the window
+  // re-selected a smaller span, dropped that very row, re-measured, and limit-
+  // cycled (the ~50ms flicker that settled on the short System rows). The
+  // mounted set must NOT be an input to the computation that re-picks it.
+  //
+  // `windowHeights` is refreshed on scroll/resize (`scrollTick`) and on row-set
+  // / expansion changes, but is HELD across a pure measurement bump. Within a
+  // frame the window is fixed; Phase-2 measures exactly that window's rows and
+  // writes the cache; live `heights` still feed the spacers + anchor so total
+  // height and the bottom-pin invariant stay exact. The next genuine scroll
+  // then re-selects ONCE from now-measured heights and lands correctly. The
+  // 900px overscan absorbs the estimate error during the single settle frame.
+  // Standard virtualiser hysteresis: select on scroll, measure within the
+  // selection, never let measurement re-trigger selection.
+  const windowHeights = useMemo(
+    () => heights,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enabled, rows, expandedRowIds, scrollTick] // deliberately NOT measureTick
+  )
   const virtualWindow: VirtualWindow = enabled
     ? selectWindow({
         scrollTop: effectiveScrollTop,
         viewportHeight: viewportRef.current,
-        heights,
+        heights: windowHeights,
         overscanPx: DEFAULT_OVERSCAN_PX
       })
     : { startIndex: 0, endIndex: rows.length, topSpacerPx: 0, bottomSpacerPx: 0 }
-  // Touch the tick so lint sees the dependency and the window recomputes
-  // when the scroll listener fires.
-  void scrollTick
 
   // Read-only passive scroll + resize listener: refresh metrics, capture
   // the anchor, and request a window recompute. Never writes scrollTop.
@@ -6465,7 +6500,13 @@ function useTranscriptVirtualization(params: {
     const readMetricsInto = (el: HTMLDivElement): boolean => {
       scrollTopRef.current = el.scrollTop
       viewportRef.current = el.clientHeight
-      const nextBucket = widthBucket(el.clientWidth)
+      // 1.0.7 — bucket width off the capped `.transcript-inner` (contentRef),
+      // not the scroll container: a scrollbar appear/disappear changes the
+      // scroller's clientWidth but not the inner's, so this can't flip the
+      // bucket and invalidate the whole measurement cache. Fall back to the
+      // scroller when contentRef hasn't mounted yet.
+      const widthEl = contentRef?.current ?? el
+      const nextBucket = widthBucket(widthEl.clientWidth)
       const bucketChanged = nextBucket !== bucketRef.current
       bucketRef.current = nextBucket
       return bucketChanged
@@ -6479,6 +6520,17 @@ function useTranscriptVirtualization(params: {
         scrollRafRef.current = null
         const el = scrollRef.current
         if (!el) return
+        // 1.0.7 — if this scroll event is the anchor correction's OWN
+        // `scrollTop +=` write, re-read metrics but DON'T re-baseline the
+        // anchor or bump. Re-baselining here from a mid-convergence heights
+        // snapshot is what produced a fresh non-zero delta every pass → another
+        // write → the async oscillation. Consuming the flag makes the anchor
+        // correction one-shot: the baseline only moves on real user scrolls.
+        if (anchorWriteRef.current) {
+          anchorWriteRef.current = false
+          readMetricsInto(el)
+          return
+        }
         // The scroller has reported a real position (incl. the
         // snap-to-bottom): from here the window tracks the live scrollTop.
         hasScrolledRef.current = true
@@ -6571,6 +6623,10 @@ function useTranscriptVirtualization(params: {
         const aboveHeight = sumHeights(heightsRef.current, 0, idx)
         const delta = aboveHeight - anchor.aboveHeight
         if (Math.abs(delta) > 0.5) {
+          // 1.0.7 — flag the programmatic write so the passive scroll listener
+          // recognises the resulting scroll event as our own and skips the
+          // re-baseline/bump (Fix 4), keeping the correction one-shot.
+          anchorWriteRef.current = true
           scroller.scrollTop = Math.max(0, scroller.scrollTop + delta)
         }
         anchor.aboveHeight = aboveHeight
@@ -6779,22 +6835,17 @@ export const TranscriptPanel = memo(
     // tests pass it explicitly. When off, `useTranscriptVirtualization`
     // is inert and the full-list branch below renders exactly as before.
     //
-    // 1.0.7 — virtualization is force-disabled for ENSEMBLE chats. The
-    // windowing was built for the unbounded solo agent log (hundreds–thousands
-    // of rows); an ensemble panel conversation is bounded (a few participants ×
-    // rounds), so windowing buys nothing there but triggers a
-    // window↔measurement feedback loop: ensemble rows vary wildly in height
-    // (a multi-paragraph participant answer vs a one-line System "Yielded
-    // back…" notice), so the estimate→measured correction keeps shifting the
-    // window boundary, which mounts a different slice, which re-measures, etc.
-    // The 1.0.7 convergence budget stopped the *synchronous* setState crash
-    // but the *async* rAF-paced loop survived as ~50ms flicker that only ever
-    // settled on the small-row (System-only) slice — the reported regression.
-    // Ensemble transcripts are short enough to render in full with no
-    // windowing, which is correct + glitch-free.
-    const isEnsembleTranscript = currentChat?.chatKind === 'ensemble'
-    const virtualizeEnabled =
-      !isEnsembleTranscript && (virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED)
+    // 1.0.7 — virtualization is ON for ALL chat kinds including ensembles. An
+    // earlier patch (e4feee5) disabled it for ensembles to dodge a flicker, but
+    // that abandoned the benefit for exactly the densest transcripts. The
+    // flicker's real root cause — a window↔measurement oscillation fed by (a)
+    // 4–5× under-estimated dense rows, (b) a scrollbar→width-bucket cache
+    // invalidation, and (c) the window being re-selected from the live heights
+    // its own mounted rows mutate — is now fixed at source: content-scaled
+    // estimates, `scrollbar-gutter: stable` + inner-width bucketing, a stable
+    // window-selection snapshot (select-on-scroll, not on every measure), and a
+    // one-shot anchor correction. So ensembles keep windowing and converge.
+    const virtualizeEnabled = virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED
     const virtualRows = useMemo(
       () =>
         virtualizeEnabled
@@ -6810,6 +6861,7 @@ export const TranscriptPanel = memo(
       enabled: virtualizeEnabled,
       rows: virtualRows,
       scrollRef,
+      contentRef,
       autoFollowRef,
       compactDensity,
       expandedRowIds
