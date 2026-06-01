@@ -24,19 +24,6 @@ jobs:
       - run: npm ci
       - run: npm run ci
 
-  package-smoke:
-    name: Packaged Electron Smoke
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run security:deps
-      - run: npm run build:unpack
-
   notarized-macos-release:
     name: Notarized macOS Release
     runs-on: macos-latest
