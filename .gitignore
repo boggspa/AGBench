@@ -8,3 +8,22 @@ out
 *.tsbuildinfo
 for-tester/
 for-tester.zip
+
+# Secrets / credentials — never commit
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.keystore
+
+# Swift build output (was committed into history once — keep it out now)
+**/.build/
+
+# Local agent / session state
+.claude/
