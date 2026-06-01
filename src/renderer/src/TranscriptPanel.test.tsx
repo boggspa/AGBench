@@ -145,4 +145,46 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(top.includes('UNIQUEMARK_119 ')).toBe(false)
     expect(bottom.includes('UNIQUEMARK_119 ')).toBe(true)
   })
+
+  it('1.0.7 — FORCES virtualisation off for ensemble chats even when virtualize=true', () => {
+    // Regression guard: the 1.0.7 transcript-crash fix (convergence budget)
+    // stopped the synchronous setState crash, but ensemble transcripts still
+    // suffered an async window↔measurement oscillation (~50ms flicker that
+    // settled on the System-only slice). Ensemble panel conversations are
+    // bounded, so virtualisation is force-disabled for them — the full list
+    // renders with no windowing, exactly like the non-virtualised path.
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: true,
+          autoFollowRef: { current: false },
+          currentChat: { chatKind: 'ensemble' }
+        })}
+      />
+    )
+    // Every block mounts; no spacers; no virtualised class hook.
+    expect(countBlocks(html)).toBe(MESSAGES.length)
+    expect(html).not.toContain('vlist-spacer-top')
+    expect(html).not.toContain('vlist-spacer-bottom')
+    expect(html).not.toContain('transcript-virtualized')
+    // Both ends of the list are present — nothing collapsed into a window.
+    expect(html).toContain('UNIQUEMARK_0 ')
+    expect(html).toContain('UNIQUEMARK_119 ')
+  })
+
+  it('1.0.7 — keeps virtualisation ON for non-ensemble chats', () => {
+    // The ensemble gate must not regress solo chats: a single chat with
+    // virtualize=true still windows.
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: true,
+          autoFollowRef: { current: false },
+          currentChat: { chatKind: 'single' }
+        })}
+      />
+    )
+    expect(html).toContain('transcript-virtualized')
+    expect(countBlocks(html)).toBeLessThan(40)
+  })
 })

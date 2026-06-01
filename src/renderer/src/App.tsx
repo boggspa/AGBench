@@ -6778,7 +6778,23 @@ export const TranscriptPanel = memo(
     // 1.0.6-TV1 — windowing. `virtualize` defaults to the global flag;
     // tests pass it explicitly. When off, `useTranscriptVirtualization`
     // is inert and the full-list branch below renders exactly as before.
-    const virtualizeEnabled = virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED
+    //
+    // 1.0.7 — virtualization is force-disabled for ENSEMBLE chats. The
+    // windowing was built for the unbounded solo agent log (hundreds–thousands
+    // of rows); an ensemble panel conversation is bounded (a few participants ×
+    // rounds), so windowing buys nothing there but triggers a
+    // window↔measurement feedback loop: ensemble rows vary wildly in height
+    // (a multi-paragraph participant answer vs a one-line System "Yielded
+    // back…" notice), so the estimate→measured correction keeps shifting the
+    // window boundary, which mounts a different slice, which re-measures, etc.
+    // The 1.0.7 convergence budget stopped the *synchronous* setState crash
+    // but the *async* rAF-paced loop survived as ~50ms flicker that only ever
+    // settled on the small-row (System-only) slice — the reported regression.
+    // Ensemble transcripts are short enough to render in full with no
+    // windowing, which is correct + glitch-free.
+    const isEnsembleTranscript = currentChat?.chatKind === 'ensemble'
+    const virtualizeEnabled =
+      !isEnsembleTranscript && (virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED)
     const virtualRows = useMemo(
       () =>
         virtualizeEnabled
