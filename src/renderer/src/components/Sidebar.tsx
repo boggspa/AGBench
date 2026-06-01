@@ -1151,7 +1151,17 @@ export function Sidebar({
     () => chats.filter((chat) => chat.pinned === true && !chat.archived),
     [chats]
   )
-  const recentChats = selectRecentChats(regularChats, { limit: 5 })
+  // 1.0.7 — Recents now includes Ensemble chats (when ensemble mode is on),
+  // mirroring the SB5 lift that put ensembles into Pinned. Pre-1.0.7 Recents
+  // was built from `regularChats` (which excludes chatKind === 'ensemble'), so
+  // an active ensemble thread never surfaced under Recents even when it was the
+  // most recently touched chat. Ensembles still render in their own ENSEMBLES
+  // section too — same dual-surfacing as a solo chat appearing in both Recents
+  // and its workspace group. `selectRecentChats` already drops archived + pinned.
+  const recentSourceChats = ensembleModeEnabled
+    ? chats.filter((chat) => chat.chatKind !== 'ensemble' || !chat.archived)
+    : regularChats
+  const recentChats = selectRecentChats(recentSourceChats, { limit: 5 })
   const visibleEnsembleChats = isSidebarSearchActive
     ? ensembleChats.filter((chat) => !chat.pinned && chatMatchesSearch(chat, sidebarSearchQuery))
     : ensembleChats.filter((chat) => !chat.pinned)

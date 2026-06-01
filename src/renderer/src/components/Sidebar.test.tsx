@@ -170,7 +170,33 @@ describe('Sidebar ensembles section', () => {
 
     expect(html).toContain('sidebar-ensemble-item')
     expect(html).toContain('sidebar-pinned-item')
-    expect((html.match(/sidebar-provider-dot-ensemble/g) || []).length).toBe(2)
+    // 1.0.7 — three ensemble dots now: the unpinned ensemble renders in BOTH
+    // the Ensembles section AND Recents (Recents includes ensembles as of
+    // 1.0.7), plus the pinned ensemble in the Pinned section. Pinned ensembles
+    // are excluded from Recents by selectRecentChats, so only the unpinned one
+    // dual-surfaces.
+    expect((html.match(/sidebar-provider-dot-ensemble/g) || []).length).toBe(3)
+  })
+
+  it('1.0.7 — surfaces an unpinned ensemble chat in the Recents section', () => {
+    stubSidebarStorage({})
+
+    const html = renderSidebar([
+      makeChat({ appChatId: 'solo-1', title: 'Solo', updatedAt: 2 }),
+      makeChat({
+        appChatId: 'ensemble-recent',
+        chatKind: 'ensemble',
+        title: 'Recent ensemble',
+        provider: 'codex',
+        updatedAt: 5
+      })
+    ])
+
+    // The ensemble chat (most recently updated) appears as a Recents item, not
+    // only in the Ensembles section.
+    expect(html).toContain('sidebar-recents-item')
+    const recentsBlock = html.slice(html.indexOf('sidebar-recents-section'))
+    expect(recentsBlock).toContain('Recent ensemble')
   })
 })
 

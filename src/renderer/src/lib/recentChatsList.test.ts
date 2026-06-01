@@ -82,4 +82,18 @@ describe('selectRecentChats', () => {
     )
     expect(result.map((c) => c.appChatId)).toEqual(['alpha', 'mango', 'zebra'])
   })
+
+  it('1.0.7 — includes ensemble chats when the caller passes them in', () => {
+    // selectRecentChats is kind-agnostic; the sidebar now feeds it a source
+    // list that includes ensembles (when ensemble mode is on) so an active
+    // ensemble thread can surface in Recents by recency.
+    const result = selectRecentChats(
+      [
+        chat({ appChatId: 'solo', updatedAt: 100 }),
+        chat({ appChatId: 'ens', updatedAt: 300, chatKind: 'ensemble' })
+      ],
+      { limit: 5 }
+    )
+    expect(result.map((c) => c.appChatId)).toEqual(['ens', 'solo'])
+  })
 })
