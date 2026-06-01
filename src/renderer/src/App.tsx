@@ -17707,6 +17707,14 @@ function App(): React.JSX.Element {
   // behaviour. The visibility map is applied at the chip
   // renderer (further down), not the builder.
   const dashboardStatResetAt = Number(settings?.dashboardStatPrefs?.resetAt || 0)
+  // 1.0.7 — refresh signal for the welcome standalone heatmaps. UsageHeatmap
+  // fetches its own records via getUsage() in a useEffect keyed on `refreshKey`
+  // (default 0 = fetch ONCE on mount). The welcome surface stays mounted for
+  // long stretches, so without a key the 90-day heatmaps showed stale data
+  // (the sidebar's copy looked fresher only because that card remounts often).
+  // `usageRecords` is re-fetched on the 90s usage poll AND on ensemble-run
+  // completion, so its length is a cheap, monotonic-enough refresh trigger.
+  const welcomeHeatmapRefreshKey = usageRecords.length
   const welcomeUsageDashboardData = useMemo(
     () =>
       buildWelcomeUsageDashboardData(
@@ -21607,6 +21615,7 @@ function App(): React.JSX.Element {
                   <WorkspaceActivityHeatmap
                     workspacePath={welcomeWorkspaceActivityPath}
                     dayCount={90}
+                    refreshKey={welcomeHeatmapRefreshKey}
                     className="usage-heatmap--welcome-standalone"
                   />
                 )}
@@ -21615,6 +21624,7 @@ function App(): React.JSX.Element {
                     {welcomeAgbenchHeatmapEnabled && (
                       <UsageHeatmap
                         dayCount={90}
+                        refreshKey={welcomeHeatmapRefreshKey}
                         title="AGBench Activity"
                         showProviderFilter
                         className="usage-heatmap--welcome-standalone"
@@ -21623,6 +21633,7 @@ function App(): React.JSX.Element {
                     {welcomeExternalHeatmapEnabled && (
                       <UsageHeatmap
                         dayCount={90}
+                        refreshKey={welcomeHeatmapRefreshKey}
                         usageSource="external"
                         title="External Activity"
                         showProviderFilter
