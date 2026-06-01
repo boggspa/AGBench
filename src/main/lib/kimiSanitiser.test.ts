@@ -212,7 +212,7 @@ describe('kimiSanitiser', () => {
   })
 
   it('1.0.5-EW26b: catches diplomatic-summit / arms-package phrasings', () => {
-    // Regression for the gap Chris spotted in a real transcript:
+    // Regression for the gap the maintainer spotted in a real transcript:
     // Codex/Politician posted "Trump's Beijing summit... Taiwan
     // arms package after summit aimed at steadying us-china ties"
     // which contained NO words matching the pre-EW26b default

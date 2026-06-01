@@ -1133,7 +1133,7 @@ function globalRunCwd(): string {
 // initial file inventory. Pointing it at `$HOME` (what
 // `globalRunCwd()` returns for global-mode runs) means scanning
 // `~/Library`, `~/Documents`, `~/Pictures`, etc. — millions of
-// files. In Chris's repro the scan didn't finish within 3 minutes
+// files. In the maintainer's repro the scan didn't finish within 3 minutes
 // and EW15's stuck-process detector fired the kill. The other
 // CLIs (Codex, Claude SDK, Kimi) don't do a recursive workspace
 // scan on startup, so they're unaffected by `$HOME` cwd.
@@ -4640,7 +4640,7 @@ function runCliProviderProcess(
   // raw stderr line ("Error code: 400 - {'error': {...}}") plus a
   // generic `type:result, status:failed` event, and the user just
   // saw "Kimi failed" on the chip with no idea it was an API-side
-  // safety filter rather than an AGBench bug. Chris hit this with
+  // safety filter rather than an AGBench bug. the maintainer hit this with
   // 3x Kimi participants in a global ensemble — first Kimi passed,
   // second Kimi's prompt (which now included the first Kimi's
   // response plus several other panelists' turns + URLs) tripped
@@ -4655,7 +4655,7 @@ function runCliProviderProcess(
   // Deeper investigation (which role names / content shapes trip
   // the filter most often, whether retry policies make sense,
   // whether there's a Moonshot-side sensitivity control) is
-  // parked for 1.0.6. This is the small defensive note Chris
+  // parked for 1.0.6. This is the small defensive note the maintainer
   // approved for 1.0.5.
   let kimiContentFilterWarned = false
   child.stderr?.on('data', (chunk) => {
@@ -5503,7 +5503,7 @@ function cursorMcpServerRegisteredGlobally(): boolean {
 // 1.0.6-CRUX39 ("B") — Cursor approves MCP servers PER WORKSPACE
 // (~/.cursor/projects/<ws>/) and headless --approve-mcps proved unreliable
 // (persistent "User rejected MCP … isReadonly:false"; proven 4/4 only once the
-// workspace is approved). So — per Chris's explicit "B" call — we approve our
+// workspace is approved). So — per the maintainer's explicit "B" call — we approve our
 // OWN read-only web_fetch server for the run's workspace via
 // `cursor-agent mcp enable agbench`. This is the ONLY write AGBench makes under
 // ~/.cursor, only ever approves our own server, and only when the bridge is
@@ -9126,7 +9126,7 @@ async function runGeminiProvider(
   // ensemble round stalls on "Thinking…" indefinitely.
   //
   // EW7 first attempt counted events and killed when count ≤ 1.
-  // Chris's repro showed Gemini emits ≥ 2 events during the stuck
+  // the maintainer's repro showed Gemini emits ≥ 2 events during the stuck
   // state — init + another small structured event — so the count
   // gate slipped past and the timer never fired the kill.
   //
@@ -9138,7 +9138,7 @@ async function runGeminiProvider(
   // events Gemini emits during its initial burst — as long as the
   // burst stops cleanly and no further events arrive, we detect
   // it. Solo Gemini chats don't run this code path.
-  // 1.0.5-EW15 — Bumped 30s → 180s. Chris caught: a global-chat
+  // 1.0.5-EW15 — Bumped 30s → 180s. the maintainer caught: a global-chat
   // Gemini turn legitimately took 332s (5.5 minutes) to complete
   // because the CLI fell back from ripgrep to GrepTool for a
   // workspace scan. EW12's 30s threshold was killing healthy-but-
@@ -12278,7 +12278,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_timeline_import',
       description:
-        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval. See docs/FCPXML-Reference.md for canonical schema + docs/FCPXML-Capability-Probe.md for tested feature coverage.',
+        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -16281,8 +16281,7 @@ if (isGeminiMcpBridgeProcess) {
     // Phase B3: ApprovalService construction. Owns the five pending
     // approval registries + the unified resolve dispatch + the
     // wake-push fan-out + the scheduled-timeout integration. See
-    // src/main/services/ApprovalService.ts for the full surface and
-    // docs/phase-b-handoff.md for the extraction plan.
+    // src/main/services/ApprovalService.ts for the full surface.
     const approvalServiceInstance = new ApprovalService({
       runManager,
       permissionService,

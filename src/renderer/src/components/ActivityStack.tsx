@@ -1498,7 +1498,7 @@ export function ActivityStack({
   if (!activities || activities.length === 0) return null
   // 1.0.4-AS2 — Ensemble chats collapse every terminal activity into
   // the compact group so only the currently-running one stays
-  // expanded inline. Pattern (a) from Chris's three options. Solo
+  // expanded inline. Pattern (a) from the maintainer's three options. Solo
   // chats keep the existing read/search compact-group behavior.
   const collapseAllTerminal = chat?.chatKind === 'ensemble'
   const timelineItems = buildTimelineItems(topLevelActivities, { collapseAllTerminal })

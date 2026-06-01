@@ -91,7 +91,7 @@ describe('BugReportService.renderBugReportMarkdown', () => {
     expect(md).toContain('## Context')
   })
 
-  it('marks an empty description with a placeholder so Chris can spot it on triage', () => {
+  it('marks an empty description with a placeholder so the maintainer can spot it on triage', () => {
     const md = renderBugReportMarkdown({ ...baseSubmission, description: '' })
     expect(md).toContain('_(tester provided no description)_')
   })

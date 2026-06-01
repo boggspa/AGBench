@@ -12,15 +12,15 @@ describe('describeExternalPath', () => {
 
   it('returns repo descriptor when gitMetadata indicates a repo', () => {
     expect(
-      describeExternalPath('/Users/me/code/GUIGemini/src/main.ts', {
-        gitMetadata: { isRepo: true, repoRoot: '/Users/me/code/GUIGemini', branch: 'master' }
+      describeExternalPath('/Users/me/code/AGBench/src/main.ts', {
+        gitMetadata: { isRepo: true, repoRoot: '/Users/me/code/AGBench', branch: 'main' }
       })
     ).toEqual({
       isRepo: true,
-      repoRoot: '/Users/me/code/GUIGemini',
-      basename: 'GUIGemini',
-      branch: 'master',
-      repoName: 'GUIGemini'
+      repoRoot: '/Users/me/code/AGBench',
+      basename: 'AGBench',
+      branch: 'main',
+      repoName: 'AGBench'
     })
   })
 

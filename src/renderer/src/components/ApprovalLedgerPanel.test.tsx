@@ -8,7 +8,7 @@ function makeGrant(overrides: Partial<AgenticWorkspaceGrant> = {}): AgenticWorks
     id: 'grant-1',
     provider: 'codex',
     service: 'fileChanges',
-    workspacePath: '/Users/dev/Documents/GUIGemini',
+    workspacePath: '/Users/example/Documents/AGBench',
     createdAt: '2026-05-24T12:00:00.000Z',
     updatedAt: '2026-05-24T12:00:00.000Z',
     expiresOn: 'workspace_revocation',
@@ -27,7 +27,7 @@ describe('ApprovalLedgerPanel', () => {
 
     expect(html).toContain('Workspace grants')
     expect(html).toContain('Codex · File changes')
-    expect(html).toContain('GUIGemini')
+    expect(html).toContain('AGBench')
     expect(html).toContain('Revoke')
   })
 
@@ -51,13 +51,13 @@ describe('ApprovalLedgerPanel', () => {
         id: 'g4',
         provider: 'gemini',
         service: 'subThreadDelegation',
-        workspacePath: '/Users/dev/Documents/Other'
+        workspacePath: '/Users/example/Documents/Other'
       })
     ]
     const html = renderToStaticMarkup(
       <ApprovalLedgerPanel
         workspaceGrants={grants}
-        currentWorkspacePath="/Users/dev/Documents/GUIGemini"
+        currentWorkspacePath="/Users/example/Documents/AGBench"
         onRevokeWorkspaceGrant={() => undefined}
       />
     )
@@ -69,7 +69,7 @@ describe('ApprovalLedgerPanel', () => {
     const html = renderToStaticMarkup(
       <ApprovalLedgerPanel
         workspaceGrants={[makeGrant({ service: 'fileChanges' })]}
-        currentWorkspacePath="/Users/dev/Documents/GUIGemini"
+        currentWorkspacePath="/Users/example/Documents/AGBench"
         onRevokeWorkspaceGrant={() => undefined}
       />
     )

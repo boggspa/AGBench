@@ -66,7 +66,7 @@ export function SettingsSidebar({
           {SETTINGS_TABS.map((tab, index) => {
             // Insert a thin divider whenever the group changes from the
             // previous tab so app-config and device-management read as
-            // visually distinct sections (mirrors Chris's "settings |
+            // visually distinct sections (mirrors the maintainer's "settings |
             // pairing" framing — settings tabs on top, pairing pinned
             // to the bottom under a small gap).
             const previousGroup = index > 0 ? SETTINGS_TABS[index - 1].group : tab.group

@@ -1104,7 +1104,7 @@ export type SettingsTabGroup = 'settings' | 'devices'
  * Order matters: the sidebar renders tabs in this order and inserts
  * a divider whenever the `group` field changes from the previous
  * tab. The Pairing tab sits at the end under the "devices" group so
- * Chris's screenshot pattern reads correctly: settings tabs on top,
+ * the maintainer's screenshot pattern reads correctly: settings tabs on top,
  * pairing pinned to the bottom with a visual gap.
  */
 export const SETTINGS_TABS: Array<{
@@ -1112,7 +1112,7 @@ export const SETTINGS_TABS: Array<{
   label: string
   group: SettingsTabGroup
 }> = [
-  // 1.0.6 — explicit order requested by Chris: General, Appearance, Approvals,
+  // 1.0.6 — explicit order requested by the maintainer: General, Appearance, Approvals,
   // Key commands, Providers, MCP, Workspaces, Devices. All one group so NO
   // divider renders (the sidebar inserts a divider only when `group` changes;
   // keeping every tab in `settings` collapses the old settings/devices split).
@@ -1128,7 +1128,7 @@ export const SETTINGS_TABS: Array<{
   // into AGBench; a row opens it in a fresh chat surface.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   // "Model usage" — richer cross-provider usage page (quota meters + context
-  // tiles). Not in Chris's explicit order list, kept at the tail of the settings
+  // tiles). Not in the maintainer's explicit order list, kept at the tail of the settings
   // group rather than dropped.
   { id: 'model-usage', label: 'Model usage', group: 'settings' },
   // "Devices" merges the legacy Pairing + Remote Workspaces + Bridge Networking

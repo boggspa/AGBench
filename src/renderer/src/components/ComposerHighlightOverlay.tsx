@@ -61,11 +61,9 @@ export function composerHighlightScrollTransform(scrollLeft: number, scrollTop: 
  *     re-syncs the overlay. Plus an explicit `syncEpoch` from the
  *     parent for shell-/theme-changes that don't actually resize.
  *
- * Why this exists: see `docs/VERSION-LEDGER.md → 1.0.5 trajectory`
- * for the planned `contenteditable` migration (Option B) that
- * eliminates the two-layer pattern entirely. This module is
- * Option A — the right short-term answer with zero risk to the
- * native typing UX.
+ * Why this exists: the native textarea keeps typing behavior predictable while
+ * the overlay handles visual mention highlighting. This can be simplified if
+ * the composer later moves to a `contenteditable` model.
  *
  * The actual tokenisation lives in `lib/mentionHighlight.ts` so the
  * same logic powers the transcript user-message bubbles and the

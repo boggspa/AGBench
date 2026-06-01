@@ -1,8 +1,7 @@
 // Pure parser for the Cursor Agent CLI's `--output-format stream-json` NDJSON
 // stream (`cursor-agent -p --output-format stream-json …`). No Electron / fs /
 // child_process imports — unit-testable against fixtures captured from the real
-// 2026.05.28 agent (see docs/1.0.6-CURSOR-PROVIDER-INTEGRATION-BLUEPRINT.md →
-// "CR3 spike — LIVE VERDICT").
+// 2026.05.28 agent.
 //
 // Confirmed wire shape (one JSON object per line, top-level `type`):
 //   {type:"system", subtype:"init", session_id, model, cwd, permissionMode}

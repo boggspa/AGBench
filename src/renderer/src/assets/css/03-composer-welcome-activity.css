@@ -644,7 +644,7 @@
  * Pre-AS5 the Ensemble welcome sat inside a tinted container
  * with a multi-provider gradient + border + box-shadow. AS5 (first
  * pass) dropped the gradient but kept padding + border-radius +
- * a directional multi-provider glow halo. Chris flagged that even
+ * a directional multi-provider glow halo. the maintainer flagged that even
  * the halo + padding makes this read as a distinct surface from
  * the Workspace/Global welcome. The clean target is fully
  * satellite — text + provider chain + folder picker floating in
@@ -2498,7 +2498,7 @@
    * AFTER the mention then sits at a different x-position in the
    * two layers, and the caret + native selection (driven by the
    * textarea's glyph metrics) drifts right of where the styled
-   * overlay text actually appears. Chris's "highlight to see the
+   * overlay text actually appears. the maintainer's "highlight to see the
    * divergence" reproducer.
    *
    * Fix: keep regular weight (matches textarea metrics exactly) and
@@ -2523,7 +2523,7 @@
  * Default provider hex values (`--provider-codex-color: #6366F1`
  * etc.) are mid-saturation indigos / ambers / blues / olives. In
  * dark theme they pop against the dark composer surface. In light
- * theme they sit at similar luminance to the surface text — Chris
+ * theme they sit at similar luminance to the surface text — the maintainer
  * reported `@Worker` rendering as if the provider tinting wasn't
  * applied at all. Mix each provider colour with `#1d1d1f` (the
  * light-theme primary text colour) so the saturation tilts darker
@@ -2583,7 +2583,7 @@
  * highlight`. That approach was fragile: every future shell
  * change had to be made in two places, and the moment someone
  * updated a shell rule without touching the overlay, the overlay
- * drifted from the textarea (Chris's repeated "tags look weird
+ * drifted from the textarea (the maintainer's repeated "tags look weird
  * in shell X" reports).
  *
  * Replaced by JS auto-sync in `ComposerHighlightOverlay.tsx`:
@@ -2597,9 +2597,8 @@
  * The base `.composer-textarea-highlight` rule above still sets
  * fallback metrics for the first paint before `useLayoutEffect`
  * runs — `useLayoutEffect` fires synchronously before browser
- * paint so users never see the fallback in practice. See
- * `docs/VERSION-LEDGER.md → 1.0.5 trajectory` for the planned
- * `contenteditable` migration that supersedes this whole pattern.
+ * paint so users never see the fallback in practice. This can be
+ * simplified if the composer later moves to a `contenteditable` model.
  */
 
 /*
@@ -2807,7 +2806,7 @@
 /* 1.0.5-EW28 — Anchor the timecodes + Appwatch icon to the left
  * when there's no token-tally chip pushing things right.
  *
- * Chris noticed: on the welcome screen (and on any chat that
+ * the maintainer noticed: on the welcome screen (and on any chat that
  * hasn't accumulated 1k+ tokens yet), the run timecode +
  * cumulative timecode + Screen Watch icon would spread across
  * the full composer width via `justify-content: space-between`.
@@ -5763,7 +5762,7 @@ button.diff-file-row {
 /*
  * 1.0.4 — Yield-target chip rendered as inline bold provider-tinted
  * text (no pill/bubble) so it matches the `.participant-mention`
- * styling Chris asked to unify. Keeps the at-a-glance "who is
+ * styling the maintainer asked to unify. Keeps the at-a-glance "who is
  * yielding to whom" colour signal without the heavy pill chrome
  * that competed with surrounding prose.
  *
@@ -6398,4 +6397,3 @@ button.diff-file-row {
 }
 
 .safety-row:last-child { border-bottom: none; }
-

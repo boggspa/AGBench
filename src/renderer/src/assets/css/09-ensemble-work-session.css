@@ -1040,7 +1040,7 @@
 }
 /* Codex unified container (when ensemble) in light mode: white
  * `--surface-2` base to match the composer-surface + Create-PR row
- * exactly (Chris's call — the unified container should read as
+ * exactly (the maintainer's call — the unified container should read as
  * the same white pill family as its sibling chrome above, not a
  * darker contrasting surface). The purple accent moves to the
  * border only, kept subtle so it doesn't fight the bright base. */
@@ -1393,7 +1393,7 @@
  * 17333 for the interface-style scope. Mirror the same container
  * styling here so the ensemble row matches.
  *
- * Padding stays at the base `8px 16px` (Chris's instruction) — a
+ * Padding stays at the base `8px 16px` (the maintainer's instruction) — a
  * touch more inset than the Create-PR row's `8px 14px` because
  * the chip strip's content is denser than a single branch label
  * + Create PR button. */
@@ -1412,7 +1412,7 @@
 }
 
 /* Gemini shell — `.composer-above-bar` is `display: none` here so
- * the chip strip is the SOLE above-row. Per Chris's smoke pass,
+ * the chip strip is the SOLE above-row. Per the maintainer's smoke pass,
  * match the COMPOSER-SURFACE chrome instead of a satellite-flat
  * treatment so the chip strip reads as a sibling to the composer
  * pill below it (Gemini composer-surface: 28px radius / `#0e1218
@@ -1432,7 +1432,7 @@
 }
 
 /* Kimi shell — same situation: `.composer-above-bar` hidden, chip
- * strip is sole above-row. Per Chris's smoke pass, mirror the
+ * strip is sole above-row. Per the maintainer's smoke pass, mirror the
  * Kimi composer-surface chrome (18px radius / `#0a0a0c 96%` /
  * `#ffffff 8%` border / `0 4px 16px` shadow) so the strip reads
  * as a matching pill. */
@@ -1453,7 +1453,7 @@
 /* Modular shell — `.composer-above-bar` is transparent / 0
  * padding, but the chrome in this shell lives on
  * `.composer-textarea` (18px radius / `composer-bg-solid 88%` /
- * `panel-border 82%` / `0 4px 18px` shadow). Per Chris's smoke
+ * `panel-border 82%` / `0 4px 18px` shadow). Per the maintainer's smoke
  * pass, match the textarea chrome instead of the flat above-bar
  * so the chip strip reads as a matching sibling pill to the
  * composer below. */

@@ -26,7 +26,7 @@
  * pricing URL recorded on the rate entry.
  *
  * **Manual diligence cycle**: when the probe reports drift
- * (or every release cycle as a sanity check), Chris updates the
+ * (or every release cycle as a sanity check), the maintainer updates the
  * `BAKED_IN_RATES` map below + bumps `RATE_TABLE_VERSION`.
  * Future revs may add a more robust validator (e.g. expect a
  * `$X / 1M tokens` pattern within N chars of the model name),

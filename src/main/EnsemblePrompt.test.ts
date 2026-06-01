@@ -428,7 +428,7 @@ describe('Ensemble prompt composition', () => {
   })
 
   // 1.0.4-AJ — last-speaker awareness. The pre-fix failure mode
-  // reported by Chris: the final participant in a turn-bound round
+  // reported by the maintainer: the final participant in a turn-bound round
   // called `ensemble_yield(target: 'codex')` thinking they were
   // passing the baton, but nobody was scheduled after them — the
   // failed yield routed back to user as if the round had broken.

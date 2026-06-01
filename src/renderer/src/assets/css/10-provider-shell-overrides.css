@@ -448,7 +448,7 @@
  * The composer-shell rules above are intentionally distinctive, but
  * these two app themes sit at the contrast extremes and can leak light
  * or dark token assumptions into provider shells. Keep this section
- * narrowly scoped to the four provider shells Chris called out:
+ * narrowly scoped to the four provider shells the maintainer called out:
  * Codex, Claude, Gemini, and Kimi. The signed-off Obsidian and
  * Alabaster composer shells are untouched by these selectors.
  * ============================================================ */
@@ -732,7 +732,7 @@
 
 /* 1.0.6-EW77 — Final extreme-theme polish for provider shells.
  * Keep this after EW76: these are deliberately narrower overrides for
- * the last screenshots Chris flagged. */
+ * the last screenshots the maintainer flagged. */
 [data-theme="obsidian"][data-composer-style="codex"]
   .composer-above-bar-stack:has(.ensemble-above-row) {
   background: transparent !important;

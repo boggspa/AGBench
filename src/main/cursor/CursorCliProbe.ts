@@ -8,8 +8,7 @@
 // READ-ONLY by construction: only `--version` / `--help` / `status` / `models`
 // probes. It NEVER runs a prompt (`-p`), never passes `--force`/`--yolo`, never
 // mutates global `~/.cursor`, and never reads credential files. This is the CR0
-// foundation for the gated Cursor provider arc (see
-// docs/1.0.6-CURSOR-PROVIDER-INTEGRATION-BLUEPRINT.md).
+// foundation for the gated Cursor provider arc.
 //
 // CR3 live spike confirmed the load-bearing safety facts encoded here: a bare
 // `cursor-agent -p` writes files/runs shell UNMEDIATED, so production must

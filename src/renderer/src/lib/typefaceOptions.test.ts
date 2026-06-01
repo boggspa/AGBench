@@ -16,9 +16,9 @@ describe('typeface option lists', () => {
   it('keeps transcript options focused on concrete font stacks', () => {
     expect(TRANSCRIPT_FONT_OPTIONS.map((option) => option.label)).toEqual([
       'AGBench default',
-      'Codex',
-      'Claude',
-      'Anthropic Serif',
+      'Compact Sans',
+      'Humanist Sans',
+      'Editorial Serif',
       'Default Serif',
       'System UI'
     ])
@@ -42,7 +42,7 @@ describe('normalizeFontFamily', () => {
 
   it('uses the requested fallback for non-string and blank values', () => {
     expect(normalizeFontFamily(undefined, FONT_STACKS.system)).toBe(FONT_STACKS.system)
-    expect(normalizeFontFamily('   ', FONT_STACKS.codex)).toBe(FONT_STACKS.codex)
+    expect(normalizeFontFamily('   ', FONT_STACKS.compact)).toBe(FONT_STACKS.compact)
   })
 })
 
@@ -54,15 +54,13 @@ describe('composer font resolution', () => {
   })
 
   it('resolves match-transcript to the normalized transcript font', () => {
-    expect(resolveComposerFontFamily(COMPOSER_FONT_MATCH_TRANSCRIPT, ` ${FONT_STACKS.claude} `)).toBe(
-      FONT_STACKS.claude
-    )
+    expect(
+      resolveComposerFontFamily(COMPOSER_FONT_MATCH_TRANSCRIPT, ` ${FONT_STACKS.humanist} `)
+    ).toBe(FONT_STACKS.humanist)
   })
 
   it('falls back to the transcript font when composer value is invalid', () => {
-    expect(resolveComposerFontFamily('', FONT_STACKS.anthropicSerif)).toBe(
-      FONT_STACKS.anthropicSerif
-    )
+    expect(resolveComposerFontFamily('', FONT_STACKS.editorial)).toBe(FONT_STACKS.editorial)
   })
 })
 

@@ -2600,7 +2600,7 @@ export function Sidebar({
         {/* Phase L6 slice 1 — Model Usage card extracted to its own
          * component. Phase L6 slices 2-6 will rebuild this card's
          * visual identity to match the another-project compact card
-         * (provider logos + warning gradient + pace tick + heatmap)
+         * (provider glyphs + warning gradient + pace tick + heatmap)
          * inside the new component, leaving Sidebar untouched. */}
         <ModelUsageCard usageSummary={usageSummary} variant="sidebar" />
       </div>

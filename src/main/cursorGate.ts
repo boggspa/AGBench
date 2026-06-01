@@ -52,7 +52,7 @@ export function cursorDebugEnabled(): boolean {
  * read-only server ONCE in global `~/.cursor/mcp.json` (Tools & MCPs → Add Custom
  * MCP), then each workspace is approved via `cursor-agent mcp enable agbench`.
  *
- * When enabled AND that global server is registered, AGBench (per Chris's "B"
+ * When enabled AND that global server is registered, AGBench (per the maintainer's "B"
  * call) auto-approves the run's workspace itself (`mcp enable agbench`, idempotent
  * + cached) and adds the `Mcp(agbench:*)` allow rule to the run's `.cursor/cli.json`
  * — NO per-run mcp.json, NO `--approve-mcps`. That `mcp enable` is the ONLY write

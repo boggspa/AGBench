@@ -37,23 +37,6 @@ jobs:
       - run: npm run security:deps
       - run: npm run build:unpack
 
-  remote-ios-gates:
-    name: Remote/iOS Release Gates
-    runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch' && vars.ENABLE_REMOTE_IOS_GATES == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run validate:fixtures
-      - run: npm run test:swift:bridge
-      - run: npm run test:swift:ios
-      - run: npm run smoke:bridge-daemon
-      - run: npm run build:ios:sim
-
   notarized-macos-release:
     name: Notarized macOS Release
     runs-on: macos-latest

@@ -1,125 +1,9 @@
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@300.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@400.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@500.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@600.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@700.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@800.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../fonts/anthropic/AnthropicSans@900.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 900;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@300.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@400.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@500.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@600.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@700.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@800.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../fonts/anthropic/AnthropicSerif@900.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 900;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Mono";
-  src: url("../fonts/anthropic/AnthropicMono@400.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
 /* Base */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -131,21 +15,31 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-:where(button, [role="button"], [role="separator"], input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+:where(
+  button,
+  [role='button'],
+  [role='separator'],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex='-1'])
+):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--focus-glow);
 }
 
-:root[data-appearance="native_glass"] body,
-:root[data-appearance="native_glass"] #root,
-:root[data-appearance="native_glass"] html,
-:root[data-appearance="native_glass"] .app-root,
-:root[data-appearance="native_glass"] .app-main {
+:root[data-appearance='native_glass'] body,
+:root[data-appearance='native_glass'] #root,
+:root[data-appearance='native_glass'] html,
+:root[data-appearance='native_glass'] .app-root,
+:root[data-appearance='native_glass'] .app-main {
   background-color: transparent;
 }
 
-#root { height: 100%; }
+#root {
+  height: 100%;
+}
 
 /* App Layout */
 .app-root {
@@ -216,5 +110,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.header-spacer { flex: 1; }
-
+.header-spacer {
+  flex: 1;
+}

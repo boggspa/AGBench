@@ -1470,10 +1470,8 @@ export interface AppSettings {
     keyId?: string
     /** Apple Developer "Team ID" (10 chars, from Membership). */
     teamId?: string
-    /** iOS companion app bundle id. Defaults to
-     * `com.example.AGBench.ios` (the value the iOS companion
-     * project ships with). Surfaced as a field so future companion
-     * builds with a different bundle id don't require code changes. */
+    /** iOS companion app bundle id. Defaults to a placeholder value.
+     * Configure it locally when Remote/iOS work is enabled. */
     bundleId?: string
     /** ISO timestamp of the most recent successful save. */
     configuredAt?: string

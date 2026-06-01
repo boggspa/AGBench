@@ -1,7 +1,6 @@
 // Pure helpers for Grok's ACP (Agent Client Protocol) wire format, as spoken by
 // `grok agent stdio`. No Electron / fs / child_process imports — unit-testable
-// against fixtures captured from the real 0.2.8 agent (see the G1 spike log in
-// docs/1.0.6-GROK-PROVIDER-INTEGRATION-BLUEPRINT.md).
+// against fixtures captured from the real 0.2.8 agent.
 //
 // ACP is JSON-RPC 2.0 over NDJSON (one JSON object per line, both directions):
 //   client→agent requests:  {jsonrpc,id,method,params}

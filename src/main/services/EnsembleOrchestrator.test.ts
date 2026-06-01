@@ -1254,7 +1254,7 @@ Next action:
     // payload would re-append the entire turn on top of the
     // already-accumulated delta stream.
     //
-    // Reported by Chris from a Claude ensemble session that contained
+    // Reported by the maintainer from a Claude ensemble session that contained
     // the paragraph "(And — same ECONNREFUSED ...)" twice in a single
     // bubble. The fix: treat a non-delta `type: 'message'` as
     // authoritative ONLY when no deltas have already streamed; when
@@ -2336,7 +2336,7 @@ Next action:
   })
 
   it('promotes a participant tagged via @mention even when the speaker yields with the same target', async () => {
-    // Production path Chris hit: Claude streams content with @codex,
+    // Production path the maintainer hit: Claude streams content with @codex,
     // then calls `ensemble_yield(target='codex')` via the MCP tool.
     // The yieldTarget branch fires FIRST after completion resolves,
     // but resolveYieldTargetIndex returns -1 because Codex isn't in

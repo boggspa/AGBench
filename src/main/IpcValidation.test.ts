@@ -266,7 +266,7 @@ describe('IpcValidation', () => {
       validateIpcArgs('bridge-allowlist-upsert', [
         {
           workspaceId: 'Gemini Smoke',
-          path: '/Users/dev/Desktop/gemini-workbench',
+          path: '/Users/example/Desktop/gemini-workbench',
           mode: 'read-write',
           allowedProviders: ['gemini', 'codex', 'claude', 'kimi'],
           allowedApprovalModes: ['default', 'plan']

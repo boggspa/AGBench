@@ -1,9 +1,10 @@
 export const FONT_STACKS = {
   agbench:
     '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
-  codex: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
-  claude: '"Anthropic Sans", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
-  anthropicSerif: '"Anthropic Serif", Georgia, serif',
+  compact: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
+  humanist:
+    '"Avenir Next", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  editorial: '"New York", Georgia, "Times New Roman", serif',
   defaultSerif: '"New York", Georgia, "Times New Roman", serif',
   system: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 } as const
@@ -21,9 +22,9 @@ export type TypefaceOption = {
 
 export const TRANSCRIPT_FONT_OPTIONS: TypefaceOption[] = [
   { value: FONT_STACKS.agbench, label: 'AGBench default' },
-  { value: FONT_STACKS.codex, label: 'Codex' },
-  { value: FONT_STACKS.claude, label: 'Claude' },
-  { value: FONT_STACKS.anthropicSerif, label: 'Anthropic Serif' },
+  { value: FONT_STACKS.compact, label: 'Compact Sans' },
+  { value: FONT_STACKS.humanist, label: 'Humanist Sans' },
+  { value: FONT_STACKS.editorial, label: 'Editorial Serif' },
   { value: FONT_STACKS.defaultSerif, label: 'Default Serif' },
   { value: FONT_STACKS.system, label: 'System UI' }
 ]
@@ -31,9 +32,9 @@ export const TRANSCRIPT_FONT_OPTIONS: TypefaceOption[] = [
 export const COMPOSER_FONT_OPTIONS: TypefaceOption[] = [
   { value: COMPOSER_FONT_MATCH_TRANSCRIPT, label: 'Match transcript' },
   { value: FONT_STACKS.agbench, label: 'AGBench default' },
-  { value: FONT_STACKS.codex, label: 'Codex' },
-  { value: FONT_STACKS.claude, label: 'Claude' },
-  { value: FONT_STACKS.anthropicSerif, label: 'Anthropic Serif' },
+  { value: FONT_STACKS.compact, label: 'Compact Sans' },
+  { value: FONT_STACKS.humanist, label: 'Humanist Sans' },
+  { value: FONT_STACKS.editorial, label: 'Editorial Serif' },
   { value: FONT_STACKS.defaultSerif, label: 'Default Serif' },
   { value: FONT_STACKS.system, label: 'System UI' }
 ]

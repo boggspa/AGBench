@@ -86,19 +86,19 @@ describe('TrustStatusService', () => {
 
   it('canonicalizes native realpath casing before applying parent deny rules', () => {
     const content = JSON.stringify({
-      '/Users/dev': 'DO_NOT_TRUST',
-      '/users/chrisizatt/documents/dungeons of darkness': 'TRUST_FOLDER'
+      '/Users/example': 'DO_NOT_TRUST',
+      '/users/example/documents/dungeons of darkness': 'TRUST_FOLDER'
     })
     vi.mocked(fs.readFileSync).mockReturnValue(content)
     vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString())
     vi.mocked(fs.realpathSync.native).mockImplementation((p) => {
       const raw = p.toString()
-      return raw.toLowerCase() === '/users/chrisizatt/documents/dungeons of darkness'
-        ? '/Users/dev/Documents/Dungeons of Darkness'
+      return raw.toLowerCase() === '/users/example/documents/dungeons of darkness'
+        ? '/Users/example/Documents/Dungeons of Darkness'
         : raw
     })
 
-    const result = TrustStatusService.checkTrust('/Users/dev/Documents/Dungeons of Darkness')
+    const result = TrustStatusService.checkTrust('/Users/example/Documents/Dungeons of Darkness')
     expect(result.status).toBe('trusted')
   })
 

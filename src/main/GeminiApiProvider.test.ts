@@ -275,7 +275,7 @@ describe('chunkText — 1.0.4-AD thinking-bleed filter', () => {
   // parts in the SAME candidates[0].content.parts array. Pre-fix,
   // `chunkText` concatenated every text part regardless of the
   // flag — so the model's reasoning monologue leaked into the
-  // assistant bubble. Reported by Chris from an ensemble transcript:
+  // assistant bubble. Reported by the maintainer from an ensemble transcript:
   // "Acknowledging the User's Sign-off, I am recognizing…
   // [Thought: true]Crafting the Sign-off Response…".
 

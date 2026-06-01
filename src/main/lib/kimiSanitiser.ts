@@ -15,7 +15,7 @@
  * conversation, this is annoying — Codex/Claude/Gemini happily
  * discuss world news containing one of these topics as a passing
  * mention, and then Kimi's turn dies upstream over an accidental
- * digression. Chris's framing: "providers sitting a session out
+ * digression. the maintainer's framing: "providers sitting a session out
  * because of an accidental or overt digression seems a bit
  * overkill". This module is the compromise — the user's actual
  * transcript stays untouched (free speech wins for the user +
@@ -23,7 +23,7 @@
  * filtered when the toggle is on so Kimi can still participate
  * on the non-flagged parts of the conversation.
  *
- * Design decisions (per Chris's choices in the design Q&A):
+ * Design decisions (per the maintainer's choices in the design Q&A):
  *
  *   - **Default: OFF.** The feature exists for users who want
  *     it. Users who never run mixed ensembles with global-chat
@@ -46,7 +46,7 @@
  *
  *   - **Transparency in the transcript.** When sanitisation
  *     fires, the orchestrator emits a `provider_diagnostic`
- *     event listing what got redacted so Chris always knows
+ *     event listing what got redacted so the maintainer always knows
  *     when the feature kicked in and on which keywords.
  *
  * What this is NOT:
@@ -117,7 +117,7 @@ export const KIMI_DEFAULT_TRIGGER_KEYWORDS: ReadonlyArray<string> = [
   // too broad (trips on benign factual discussion); the meme
   // reference is a more reliable filter signal.
   'Winnie the Pooh',
-  // Catch-all for the news-cycle pattern Chris hit:
+  // Catch-all for the news-cycle pattern the maintainer hit:
   // US/China-relations-themed multi-source summaries.
   'US-China relations',
   'China-US relations',

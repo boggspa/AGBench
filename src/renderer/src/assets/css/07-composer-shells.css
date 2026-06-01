@@ -527,7 +527,7 @@
 
 /* 1.0.5-EW27 — Satellite "+" button in the Claude shell.
  *
- * Chris caught: in both light and dark mode, the Claude shell's
+ * the maintainer caught: in both light and dark mode, the Claude shell's
  * `+` (composer-plus-picker) button rendered as a visible square
  * container — visible border / background — which broke the
  * "satellite chrome" aesthetic the rest of the Claude shell
@@ -566,7 +566,7 @@
  * at line ~23465 paints a soft-grey fill on `.composer-image-picker-btn`
  * across ALL composer shells, and its specificity (0,2,0) matches
  * the Claude rule above (also 0,2,0) so source-order makes it
- * win in light mode. Chris caught it: dark mode satellite reads
+ * win in light mode. the maintainer caught it: dark mode satellite reads
  * fine, light mode still showed a white square container.
  *
  * Bumping specificity here with stacked attribute selectors —
@@ -611,7 +611,7 @@
 }
 
 /* 1.0.5-EW31 + EW31a — Nudge the Claude shell's send / stop /
- * steer glyphs upward. Chris caught: the ↵ return-arrow
+ * steer glyphs upward. the maintainer caught: the ↵ return-arrow
  * (`ClaudeReturnSymbolIcon`'s SVG path-pair) sat slightly low
  * inside its action button's bounding box in both light and
  * dark mode. Cause is the SVG's own optical balance — the
@@ -620,7 +620,7 @@
  *
  * Iteration history:
  *   - EW31  (1.5px) — too subtle to perceive at Retina scale.
- *   - EW31a (3px + !important) — visible, but Chris pushed
+ *   - EW31a (3px + !important) — visible, but the maintainer pushed
  *     for more punch; specificity flags retained from here
  *     forward to defeat the base hover rule at
  *     main.css:7674 which has (0,4,0) and would otherwise
@@ -1530,7 +1530,7 @@
 /* Gemini shell — historically hid `.composer-above-bar` entirely
  * because solo Gemini chats didn't have anything to surface there
  * (no PR flow, no Create-PR-relevant workflow). Now that ensemble
- * chats added the chip strip to the same stack — and Chris wants
+ * chats added the chip strip to the same stack — and the maintainer wants
  * Create-PR parity across all shells — we re-enable the above-bar
  * with the same composer-surface chrome the ensemble chip strip
  * uses (28px radius / `#0e1218 94%` / `#5a8cff 18%` border /

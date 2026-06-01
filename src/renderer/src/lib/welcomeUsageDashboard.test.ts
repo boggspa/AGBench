@@ -561,7 +561,7 @@ describe('buildWelcomeUsageDashboardData favoriteProject (Welcome L9 hero chip)'
   const workspaces = [
     { id: 'ws-a', displayName: 'Chill-Q' },
     { id: 'ws-b', displayName: 'Guitar Cabs' },
-    { id: 'ws-c', displayName: 'GUIGemini' }
+    { id: 'ws-c', displayName: 'AGBench' }
   ]
 
   it('picks the workspace with the most tokens in-window and resolves its displayName', () => {

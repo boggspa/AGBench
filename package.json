@@ -4,7 +4,15 @@
   "description": "AGBench desktop workspace",
   "main": "./out/main/index.js",
   "author": "Chris Izatt",
-  "homepage": "https://github.com/chrisizatt/GUIGemini",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/boggspa/AGBench",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boggspa/AGBench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/boggspa/AGBench/issues"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -16,7 +24,7 @@
     "security:signatures": "npm audit signatures",
     "security:audit": "npm audit --omit=dev --audit-level=critical",
     "security:deps": "npm run security:supply-chain && npm run security:signatures && npm run security:audit",
-    "ci": "npm run security:deps && npm run validate:fixtures && npm run typecheck && npm run test && npm run smoke:node-pty",
+    "ci": "npm run security:deps && npm run typecheck && npm run test && npm run smoke:node-pty",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
@@ -25,22 +33,16 @@
     "smoke:gemini-mcp-args": "node scripts/smoke-gemini-mcp-args.cjs",
     "smoke:gemini-api-sdk": "node scripts/smoke-gemini-api-sdk.cjs",
     "smoke:package": "node scripts/smoke-packaged-electron.cjs",
-    "smoke:apns": "node scripts/smoke-apns-push.cjs",
     "smoke:bridge-daemon": "npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs",
     "prebuild:bridge-daemon": "node scripts/build-bridge-daemon.cjs",
     "test:swift:bridge": "cd swift/AgbenchBridge && swift test",
-    "test:swift:ios": "cd ios/GuiGeminiCompanion && swift test",
-    "build:ios:sim": "node scripts/build-ios-simulator.cjs",
-    "validate:codexbridge-seam": "node scripts/check-codexbridge-seam.cjs",
-    "validate:fixtures": "node scripts/validate-remote-ios-fixtures.cjs",
-    "validate:remote-ios": "node scripts/validate-remote-ios-release.cjs",
     "validate:release": "node scripts/validate-release.cjs",
     "build:unpack": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist",
-    "build:debug:mac": "npm run prebuild:bridge-daemon && npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} electron-builder --dir --config electron-builder.debug.yml && node scripts/smoke-packaged-electron.cjs dist-debug",
-    "build:debug:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist-debug",
+    "build:debug:mac": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir --config electron-builder.debug.yml && node scripts/smoke-packaged-electron.cjs dist-debug",
+    "build:debug:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist-debug",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run prebuild:bridge-daemon && npm run build && electron-builder --mac",
-    "build:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --mac -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist",
+    "build:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && electron-builder --mac -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist",
     "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {

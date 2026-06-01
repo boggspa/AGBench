@@ -1,10 +1,9 @@
 # AGENTS.md — environment notes for coding agents working inside AGBench
 
-This file documents the AGBench (GUIGemini) runtime environment for any
-agent — Gemini, Codex, Claude, Kimi, or otherwise — operating inside a
-chat thread. It's meant to be read by the LLM at the start of a session
-(via a system-prompt injection or MCP context exchange) so the agent
-understands what affordances it has and how to use them.
+This file documents the AGBench runtime environment for any agent operating
+inside a chat thread. It's meant to be read by the LLM at the start of a session
+(via a system-prompt injection or MCP context exchange) so the agent understands
+what affordances it has and how to use them.
 
 If you're a human, this is also a useful map of the product surface.
 
@@ -30,41 +29,14 @@ part of the task.
 AGBench is an Electron desktop app that runs coding agents in isolated
 chat threads against workspaces. Each thread:
 
-- Is bound to a single provider (gemini / codex / claude / kimi).
+- Is bound to a configured provider runtime.
 - Targets a single workspace (or runs in "global" scope without one).
 - Has its own provider session, message history, run state, and
   approval policy.
 - Lives under a workspace in the sidebar topology.
 
-The desktop hosts the runtime; an iPhone / iPad companion app can pair
-to it and remote-control approvals + start new turns when the user is
-away.
-
-### Gemini runtime (Phase M1)
-
-Gemini chats run via one of two runtimes:
-
-- **API path (in-process)** via `@google/genai` — preferred. Streams
-  text, supports the full AGBench MCP tool surface via Gemini function
-  calling, replays prior turns for multi-turn continuity, attaches
-  images as `inlineData` (≤20MB) or via `files.upload` (larger). Runs
-  entirely inside the Electron main process; no child CLI is spawned.
-- **CLI path** via the `gemini` binary — legacy fallback. Stays
-  available for OAuth-only profiles until a follow-up phase wires
-  OAuth into the API path. The `gemini` CLI is on a ~30-day
-  deprecation track (replaced by vendor-locked Antigravity that drops
-  MCP/ACP), so users with an API key configured should let the API
-  path become the default.
-
-Selection is controlled by `settings.geminiApiRuntime`:
-- `auto` (default) — use API when an api-key profile is selected, else CLI
-- `always` — force API (run fails without an API key)
-- `never` — force CLI
-
-Approval gates, audit events, durable run events, and `recordUsage`
-quota tracking all work identically across both runtimes — the API
-path calls into the same `executeGeminiMcpTool` host that the CLI's
-MCP bridge subprocess calls back into.
+The desktop hosts the runtime and keeps approvals, run state, and local history
+inside the user's workspace environment.
 
 ---
 
@@ -279,13 +251,11 @@ flags as needing approval (e.g. `run_shell_command`, file edits
 outside the workspace, MCP elicitations):
 
 1. The runtime pauses the turn and emits an approval request to the
-   desktop UI + any paired iOS device (via APNs push, gated by an
-   idle detector — pushes only fire when the user is away from the
-   desktop).
+   desktop UI.
 2. An auto-deny timer arms in parallel (per-provider defaults: Codex
    30s, Claude/Gemini 120s, Kimi 60s; user-tunable in Settings →
    Behavior).
-3. The first responder wins — desktop modal, iOS reply, or timer.
+3. The first responder wins — desktop modal or timer.
 4. A decision is written to the durable Approval Ledger (Settings →
    Approval Ledger) including `decisionSource` (`'user'` vs
    `'system'` for timer auto-deny) and timestamp metadata.
@@ -294,30 +264,6 @@ Agents should expect timeouts as a normal outcome. If a tool call
 pauses for approval and you receive a denial / cancellation a moment
 later, the user may simply have been away when the timer fired — surface
 the situation gracefully and offer to retry once the user is back.
-
----
-
-## Remote (iOS) state
-
-A paired iPhone or iPad can:
-
-- **iPhone (minimal):** view the active transcript, approve/deny
-  pending tool calls, send a new prompt to an existing thread,
-  start a new thread from a small set of templated prompts.
-- **iPad (desktop-parity):** everything iPhone does, plus a full
-  three-pane shell with sidebar / transcript / approvals inspector
-  and a read-only diff inspector.
-
-When you're running on a thread that may be observed by an iOS device,
-nothing changes from the agent's perspective — the bridge is transparent.
-But if the user explicitly says "I'm on my phone, keep responses short"
-or similar, that's a real signal and the agent should adapt.
-
-The iOS connection can be over LAN (when both devices share Wi-Fi) or
-over Tailscale (when off-LAN). The Mac advertises both endpoints at
-pairing time.
-
----
 
 ## MCP
 
@@ -521,9 +467,6 @@ demands):**
 - **Approvals are per-action, not per-session.** A grant given for one
   command doesn't carry to the next unless the user explicitly chose
   "Allow for session" or "Allow for workspace".
-- **The workspace allowlist gates iOS-initiated runs.** A turn started
-  from an iPhone against a workspace not on the allowlist is rejected
-  by the bridge router regardless of the agent's intent.
 - **The runtime profile** (binary path, env, MCP profile) is per-thread
   state set at thread creation. If a user wants to change runtime, they
   spawn a new thread or sub-thread.
@@ -545,7 +488,6 @@ documented (as of **1.0.3**):
   participants + turn/continuous modes
 - Approval flow + timeout policy (Phase E1)
 - Approval ledger UX (Phase E2)
-- Remote (iOS) state including iPad-full and Tailscale (Phase D2 + E3)
 - **MCP tool surface** — full canonical list in
   `src/main/AgentbenchMcpTools.ts`; key tools documented above
   (including the 1.0.3 additions `ensemble_yield` +
@@ -553,14 +495,4 @@ documented (as of **1.0.3**):
 - All four providers (Gemini / Codex / Claude / Kimi) now share the
   same MCP tool surface (Phase I2-I4 landed at 1.0.3)
 
-Sections deferred for future (1.0.4+):
-
-- **Phase N — async / sleeping orchestration** (see
-  `docs/PHASE-N-ASYNC-ORCHESTRATION.md`): `schedule_wakeup` MCP
-  tool, `sleeping` participant status, WakeupTimerService.
-- **Parallel / concurrent ensemble execution** — Phase N+1; the
-  natural follow-on to async. Spec axis: turn-bound → @-tag
-  promoted → wake-driven async → concurrent parallel.
-- **PO1 / PO2 — File Editor + Diff Studio popout windows** — see
-  `docs/1.0.3-SHIP-HANDOFF.md` for scope.
-- Live Activities surface (separate phase).
+Internal roadmap notes are intentionally kept outside the public source tree.

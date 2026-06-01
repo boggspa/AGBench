@@ -712,7 +712,7 @@
  * vertical room.
  *
  * 1.0.5-EW10 — Bumped the max-height upper bound 680 → 960 to match
- * the JS-side SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx:48). Chris
+ * the JS-side SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx:48). the maintainer
  * caught: the user could drag the resize handle to ~680px but no
  * further, even though the JS state allowed up to 960px. The handle
  * fired the resize but this CSS rule clamped the rendered height

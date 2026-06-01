@@ -71,7 +71,7 @@ describe('ProductOperations', () => {
       {
         source: 'main',
         severity: 'error',
-        message: 'token=sk-exampleSecretValue1234567890',
+        message: `token=${'sk-' + 'exampleSecretValue1234567890'}`,
         stack: 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
       },
       {
@@ -153,21 +153,24 @@ describe('ProductOperations', () => {
             'npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist',
           'build:mac': 'npm run build && electron-builder --mac',
           'build:mac:notarized':
-            'npm run build && CSC_NAME=${CSC_NAME:-ABC} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --mac -c.mac.notarize=true',
+            'npm run build && electron-builder --mac -c.mac.notarize=true',
           'build:debug:mac':
-            'npm run build && CSC_NAME=${CSC_NAME:-ABC} electron-builder --dir --config electron-builder.debug.yml',
+            'npm run build && electron-builder --dir --config electron-builder.debug.yml',
           'build:debug:mac:notarized':
-            'npm run build && CSC_NAME=${CSC_NAME:-ABC} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true'
+            'npm run build && electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true'
         }
       },
       builderConfigText:
-        'appId: com.chrisizatt.agbench\nproductName: AGBench Debug\ndirectories:\n  output: dist-debug\nasarUnpack:\n  - resources/**\n  - node_modules/node-pty/**\nafterPack: build/validate-native-modules.cjs\nnpmRebuild: true\npublish:\n  provider: github\n  owner: chrisizatt\n  repo: GUIGemini\n',
-      env: {}
+        'appId: com.chrisizatt.agbench\nproductName: AGBench Debug\ndirectories:\n  output: dist-debug\nasarUnpack:\n  - resources/**\n  - node_modules/node-pty/**\nafterPack: build/validate-native-modules.cjs\nnpmRebuild: true\npublish:\n  provider: github\n  owner: boggspa\n  repo: AGBench\n',
+      env: {
+        APPLE_KEYCHAIN_PROFILE: 'ExampleNotary',
+        CSC_NAME: 'Developer ID Application: Example'
+      }
     })
 
     expect(status.status).toBe('ok')
     expect(status.notarization.configured).toBe(true)
-    expect(status.notarization.keychainProfile).toBe('<your-notary-profile>')
+    expect(status.notarization.keychainProfile).toBe('ExampleNotary')
     expect(status.notarization.scriptName).toBe('build:mac:notarized')
     expect(status.nativeModules.configured).toBe(true)
     expect(status.updateDistribution.configured).toBe(true)

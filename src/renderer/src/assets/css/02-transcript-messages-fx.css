@@ -11,7 +11,7 @@
    * 14px was tight enough that the last message visually bled under
    * the composer (especially in ensemble chats where the composer is
    * taller — chip strip + above-bar + textarea + footer all stacked).
-   * Chris's report: now the auto-scroll-deny race window is fixed,
+   * the maintainer's report: now the auto-scroll-deny race window is fixed,
    * the user can ride the bottom, but can't read the most recent
    * messages until they pass high enough above the composer.
    *
@@ -2784,7 +2784,7 @@
  * opacity to the point the colours read as one consistent muted
  * gray across providers — defeating the fingerprint we wanted.
  * Pure provider colour reads clearly on both dark + light surfaces
- * and matches what Chris asked for. */
+ * and matches what the maintainer asked for. */
 /* `!important` is load-bearing here. The Codex / Claude interface
  * shells declare a translucent-white `.message-meta` color at line
  * ~17296 (`[data-interface-style="codex|claude"] .message-meta {

@@ -148,7 +148,7 @@ export interface EnsembleOrchestratorDeps {
  * most agents follow). Pre-1.0.3-post-ship the orchestrator
  * batched all content into one assistant message + all tool calls
  * into one tool message, which read as "wall of text, then wall
- * of operations" — not the inline experience Chris wanted.
+ * of operations" — not the inline experience the maintainer wanted.
  *
  *   - `{ kind: 'content', text }` — accumulated content for this
  *     chunk. Consecutive content events without an intervening tool
@@ -540,7 +540,7 @@ interface ActiveRoundRuntime {
    * current round finishes. The user can stack multiple sends
    * during a running round; each lands here in order. Earlier
    * iterations used a single `queuedPrompt: string` which silently
-   * overwrote when the user queued a second message — Chris hit
+   * overwrote when the user queued a second message — the maintainer hit
    * that limit during the 1.0.3 smoke and confirmed the
    * accidental-steer caused a parallel Codex run that broke MCP
    * routing. Accumulating instead of overwriting fixes both.
@@ -1490,7 +1490,7 @@ export class EnsembleOrchestrator {
     // Previously a closing `{ type: 'message', role: 'assistant',
     // content: <full text> }` arriving AFTER a stream of `delta:true`
     // chunks would re-append the entire turn, doubling the assistant
-    // bubble (Chris's "(And — same ECONNREFUSED…)" paragraph showing
+    // bubble (the maintainer's "(And — same ECONNREFUSED…)" paragraph showing
     // up twice). Two cases now:
     //   (a) `delta === true` → streamed chunk, always append.
     //   (b) no `delta` flag → treat as authoritative ONLY when we

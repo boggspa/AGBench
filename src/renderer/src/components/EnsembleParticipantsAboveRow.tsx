@@ -914,7 +914,7 @@ function ParticipantChip({
       >
         {/*
           1.0.5-EW24 — Removed the leading `<ProviderBadgeIcon>`.
-          Chris flagged that the left-side icon read as ambiguous
+          the maintainer flagged that the left-side icon read as ambiguous
           (users couldn't tell at a glance what it meant), while
           the right-side `ParticipantStatusIcon` carries
           unambiguous round-status semantics. The role text + its

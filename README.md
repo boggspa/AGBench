@@ -1,63 +1,64 @@
-# Gemini Local Workbench
+# AGBench
 
-A private, local-only desktop GUI companion for the Gemini CLI.
-
-## Purpose
-This application wraps the official `gemini` CLI tool in an Electron + React UI to provide a polished developer experience, maintaining local execution and keeping interactions within the boundaries of the official CLI access paths.
+AGBench is a local-first desktop workbench for running and reviewing AI coding
+agents against developer workspaces. It provides a macOS-focused Electron UI for
+provider CLIs and SDK-backed workflows while keeping execution, history, and
+workspace state on the user's machine.
 
 ## Features
-- **Workspace Trust Assistant**: Integrated PTY terminal to run the official Gemini CLI trust flow.
-- **Activity Review**: Compact Activity Timeline for tool calls with status indicators, friendly labels, and expandable raw events.
-- **Diff Studio**: File-list + diff-detail review surface with run-scoped "This run" vs "Workspace" toggle, synthetic new-file diffs, and noise filtering.
-- **Session-only Trust**: Option to trust a workspace for a single run using official CLI environment variables.
-- **Local History & Usage**: Private local-only storage for chats and token usage statistics.
-- **Appearance System**: Three visual modes (Solid, Soft Glass, Native Glass) with platform-aware macOS vibrancy, plus accessibility settings for reduce transparency and reduce motion.
 
-## Setup
-1. Ensure Node.js (>= 18) and the `gemini` CLI are installed.
-2. Clone or open this repository.
+- **Workspace Safety**: Workspace selection, trust-state visibility, approval
+  modes, and run-scoped safety state before agents operate on local files.
+- **Provider Runs**: Integrated run surfaces for supported coding-agent
+  providers, with provider names used only to describe compatible integrations.
+- **Activity Review**: Compact timelines for tool calls, command output,
+  status, durations, and raw event inspection.
+- **Diff Studio**: File-list and diff-detail review for run-scoped changes and
+  current workspace changes, including previews for newly created text files.
+- **Local History and Usage**: Local-only chat, run, and usage state for repeat
+  work without a hosted backend.
+- **Release Tooling**: Security, dependency, packaging, and signing hooks for
+  reproducible local release work.
+
+## Public Source Boundary
+
+AGBench source code is licensed under Apache-2.0. Provider product names are
+used nominatively to describe interoperability with user-installed tools and
+accounts. The repository does not intentionally bundle provider logos,
+trademarks, API credentials, signing material, or proprietary provider fonts.
+
+Users are responsible for installing and authenticating the provider CLIs, SDKs,
+or accounts they choose to use. AGBench does not bypass provider authentication,
+quotas, rate limits, approval flows, or terms of service.
+
+## Development Setup
+
+1. Install Node.js 20 or newer.
+2. Install any provider CLI you intend to use separately.
 3. Run `npm ci`.
-4. Run `npm run dev` to start the local development app.
+4. Run `npm run dev`.
 
 Use `npm ci` for clean installs so npm follows the committed lockfile exactly.
 Run `npm run security:deps` before release work or after dependency changes.
 
-## Smoke Testing / Troubleshooting commands
-If you encounter issues in the GUI, verify your setup using these direct commands in an external terminal:
+## Useful Commands
 
-1. **Version check:**
-   `gemini --version` (Requires 0.39.1+ for secure headless trust features).
-2. **Simple model test:**
-   `gemini --model flash-lite --prompt "Reply with exactly OK." --output-format stream-json`
-3. **Pro/default capacity test:**
-   `gemini --prompt "Reply with exactly OK." --output-format stream-json`
-4. **Workspace trust (interactive):**
-   ```
-   cd <workspace>
-   gemini
-   /permissions trust
-   ```
-5. **File edit test (throwaway folder only):**
-   ```
-   mkdir -p ~/Desktop/gemini-workbench-smoke-test
-   cd ~/Desktop/gemini-workbench-smoke-test
-   git init
-   gemini --model flash-lite --sandbox --approval-mode auto_edit --prompt "Create hello-world.txt containing Hello World. Do not modify any other files." --output-format stream-json
-   ```
+```sh
+npm run security:deps
+npm run typecheck
+npm run test
+npm run build
+```
 
-## Troubleshooting
+## Project Layout
 
-- **Untracked files in diff:** Normal `git diff` does not show untracked file contents. The app now generates synthetic previews for created text files so you can review new files without staging them.
-- **"This run" vs "Workspace":** The Diff Review panel has two views. "This run" shows only files that changed during the selected agent run. "Workspace" shows all current uncommitted changes. Pre-existing dirty files are marked separately so they are not falsely attributed to Gemini.
-- **Tool events:** Tool calls and results come from Gemini CLI `stream-json` output as `tool_use` and `tool_result` events. If tool names show as "unknown," inspect the Raw Events tab to see the exact event shape, and verify the CLI version is up to date.
-- **Approval mode:** The effective approval mode used for each run is captured at the moment the run starts and stored on the run record. Changing the selector after a run starts does not retroactively alter the run's displayed mode.
-- **Appearance:** You can change the visual mode in Settings. "Native Glass" uses macOS vibrancy and works best on Apple Silicon Macs. If text becomes hard to read, switch to "Solid" or enable "Reduce transparency".
+- `src/main`: Electron main process, provider orchestration, persistence, and
+  workspace safety services.
+- `src/preload`: Narrow IPC bridge exposed to the renderer.
+- `src/renderer`: React UI, provider review surfaces, settings, and visual
+  system.
+- `swift`: macOS bridge daemon sources used by local release builds.
+- `scripts`: Build, security, validation, signing, and packaging utilities.
 
-## Development
-This app uses Electron + React + TypeScript.
-- `src/main`: Electron backend process.
-- `src/preload`: IPC bridge.
-- `src/renderer`: React frontend UI.
-- `src/main/store`: App persistence layer.
-
-See `ARCHITECTURE.md`, `SAFETY.md`, and `TERMS_NOTES.md` for more details.
+See `CHANGELOG.md` for release history, and `ARCHITECTURE.md`, `SAFETY.md`,
+`SECURITY.md`, and `TERMS_NOTES.md` for more detail.

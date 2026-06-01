@@ -215,7 +215,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
       // Without this, prompts only told agents "use role or model
       // name" as an abstract rule and they fell back to `@gemini`
       // even when 3 different Gemini participants were on the
-      // panel (Chris's repro: Claude wrote "@gemini, @gemini,
+      // panel (the maintainer's repro: Claude wrote "@gemini, @gemini,
       // @gemini" in a single sentence to address Merchant /
       // Cleaner / Teacher). The hint string pulls the canonical
       // aliases from the shared resolver — same set the route
@@ -341,7 +341,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
             '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. Discuss AGBench only when the user explicitly references it by name.'
           ]
         : // 1.0.5-EW20 — Conversational-mode rule for workspace-less
-          // global ensembles. Chris reported: in a chill global chat
+          // global ensembles. the maintainer reported: in a chill global chat
           // the panel reflexively pushed him to bind a workspace
           // (specifically the Codex smoke-test dir on his desktop)
           // because the default role instructions (Explorer /
@@ -369,7 +369,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '- To hand control back to the human and end the round, write `@user` (or `@human` / `@you`) inline. The orchestrator closes the round; no further participants speak this turn. Use this instead of `ensemble_yield()` when you want the conversation to wait on the user rather than progress through more agent turns.',
     // 1.0.4 — first-speaker scoping rule. Emitted ONLY when the
     // current speaker is opening a multi-participant round.
-    // Addresses Chris's "agents dive in and leave nothing for the
+    // Addresses the maintainer's "agents dive in and leave nothing for the
     // panel" report: Codex / Claude tend to treat any prompt as
     // "execute through to completion" on turn 1, which forecloses
     // alternatives the other panelists might raise. Asking for

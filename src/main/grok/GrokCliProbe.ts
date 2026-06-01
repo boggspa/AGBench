@@ -9,8 +9,7 @@
 // READ-ONLY by construction: only `--version` / `--help` style probes,
 // always prefixed with `--no-auto-update`. It never runs a prompt, never
 // mutates ~/.grok, and never reads credential files. This is the G0
-// foundation for the gated Grok provider arc (see
-// docs/1.0.6-GROK-PROVIDER-INTEGRATION-BLUEPRINT.md).
+// foundation for the gated Grok provider arc.
 
 export interface GrokProbeFindings {
   probedAt: string

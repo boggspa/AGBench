@@ -6,8 +6,19 @@ out
 .eslintcache
 *.log*
 *.tsbuildinfo
-for-tester/
-for-tester.zip
+
+# Local-only planning/release material kept out of the public source tree
+.local-only/
+docs/
+RELEASING.md
+scripts/publish-clean.sh
+ios/
+scripts/build-ios-simulator.cjs
+scripts/check-codexbridge-seam.cjs
+scripts/smoke-apns-push.cjs
+scripts/validate-remote-ios-fixtures.cjs
+scripts/validate-remote-ios-release.cjs
+tests/fixtures/remote-ios/
 
 # Secrets / credentials — never commit
 .env

@@ -456,7 +456,7 @@ export function normalizeClaudeUsageSnapshot(
   /*
    * 1.0.3 hotfix — the Sonnet + Opus per-family weekly meters were
    * sometimes missing from AGBench's Claude usage panel even when
-   * Limit Counter (Chris's reference app) was clearly showing them.
+   * Limit Counter (the maintainer's reference app) was clearly showing them.
    * The previous probe only knew the top-level snake/camel pair
    * (`seven_day_sonnet` / `sevenDaySonnet`). Anthropic's OAuth usage
    * response has subtly different shapes across subscription tiers

@@ -268,7 +268,7 @@
  * rule just owns shape + hover. */
 /*
  * 1.0.4 — Participant mention rendered as inline bold provider-tinted
- * text rather than a pill/bubble. Chris's feedback: the chrome was
+ * text rather than a pill/bubble. the maintainer's feedback: the chrome was
  * heavy and competed visually with the surrounding prose; what
  * matters is the colour + weight signalling "this is a tagged
  * participant" — the pill was decoration on top of that. Stripping
@@ -1382,9 +1382,8 @@
  * Visual register: same dark glass card as SubThreadCreator with a
  * slightly larger max-width and a multi-section vertical scroll. Per-
  * provider cards use a status-dot pill plus a "Open Settings" CTA so
- * the user always knows what's signed in vs not. Kimi (a tester doesn't
- * have it) gets a de-emphasised variant — faded outline and muted
- * type — so the user can skim past without thinking. */
+ * the user always knows what's signed in vs not. Optional providers get
+ * a de-emphasised variant so users can skim past without thinking. */
 .first-launch-sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -3562,7 +3561,7 @@
  * card dark via a hardcoded `#151515` background. The AGBench
  * native shell (`data-interface-style="default"`) doesn't carry
  * that dark-forcing rule, BUT something else in its rendering
- * chain still ends up dark in light mode — Chris reproed live:
+ * chain still ends up dark in light mode — the maintainer reproed live:
  * native shell + light mode shows the Task-complete card dark;
  * Codex shell + light mode shows it correctly light. Rather than
  * keep chasing the root cause through the cascade, drop the
@@ -6767,7 +6766,7 @@
  * keeps the tab consistent with other depth surfaces in light
  * themes (sheets, popovers, etc.). */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar {
-  /* Chris's call — match the white composer-surface family the
+  /* the maintainer's call — match the white composer-surface family the
    * chip strip below already uses. The previous `surface-3 80% /
    * surface-2 20%` mix produced a visibly darker pill that broke
    * the "matching siblings" read of the stacked rows. */
@@ -6791,7 +6790,7 @@
 }
 /* Mirror the suppression on Codex shell too — the same per-provider
  * gradient `::before` overlay was painting on top of the white
- * surface-2 fill and producing the gray-white look Chris flagged. */
+ * surface-2 fill and producing the gray-white look the maintainer flagged. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar::before {
   display: none;
 }
@@ -8058,7 +8057,7 @@
  * continuous stack rather than discrete tabs. */
 /* Codex shell — the chip strip JOINS the branch/Create-PR row in
  * one bordered container matching the Codex CLI's stacked-items
- * pattern (Chris's reference screenshot: `3 files changed` + 3
+ * pattern (the maintainer's reference screenshot: `3 files changed` + 3
  * queued tasks inside one bordered box with hairline separators
  * between rows). Achieved by:
  *   1. Collapsing the parent's flex `gap` to 0 so siblings abut

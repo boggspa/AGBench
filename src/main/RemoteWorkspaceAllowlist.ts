@@ -5,9 +5,9 @@ import { dirname } from 'path'
  * RemoteWorkspaceAllowlist — Electron-side policy primitive for what an iOS
  * device is allowed to do against which workspace.
  *
- * Phase C4 v1. Mirrors the shape of `CodexBridge/Sources/WorkspaceSecurity/
- * WorkspaceAllowlist.swift` (the prior-art our plan references), but the
- * model lives Electron-side because AGBench's main process owns the
+ * Mirrors the shape of `CodexBridge/Sources/WorkspaceSecurity/
+ * WorkspaceAllowlist.swift`, but the model lives Electron-side because
+ * AGBench's main process owns the
  * workspace list and the agent runtime. The Swift bridge daemon never has
  * to know about workspaces directly; it just relays a `workspaceID` in
  * `bridge.requestPrepareStartTurnAck` and BridgeActionRouter consults this

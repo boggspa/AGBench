@@ -1,16 +1,16 @@
 /*
  * BugReportService — append-only intake for tester bug reports (1.0.1).
  *
- * Built specifically for a tester's first external test pass: when he
- * hits something weird, he opens the BugReportSheet in the renderer,
+ * Built for early external tester passes: when a tester hits something
+ * weird, they open the BugReportSheet in the renderer,
  * types a title + description + severity, and the form submits
  * through `submit-bug-report` IPC. This module is the main-side
  * receiver — it renders the payload to a Markdown entry and appends
  * to a single file under `<userData>/AGBench/bug-reports.md`.
  *
  * Why one file with `---` separators (not one file per report):
- *   1. Easier for Chris to triage by hand at the end of the session
- *      — open one file, scroll the entries.
+ *   1. Easier to triage by hand at the end of the session: open one
+ *      file, scroll the entries.
  *   2. Sortable / greppable / pipeable; per-file reports buried under
  *      timestamp filenames hurt the "skim and triage" use-case the
  *      tester intake is designed for.
@@ -71,7 +71,7 @@ export interface BugReportSubmission {
 
 /** Maximum size of the single append-only file before the service
  * starts logging a warning. Soft cap — we still append; the warning
- * exists so Chris can sweep + archive the file before it gets
+ * exists so the maintainer can sweep + archive the file before it gets
  * unwieldy. 5 MB ≈ 50k typical entries. */
 const SOFT_SIZE_WARNING_BYTES = 5 * 1024 * 1024
 
@@ -114,7 +114,7 @@ export function renderBugReportMarkdown(submission: BugReportSubmission): string
   const ctx = submission.context
   const human = humanizeTimestamp(ctx.timestamp)
   const lines: string[] = []
-  // YAML frontmatter — keeps the file scannable; Chris can pipe to a
+  // YAML frontmatter — keeps the file scannable; the maintainer can pipe to a
   // YAML parser later if he wants programmatic triage. We escape
   // double quotes in the title since YAML's single-line strings need
   // it; everything else is structurally simple enough not to need
@@ -141,7 +141,7 @@ export function renderBugReportMarkdown(submission: BugReportSubmission): string
   lines.push('## What happened')
   lines.push('')
   // If the tester left the description empty, mark it explicitly —
-  // an empty section reads as "Chris missed something", we want
+  // an empty section reads as "the maintainer missed something", we want
   // "(tester provided no description)" for clarity.
   lines.push(submission.description.trim() || '_(tester provided no description)_')
   lines.push('')

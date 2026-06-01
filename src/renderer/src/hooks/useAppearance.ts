@@ -192,7 +192,7 @@ export function useAppearance() {
     // appearance MODE changes (Solid ↔ Soft Glass ↔ Native Glass).
     // Rapid mode-swaps + complex backdrop-filter transitions could
     // leave stale GPU layer tiles in the renderer, producing the
-    // ghost-rectangle / overlay-bleed artifacts Chris caught while
+    // ghost-rectangle / overlay-bleed artifacts the maintainer caught while
     // stress-testing. By adding `is-appearance-transitioning` for
     // 150ms around the attribute swap, CSS transitions on backdrop
     // and background are skipped — the swap is instantaneous, no

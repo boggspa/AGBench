@@ -22,7 +22,7 @@ export interface ExternalPathDescriptor {
   /** The git repo root, or the path itself if not a repo. */
   repoRoot: string
   /** Display-friendly basename. For a repo, this is the repo-root
-   * directory's basename (e.g. `GUIGemini`). For a file or non-repo
+   * directory's basename (e.g. `AGBench`). For a file or non-repo
    * folder, the basename of the path itself. */
   basename: string
   /** Current branch when the path lives inside a git repo with a

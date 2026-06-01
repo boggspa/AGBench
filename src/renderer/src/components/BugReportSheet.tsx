@@ -3,10 +3,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 /**
  * BugReportSheet — inline bug-report capture for AGBench testers.
  *
- * Built specifically for a tester's 1.0.1 test pass: when he hits something
- * weird, he types a one-liner + description, picks a severity, and the
+ * Built for early external tester passes: when a tester hits something
+ * weird, they type a one-liner + description, pick a severity, and the
  * report appends to a single Markdown file under `<userData>/AGBench/`
- * for Chris to sweep up at the end of the session. No context switch
+ * for review at the end of the session. No context switch
  * to Slack / email / a separate notes app.
  *
  * The sheet sits alongside `FirstLaunchSheet.tsx` and uses the same
@@ -132,7 +132,7 @@ const SURFACE_OPTIONS = [
 function formatTimestamp(date: Date): { iso: string; human: string } {
   const iso = date.toISOString()
   // "Sat 24 May 2026 18:58 +0100" — short enough to read in the read-only
-  // preview row, precise enough that Chris can grep by minute when he
+  // preview row, precise enough for minute-level triage when someone
   // sweeps the file.
   const human = date.toLocaleString(undefined, {
     weekday: 'short',
@@ -339,7 +339,7 @@ export function BugReportSheet({
             <div>
               <h2 id={SHEET_TITLE_ID}>Report a bug or issue</h2>
               <p className="bug-report-sheet-subtitle">
-                Capture what you just saw — it appends to a local file Chris will sweep at the end
+                Capture what you just saw — it appends to a local file for later review
                 of the session.
               </p>
             </div>

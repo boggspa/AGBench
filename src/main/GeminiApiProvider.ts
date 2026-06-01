@@ -1,14 +1,9 @@
 /**
- * Phase M1 — GeminiApiProvider.
+ * GeminiApiProvider.
  *
- * Google has announced that the `gemini` CLI is being deprecated
- * (~30 days) in favour of Antigravity / `agy`, which drops the MCP/ACP
- * surfaces AGBench's Gemini integration currently relies on. To hedge,
- * this module is the entry point for an in-process Gemini runtime built
- * on the `@google/genai` SDK that coexists alongside the existing CLI
- * provider (`runGeminiProvider` in `src/main/index.ts`). Coexistence,
- * not replacement: both paths stay shippable so a regression in either
- * can be rolled back without losing the other.
+ * In-process Gemini runtime built on `@google/genai`. It coexists alongside
+ * the CLI provider (`runGeminiProvider` in `src/main/index.ts`) so users can
+ * choose the auth/runtime path that works for their environment.
  *
  * Step 1 (scaffold) landed `loadOptionalGeminiSdk` + a no-op stub.
  * Step 2 lit up bare-bones streaming:

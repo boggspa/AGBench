@@ -28,8 +28,8 @@ describe('ErrorClassifier', () => {
   it('redacts logs correctly', () => {
     expect(redactLog('My email is test@example.com.')).toBe('My email is [EMAIL REDACTED].')
     expect(redactLog('Bearer abcdef12345==')).toBe('Bearer [REDACTED]')
-    expect(redactLog('Path is /Users/dev/Documents/GUIGemini/src')).toBe(
-      'Path is ~/Documents/GUIGemini/src'
+    expect(redactLog('Path is /Users/example/Documents/AGBench/src')).toBe(
+      'Path is ~/Documents/AGBench/src'
     )
   })
 })

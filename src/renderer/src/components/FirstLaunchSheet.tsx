@@ -50,8 +50,8 @@ type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 
  *   3. **Sidebar hint retained.** Per the "safer" path in the spec:
  *      the lightweight sidebar hint card (T1b) still renders for
  *      empty workspaces. Its dismissal X persists independently
- *      from the sheet's dismissal flag. This gives a tester two
- *      surfaces for the same prompt without coupling them.
+ *      from the sheet's dismissal flag. This gives users two surfaces
+ *      for the same prompt without coupling them.
  *
  * Pointer animation: handled by the host (App.tsx) — when the sheet
  * dismisses for the first time, the host flips a transient flag that
@@ -111,8 +111,7 @@ interface ProviderRowSpec {
   statusText: string
   /** Optional "what to do" hint. Renders below the status pill. */
   hint: string
-  /** When true, the card is visually de-emphasised — used for Kimi
-   * (a tester doesn't have a Kimi account and isn't expected to sign up). */
+  /** When true, the card is visually de-emphasised for optional providers. */
   deemphasised?: boolean
   /** When true, the card is marked optional but still actionable. */
   optional?: boolean

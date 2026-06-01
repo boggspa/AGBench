@@ -9,7 +9,7 @@
  * `$0.00`.
  *
  * **Rates are STATIC approximations.** Live FX lookup is deferred
- * to 1.0.6 sub-slice c per Chris's release plan. The constants
+ * to 1.0.6 sub-slice c per the maintainer's release plan. The constants
  * below are accurate as of 2026-05-27 (approximate spot rates);
  * update them periodically until live-fetch lands. Hardcoded
  * single-direction rates intentionally — we only ever convert

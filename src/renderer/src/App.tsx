@@ -1585,8 +1585,8 @@ const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
     summaries.length > 0
       ? summaries.map(summarizeReviewDiffFile).join('\n')
       : diffObj?.statusText
-        ? `Git status:\n${diffObj.statusText}`
-        : diffObj?.text || 'No file-level summary was available.'
+      ? `Git status:\n${diffObj.statusText}`
+      : diffObj?.text || 'No file-level summary was available.'
 
   const fullDiffText = collectReviewDiffText(diffObj)
   const diffText =
@@ -5296,11 +5296,11 @@ function App(): React.JSX.Element {
     }
   }, [])
   /**
-   * Inline bug-report sheet. The tester (a tester) opens this from the
+   * Inline bug-report sheet. The tester opens this from the
    * "!" button next to the onboarding `?` button, describes whatever
    * he just hit, and the main process appends a markdown record to
-   * `<userData>/AGBench/bug-reports.md` for Chris to triage at the
-   * end of the test session. No persisted draft state — the sheet
+   * `<userData>/AGBench/bug-reports.md` for later triage. No persisted draft
+   * state — the sheet
    * resets every open. */
   const [showBugReportSheet, setShowBugReportSheet] = useState(false)
   /** 1.0.4-AK2 — Work Session setup sheet open/closed state.
@@ -5345,7 +5345,7 @@ function App(): React.JSX.Element {
       }
       if (typeof api.submitBugReport !== 'function') {
         throw new Error(
-          'Bug-report bridge is not available — please update the app or contact Chris directly.'
+          'Bug-report bridge is not available — please update the app.'
         )
       }
       const result = await api.submitBugReport(submission)
@@ -14679,7 +14679,7 @@ function App(): React.JSX.Element {
     // previews / `changes` arrays via `extractToolFileContributions`,
     // which is the path my orchestrator's minimal diffSummary doesn't
     // reach on its own. Without this, the +XX/-XX pill stayed at 0
-    // even though the Task Complete card showed real numbers (Chris's
+    // even though the Task Complete card showed real numbers (the maintainer's
     // "diff doesn't show anything in the Review Changes / Create PR
     // row" feedback from the 1.0.3 smoke pass).
     if (isCurrentEnsembleChat && currentChat) {
@@ -16269,8 +16269,7 @@ function App(): React.JSX.Element {
               a bug" without being alarming red. Lets a tester type a
               one-liner + description inline as he hits issues during
               the 1.0.1 test session — the main process appends the
-              report to `<userData>/AGBench/bug-reports.md` for Chris
-              to sweep at the end.
+              report to `<userData>/AGBench/bug-reports.md` for review.
             */}
             <button
               className={`chat-corner-btn chat-corner-btn-bug-report ${showBugReportSheet ? 'active' : ''}`}
@@ -16720,7 +16719,7 @@ function App(): React.JSX.Element {
                 not the full roster. The user can still drag the chip
                 strip below to reorder.
 
-                Per Chris's ship-night call: no starter cards on the
+                Per the maintainer's ship-night call: no starter cards on the
                 ensemble welcome. Just hierarchy + textarea + the
                 editable chip strip in the composer above-row.
 
@@ -17306,7 +17305,7 @@ function App(): React.JSX.Element {
                 // `color: transparent` zeros out the text in shells
                 // where the overlay's font/padding drifts from the
                 // textarea (Claude / Codex / Kimi etc. each override
-                // base padding). Chris hit this on the ensemble
+                // base padding). the maintainer hit this on the ensemble
                 // welcome screen — text invisible in Claude shell,
                 // vertical sync issues in others.
                 // 1.0.4 — drop the `isCurrentEnsembleChat` precondition.
@@ -17317,7 +17316,7 @@ function App(): React.JSX.Element {
                 // `chatKind === 'ensemble'` evaluated false during
                 // some welcome-surface render passes — leaving typed
                 // tags as plain white text instead of bold +
-                // provider-tinted (Chris's "tags not lighting up"
+                // provider-tinted (the maintainer's "tags not lighting up"
                 // report). Now: anywhere participants ARE configured
                 // and a mention resolves, the overlay activates.
                 const composerHasMention = hasResolvedMention(
@@ -19139,7 +19138,7 @@ function App(): React.JSX.Element {
                   {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
                   Pre-AS3 the attached-window UX was an inline pill in the
                   action row that took ~120px and showed the app name +
-                  title + close glyph. Chris asked for a single themed
+                  title + close glyph. the maintainer asked for a single themed
                   SVG icon button here in the telemetry row instead,
                   with the picker behind a click rather than a visible
                   name pill. Click toggles attach/detach; the tooltip
@@ -19280,7 +19279,7 @@ function App(): React.JSX.Element {
             {isWelcomeChat && !isCurrentEnsembleChat && (
               /*
                 Solo-provider starter cards. Hidden on ensemble chats
-                per Chris's 1.0.3 ship-night call: the hierarchy chain
+                per the maintainer's 1.0.3 ship-night call: the hierarchy chain
                 in the ensemble welcome hero teaches the orchestration
                 model, and the user types their own prompt rather than
                 picking from solo-shaped templates.
