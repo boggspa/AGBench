@@ -426,7 +426,9 @@
 }
 .message-actions-chip-button:hover,
 .message-actions-chip-button:focus-visible {
-  outline: none;
+  /* No `outline: none` here — defer to the global `:focus-visible` ring
+   * (00-fonts-base.css) so keyboard focus on copy/delete stays visible.
+   * :hover alone never matches :focus-visible, so mouse hover shows no ring. */
   color: var(--text-1);
   background: color-mix(in srgb, var(--text-1) 12%, transparent);
 }

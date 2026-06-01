@@ -3470,6 +3470,14 @@
 .subthread-delegation-status.status-running .subthread-delegation-status-glyph {
   animation: subthreadDelegationPulse 1.4s ease-in-out infinite;
 }
+/* Reduce-motion (in-app setting): the parent status sweep is held by the
+ * `[data-reduce-motion="true"]` guard in shard 08; stop the glyph's pulse too
+ * so the running indicator doesn't keep translating when motion is suppressed. */
+[data-reduce-motion='true']
+  .subthread-delegation-status.status-running
+  .subthread-delegation-status-glyph {
+  animation: none;
+}
 
 .subthread-delegation-status.status-completed,
 .subthread-delegation-status.status-returned {
@@ -3615,6 +3623,11 @@
   border-radius: 999px;
   display: inline-block;
   animation: subthreadStatusPulse 1.3s ease-in-out infinite;
+}
+/* Reduce-motion (in-app setting): hold the dot static — colour still reads as
+ * "running" without the scale pulse. */
+[data-reduce-motion='true'] .subthread-status-pulse-dot {
+  animation: none;
 }
 
 @keyframes subthreadStatusPulse {

@@ -3661,7 +3661,8 @@
    reads as "stream is live" — the colour is the signal, the pulse is
    the bonus. */
 @media (prefers-reduced-motion: reduce) {
-  .composer-attached-window-pill-dot {
+  .composer-attached-window-pill-dot,
+  .composer-screen-watch-button-dot {
     animation: none;
   }
 }
