@@ -5,6 +5,10 @@ agents against developer workspaces. It provides a macOS-focused Electron UI for
 provider CLIs and SDK-backed workflows while keeping execution, history, and
 workspace state on the user's machine.
 
+<img width="1525" height="2160" alt="Screenshot 2026-06-01 at 20 54 50" src="https://github.com/user-attachments/assets/17ccc7cb-d98c-4333-954b-90a3bab38ea9" />
+<img width="1525" height="2160" alt="Screenshot 2026-06-01 at 21 01 25" src="https://github.com/user-attachments/assets/007a6942-f899-4e5a-8c93-cfc9a8ba8783" />
+
+
 ## Features
 
 - **Workspace Safety**: Workspace selection, trust-state visibility, approval
