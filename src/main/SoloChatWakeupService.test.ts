@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  buildSoloScratchpadRecall,
   buildSoloWakeupResumePayload,
   resolveSoloWakeAtMs,
   SOLO_MAX_WAKEUP_DELAY_MS,
   SoloChatWakeupService
 } from './SoloChatWakeupService'
-import type { ChatRecord, SoloChatWakeupRecord } from './store/types'
+import type { ChatMessage, ChatRecord, SoloChatWakeupRecord } from './store/types'
 
 /**
  * 1.0.5-EW37 — Tests for the solo-chat wakeup service.
@@ -131,6 +132,126 @@ describe('buildSoloWakeupResumePayload', () => {
     }
     const payload = buildSoloWakeupResumePayload(chat, wakeup, 'run-1', '2026-05-27T11:00:00Z')
     expect(payload.prompt).not.toContain('Reason recorded at schedule time')
+  })
+
+  it('1.0.7 — folds the scratchpad recall (last message + tool trace) into the prompt', () => {
+    const chat = makeChat({
+      messages: [
+        {
+          id: 'u1',
+          role: 'user',
+          content: 'Refactor the auth module.',
+          timestamp: '2026-05-27T09:00:00Z'
+        },
+        {
+          id: 'a1',
+          role: 'assistant',
+          runId: 'run-prior',
+          content: 'I split AuthService into AuthService + TokenStore and added tests.',
+          timestamp: '2026-05-27T09:05:00Z',
+          toolActivities: [
+            { toolName: 'edit_file', status: 'success' },
+            { toolName: 'edit_file', status: 'success' },
+            { toolName: 'run_tests', status: 'success' }
+          ]
+        } as ChatMessage
+      ]
+    })
+    const wakeup: SoloChatWakeupRecord = {
+      wakeupId: 'w',
+      chatId: chat.appChatId,
+      provider: 'codex',
+      scheduledAt: '2026-05-27T10:00:00Z',
+      wakeAt: '2026-05-27T11:00:00Z',
+      status: 'fired'
+    }
+    const payload = buildSoloWakeupResumePayload(chat, wakeup, 'run-1', '2026-05-27T11:00:00Z')
+    expect(payload.prompt).toContain('Where you left off before sleeping:')
+    expect(payload.prompt).toContain('I split AuthService into AuthService + TokenStore')
+    // De-duplicated tool trace with counts.
+    expect(payload.prompt).toContain('edit_file ×2')
+    expect(payload.prompt).toContain('run_tests')
+    // The base continuation line is still present.
+    expect(payload.prompt).toContain('Continue your task')
+  })
+})
+
+describe('buildSoloScratchpadRecall', () => {
+  it('returns empty string for a brand-new chat with no assistant turn', () => {
+    expect(buildSoloScratchpadRecall(makeChat())).toBe('')
+    expect(
+      buildSoloScratchpadRecall(
+        makeChat({
+          messages: [
+            { id: 'u1', role: 'user', content: 'hi', timestamp: '2026-05-27T09:00:00Z' }
+          ]
+        })
+      )
+    ).toBe('')
+  })
+
+  it('recalls the MOST RECENT substantive assistant message', () => {
+    const recall = buildSoloScratchpadRecall(
+      makeChat({
+        messages: [
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: 'First answer.',
+            timestamp: '2026-05-27T09:00:00Z'
+          } as ChatMessage,
+          {
+            id: 'a2',
+            role: 'assistant',
+            content: '   ',
+            timestamp: '2026-05-27T09:01:00Z'
+          } as ChatMessage,
+          {
+            id: 'a3',
+            role: 'assistant',
+            content: 'Latest substantive answer.',
+            timestamp: '2026-05-27T09:02:00Z'
+          } as ChatMessage
+        ]
+      })
+    )
+    expect(recall).toContain('Latest substantive answer.')
+    expect(recall).not.toContain('First answer.')
+  })
+
+  it('truncates an over-long recalled message with an ellipsis', () => {
+    const long = 'x'.repeat(5000)
+    const recall = buildSoloScratchpadRecall(
+      makeChat({
+        messages: [
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: long,
+            timestamp: '2026-05-27T09:00:00Z'
+          } as ChatMessage
+        ]
+      })
+    )
+    expect(recall.endsWith('…')).toBe(true)
+    expect(recall.length).toBeLessThan(long.length)
+  })
+
+  it('omits the tool trace when the turn ran no tools', () => {
+    const recall = buildSoloScratchpadRecall(
+      makeChat({
+        messages: [
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: 'Pure prose, no tools.',
+            timestamp: '2026-05-27T09:00:00Z'
+          } as ChatMessage
+        ]
+      })
+    )
+    expect(recall).toContain('Pure prose, no tools.')
+    expect(recall).not.toContain('Tools you used')
   })
 })
 

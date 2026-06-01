@@ -42,7 +42,7 @@
  *     boot and either fire or expire normally.
  */
 
-import type { ChatRecord, ProviderId, SoloChatWakeupRecord } from './store/types'
+import type { ChatMessage, ChatRecord, ProviderId, SoloChatWakeupRecord } from './store/types'
 import type { AgentRunPayload } from './index'
 
 /**
@@ -83,16 +83,77 @@ export function resolveSoloWakeAtMs(input: ScheduleWakeupInput, nowMs: number): 
   return Number.NaN
 }
 
+/** Max chars of the recalled assistant message folded into the resume
+ * prompt — enough to re-orient the agent without re-dumping a whole turn. */
+const SOLO_RECALL_MAX_CHARS = 1200
+/** Max distinct tool names listed in the recall trace. */
+const SOLO_RECALL_MAX_TOOLS = 8
+
+/**
+ * 1.0.7 (AR14 / AV3) — solo "scratchpad recall". When a solo chat resumes from
+ * a `schedule_wakeup`, reconstruct a compact recap of what the agent was doing
+ * before it slept so the continuation isn't a cold "continue per your earlier
+ * plan". Pure + dependency-free (no cross-import of the ensemble prompt
+ * builder, to avoid a cycle): reads the chat's own recent history.
+ *
+ * Recall = the last substantive ASSISTANT message (truncated) + a de-duplicated
+ * trace of the tools that message ran. Returns '' when there's nothing useful
+ * to recall (brand-new chat, no prior assistant turn) so the caller can omit
+ * the section.
+ */
+export function buildSoloScratchpadRecall(chat: ChatRecord): string {
+  const messages = Array.isArray(chat.messages) ? chat.messages : []
+  // Walk backwards to the most recent assistant message with real content.
+  let lastAssistant: ChatMessage | undefined
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m && m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+      lastAssistant = m
+      break
+    }
+  }
+  if (!lastAssistant) return ''
+
+  const lines: string[] = ['Where you left off before sleeping:']
+  const body = lastAssistant.content.trim()
+  const recap =
+    body.length > SOLO_RECALL_MAX_CHARS
+      ? `${body.slice(0, SOLO_RECALL_MAX_CHARS - 1).trimEnd()}…`
+      : body
+  lines.push('', 'Your last message:', recap)
+
+  // Compact, de-duplicated tool trace (name × count) from that turn's run.
+  const runId = lastAssistant.runId
+  const activities = runId
+    ? messages
+        .filter((m) => m.runId === runId && Array.isArray(m.toolActivities))
+        .flatMap((m) => m.toolActivities || [])
+    : lastAssistant.toolActivities || []
+  if (activities.length > 0) {
+    const counts = new Map<string, number>()
+    for (const a of activities) {
+      const name = (a?.toolName || '').trim()
+      if (!name) continue
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    const trace = Array.from(counts.entries())
+      .slice(0, SOLO_RECALL_MAX_TOOLS)
+      .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+      .join(', ')
+    if (trace) lines.push('', `Tools you used: ${trace}.`)
+  }
+  return lines.join('\n')
+}
+
 /**
  * Build the continuation `AgentRunPayload` we dispatch when a solo
  * wakeup fires. Pure — exported for tests so we can pin the prompt
  * + provider-session-id wiring without spinning up the full
  * service.
  *
- * Prompt seeds the agent with a wakeup-resume context that's
- * intentionally light: timestamp + original reason, then "continue
- * per your earlier plan". Heavier reconstruction (round summary,
- * scratchpad recall) lives behind AR14 / AV3 in 1.0.7.
+ * Prompt seeds the agent with a wakeup-resume context: timestamp + original
+ * reason, a 1.0.7 "scratchpad recall" recap of where it left off (last message
+ * + tool trace), then "continue per your earlier plan".
  */
 export function buildSoloWakeupResumePayload(
   chat: ChatRecord,
@@ -101,8 +162,11 @@ export function buildSoloWakeupResumePayload(
   nowIso: string
 ): AgentRunPayload {
   const reasonLine = wakeup.reason ? ` Reason recorded at schedule time: ${wakeup.reason}.` : ''
+  // 1.0.7 — fold in the scratchpad recall when there's prior context to recall.
+  const recall = buildSoloScratchpadRecall(chat)
+  const recallBlock = recall ? `\n\n${recall}` : ''
   const prompt =
-    `[Resumed at ${nowIso} from your scheduled wakeup.${reasonLine}]\n\n` +
+    `[Resumed at ${nowIso} from your scheduled wakeup.${reasonLine}]${recallBlock}\n\n` +
     `Continue your task per your earlier plan. If you need to pause again, ` +
     `call schedule_wakeup again with a fresh delay.`
   // Preserve scope + workspace + provider from the chat so the
