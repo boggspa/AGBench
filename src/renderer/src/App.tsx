@@ -82,7 +82,6 @@ import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type {
   CommandPaletteGroup,
   CommandPaletteItem,
-  CommandPaletteSource,
   ComposerSlashCommand
 } from './lib/ComposerSlashCommands'
 import {
@@ -291,6 +290,12 @@ import {
   buildRunCompleteSummaryRows,
   formatWorkDuration
 } from './lib/runCompleteSummary'
+import {
+  getMemoryPreviewText,
+  mergeCommandPaletteItems,
+  normalizeDiscoveredCommandItems,
+  type GeminiMemoryFile
+} from './lib/geminiCommandDiscovery'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
 import {
   buildParticipantToolGrantPatch,
@@ -421,19 +426,6 @@ type PersistentSessionStatus =
 //
 // Imports below the const block — see top-of-file `import` group.
 
-type GeminiMemoryFile = {
-  id: string
-  scope: 'workspace' | 'global'
-  path: string
-  displayPath: string
-  content?: string
-  sizeBytes?: number
-  error?: string
-}
-
-const MEMORY_PREVIEW_CHARS = 6000
-// DEFAULT_CONTEXT_TURNS, MAX_CONTEXT_TURNS moved to src/main/PromptComposition.ts.
-// MAX_CONTEXT_CHARS_PER_TURN, MAX_CONTEXT_BLOCK_CHARS moved to src/main/PromptComposition.ts.
 const DEFAULT_FILE_EDITOR_WIDTH = 390
 const MIN_RIGHT_PANEL_WIDTH = 300
 const MAX_RIGHT_PANEL_WIDTH = 720
@@ -1327,59 +1319,6 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
     })
   }
   return coalesceExternalPathGrants(grants)
-}
-
-const mergeCommandPaletteItems = (customItems: CommandPaletteItem[]): CommandPaletteItem[] => {
-  const seen = new Set<string>()
-  const next: CommandPaletteItem[] = []
-
-  for (const item of [...COMMAND_PALETTE_CORE, ...customItems]) {
-    const key = item.command.trim().toLowerCase()
-    if (!key || seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    next.push(item)
-  }
-
-  return next
-}
-
-const normalizeDiscoveredCommandItems = (items: any[]): CommandPaletteItem[] => {
-  if (!Array.isArray(items)) {
-    return []
-  }
-
-  return items
-    .map((item, index): CommandPaletteItem | null => {
-      const command = typeof item?.command === 'string' ? item.command.trim() : ''
-      if (!command.startsWith('/')) {
-        return null
-      }
-
-      const source: CommandPaletteSource = item.scope === 'global' ? 'global' : 'workspace'
-      return {
-        id: `custom-${source}-${command}-${index}`,
-        command,
-        label: typeof item.label === 'string' && item.label.trim() ? item.label.trim() : command,
-        description:
-          typeof item.description === 'string' && item.description.trim()
-            ? item.description.trim()
-            : `Custom Gemini command discovered from ${source} command files.`,
-        group: 'Custom' as CommandPaletteGroup,
-        source,
-        sourcePath: typeof item.sourcePath === 'string' ? item.sourcePath : undefined
-      }
-    })
-    .filter((item): item is CommandPaletteItem => Boolean(item))
-}
-
-const getMemoryPreviewText = (file: GeminiMemoryFile): string => {
-  const content = file.error || file.content || '(empty GEMINI.md)'
-  if (content.length <= MEMORY_PREVIEW_CHARS) {
-    return content
-  }
-  return `${content.slice(0, MEMORY_PREVIEW_CHARS)}\n\n[truncated ${content.length - MEMORY_PREVIEW_CHARS} characters]`
 }
 
 const normalizeGeminiResumeTarget = (value?: string): string | undefined => {
