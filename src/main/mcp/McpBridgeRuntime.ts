@@ -1,0 +1,1392 @@
+import type { ChildProcess } from 'child_process'
+import { spawn } from 'child_process'
+import { timingSafeEqual } from 'crypto'
+import { promises as fs } from 'fs'
+import * as fsSync from 'fs'
+import { createConnection, createServer, type Server as NetServer, type Socket } from 'net'
+import os from 'os'
+import { dirname, join, resolve } from 'path'
+import type { WebContents } from 'electron'
+import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from '../KimiMcpBridge'
+import type {
+  AppSettings,
+  ChatScope,
+  EffectiveRunPermissions,
+  EnsembleRunIdentity,
+  ExternalPathGrant,
+  GeminiMcpBridgeStatus,
+  GeminiWorktreeLaunchOption,
+  ProviderId,
+  RuntimeProfile
+} from '../store/types'
+
+export const GEMINI_MCP_SERVER_NAME = 'AGBench' as const
+export const GEMINI_MCP_SERVER_NAME_LOWER = GEMINI_MCP_SERVER_NAME.toLowerCase()
+export const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
+export const GEMINI_MCP_SOCKET_ARG = '--socket'
+export const GEMINI_MCP_TOKEN_ARG = '--token'
+export const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
+  ...AGENTBENCH_MCP_TOOLS,
+  ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
+]
+
+export type GeminiMcpRegistrationScope = 'user' | 'project'
+export type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
+export type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
+export type McpResponseTransport = 'framed' | 'line'
+
+export interface GeminiCapabilityItem {
+  id: string
+  name: string
+  status?: string
+  detail?: string
+  raw: string
+}
+
+export interface GeminiCapabilitySection {
+  kind: GeminiCapabilityKind
+  command: string[]
+  format: GeminiCapabilityFormat
+  items: GeminiCapabilityItem[]
+  stdout: string
+  stderr: string
+  status: number | null
+  timedOut: boolean
+  error?: string
+  parsingError?: string
+  truncated?: boolean
+}
+
+export interface GeminiCapabilityProcessResult {
+  args: string[]
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  timedOut: boolean
+  error?: string
+  truncated?: boolean
+}
+
+export interface ResolvedProviderBinary {
+  provider: ProviderId
+  binaryPath: string | null
+  source: 'runtime_profile' | 'settings' | 'path' | 'common' | 'missing'
+  error?: string
+}
+
+export type McpToolContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mimeType: string; data: string }
+
+export interface McpToolExecutionResult {
+  text: string
+  isError?: boolean
+  structuredContent?: Record<string, unknown>
+  content?: McpToolContentBlock[]
+}
+
+export interface McpToolDefinition {
+  name: string
+  description?: string
+  annotations?: Record<string, unknown>
+  inputSchema?: Record<string, unknown>
+}
+
+export interface McpBridgeAgentRunRoute {
+  appRunId?: string
+  appChatId?: string
+}
+
+export interface McpBridgeAgentRunPayload {
+  provider: ProviderId
+  scope: ChatScope
+  workspace?: string
+  prompt: string
+  appRunId?: string
+  appChatId?: string
+  model?: string
+  reasoningEffort?: string | null
+  serviceTier?: string | null
+  claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
+  kimiThinking?: boolean | null
+  approvalMode?: string
+  imagePaths?: string[]
+  providerSessionId?: string | null
+  externalPathGrants?: ExternalPathGrant[]
+  sessionTrust?: boolean
+  geminiWorktree?: GeminiWorktreeLaunchOption
+  runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
+  handoffSourceRunId?: string
+  runtimeProfile?: RuntimeProfile
+  effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
+}
+
+export interface InstallGeminiToolContextOptions {
+  runPayload?: McpBridgeAgentRunPayload
+  providerSessionId?: string | null
+}
+
+export interface CaptureProcessOutputResult {
+  stdout: string
+  stderr: string
+  code: number | null
+  error?: string
+  timedOut: boolean
+}
+
+export interface McpBridgeRuntimeDeps {
+  getSettings: () => Pick<AppSettings, 'geminiMcpBridgeEnabled' | 'geminiMcpBridgeLastStatus'>
+  updateSettings: (patch: Partial<AppSettings>) => void
+  getGeminiMcpSocketPath: () => string
+  getGeminiMcpBrokerToken: () => string
+  getGeminiUserSettingsPath: () => string
+  getAppPath: () => string
+  getAppVersion: () => string
+  isDev: () => boolean
+  isPackaged: () => boolean
+  getProcessExecPath?: () => string
+  resolveCliProviderBinary: (provider: ProviderId) => Promise<ResolvedProviderBinary>
+  captureProcessOutput: (
+    command: string,
+    args: string[],
+    cwd?: string,
+    timeoutMs?: number
+  ) => Promise<CaptureProcessOutputResult>
+  readGeminiCapabilitySection: (
+    kind: GeminiCapabilityKind,
+    cwd?: string
+  ) => Promise<GeminiCapabilitySection>
+  runGeminiCapabilityCommand: (
+    args: string[],
+    cwd?: string
+  ) => Promise<GeminiCapabilityProcessResult>
+  parseCapabilityRawItems: (stdout: string, kind: GeminiCapabilityKind) => GeminiCapabilityItem[]
+  createCliEnv: (extra: Record<string, string>, binaryPath?: string | null) => Record<string, string>
+  appendLimitedOutput?: (current: string, chunk: Buffer) => { value: string; truncated: boolean }
+  executeGeminiMcpTool: (
+    toolName: AGBenchMcpToolName,
+    args: unknown,
+    route: McpBridgeAgentRunRoute,
+    parentProvider: ProviderId
+  ) => Promise<McpToolExecutionResult>
+  installGeminiToolContextForRun: (
+    sender: WebContents,
+    cwd: string,
+    route?: McpBridgeAgentRunRoute | null,
+    scope?: ChatScope,
+    sessionTrust?: boolean,
+    options?: InstallGeminiToolContextOptions
+  ) => McpBridgeAgentRunRoute
+  sendAgentCompatLine: (
+    sender: WebContents,
+    provider: ProviderId,
+    payload: unknown,
+    route?: McpBridgeAgentRunRoute | null
+  ) => void
+}
+
+export interface GeminiMcpBridgePrepareOptions {
+  requireWriteTools?: boolean
+  runPayload?: McpBridgeAgentRunPayload
+}
+
+export interface GeminiMcpBridgeProcessDeps {
+  getDefaultSocketPath: () => string
+  getAppVersion: () => string
+  getMcpToolDefinitions: () => McpToolDefinition[]
+  brokerRequest?: (socketPath: string, request: unknown) => Promise<unknown>
+  mcpToolCallResponseFromBrokerResult?: typeof mcpToolCallResponseFromBrokerResult
+  argv?: string[]
+  env?: NodeJS.ProcessEnv
+  stdin?: NodeJS.ReadStream
+  stdout?: NodeJS.WriteStream
+  exit?: (code?: number) => void
+  cwd?: () => string
+  pid?: () => number
+}
+
+const VALID_BROKER_PARENT_PROVIDERS = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi'
+])
+const BRIDGE_LOG_MAX_BYTES = 1_048_576
+const DEFAULT_MAX_CAPTURE_OUTPUT_CHARS = 200_000
+
+let bridgeLogPath: string | null = null
+let bridgeLogResolved = false
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function defaultAppendLimitedOutput(
+  current: string,
+  chunk: Buffer
+): { value: string; truncated: boolean } {
+  const next = current + chunk.toString('utf8')
+  if (next.length <= DEFAULT_MAX_CAPTURE_OUTPUT_CHARS) {
+    return { value: next, truncated: false }
+  }
+  return {
+    value: `${next.slice(0, DEFAULT_MAX_CAPTURE_OUTPUT_CHARS)}\n[output truncated]`,
+    truncated: true
+  }
+}
+
+export function isAGBenchMcpToolName(value: unknown): value is AGBenchMcpToolName {
+  return AGENTBENCH_MCP_TOOLS.includes(value as AGBenchMcpToolName)
+}
+
+export function normalizeBrokerParentProvider(value: unknown): ProviderId {
+  if (typeof value === 'string' && VALID_BROKER_PARENT_PROVIDERS.has(value as ProviderId)) {
+    return value as ProviderId
+  }
+  return 'gemini'
+}
+
+export function normalizeRunRoute(route?: McpBridgeAgentRunRoute | null): McpBridgeAgentRunRoute {
+  return {
+    ...(route?.appRunId ? { appRunId: String(route.appRunId) } : {}),
+    ...(route?.appChatId ? { appChatId: String(route.appChatId) } : {})
+  }
+}
+
+export function createFallbackRunId(provider: ProviderId): string {
+  return `${provider}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+export function routeWithRunId(
+  provider: ProviderId,
+  route?: McpBridgeAgentRunRoute | null
+): McpBridgeAgentRunRoute {
+  const normalized = normalizeRunRoute(route)
+  return {
+    ...normalized,
+    appRunId: normalized.appRunId || createFallbackRunId(provider)
+  }
+}
+
+export function mcpToolCallResponseFromBrokerResult(result: unknown): {
+  content: McpToolContentBlock[]
+  structuredContent?: Record<string, unknown>
+  isError: boolean
+} {
+  const record = isRecord(result) ? result : {}
+  const resultContent = Array.isArray(record.content)
+    ? record.content.filter(isMcpToolContentBlock)
+    : []
+  const fallbackText =
+    typeof record.text === 'string'
+      ? record.text
+      : typeof record.error === 'string'
+        ? record.error
+        : ''
+  const content =
+    resultContent.length > 0 ? resultContent : [{ type: 'text' as const, text: fallbackText }]
+  const structuredContent = isRecord(record.structuredContent)
+    ? record.structuredContent
+    : undefined
+  return {
+    content,
+    ...(structuredContent ? { structuredContent } : {}),
+    isError: record.ok === false || record.isError === true
+  }
+}
+
+function isMcpToolContentBlock(value: unknown): value is McpToolContentBlock {
+  if (!isRecord(value)) return false
+  if (value.type === 'text') return typeof value.text === 'string'
+  if (value.type === 'image')
+    return typeof value.mimeType === 'string' && typeof value.data === 'string'
+  return false
+}
+
+export function brokerRequest(socketPath: string, request: unknown): Promise<unknown> {
+  return new Promise((resolveRequest) => {
+    const socket = createConnection(socketPath)
+    let buffer = ''
+    let settled = false
+    const finish = (result: unknown) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolveRequest(result)
+    }
+    const timeout = setTimeout(
+      () => finish({ ok: false, error: 'AGBench MCP broker timed out.' }),
+      130_000
+    )
+    socket.setEncoding('utf8')
+    socket.on('connect', () => {
+      socket.write(`${JSON.stringify(request)}\n`)
+    })
+    socket.on('data', (chunk: string) => {
+      buffer += chunk
+      const lineEnd = buffer.indexOf('\n')
+      if (lineEnd < 0) return
+      clearTimeout(timeout)
+      const line = buffer.slice(0, lineEnd).trim()
+      try {
+        finish(JSON.parse(line))
+      } catch (error) {
+        finish({ ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    })
+    socket.on('error', (error) => {
+      clearTimeout(timeout)
+      finish({ ok: false, error: error.message })
+    })
+    socket.on('close', () => {
+      clearTimeout(timeout)
+      if (!settled) finish({ ok: false, error: 'AGBench MCP broker closed before responding.' })
+    })
+  })
+}
+
+export function parseBridgeSocketArg(
+  argv: string[] = process.argv,
+  defaultSocketPath = ''
+): string {
+  const index = argv.indexOf(GEMINI_MCP_SOCKET_ARG)
+  if (index >= 0 && argv[index + 1]) {
+    return argv[index + 1]
+  }
+  return defaultSocketPath
+}
+
+export function parseBridgeTokenArg(argv: string[] = process.argv): string {
+  const index = argv.indexOf(GEMINI_MCP_TOKEN_ARG)
+  return index >= 0 && argv[index + 1] ? argv[index + 1] : ''
+}
+
+export function writeMcpFrame(payload: unknown, stdout: NodeJS.WriteStream = process.stdout): void {
+  const body = JSON.stringify(payload)
+  stdout.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`)
+}
+
+export function writeMcpPayload(
+  payload: unknown,
+  transport: McpResponseTransport,
+  stdout: NodeJS.WriteStream = process.stdout
+): void {
+  if (transport === 'line') {
+    stdout.write(`${JSON.stringify(payload)}\n`)
+    return
+  }
+  writeMcpFrame(payload, stdout)
+}
+
+export function writeMcpResponse(
+  id: unknown,
+  result: unknown,
+  transport: McpResponseTransport = 'framed',
+  stdout: NodeJS.WriteStream = process.stdout
+): void {
+  writeMcpPayload({ jsonrpc: '2.0', id, result }, transport, stdout)
+}
+
+export function writeMcpError(
+  id: unknown,
+  code: number,
+  message: string,
+  transport: McpResponseTransport = 'framed',
+  stdout: NodeJS.WriteStream = process.stdout
+): void {
+  writeMcpPayload({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, transport, stdout)
+}
+
+export function resolveBridgeLogPath(): string | null {
+  if (bridgeLogResolved) return bridgeLogPath
+  bridgeLogResolved = true
+  try {
+    const logsDir = join(os.homedir(), 'Library', 'Logs', 'AGBench')
+    fsSync.mkdirSync(logsDir, { recursive: true })
+    bridgeLogPath = join(logsDir, 'bridge-subprocess.log')
+    try {
+      const stat = fsSync.statSync(bridgeLogPath)
+      if (stat.size > BRIDGE_LOG_MAX_BYTES) {
+        fsSync.writeFileSync(bridgeLogPath, '')
+      }
+    } catch {
+      // File does not exist yet; first append will create it.
+    }
+  } catch {
+    bridgeLogPath = null
+  }
+  return bridgeLogPath
+}
+
+export function bridgeLog(message: string, pid: number = process.pid): void {
+  const path = resolveBridgeLogPath()
+  if (!path) return
+  try {
+    const line = `[${new Date().toISOString()}] pid=${pid} ${message}\n`
+    fsSync.appendFileSync(path, line)
+  } catch {
+    // Logging failures must never crash the bridge.
+  }
+}
+
+export function handleMcpJsonRpcMessage(
+  deps: GeminiMcpBridgeProcessDeps,
+  socketPath: string,
+  brokerToken: string,
+  message: unknown,
+  transport: McpResponseTransport = 'framed'
+): void {
+  const stdout = deps.stdout || process.stdout
+  const request = isRecord(message) ? message : {}
+  const id = request.id
+  const method = String(request.method || '')
+  if (!method) {
+    writeMcpError(id, -32600, 'Invalid MCP request.', transport, stdout)
+    return
+  }
+  if (method.startsWith('notifications/')) {
+    return
+  }
+  if (method === 'initialize') {
+    writeMcpResponse(
+      id,
+      {
+        protocolVersion: isRecord(request.params)
+          ? request.params.protocolVersion || '2024-11-05'
+          : '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'AGBench Gemini Bridge', version: deps.getAppVersion() || '1.0.0' }
+      },
+      transport,
+      stdout
+    )
+    return
+  }
+  if (method === 'ping') {
+    writeMcpResponse(id, {}, transport, stdout)
+    return
+  }
+  if (method === 'tools/list') {
+    writeMcpResponse(id, { tools: deps.getMcpToolDefinitions() }, transport, stdout)
+    return
+  }
+  if (method === 'tools/call') {
+    const params = isRecord(request.params) ? request.params : {}
+    const name = params.name
+    const args = params.arguments || {}
+    bridgeLog(`tools/call name=${String(name)} id=${String(id)} args=${JSON.stringify(args).slice(0, 200)}`)
+    const requestBroker = deps.brokerRequest || brokerRequest
+    requestBroker(socketPath, {
+      id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      token: brokerToken,
+      tool: name,
+      arguments: args,
+      appRunId: deps.env?.AGENTBENCH_RUN_ID ?? process.env.AGENTBENCH_RUN_ID,
+      appChatId: deps.env?.AGENTBENCH_CHAT_ID ?? process.env.AGENTBENCH_CHAT_ID,
+      parentProvider:
+        deps.env?.AGENTBENCH_PARENT_PROVIDER || process.env.AGENTBENCH_PARENT_PROVIDER || 'gemini'
+    })
+      .then((result) => {
+        const responseFromResult =
+          deps.mcpToolCallResponseFromBrokerResult || mcpToolCallResponseFromBrokerResult
+        const resultRecord = isRecord(result) ? result : {}
+        bridgeLog(
+          `tools/call name=${String(name)} id=${String(id)} result.ok=${String(resultRecord.ok)} text.len=${String((String(resultRecord.text || resultRecord.error || '')).length)}`
+        )
+        try {
+          writeMcpResponse(id, responseFromResult(result), transport, stdout)
+        } catch (writeError) {
+          bridgeLog(
+            `tools/call write FAILED id=${String(id)} err=${writeError instanceof Error ? writeError.message : String(writeError)}`
+          )
+        }
+      })
+      .catch((rejection) => {
+        const reasonText = rejection instanceof Error ? rejection.message : String(rejection)
+        bridgeLog(`tools/call REJECTION id=${String(id)} reason=${reasonText}`)
+        try {
+          writeMcpResponse(
+            id,
+            {
+              content: [{ type: 'text', text: `AGBench bridge internal error: ${reasonText}` }],
+              isError: true
+            },
+            transport,
+            stdout
+          )
+        } catch {
+          // If even the error response cannot be written, the transport is already dead.
+        }
+      })
+    return
+  }
+  writeMcpError(id, -32601, `Unsupported MCP method: ${method}`, transport, stdout)
+}
+
+export function startGeminiMcpBridgeProcess(deps: GeminiMcpBridgeProcessDeps): void {
+  const argv = deps.argv || process.argv
+  const env = deps.env || process.env
+  const stdin = deps.stdin || process.stdin
+  const stdout = deps.stdout || process.stdout
+  const exit = deps.exit || ((code?: number) => process.exit(code))
+  const socketPath = parseBridgeSocketArg(argv, deps.getDefaultSocketPath())
+  const brokerToken = parseBridgeTokenArg(argv)
+  bridgeLog(
+    `spawn argv=${JSON.stringify(argv.slice(1))} cwd=${deps.cwd?.() || process.cwd()} env.AGENTBENCH_RUN_ID=${env.AGENTBENCH_RUN_ID || ''} env.AGENTBENCH_PARENT_PROVIDER=${env.AGENTBENCH_PARENT_PROVIDER || ''}`,
+    deps.pid?.() || process.pid
+  )
+
+  process.on('uncaughtException', (error) => {
+    bridgeLog(
+      `uncaughtException: ${error instanceof Error ? `${error.message}\n${error.stack}` : String(error)}`,
+      deps.pid?.() || process.pid
+    )
+  })
+  process.on('unhandledRejection', (reason) => {
+    bridgeLog(
+      `unhandledRejection: ${reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason)}`,
+      deps.pid?.() || process.pid
+    )
+  })
+
+  let buffer = Buffer.alloc(0)
+
+  const parseMessages = () => {
+    while (buffer.length > 0) {
+      const text = buffer.toString('utf8')
+      if (text.startsWith('Content-Length:')) {
+        const headerEnd = text.indexOf('\r\n\r\n')
+        if (headerEnd < 0) return
+        const header = text.slice(0, headerEnd)
+        const lengthMatch = header.match(/Content-Length:\s*(\d+)/i)
+        const contentLength = lengthMatch ? Number(lengthMatch[1]) : 0
+        if (!Number.isFinite(contentLength) || contentLength <= 0) {
+          buffer = buffer.subarray(headerEnd + 4)
+          continue
+        }
+        const bodyStart = Buffer.byteLength(text.slice(0, headerEnd + 4), 'utf8')
+        if (buffer.length < bodyStart + contentLength) return
+        const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString('utf8')
+        buffer = buffer.subarray(bodyStart + contentLength)
+        try {
+          handleMcpJsonRpcMessage(deps, socketPath, brokerToken, JSON.parse(body), 'framed')
+        } catch (error) {
+          bridgeLog(
+            `parse FAILED (framed) err=${error instanceof Error ? error.message : String(error)}`,
+            deps.pid?.() || process.pid
+          )
+          writeMcpError(
+            null,
+            -32700,
+            error instanceof Error ? error.message : String(error),
+            'framed',
+            stdout
+          )
+        }
+        continue
+      }
+
+      const lineEnd = text.indexOf('\n')
+      if (lineEnd < 0) return
+      const lineBytes = Buffer.byteLength(text.slice(0, lineEnd + 1), 'utf8')
+      const line = text.slice(0, lineEnd).trim()
+      buffer = buffer.subarray(lineBytes)
+      if (!line) continue
+      try {
+        handleMcpJsonRpcMessage(deps, socketPath, brokerToken, JSON.parse(line), 'line')
+      } catch (error) {
+        bridgeLog(
+          `parse FAILED (line) err=${error instanceof Error ? error.message : String(error)}`,
+          deps.pid?.() || process.pid
+        )
+        writeMcpError(
+          null,
+          -32700,
+          error instanceof Error ? error.message : String(error),
+          'line',
+          stdout
+        )
+      }
+    }
+  }
+
+  stdin.on('data', (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk])
+    parseMessages()
+  })
+  stdin.on('end', () => {
+    bridgeLog('stdin end - exiting', deps.pid?.() || process.pid)
+    exit(0)
+  })
+  stdin.on('close', () => {
+    bridgeLog('stdin close - exiting', deps.pid?.() || process.pid)
+    exit(0)
+  })
+  stdin.on('error', (error) => {
+    bridgeLog(`stdin error: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  stdout.on('error', (error) => {
+    bridgeLog(`stdout error: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  process.on('exit', (code) => {
+    bridgeLog(`process exit code=${code ?? 'unknown'}`, deps.pid?.() || process.pid)
+  })
+  stdin.resume()
+}
+
+export class McpBridgeRuntime {
+  private geminiMcpBroker: NetServer | null = null
+  private geminiMcpBrokerStartPromise: Promise<void> | null = null
+  private geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
+  private geminiMcpBridgeInstalledForCurrentToken = false
+  private kimiMcpBridgeInstalledForCurrentToken = false
+  private kimiMcpBridgeRepairPromise: Promise<void> | null = null
+
+  constructor(private readonly deps: McpBridgeRuntimeDeps) {}
+
+  private processExecPath(): string {
+    return this.deps.getProcessExecPath?.() || process.execPath
+  }
+
+  agentbenchMcpBridgeArgs(socketPath: string = this.deps.getGeminiMcpSocketPath()): string[] {
+    return [
+      ...(this.deps.isDev() ? [this.deps.getAppPath()] : []),
+      GEMINI_MCP_BRIDGE_ARG,
+      GEMINI_MCP_SOCKET_ARG,
+      socketPath,
+      GEMINI_MCP_TOKEN_ARG,
+      this.deps.getGeminiMcpBrokerToken()
+    ]
+  }
+
+  bridgeArgsMatchCurrentLaunch(args: string[], socketPath: string): boolean {
+    const expected = this.agentbenchMcpBridgeArgs(socketPath)
+    return expected.length === args.length && expected.every((arg, index) => args[index] === arg)
+  }
+
+  isValidGeminiMcpBrokerToken(value: unknown): boolean {
+    if (typeof value !== 'string') return false
+    const expected = Buffer.from(this.deps.getGeminiMcpBrokerToken(), 'utf8')
+    const actual = Buffer.from(value, 'utf8')
+    return expected.length === actual.length && timingSafeEqual(expected, actual)
+  }
+
+  async handleGeminiMcpBrokerRequest(request: unknown): Promise<unknown> {
+    const brokerRequestRecord = isRecord(request) ? request : {}
+    if (!this.isValidGeminiMcpBrokerToken(brokerRequestRecord.token)) {
+      return { ok: false, error: 'AGBench MCP broker authentication failed.' }
+    }
+    const toolName = brokerRequestRecord.tool || brokerRequestRecord.name
+    if (!isAGBenchMcpToolName(toolName)) {
+      return { ok: false, error: `Unknown AGBench MCP tool: ${String(toolName || 'unknown')}` }
+    }
+    const parentProvider = normalizeBrokerParentProvider(brokerRequestRecord.parentProvider)
+    const result = await this.deps.executeGeminiMcpTool(
+      toolName,
+      brokerRequestRecord.arguments ?? brokerRequestRecord.args ?? brokerRequestRecord.input,
+      normalizeRunRoute(brokerRequestRecord),
+      parentProvider
+    )
+    return { ok: !result.isError, ...result }
+  }
+
+  async startGeminiMcpBroker(): Promise<void> {
+    if (this.geminiMcpBroker) return
+    if (this.geminiMcpBrokerStartPromise) return this.geminiMcpBrokerStartPromise
+
+    this.geminiMcpBrokerStartPromise = (async () => {
+      const socketPath = this.deps.getGeminiMcpSocketPath()
+      await fs.mkdir(dirname(socketPath), { recursive: true }).catch(() => {})
+      await fs.unlink(socketPath).catch(() => {})
+
+      const server = createServer((socket: Socket) => {
+        let buffer = ''
+        socket.setEncoding('utf8')
+        socket.on('data', (chunk: string) => {
+          buffer += chunk
+          const lines = buffer.split(/\r?\n/)
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed) continue
+            let parsed: unknown
+            try {
+              parsed = JSON.parse(trimmed)
+            } catch (error) {
+              socket.write(
+                `${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })}\n`
+              )
+              continue
+            }
+            const parsedRecord = isRecord(parsed) ? parsed : {}
+            this.handleGeminiMcpBrokerRequest(parsed)
+              .then((result) =>
+                socket.write(`${JSON.stringify({ id: parsedRecord.id, ...coerceRecord(result) })}\n`)
+              )
+              .catch((error) =>
+                socket.write(
+                  `${JSON.stringify({ id: parsedRecord.id, ok: false, error: error instanceof Error ? error.message : String(error) })}\n`
+                )
+              )
+          }
+        })
+      })
+
+      this.geminiMcpBroker = server
+      try {
+        await new Promise<void>((resolveListen, rejectListen) => {
+          const handleError = (error: Error) => {
+            server.off('listening', handleListening)
+            rejectListen(error)
+          }
+          const handleListening = () => {
+            server.off('error', handleError)
+            resolveListen()
+          }
+          server.once('error', handleError)
+          server.once('listening', handleListening)
+          server.listen(socketPath)
+        })
+      } catch (error) {
+        if (this.geminiMcpBroker === server) {
+          this.geminiMcpBroker = null
+        }
+        try {
+          server.close()
+        } catch {
+          // Best effort: preserve the original broker startup error.
+        }
+        throw error
+      }
+    })().finally(() => {
+      this.geminiMcpBrokerStartPromise = null
+    })
+
+    return this.geminiMcpBrokerStartPromise
+  }
+
+  closeGeminiMcpBroker(): void {
+    if (!this.geminiMcpBroker) return
+    this.geminiMcpBroker.close()
+    this.geminiMcpBroker = null
+  }
+
+  async selfTestGeminiMcpBridgeProcess(
+    socketPath: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    return new Promise((resolveSelfTest) => {
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+      let initialized = false
+      let proc: ChildProcess | undefined
+      const appendLimitedOutput = this.deps.appendLimitedOutput || defaultAppendLimitedOutput
+
+      const finish = (result: { ok: boolean; error?: string }) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        try {
+          proc?.stdin?.end()
+        } catch {
+          // Best effort: the bridge process may have already closed stdin.
+        }
+        if (proc && !proc.killed) {
+          proc.kill()
+        }
+        resolveSelfTest(result)
+      }
+
+      const timeout = setTimeout(() => {
+        finish({ ok: false, error: 'Timed out waiting for AGBench Gemini MCP bridge self-test.' })
+      }, 5_000)
+
+      try {
+        proc = spawn(this.processExecPath(), this.agentbenchMcpBridgeArgs(socketPath), {
+          shell: false,
+          env: this.deps.createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, this.processExecPath())
+        })
+      } catch (error) {
+        clearTimeout(timeout)
+        resolveSelfTest({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        return
+      }
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        stderr = appendLimitedOutput(stderr, data).value
+      })
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString('utf8')
+        while (true) {
+          const lineEnd = stdout.indexOf('\n')
+          if (lineEnd < 0) break
+          const line = stdout.slice(0, lineEnd).trim()
+          stdout = stdout.slice(lineEnd + 1)
+          if (!line) continue
+          let message: unknown
+          try {
+            message = JSON.parse(line)
+          } catch (error) {
+            finish({ ok: false, error: error instanceof Error ? error.message : String(error) })
+            return
+          }
+          const messageRecord = isRecord(message) ? message : {}
+          if (messageRecord.id === 1) {
+            if (messageRecord.error) {
+              finish({
+                ok: false,
+                error:
+                  (isRecord(messageRecord.error) && String(messageRecord.error.message || '')) ||
+                  'Initialize failed.'
+              })
+              return
+            }
+            initialized = true
+            proc?.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' })}\n`)
+            continue
+          }
+          if (messageRecord.id === 2) {
+            if (messageRecord.error) {
+              finish({
+                ok: false,
+                error:
+                  (isRecord(messageRecord.error) && String(messageRecord.error.message || '')) ||
+                  'Ping failed.'
+              })
+              return
+            }
+            proc?.stdin?.write(
+              `${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list' })}\n`
+            )
+            continue
+          }
+          if (messageRecord.id === 3) {
+            if (messageRecord.error) {
+              finish({
+                ok: false,
+                error:
+                  (isRecord(messageRecord.error) && String(messageRecord.error.message || '')) ||
+                  'Tool listing failed.'
+              })
+              return
+            }
+            const result = isRecord(messageRecord.result) ? messageRecord.result : {}
+            const tools = Array.isArray(result.tools) ? result.tools : []
+            const names = new Set(
+              tools
+                .map((tool) => (isRecord(tool) ? String(tool.name || '') : ''))
+                .filter(Boolean)
+            )
+            const missing = AGENTBENCH_MCP_TOOLS.filter((name) => !names.has(name))
+            if (missing.length > 0) {
+              finish({
+                ok: false,
+                error: `AGBench Gemini MCP bridge is connected but missing tools: ${missing.join(', ')}.`
+              })
+              return
+            }
+            finish({ ok: true })
+            return
+          }
+        }
+      })
+
+      proc.on('error', (error) => finish({ ok: false, error: error.message }))
+      proc.on('close', (code) => {
+        if (!settled) {
+          finish({
+            ok: false,
+            error:
+              stderr.trim() ||
+              `AGBench Gemini MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
+          })
+        }
+      })
+
+      proc.stdin?.write(
+        `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'AGBench-self-test', version: this.deps.getAppVersion() || '1.0.0' }
+          }
+        })}\n`
+      )
+    })
+  }
+
+  async getGeminiMcpBridgeStatus(
+    options: {
+      autoRepairIfEnabled?: boolean
+      cwd?: string
+      allowSessionTrustBypass?: boolean
+    } = {}
+  ): Promise<GeminiMcpBridgeStatus> {
+    const settings = this.deps.getSettings()
+    const socketPath = this.deps.getGeminiMcpSocketPath()
+    if (settings.geminiMcpBridgeEnabled) {
+      await this.startGeminiMcpBroker().catch(() => {})
+      await this.repairKnownStaleGeminiMcpBridgeConfigs(options.cwd)
+    }
+    let section = await this.deps.readGeminiCapabilitySection('mcp', options.cwd)
+    if (
+      !section.items.length &&
+      ![section.stdout, section.stderr]
+        .filter(Boolean)
+        .join('\n')
+        .toLowerCase()
+        .includes(GEMINI_MCP_SERVER_NAME_LOWER)
+    ) {
+      const debugResult = await this.deps.runGeminiCapabilityCommand(
+        ['mcp', 'list', '--debug'],
+        options.cwd
+      )
+      if (
+        debugResult.exitCode === 0 &&
+        `${debugResult.stdout}\n${debugResult.stderr}`
+          .toLowerCase()
+          .includes(GEMINI_MCP_SERVER_NAME_LOWER)
+      ) {
+        section = {
+          kind: 'mcp',
+          command: ['gemini', ...debugResult.args],
+          format: 'raw',
+          items: this.deps.parseCapabilityRawItems(debugResult.stdout, 'mcp'),
+          stdout: debugResult.stdout,
+          stderr: debugResult.stderr,
+          status: debugResult.exitCode,
+          timedOut: debugResult.timedOut,
+          error: debugResult.error,
+          truncated: debugResult.truncated
+        }
+      }
+    }
+    const raw = [section.stdout, section.stderr].filter(Boolean).join('\n')
+    const staleRegistration = this.hasStaleGeminiMcpBridgeRegistration(raw, socketPath)
+    const bridgeItem = section.items.find((item) => {
+      const haystack = `${item.id} ${item.name} ${item.detail || ''} ${item.raw || ''}`.toLowerCase()
+      return haystack.includes(GEMINI_MCP_SERVER_NAME_LOWER)
+    })
+    const installed = Boolean(bridgeItem || raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME_LOWER))
+    const disabled = Boolean(
+      bridgeItem &&
+        /disabled|inactive|off/i.test(`${bridgeItem.status || ''} ${bridgeItem.raw || ''}`)
+    )
+    const disconnected =
+      /disconnected|connection\s+refused|failed\s+to\s+connect|not\s+connected|unavailable|error/i.test(
+        `${bridgeItem?.status || ''}\n${bridgeItem?.raw || ''}\n${raw}`
+      )
+    const bridgeSelfTest =
+      installed && disconnected && settings.geminiMcpBridgeEnabled
+        ? await this.selfTestGeminiMcpBridgeProcess(socketPath)
+        : null
+    const available = Boolean(
+      installed &&
+        !disabled &&
+        !staleRegistration &&
+        section.status === 0 &&
+        !section.error &&
+        !section.timedOut &&
+        (!disconnected || bridgeSelfTest?.ok)
+    )
+    const status: GeminiMcpBridgeStatus = {
+      checkedAt: new Date().toISOString(),
+      enabled: Boolean(settings.geminiMcpBridgeEnabled),
+      installed,
+      available,
+      serverName: GEMINI_MCP_SERVER_NAME,
+      socketPath,
+      command: ['gemini', 'mcp', 'list'],
+      raw,
+      ...(section.error || section.parsingError
+        ? { error: section.error || section.parsingError }
+        : {}),
+      message: available
+        ? bridgeSelfTest?.ok
+          ? 'AGBench Gemini MCP bridge is installed; direct bridge self-test passed.'
+          : 'AGBench Gemini MCP bridge is installed and enabled.'
+        : installed && staleRegistration
+          ? 'AGBench Gemini MCP bridge registration points at an old app bundle or socket and needs repair.'
+          : installed && disabled
+            ? 'AGBench Gemini MCP bridge is installed but disabled.'
+            : installed && disconnected
+              ? bridgeSelfTest?.error
+                ? `AGBench Gemini MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
+                : 'AGBench Gemini MCP bridge is installed but disconnected.'
+              : installed
+                ? 'AGBench Gemini MCP bridge is installed but did not report as available.'
+                : 'AGBench Gemini MCP bridge is not installed.'
+    }
+    if (options.autoRepairIfEnabled && settings.geminiMcpBridgeEnabled && !status.available) {
+      try {
+        return await this.repairGeminiMcpBridge(options.cwd)
+      } catch (error) {
+        const repairMessage = error instanceof Error ? error.message : String(error)
+        const repairedStatus: GeminiMcpBridgeStatus = {
+          ...status,
+          checkedAt: new Date().toISOString(),
+          enabled: true,
+          available: false,
+          error: repairMessage,
+          message: `AGBench Gemini MCP bridge auto-repair failed: ${repairMessage}`
+        }
+        this.deps.updateSettings({ geminiMcpBridgeLastStatus: repairedStatus })
+        return repairedStatus
+      }
+    }
+    this.deps.updateSettings({ geminiMcpBridgeLastStatus: status })
+    return status
+  }
+
+  buildGeminiMcpBridgeAddArgs(scope: GeminiMcpRegistrationScope, socketPath: string): string[] {
+    return [
+      'mcp',
+      'add',
+      GEMINI_MCP_SERVER_NAME,
+      this.processExecPath(),
+      ...this.agentbenchMcpBridgeArgs(socketPath),
+      '--scope',
+      scope,
+      '--trust',
+      ...AGENTBENCH_MCP_TOOLS.map((tool) => `--include-tools=${tool}`)
+    ]
+  }
+
+  redactGeminiMcpBridgeArgs(args: string[]): string[] {
+    return args.map((arg, index) =>
+      args[index - 1] === GEMINI_MCP_TOKEN_ARG ? '[redacted-token]' : arg
+    )
+  }
+
+  async addGeminiMcpBridgeRegistration(
+    geminiBinaryPath: string,
+    scope: GeminiMcpRegistrationScope,
+    socketPath: string,
+    cwd?: string
+  ): Promise<void> {
+    const addArgs = this.buildGeminiMcpBridgeAddArgs(scope, socketPath)
+    const addResult = await this.deps.captureProcessOutput(geminiBinaryPath, addArgs, cwd, 15_000)
+    if (addResult.code !== 0) {
+      const output = (
+        addResult.stderr ||
+        addResult.stdout ||
+        addResult.error ||
+        'gemini mcp add failed.'
+      ).trim()
+      const safeArgs = this.redactGeminiMcpBridgeArgs(addArgs)
+      throw new Error(
+        `Gemini MCP bridge ${scope} registration failed (exit ${addResult.code ?? 'unknown'}): gemini ${safeArgs.join(' ')}\n${output}`
+      )
+    }
+  }
+
+  geminiMcpBridgeServerNeedsRepair(server: unknown, socketPath: string): boolean {
+    if (!isRecord(server)) {
+      return false
+    }
+    const args = Array.isArray(server.args) ? server.args.map(String) : []
+    const includeTools = Array.isArray(server.includeTools) ? server.includeTools.map(String) : []
+    return (
+      server.command !== this.processExecPath() ||
+      server.trust !== true ||
+      !this.bridgeArgsMatchCurrentLaunch(args, socketPath) ||
+      !AGENTBENCH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
+    )
+  }
+
+  userGeminiMcpBridgeNeedsRepair(socketPath: string): boolean {
+    try {
+      const raw = fsSync.readFileSync(this.deps.getGeminiUserSettingsPath(), 'utf-8')
+      const settings = JSON.parse(raw)
+      return this.geminiMcpBridgeServerNeedsRepair(
+        settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME],
+        socketPath
+      )
+    } catch {
+      return false
+    }
+  }
+
+  async repairKnownStaleGeminiMcpBridgeConfigs(cwd?: string): Promise<void> {
+    if (!this.deps.getSettings().geminiMcpBridgeEnabled) {
+      return
+    }
+    const resolved = await this.deps.resolveCliProviderBinary('gemini')
+    if (!resolved.binaryPath) {
+      return
+    }
+    const socketPath = this.deps.getGeminiMcpSocketPath()
+    if (this.userGeminiMcpBridgeNeedsRepair(socketPath)) {
+      await this.addGeminiMcpBridgeRegistration(resolved.binaryPath, 'user', socketPath)
+      this.geminiMcpBridgeInstalledForCurrentToken = true
+    }
+    if (cwd) {
+      await this.repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
+    }
+  }
+
+  hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): boolean {
+    if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME_LOWER)) {
+      return false
+    }
+    if (/\/Applications\/AgentBench\.app\//i.test(raw)) {
+      return true
+    }
+    if (
+      /Application Support\/agentbench\//i.test(raw) &&
+      !socketPath.includes('/Application Support/agentbench/')
+    ) {
+      return true
+    }
+    if (this.deps.isDev() && raw.includes(GEMINI_MCP_BRIDGE_ARG) && !raw.includes(this.deps.getAppPath())) {
+      return true
+    }
+    return this.deps.isPackaged() && !raw.includes(this.processExecPath())
+  }
+
+  projectGeminiMcpBridgeNeedsRepair(cwd: string, socketPath: string): boolean {
+    const settingsPath = join(resolve(cwd), '.gemini', 'settings.json')
+    try {
+      const raw = fsSync.readFileSync(settingsPath, 'utf-8')
+      const settings = JSON.parse(raw)
+      return this.geminiMcpBridgeServerNeedsRepair(
+        settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME],
+        socketPath
+      )
+    } catch {
+      return false
+    }
+  }
+
+  async repairProjectGeminiMcpBridgeIfNeeded(
+    geminiBinaryPath: string,
+    cwd: string,
+    socketPath: string
+  ): Promise<void> {
+    if (!this.projectGeminiMcpBridgeNeedsRepair(cwd, socketPath)) {
+      return
+    }
+    await this.addGeminiMcpBridgeRegistration(geminiBinaryPath, 'project', socketPath, cwd)
+  }
+
+  async installGeminiMcpBridge(cwd?: string): Promise<GeminiMcpBridgeStatus> {
+    await this.startGeminiMcpBroker()
+    const resolved = await this.deps.resolveCliProviderBinary('gemini')
+    if (!resolved.binaryPath) {
+      throw new Error(resolved.error || 'Gemini CLI is not configured.')
+    }
+    const socketPath = this.deps.getGeminiMcpSocketPath()
+    await this.addGeminiMcpBridgeRegistration(resolved.binaryPath, 'user', socketPath)
+    if (cwd) {
+      await this.repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
+    }
+    await this.deps.captureProcessOutput(
+      resolved.binaryPath,
+      ['mcp', 'enable', GEMINI_MCP_SERVER_NAME],
+      undefined,
+      8_000
+    )
+    this.geminiMcpBridgeInstalledForCurrentToken = true
+    this.deps.updateSettings({ geminiMcpBridgeEnabled: true })
+    return this.getGeminiMcpBridgeStatus(cwd ? { cwd } : undefined)
+  }
+
+  async repairGeminiMcpBridge(cwd?: string): Promise<GeminiMcpBridgeStatus> {
+    if (!this.geminiMcpBridgeRepairPromise) {
+      this.geminiMcpBridgeRepairPromise = this.installGeminiMcpBridge(cwd).finally(() => {
+        this.geminiMcpBridgeRepairPromise = null
+      })
+    }
+    const status = await this.geminiMcpBridgeRepairPromise
+    if (!cwd) {
+      return status
+    }
+    const resolved = await this.deps.resolveCliProviderBinary('gemini')
+    if (!resolved.binaryPath) {
+      return status
+    }
+    const socketPath = this.deps.getGeminiMcpSocketPath()
+    await this.repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
+    return this.getGeminiMcpBridgeStatus({ cwd })
+  }
+
+  async setGeminiMcpBridgeEnabled(enabled: boolean): Promise<GeminiMcpBridgeStatus> {
+    this.deps.updateSettings({ geminiMcpBridgeEnabled: Boolean(enabled) })
+    if (enabled) {
+      return this.repairGeminiMcpBridge()
+    }
+    this.geminiMcpBridgeInstalledForCurrentToken = false
+    const statusBefore = await this.getGeminiMcpBridgeStatus()
+    if (statusBefore.installed) {
+      const resolved = await this.deps.resolveCliProviderBinary('gemini')
+      if (resolved.binaryPath) {
+        await this.deps.captureProcessOutput(
+          resolved.binaryPath,
+          ['mcp', enabled ? 'enable' : 'disable', GEMINI_MCP_SERVER_NAME],
+          undefined,
+          8_000
+        )
+      }
+    }
+    const status = await this.getGeminiMcpBridgeStatus()
+    this.deps.updateSettings({
+      geminiMcpBridgeEnabled: Boolean(enabled),
+      geminiMcpBridgeLastStatus: status
+    })
+    return { ...status, enabled: Boolean(enabled) }
+  }
+
+  async prepareGeminiMcpBridgeForRun(
+    sender: WebContents,
+    cwd: string,
+    route?: McpBridgeAgentRunRoute | null,
+    scope: ChatScope = 'workspace',
+    sessionTrust = false,
+    options: GeminiMcpBridgePrepareOptions = {}
+  ): Promise<McpBridgeAgentRunRoute> {
+    const routed = routeWithRunId('gemini', route)
+    const settings = this.deps.getSettings()
+    const resolvedCwd = resolve(cwd)
+    const requireWriteTools = Boolean(options.requireWriteTools && scope !== 'global')
+    if (settings.geminiMcpBridgeEnabled || requireWriteTools) {
+      if (requireWriteTools && !settings.geminiMcpBridgeEnabled) {
+        this.deps.sendAgentCompatLine(
+          sender,
+          'gemini',
+          {
+            type: 'provider_warning',
+            provider: 'gemini',
+            severity: 'warning',
+            title: 'Gemini MCP bridge auto-repair',
+            message:
+              'Write-capable Gemini runs require the AGBench MCP bridge. AGBench is enabling and repairing it before launch.'
+          },
+          routed
+        )
+        this.deps.updateSettings({ geminiMcpBridgeEnabled: true })
+      }
+      await this.startGeminiMcpBroker()
+      if (!this.geminiMcpBridgeInstalledForCurrentToken) {
+        await this.repairGeminiMcpBridge(resolvedCwd)
+      }
+      const status = await this.getGeminiMcpBridgeStatus({
+        autoRepairIfEnabled: true,
+        cwd: resolvedCwd,
+        allowSessionTrustBypass: sessionTrust
+      })
+      if (!status.available) {
+        throw new Error(
+          `AGBench Gemini MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+        )
+      }
+      if (requireWriteTools) {
+        const toolSelfTest = await this.selfTestGeminiMcpBridgeProcess(
+          this.deps.getGeminiMcpSocketPath()
+        )
+        if (!toolSelfTest.ok) {
+          throw new Error(
+            `AGBench Gemini MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+          )
+        }
+      }
+    }
+
+    return this.deps.installGeminiToolContextForRun(
+      sender,
+      resolvedCwd,
+      routed,
+      scope,
+      sessionTrust,
+      options
+    )
+  }
+
+  async addKimiMcpBridgeRegistration(kimiBinaryPath: string, socketPath: string): Promise<void> {
+    const addArgs = buildKimiMcpBridgeAddArgs({
+      bridgeBinaryPath: this.processExecPath(),
+      bridgeArgs: this.agentbenchMcpBridgeArgs(socketPath)
+    })
+    const addResult = await this.deps.captureProcessOutput(kimiBinaryPath, addArgs, undefined, 15_000)
+    if (addResult.code !== 0) {
+      const output = (
+        addResult.stderr ||
+        addResult.stdout ||
+        addResult.error ||
+        'kimi mcp add failed.'
+      ).trim()
+      const safeArgs = redactKimiMcpBridgeAddArgs(addArgs)
+      throw new Error(
+        `Kimi MCP bridge registration failed (exit ${addResult.code ?? 'unknown'}): kimi ${safeArgs.join(' ')}\n${output}`
+      )
+    }
+  }
+
+  async installKimiMcpBridge(): Promise<void> {
+    await this.startGeminiMcpBroker()
+    const resolved = await this.deps.resolveCliProviderBinary('kimi')
+    if (!resolved.binaryPath) {
+      return
+    }
+    const socketPath = this.deps.getGeminiMcpSocketPath()
+    await this.addKimiMcpBridgeRegistration(resolved.binaryPath, socketPath)
+    this.kimiMcpBridgeInstalledForCurrentToken = true
+  }
+
+  async repairKimiMcpBridge(): Promise<void> {
+    if (!this.kimiMcpBridgeRepairPromise) {
+      this.kimiMcpBridgeRepairPromise = this.installKimiMcpBridge().finally(() => {
+        this.kimiMcpBridgeRepairPromise = null
+      })
+    }
+    await this.kimiMcpBridgeRepairPromise
+  }
+
+  async prepareKimiMcpBridgeForRun(sender: WebContents): Promise<void> {
+    const settings = this.deps.getSettings()
+    if (!settings.geminiMcpBridgeEnabled) {
+      return
+    }
+    try {
+      await this.startGeminiMcpBroker()
+      if (!this.kimiMcpBridgeInstalledForCurrentToken) {
+        await this.repairKimiMcpBridge()
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.deps.sendAgentCompatLine(sender, 'kimi', {
+        type: 'provider_warning',
+        provider: 'kimi',
+        severity: 'warning',
+        title: 'Kimi MCP bridge registration failed',
+        message: `AGBench could not register the AGBench MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
+      })
+    }
+  }
+
+  getGeminiMcpBridgeInstalledForCurrentToken(): boolean {
+    return this.geminiMcpBridgeInstalledForCurrentToken
+  }
+
+  getKimiMcpBridgeInstalledForCurrentToken(): boolean {
+    return this.kimiMcpBridgeInstalledForCurrentToken
+  }
+}
+
+function coerceRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+export function createMcpBridgeRuntime(deps: McpBridgeRuntimeDeps): McpBridgeRuntime {
+  return new McpBridgeRuntime(deps)
+}
