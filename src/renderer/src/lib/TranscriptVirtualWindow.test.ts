@@ -517,6 +517,54 @@ describe('TranscriptVirtualWindow', () => {
       expect(findScrollAnchor(100, [])).toEqual({ index: 0, offsetWithin: 0 })
       expect(findScrollAnchor(Number.NaN, heights)).toEqual({ index: 0, offsetWithin: 0 })
     })
+
+    it('1.0.7 — absolute restore is idempotent (cannot accumulate)', () => {
+      // The renderer's Phase-1 anchor correction targets
+      // scrollTop = Σ(heights before anchor.index) + offsetWithin. Re-applying
+      // that target over UNCHANGED heights must move scrollTop by 0 — the
+      // anti-accumulation property the old relative `+= delta` lacked.
+      const a = findScrollAnchor(250, heights)
+      const target1 = sumHeights(heights, 0, a.index) + a.offsetWithin
+      // Re-derive the anchor at the restored position; the target must be stable.
+      const a2 = findScrollAnchor(target1, heights)
+      const target2 = sumHeights(heights, 0, a2.index) + a2.offsetWithin
+      expect(target2).toBeCloseTo(target1, 5)
+    })
+
+    it('1.0.7 — absolute restore holds the anchor row fixed when rows ABOVE grow (scroll-up case)', () => {
+      // Anchor on a mid-list row, then GROW every row above it (estimate→
+      // measured). Restoring to Σ(grown heights before anchor) + offsetWithin
+      // keeps the anchor row's visual top (scrollTop − Σbefore) invariant — so
+      // the viewport does not bump down. This is the Q2 fix encoded.
+      const before = [100, 100, 100, 100, 100, 100] // 6 rows, 600px total
+      const scrollTop = 250 // sits 50px into row index 2
+      const a = findScrollAnchor(scrollTop, before)
+      expect(a.index).toBe(2)
+      const visualTopBefore = scrollTop - sumHeights(before, 0, a.index) // 50
+      // Rows above the anchor (indices 0,1) each measure 300 instead of 100.
+      const after = [300, 300, 100, 100, 100, 100]
+      const restored = sumHeights(after, 0, a.index) + a.offsetWithin // 600 + 50
+      const visualTopAfter = restored - sumHeights(after, 0, a.index)
+      expect(visualTopAfter).toBeCloseTo(visualTopBefore, 5)
+      expect(restored).toBe(650) // viewport moves to keep the row fixed, no drift
+    })
+
+    it('1.0.7 — absolute restore holds the anchor row fixed when rows ABOVE shrink (scroll-down case)', () => {
+      // Symmetric: rows above measure SHORTER than estimate. The restore moves
+      // scrollTop UP by exactly the right amount — the Q3 fix.
+      const before = [300, 300, 100, 100]
+      const scrollTop = 650 // 50px into row index 2
+      const a = findScrollAnchor(scrollTop, before)
+      expect(a.index).toBe(2)
+      const after = [100, 100, 100, 100] // rows above shrink 300→100
+      const restored = sumHeights(after, 0, a.index) + a.offsetWithin // 200 + 50
+      expect(restored).toBe(250)
+      // Anchor row's visual top is preserved (50px) in both frames.
+      expect(restored - sumHeights(after, 0, a.index)).toBeCloseTo(
+        scrollTop - sumHeights(before, 0, a.index),
+        5
+      )
+    })
   })
 
   describe('TRANSCRIPT_VIRTUALIZATION_ENABLED', () => {

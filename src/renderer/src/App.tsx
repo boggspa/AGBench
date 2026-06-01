@@ -6387,12 +6387,19 @@ function useTranscriptVirtualization(params: {
   const bucketRef = useRef(0)
   const heightsRef = useRef<number[]>(EMPTY_TRANSCRIPT_HEIGHTS)
   const rowsRef = useRef<VirtualRow[]>(rows)
-  // The row the viewport is anchored to + the total height ABOVE it as of
-  // the last layout pass. The pre-paint correction nudges scrollTop by the
-  // CHANGE in that height (relative, never absolute) so content above the
-  // viewport mounting/measuring keeps the visible rows fixed — composing
-  // with the user's scroll instead of fighting it.
-  const anchorRef = useRef<{ rowId: string; aboveHeight: number } | null>(null)
+  // The row the viewport is anchored to + the total height ABOVE it as of the
+  // last layout pass, PLUS the sub-row offset of the viewport top within that
+  // row. The pre-paint correction restores scrollTop ABSOLUTELY to
+  // Σ(heights before anchor) + offsetWithin (never a relative += delta) so it
+  // is self-correcting and cannot accumulate as rows above hydrate. The old
+  // relative form sampled "height above" at scroll-time (estimates) vs
+  // post-measure (measured), so the delta was structurally non-zero while rows
+  // above were still hydrating — the scroll-up-bumps-down / scroll-down-jumps-up
+  // fight. An absolute target lands the viewport exactly where the anchor row
+  // stays fixed, whether rows above resolved taller or shorter than estimate.
+  const anchorRef = useRef<{ rowId: string; aboveHeight: number; offsetWithin: number } | null>(
+    null
+  )
   const blockElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const spacerBottomRef = useRef<HTMLDivElement>(null)
   const observerRef = useRef<ResizeObserver | null>(null)
@@ -6415,6 +6422,12 @@ function useTranscriptVirtualization(params: {
   // from a mid-convergence heights snapshot → non-zero delta → another write,
   // which is the async (~50ms) leg of the ensemble flicker loop.
   const anchorWriteRef = useRef(false)
+  // 1.0.7 — true when the PREVIOUS pre-paint pass fully converged (no new key,
+  // no rewrite). The Phase-1 anchor correction only runs when this is true, so
+  // it never restores scrollTop while heights are still settling (which would
+  // jitter the viewport every frame and evict the just-mounted big rows). It
+  // waits for measurement to finish, then restores the anchor absolutely, once.
+  const measureConvergedRef = useRef(true)
   // Flips true the first time the scroller reports a real scroll position
   // (the chat-switch snap-to-bottom counts). Before that, `scrollTopRef`
   // is still 0, so we force the bottom window to avoid flashing the top;
@@ -6543,7 +6556,11 @@ function useTranscriptVirtualization(params: {
         const a = findScrollAnchor(scrollTopRef.current, heightsRef.current)
         const anchorRow = rowsRef.current[a.index]
         anchorRef.current = anchorRow
-          ? { rowId: anchorRow.id, aboveHeight: sumHeights(heightsRef.current, 0, a.index) }
+          ? {
+              rowId: anchorRow.id,
+              aboveHeight: sumHeights(heightsRef.current, 0, a.index),
+              offsetWithin: a.offsetWithin
+            }
           : null
         if (bucketChanged) bumpMeasure()
         bumpScroll()
@@ -6604,30 +6621,38 @@ function useTranscriptVirtualization(params: {
     const scroller = scrollRef.current
     if (!scroller) return
 
-    // Phase 1 — keep the anchored row visually fixed when rows ABOVE it
-    // change height (estimate→measured, late-mount growth). RELATIVE
-    // (`scrollTop += delta`) so it composes with the user's scroll rather
-    // than fighting it: on a scroll-driven render the rAF just re-baselined
-    // the anchor, so delta is 0 and scrollTop is left alone; only a real
-    // height change above the anchor produces a non-zero nudge. Gated on a
-    // REAL "not at the bottom" DOM measure rather than the `autoFollow`
-    // flag — so it runs whenever the user has actually scrolled up
-    // (independent of the flag's state) and is skipped at the bottom,
-    // where the App machinery owns scrollTop.
+    // Phase 1 — keep the anchored row visually fixed when rows ABOVE it change
+    // height (estimate→measured, late-mount growth). ABSOLUTE restore: target
+    // scrollTop = Σ(heights before anchor) + offsetWithin, recomputed from the
+    // CURRENT heights every pass. Unlike the old relative `+= delta` (whose two
+    // height samples came from different estimate-vs-measured snapshots and so
+    // never zeroed while rows above hydrated — the scroll-up-bumps-down and
+    // scroll-down-jumps-up fight), an absolute target is self-correcting and
+    // cannot accumulate: it lands the viewport exactly where the anchor row
+    // stays fixed regardless of whether rows above resolved taller or shorter.
+    //
+    // GATED on prior-pass convergence: while measurement is still settling we
+    // leave scrollTop alone (a restore mid-settle would jitter the viewport and
+    // evict the just-mounted big rows); once Phase 2 reports a converged pass we
+    // restore ONCE from settled heights. Also gated on a real "not at the
+    // bottom" DOM measure — with a 24px dead-band so scrollHeight growth near
+    // the bottom can't flap the correction on/off — rather than the autoFollow
+    // flag, so it runs whenever the user has scrolled up and is skipped at the
+    // bottom where the App machinery owns scrollTop.
     const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-    const atBottom = distanceFromBottom <= 8
-    if (!atBottom && anchorRef.current) {
+    const atBottom = distanceFromBottom <= 24
+    if (measureConvergedRef.current && !atBottom && anchorRef.current) {
       const anchor = anchorRef.current
       const idx = rowsRef.current.findIndex((r) => r.id === anchor.rowId)
       if (idx >= 0) {
         const aboveHeight = sumHeights(heightsRef.current, 0, idx)
-        const delta = aboveHeight - anchor.aboveHeight
-        if (Math.abs(delta) > 0.5) {
+        const target = Math.max(0, aboveHeight + anchor.offsetWithin)
+        if (Math.abs(target - scroller.scrollTop) > 0.5) {
           // 1.0.7 — flag the programmatic write so the passive scroll listener
           // recognises the resulting scroll event as our own and skips the
-          // re-baseline/bump (Fix 4), keeping the correction one-shot.
+          // re-baseline/bump (Fix 4), keeping the restore one-shot.
           anchorWriteRef.current = true
-          scroller.scrollTop = Math.max(0, scroller.scrollTop + delta)
+          scroller.scrollTop = target
         }
         anchor.aboveHeight = aboveHeight
       }
@@ -6677,6 +6702,10 @@ function useTranscriptVirtualization(params: {
     })
     measureRewritePassesRef.current = decision.nextRewritePasses
     measureWarnedRef.current = decision.nextAlreadyWarned
+    // 1.0.7 — record whether THIS pass fully converged (nothing changed). The
+    // next pre-paint pass's Phase-1 anchor restore reads this so it only fires
+    // once heights have settled — never mid-measure.
+    measureConvergedRef.current = !sawNewKey && !sawRewrite
     if (decision.shouldWarn) {
       console.warn(
         '[transcript] measurement did not converge after ' +
