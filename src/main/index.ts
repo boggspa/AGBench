@@ -184,6 +184,7 @@ import {
   appendKimiThinkingArgs,
   CLAUDE_THINKING_BUDGET,
   CODEX_MODEL_RETIREMENTS,
+  CODEX_RETIRED_MODEL_IDS,
   CODEX_STATIC_MODELS,
   claudePermissionModeForApproval,
   getStaticProviderModels,
@@ -16000,13 +16001,25 @@ if (isGeminiMcpBridgeProcess) {
         return getStaticProviderModels(provider)
       }
 
+      // Strip HARD-retired ids from any list before it reaches the renderer.
+      // The live CLI `model/list` can still return retired models until it's
+      // updated, so this guards both the live path and the static fallbacks.
+      const codexStaticFallback = CODEX_STATIC_MODELS.filter(
+        (model) => !CODEX_RETIRED_MODEL_IDS.has(model.id)
+      )
       try {
         const client = getCodexClient()
         await client.ensureStarted(app.getVersion())
         const response: any = await client.request('model/list', {}, 15_000)
         const models = Array.isArray(response?.data) ? response.data : []
         const normalized = models
-          .filter((model: any) => model && typeof model.id === 'string' && !model.hidden)
+          .filter(
+            (model: any) =>
+              model &&
+              typeof model.id === 'string' &&
+              !model.hidden &&
+              !CODEX_RETIRED_MODEL_IDS.has(model.id)
+          )
           .map((model: any) => ({
             id: model.id,
             label: model.displayName || model.model || model.id,
@@ -16022,9 +16035,9 @@ if (isGeminiMcpBridgeProcess) {
               ? { retiresAt: CODEX_MODEL_RETIREMENTS[model.id] }
               : {})
           }))
-        return normalized.length > 0 ? normalized : CODEX_STATIC_MODELS
+        return normalized.length > 0 ? normalized : codexStaticFallback
       } catch {
-        return CODEX_STATIC_MODELS
+        return codexStaticFallback
       }
     })
 

@@ -1767,41 +1767,17 @@ const CODEX_DEFAULT_MODELS = [
     // No Fast tier — per product spec only 5.5 + 5.4 retain Fast.
   },
   {
-    id: 'gpt-5.3-codex',
-    label: 'GPT-5.3 Codex',
-    retiresAt: '2026-06-02',
-    supportedReasoningEfforts: [
-      { reasoningEffort: 'medium' },
-      { reasoningEffort: 'high' },
-      { reasoningEffort: 'xhigh' }
-    ],
-    defaultReasoningEffort: 'medium'
-    // Note: 5.3 no longer carries `additionalSpeedTiers: ['fast']` —
-    // per product spec only 5.5 + 5.4 retain the paid Fast tier.
-    // Retirement: rendered as a separate clock+date pill in the picker (see
-    // CombinedModelPicker) — keeps the label clean + machine-readable.
-  },
-  {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
     defaultReasoningEffort: 'low'
     // Fast tier removed alongside 5.3 — see note above.
-  },
-  {
-    id: 'gpt-5.2',
-    label: 'GPT-5.2',
-    retiresAt: '2026-06-02',
-    supportedReasoningEfforts: [
-      { reasoningEffort: 'low' },
-      { reasoningEffort: 'medium' },
-      { reasoningEffort: 'high' },
-      { reasoningEffort: 'xhigh' }
-    ],
-    defaultReasoningEffort: 'medium'
-    // Older model — no Fast tier. Retirement rendered as a clock+date pill
-    // in the picker (see CombinedModelPicker).
   }
+  // gpt-5.2 and gpt-5.3-codex were HARD-retired (the API rejects requests for
+  // them) and removed from the picker. The authoritative removal lives in the
+  // main process (CODEX_RETIRED_MODEL_IDS, applied in the get-agent-models
+  // handler); this renderer fallback list is only shown on mount before IPC
+  // resolves / on IPC failure, so it's kept in sync by deletion here.
 ] satisfies CodexModelOption[]
 const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id
 const DEFAULT_AGENTIC_SERVICES: AgenticServicesSettings = {

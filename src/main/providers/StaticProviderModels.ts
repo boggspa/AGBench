@@ -1,9 +1,10 @@
 import type { ProviderId } from '../store/types'
 
-// Codex models the provider has announced for retirement, keyed by canonical
-// model id. Surfaced to the renderer as `retiresAt` (ISO yyyy-mm-dd) so the
-// composer model picker can render a retirement pill. THIS is the single
-// source of truth and it is applied in TWO places:
+// Codex models the provider has announced for SOFT retirement, keyed by
+// canonical model id. Surfaced to the renderer as `retiresAt` (ISO yyyy-mm-dd)
+// so the composer model picker can render a retirement pill — the model is
+// still selectable/runnable until the date passes. THIS is the single source
+// of truth and it is applied in TWO places:
 //   1. the static fallback list below, and
 //   2. the live `model/list` normalize step in the `get-agent-models` handler.
 // Both are required: on the normal path the renderer's `codexModels` is built
@@ -11,10 +12,25 @@ import type { ProviderId } from '../store/types'
 // only an explicit allow-list of fields — so a literal on the fallback list
 // alone never reaches the renderer when the CLI is reachable. That gap is
 // exactly what hid the retirement pill on the live dev build.
-export const CODEX_MODEL_RETIREMENTS: Record<string, string> = {
-  'gpt-5.3-codex': '2026-06-02',
-  'gpt-5.2': '2026-06-02'
-}
+//
+// NOTE: this is distinct from CODEX_RETIRED_MODEL_IDS below (HARD retirement).
+// A soft-retired model still works; a hard-retired one is filtered out of the
+// picker entirely because the API now rejects requests for it.
+export const CODEX_MODEL_RETIREMENTS: Record<string, string> = {}
+
+// Codex models that are HARD-retired: the upstream API no longer accepts
+// requests for these ids, so they must never appear in the model/reasoning
+// picker (selecting one would only produce a failed run). This is applied in
+// the live `get-agent-models` handler (the normal path — the CLI's
+// `model/list` can still return retired ids until it's updated) AND to the
+// CODEX_STATIC_MODELS fallback below, so a retired id can't slip through on
+// either path. Unlike CODEX_MODEL_RETIREMENTS (soft, date-driven pill) these
+// are removed outright. Historical lookups (display name, context window,
+// billing rates) intentionally keep their entries so past runs still render.
+export const CODEX_RETIRED_MODEL_IDS: ReadonlySet<string> = new Set([
+  'gpt-5.2',
+  'gpt-5.3-codex'
+])
 
 // Fallback model list — used ONLY when the live Codex CLI `model/list` query
 // fails or returns nothing (see `get-agent-models`). On the normal path the
@@ -26,16 +42,12 @@ export const CODEX_STATIC_MODELS = [
   { id: 'gpt-5.4', label: 'GPT-5.4' },
   { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
   {
-    id: 'gpt-5.3-codex',
-    label: 'GPT-5.3 Codex',
-    retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.3-codex']
-  },
-  {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     description: 'Research preview where available'
-  },
-  { id: 'gpt-5.2', label: 'GPT-5.2', retiresAt: CODEX_MODEL_RETIREMENTS['gpt-5.2'] }
+  }
+  // gpt-5.2 and gpt-5.3-codex are HARD-retired (see CODEX_RETIRED_MODEL_IDS)
+  // and intentionally omitted here.
 ]
 const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'off' },
