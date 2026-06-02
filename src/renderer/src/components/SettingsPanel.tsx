@@ -66,6 +66,7 @@ import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
 import { GrokTelemetryCard } from './GrokTelemetryCard'
 import { ProviderLogoTile } from './ProviderLogoTile'
+import { ProviderInstallCommands } from './ProviderInstallCommands'
 import type { ModelUsageAggregate } from '../App'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../../../main/AgentbenchMcpTools'
 
@@ -2900,9 +2901,9 @@ export function SettingsPanel({
                   Kimi classifier retry pass
                 </label>
                 <p className="settings-hint">
-                  When enabled, Kimi content-filter retries can escalate from keyword redaction to
-                  a local sentence classifier. Current state: {kimiClassifierStatus}. If disabled
-                  or unavailable, retries stay keyword-only and the failure diagnostic says so.
+                  When enabled, Kimi content-filter retries can escalate from keyword redaction to a
+                  local sentence classifier. Current state: {kimiClassifierStatus}. If disabled or
+                  unavailable, retries stay keyword-only and the failure diagnostic says so.
                 </p>
                 <label className="settings-label" style={{ marginTop: 'var(--space-sm)' }}>
                   Custom triggers (one per line)
@@ -3050,6 +3051,14 @@ export function SettingsPanel({
                     </p>
                   </div>
                 </div>
+                <details className="settings-provider-install">
+                  <summary>Need to install a CLI? Official commands</summary>
+                  <p className="settings-hint">
+                    Run one in your terminal, then sign in below. (npm commands need Node 20+; the
+                    curl installers are self-contained.)
+                  </p>
+                  <ProviderInstallCommands />
+                </details>
                 <div className="settings-provider-auth-grid">
                   <SettingsProviderAuthCard
                     provider="codex"

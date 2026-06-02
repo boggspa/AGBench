@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { FirstLaunchSheet } from './FirstLaunchSheet'
 import type { GeminiAuthStatus, ProviderApiKeyStatus } from '../../../main/store/types'
+import type { ModelUsageAggregate } from '../App'
 
 /**
  * Server-rendered smoke tests for FirstLaunchSheet. The component
@@ -91,8 +92,10 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('1. Sign in to your providers')
     expect(html).toContain('2. Add your first workspace')
     expect(html).toContain('3. Choose your starting look')
-    expect(html).toContain('4. Try Ensemble chats')
-    expect(html).toContain('5. Power-user shortcuts')
+    expect(html).toContain('4. You stay in control')
+    expect(html).toContain('5. Track your usage')
+    expect(html).toContain('6. Try Ensemble chats')
+    expect(html).toContain('7. Power-user shortcuts')
   })
 
   it('renders the Appearance preference controls and preview surfaces', () => {
@@ -136,6 +139,9 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('data-provider="claude"')
     expect(html).toContain('data-provider="gemini"')
     expect(html).toContain('data-provider="kimi"')
+    // Cursor + Grok complete the 6-provider roster (the chips use <em>).
+    expect(html).toContain('<em>Cursor</em>')
+    expect(html).toContain('<em>Grok</em>')
     expect(html).toContain('Turn / Continuous in the composer')
   })
 
@@ -253,6 +259,68 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Usage credential missing')
   })
 
+  it('flips a signed-in provider to "out of usage" when its quota window is maxed', () => {
+    const usageSummary = [
+      {
+        provider: 'codex',
+        model: 'usage limits',
+        windows: [
+          {
+            id: 'weekly',
+            label: 'Weekly',
+            limitLabel: 'Weekly limit',
+            usedPercent: 100,
+            resetAt: '2999-01-01T09:30:00.000Z'
+          }
+        ]
+      }
+    ] as unknown as ModelUsageAggregate[]
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={{ available: true, codexUsage: { planType: 'pro', userId: 'u1' } }}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        usageSummary={usageSummary}
+      />
+    )
+    // Codex was "signed in (pro)" but the maxed window flips it to the
+    // explicit out-of-usage state: status text + card variant + quota bar.
+    // (Assert the CARD class, not the dot class — the §1 legend always
+    // renders an out-of-usage dot, so the dot class is not card-specific.)
+    expect(html).toContain('100% used')
+    expect(html).toContain('first-launch-sheet-provider-card-out-of-usage')
+    expect(html).toContain('quota-progress-bar')
+  })
+
+  it('keeps a signed-in provider signed-in when usage is below 100%', () => {
+    const usageSummary = [
+      {
+        provider: 'codex',
+        model: 'usage limits',
+        windows: [{ id: 'weekly', label: 'Weekly', limitLabel: 'Weekly limit', usedPercent: 40 }]
+      }
+    ] as unknown as ModelUsageAggregate[]
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={{ available: true, codexUsage: { planType: 'pro', userId: 'u1' } }}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        usageSummary={usageSummary}
+      />
+    )
+    expect(html).toContain('Signed in (pro)')
+    // No CARD should be out-of-usage at 40% (the legend's dot doesn't count).
+    expect(html).not.toContain('first-launch-sheet-provider-card-out-of-usage')
+  })
+
   it('Claude card surfaces "signed in" when apiKeyConfigured is true', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
@@ -353,5 +421,23 @@ describe('FirstLaunchSheet', () => {
     )
     expect(html).toContain('Skip for now')
     expect(html).toContain('Got it')
+  })
+
+  it('renders official CLI install commands for newcomers', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+      />
+    )
+    expect(html).toContain('npm i -g @openai/codex')
+    expect(html).toContain('https://claude.ai/install.sh')
+    expect(html).toContain('https://code.kimi.com/install.sh')
+    expect(html).toContain('Official install commands')
   })
 })

@@ -19492,6 +19492,7 @@ function App(): React.JSX.Element {
         geminiAuthStatus={geminiAuthStatus}
         cursorProviderAvailable={cursorProviderAvailable}
         grokProviderAvailable={grokProviderAvailable}
+        usageSummary={usageSummary}
         themeAppearance={appearance.themeAppearance || 'system'}
         composerStyle={appearance.composerStyle || 'default'}
         userBubbleColor={appearance.userBubbleColor || 'system'}

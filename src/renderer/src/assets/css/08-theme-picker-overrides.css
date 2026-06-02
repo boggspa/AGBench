@@ -1562,6 +1562,12 @@
   border-color: color-mix(in srgb, #f85149 28%, transparent);
   background: color-mix(in srgb, #f85149 4%, rgba(255, 255, 255, 0.02));
 }
+/* Signed in but rate-limited at ~100%. Reads hotter than "CLI not
+ * found" (deeper red fill) so a quota wall is unmistakable. */
+.first-launch-sheet-provider-card-out-of-usage {
+  border-color: color-mix(in srgb, #f85149 48%, transparent);
+  background: color-mix(in srgb, #f85149 8%, rgba(255, 255, 255, 0.02));
+}
 .first-launch-sheet-provider-card-deemphasised {
   opacity: 0.65;
 }
@@ -1679,6 +1685,136 @@
 .first-launch-sheet-provider-status-dot-not-available {
   background: #f85149;
   box-shadow: 0 0 0 3px color-mix(in srgb, #f85149 22%, transparent);
+}
+.first-launch-sheet-provider-status-dot-out-of-usage {
+  background: #f85149;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #f85149 30%, transparent);
+}
+/* §1 status-dot legend — decodes the dots so a red dot isn't misread
+ * as one single failure (onboarding-review 3-facet ask). */
+.first-launch-sheet-status-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.78em;
+  color: var(--text-tertiary);
+}
+.first-launch-sheet-status-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Quota bar shown inside an "out of usage" provider card. */
+.first-launch-sheet-provider-card-usage {
+  margin: 2px 0 0;
+}
+/* §4 "You stay in control" — safety mock (approval options + presets). */
+.first-launch-sheet-safety {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 2px;
+}
+.first-launch-sheet-safety-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.first-launch-sheet-safety-label {
+  font-size: 0.74em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+.first-launch-sheet-safety-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.first-launch-sheet-safety-chip {
+  font-size: 0.8em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+}
+.first-launch-sheet-safety-chip.danger {
+  border-color: color-mix(in srgb, #f85149 38%, transparent);
+  color: color-mix(in srgb, #f85149 82%, var(--text-primary));
+}
+/* §5 "Track your usage & spend" — illustrative usage mock. */
+.first-launch-sheet-usage-mock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+.first-launch-sheet-usage-mock-row {
+  display: grid;
+  grid-template-columns: 54px 1fr 38px;
+  align-items: center;
+  gap: 10px;
+}
+.first-launch-sheet-usage-mock-label {
+  font-size: 0.82em;
+  color: var(--text-secondary);
+}
+.first-launch-sheet-usage-mock-pct {
+  font-size: 0.78em;
+  color: var(--text-tertiary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Official CLI install commands — onboarding §1 + Settings → Providers. */
+.provider-install-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.provider-install-row {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.provider-install-label {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.provider-install-cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.provider-install-copy {
+  flex-shrink: 0;
+}
+.first-launch-sheet-install,
+.settings-provider-install {
+  margin-top: 10px;
+}
+.first-launch-sheet-install > summary,
+.settings-provider-install > summary {
+  cursor: pointer;
+  font-size: 0.84em;
+  color: var(--text-secondary);
+  user-select: none;
 }
 .first-launch-sheet-provider-card-description {
   margin: 0;
@@ -1891,6 +2027,12 @@
 }
 .first-launch-sheet-ensemble-chip[data-provider='kimi'] {
   border-color: color-mix(in srgb, var(--provider-kimi-color) 46%, transparent);
+}
+.first-launch-sheet-ensemble-chip[data-provider='cursor'] {
+  border-color: color-mix(in srgb, var(--provider-cursor-color) 46%, transparent);
+}
+.first-launch-sheet-ensemble-chip[data-provider='grok'] {
+  border-color: color-mix(in srgb, var(--provider-grok-color) 46%, transparent);
 }
 .first-launch-sheet-ensemble-arrow {
   color: var(--text-tertiary);

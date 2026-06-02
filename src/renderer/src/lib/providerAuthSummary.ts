@@ -1,6 +1,14 @@
 import type { GeminiAuthStatus, ProviderApiKeyStatus } from '../../../main/store/types'
 
-export type ProviderAuthVariant = 'signed-in' | 'partial' | 'not-signed-in' | 'not-available'
+export type ProviderAuthVariant =
+  | 'signed-in'
+  | 'partial'
+  | 'not-signed-in'
+  | 'not-available'
+  /** Signed in, but the provider's quota window is at ~100% so runs
+   * are rate-limited. Surfaced by FirstLaunchSheet from usageSummary —
+   * the state a tester hits that otherwise reads as "broken". */
+  | 'out-of-usage'
 
 export interface ProviderAuthSummary {
   variant: ProviderAuthVariant

@@ -16,6 +16,13 @@ import {
 } from '../lib/providerAuthSummary'
 import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
 import { ProviderGlyph } from './icons/ProviderGlyph'
+// 1.0.7-EW — onboarding "out of usage" card state. ModelUsageAggregate is the
+// same per-provider quota shape the sidebar Model Usage card consumes; type-only
+// import so there's no runtime cycle with App.tsx (mirrors ModelUsageCard).
+import type { ModelUsageAggregate } from '../App'
+import { formatResetShort } from '../lib/UsageFormat'
+import { QuotaProgressBar } from './QuotaProgressBar'
+import { ProviderInstallCommands } from './ProviderInstallCommands'
 
 type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 'grok'
 
@@ -91,6 +98,12 @@ export interface FirstLaunchSheetProps {
    * Optional so older hosts / static tests can omit them. */
   cursorProviderAvailable?: boolean
   grokProviderAvailable?: boolean
+  /** Per-provider quota aggregates (App.tsx#usageSummary). Lets a
+   * signed-in provider card flip to an explicit "out of usage" state
+   * when its window hits ~100% — otherwise a rate-limited provider
+   * just reads as "signed in" and the wall looks like a bug. Optional
+   * so static tests / older hosts can omit it. */
+  usageSummary?: ModelUsageAggregate[]
   /** Appearance controls are optional so static tests and older hosts
    * can render the sheet without wiring the preference preview. */
   themeAppearance?: ThemeAppearance
@@ -115,9 +128,71 @@ interface ProviderRowSpec {
   deemphasised?: boolean
   /** When true, the card is marked optional but still actionable. */
   optional?: boolean
+  /** Set when the provider is signed in but its quota window is at
+   * ~100% — drives the "out of usage" card treatment + progress bar. */
+  usage?: { fraction: number; resetAt?: string }
 }
 
 const SHEET_TITLE_ID = 'first-launch-sheet-title'
+
+/** A provider window counts as "out of usage" once its used fraction
+ * reaches ~100% — at that point the provider rate-limits runs, so the
+ * card must say so instead of a bare "signed in". 0.999 (not 1.0)
+ * absorbs float noise from `usedPercent / 100`. */
+const OUT_OF_USAGE_FRACTION = 0.999
+
+/**
+ * Worst (most-consumed) quota window for a provider, derived from the
+ * same `usageSummary` the sidebar Model Usage card reads. Mirrors
+ * ModelUsageCard's `fillFractionForWindow`: prefer the honest
+ * `usedPercent`, fall back to `1 - remainingPercent`. Returns null when
+ * the provider has no quota data (Cursor/Grok never do; the others only
+ * after a usage probe). Kept local to avoid a runtime import cycle with
+ * App.tsx — the duplication is 4 lines.
+ */
+function worstProviderUsage(
+  usageSummary: ModelUsageAggregate[] | undefined,
+  providerId: OnboardingProviderId
+): { fraction: number; resetAt?: string } | null {
+  if (!usageSummary || usageSummary.length === 0) return null
+  const entry = usageSummary.find(
+    (e) => e.provider === providerId && e.model === 'usage limits' && (e.windows?.length || 0) > 0
+  )
+  if (!entry?.windows) return null
+  let worst: { fraction: number; resetAt?: string } | null = null
+  for (const w of entry.windows) {
+    const used = Number.isFinite(w.usedPercent)
+      ? Math.max(0, Math.min(1, (w.usedPercent as number) / 100))
+      : Number.isFinite(w.remainingPercent)
+        ? Math.max(0, Math.min(1, 1 - (w.remainingPercent as number) / 100))
+        : 0
+    if (!worst || used > worst.fraction) worst = { fraction: used, resetAt: w.resetAt }
+  }
+  return worst
+}
+
+/**
+ * Flip a signed-in provider row to the "out of usage" state when its
+ * worst quota window is at ~100%. No-op for every other variant (you
+ * can't be "out of usage" if you were never signed in) and when there's
+ * no quota data — so tests/hosts that omit `usageSummary` are unchanged.
+ */
+function applyOutOfUsage(
+  row: ProviderRowSpec,
+  usageSummary: ModelUsageAggregate[] | undefined
+): ProviderRowSpec {
+  if (row.variant !== 'signed-in') return row
+  const worst = worstProviderUsage(usageSummary, row.id)
+  if (!worst || worst.fraction < OUT_OF_USAGE_FRACTION) return row
+  const reset = formatResetShort({ resetAt: worst.resetAt })
+  return {
+    ...row,
+    variant: 'out-of-usage',
+    statusText: reset ? `100% used · resets ${reset}` : '100% used',
+    hint: 'Signed in, but rate-limited right now — wait for the reset, switch provider, or switch model. This is a quota wall, not a bug.',
+    usage: worst
+  }
+}
 
 const ONBOARDING_THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
   { value: 'system', label: 'System' },
@@ -294,6 +369,7 @@ export function FirstLaunchSheet({
   geminiAuthStatus,
   cursorProviderAvailable = false,
   grokProviderAvailable = false,
+  usageSummary,
   themeAppearance = 'system',
   composerStyle = 'default',
   userBubbleColor = 'system',
@@ -337,7 +413,7 @@ export function FirstLaunchSheet({
   )
   const composerPreview = getOnboardingComposerPreview(composerStyle)
 
-  const providerRows: ProviderRowSpec[] = [
+  const baseProviderRows: ProviderRowSpec[] = [
     {
       id: 'codex',
       label: 'Codex',
@@ -387,6 +463,9 @@ export function FirstLaunchSheet({
       optional: true
     }
   ]
+  // Flip any signed-in provider whose quota window is maxed to the
+  // explicit "out of usage" state — the tester-confusion fix.
+  const providerRows = baseProviderRows.map((row) => applyOutOfUsage(row, usageSummary))
 
   return (
     <div
@@ -438,17 +517,56 @@ export function FirstLaunchSheet({
         <section className="first-launch-sheet-section">
           <p className="first-launch-sheet-prose">
             AGBench is a multi-provider AI CLI manager. It wraps <strong>Codex</strong>,{' '}
-            <strong>Claude</strong>, <strong>Gemini</strong>, and <strong>Kimi</strong> inside one
-            consistent chrome so you can compare runs side-by-side in the same UI. Each provider
-            keeps its own auth — sign in to the ones you want to use, skip the rest.
+            <strong>Claude</strong>, <strong>Gemini</strong>, <strong>Kimi</strong>,{' '}
+            <strong>Cursor</strong>, and <strong>Grok</strong> inside one consistent chrome so you
+            can run and compare them side-by-side in the same UI. Each provider keeps its own auth —
+            sign in to the ones you want to use, skip the rest.
           </p>
         </section>
 
         <section className="first-launch-sheet-section">
           <h3 className="first-launch-sheet-section-title">1. Sign in to your providers</h3>
           <p className="first-launch-sheet-section-helper">
-            Status reflects what AGBench can see right now. Open Settings for inline sign-in flows
-            (OAuth, API keys, CLI paths).
+            Status reflects what AGBench can see right now. A red dot can mean two different things
+            — read the label. Open Settings for inline sign-in flows (OAuth, API keys, CLI paths).
+          </p>
+          <ul className="first-launch-sheet-status-legend" aria-label="What the status dots mean">
+            <li>
+              <span
+                className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-signed-in"
+                aria-hidden
+              />
+              Ready
+            </li>
+            <li>
+              <span
+                className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-not-signed-in"
+                aria-hidden
+              />
+              Installed · not signed in
+            </li>
+            <li>
+              <span
+                className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-not-available"
+                aria-hidden
+              />
+              CLI not found · install it
+            </li>
+            <li>
+              <span
+                className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-out-of-usage"
+                aria-hidden
+              />
+              Signed in · out of usage (resets later)
+            </li>
+          </ul>
+          <p className="first-launch-sheet-section-helper">
+            Providers sign in three ways: <strong>Codex</strong>, <strong>Cursor</strong>, and{' '}
+            <strong>Grok</strong> log in through their own CLI in a Terminal;{' '}
+            <strong>Claude</strong> and <strong>Gemini</strong> use in-app OAuth or an API key;{' '}
+            <strong>Kimi</strong> takes an API key. AGBench can&apos;t see Cursor&apos;s or
+            Grok&apos;s CLI login, so those two dots stay amber even after you sign in — that&apos;s
+            expected.
           </p>
           <div className="first-launch-sheet-provider-grid">
             {providerRows.map((row) => (
@@ -463,6 +581,14 @@ export function FirstLaunchSheet({
               />
             ))}
           </div>
+          <details className="first-launch-sheet-install">
+            <summary>Don&apos;t have a CLI yet? Official install commands</summary>
+            <p className="first-launch-sheet-section-helper">
+              Run one in your terminal, then come back and sign in. (npm commands need Node 20+; the
+              curl installers are self-contained.)
+            </p>
+            <ProviderInstallCommands />
+          </details>
         </section>
 
         <section className="first-launch-sheet-section">
@@ -722,10 +848,68 @@ export function FirstLaunchSheet({
         </section>
 
         <section className="first-launch-sheet-section">
-          <h3 className="first-launch-sheet-section-title">4. Try Ensemble chats</h3>
+          <h3 className="first-launch-sheet-section-title">4. You stay in control</h3>
           <p className="first-launch-sheet-section-helper">
-            New Ensemble puts multiple provider participants in one shared transcript. Turn mode
-            keeps one active speaker at a time; Continuous mode lets the panel keep moving. Hit the
+            Agents ask before doing anything risky — those prompts are the safety feature, not
+            errors. You decide how much rope each run gets.
+          </p>
+          <div className="first-launch-sheet-safety">
+            <div className="first-launch-sheet-safety-block">
+              <span className="first-launch-sheet-safety-label">When an agent wants to act</span>
+              <div className="first-launch-sheet-safety-chips">
+                <span className="first-launch-sheet-safety-chip">Allow once</span>
+                <span className="first-launch-sheet-safety-chip">In this workspace</span>
+                <span className="first-launch-sheet-safety-chip">For this session</span>
+                <span className="first-launch-sheet-safety-chip danger">Deny</span>
+              </div>
+            </div>
+            <div className="first-launch-sheet-safety-block">
+              <span className="first-launch-sheet-safety-label">Start cautious, dial up</span>
+              <div className="first-launch-sheet-safety-chips">
+                <span className="first-launch-sheet-safety-chip">Plan / read-only</span>
+                <span className="first-launch-sheet-safety-chip">Default approval</span>
+                <span className="first-launch-sheet-safety-chip">Full workspace access</span>
+              </div>
+            </div>
+          </div>
+          <p className="first-launch-sheet-prose">
+            Runs are sandboxed to the workspace you grant — files outside the project are off-limits
+            unless you allow a path. Set the mode per run with the composer&apos;s coloured
+            permission chip.
+          </p>
+        </section>
+
+        <section className="first-launch-sheet-section">
+          <h3 className="first-launch-sheet-section-title">5. Track your usage &amp; spend</h3>
+          <p className="first-launch-sheet-section-helper">
+            Hit a wall mid-run? It&apos;s almost always a provider quota, not a bug. The{' '}
+            <strong>Model Usage</strong> card in the sidebar shows how much of each provider&apos;s
+            quota you&apos;ve used and when it resets.
+          </p>
+          <div className="first-launch-sheet-usage-mock" aria-hidden>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Codex</span>
+              <QuotaProgressBar fraction={0.78} accent="var(--provider-codex-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">78%</span>
+            </div>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Claude</span>
+              <QuotaProgressBar fraction={0.42} accent="var(--provider-claude-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">42%</span>
+            </div>
+          </div>
+          <p className="first-launch-sheet-prose">
+            Every run also shows a live token + cost tally next to Send, and the dashboard fills in
+            usage heatmaps and per-provider totals as you go.
+          </p>
+        </section>
+
+        <section className="first-launch-sheet-section">
+          <h3 className="first-launch-sheet-section-title">6. Try Ensemble chats</h3>
+          <p className="first-launch-sheet-section-helper">
+            <strong>Get one provider working first</strong> — Ensemble shines with two or more. New
+            Ensemble puts multiple provider participants in one shared transcript. Turn mode keeps
+            one active speaker at a time; Continuous mode lets the panel keep moving. Hit the
             <strong> Work Session</strong> button in the composer to run a supervised multi-round
             autonomy session with one of five presets (One-shot review · Architecture panel · Scout
             pass · Implementation review · Long-running work session).
@@ -757,6 +941,20 @@ export function FirstLaunchSheet({
                 <strong>Reviewer</strong>
                 <em>Kimi</em>
               </span>
+              <span className="first-launch-sheet-ensemble-arrow" aria-hidden>
+                →
+              </span>
+              <span className="first-launch-sheet-ensemble-chip" data-provider="cursor">
+                <strong>Editor</strong>
+                <em>Cursor</em>
+              </span>
+              <span className="first-launch-sheet-ensemble-arrow" aria-hidden>
+                →
+              </span>
+              <span className="first-launch-sheet-ensemble-chip" data-provider="grok">
+                <strong>Scout</strong>
+                <em>Grok</em>
+              </span>
             </div>
             <div className="first-launch-sheet-ensemble-footer">
               <span>+ New → New Ensemble</span>
@@ -766,11 +964,12 @@ export function FirstLaunchSheet({
         </section>
 
         <section className="first-launch-sheet-section">
-          <h3 className="first-launch-sheet-section-title">5. Power-user shortcuts (optional)</h3>
+          <h3 className="first-launch-sheet-section-title">7. Power-user shortcuts (optional)</h3>
           <ul className="first-launch-sheet-tips">
             <li>
-              <strong>@ to reference files.</strong> Type <code>@</code> in the composer to mention
-              a specific file by path. The agent will read it as part of the turn.
+              <strong>-@ to reference files.</strong> Type <code>-@</code> in the composer to
+              mention a specific file by path; the agent reads it as part of the turn. Plain{' '}
+              <code>@</code> now mentions a sub-agent or Ensemble participant.
             </li>
             <li>
               <strong>/ for slash commands.</strong> Type <code>/</code> at the start of the
@@ -782,9 +981,9 @@ export function FirstLaunchSheet({
               <kbd>K</kbd> for the global command palette.
             </li>
             <li>
-              <strong>Permission picker colour-codes the mode.</strong> Plan = blue, Default =
-              neutral, Auto-edit = orange. Read it before you hit Enter so you know how much freedom
-              the agent has.
+              <strong>Permission picker colour-codes the mode.</strong> Plan = blue (read-only),
+              Default = neutral, Full Workspace Access / Auto-edit = red (can edit files). Read it
+              before you hit Enter so you know how much freedom the agent has.
             </li>
             <li>
               <strong>Fast Mode toggle.</strong> Inside the model picker, capable models (Codex
@@ -888,6 +1087,14 @@ function ProviderCard({
         />
         <span>{row.statusText}</span>
       </div>
+      {row.variant === 'out-of-usage' && row.usage && (
+        <div className="first-launch-sheet-provider-card-usage" aria-hidden>
+          <QuotaProgressBar
+            fraction={row.usage.fraction}
+            accent={`var(--provider-${row.id}-color)`}
+          />
+        </div>
+      )}
       <p className="first-launch-sheet-provider-card-description">{row.description}</p>
       <p className="first-launch-sheet-provider-card-hint">{row.hint}</p>
       <div className="first-launch-sheet-provider-card-actions">
