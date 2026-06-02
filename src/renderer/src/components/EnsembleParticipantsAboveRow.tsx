@@ -275,6 +275,10 @@ export function EnsembleParticipantsAboveRow({
 
   const workSession = chat.chatKind === 'ensemble' ? chat.ensemble?.workSession : undefined
   const workSessionStatus = workSession?.status
+  // Live = the session is still consuming its duration budget. Only
+  // then does a "… left" countdown make sense; ended sessions show
+  // elapsed time + their ended reason instead of a stale "0s left".
+  const isWorkSessionLive = workSessionStatus === 'active' || workSessionStatus === 'paused'
   const showWorkSessionStrip =
     workSession?.enabled &&
     (workSessionStatus === 'active' ||
@@ -421,7 +425,13 @@ export function EnsembleParticipantsAboveRow({
     if (!workSession?.startedAt) return null
     const started = new Date(workSession.startedAt).getTime()
     if (!Number.isFinite(started)) return null
-    const elapsedMs = Math.max(0, workSessionNow - started)
+    // For an ended session, freeze elapsed at the actual run duration
+    // (startedAt → endedAt) instead of letting it keep ticking up with
+    // the live clock. Live sessions measure against `now`.
+    const endedAt =
+      !isWorkSessionLive && workSession.endedAt ? new Date(workSession.endedAt).getTime() : NaN
+    const endpoint = Number.isFinite(endedAt) ? endedAt : workSessionNow
+    const elapsedMs = Math.max(0, endpoint - started)
     const remainingMs = Math.max(0, (workSession.maxDurationMs || 0) - elapsedMs)
     return { elapsedMs, remainingMs }
   })()
@@ -485,8 +495,8 @@ export function EnsembleParticipantsAboveRow({
             <span>Rounds {workSessionBudget}</span>
             {workSessionTime && (
               <span>
-                {formatDuration(workSessionTime.elapsedMs)} elapsed ·{' '}
-                {formatDuration(workSessionTime.remainingMs)} left
+                {formatDuration(workSessionTime.elapsedMs)} elapsed
+                {isWorkSessionLive && <> · {formatDuration(workSessionTime.remainingMs)} left</>}
               </span>
             )}
           </span>
@@ -953,6 +963,56 @@ function ParticipantChip({
         >
           <ParticipantStatusIcon status={statusLabel} />
         </span>
+        {/*
+          Inline retry affordance for failed/unreachable participants.
+          The parent only passes `onRetry` when retry is actually
+          applicable (failure status + no round running), so its mere
+          presence gates visibility — no extra status check needed
+          here. Surfacing it on the chip avoids the two-click dig
+          (select → open popover → Retry). `stopPropagation` on
+          pointerdown keeps the chip's drag/select pipeline from
+          treating the click as a chip tap or drag start.
+        */}
+        {onRetry && (
+          <button
+            type="button"
+            className="ensemble-above-chip-retry"
+            title="Retry this participant's last turn"
+            aria-label="Retry participant"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onRetry()
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              marginLeft: 2,
+              border: 'none',
+              background: 'transparent',
+              color: 'currentColor',
+              cursor: 'pointer',
+              opacity: 0.85
+            }}
+          >
+            <svg
+              width={13}
+              height={13}
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M13 8a5 5 0 1 1-1.5-3.6" />
+              <path d="M13 2.5V5h-2.5" />
+            </svg>
+          </button>
+        )}
       </div>
       {/*
         1.0.5-EW22 — The inline ⋯ overflow button used to live here.

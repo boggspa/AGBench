@@ -18,6 +18,7 @@ import {
   summarizeDelegationActivity
 } from '../lib/DelegationAudit'
 import { buildDelegationTree, type DelegationTimelineNode } from '../lib/DelegationTree'
+import { useCopyFeedback } from '../lib/useCopyFeedback'
 
 type InspectorTab =
   | 'diff'
@@ -574,8 +575,10 @@ function DiffTab(props: InspectorProps) {
 
 function RawTab(props: InspectorProps) {
   const { rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef } = props
+  const { copiedId, copy } = useCopyFeedback()
   const ensembleParticipants = getOrderedEnsembleParticipants(props.currentChat)
   const isEnsemble = ensembleParticipants.length > 0
+  const filteredLogs = rawLogs.filter((l) => rawFilter === 'all' || l.type === rawFilter)
   const typeCounts = rawLogs.reduce(
     (acc, log) => {
       acc[log.type] = (acc[log.type] || 0) + 1
@@ -600,12 +603,13 @@ function RawTab(props: InspectorProps) {
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             className="btn btn-sm btn-ghost"
+            disabled={rawLogs.length === 0}
             onClick={() => {
               const text = rawLogs.map((l) => `[${l.type.toUpperCase()}] ${l.content}`).join('\n')
-              navigator.clipboard.writeText(text)
+              copy('raw-events', text)
             }}
           >
-            Copy
+            {copiedId === 'raw-events' ? 'Copied' : 'Copy'}
           </button>
           <button className="btn btn-sm btn-ghost" onClick={() => setRawLogs([])}>
             Clear
@@ -646,9 +650,21 @@ function RawTab(props: InspectorProps) {
         </div>
       )}
       <div className="raw-events-body">
-        {rawLogs
-          .filter((l) => rawFilter === 'all' || l.type === rawFilter)
-          .map((log, i) => (
+        {filteredLogs.length === 0 ? (
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--text-muted)',
+              padding: 'var(--space-md)',
+              margin: 0
+            }}
+          >
+            {rawLogs.length === 0
+              ? 'No raw events captured yet. Run a task to stream stdout, stderr, and tool events here.'
+              : `No ${rawFilter} events to show. Switch the filter to "all" to see other event types.`}
+          </p>
+        ) : (
+          filteredLogs.map((log, i) => (
             <div
               key={i}
               className="raw-log-line"
@@ -677,7 +693,8 @@ function RawTab(props: InspectorProps) {
               )}
               {log.content}
             </div>
-          ))}
+          ))
+        )}
         <div ref={rawLogsEndRef} />
       </div>
     </div>
@@ -2341,6 +2358,7 @@ function SafetyTab(props: InspectorProps) {
     onClearCodexUsageCredential,
     externalPathGrants = []
   } = props
+  const { copiedId, copy } = useCopyFeedback()
   if (props.currentChat?.chatKind === 'ensemble' && props.currentChat.ensemble) {
     return <EnsembleSafetyTab {...props} />
   }
@@ -2659,9 +2677,9 @@ function SafetyTab(props: InspectorProps) {
         <button
           className="btn btn-sm btn-ghost"
           style={{ width: '100%' }}
-          onClick={() => navigator.clipboard.writeText('/permissions trust')}
+          onClick={() => copy('permissions-trust', '/permissions trust')}
         >
-          Copy /permissions trust
+          {copiedId === 'permissions-trust' ? 'Copied' : 'Copy /permissions trust'}
         </button>
       </div>
 

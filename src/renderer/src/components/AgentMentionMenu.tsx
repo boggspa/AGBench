@@ -370,7 +370,9 @@ export function AgentMentionMenu({
             ? triggerKind === 'file-mention'
               ? 'No workspace files or external paths available'
               : chat?.chatKind === 'ensemble'
-                ? 'No ensemble participants available'
+                ? ensembleParticipants && ensembleParticipants.length > 0
+                  ? 'All ensemble participants are disabled — enable one to mention it'
+                  : 'No ensemble participants to mention'
                 : 'No active sub-agents — type `-@` to mention files'
             : `No matches for "${query}"`}
         </div>

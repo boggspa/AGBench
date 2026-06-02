@@ -27,6 +27,7 @@ import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
+import { durationLabel } from './CompactToolTrace.lib'
 import {
   agentInvocationRouteLabel,
   agentInvocationSourceClassName,
@@ -887,8 +888,10 @@ function ActivityProgressNote({ activity }: { activity: ToolActivity }) {
       <div className="activity-progress-note-body">
         <div className="activity-progress-note-title">
           <span>{note.title}</span>
-          {activity.durationMs !== undefined && (
-            <span className="activity-progress-note-duration">{activity.durationMs}ms</span>
+          {durationLabel(activity.durationMs) && (
+            <span className="activity-progress-note-duration">
+              {durationLabel(activity.durationMs)}
+            </span>
           )}
         </div>
         {note.body && <p>{note.body}</p>}
@@ -1006,8 +1009,8 @@ function ActivityCompactGroup({
         )}
         <span className="activity-compact-group-title">{label}</span>
         <span className="activity-compact-group-meta">
-          {durationMs !== undefined && (
-            <span className="activity-compact-group-duration">{durationMs}ms</span>
+          {durationLabel(durationMs) && (
+            <span className="activity-compact-group-duration">{durationLabel(durationMs)}</span>
           )}
           <span className="activity-count-badge">{activities.length}</span>
         </span>
@@ -1743,8 +1746,8 @@ function ChildAgentThreadCard({
         </span>
         <span className={`child-agent-thread-state state-${thread.state}`}>{stateLabel}</span>
         <span className="child-agent-thread-interactivity">{interactivityLabel}</span>
-        {typeof thread.durationMs === 'number' && (
-          <span className="child-agent-thread-duration">{thread.durationMs}ms</span>
+        {durationLabel(thread.durationMs) && (
+          <span className="child-agent-thread-duration">{durationLabel(thread.durationMs)}</span>
         )}
         <svg
           className={`child-agent-thread-chevron ${expanded ? 'expanded' : ''}`}
@@ -1902,7 +1905,8 @@ function ActivityRow({
   // The full absolute path still ships in the `.activity-meta` title
   // attribute below for hover disambiguation when the basename alone
   // isn't enough.
-  if (activity.durationMs !== undefined) chipText.push(`${activity.durationMs}ms`)
+  const durationText = durationLabel(activity.durationMs)
+  if (durationText) chipText.push(durationText)
   const metaText = chipText.join(' · ')
   const parameters = activity.parameters || {}
   const diffSummary =

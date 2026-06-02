@@ -4,6 +4,39 @@ Notable changes to AGBench, the local-first macOS desktop workbench for running
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.71 — 2026-06-02
+
+### Added
+- **Onboarding clarity** — the first-launch sheet now shows copyable official
+  install commands for each provider CLI, a sign-in primer (terminal-login vs
+  in-app OAuth vs API key), a status-dot legend, and new "You stay in control"
+  and "Track your usage & spend" sections. The Ensemble preview shows all six
+  providers.
+- **"Out of usage" provider state** — a provider that's signed in but at 100% of
+  its quota now says so (with the reset time) instead of looking broken, in both
+  onboarding and Settings.
+
+### Changed
+- **Confirmations** — deleting a chat or removing a workspace now asks first.
+- **Failed runs explain themselves** — the completion card shows the exit code
+  and last error instead of a bare "check Raw Events"; cancelled runs read "Run
+  cancelled" rather than "code 130".
+- **Consistent copy feedback** — copy buttons across the transcript, diffs,
+  inspector, and media paths now confirm with "Copied".
+- **Clearer states** — empty states for the Raw Events tab and the model picker,
+  a loading state for the Gemini MCP test, and a mention popover that no longer
+  runs off-screen.
+- **Truer copy & numbers** — corrected file-mention syntax (`-@`), a shell-aware
+  permission-colour hint, humanised byte sizes, pluralised counts, and clearer
+  Gemini profile labels.
+- **Ensemble** — Work Session presets show which is active, completed sessions
+  reopen as "Restart" instead of silently restarting, finished strips no longer
+  say "0s left", and failed participants offer an inline retry.
+
+### Accessibility
+- Search is focusable with ⌘F; sidebar menus support arrow-key navigation; the
+  onboarding sheet now traps focus and focuses its first control on open.
+
 ## 1.0.7 — 2026-06-01
 
 ### Added

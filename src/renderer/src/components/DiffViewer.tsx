@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { DiffFileSummary, DiffPreviewKind } from '../../../main/store/types'
 import { FileTypeIcon } from './FileTypeIcon'
+import { useCopyFeedback } from '../lib/useCopyFeedback'
 
 interface DiffViewerProps {
   diff: {
@@ -137,6 +138,7 @@ export function DiffViewer({ diff, workspacePath }: DiffViewerProps) {
 }
 
 function DiffDetail({ summary }: { summary: DiffFileSummary }) {
+  const { copiedId, copy } = useCopyFeedback()
   const renderPreview = () => {
     const kind: DiffPreviewKind = summary.previewKind || 'none'
     switch (kind) {
@@ -214,10 +216,10 @@ function DiffDetail({ summary }: { summary: DiffFileSummary }) {
         <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
           <button
             className="btn btn-sm btn-ghost"
-            onClick={() => summary.diffText && navigator.clipboard.writeText(summary.diffText)}
+            onClick={() => summary.diffText && copy('diff', summary.diffText)}
             title="Copy diff"
           >
-            Copy
+            {copiedId === 'diff' ? 'Copied' : 'Copy'}
           </button>
         </div>
       </div>

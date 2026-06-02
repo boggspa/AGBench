@@ -52,8 +52,18 @@ function formatRetirementLabel(iso: string): string {
   if (!Number.isInteger(month) || month < 0 || month > 11) return iso
   if (!Number.isInteger(day) || day < 1 || day > 31) return iso
   const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December'
   ]
   const ordinal = (n: number): string => {
     if (n >= 11 && n <= 13) return `${n}th`
@@ -384,6 +394,14 @@ export function CombinedModelPicker({
         className={`composer-combined-picker-column composer-combined-picker-models ${focusedColumn === 'model' ? 'is-focused' : ''}`}
       >
         <div className="composer-combined-picker-column-header">Model</div>
+        {modelOptions.length === 0 && (
+          <div
+            className="composer-combined-picker-row"
+            style={{ cursor: 'default', color: 'var(--text-tertiary)', fontStyle: 'italic' }}
+          >
+            <span className="composer-combined-picker-row-label">Loading models&hellip;</span>
+          </div>
+        )}
         {modelOptions.map((option, idx) => {
           const supportsFast = Boolean(
             fastModeCapableModelIds && fastModeCapableModelIds.has(option.id)

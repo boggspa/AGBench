@@ -116,6 +116,12 @@ export function ParticipantHealthCard({
               : `${label}: unreachable${entry.underlyingCode ? ` (${entry.underlyingCode})` : ''}${
                   entry.reason ? ` — ${entry.reason}` : ''
                 }`
+          // Surface the failure reason inline (not just in the
+          // tooltip) for unreachable participants, so the user sees
+          // WHY a participant is down without hovering. Prefer the
+          // human-readable reason; fall back to the underlying code.
+          const inlineReason =
+            entry.status === 'unreachable' ? entry.reason || entry.underlyingCode || '' : ''
           return (
             <span
               key={entry.participantId}
@@ -125,6 +131,21 @@ export function ParticipantHealthCard({
             >
               <ProviderBadgeIcon provider={entry.provider} />
               <span className="participant-health-chip-label">{label}</span>
+              {inlineReason && (
+                <span
+                  className="participant-health-chip-reason"
+                  style={{
+                    fontSize: 'var(--font-size-xs)',
+                    opacity: 0.75,
+                    maxWidth: '22ch',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {inlineReason}
+                </span>
+              )}
               <span
                 className={`participant-health-chip-status status-${entry.status}`}
                 aria-hidden="true"

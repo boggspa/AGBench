@@ -5,6 +5,7 @@ import { HighlightedCodeBlock } from './HighlightedCodeBlock'
 import { AgentMention } from './AgentMention'
 import { ParticipantMention } from './ParticipantMention'
 import { classifyMarkdownLink } from '../lib/classifyMarkdownLink'
+import { useCopyFeedback } from '../lib/useCopyFeedback'
 import type { ChatRecord } from '../../../main/store/types'
 
 /*
@@ -22,16 +23,9 @@ import type { ChatRecord } from '../../../main/store/types'
  * reasons (e.g. settings toggle).
  */
 
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    // Copy is best-effort; avoid adding noisy UI state inside streamed messages.
-  }
-}
-
 function MarkdownCodeBlock({ content, language }: { content: string; language?: string }) {
   const [wrap, setWrap] = useState(false)
+  const { copiedId, copy } = useCopyFeedback()
   const displayLanguage = language?.trim() || 'text'
 
   return (
@@ -49,9 +43,9 @@ function MarkdownCodeBlock({ content, language }: { content: string; language?: 
           <button
             type="button"
             className="message-code-action"
-            onClick={() => void copyText(content)}
+            onClick={() => copy('code', content)}
           >
-            Copy
+            {copiedId === 'code' ? 'Copied' : 'Copy'}
           </button>
         </div>
       </div>

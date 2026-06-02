@@ -307,6 +307,8 @@
   max-width: 340px;
   padding: 4px;
   font-size: var(--font-size-xs);
+  max-height: 360px;
+  overflow-y: auto;
 }
 .agent-mention-menu-list {
   list-style: none;

@@ -380,6 +380,9 @@ export function FirstLaunchSheet({
     dismissRef.current = onDismiss
   }, [onDismiss])
 
+  // Dialog element — used for initial focus + the Tab focus trap below.
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+
   // Esc-to-dismiss. Capture-phase listener so we beat any nested
   // shortcut handlers (composer, etc.) that swallow Escape — when
   // the sheet is open, Escape should ALWAYS close it first.
@@ -393,6 +396,49 @@ export function FirstLaunchSheet({
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [open])
+
+  // Initial focus + lightweight Tab/Shift+Tab focus trap. On open we
+  // move focus to the first interactive control (the close button) so
+  // keyboard users land inside the modal, then wrap Tab around the
+  // dialog's focusable elements so focus can't escape to the page
+  // behind the backdrop. Mirrors the autofocus-on-open idiom in
+  // BugReportSheet / WorkSessionSetupSheet.
+  useEffect(() => {
+    if (!open) return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const getFocusable = (): HTMLElement[] =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+    const frame = window.requestAnimationFrame(() => {
+      getFocusable()[0]?.focus()
+    })
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Tab') return
+      const focusable = getFocusable()
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      if (e.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !dialog.contains(active)) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    dialog.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      dialog.removeEventListener('keydown', onKeyDown)
+    }
   }, [open])
 
   if (!open) return null
@@ -479,6 +525,7 @@ export function FirstLaunchSheet({
       }}
     >
       <div
+        ref={dialogRef}
         className="first-launch-sheet"
         role="dialog"
         aria-modal="true"
@@ -544,6 +591,13 @@ export function FirstLaunchSheet({
                 aria-hidden
               />
               Installed · not signed in
+            </li>
+            <li>
+              <span
+                className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-partial"
+                aria-hidden
+              />
+              Available · finish sign-in
             </li>
             <li>
               <span
@@ -982,8 +1036,9 @@ export function FirstLaunchSheet({
             </li>
             <li>
               <strong>Permission picker colour-codes the mode.</strong> Plan = blue (read-only),
-              Default = neutral, Full Workspace Access / Auto-edit = red (can edit files). Read it
-              before you hit Enter so you know how much freedom the agent has.
+              Default = neutral, Full Workspace Access / Auto-edit = red (orange in the Codex shell)
+              — these can edit files. Read it before you hit Enter so you know how much freedom the
+              agent has.
             </li>
             <li>
               <strong>Fast Mode toggle.</strong> Inside the model picker, capable models (Codex

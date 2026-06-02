@@ -2,6 +2,7 @@ import type { ChatRecord, ChatMessage, ExternalPathGrant } from '../../../main/s
 import { collectExternalPathGrantsFromMetadata } from '../../../main/store/ExternalPathGrants'
 import { XSymbolIcon } from './AppChromeSymbols'
 import { FileTypeIcon } from './FileTypeIcon'
+import { useCopyFeedback } from '../lib/useCopyFeedback'
 
 export type ChatMediaSource = 'upload' | 'external_path'
 export type ChatMediaKind = 'image' | 'file' | 'folder'
@@ -191,18 +192,20 @@ export function ChatMessageMediaStrip({
   refs: ChatMediaRef[]
   workspacePath?: string
 }) {
+  const { copiedId, copy } = useCopyFeedback()
   if (refs.length === 0) return null
   return (
     <div className="message-attachment-strip" aria-label="Message attachments">
       {refs.map((ref) => {
         const previewSrc = ref.kind === 'image' ? chatMediaPreviewSrc(ref.path) : ''
+        const isCopied = copiedId === ref.id
         return (
           <button
             key={ref.id}
             type="button"
             className={`message-attachment-card is-${ref.kind}`}
-            title={`Copy ${ref.name} path`}
-            onClick={() => void navigator.clipboard?.writeText(ref.path)}
+            title={isCopied ? 'Copied' : `Copy ${ref.name} path`}
+            onClick={() => copy(ref.id, ref.path)}
           >
             {previewSrc ? (
               <img src={previewSrc} alt={ref.name} />
@@ -214,7 +217,7 @@ export function ChatMessageMediaStrip({
             <span className="message-attachment-copy">
               <span className="message-attachment-name">{ref.name}</span>
               <span className="message-attachment-path">
-                {formatChatMediaLocation(ref.path, workspacePath)}
+                {isCopied ? 'Copied' : formatChatMediaLocation(ref.path, workspacePath)}
               </span>
             </span>
           </button>
@@ -235,6 +238,7 @@ export function ChatMediaFloatingPanel({
   workspacePath?: string
   onClose: () => void
 }) {
+  const { copiedId, copy } = useCopyFeedback()
   if (!open) return null
 
   const imageRefs = refs.filter((ref) => ref.kind === 'image')
@@ -269,13 +273,14 @@ export function ChatMediaFloatingPanel({
               <div className="chat-media-image-grid">
                 {imageRefs.map((ref) => {
                   const previewSrc = chatMediaPreviewSrc(ref.path)
+                  const isCopied = copiedId === ref.id
                   return (
                     <button
                       key={ref.id}
                       className="chat-media-image-card"
                       type="button"
-                      title={ref.path}
-                      onClick={() => void navigator.clipboard?.writeText(ref.path)}
+                      title={isCopied ? 'Copied' : ref.path}
+                      onClick={() => copy(ref.id, ref.path)}
                     >
                       {previewSrc ? (
                         <img src={previewSrc} alt={ref.name} />
@@ -284,7 +289,7 @@ export function ChatMediaFloatingPanel({
                           <FileTypeIcon path={ref.path} size={22} workspacePath={workspacePath} />
                         </span>
                       )}
-                      <span>{ref.name}</span>
+                      <span>{isCopied ? 'Copied' : ref.name}</span>
                     </button>
                   )
                 })}
@@ -296,28 +301,31 @@ export function ChatMediaFloatingPanel({
             <div className="chat-media-section">
               <div className="chat-media-section-title">Files and paths</div>
               <div className="chat-media-file-list">
-                {fileRefs.map((ref) => (
-                  <button
-                    key={ref.id}
-                    className="chat-media-file-row"
-                    type="button"
-                    title="Copy path"
-                    onClick={() => void navigator.clipboard?.writeText(ref.path)}
-                  >
-                    <span className="chat-media-file-icon">
-                      <FileTypeIcon path={ref.path} size={18} workspacePath={workspacePath} />
-                    </span>
-                    <span className="chat-media-file-copy">
-                      <span className="chat-media-file-name">{ref.name}</span>
-                      <span className="chat-media-file-path">
-                        {formatChatMediaLocation(ref.path, workspacePath)}
+                {fileRefs.map((ref) => {
+                  const isCopied = copiedId === ref.id
+                  return (
+                    <button
+                      key={ref.id}
+                      className="chat-media-file-row"
+                      type="button"
+                      title={isCopied ? 'Copied' : 'Copy path'}
+                      onClick={() => copy(ref.id, ref.path)}
+                    >
+                      <span className="chat-media-file-icon">
+                        <FileTypeIcon path={ref.path} size={18} workspacePath={workspacePath} />
                       </span>
-                    </span>
-                    <span className={`chat-media-source source-${ref.source}`}>
-                      {ref.source === 'external_path' ? ref.access || 'path' : 'upload'}
-                    </span>
-                  </button>
-                ))}
+                      <span className="chat-media-file-copy">
+                        <span className="chat-media-file-name">{ref.name}</span>
+                        <span className="chat-media-file-path">
+                          {isCopied ? 'Copied' : formatChatMediaLocation(ref.path, workspacePath)}
+                        </span>
+                      </span>
+                      <span className={`chat-media-source source-${ref.source}`}>
+                        {ref.source === 'external_path' ? ref.access || 'path' : 'upload'}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}

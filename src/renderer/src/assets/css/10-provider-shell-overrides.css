@@ -103,6 +103,11 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color));
 }
+.work-session-preset-chip.is-active {
+  background: color-mix(in srgb, var(--accent, #6aa6ff) 22%, transparent);
+  border-color: var(--accent, #6aa6ff);
+  color: var(--text-1);
+}
 .work-session-field-textarea,
 .work-session-field-input,
 .work-session-field-select {

@@ -51,6 +51,7 @@ import {
   type TypefaceOption
 } from '../lib/typefaceOptions'
 import { setFxRatesPerUsd } from '../lib/formatCost'
+import { formatResetShort } from '../lib/UsageFormat'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -676,6 +677,18 @@ const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
   cursor: 'Cursor'
 }
 
+/** Human labels for a Gemini auth profile's `kind` (the raw values read
+ * as opaque slugs in the profile dropdown). */
+const GEMINI_PROFILE_KIND_LABELS: Record<GeminiAuthProfileSummary['kind'], string> = {
+  'google-oauth': 'Google login',
+  'api-key': 'API key',
+  'vertex-ai': 'Vertex AI'
+}
+
+function geminiProfileKindLabel(kind: string): string {
+  return GEMINI_PROFILE_KIND_LABELS[kind as GeminiAuthProfileSummary['kind']] ?? kind
+}
+
 type McpToolGroup =
   | 'workspace'
   | 'files'
@@ -831,6 +844,11 @@ function titleFromSnake(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+/** "1 tool" / "2 tools" — naive count + singular/plural noun. */
+function pluralizeCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
 }
 
 function inferMcpToolGroup(tool: AGBenchMcpToolName): McpToolGroup {
@@ -1010,11 +1028,18 @@ const SETTINGS_KEY_COMMANDS: SettingsKeyCommand[] = [
     keys: ['/']
   },
   {
-    id: 'mention-picker',
+    id: 'mention-agent',
     group: 'Composer',
-    command: 'Mention picker',
-    description: 'Open file, workspace, and agent mention suggestions from the composer.',
+    command: 'Mention sub-agent',
+    description: 'Mention a sub-agent or Ensemble participant from the composer.',
     keys: ['@']
+  },
+  {
+    id: 'mention-file',
+    group: 'Composer',
+    command: 'Reference file',
+    description: 'Reference a specific file by path so the agent reads it as part of the turn.',
+    keys: ['-@']
   },
   {
     id: 'toggle-sidebar',
@@ -1242,6 +1267,11 @@ function SettingsProviderAuthCard({
   optional?: boolean
   children?: React.ReactNode
 }): React.JSX.Element {
+  // The status dot has CSS for signed-in / partial / not-available only.
+  // "out-of-usage" (signed in but rate-limited) reads as a warning, so
+  // borrow the amber `partial` dot styling rather than fall back to the
+  // neutral base dot.
+  const dotVariant = summary.variant === 'out-of-usage' ? 'partial' : summary.variant
   return (
     <article
       className={`settings-provider-auth-card settings-provider-auth-card-${summary.variant} provider-${provider}`}
@@ -1254,7 +1284,7 @@ function SettingsProviderAuthCard({
       </div>
       <div className="settings-provider-auth-status">
         <span
-          className={`settings-provider-auth-status-dot settings-provider-auth-status-dot-${summary.variant}`}
+          className={`settings-provider-auth-status-dot settings-provider-auth-status-dot-${dotVariant}`}
           aria-hidden
         />
         <span>{summary.statusText}</span>
@@ -1283,6 +1313,63 @@ function formatFxUpdatedAt(snapshot: FxRateSnapshot | null): string {
 function formatFxRate(snapshot: FxRateSnapshot | null, currency: 'GBP' | 'EUR'): string {
   const rate = snapshot?.rates?.[currency]
   return typeof rate === 'number' && Number.isFinite(rate) ? rate.toFixed(4) : 'n/a'
+}
+
+/** A provider's worst quota window is at ~100% (0.999 absorbs float
+ * noise from `usedPercent / 100`) so its card must read "out of usage"
+ * instead of a bare "signed in". Mirrors FirstLaunchSheet. */
+const OUT_OF_USAGE_FRACTION = 0.999
+
+/**
+ * Worst (most-consumed) quota window for a provider, derived from the
+ * same `usageSummary` the Model Usage tab reads. Prefers the honest
+ * `usedPercent`, falls back to `1 - remainingPercent`. Returns null when
+ * the provider has no quota data (Cursor/Grok never do; the others only
+ * after a usage probe). Replicates FirstLaunchSheet's `worstProviderUsage`
+ * locally — the duplication is a few lines and avoids a cross-component
+ * import.
+ */
+function worstProviderUsage(
+  usageSummary: ModelUsageAggregate[] | undefined,
+  providerId: ProviderId
+): { fraction: number; resetAt?: string } | null {
+  if (!usageSummary || usageSummary.length === 0) return null
+  const entry = usageSummary.find(
+    (e) => e.provider === providerId && e.model === 'usage limits' && (e.windows?.length || 0) > 0
+  )
+  if (!entry?.windows) return null
+  let worst: { fraction: number; resetAt?: string } | null = null
+  for (const w of entry.windows) {
+    const used = Number.isFinite(w.usedPercent)
+      ? Math.max(0, Math.min(1, (w.usedPercent as number) / 100))
+      : Number.isFinite(w.remainingPercent)
+        ? Math.max(0, Math.min(1, 1 - (w.remainingPercent as number) / 100))
+        : 0
+    if (!worst || used > worst.fraction) worst = { fraction: used, resetAt: w.resetAt }
+  }
+  return worst
+}
+
+/**
+ * Flip a signed-in provider summary to the "out of usage" state when its
+ * worst quota window is at ~100%. No-op for every other variant (you
+ * can't be "out of usage" if you were never signed in) and when there's
+ * no quota data — so hosts/tests that omit `usageSummary` are unchanged.
+ */
+function applyOutOfUsage(
+  provider: ProviderId,
+  summary: ProviderAuthSummary,
+  usageSummary: ModelUsageAggregate[] | undefined
+): ProviderAuthSummary {
+  if (summary.variant !== 'signed-in') return summary
+  const worst = worstProviderUsage(usageSummary, provider)
+  if (!worst || worst.fraction < OUT_OF_USAGE_FRACTION) return summary
+  const reset = formatResetShort({ resetAt: worst.resetAt })
+  return {
+    variant: 'out-of-usage',
+    statusText: reset ? `100% used · resets ${reset}` : '100% used',
+    hint: 'Signed in, but rate-limited right now — wait for the reset, switch provider, or switch model. This is a quota wall, not a bug.'
+  }
 }
 
 export function SettingsPanel({
@@ -1396,6 +1483,11 @@ export function SettingsPanel({
   const [fxSnapshot, setFxSnapshot] = useState<FxRateSnapshot | null>(null)
   const [fxRefreshing, setFxRefreshing] = useState(false)
   const [fxError, setFxError] = useState<string | null>(null)
+  // Gemini MCP bridge "Test" feedback. `onRefreshGeminiMcpBridgeStatus`
+  // is fire-and-forget (void), so capture the status `checkedAt` at click
+  // time; we're "testing" until a fresh status (new `checkedAt`) lands.
+  // Deriving from the captured value avoids a reset-in-effect.
+  const [geminiBridgeTestStartedAt, setGeminiBridgeTestStartedAt] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1434,6 +1526,12 @@ export function SettingsPanel({
       cancelled = true
     }
   }, [])
+
+  // Derived: still "testing" while the captured pre-click `checkedAt`
+  // matches the current status (i.e. no fresh status has landed yet).
+  const geminiBridgeTesting =
+    geminiBridgeTestStartedAt !== null &&
+    geminiBridgeTestStartedAt === (geminiMcpBridgeStatus?.checkedAt ?? '')
 
   const updateKimiClassifierEnabled = (enabled: boolean): void => {
     setKimiClassifierEnabled(enabled)
@@ -1501,10 +1599,25 @@ export function SettingsPanel({
   ): void => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } })
   }
-  const codexAuthSummary = summariseCodexStatus(codexStatus)
-  const claudeAuthSummary = summariseProviderApiKeyStatus(claudeAuthStatus ?? null, 'Claude')
-  const geminiSetupSummary = summariseGeminiStatus(geminiAuthStatus ?? null)
-  const kimiSetupSummary = summariseProviderApiKeyStatus(kimiAuthStatus ?? null, 'Kimi')
+  // Flip any signed-in provider whose worst quota window is at ~100% to
+  // an honest "out of usage" state — otherwise a rate-limited provider
+  // still reads "Signed in" and looks broken. Mirrors FirstLaunchSheet.
+  const codexAuthSummary = applyOutOfUsage('codex', summariseCodexStatus(codexStatus), usageSummary)
+  const claudeAuthSummary = applyOutOfUsage(
+    'claude',
+    summariseProviderApiKeyStatus(claudeAuthStatus ?? null, 'Claude'),
+    usageSummary
+  )
+  const geminiSetupSummary = applyOutOfUsage(
+    'gemini',
+    summariseGeminiStatus(geminiAuthStatus ?? null),
+    usageSummary
+  )
+  const kimiSetupSummary = applyOutOfUsage(
+    'kimi',
+    summariseProviderApiKeyStatus(kimiAuthStatus ?? null, 'Kimi'),
+    usageSummary
+  )
   const cursorAuthSummary = summariseCliProviderEnabled(
     cursorProviderAvailable,
     'Cursor',
@@ -3547,7 +3660,7 @@ export function SettingsPanel({
                       <option value="">Use local Gemini CLI login/env</option>
                       {geminiAuthProfiles.map((profile) => (
                         <option key={profile.id} value={profile.id}>
-                          {profile.label} ({profile.kind}
+                          {profile.label} ({geminiProfileKindLabel(profile.kind)}
                           {profile.configured ? '' : ', incomplete'})
                         </option>
                       ))}
@@ -3631,6 +3744,9 @@ export function SettingsPanel({
                         Save Vertex
                       </button>
                     </div>
+                    {/* Google login lives in the "Provider sign-in" checklist
+                        above; this row keeps the cancel control + shared OAuth
+                        login feedback (status message + signed-in email). */}
                     <div
                       style={{
                         display: 'flex',
@@ -3639,26 +3755,6 @@ export function SettingsPanel({
                         flexWrap: 'wrap'
                       }}
                     >
-                      <button
-                        className="btn btn-sm"
-                        type="button"
-                        disabled={isGeminiOAuthLoginRunning}
-                        onClick={() => {
-                          onStartGeminiOAuthLogin?.({
-                            profileId:
-                              selectedGeminiAuthProfile?.kind === 'google-oauth'
-                                ? selectedGeminiAuthProfile.id
-                                : undefined,
-                            label: geminiProfileLabel.trim() || 'Google login',
-                            makeDefault: true
-                          })
-                          setGeminiProfileLabel('')
-                        }}
-                      >
-                        {selectedGeminiAuthProfile?.kind === 'google-oauth'
-                          ? 'Log in selected Google profile'
-                          : 'Add Google login'}
-                      </button>
                       {isGeminiOAuthLoginRunning && (
                         <button
                           className="btn btn-sm btn-ghost"
@@ -3765,16 +3861,43 @@ export function SettingsPanel({
                       <button
                         className="btn btn-sm btn-ghost"
                         type="button"
-                        onClick={onRefreshGeminiMcpBridgeStatus}
+                        disabled={geminiBridgeTesting}
+                        onClick={() => {
+                          setGeminiBridgeTestStartedAt(geminiMcpBridgeStatus?.checkedAt ?? '')
+                          onRefreshGeminiMcpBridgeStatus()
+                        }}
                       >
-                        Test
+                        {geminiBridgeTesting ? 'Testing…' : 'Test'}
                       </button>
                     </div>
                   </div>
                 </div>
-                <p className="settings-hint">
-                  {geminiMcpBridgeStatus?.message || 'Bridge status has not been checked yet.'}
-                </p>
+                {geminiBridgeTesting ? (
+                  <p className="settings-hint" style={{ color: 'var(--text-secondary)' }}>
+                    ● Testing the Gemini MCP bridge…
+                  </p>
+                ) : geminiMcpBridgeStatus ? (
+                  <p
+                    className="settings-hint"
+                    style={{
+                      color: geminiMcpBridgeStatus.error
+                        ? 'var(--color-danger, #f85149)'
+                        : geminiMcpBridgeStatus.available
+                          ? 'var(--color-success, #3fb950)'
+                          : 'var(--color-warning, #d29922)'
+                    }}
+                  >
+                    ●{' '}
+                    {geminiMcpBridgeStatus.error
+                      ? `Test failed — ${geminiMcpBridgeStatus.error}`
+                      : geminiMcpBridgeStatus.available
+                        ? geminiMcpBridgeStatus.message || 'Bridge reachable — MCP tools available.'
+                        : geminiMcpBridgeStatus.message ||
+                          'Bridge not reachable yet — install / repair, then test again.'}
+                  </p>
+                ) : (
+                  <p className="settings-hint">Bridge status has not been checked yet.</p>
+                )}
               </div>
 
               <div className="settings-group">
@@ -3819,41 +3942,37 @@ export function SettingsPanel({
                   </div>
                 )}
 
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-sm)',
-                    flexWrap: 'wrap',
-                    marginBottom: 'var(--space-xs)'
-                  }}
-                >
-                  <button
-                    className="btn btn-sm"
-                    disabled={claudeLoginState === 'loading'}
-                    onClick={onTriggerClaudeLogin}
+                {/* Sign-in lives in the "Provider sign-in" checklist above; this
+                    section keeps the API-key / CLI-path controls plus the shared
+                    login-state feedback (which reflects that single Login button). */}
+                {(claudeLoginState === 'success' || claudeLoginState === 'error') && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-sm)',
+                      flexWrap: 'wrap',
+                      marginBottom: 'var(--space-xs)'
+                    }}
                   >
-                    {claudeLoginState === 'loading'
-                      ? 'Opening browser...'
-                      : 'Login with Claude Code →'}
-                  </button>
-                  {claudeLoginState === 'success' && (
-                    <span
-                      className="settings-hint"
-                      style={{ margin: 0, color: 'var(--color-success, #3fb950)' }}
-                    >
-                      Browser opened
-                    </span>
-                  )}
-                  {claudeLoginState === 'error' && (
-                    <span
-                      className="settings-hint"
-                      style={{ margin: 0, color: 'var(--color-danger, #f85149)' }}
-                    >
-                      Login failed — check CLI is installed
-                    </span>
-                  )}
-                </div>
+                    {claudeLoginState === 'success' && (
+                      <span
+                        className="settings-hint"
+                        style={{ margin: 0, color: 'var(--color-success, #3fb950)' }}
+                      >
+                        Browser opened
+                      </span>
+                    )}
+                    {claudeLoginState === 'error' && (
+                      <span
+                        className="settings-hint"
+                        style={{ margin: 0, color: 'var(--color-danger, #f85149)' }}
+                      >
+                        Login failed — check CLI is installed
+                      </span>
+                    )}
+                  </div>
+                )}
                 <p className="settings-hint">
                   Claude runs inside AGBench use Agent SDK / <code>claude -p</code> programmatic
                   paths. From 2026-06-15 Anthropic says these use separate Agent SDK credit, not
@@ -4127,7 +4246,9 @@ export function SettingsPanel({
                     </div>
                     <div className="settings-mcp-server-meta">
                       <span>{entry.source}</span>
-                      <span>{entry.toolCount} tools</span>
+                      <span>
+                        {entry.toolCount > 0 ? pluralizeCount(entry.toolCount, 'tool') : 'No tools'}
+                      </span>
                       <span>{entry.installed ? 'installed' : 'not installed'}</span>
                     </div>
                     <p className="settings-hint">{entry.message}</p>
@@ -4217,7 +4338,7 @@ export function SettingsPanel({
                     <section key={group} className="settings-mcp-tool-group">
                       <div className="settings-mcp-tool-group-title">
                         <strong>{MCP_TOOL_GROUP_LABELS[group]}</strong>
-                        <span>{tools.length} tools</span>
+                        <span>{pluralizeCount(tools.length, 'tool')}</span>
                       </div>
                       <div className="settings-mcp-tool-list">
                         {tools.map((tool) => (
@@ -4397,7 +4518,7 @@ export function SettingsPanel({
                     <section key={group} className="settings-key-command-group">
                       <div className="settings-key-command-group-title">
                         <strong>{group}</strong>
-                        <span>{groupCommands.length} commands</span>
+                        <span>{pluralizeCount(groupCommands.length, 'command')}</span>
                       </div>
                       <div className="settings-key-command-list">
                         {groupCommands.map((command) => (
@@ -4846,7 +4967,9 @@ export function SettingsPanel({
                               {entry.quotaStale && <span>Stale</span>}
                             </div>
                             <div className="settings-provider-telemetry-meta">
-                              <span>{entry.windows?.length || 0} quota windows</span>
+                              <span>
+                                {pluralizeCount(entry.windows?.length || 0, 'quota window')}
+                              </span>
                               <span>{formatQuotaSource(entry.quotaSource)}</span>
                               {fetchedAt && <span>{fetchedAt}</span>}
                             </div>

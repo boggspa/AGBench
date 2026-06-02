@@ -132,7 +132,7 @@ export function summariseCodexStatus(status: any): ProviderAuthSummary {
     return {
       variant: 'not-available',
       statusText: 'Codex CLI not found',
-      hint: 'Install Codex first (`brew install openai/codex/codex` or upstream installer).'
+      hint: 'Install Codex first (`npm i -g @openai/codex` or upstream installer).'
     }
   }
   const usage = status.codexUsage

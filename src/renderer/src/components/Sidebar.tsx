@@ -354,6 +354,50 @@ function ChevronSymbolIcon({ isExpanded }: { isExpanded: boolean }) {
   )
 }
 
+/**
+ * Roving arrow-key focus for the sidebar's `role="menu"` popovers
+ * (the `+ New` menu + every SidebarSettingsMenu pane). The
+ * portal-based SidebarOverflowMenu carries its own focusedIndex
+ * roving; these inline menus are plain focusable `<button>` lists, so
+ * we move focus across them via the DOM instead of index state —
+ * keeps the menu/menuitem ARIA semantics honest (arrow keys now work
+ * as a screen reader would expect) without per-pane bookkeeping.
+ *
+ * Attach as the container's `onKeyDown`. ArrowDown/ArrowUp wrap;
+ * Home/End jump to the ends. Other keys (Enter/Space activate the
+ * focused button, Escape dismisses) fall through to the buttons +
+ * the existing global listeners.
+ */
+function moveMenuFocus(event: KeyboardEvent<HTMLDivElement>): void {
+  if (
+    event.key !== 'ArrowDown' &&
+    event.key !== 'ArrowUp' &&
+    event.key !== 'Home' &&
+    event.key !== 'End'
+  ) {
+    return
+  }
+  const container = event.currentTarget
+  const items = Array.from(
+    container.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])')
+  )
+  if (items.length === 0) return
+  event.preventDefault()
+  const currentIndex = items.indexOf(document.activeElement as HTMLElement)
+  let nextIndex: number
+  if (event.key === 'Home') {
+    nextIndex = 0
+  } else if (event.key === 'End') {
+    nextIndex = items.length - 1
+  } else if (event.key === 'ArrowDown') {
+    nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length
+  } else {
+    nextIndex =
+      currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length
+  }
+  items[nextIndex]?.focus()
+}
+
 function SidebarSettingsMenu({
   pane,
   setPane,
@@ -411,7 +455,12 @@ function SidebarSettingsMenu({
 
   if (pane === 'themes') {
     return (
-      <div className="sidebar-settings-menu" role="menu" aria-label="Theme shortcuts">
+      <div
+        className="sidebar-settings-menu"
+        role="menu"
+        aria-label="Theme shortcuts"
+        onKeyDown={moveMenuFocus}
+      >
         {renderBackButton('Themes')}
         <div className="sidebar-settings-menu-divider" aria-hidden />
         <button
@@ -452,7 +501,12 @@ function SidebarSettingsMenu({
 
   if (pane === 'composer') {
     return (
-      <div className="sidebar-settings-menu" role="menu" aria-label="Composer shell shortcuts">
+      <div
+        className="sidebar-settings-menu"
+        role="menu"
+        aria-label="Composer shell shortcuts"
+        onKeyDown={moveMenuFocus}
+      >
         {renderBackButton('Composer Shell', 'themes')}
         <div className="sidebar-settings-menu-divider" aria-hidden />
         {SIDEBAR_COMPOSER_STYLE_OPTIONS.map((option) =>
@@ -466,7 +520,12 @@ function SidebarSettingsMenu({
 
   if (pane === 'accent') {
     return (
-      <div className="sidebar-settings-menu" role="menu" aria-label="Accent theme shortcuts">
+      <div
+        className="sidebar-settings-menu"
+        role="menu"
+        aria-label="Accent theme shortcuts"
+        onKeyDown={moveMenuFocus}
+      >
         {renderBackButton('Accent Theme', 'themes')}
         <div className="sidebar-settings-menu-divider" aria-hidden />
         {SIDEBAR_ACCENT_OPTIONS.map((option) =>
@@ -480,7 +539,12 @@ function SidebarSettingsMenu({
 
   if (pane === 'system') {
     return (
-      <div className="sidebar-settings-menu" role="menu" aria-label="System theme shortcuts">
+      <div
+        className="sidebar-settings-menu"
+        role="menu"
+        aria-label="System theme shortcuts"
+        onKeyDown={moveMenuFocus}
+      >
         {renderBackButton('System Theme', 'themes')}
         <div className="sidebar-settings-menu-divider" aria-hidden />
         {SIDEBAR_SYSTEM_THEME_OPTIONS.map((option) =>
@@ -494,7 +558,12 @@ function SidebarSettingsMenu({
 
   if (pane === 'tool') {
     return (
-      <div className="sidebar-settings-menu" role="menu" aria-label="Tool call theme shortcuts">
+      <div
+        className="sidebar-settings-menu"
+        role="menu"
+        aria-label="Tool call theme shortcuts"
+        onKeyDown={moveMenuFocus}
+      >
         {renderBackButton('Tool Call Theme', 'themes')}
         <div className="sidebar-settings-menu-divider" aria-hidden />
         {SIDEBAR_TOOL_ICON_OPTIONS.map((option) =>
@@ -507,7 +576,12 @@ function SidebarSettingsMenu({
   }
 
   return (
-    <div className="sidebar-settings-menu" role="menu" aria-label="Settings shortcuts">
+    <div
+      className="sidebar-settings-menu"
+      role="menu"
+      aria-label="Settings shortcuts"
+      onKeyDown={moveMenuFocus}
+    >
       <button
         type="button"
         className="sidebar-settings-menu-item"
@@ -697,6 +771,12 @@ function SidebarChatTitleEditable({
     )
   }
 
+  // Content-only search hint: when the query matched a message body but
+  // not the title, the title highlight is empty and the user can't tell
+  // why the row surfaced. Show a small "in conversation" snippet so the
+  // match is honest. Skipped entirely when the title already matches.
+  const contentSnippet = getChatContentMatchSnippet(chat, query)
+
   return (
     <span
       className={className}
@@ -708,6 +788,16 @@ function SidebarChatTitleEditable({
       }}
     >
       <HighlightMatch text={chat.title} query={query} />
+      {contentSnippet && (
+        <span className="sidebar-chat-subline sidebar-search-content-match">
+          <span
+            className="sidebar-run-status tone-muted"
+            title={`Match in conversation: ${contentSnippet}`}
+          >
+            <HighlightMatch text={contentSnippet} query={query} />
+          </span>
+        </span>
+      )}
     </span>
   )
 }
@@ -842,6 +932,31 @@ function chatMatchesSearch(chat: ChatRecord, query: string): boolean {
   return searchableText.toLowerCase().includes(query)
 }
 
+/**
+ * When a search hits a chat's message body but NOT its title, the title
+ * highlight stays empty and the row gives no clue why it matched. This
+ * returns a short snippet of the first matching message (centered on the
+ * match) so the tile can surface a "found in conversation" hint. Returns
+ * null when there's no query, the title already covers the match, or no
+ * message body contains the term — in those cases the existing title
+ * highlight is enough.
+ */
+function getChatContentMatchSnippet(chat: ChatRecord, query: string): string | null {
+  if (!query) return null
+  if (chat.title.toLowerCase().includes(query)) return null
+  for (const message of chat.messages || []) {
+    const content = message.content || ''
+    const matchIndex = content.toLowerCase().indexOf(query)
+    if (matchIndex < 0) continue
+    const radius = 24
+    const start = Math.max(0, matchIndex - radius)
+    const end = Math.min(content.length, matchIndex + query.length + radius)
+    const snippet = content.slice(start, end).replace(/\s+/g, ' ').trim()
+    return `${start > 0 ? '…' : ''}${snippet}${end < content.length ? '…' : ''}`
+  }
+  return null
+}
+
 function workspaceMatchesSearch(workspace: WorkspaceRecord, query: string): boolean {
   if (!query) return true
   return [workspace.displayName, workspace.path, workspace.branch]
@@ -907,8 +1022,10 @@ function formatChatAge(timestamp: number, now: number): string {
 
   const date = new Date(timestamp)
   const sameYear = date.getFullYear() === new Date(now).getFullYear()
+  // `[]` defers to the runtime's default locale (matches
+  // `formatChatAgeTitle` below) instead of hard-coding en-GB.
   return date.toLocaleDateString(
-    'en-GB',
+    [],
     sameYear
       ? { day: 'numeric', month: 'short' }
       : { day: 'numeric', month: 'short', year: '2-digit' }
@@ -1044,6 +1161,10 @@ export function Sidebar({
   // menu portal, etc.).
   const newMenuWrapRef = useRef<HTMLDivElement | null>(null)
   const settingsMenuWrapRef = useRef<HTMLDivElement | null>(null)
+  // Ref to the sidebar search <input> so the local Cmd/Ctrl+F shortcut
+  // (the "⌘F" hint next to the field) can focus it. Kept Sidebar-local —
+  // App.tsx owns no part of this binding.
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
@@ -1124,10 +1245,6 @@ export function Sidebar({
   const visibleGlobalChats = isSidebarSearchActive
     ? globalChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : globalChats
-  const sidebarSearchResultCount =
-    visibleWorkspaceEntries.length +
-    visibleWorkspaceEntries.reduce((total, entry) => total + entry.visibleChats.length, 0) +
-    visibleGlobalChats.length
   const totalChatCount = chats.filter((chat) => !chat.archived).length
 
   // Pinned + Recents derivations. Both honor the search query so the
@@ -1175,6 +1292,28 @@ export function Sidebar({
   const visibleRecentChats = isSidebarSearchActive
     ? recentChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : recentChats
+
+  // Search result-count badge. Counts DISTINCT matching items across
+  // every rendered bucket — previously it summed only workspace +
+  // global entries, so pinned chats and ensembles (which surface in
+  // their own sections) were never counted, undercounting the badge.
+  // Dedup via id sets because the same chat can dual-surface (e.g. a
+  // pinned workspace chat appears in both Pinned and its workspace
+  // group); counting each occurrence would over-report instead.
+  const sidebarSearchResultCount = (() => {
+    const chatIds = new Set<string>()
+    const workspaceIds = new Set<string>()
+    for (const entry of visibleWorkspaceEntries) {
+      workspaceIds.add(entry.workspace.id)
+      for (const chat of entry.visibleChats) chatIds.add(chat.appChatId)
+    }
+    for (const chat of visibleGlobalChats) chatIds.add(chat.appChatId)
+    for (const chat of visiblePinnedChats) chatIds.add(chat.appChatId)
+    for (const chat of visibleRecentChats) chatIds.add(chat.appChatId)
+    for (const chat of visibleEnsembleChats) chatIds.add(chat.appChatId)
+    for (const workspace of visiblePinnedWorkspaces) workspaceIds.add(workspace.id)
+    return chatIds.size + workspaceIds.size
+  })()
 
   // 1.0.3 retiring inline tile action icons — `handleTogglePinChatClick`,
   // `handleTogglePinWorkspaceClick`, and `handleAddChat` were the
@@ -1412,6 +1551,35 @@ export function Sidebar({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [settingsMenuOpen])
+
+  // Cmd/Ctrl+F focuses the sidebar search input — wires up the "⌘F"
+  // hint shown inside the field. Sidebar-local so App.tsx stays
+  // untouched. We ignore the shortcut while typing in another
+  // text field / contentEditable so we don't yank focus out from
+  // under the composer; the search input itself is allowed (re-pressing
+  // selects all). Mirrors the global-keydown listener pattern used by
+  // the menu effects above.
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'f' && event.key !== 'F') return
+      if (!(event.metaKey || event.ctrlKey)) return
+      const input = searchInputRef.current
+      if (!input) return
+      const active = document.activeElement as HTMLElement | null
+      if (
+        active &&
+        active !== input &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+      ) {
+        return
+      }
+      event.preventDefault()
+      input.focus()
+      input.select()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   useEffect(() => {
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id))
@@ -1752,7 +1920,15 @@ export function Sidebar({
         <div className="sidebar-masthead">
           <div className="sidebar-masthead-copy">
             <span className="sidebar-product-label">AGBench</span>
-            <strong title={currentWorkspace?.path || currentScopeTitle}>{currentScopeTitle}</strong>
+            {/* On the first-launch zero-state `currentScopeTitle` falls
+                back to "AGBench" (no workspace, no global chat), which
+                would render "AGBench" twice stacked. Suppress the
+                redundant scope title in that single case. */}
+            {currentScopeTitle !== 'AGBench' && (
+              <strong title={currentWorkspace?.path || currentScopeTitle}>
+                {currentScopeTitle}
+              </strong>
+            )}
             <span title={currentWorkspace?.path || currentScopeMeta}>{currentScopeMeta}</span>
           </div>
           <div className="sidebar-new-menu-wrap" ref={newMenuWrapRef}>
@@ -1769,7 +1945,7 @@ export function Sidebar({
               <span>New</span>
             </button>
             {newMenuOpen && (
-              <div className="sidebar-new-menu" role="menu">
+              <div className="sidebar-new-menu" role="menu" onKeyDown={moveMenuFocus}>
                 <button
                   type="button"
                   role="menuitem"
@@ -1821,9 +1997,23 @@ export function Sidebar({
           <label className="sidebar-search-field">
             <SearchSymbolIcon />
             <input
+              ref={searchInputRef}
               type="search"
               value={sidebarSearch}
               onChange={(event) => setSidebarSearch(event.target.value)}
+              onKeyDown={(event) => {
+                // Escape clears a non-empty query, then blurs an
+                // already-empty field — matches the ✕ clear button +
+                // the Finder-style "Escape backs out" expectation.
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  if (sidebarSearch) {
+                    setSidebarSearch('')
+                  } else {
+                    event.currentTarget.blur()
+                  }
+                }
+              }}
               placeholder="Search workspaces & threads"
               aria-label="Search workspaces and chats"
               spellCheck={false}
@@ -2074,8 +2264,14 @@ export function Sidebar({
                         (participant) => participant.id === activeRound?.activeParticipantId
                       )
                       const isRunning = activeRound?.status === 'running'
+                      // Trim the role so a blank/whitespace role doesn't
+                      // render a dangling "Provider / " — fall back to
+                      // just the provider name in that case.
+                      const activeRole = activeParticipant?.role?.trim()
                       const subtitle = activeParticipant
-                        ? `${getProviderName(activeParticipant.provider)} / ${activeParticipant.role}`
+                        ? activeRole
+                          ? `${getProviderName(activeParticipant.provider)} / ${activeRole}`
+                          : getProviderName(activeParticipant.provider)
                         : chat.scope === 'global'
                           ? 'Global ensemble'
                           : 'Workspace ensemble'

@@ -13,10 +13,7 @@ import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 // 1.0.5-EW25 — User-currency cost formatting helper.
 import { formatCost, setFxRatesPerUsd, type DisplayCurrency } from './lib/formatCost'
-import {
-  decideMeasurePass,
-  MAX_MEASURE_REWRITE_PASSES
-} from './lib/transcriptMeasureConvergence'
+import { decideMeasurePass, MAX_MEASURE_REWRITE_PASSES } from './lib/transcriptMeasureConvergence'
 import { computeCumulativeRunBaseMs } from './lib/cumulativeRunTimecode'
 import {
   AppSettings,
@@ -162,6 +159,7 @@ import {
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { MentionHighlightedText } from './components/MentionHighlightedText'
 import { hasResolvedMention } from './lib/mentionHighlight'
+import { useCopyFeedback } from './lib/useCopyFeedback'
 import { reasoningDisplayLabel, shortModelName } from './lib/composerChipFormat'
 import {
   getDefaultEnsembleParticipantConfig,
@@ -400,6 +398,18 @@ type RunCompleteNotice = {
   timestamp: string
   exitCode: number
   startedAt?: string
+}
+
+/**
+ * Humanise a raw byte count to B / KB / MB so inspector rows read
+ * "180 KB" instead of "184320 bytes". Mirrors the formatter in
+ * FileEditorPanel; kept local because that one isn't exported.
+ */
+const formatBytes = (value?: number): string => {
+  if (value === undefined || !Number.isFinite(value)) return ''
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 type ChatTokenTally = {
@@ -1585,8 +1595,8 @@ const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
     summaries.length > 0
       ? summaries.map(summarizeReviewDiffFile).join('\n')
       : diffObj?.statusText
-      ? `Git status:\n${diffObj.statusText}`
-      : diffObj?.text || 'No file-level summary was available.'
+        ? `Git status:\n${diffObj.statusText}`
+        : diffObj?.text || 'No file-level summary was available.'
 
   const fullDiffText = collectReviewDiffText(diffObj)
   const diffText =
@@ -2716,8 +2726,10 @@ type TranscriptPanelProps = {
   /**
    * 1.0.4-AQ4 — per-message actions on hover.
    *
-   * `onCopyMessage` writes the raw `msg.content` string to the
-   * clipboard. Pure — does not mutate chat state.
+   * `onCopyMessage(messageId, content)` copies the raw `msg.content`
+   * string to the clipboard. 1.0.8: takes the message id too so the
+   * shared copy-feedback hook can show a transient "Copied" on the
+   * originating chip. Pure — does not mutate chat state.
    *
    * `onDeleteMessage(messageId)` removes the message from
    * `currentChat.messages`. The host applies a `confirm()` gate so
@@ -2726,8 +2738,17 @@ type TranscriptPanelProps = {
    * checking the role itself if it ever wants to gate
    * differently (e.g. forbid deleting in-flight assistant runs).
    */
-  onCopyMessage: (content: string) => void
+  onCopyMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
+  /**
+   * 1.0.8 — shared copy-to-clipboard feedback (see {@link useCopyFeedback}).
+   * `copiedId` is the id currently showing its "Copied" confirmation;
+   * `copy(id, text)` performs the write and arms the reset timer. Drives
+   * the message chips (keyed on message id) and the latest-response copy
+   * button (keyed on the latest assistant message id).
+   */
+  copiedId: string | null
+  copy: (id: string, text: string) => void
   /**
    * 1.0.6-TV1 — when true, the transcript mounts only the visible window
    * + overscan (spacer-above / spacer-below) instead of the full message
@@ -2765,35 +2786,57 @@ type TranscriptPanelProps = {
 function MessageActionsChip({
   onCopy,
   onDelete,
+  copied = false,
   label
 }: {
   onCopy: () => void
   onDelete: () => void
+  /** 1.0.8 — when true the copy button shows a transient confirmation
+   * (driven by the host's shared `useCopyFeedback`). */
+  copied?: boolean
   label: string
 }): React.JSX.Element {
   return (
     <div className="message-actions-chip" role="group" aria-label={`Actions for ${label}`}>
       <button
         type="button"
-        className="message-actions-chip-button message-actions-chip-button--copy"
+        className={`message-actions-chip-button message-actions-chip-button--copy${
+          copied ? ' is-copied' : ''
+        }`}
         onClick={onCopy}
-        title="Copy message content to clipboard"
-        aria-label={`Copy ${label} content`}
+        title={copied ? 'Copied' : 'Copy message content to clipboard'}
+        aria-label={copied ? `Copied ${label} content` : `Copy ${label} content`}
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <rect x="5" y="5" width="9" height="9" rx="1.5" />
-          <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
-        </svg>
+        {copied ? (
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M13.5 4.5 6 12 2.5 8.5" />
+          </svg>
+        ) : (
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <rect x="5" y="5" width="9" height="9" rx="1.5" />
+            <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
+          </svg>
+        )}
       </button>
       <button
         type="button"
@@ -2984,7 +3027,7 @@ function WelcomeWorkspacePicker({
 
   return (
     <div className="welcome-workspace-picker">
-      <span className="welcome-workspace-picker-label">Switch folder:</span>
+      <span className="welcome-workspace-picker-label">Work in folder:</span>
       <div className="welcome-workspace-picker-chips">
         <button
           type="button"
@@ -4270,6 +4313,8 @@ export const TranscriptPanel = memo(
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
+    copiedId,
+    copy,
     virtualize,
     autoFollowRef
   }: TranscriptPanelProps) {
@@ -4637,8 +4682,9 @@ export const TranscriptPanel = memo(
                                 writes msg.content verbatim; Delete confirms
                                 before removing from the transcript. */}
                             <MessageActionsChip
-                              onCopy={() => onCopyMessage(msg.content)}
+                              onCopy={() => onCopyMessage(msg.id, msg.content)}
                               onDelete={() => onDeleteMessage(msg.id)}
+                              copied={copiedId === msg.id}
                               label="user message"
                             />
                           </div>
@@ -4657,8 +4703,9 @@ export const TranscriptPanel = memo(
                             but rarely useful. */}
                         {(msg.role === 'assistant' || msg.role === 'system') && msg.content && (
                           <MessageActionsChip
-                            onCopy={() => onCopyMessage(msg.content)}
+                            onCopy={() => onCopyMessage(msg.id, msg.content)}
                             onDelete={() => onDeleteMessage(msg.id)}
+                            copied={copiedId === msg.id}
                             label={`${msg.role} message`}
                           />
                         )}
@@ -4777,7 +4824,9 @@ export const TranscriptPanel = memo(
                   <strong>
                     {runCompleteNotice.exitCode === 0
                       ? 'Task complete'
-                      : `Task ended (code ${runCompleteNotice.exitCode})`}
+                      : runCompleteNotice.exitCode === 130
+                        ? 'Run cancelled'
+                        : `Task ended (code ${runCompleteNotice.exitCode})`}
                   </strong>
                   <span className="run-complete-time-row">
                     <span>
@@ -4791,22 +4840,36 @@ export const TranscriptPanel = memo(
                   </span>
                   {runCompleteNotice.exitCode === 0 && <span>Awaiting your next prompt.</span>}
                 </div>
-                <button
-                  className="btn btn-sm btn-ghost run-copy-btn"
-                  onClick={() => {
-                    const latestAssistantMessage = [...messages]
-                      .slice()
-                      .reverse()
-                      .find((m) => m.role === 'assistant')
-                    if (latestAssistantMessage?.content) {
-                      navigator.clipboard.writeText(latestAssistantMessage.content)
-                    }
-                  }}
-                  disabled={!messages.some((m) => m.role === 'assistant')}
-                  title="Copy latest assistant response"
-                >
-                  <CopyResponseIcon />
-                </button>
+                {(() => {
+                  const latestAssistantMessage = [...messages]
+                    .reverse()
+                    .find((m) => m.role === 'assistant')
+                  const latestCopyId = latestAssistantMessage
+                    ? `run-complete-copy-${latestAssistantMessage.id}`
+                    : null
+                  const isCopied = latestCopyId !== null && copiedId === latestCopyId
+                  return (
+                    <button
+                      className={`btn btn-sm btn-ghost run-copy-btn${isCopied ? ' is-copied' : ''}`}
+                      onClick={() => {
+                        if (latestAssistantMessage?.content && latestCopyId) {
+                          copy(latestCopyId, latestAssistantMessage.content)
+                        }
+                      }}
+                      disabled={!latestAssistantMessage?.content}
+                      title={isCopied ? 'Copied' : 'Copy latest assistant response'}
+                      aria-label={
+                        isCopied ? 'Latest response copied' : 'Copy latest assistant response'
+                      }
+                    >
+                      {isCopied ? (
+                        <span className="run-copy-btn-label">Copied</span>
+                      ) : (
+                        <CopyResponseIcon />
+                      )}
+                    </button>
+                  )
+                })()}
               </div>
               {runCompleteSummaryRows.length > 0 && (
                 <div className="run-complete-summary-card">
@@ -4926,6 +4989,8 @@ export const TranscriptPanel = memo(
     previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
     previous.onCopyMessage === next.onCopyMessage &&
     previous.onDeleteMessage === next.onDeleteMessage &&
+    previous.copiedId === next.copiedId &&
+    previous.copy === next.copy &&
     previous.virtualize === next.virtualize &&
     previous.autoFollowRef === next.autoFollowRef
 )
@@ -4979,6 +5044,10 @@ type SettingsPanelUpdate = {
 }
 
 function App(): React.JSX.Element {
+  // Shared copy-to-clipboard feedback for every in-app copy affordance
+  // (message chips, latest-response button). One instance keeps the
+  // transient "Copied" state consistent across the transcript.
+  const { copiedId, copy } = useCopyFeedback()
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [chatContextTurns, setChatContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS)
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([])
@@ -5344,9 +5413,7 @@ function App(): React.JSX.Element {
         ) => Promise<{ ok: boolean; path?: string; error?: string }>
       }
       if (typeof api.submitBugReport !== 'function') {
-        throw new Error(
-          'Bug-report bridge is not available — please update the app.'
-        )
+        throw new Error('Bug-report bridge is not available — please update the app.')
       }
       const result = await api.submitBugReport(submission)
       if (!result?.ok) {
@@ -8255,6 +8322,11 @@ function App(): React.JSX.Element {
 
   const handleRemoveWorkspace = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    const ok =
+      typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm('Remove this workspace from AGBench?')
+        : true
+    if (!ok) return
     await window.api.removeWorkspace(id)
     const wsList = await window.api.getWorkspaces()
     setWorkspaces(wsList)
@@ -8317,6 +8389,11 @@ function App(): React.JSX.Element {
    */
   const handleDeleteChat = async (chatId: string) => {
     if (!chatId) return
+    const ok =
+      typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm("Delete this chat? This can't be undone.")
+        : true
+    if (!ok) return
     setChats((prev) => prev.filter((chat) => chat.appChatId !== chatId))
     chatByIdRef.current.delete(chatId)
     if (currentChat?.appChatId === chatId) {
@@ -10123,13 +10200,13 @@ function App(): React.JSX.Element {
         updated.runs = runs
 
         const completedAt = new Date().toISOString()
+        // Skip the per-participant run-complete notice for ensemble
+        // chats — each participant's exit would clobber the card
+        // with that participant's metadata. The notice fires once
+        // per ROUND via the dedicated `activeRound.status` effect
+        // below.
+        const isEnsembleChat = updated.chatKind === 'ensemble'
         if (exitCode === 0) {
-          // Skip the per-participant run-complete notice for ensemble
-          // chats — each participant's exit would clobber the card
-          // with that participant's metadata. The notice fires once
-          // per ROUND via the dedicated `activeRound.status` effect
-          // below.
-          const isEnsembleChat = updated.chatKind === 'ensemble'
           if (!isEnsembleChat && isVisibleCompletedRun()) {
             setRunCompleteNotice({
               timestamp: completedAt,
@@ -10139,12 +10216,38 @@ function App(): React.JSX.Element {
           }
         }
         if (exitCode !== 0) {
+          // A failed run used to surface only a terse "Check Raw Events"
+          // line with the exit code thrown away. Now we (a) raise the
+          // run-complete card (same as success) so the outcome is
+          // visible without digging into Raw Events, and (b) name the
+          // exit code + last error line in the system message. Code 130
+          // is the SIGINT a user Cancel produces — report it as a
+          // cancellation, not a failure.
+          if (!isEnsembleChat && isVisibleCompletedRun()) {
+            setRunCompleteNotice({
+              timestamp: completedAt,
+              exitCode,
+              startedAt: targetRun?.startedAt || completedRunStartedAt || undefined
+            })
+          }
+          const lastErrorLine =
+            (payload && typeof payload === 'object'
+              ? (payload as RunRouteEventPayload).error
+              : undefined) ||
+            context.warnings[context.warnings.length - 1]?.message ||
+            ''
+          const exitMessage =
+            exitCode === 130
+              ? 'Run cancelled.'
+              : `Task ended before completing (exit code ${exitCode}).${
+                  lastErrorLine ? ` Last error: ${lastErrorLine}` : ''
+                } See Raw Events for the full log.`
           const msgs = [
             ...updated.messages,
             {
               id: createMessageId(),
               role: 'system',
-              content: 'Task ended before completing. Check Raw Events for details.',
+              content: exitMessage,
               timestamp: completedAt
             }
           ] as ChatMessage[]
@@ -13257,34 +13360,18 @@ function App(): React.JSX.Element {
     await startPersistentGeminiSession()
   }
 
-  // 1.0.4-AQ4 — Copy message content to clipboard. Pure side
-  // effect; no state mutation. Failure (clipboard API blocked) is
-  // logged to raw-logs but not surfaced as a toast — the user
-  // initiates the action and can retry.
-  const handleCopyMessage = useCallback((content: string) => {
-    if (!content) return
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        void navigator.clipboard.writeText(content).catch((error) => {
-          setRawLogs((prev) => [
-            ...prev,
-            {
-              type: 'stderr',
-              content: `Failed to copy message to clipboard: ${redactLog(String(error))}`
-            }
-          ])
-        })
-      }
-    } catch (error) {
-      setRawLogs((prev) => [
-        ...prev,
-        {
-          type: 'stderr',
-          content: `Clipboard API unavailable: ${redactLog(String(error))}`
-        }
-      ])
-    }
-  }, [])
+  // 1.0.4-AQ4 — Copy message content to clipboard. 1.0.8: routed
+  // through the shared `useCopyFeedback` hook so the originating
+  // message chip shows a transient "Copied" confirmation (keyed on
+  // `messageId`) instead of copying silently. The hook owns the
+  // clipboard write + the reset timer.
+  const handleCopyMessage = useCallback(
+    (messageId: string, content: string) => {
+      if (!content) return
+      copy(messageId, content)
+    },
+    [copy]
+  )
 
   // 1.0.4-AQ4 — Delete a single message from the current chat's
   // transcript. Gates on `confirm()` because the action is
@@ -14116,10 +14203,7 @@ function App(): React.JSX.Element {
       .getLatestSessionCheckpoint(chatId)
       .then((checkpoint) => {
         if (cancelled) return
-        setPendingSessionCheckpointForChat(
-          chatId,
-          checkpoint ? { checkpoint } : null
-        )
+        setPendingSessionCheckpointForChat(chatId, checkpoint ? { checkpoint } : null)
       })
       .catch((error) => {
         if (cancelled) return
@@ -14502,7 +14586,7 @@ function App(): React.JSX.Element {
   const composerPlaceholder = isCurrentEnsembleChat
     ? 'Ask the ensemble. @ to direct a participant.'
     : currentProvider === 'codex'
-      ? 'Ask Codex anything. @ to use plugins or mention files'
+      ? 'Ask Codex anything. @ to mention files'
       : currentProvider === 'claude'
         ? 'Describe a task or ask a question'
         : currentProvider === 'gemini'
@@ -16548,6 +16632,8 @@ function App(): React.JSX.Element {
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
+                copiedId={copiedId}
+                copy={copy}
                 autoFollowRef={autoFollowRef}
               />
             </>
@@ -17746,9 +17832,7 @@ function App(): React.JSX.Element {
                           className="btn btn-sm btn-ghost"
                           type="button"
                           onClick={() =>
-                            handleSessionCheckpointDismiss(
-                              pendingSessionCheckpoint.checkpoint.id
-                            )
+                            handleSessionCheckpointDismiss(pendingSessionCheckpoint.checkpoint.id)
                           }
                         >
                           Dismiss
@@ -18131,7 +18215,9 @@ function App(): React.JSX.Element {
                               </span>
                               <span className="memory-file-path">{file.displayPath}</span>
                               {file.sizeBytes !== undefined && (
-                                <span className="memory-file-size">{file.sizeBytes} bytes</span>
+                                <span className="memory-file-size">
+                                  {formatBytes(file.sizeBytes)}
+                                </span>
                               )}
                             </summary>
                             <pre
@@ -19051,12 +19137,20 @@ function App(): React.JSX.Element {
                               (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
                             }
                             title={
-                              isCurrentEnsembleChat && effectiveSelectedParticipantId
-                                ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
-                                : 'Run'
+                              !currentChat
+                                ? 'Open or start a chat first'
+                                : !isCurrentGlobalChat && !currentWorkspace
+                                  ? 'Pick a workspace folder first'
+                                  : !prompt.trim()
+                                    ? 'Type a prompt first'
+                                    : currentProvider === 'gemini' && !geminiWorkspaceTrustReady
+                                      ? 'Trust this workspace for Gemini first'
+                                      : isCurrentEnsembleChat && effectiveSelectedParticipantId
+                                        ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
+                                        : 'Run'
                             }
                             aria-label="Run prompt"
-                            aria-keyshortcuts="Meta+Enter Control+Enter"
+                            aria-keyshortcuts="Enter Meta+Enter Control+Enter"
                             type="button"
                           >
                             {appearance.composerStyle === 'claude' ? (

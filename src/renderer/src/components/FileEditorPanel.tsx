@@ -179,7 +179,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
     try {
       const nextFiles = await editorApi.listFiles(workspacePath)
       setFiles(nextFiles)
-      setStatus(`${nextFiles.length} items`)
+      setStatus(`${nextFiles.length} ${nextFiles.length === 1 ? 'item' : 'items'}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not load files')
     } finally {

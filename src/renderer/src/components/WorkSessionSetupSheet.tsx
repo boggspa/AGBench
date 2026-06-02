@@ -112,30 +112,53 @@ export function WorkSessionSetupSheet({
 }: WorkSessionSetupSheetProps): React.JSX.Element | null {
   const enabledParticipants = useMemo(() => participants.filter((p) => p.enabled), [participants])
 
+  // When the session passed in has already reached a terminal state,
+  // re-opening it should behave as a fresh "Restart" rather than an
+  // "Edit" that silently dispatches a new round against stale fields.
+  // We reset to defaults and relabel the action button. Derived from
+  // the status the component already receives — no App.tsx change.
+  const isRestartMode =
+    initial?.status === 'completed' ||
+    initial?.status === 'cancelled' ||
+    initial?.status === 'limit_reached'
+
   const initialAllowed = useMemo(() => {
-    if (initial?.allowedParticipantIds && initial.allowedParticipantIds.length > 0) {
+    if (
+      !isRestartMode &&
+      initial?.allowedParticipantIds &&
+      initial.allowedParticipantIds.length > 0
+    ) {
       return new Set(initial.allowedParticipantIds)
     }
     return new Set(enabledParticipants.map((p) => p.id))
-  }, [enabledParticipants, initial])
+  }, [enabledParticipants, initial, isRestartMode])
 
-  const [objective, setObjective] = useState(initial?.objective || '')
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState(initial?.acceptanceCriteria || '')
-  const [initialPrompt, setInitialPrompt] = useState(initial?.initialPrompt || '')
+  const [objective, setObjective] = useState(isRestartMode ? '' : initial?.objective || '')
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
+    isRestartMode ? '' : initial?.acceptanceCriteria || ''
+  )
+  const [initialPrompt, setInitialPrompt] = useState(
+    isRestartMode ? '' : initial?.initialPrompt || ''
+  )
   const [allowed, setAllowed] = useState<Set<string>>(initialAllowed)
   const [leadId, setLeadId] = useState<string | undefined>(
-    initial?.leadParticipantId || enabledParticipants[0]?.id
+    (isRestartMode ? undefined : initial?.leadParticipantId) || enabledParticipants[0]?.id
   )
   const [permissionPresetId, setPermissionPresetId] = useState<PermissionPresetId>(
-    initial?.permissionPresetId || 'workspace_write'
+    (isRestartMode ? undefined : initial?.permissionPresetId) || 'workspace_write'
   )
   const [maxRoundsPerProvider, setMaxRoundsPerProvider] = useState<number>(
-    initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS
+    isRestartMode ? DEFAULT_MAX_ROUNDS : (initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
   )
   const [maxDurationMs, setMaxDurationMs] = useState<number>(
-    initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS
+    isRestartMode ? DEFAULT_MAX_DURATION_MS : (initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
   )
-  const [enableScoutPass, setEnableScoutPass] = useState<boolean>(initial?.enableScoutPass ?? false)
+  const [enableScoutPass, setEnableScoutPass] = useState<boolean>(
+    isRestartMode ? false : (initial?.enableScoutPass ?? false)
+  )
+  // 1.0.x — track the last preset chip applied so it can render with
+  // selected/active feedback (mirrors the duration buttons below).
+  const [activePresetId, setActivePresetId] = useState<string | null>(null)
   const [roundMode, setRoundMode] = useState<Exclude<EnsembleRoundMode, 'targeted'>>(
     initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
       ? initialRoundMode
@@ -155,22 +178,38 @@ export function WorkSessionSetupSheet({
   useEffect(() => {
     if (!isOpen) return
     const frame = window.requestAnimationFrame(() => {
-      setObjective(initial?.objective || '')
-      setAcceptanceCriteria(initial?.acceptanceCriteria || '')
-      setInitialPrompt(initial?.initialPrompt || '')
+      setObjective(isRestartMode ? '' : initial?.objective || '')
+      setAcceptanceCriteria(isRestartMode ? '' : initial?.acceptanceCriteria || '')
+      setInitialPrompt(isRestartMode ? '' : initial?.initialPrompt || '')
       setAllowed(initialAllowed)
-      setLeadId(initial?.leadParticipantId || enabledParticipants[0]?.id)
-      setPermissionPresetId(initial?.permissionPresetId || 'workspace_write')
-      setMaxRoundsPerProvider(initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
-      setMaxDurationMs(initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
-      setEnableScoutPass(initial?.enableScoutPass ?? false)
+      setLeadId(
+        (isRestartMode ? undefined : initial?.leadParticipantId) || enabledParticipants[0]?.id
+      )
+      setPermissionPresetId(
+        (isRestartMode ? undefined : initial?.permissionPresetId) || 'workspace_write'
+      )
+      setMaxRoundsPerProvider(
+        isRestartMode ? DEFAULT_MAX_ROUNDS : (initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
+      )
+      setMaxDurationMs(
+        isRestartMode
+          ? DEFAULT_MAX_DURATION_MS
+          : (initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
+      )
+      setEnableScoutPass(isRestartMode ? false : (initial?.enableScoutPass ?? false))
+      setActivePresetId(null)
       setRoundMode(
-        initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
-          ? initialRoundMode
-          : 'roundtable'
+        isRestartMode
+          ? 'roundtable'
+          : initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
+            ? initialRoundMode
+            : 'roundtable'
       )
       setSynthesizerParticipantId(
-        initialSynthesizerParticipantId || initial?.leadParticipantId || enabledParticipants[0]?.id
+        (isRestartMode
+          ? undefined
+          : initialSynthesizerParticipantId || initial?.leadParticipantId) ||
+          enabledParticipants[0]?.id
       )
       setErrors([])
     })
@@ -186,7 +225,8 @@ export function WorkSessionSetupSheet({
     initialAllowed,
     enabledParticipants,
     initialRoundMode,
-    initialSynthesizerParticipantId
+    initialSynthesizerParticipantId,
+    isRestartMode
   ])
 
   // Esc dismisses the sheet — matches BugReportSheet behaviour.
@@ -207,6 +247,10 @@ export function WorkSessionSetupSheet({
       const next = new Set(prev)
       if (next.has(participantId)) {
         next.delete(participantId)
+        // Only clear the lead when the participant being DESELECTED is
+        // itself the lead — deselecting a non-lead must never wipe the
+        // chosen lead.
+        setLeadId((currentLead) => (currentLead === participantId ? undefined : currentLead))
       } else {
         next.add(participantId)
       }
@@ -277,8 +321,16 @@ export function WorkSessionSetupSheet({
 
   if (!isOpen) return null
 
-  const sheetTitle = initial?.objective ? 'Edit Work Session' : 'Start Work Session'
-  const submitLabel = initial?.objective ? 'Update session' : 'Start session'
+  const sheetTitle = isRestartMode
+    ? 'Restart Work Session'
+    : initial?.objective
+      ? 'Edit Work Session'
+      : 'Start Work Session'
+  const submitLabel = isRestartMode
+    ? 'Restart'
+    : initial?.objective
+      ? 'Update session'
+      : 'Start session'
 
   return (
     <div
@@ -317,7 +369,9 @@ export function WorkSessionSetupSheet({
                 <button
                   key={preset.id}
                   type="button"
-                  className="work-session-preset-chip"
+                  className={`work-session-preset-chip${
+                    activePresetId === preset.id ? ' is-active' : ''
+                  }`}
                   title={preset.description}
                   onClick={() => {
                     const found = findEnsemblePreset(preset.id)
@@ -342,6 +396,7 @@ export function WorkSessionSetupSheet({
                     if (o.acceptanceCriteriaHint && !acceptanceCriteria.trim()) {
                       setAcceptanceCriteria(o.acceptanceCriteriaHint)
                     }
+                    setActivePresetId(preset.id)
                   }}
                 >
                   {preset.label}
@@ -484,7 +539,9 @@ export function WorkSessionSetupSheet({
                 max={500}
                 value={maxRoundsPerProvider}
                 onChange={(e) =>
-                  setMaxRoundsPerProvider(Math.max(1, Math.floor(Number(e.target.value) || 0)))
+                  setMaxRoundsPerProvider(
+                    Math.min(500, Math.max(1, Math.floor(Number(e.target.value) || 0)))
+                  )
                 }
               />
               <span className="work-session-field-hint">Hard cap per provider. Default 38.</span>
