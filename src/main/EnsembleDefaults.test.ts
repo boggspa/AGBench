@@ -41,30 +41,30 @@ describe('createDefaultEnsembleConfig parity guard', () => {
 
     expect(rolesByProvider).toEqual({
       claude: {
-        role: 'Explorer',
+        role: 'Claude',
         instructions:
           'Explore the request, identify constraints, and propose the safest path forward.'
       },
       codex: {
-        role: 'Worker',
+        role: 'Codex',
         instructions: 'Implement concrete code or workflow changes when the round calls for action.'
       },
       gemini: {
-        role: 'Researcher',
+        role: 'Gemini',
         instructions:
           'Use broad context to find supporting facts, references, and alternate approaches.'
       },
       kimi: {
-        role: 'Reviewer',
+        role: 'Kimi',
         instructions: 'Review prior responses for gaps, edge cases, and test coverage.'
       },
       grok: {
-        role: 'Challenger',
+        role: 'Grok',
         instructions:
           'Stress-test the proposed approach: surface risky assumptions, failure modes, and simpler alternatives.'
       },
       cursor: {
-        role: 'Builder',
+        role: 'Cursor',
         instructions:
           'Draft the concrete implementation: propose specific edits, file touches, and integration steps.'
       }

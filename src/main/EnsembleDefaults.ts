@@ -26,26 +26,26 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
 }> = [
   {
     provider: 'claude',
-    role: 'Explorer',
+    role: 'Claude',
     instructions: 'Explore the request, identify constraints, and propose the safest path forward.',
-    permissionPresetId: 'read_only'
+    permissionPresetId: 'default_approval'
   },
   {
     provider: 'codex',
-    role: 'Worker',
+    role: 'Codex',
     instructions: 'Implement concrete code or workflow changes when the round calls for action.',
-    permissionPresetId: 'workspace_write'
+    permissionPresetId: 'default_approval'
   },
   {
     provider: 'gemini',
-    role: 'Researcher',
+    role: 'Gemini',
     instructions:
       'Use broad context to find supporting facts, references, and alternate approaches.',
     permissionPresetId: 'read_only'
   },
   {
     provider: 'kimi',
-    role: 'Reviewer',
+    role: 'Kimi',
     instructions: 'Review prior responses for gaps, edge cases, and test coverage.',
     permissionPresetId: 'read_only'
   },
@@ -55,7 +55,7 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     // approval ledger) lands write-capable runs; `getDefaultEnsembleParticipantConfig`
     // in ensembleProviderDefaults.ts mirrors this preset.
     provider: 'grok',
-    role: 'Challenger',
+    role: 'Grok',
     instructions:
       'Stress-test the proposed approach: surface risky assumptions, failure modes, and simpler alternatives.',
     permissionPresetId: 'read_only'
@@ -66,7 +66,7 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     // user can grant write per-participant. `getDefaultEnsembleParticipantConfig`
     // in ensembleProviderDefaults.ts mirrors this preset.
     provider: 'cursor',
-    role: 'Builder',
+    role: 'Cursor',
     instructions:
       'Draft the concrete implementation: propose specific edits, file touches, and integration steps.',
     permissionPresetId: 'read_only'
