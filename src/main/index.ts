@@ -25,7 +25,7 @@ import * as pty from 'node-pty'
 import os from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
-import { CodexAppServerClient } from './CodexAppServerClient'
+import { CodexAppServerClient, isCodexAppServerThreadId } from './CodexAppServerClient'
 import {
   codexCommandFileEditMetadata,
   codexCommandText,
@@ -8442,11 +8442,24 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   let threadResponse: any
-  if (payload.providerSessionId) {
+  const resumableThreadId =
+    payload.providerSessionId && isCodexAppServerThreadId(payload.providerSessionId)
+      ? payload.providerSessionId
+      : null
+  if (payload.providerSessionId && !resumableThreadId) {
+    // A codex-exec fallback session id (`codex-exec-<ts>`) is not a valid
+    // app-server thread UUID — resuming it throws "invalid thread id" and
+    // wedges the chat into perpetual exec fallback. Start a fresh thread; its
+    // UUID replaces the bad providerSessionId, self-healing the chat.
+    console.warn(
+      `[codex] non-UUID providerSessionId not resumable on app-server; starting a fresh thread (was: ${payload.providerSessionId})`
+    )
+  }
+  if (resumableThreadId) {
     threadResponse = await client.request(
       'thread/resume',
       {
-        threadId: payload.providerSessionId,
+        threadId: resumableThreadId,
         persistExtendedHistory: true
       },
       30_000

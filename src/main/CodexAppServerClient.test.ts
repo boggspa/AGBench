@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { buildCodexAgentbenchMcpArgs, type CodexMcpAgentbenchConfig } from './CodexAppServerClient'
+import {
+  buildCodexAgentbenchMcpArgs,
+  isCodexAppServerThreadId,
+  type CodexMcpAgentbenchConfig
+} from './CodexAppServerClient'
+
+describe('isCodexAppServerThreadId', () => {
+  it('accepts a plain UUID (a real app-server thread id)', () => {
+    expect(isCodexAppServerThreadId('7b057c8b-33fa-4eca-9efe-3313a83669f4')).toBe(true)
+  })
+
+  it('accepts a urn:uuid:-prefixed UUID', () => {
+    expect(isCodexAppServerThreadId('urn:uuid:7b057c8b-33fa-4eca-9efe-3313a83669f4')).toBe(true)
+  })
+
+  it('rejects a codex-exec fallback session id (the poison-loop id)', () => {
+    // This is the exact id shape that wedged a chat into perpetual exec
+    // fallback ("invalid thread id: ... found `o` at 2").
+    expect(isCodexAppServerThreadId('codex-exec-1780439561126')).toBe(false)
+  })
+
+  it('rejects other non-UUID ids and empty / nullish values', () => {
+    expect(isCodexAppServerThreadId('1780439938268-rc0h3xqajl')).toBe(false)
+    expect(isCodexAppServerThreadId('')).toBe(false)
+    expect(isCodexAppServerThreadId(null)).toBe(false)
+    expect(isCodexAppServerThreadId(undefined)).toBe(false)
+  })
+})
 
 // Phase I2: the Codex CLI gets the AGBench MCP server registered
 // at spawn time via `-c mcp_servers.AGBench.*` config overrides.

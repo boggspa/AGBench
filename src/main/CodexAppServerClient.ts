@@ -3,6 +3,23 @@ import { homedir } from 'os'
 import { delimiter, join } from 'path'
 import { createInterface, type Interface as ReadlineInterface } from 'readline'
 
+/**
+ * Codex's app-server only accepts UUID thread ids (optionally `urn:uuid:`-
+ * prefixed) for `thread/resume`. A `codex exec` fallback run mints a synthetic
+ * `codex-exec-<ts>` session id; if that ever gets persisted as a chat's
+ * providerSessionId, feeding it back to `thread/resume` throws "invalid thread
+ * id" and the run perpetually falls back to exec (which re-mints another
+ * `codex-exec-` id — a poison loop). Guard with this before resuming: a
+ * non-UUID id has no app-server thread to resume, so the caller should
+ * `thread/start` a fresh thread instead (whose UUID then replaces the bad id).
+ */
+const CODEX_APP_SERVER_THREAD_ID_RE =
+  /^(urn:uuid:)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+export function isCodexAppServerThreadId(value: string | null | undefined): boolean {
+  return typeof value === 'string' && CODEX_APP_SERVER_THREAD_ID_RE.test(value.trim())
+}
+
 type JsonRpcId = number | string
 
 interface PendingRequest {
