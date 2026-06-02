@@ -936,7 +936,11 @@ export class McpBridgeRuntime {
     const settings = this.deps.getSettings()
     const socketPath = this.deps.getGeminiMcpSocketPath()
     if (settings.geminiMcpBridgeEnabled) {
-      await this.startGeminiMcpBroker().catch(() => {})
+      // Surface broker start failures instead of swallowing them — a dead
+      // broker is exactly why participants report "MCP socket is down".
+      await this.startGeminiMcpBroker().catch((error) => {
+        console.error('[mcp-bridge] broker failed to start during status check', error)
+      })
       await this.repairKnownStaleGeminiMcpBridgeConfigs(options.cwd)
     }
     let section = await this.deps.readGeminiCapabilitySection('mcp', options.cwd)

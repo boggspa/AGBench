@@ -5201,6 +5201,16 @@ async function tryRunClaudeSdk(
     AGENTBENCH_CHAT_ID: route.appChatId || '',
     ...(claudeApiKey ? { ANTHROPIC_API_KEY: claudeApiKey } : {})
   }
+  // 1.0.71 dogfood fix: make sure the AGBench MCP broker socket is actually
+  // listening before the SDK spawns Claude's bridge subprocess. Otherwise the
+  // subprocess connects to a dead socket and Claude reports "MCP socket is
+  // down", then silently degrades to its native read tools. startGeminiMcpBroker
+  // is idempotent (no-op once listening), so this is cheap on every run.
+  if (claudeSdkMcpServers) {
+    await startGeminiMcpBroker().catch((error) => {
+      console.error('[mcp-bridge] broker ensure failed before Claude run', error)
+    })
+  }
   const stream = query({
     prompt: payload.prompt,
     options: {
