@@ -5601,6 +5601,12 @@ function App(): React.JSX.Element {
     usePerChatState<AgentQuestionState | null>(null)
   const [pendingSessionCheckpointByChatId, setPendingSessionCheckpointForChat] =
     usePerChatState<SessionCheckpointPromptState | null>(null)
+  // Checkpoint ids the user has explicitly dismissed this session. The
+  // detection effect consults this so a re-run can't resurface a modal the
+  // user already waved away (stops the "interrupted checkpoint" spam after a
+  // hiccup). Session-scoped by design — a genuine post-restart checkpoint
+  // still surfaces once on next launch.
+  const dismissedSessionCheckpointIdsRef = useRef<Set<string>>(new Set())
   const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
   const [commandPaletteQueryByChatId, setCommandPaletteQueryForChat] = usePerChatState('')
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
@@ -8230,9 +8236,12 @@ function App(): React.JSX.Element {
     }
   }
 
-  // Keep a ref to the *latest* `refreshUsageSummary` closure so the
-  // autonomous polling effect (below) doesn't need to depend on `codexStatus`
-  // and tear the timer down on every status mutation.
+ /**
+  * Keep a ref to the *latest* `refreshUsageSummary` closure so the
+  * autonomous polling effect (below) doesn't need to depend on `codexStatus`
+  * and tear the timer down on every status mutation.
+  */
+  
   refreshUsageSummaryRef.current = refreshUsageSummary
 
   const handleSelectWorkspace = async () => {
@@ -13519,6 +13528,7 @@ function App(): React.JSX.Element {
 
   const handleSessionCheckpointDismiss = useCallback(
     (checkpointId: string) => {
+      dismissedSessionCheckpointIdsRef.current.add(checkpointId)
       const targetChatId = currentChat?.appChatId
       if (targetChatId) {
         setPendingSessionCheckpointForChat(targetChatId, null)
@@ -14203,6 +14213,11 @@ function App(): React.JSX.Element {
       .getLatestSessionCheckpoint(chatId)
       .then((checkpoint) => {
         if (cancelled) return
+        // Don't resurface a checkpoint the user already dismissed this session.
+        if (checkpoint && dismissedSessionCheckpointIdsRef.current.has(checkpoint.id)) {
+          setPendingSessionCheckpointForChat(chatId, null)
+          return
+        }
         setPendingSessionCheckpointForChat(chatId, checkpoint ? { checkpoint } : null)
       })
       .catch((error) => {
@@ -14221,7 +14236,10 @@ function App(): React.JSX.Element {
     currentChat?.chatKind,
     currentChat?.ensemble?.activeRound?.roundId,
     currentChat?.ensemble?.activeRound?.status,
-    currentChat?.updatedAt,
+    // NOT currentChat?.updatedAt — that re-ran this effect on every transcript
+    // event, re-surfacing the interrupted-checkpoint modal on almost every
+    // message. Round-state (status/roundId) + run-liveness (runningChatIds) are
+    // the real signals for a stuck/interrupted round.
     runningChatIds,
     setPendingSessionCheckpointForChat
   ])
