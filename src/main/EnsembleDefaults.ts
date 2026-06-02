@@ -28,13 +28,13 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     provider: 'claude',
     role: 'Claude',
     instructions: 'Explore the request, identify constraints, and propose the safest path forward.',
-    permissionPresetId: 'default_approval'
+    permissionPresetId: 'read_only'
   },
   {
     provider: 'codex',
     role: 'Codex',
     instructions: 'Implement concrete code or workflow changes when the round calls for action.',
-    permissionPresetId: 'default_approval'
+    permissionPresetId: 'workspace_write'
   },
   {
     provider: 'gemini',
