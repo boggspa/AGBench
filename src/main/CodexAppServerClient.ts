@@ -20,6 +20,142 @@ export function isCodexAppServerThreadId(value: string | null | undefined): bool
   return typeof value === 'string' && CODEX_APP_SERVER_THREAD_ID_RE.test(value.trim())
 }
 
+/**
+ * Detect the specific failure where the codex CLI refuses to start because
+ * it cannot deserialize `~/.codex/config.toml`. This happens when the user's
+ * Codex.app (a newer CLI) writes a config value that the older homebrew CLI
+ * AGBench spawns does not understand — the real error we hit in production was:
+ *
+ *   Error loading config.toml: unknown variant `priority`, expected `fast`
+ *   or `flex` in `service_tier`
+ *
+ * The CLI emits this on stderr and exits non-zero, so the app-server spawn /
+ * probe / exec fallback all fail with a generic "exited" error. We classify
+ * the stderr text so the caller can surface a clear, actionable message
+ * (edit config.toml / `brew upgrade codex`) instead of the cryptic generic
+ * "app-server unavailable; falling back to codex exec".
+ *
+ * Match strategy (kept deliberately tight to avoid false-positiving on normal
+ * agent output that merely mentions a config path):
+ *   - an explicit serde/config deserialize signature
+ *     (`error loading config`, `unknown variant`, `unknown field`,
+ *      `invalid type`, `missing field`, ``expected `x` or``, `expected one of`), OR
+ *   - any phrase that pairs a `config.toml` reference with `parse`/`deserialize`/`invalid`.
+ * We do NOT trigger on a bare `config.toml` mention alone.
+ */
+export function isCodexConfigParseError(stderr: string | null | undefined): boolean {
+  if (typeof stderr !== 'string' || !stderr.trim()) return false
+  const text = stderr.toLowerCase()
+  // serde / clap-style config deserialize failures. The `expected \`x\` or
+  // \`y\`` branch requires a backtick-quoted token before `or` so it matches
+  // the serde variant-enum shape (`expected \`fast\` or \`flex\``) without
+  // false-positiving on prose like "passed as expected or skipped".
+  const serdeSignature =
+    /error loading config|unknown variant|unknown field|invalid type:|missing field|duplicate key|expected `[^`]*` or|expected one of/.test(
+      text
+    )
+  if (serdeSignature) return true
+  // A config.toml reference combined with a parse/deserialize verb.
+  if (
+    /config\.toml/.test(text) &&
+    /(pars|deserializ|invalid|could not|cannot|failed to load)/.test(text)
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Build the user-facing, actionable message for a detected config.toml parse
+ * error (see `isCodexConfigParseError`). Exported so the wording stays pinned
+ * by a unit test and so the same string is reused by every call site that can
+ * hit this failure (app-server start, probe, exec fallback).
+ */
+export function codexConfigParseUserMessage(stderr: string): string {
+  const detail = stderr.trim().split('\n')[0]?.trim() || stderr.trim()
+  return (
+    `Your ~/.codex/config.toml has a value the codex CLI rejected: ${detail} ` +
+    `Edit it (for example, service_tier must be "fast" or "flex") or run ` +
+    '`brew upgrade codex` to update the CLI, then retry.'
+  )
+}
+
+/**
+ * Parse a codex `--version` line (e.g. `codex-cli 0.128.0` or
+ * `codex-cli 0.136.0-alpha.2`) into comparable numeric parts plus a
+ * prerelease tag. Returns null when no semver-looking token is present so the
+ * caller can skip the comparison rather than guess. The leading `codex-cli`
+ * label is ignored; we grab the first `x.y[.z]` token.
+ */
+export interface ParsedCodexVersion {
+  major: number
+  minor: number
+  patch: number
+  /** e.g. `alpha.2` for `0.136.0-alpha.2`; '' for a stable release. */
+  prerelease: string
+  raw: string
+}
+
+export function parseCodexVersion(version: string | null | undefined): ParsedCodexVersion | null {
+  if (typeof version !== 'string') return null
+  const match = version.match(/(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?/)
+  if (!match) return null
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: match[3] ? Number(match[3]) : 0,
+    prerelease: match[4] || '',
+    raw: version.trim()
+  }
+}
+
+function comparePrerelease(a: string, b: string): number {
+  // SemVer: a version WITHOUT a prerelease outranks one WITH a prerelease at
+  // the same x.y.z (1.0.0 > 1.0.0-alpha). Two prereleases compare dot-segment
+  // by dot-segment, numeric segments numerically, otherwise lexically.
+  if (a === b) return 0
+  if (!a) return 1
+  if (!b) return -1
+  const as = a.split('.')
+  const bs = b.split('.')
+  const len = Math.max(as.length, bs.length)
+  for (let i = 0; i < len; i++) {
+    const av = as[i]
+    const bv = bs[i]
+    if (av === undefined) return -1
+    if (bv === undefined) return 1
+    const an = /^\d+$/.test(av) ? Number(av) : null
+    const bn = /^\d+$/.test(bv) ? Number(bv) : null
+    if (an !== null && bn !== null) {
+      if (an !== bn) return an < bn ? -1 : 1
+    } else {
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
+/**
+ * Compare two codex version strings. Returns -1 if `a < b`, 1 if `a > b`,
+ * 0 if equal/incomparable. Accepts raw `--version` output (the `codex-cli`
+ * prefix and prerelease tags are handled). When either side fails to parse we
+ * return 0 (treat as "can't tell — don't warn") so an unexpected version
+ * format never produces a spurious upgrade nag.
+ */
+export function compareCodexVersions(
+  a: string | null | undefined,
+  b: string | null | undefined
+): number {
+  const pa = parseCodexVersion(a)
+  const pb = parseCodexVersion(b)
+  if (!pa || !pb) return 0
+  if (pa.major !== pb.major) return pa.major < pb.major ? -1 : 1
+  if (pa.minor !== pb.minor) return pa.minor < pb.minor ? -1 : 1
+  if (pa.patch !== pb.patch) return pa.patch < pb.patch ? -1 : 1
+  return comparePrerelease(pa.prerelease, pb.prerelease)
+}
+
 type JsonRpcId = number | string
 
 interface PendingRequest {
@@ -136,6 +272,22 @@ export class CodexAppServerClient {
   private requestHandler: ((message: any) => void) | null = null
   private stderrHandler: ((chunk: string) => void) | null = null
   private mcpConfig: CodexMcpAgentbenchConfig | null = null
+  // Ring buffer of the most recent stderr the codex CLI emitted. When the
+  // app-server refuses to start because of a bad ~/.codex/config.toml, the
+  // CLI writes the parse error here and exits — and `ensureStarted` otherwise
+  // rejects with a generic "exited" message. We retain stderr so the start
+  // failure can be enriched with (and classified against) the real cause.
+  private recentStderr = ''
+
+  /**
+   * The most recent stderr captured from the codex CLI (bounded). Callers use
+   * this to classify start failures (e.g. `isCodexConfigParseError`) so a
+   * config.toml parse error surfaces an actionable message instead of the
+   * generic exec-fallback notice.
+   */
+  getRecentStderr(): string {
+    return this.recentStderr
+  }
 
   setNotificationHandler(handler: ((message: any) => void) | null) {
     this.notificationHandler = handler
@@ -248,6 +400,9 @@ export class CodexAppServerClient {
     if (this.mcpConfig?.enabled) {
       codexEnv.AGENTBENCH_PARENT_PROVIDER = this.mcpConfig.parentProvider
     }
+    // Reset the stderr ring buffer for this start attempt so a stale error
+    // from a prior failed start can't be misattributed to this one.
+    this.recentStderr = ''
     this.proc = spawn('codex', codexArgs, {
       shell: false,
       stdio: 'pipe',
@@ -258,7 +413,11 @@ export class CodexAppServerClient {
     this.stdoutReader.on('line', (line) => this.handleLine(line))
 
     this.proc.stderr.on('data', (chunk) => {
-      this.stderrHandler?.(chunk.toString('utf8'))
+      const text = chunk.toString('utf8')
+      // Keep the tail bounded; a config parse error is short and appears first,
+      // but the agent can later emit lots of stderr we don't want to retain.
+      this.recentStderr = (this.recentStderr + text).slice(-8_000)
+      this.stderrHandler?.(text)
     })
 
     this.proc.on('close', (code) => {
@@ -276,20 +435,34 @@ export class CodexAppServerClient {
       this.rejectPending(error)
     })
 
-    await this.request(
-      'initialize',
-      {
-        clientInfo: {
-          name: 'agbench',
-          title: 'AGBench',
-          version: appVersion
+    try {
+      await this.request(
+        'initialize',
+        {
+          clientInfo: {
+            name: 'agbench',
+            title: 'AGBench',
+            version: appVersion
+          },
+          capabilities: {
+            experimentalApi: true
+          }
         },
-        capabilities: {
-          experimentalApi: true
-        }
-      },
-      15_000
-    )
+        15_000
+      )
+    } catch (error) {
+      // Enrich the generic start failure with whatever the CLI wrote to stderr
+      // (e.g. a config.toml parse error) so the caller can classify it and show
+      // an actionable message rather than the cryptic exec-fallback notice.
+      const stderr = this.recentStderr.trim()
+      if (stderr) {
+        const base = error instanceof Error ? error.message : String(error)
+        const enriched = new Error(`${base} ${stderr}`) as Error & { codexStderr?: string }
+        enriched.codexStderr = stderr
+        throw enriched
+      }
+      throw error
+    }
     this.notify('initialized')
   }
 

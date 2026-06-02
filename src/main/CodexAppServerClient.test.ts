@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCodexAgentbenchMcpArgs,
+  codexConfigParseUserMessage,
+  compareCodexVersions,
   isCodexAppServerThreadId,
+  isCodexConfigParseError,
+  parseCodexVersion,
   type CodexMcpAgentbenchConfig
 } from './CodexAppServerClient'
 
@@ -93,5 +97,133 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     // update the test too.
     const args = buildCodexAgentbenchMcpArgs(makeConfig())
     expect(args[5]).toContain('AGENTBENCH_PARENT_PROVIDER = "codex"')
+  })
+})
+
+// Dogfood hardening (a): when the homebrew codex CLI AGBench spawns is older
+// than the one the user's Codex.app uses, the app can write a config.toml value
+// the older CLI rejects. The CLI prints a deserialize error on stderr and
+// exits, so the app-server/probe/exec all fail generically. We classify that
+// stderr so the user gets an actionable message instead of the cryptic fallback.
+describe('isCodexConfigParseError', () => {
+  it('matches the exact production error (unknown variant in service_tier)', () => {
+    const stderr =
+      'Error loading config.toml: unknown variant `priority`, expected `fast` or `flex` in `service_tier`'
+    expect(isCodexConfigParseError(stderr)).toBe(true)
+  })
+
+  it('matches other serde-style config deserialize failures', () => {
+    expect(isCodexConfigParseError('error loading config: bad value')).toBe(true)
+    expect(isCodexConfigParseError('unknown field `foo`, expected one of `a`, `b`')).toBe(true)
+    expect(isCodexConfigParseError('invalid type: string "x", expected a boolean')).toBe(true)
+    expect(isCodexConfigParseError('missing field `model` at line 3')).toBe(true)
+    expect(isCodexConfigParseError('duplicate key `model` in config')).toBe(true)
+  })
+
+  it('matches a config.toml reference paired with a parse verb', () => {
+    expect(
+      isCodexConfigParseError('failed to parse config.toml at /Users/me/.codex/config.toml')
+    ).toBe(true)
+    expect(isCodexConfigParseError('could not deserialize config.toml')).toBe(true)
+  })
+
+  it('does NOT false-positive on normal agent output', () => {
+    expect(isCodexConfigParseError('')).toBe(false)
+    expect(isCodexConfigParseError(null)).toBe(false)
+    expect(isCodexConfigParseError(undefined)).toBe(false)
+    // A bare config.toml mention with no parse/deserialize verb must not trigger.
+    expect(isCodexConfigParseError('Reading config.toml for model defaults...')).toBe(false)
+    expect(
+      isCodexConfigParseError('The assistant edited config.toml to add a new mcp server.')
+    ).toBe(false)
+    expect(isCodexConfigParseError('Codex app-server exited with code 0.')).toBe(false)
+    expect(isCodexConfigParseError('thread/start failed: invalid thread id')).toBe(false)
+    // Prose that happens to contain "expected ... or" must NOT match — the
+    // serde branch requires a backtick-quoted variant before `or`.
+    expect(isCodexConfigParseError('Running 12 tests, all passed as expected or skipped.')).toBe(
+      false
+    )
+    expect(isCodexConfigParseError('The test expected 5 or 6 rows but got 4.')).toBe(false)
+    expect(isCodexConfigParseError('I expected this to work or fail loudly.')).toBe(false)
+  })
+})
+
+describe('codexConfigParseUserMessage', () => {
+  it('embeds the first stderr line and the two remedies', () => {
+    const msg = codexConfigParseUserMessage(
+      'Error loading config.toml: unknown variant `priority`, expected `fast` or `flex` in `service_tier`\n  at line 4'
+    )
+    expect(msg).toContain('~/.codex/config.toml')
+    expect(msg).toContain('unknown variant `priority`')
+    // First line only — the trailing "  at line 4" is dropped.
+    expect(msg).not.toContain('at line 4')
+    expect(msg).toContain('brew upgrade codex')
+    expect(msg).toContain('fast')
+    expect(msg).toContain('flex')
+  })
+})
+
+// Dogfood hardening (b): prefer/notify-about the newest codex binary. We DETECT
+// a newer codex than AGBench would use and warn — we do not auto-switch. These
+// pin the version parser + comparator the detection relies on.
+describe('parseCodexVersion', () => {
+  it('parses a stable `codex-cli x.y.z` line', () => {
+    expect(parseCodexVersion('codex-cli 0.128.0')).toMatchObject({
+      major: 0,
+      minor: 128,
+      patch: 0,
+      prerelease: ''
+    })
+  })
+
+  it('parses a prerelease line', () => {
+    expect(parseCodexVersion('codex-cli 0.136.0-alpha.2')).toMatchObject({
+      major: 0,
+      minor: 136,
+      patch: 0,
+      prerelease: 'alpha.2'
+    })
+  })
+
+  it('tolerates a bare `x.y` (no patch)', () => {
+    expect(parseCodexVersion('codex 1.2')).toMatchObject({ major: 1, minor: 2, patch: 0 })
+  })
+
+  it('returns null when there is no version token', () => {
+    expect(parseCodexVersion('command not found')).toBeNull()
+    expect(parseCodexVersion('')).toBeNull()
+    expect(parseCodexVersion(null)).toBeNull()
+  })
+})
+
+describe('compareCodexVersions', () => {
+  it('orders the real-world homebrew vs Codex.app pair (0.128.0 < 0.136.0-alpha.2)', () => {
+    expect(compareCodexVersions('codex-cli 0.128.0', 'codex-cli 0.136.0-alpha.2')).toBe(-1)
+    expect(compareCodexVersions('codex-cli 0.136.0-alpha.2', 'codex-cli 0.128.0')).toBe(1)
+  })
+
+  it('treats equal versions as 0', () => {
+    expect(compareCodexVersions('codex-cli 0.128.0', '0.128.0')).toBe(0)
+  })
+
+  it('ranks a stable release above its own prerelease (1.0.0 > 1.0.0-alpha)', () => {
+    expect(compareCodexVersions('1.0.0', '1.0.0-alpha')).toBe(1)
+    expect(compareCodexVersions('1.0.0-alpha', '1.0.0')).toBe(-1)
+  })
+
+  it('compares prerelease segments numerically then lexically', () => {
+    expect(compareCodexVersions('1.0.0-alpha.2', '1.0.0-alpha.10')).toBe(-1)
+    expect(compareCodexVersions('1.0.0-alpha', '1.0.0-beta')).toBe(-1)
+  })
+
+  it('returns 0 (do not warn) when either side is unparseable', () => {
+    expect(compareCodexVersions('command not found', '0.136.0')).toBe(0)
+    expect(compareCodexVersions('0.128.0', null)).toBe(0)
+  })
+
+  it('orders major/minor/patch correctly', () => {
+    expect(compareCodexVersions('0.9.0', '0.10.0')).toBe(-1)
+    expect(compareCodexVersions('1.0.0', '0.999.0')).toBe(1)
+    expect(compareCodexVersions('0.128.1', '0.128.0')).toBe(1)
   })
 })

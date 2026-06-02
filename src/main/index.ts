@@ -25,7 +25,13 @@ import * as pty from 'node-pty'
 import os from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
-import { CodexAppServerClient, isCodexAppServerThreadId } from './CodexAppServerClient'
+import {
+  CodexAppServerClient,
+  codexConfigParseUserMessage,
+  compareCodexVersions,
+  isCodexAppServerThreadId,
+  isCodexConfigParseError
+} from './CodexAppServerClient'
 import {
   codexCommandFileEditMetadata,
   codexCommandText,
@@ -359,6 +365,9 @@ let geminiProcess: ChildProcess | null = null
 let geminiSessionProcess: pty.IPty | null = null
 let codexClient: CodexAppServerClient | null = null
 let codexExecProcess: ChildProcess | null = null
+// Fire the "a newer codex is installed" hint at most once per app session so we
+// don't nag on every run. See `maybeWarnNewerCodexBinary`.
+let codexNewerBinaryWarned = false
 let scheduledTaskTimer: ReturnType<typeof setTimeout> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
 const rendererConsoleBuffer: Array<{
@@ -6643,7 +6652,11 @@ async function probeCodexParticipant(): Promise<ParticipantProbeResult> {
         typeof (err as { code?: unknown })?.code === 'string'
           ? ((err as { code?: string }).code as string)
           : 'ECONNREFUSED'
-      return { reachable: false, reason: message, underlyingCode: code }
+      // Surface a config.toml parse failure as the actionable message so the
+      // ensemble unreachable reason isn't a cryptic serde dump.
+      const stderr = (err as { codexStderr?: string } | null)?.codexStderr || message
+      const reason = isCodexConfigParseError(stderr) ? codexConfigParseUserMessage(stderr) : message
+      return { reachable: false, reason, underlyingCode: code }
     })
   const timeout = new Promise<ParticipantProbeResult>((resolve) =>
     setTimeout(
@@ -8655,8 +8668,17 @@ function runCodexExecFallback(
     )
   })
 
+  let execConfigErrorSurfaced = false
   child.stderr?.on('data', (data) => {
-    sendAgentCompatError(event.sender, 'codex', data.toString(), route)
+    const text = data.toString()
+    // The exec fallback runs the SAME codex CLI, so a bad ~/.codex/config.toml
+    // fails it too. Surface the actionable message once (not per chunk) so the
+    // exec path isn't another dead-end with a cryptic deserialize dump.
+    if (!execConfigErrorSurfaced && isCodexConfigParseError(text)) {
+      execConfigErrorSurfaced = true
+      sendAgentCompatError(event.sender, 'codex', codexConfigParseUserMessage(text), route)
+    }
+    sendAgentCompatError(event.sender, 'codex', text, route)
   })
 
   child.on('close', (code) => {
@@ -8691,14 +8713,98 @@ function runCodexExecFallback(
   })
 }
 
+/**
+ * Other well-known codex install locations that are NOT on AGBench's PATH
+ * search but that a user is likely to also have. Today this is the official
+ * Codex.app bundle, whose CLI (e.g. 0.136.0-alpha.2) is frequently NEWER than
+ * the homebrew `codex` (0.128.0) AGBench resolves — and writes config values
+ * the older CLI rejects. We compare versions and, if one of these is newer
+ * than the binary AGBench would spawn, emit a single non-blocking hint.
+ *
+ * Conservative by design: this DETECTS + WARNS only. We deliberately do NOT
+ * auto-switch the binary — different codex versions ship different flags and
+ * app-server behaviour, and silently spawning a different CLI than the one the
+ * user configured is a far riskier failure mode than an upgrade nag.
+ */
+const KNOWN_OFF_PATH_CODEX_BINARIES = ['/Applications/Codex.app/Contents/Resources/codex']
+
+async function maybeWarnNewerCodexBinary(
+  sender: Electron.WebContents,
+  route: AgentRunRoute
+): Promise<void> {
+  if (codexNewerBinaryWarned) return
+  try {
+    const resolved = await resolveCliProviderBinary('codex')
+    if (!resolved.binaryPath) return
+    const usedVersion = await readResolvedCliVersion(resolved)
+
+    let newest: { path: string; version: string } | null = null
+    for (const candidate of KNOWN_OFF_PATH_CODEX_BINARIES) {
+      // Skip the candidate if it IS the binary AGBench already uses (e.g. PATH
+      // happens to point at it) — no point warning about itself.
+      if (candidate === resolved.binaryPath) continue
+      let exists = false
+      try {
+        const stat = await fs.stat(candidate)
+        exists = stat.isFile() || stat.isSymbolicLink()
+      } catch {
+        exists = false
+      }
+      if (!exists) continue
+      const candidateVersion = await readResolvedCliVersion({
+        provider: 'codex',
+        binaryPath: candidate,
+        source: 'common'
+      })
+      // candidate strictly newer than the one AGBench uses?
+      if (compareCodexVersions(candidateVersion, usedVersion) > 0) {
+        // And the newest among multiple candidates.
+        if (!newest || compareCodexVersions(candidateVersion, newest.version) > 0) {
+          newest = { path: candidate, version: candidateVersion }
+        }
+      }
+    }
+
+    if (!newest) return
+    codexNewerBinaryWarned = true
+    sendAgentCompatError(
+      sender,
+      'codex',
+      `A newer codex CLI (${newest.version.trim()}) is installed at ${newest.path} than the one AGBench uses ` +
+        `(${usedVersion.trim()} at ${resolved.binaryPath}). The newer CLI can write ~/.codex/config.toml values the ` +
+        'older one rejects (causing run failures). Consider `brew upgrade codex` to match versions.',
+      route
+    )
+  } catch {
+    // Best-effort hint only; never let version detection break a codex run.
+  }
+}
+
 async function runCodexProvider(
   event: Electron.IpcMainInvokeEvent,
   payload: AgentRunPayload
 ): Promise<void> {
+  // One-time, best-effort hint when a NEWER codex CLI is installed than the one
+  // AGBench will actually spawn (the exact mismatch that lets Codex.app write a
+  // config the homebrew CLI rejects). Detection + warning only — never auto-switch.
+  void maybeWarnNewerCodexBinary(event.sender, routeWithRunId('codex', payload))
   try {
     await runCodexAppServer(event, payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // If the app-server failed because the codex CLI couldn't parse
+    // ~/.codex/config.toml (e.g. a value only the newer Codex.app CLI accepts),
+    // surface a clear, actionable message instead of only the cryptic
+    // exec-fallback notice. The exec fallback below will likely hit the same
+    // config error, but we still attempt it (and re-classify its stderr there).
+    const stderr =
+      (error as { codexStderr?: string } | null)?.codexStderr ||
+      getCodexClient().getRecentStderr() ||
+      message
+    if (isCodexConfigParseError(stderr) || isCodexConfigParseError(message)) {
+      const route = routeWithRunId('codex', payload)
+      sendAgentCompatError(event.sender, 'codex', codexConfigParseUserMessage(stderr), route)
+    }
     runCodexExecFallback(event, payload, message)
   }
 }
