@@ -37,6 +37,14 @@ Users are responsible for installing and authenticating the provider CLIs, SDKs,
 or accounts they choose to use. AGBench does not bypass provider authentication,
 quotas, rate limits, approval flows, or terms of service.
 
+## Built with AI Agents
+
+AGBench is developed the way it is meant to be used — with AI coding agents in
+the loop. Day-to-day work pairs **OpenAI Codex** and **Anthropic Claude**:
+planning, implementation, multi-agent review passes, and large refactors run
+through the agents and are reviewed and merged by a human. Commits carry
+`Co-Authored-By` trailers for the agents that contributed.
+
 ## Development Setup
 
 1. Install Node.js 20 or newer.
