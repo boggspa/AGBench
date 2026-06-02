@@ -271,6 +271,7 @@ import {
   type ImageAttachment
 } from './lib/imageAttachments'
 import { parsePlanModeChoice, type PlanChoiceState } from './lib/planModeChoice'
+import { messageAnchorsActivePrompt } from './lib/transcriptDeleteGuard'
 import {
   extractModelUsageEntriesFromStats,
   extractResetHintsFromText,
@@ -13334,15 +13335,31 @@ function App(): React.JSX.Element {
   // 1.0.4-AQ4 — Delete a single message from the current chat's
   // transcript. Gates on `confirm()` because the action is
   // destructive and the user can't undo from the UI (no
-  // tombstone). The orphan-pending check guards against deleting
-  // a message that's currently the anchor of an in-flight
-  // `pendingAgentQuestion` / `pendingPlanChoice` — the modal
-  // would lose its tether. Best-effort.
+  // tombstone). The orphan-pending guard below blocks deleting a
+  // message that's currently the anchor of an in-flight
+  // `pendingAgentQuestion` / `pendingPlanChoice` — deleting it
+  // would strand the modal (its messageId would point at a row
+  // that no longer exists in the transcript).
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
       if (!currentChat || !messageId) return
       const target = currentChat.messages.find((m) => m.id === messageId)
       if (!target) return
+      const chatId = currentChat.appChatId
+      if (
+        messageAnchorsActivePrompt(
+          messageId,
+          pendingAgentQuestionByChatId[chatId]?.messageId,
+          pendingPlanChoiceByChatId[chatId]?.messageId
+        )
+      ) {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+          window.alert(
+            'This message has an open prompt waiting on it. Answer or dismiss the prompt before deleting the message.'
+          )
+        }
+        return
+      }
       const preview =
         target.content && target.content.length > 80
           ? `${target.content.slice(0, 77)}…`
@@ -13357,7 +13374,7 @@ function App(): React.JSX.Element {
         messages: source.messages.filter((m) => m.id !== messageId)
       }))
     },
-    [currentChat, updateChatById]
+    [currentChat, updateChatById, pendingAgentQuestionByChatId, pendingPlanChoiceByChatId]
   )
 
   const handlePlanChoiceSubmit = (messageId: string, option: string) => {
