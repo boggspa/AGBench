@@ -272,6 +272,7 @@ import {
 } from './lib/imageAttachments'
 import { parsePlanModeChoice, type PlanChoiceState } from './lib/planModeChoice'
 import { messageAnchorsActivePrompt } from './lib/transcriptDeleteGuard'
+import { createOneShotLatch } from './lib/oneShotLatch'
 import {
   extractModelUsageEntriesFromStats,
   extractResetHintsFromText,
@@ -3712,9 +3713,26 @@ function AgentQuestionCard({
   const [freeText, setFreeText] = useState('')
   const providerClass = state.provider ? ` provider-${state.provider}` : ''
 
+  // Resolve-once guard: a fast double-click, or an answer racing the ×/Escape
+  // dismiss, must not fire both `answerAgentQuestion` AND `cancelAgentQuestion`
+  // for the same parked MCP call. The latch is re-created when questionId
+  // changes so a reused card instance resets cleanly for a new question.
+  const latchRef = useRef(createOneShotLatch())
+  const latchQuestionRef = useRef(state.questionId)
+  if (latchQuestionRef.current !== state.questionId) {
+    latchQuestionRef.current = state.questionId
+    latchRef.current = createOneShotLatch()
+  }
+  const answerOnce = (value: string, isCustom: boolean): void => {
+    latchRef.current.run(() => onAnswer(value, isCustom))
+  }
+  const dismissOnce = (): void => {
+    latchRef.current.run(() => onDismiss())
+  }
+
   const submitFreeText = (): void => {
     if (!freeText.trim()) return
-    onAnswer(freeText.trim(), true)
+    answerOnce(freeText.trim(), true)
   }
 
   return (
@@ -3728,7 +3746,7 @@ function AgentQuestionCard({
               key={option}
               type="button"
               className="plan-choice-action-btn"
-              onClick={() => onAnswer(option, false)}
+              onClick={() => answerOnce(option, false)}
               title={`Answer: ${option}`}
             >
               {option}
@@ -3764,7 +3782,7 @@ function AgentQuestionCard({
                   setShowFreeText(false)
                   setFreeText('')
                 } else {
-                  onDismiss()
+                  dismissOnce()
                 }
               }
             }}
@@ -3796,7 +3814,7 @@ function AgentQuestionCard({
       <button
         type="button"
         className="agent-question-card-dismiss"
-        onClick={onDismiss}
+        onClick={dismissOnce}
         title="Dismiss without answering (agent receives `cancelled: true`)"
         aria-label="Dismiss question"
       >
