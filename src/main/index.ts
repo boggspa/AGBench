@@ -318,6 +318,7 @@ import {
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
+import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 import {
   detectCrossProviderDelegationMisuse,
   crossProviderDelegationWarningMessage
@@ -10096,40 +10097,10 @@ function formatHostCommandResult(result: HostCommandResult): string {
 }
 
 const MAX_MCP_TEXT_CHARS = 200_000
-const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
-  'approval_status',
-  'provider_auth_status',
-  'browser_console',
-  'creative_app_status',
-  'creative_app_capabilities',
-  // attached_window_status carries no pixel data and no window enumeration —
-  // only the title/bundle the user already sees in the renderer pill.
-  // Capture stays gated; status is a read of state the user already shared.
-  'attached_window_status',
-  // appwatch_status is the same data class as attached_window_status: no
-  // pixel data, only stream-up/down + counts the renderer pill already
-  // shows. Start / stop / latest_frame stay gated.
-  'appwatch_status',
-  // Phase L — Editor / IDE transport tools. Opening a file in the
-  // user's editor of choice is a focus-change, not a state mutation.
-  // No destructive surface beyond the agent's choice of editor (which
-  // we constrain via the EditorAdapters bundle allowlist).
-  'open_in_ide',
-  'open_in_ide_at_position',
-  'reveal_in_finder',
-  'ide_app_status',
-  'ide_app_capabilities',
-  'list_running_ides',
-  'ensemble_yield',
-  'list_ensemble_participants',
-  'schedule_wakeup',
-  'cancel_wakeup',
-  // QMOD (1.0.3): asking the user a question is the inverse of the
-  // user prompting the agent — it's a focus-shift, not a state mutation.
-  // The renderer modal IS the approval surface, so a second confirm
-  // step would be silly. Universally auto-allowed.
-  'ask_user_question'
-])
+// MCP_AUTO_ALLOWED_TOOLS lives in ./mcp/McpAutoAllowedTools (imported at top).
+// Extracted so its no-mutating-tools safety invariant can be unit-tested —
+// see McpAutoAllowedTools.test.ts. Membership SKIPS the host approval gate, so
+// only non-mutating tools may ever be added there.
 
 function mcpJson(value: unknown): string {
   const text = JSON.stringify(value, null, 2)
