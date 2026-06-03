@@ -344,3 +344,38 @@ export function buildAcpPermissionResponse(
     decision !== 'cancel' && optionId ? { outcome: 'selected', optionId } : { outcome: 'cancelled' }
   return { jsonrpc: '2.0', id: rpcId, result: { outcome } }
 }
+
+// ============================================================
+// Transport keep-alive — answer inbound requests we don't handle.
+//
+// ACP is bidirectional: the agent can send the client REQUESTS (method + id)
+// that expect a reply. We handle session/request_permission specially; ANY
+// OTHER inbound request (most plausibly an `_x.ai/*` extension method, or an
+// fs/terminal method) currently goes unanswered, and an unanswered JSON-RPC
+// request with an id is the textbook cause of a peer aborting the channel — the
+// live `ext_method` / `channel closed` symptom. The fix is to always reply with
+// a benign JSON-RPC "method not found" (-32601). SAFETY: this is an ERROR reply,
+// never a result/allow/selected outcome, so it can never approve a tool.
+// ============================================================
+
+/**
+ * True for an inbound agent→client REQUEST: a `method` (string) WITH an `id`
+ * (number|string). Distinguishes requests from notifications (method, no id)
+ * and responses (id + result/error, no method). session/request_permission is
+ * one such request (handled specially); this catches all the rest.
+ */
+export function isAcpInboundRequest(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.method === 'string' &&
+    (typeof message.id === 'number' || typeof message.id === 'string')
+  )
+}
+
+/** JSON-RPC "method not found" (-32601) reply for an unhandled inbound request. */
+export function buildAcpMethodNotFoundResponse(rpcId: number | string): Record<string, unknown> {
+  return {
+    jsonrpc: '2.0',
+    id: rpcId,
+    error: { code: -32601, message: 'Method not found' }
+  }
+}

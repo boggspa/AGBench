@@ -201,6 +201,39 @@ describe('runGrokAcpTurn', () => {
     })
   })
 
+  it('answers an unhandled inbound request with method-not-found (transport keep-alive)', () => {
+    const child = new FakeAcpChild()
+    run(child)
+    child.emit({ jsonrpc: '2.0', id: 1, result: {} })
+    child.emit({ jsonrpc: '2.0', id: 2, result: { sessionId: 's-1' } })
+    // An inbound agent→client request we don't handle (e.g. an _x.ai extension).
+    child.emit({ jsonrpc: '2.0', id: 77, method: '_x.ai/some_extension', params: {} })
+    const response = child.sent().find((m) => m.id === 77)
+    expect(response).toMatchObject({ id: 77, error: { code: -32601 } })
+    // It is an ERROR reply, never an allow/result outcome.
+    expect(response && 'result' in response).toBe(false)
+  })
+
+  it('does not reply to a notification (no id) — streams it instead', () => {
+    const child = new FakeAcpChild()
+    const { events } = run(child)
+    child.emit({ jsonrpc: '2.0', id: 1, result: {} })
+    child.emit({ jsonrpc: '2.0', id: 2, result: { sessionId: 's-1' } })
+    child.emit({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        sessionId: 's-1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hello' } }
+      }
+    })
+    const sentMethodNotFound = child
+      .sent()
+      .some((m) => m.error && (m.error as { code?: number }).code === -32601)
+    expect(sentMethodNotFound).toBe(false)
+    expect(events.some((e) => e.type === 'content' && e.text === 'hello')).toBe(true)
+  })
+
   it('surfaces a spawn/process error as a provider_warning + closes', () => {
     const child = new FakeAcpChild()
     const { events, closes } = run(child)

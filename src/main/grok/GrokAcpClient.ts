@@ -15,6 +15,8 @@ import {
   isAcpPermissionRequest,
   parseAcpPermissionRequest,
   buildAcpPermissionResponse,
+  isAcpInboundRequest,
+  buildAcpMethodNotFoundResponse,
   type NormalizedGrokRunEvent,
   type AcpPermissionRequest,
   type AcpPermissionDecision
@@ -176,6 +178,16 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
             prompt: [{ type: 'text', text: options.prompt }]
           })
         }
+        continue
+      }
+      // Transport keep-alive: any OTHER inbound agent→client request (a method
+      // WITH an id we didn't handle above — e.g. an _x.ai/* extension or an
+      // fs/terminal method) MUST get a JSON-RPC reply, or Grok aborts the
+      // channel ("ext_method" / "channel closed"). Answer method-not-found —
+      // never an allow. Notifications (method, no id) + responses fall through
+      // to the run-event mapper below.
+      if (isAcpInboundRequest(message)) {
+        writeResponse(buildAcpMethodNotFoundResponse(message.id as number | string))
         continue
       }
       // Everything else: stream updates / capture completion. We forward
