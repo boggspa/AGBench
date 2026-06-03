@@ -43,9 +43,25 @@ export function WelcomeHeatmaps({
   if (slots.length === 0) return null
 
   const visible = visibleHeatmapSlots(slots, layout, tick)
+  const className = `welcome-standalone-heatmaps welcome-standalone-heatmaps--${layout}`
+
+  if (layout === 'single') {
+    const slot = visible[0]
+    if (!slot) return null
+    return (
+      <div className={className}>
+        <div
+          key={slot.key}
+          className={`welcome-standalone-heatmap-pane${cycling ? ' is-cycling' : ''}`}
+        >
+          {slot.node}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className={`welcome-standalone-heatmaps welcome-standalone-heatmaps--${layout}`}>
+    <div className={className}>
       {visible.map((slot) => (
         <Fragment key={slot.key}>{slot.node}</Fragment>
       ))}
