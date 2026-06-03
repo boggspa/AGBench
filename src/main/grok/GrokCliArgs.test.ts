@@ -177,4 +177,10 @@ describe('grokWriteCapable', () => {
     expect(grokWriteCapable('acceptEdits')).toBe(true)
     expect(grokWriteCapable('auto')).toBe(true)
   })
+
+  it('treats whitespace-padded plan as READ-ONLY (resume posture regression guard)', () => {
+    expect(grokWriteCapable('plan ')).toBe(false)
+    expect(grokWriteCapable(' plan')).toBe(false)
+    expect(grokWriteCapable('\tplan\n')).toBe(false)
+  })
 })

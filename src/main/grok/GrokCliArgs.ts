@@ -41,7 +41,12 @@ export const GROK_WRITE_MODE_DENY_RULES = ['Bash(*)'] as const
 
 /** True when the approval mode permits writes (anything other than read-only plan). */
 export function grokWriteCapable(approvalMode: string | null | undefined): boolean {
-  return typeof approvalMode === 'string' && approvalMode.trim() !== '' && approvalMode !== 'plan'
+  // Trim before the 'plan' compare: a stray-whitespace value like 'plan ' must
+  // still read as READ-ONLY. Without the trim it falls through to write-capable,
+  // which silently drops the read-only posture (observed on resumed Grok runs).
+  return (
+    typeof approvalMode === 'string' && approvalMode.trim() !== '' && approvalMode.trim() !== 'plan'
+  )
 }
 
 export interface BuildGrokCliArgsInput {

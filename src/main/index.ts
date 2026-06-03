@@ -5773,7 +5773,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     // Diagnostic: which gate condition gates the scoped read-only bridge. All
     // three must be true for session/new to carry the agbench-grok server.
     process.stderr.write(
-      `[grok-mcp] scoped-bridge gate advertiseFlag=${grokAdvertiseFlag} bridgeEnabled=${grokBridgeEnabled} readOnlySeat=${grokReadOnlySeat}\n`
+      `[grok-mcp] scoped-bridge gate advertiseFlag=${grokAdvertiseFlag} bridgeEnabled=${grokBridgeEnabled} readOnlySeat=${grokReadOnlySeat} approvalMode=${JSON.stringify(payload.approvalMode)} resume=${Boolean(payload.providerSessionId)}\n`
     )
   }
   if (grokAdvertiseFlag && grokBridgeEnabled && grokReadOnlySeat) {
