@@ -327,6 +327,7 @@ import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
 import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 import { inheritedSubThreadPermissions } from './SubThreadPermissions'
+import { isReadOnlyBlockedTool } from './ToolClassTaxonomy'
 import {
   detectCrossProviderDelegationMisuse,
   crossProviderDelegationWarningMessage
@@ -5059,6 +5060,15 @@ async function canUseClaudeSdkTool(
   if (!service) {
     return { behavior: 'allow', updatedInput }
   }
+  // 1.0.72 — read-only hard-deny for mutating / side-effecting tools (parity with
+  // the shared MCP dispatcher). Safe tools were allowed above; a mutating tool
+  // under read_only that classifies as the generic mcpTools service must be
+  // refused, not prompted — route it to a denied service so the gate denies it.
+  const gateService =
+    isReadOnlyBlockedTool(unprefixedToolName, payload.effectivePermissions) &&
+    service === 'mcpTools'
+      ? 'shellCommands'
+      : service
   const externalPathDetection = detectExternalPathForProviderApproval({
     provider: 'claude',
     appChatId: route.appChatId,
@@ -5070,7 +5080,7 @@ async function canUseClaudeSdkTool(
   const allowed = await requestAgenticServiceApproval(
     sender,
     'claude',
-    service,
+    gateService,
     payload.scope === 'global' ? undefined : payload.workspace,
     {
       method: 'claude/canUseTool',
@@ -10626,12 +10636,22 @@ async function executeGeminiMcpTool(
   // action. Skip the generic one; the delegation gate is authoritative.
   const skipGenericApproval =
     toolName === 'delegate_to_subthread' || MCP_AUTO_ALLOWED_TOOLS.has(toolName)
+  // 1.0.72 — read-only hard-deny for side-effecting fall-through tools. The host
+  // gate denies file/shell under read_only, but a mutating tool that classifies
+  // as the generic mcpTools service (creative_blender_python, browser_open/click,
+  // switch_auth_profile, …) would only PROMPT. Route it to a denied service so a
+  // read-only run refuses it outright (with an audit record) rather than asking.
+  const gateService: AgenticServiceId =
+    isReadOnlyBlockedTool(toolName, context.effectivePermissions) &&
+    approvalPreview.service === 'mcpTools'
+      ? 'shellCommands'
+      : approvalPreview.service
   const allowed = skipGenericApproval
     ? true
     : await requestAgenticServiceApproval(
         context.sender,
         parentProvider,
-        approvalPreview.service,
+        gateService,
         context.scope === 'global' ? undefined : workspacePath,
         {
           method: `${parentProvider}-mcp/${toolName}`,

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyTool,
   groupToolsByClass,
+  isReadOnlyBlockedTool,
   TOOL_CLASS_LABELS,
   TOOL_CLASS_ORDER
 } from './ToolClassTaxonomy'
+import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
 import { READ_ONLY_TOOL_PRESET } from './PermissionEnvelope'
 import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 
@@ -55,5 +57,64 @@ describe('groupToolsByClass', () => {
 
   it('keeps labels + order in sync (every class has a label)', () => {
     expect(Object.keys(TOOL_CLASS_LABELS).sort()).toEqual([...TOOL_CLASS_ORDER].sort())
+  })
+})
+
+describe('workspace_write is exactly the read-only deny set', () => {
+  it('classifies precisely the mutating / side-effecting tools as workspace_write', () => {
+    const writeTools = AGENTBENCH_MCP_TOOLS.filter((t) => classifyTool(t) === 'workspace_write')
+    expect([...writeTools].sort()).toEqual(
+      [
+        'apply_patch',
+        'browser_click',
+        'browser_open',
+        'browser_screenshot',
+        'creative_applescript_dispatch',
+        'creative_blender_python',
+        'creative_midi_dispatch',
+        'creative_timeline_import',
+        'delegate_to_subthread',
+        'git_commit',
+        'git_stage',
+        'replace',
+        'run_shell_command',
+        'run_task',
+        'switch_auth_profile',
+        'write_file'
+      ].sort()
+    )
+  })
+
+  it('never classifies a read / coordination tool as workspace_write', () => {
+    for (const tool of [
+      'read_file',
+      'git_status',
+      'git_diff',
+      'test_result_summary',
+      'read_subthread_result',
+      'creative_timeline_validate',
+      'ensemble_yield',
+      'ask_user_question'
+    ]) {
+      expect(classifyTool(tool)).not.toBe('workspace_write')
+    }
+  })
+})
+
+describe('isReadOnlyBlockedTool', () => {
+  const ro = { readOnly: true }
+  it('blocks mutating / side-effecting tools under read-only', () => {
+    expect(isReadOnlyBlockedTool('creative_blender_python', ro)).toBe(true)
+    expect(isReadOnlyBlockedTool('write_file', ro)).toBe(true)
+    expect(isReadOnlyBlockedTool('switch_auth_profile', ro)).toBe(true)
+    expect(isReadOnlyBlockedTool('browser_open', ro)).toBe(true)
+  })
+
+  it('never blocks reads / coordination, or anything when not read-only', () => {
+    expect(isReadOnlyBlockedTool('read_file', ro)).toBe(false)
+    expect(isReadOnlyBlockedTool('ensemble_yield', ro)).toBe(false)
+    expect(isReadOnlyBlockedTool('ask_user_question', ro)).toBe(false)
+    expect(isReadOnlyBlockedTool('write_file', { readOnly: false })).toBe(false)
+    expect(isReadOnlyBlockedTool('write_file', undefined)).toBe(false)
   })
 })
