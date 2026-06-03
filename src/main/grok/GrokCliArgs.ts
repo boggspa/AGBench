@@ -49,6 +49,33 @@ export function grokWriteCapable(approvalMode: string | null | undefined): boole
   )
 }
 
+/**
+ * READ-ONLY steer prepended to a read-only ACP seat's prompt. A read-only Grok
+ * turn whose write/shell tool is refused by the host gate hard-cancels
+ * (stopReason: cancelled / PermissionRejected) and dead-ends with no answer —
+ * even ignoring an explicit user fallback. Steering Grok NOT to attempt the
+ * write up front keeps the turn productive (it answers from read/inspection
+ * tools instead). This is purely preventive UX: the host gate (the read-only
+ * `--deny` rules + the onPermissionRequest auto-deny) remains the safety floor
+ * and is unchanged. NEVER applied to a write-capable seat.
+ */
+export const GROK_READ_ONLY_PROMPT_PREAMBLE =
+  'You are running in READ-ONLY mode. File writes, edits, and shell commands ' +
+  'will be refused by the host — do not attempt them. Use only read and ' +
+  'inspection tools and answer directly; if the task would require a write, ' +
+  'explain what you would change instead of attempting it.'
+
+/**
+ * Prepend the read-only steer to a Grok ACP turn's prompt when the seat is
+ * read-only; return the prompt unchanged for a write-capable seat. The
+ * read-only-only gate lives here (single-sourced + unit-tested) so callers just
+ * pass the already-computed `grokReadOnlySeat`.
+ */
+export function applyGrokReadOnlyPromptPreamble(prompt: string, readOnlySeat: boolean): string {
+  if (!readOnlySeat) return prompt
+  return `${GROK_READ_ONLY_PROMPT_PREAMBLE}\n\n${prompt}`
+}
+
 export interface BuildGrokCliArgsInput {
   prompt: string
   workspace: string

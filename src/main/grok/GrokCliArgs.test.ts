@@ -3,6 +3,8 @@ import {
   buildGrokCliArgs,
   normalizeGrokEffortFlag,
   grokWriteCapable,
+  applyGrokReadOnlyPromptPreamble,
+  GROK_READ_ONLY_PROMPT_PREAMBLE,
   GROK_READ_ONLY_DENY_RULES,
   GROK_WRITE_MODE_DENY_RULES
 } from './GrokCliArgs'
@@ -182,5 +184,39 @@ describe('grokWriteCapable', () => {
     expect(grokWriteCapable('plan ')).toBe(false)
     expect(grokWriteCapable(' plan')).toBe(false)
     expect(grokWriteCapable('\tplan\n')).toBe(false)
+  })
+})
+
+describe('applyGrokReadOnlyPromptPreamble', () => {
+  it('prepends the read-only steer for a read-only seat, preserving the prompt', () => {
+    const out = applyGrokReadOnlyPromptPreamble('list the open TODOs', true)
+    // The steer leads; the user's prompt is preserved verbatim after it.
+    expect(out.startsWith(GROK_READ_ONLY_PROMPT_PREAMBLE)).toBe(true)
+    expect(out.endsWith('list the open TODOs')).toBe(true)
+    expect(out).toContain('READ-ONLY mode')
+  })
+
+  it('leaves a write-capable seat prompt untouched (no steer leak)', () => {
+    const prompt = 'refactor the parser'
+    expect(applyGrokReadOnlyPromptPreamble(prompt, false)).toBe(prompt)
+    expect(applyGrokReadOnlyPromptPreamble(prompt, false)).not.toContain('READ-ONLY mode')
+  })
+
+  it('gates exactly on the read-only seat (mirrors grokWriteCapable)', () => {
+    // The steer rides the same read-only seat the deny rules gate: plan/unset →
+    // read-only (steer applied), anything else → write-capable (no steer).
+    const readOnlySeatPlan = !grokWriteCapable('plan')
+    const readOnlySeatDefault = !grokWriteCapable('default')
+    expect(applyGrokReadOnlyPromptPreamble('x', readOnlySeatPlan)).toContain(
+      GROK_READ_ONLY_PROMPT_PREAMBLE
+    )
+    expect(applyGrokReadOnlyPromptPreamble('x', readOnlySeatDefault)).toBe('x')
+  })
+
+  it('steer tells Grok not to attempt writes and to answer instead', () => {
+    // Guards the intent (not exact wording): do-not-attempt + answer/explain.
+    expect(GROK_READ_ONLY_PROMPT_PREAMBLE).toMatch(/do not attempt/i)
+    expect(GROK_READ_ONLY_PROMPT_PREAMBLE).toMatch(/read/i)
+    expect(GROK_READ_ONLY_PROMPT_PREAMBLE).toMatch(/explain what you would change/i)
   })
 })

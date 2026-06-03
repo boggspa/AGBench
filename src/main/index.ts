@@ -279,7 +279,12 @@ import {
   grokAcpEnabled,
   grokReadOnlyMcpAdvertiseEnabled
 } from './grokGate'
-import { buildGrokCliArgs, grokWriteCapable, GROK_READ_ONLY_DENY_RULES } from './grok/GrokCliArgs'
+import {
+  buildGrokCliArgs,
+  grokWriteCapable,
+  applyGrokReadOnlyPromptPreamble,
+  GROK_READ_ONLY_DENY_RULES
+} from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import {
@@ -5866,7 +5871,14 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
   grokAcpArgs.push('agent', 'stdio')
 
   runGrokAcpTurn({
-    prompt: payload.prompt,
+    // Read-only seat: prepend the read-only steer so Grok answers from
+    // read/inspection tools instead of attempting a write the host gate will
+    // refuse — a refused write makes Grok hard-cancel and dead-end with no
+    // answer. Write-capable seats pass through unchanged. Every ACP turn opens a
+    // fresh session/new (no Grok-side resume threads through here), so the steer
+    // must ride each turn's prompt; there's no prior turn for Grok to remember
+    // it from, hence no redundant re-injection to avoid.
+    prompt: applyGrokReadOnlyPromptPreamble(payload.prompt, grokReadOnlySeat),
     cwd: payload.workspace!,
     mcpServers: grokMcpServers,
     spawnProcess: () => {
