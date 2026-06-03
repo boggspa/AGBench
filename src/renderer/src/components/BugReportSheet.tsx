@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { buildGitHubIssueUrl } from '../lib/githubIssueUrl'
 
 /**
  * BugReportSheet — inline bug-report capture for AGBench testers.
@@ -312,6 +313,55 @@ export function BugReportSheet({
     ]
   )
 
+  // Open the same report as a pre-filled GitHub issue (the public bug channel
+  // now that AGBench is open-source). Reuses the captured context; the local
+  // Save report stays as an offline fallback.
+  const handleOpenGitHubIssue = useCallback(() => {
+    setTitleTouched(true)
+    if (trimmedTitle.length === 0) {
+      titleInputRef.current?.focus()
+      return
+    }
+    const url = buildGitHubIssueUrl({
+      title: trimmedTitle,
+      description: description.trim(),
+      expected: expected.trim(),
+      severity,
+      context: [
+        ['Version', appVersion],
+        ['Provider', currentProvider],
+        ['Surface', surface],
+        ['Chat kind', chatKind],
+        ['Workspace', workspaceLabel],
+        ['Composer shell', composerShell],
+        ['Settings tab', settingsTab],
+        ['Inspector tab', inspectorTab],
+        ['Theme', theme],
+        ['Bubble', promptBubble],
+        ['Ensemble', ensembleSummary]
+      ]
+    })
+    if (typeof window.api.openExternalOrPath === 'function') {
+      void window.api.openExternalOrPath(url)
+    }
+  }, [
+    appVersion,
+    chatKind,
+    composerShell,
+    currentProvider,
+    description,
+    ensembleSummary,
+    expected,
+    inspectorTab,
+    promptBubble,
+    severity,
+    settingsTab,
+    surface,
+    theme,
+    trimmedTitle,
+    workspaceLabel
+  ])
+
   if (!open) return null
 
   return (
@@ -339,8 +389,8 @@ export function BugReportSheet({
             <div>
               <h2 id={SHEET_TITLE_ID}>Report a bug or issue</h2>
               <p className="bug-report-sheet-subtitle">
-                Capture what you just saw — it appends to a local file for later review
-                of the session.
+                Capture what you just saw — open it as a pre-filled GitHub issue, or save a local
+                copy for later review.
               </p>
             </div>
           </div>
@@ -561,6 +611,15 @@ export function BugReportSheet({
                 disabled={submitting}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleOpenGitHubIssue}
+                disabled={submitting || trimmedTitle.length === 0}
+                title="Open a pre-filled GitHub issue with this report and captured context"
+              >
+                Open GitHub issue
               </button>
               <button
                 type="submit"
