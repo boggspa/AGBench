@@ -76,4 +76,24 @@ describe('MarkdownMessage', () => {
     expect(htmlA).toContain('<em>emphasis</em>')
     expect(htmlA).toContain('A second paragraph.')
   })
+
+  it('renders nested lists and blockquotes (panel-emitted structures)', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownMessage content={['- top', '  - nested', '', '> quoted source line'].join('\n')} />
+    )
+    expect(html).toContain('<blockquote>')
+    // A nested <ul> inside the outer <li> proves list indentation survives.
+    expect(html).toMatch(/<li>[\s\S]*<ul>[\s\S]*nested/)
+  })
+
+  it('tokenises an @user handback chip in both body text and headings', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownMessage content={['## Handing to @user', '', 'Back to @user now.'].join('\n')} />
+    )
+    // Heading + paragraph both get the user-handback chip — heading
+    // tokenisation is the 1.0.72 markdown-audit gap-fix.
+    const chips = (html.match(/participant-mention--user/g) || []).length
+    expect(chips).toBe(2)
+    expect(html).toContain('<h2>')
+  })
 })

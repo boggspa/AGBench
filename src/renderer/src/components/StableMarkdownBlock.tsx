@@ -215,6 +215,27 @@ const MARKDOWN_COMPONENTS: Components = {
   },
   th({ children }) {
     return <th>{processChildren(children)}</th>
+  },
+  // Headings tokenise `@Role` / `@user` too, so a mention or handback in a
+  // heading gets the same chip as body text (1.0.72 markdown-audit gap-fix —
+  // previously only p/li/td/th tokenised, leaving @-tags in headings bare).
+  h1({ children }) {
+    return <h1>{processChildren(children)}</h1>
+  },
+  h2({ children }) {
+    return <h2>{processChildren(children)}</h2>
+  },
+  h3({ children }) {
+    return <h3>{processChildren(children)}</h3>
+  },
+  h4({ children }) {
+    return <h4>{processChildren(children)}</h4>
+  },
+  h5({ children }) {
+    return <h5>{processChildren(children)}</h5>
+  },
+  h6({ children }) {
+    return <h6>{processChildren(children)}</h6>
   }
 }
 
