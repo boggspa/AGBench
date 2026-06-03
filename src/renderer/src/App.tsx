@@ -141,9 +141,11 @@ import {
 } from './components/AppChromeSymbols'
 import {
   ChatMediaFloatingPanel,
+  ChatMediaPreviewOverlay,
   ChatMessageMediaStrip,
   collectChatMediaRefs,
-  collectMessageMediaRefs
+  collectMessageMediaRefs,
+  type ChatMediaRef
 } from './components/ChatMediaPanel'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
@@ -2677,6 +2679,7 @@ type TranscriptPanelProps = {
    */
   onCopyMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
+  onPreviewImage: (ref: ChatMediaRef) => void
   /**
    * 1.0.8 — shared copy-to-clipboard feedback (see {@link useCopyFeedback}).
    * `copiedId` is the id currently showing its "Copied" confirmation;
@@ -4140,6 +4143,7 @@ export const TranscriptPanel = memo(
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
+    onPreviewImage,
     copiedId,
     copy,
     virtualize,
@@ -4490,6 +4494,7 @@ export const TranscriptPanel = memo(
                               <ChatMessageMediaStrip
                                 refs={mediaRefs}
                                 workspacePath={currentChat?.workspacePath}
+                                onPreviewImage={onPreviewImage}
                               />
                             )}
                             {collapsible && (
@@ -4818,6 +4823,7 @@ export const TranscriptPanel = memo(
     previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
     previous.onCopyMessage === next.onCopyMessage &&
     previous.onDeleteMessage === next.onDeleteMessage &&
+    previous.onPreviewImage === next.onPreviewImage &&
     previous.copiedId === next.copiedId &&
     previous.copy === next.copy &&
     previous.virtualize === next.virtualize &&
@@ -5256,6 +5262,7 @@ function App(): React.JSX.Element {
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
   const [geminiTerminalHeight, setGeminiTerminalHeight] = useState(DEFAULT_GEMINI_TERMINAL_HEIGHT)
   const [isChatMediaPanelOpen, setIsChatMediaPanelOpen] = useState(false)
+  const [previewChatMediaRef, setPreviewChatMediaRef] = useState<ChatMediaRef | null>(null)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
   const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
@@ -5713,6 +5720,9 @@ function App(): React.JSX.Element {
   // grant set trigger new probes.
   const externalPathRepoMetadata = useExternalPathRepoMetadata(externalPathGrants)
   const currentComposerChatId = currentChat?.appChatId || null
+  useEffect(() => {
+    setPreviewChatMediaRef(null)
+  }, [currentComposerChatId])
   const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
   const imageAttachments = useMemo(
     () =>
@@ -5720,6 +5730,14 @@ function App(): React.JSX.Element {
         ? imageAttachmentsByChatId[currentComposerChatId] || EMPTY_IMAGE_ATTACHMENTS
         : EMPTY_IMAGE_ATTACHMENTS,
     [currentComposerChatId, imageAttachmentsByChatId]
+  )
+  const composerImageAttachments = useMemo(
+    () => imageAttachments.filter((attachment) => isImageAttachmentPath(attachment.path)),
+    [imageAttachments]
+  )
+  const composerFileAttachments = useMemo(
+    () => imageAttachments.filter((attachment) => !isImageAttachmentPath(attachment.path)),
+    [imageAttachments]
   )
   const currentChatMediaRefs = useMemo(
     () => collectChatMediaRefs(currentChat, imageAttachments, externalPathGrants),
@@ -16350,6 +16368,12 @@ function App(): React.JSX.Element {
             onClose={() => setIsChatMediaPanelOpen(false)}
           />
 
+          <ChatMediaPreviewOverlay
+            mediaRef={previewChatMediaRef}
+            workspacePath={currentWorkspace?.path}
+            onClose={() => setPreviewChatMediaRef(null)}
+          />
+
           {showLivingWorkspaceFx && (
             <LivingWorkspaceLayer weather={hostWeather} intensity={advancedFxIntensity} />
           )}
@@ -16459,6 +16483,7 @@ function App(): React.JSX.Element {
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onPreviewImage={setPreviewChatMediaRef}
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}
@@ -17211,6 +17236,69 @@ function App(): React.JSX.Element {
                 </div>
               )}
 
+              {imageAttachments.length > 0 && (
+                <div
+                  className="composer-image-strip composer-attachment-tray"
+                  aria-label="Composer attachments"
+                >
+                  {composerImageAttachments.map((image) => (
+                    <div
+                      key={image.id}
+                      className="composer-image-item composer-image-tile is-image"
+                      title={image.path}
+                      aria-label={`Image attachment ${image.name}`}
+                    >
+                      <img
+                        src={getImagePreviewSrc(image.path)}
+                        alt={image.name}
+                        className="composer-image-thumb"
+                        draggable={false}
+                      />
+                      <button
+                        className="composer-image-remove"
+                        type="button"
+                        onClick={() => handleRemoveImageAttachment(image.id)}
+                        disabled={isCurrentComposerLocked}
+                        title="Remove attachment"
+                        aria-label={`Remove ${image.name}`}
+                      >
+                        <XSymbolIcon />
+                      </button>
+                    </div>
+                  ))}
+                  {composerFileAttachments.map((file) => (
+                    <div
+                      key={file.id}
+                      className="composer-image-item composer-file-card"
+                      title={file.path}
+                    >
+                      <span className="composer-attachment-icon" title={file.name}>
+                        <FileTypeIcon
+                          path={file.path}
+                          size={18}
+                          className="composer-attachment-icon-inner"
+                          workspacePath={currentWorkspace?.path}
+                        />
+                      </span>
+                      <span className="composer-image-name" title={file.path}>
+                        {file.name}
+                      </span>
+                      <button
+                        className="composer-image-remove"
+                        type="button"
+                        onClick={() => handleRemoveImageAttachment(file.id)}
+                        disabled={isCurrentComposerLocked}
+                        title="Remove attachment"
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        <XSymbolIcon />
+                      </button>
+                    </div>
+                  ))}
+                  <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
+                </div>
+              )}
+
               {(() => {
                 // Gate the overlay activation: render the highlight
                 // layer only when the prompt contains at least one
@@ -17458,43 +17546,6 @@ function App(): React.JSX.Element {
               */}
               <div className="composer-bottom-controls">
                 <div className="composer-control-footer">
-                  {imageAttachments.length > 0 && (
-                    <div className="composer-image-strip">
-                      {imageAttachments.map((image) => (
-                        <div key={image.id} className="composer-image-item">
-                          {isImageAttachmentPath(image.path) ? (
-                            <img
-                              src={getImagePreviewSrc(image.path)}
-                              alt={image.name}
-                              className="composer-image-thumb"
-                            />
-                          ) : (
-                            <span className="composer-attachment-icon" title={image.name}>
-                              <FileTypeIcon
-                                path={image.path}
-                                size={14}
-                                className="composer-attachment-icon-inner"
-                                workspacePath={currentWorkspace?.path}
-                              />
-                            </span>
-                          )}
-                          <span className="composer-image-name" title={image.path}>
-                            {image.name}
-                          </span>
-                          <button
-                            className="composer-image-remove"
-                            type="button"
-                            onClick={() => handleRemoveImageAttachment(image.id)}
-                            disabled={isCurrentComposerLocked}
-                            title="Remove attachment"
-                          >
-                            <XSymbolIcon />
-                          </button>
-                        </div>
-                      ))}
-                      <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
-                    </div>
-                  )}
                   {currentProvider === 'codex' &&
                     !isCurrentGlobalChat &&
                     externalPathGrants.length > 0 && (

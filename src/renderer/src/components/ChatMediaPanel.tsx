@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { ChatRecord, ChatMessage, ExternalPathGrant } from '../../../main/store/types'
 import { collectExternalPathGrantsFromMetadata } from '../../../main/store/ExternalPathGrants'
 import { XSymbolIcon } from './AppChromeSymbols'
@@ -141,10 +142,14 @@ export function collectChatMediaRefs(
     })
   })
 
-  return refs.sort((a, b) => {
-    const rank = (ref: ChatMediaRef) => (ref.kind === 'image' ? 0 : ref.kind === 'folder' ? 1 : 2)
-    return rank(a) - rank(b) || a.name.localeCompare(b.name)
-  })
+  return refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => {
+      const rank = (ref: ChatMediaRef) =>
+        ref.kind === 'image' ? 0 : ref.kind === 'folder' ? 1 : 2
+      return rank(a.ref) - rank(b.ref) || a.index - b.index
+    })
+    .map(({ ref }) => ref)
 }
 
 export function collectMessageMediaRefs(message: ChatMessage): ChatMediaRef[] {
@@ -183,14 +188,130 @@ export function collectMessageMediaRefs(message: ChatMessage): ChatMediaRef[] {
   })
 
   return refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => {
+      const rank = (ref: ChatMediaRef) =>
+        ref.kind === 'image' ? 0 : ref.kind === 'folder' ? 1 : 2
+      return rank(a.ref) - rank(b.ref) || a.index - b.index
+    })
+    .map(({ ref }) => ref)
+}
+
+function ChatMessageAttachmentCard({
+  mediaRef,
+  workspacePath,
+  title,
+  ariaLabel,
+  isCopied,
+  onClick
+}: {
+  mediaRef: ChatMediaRef
+  workspacePath?: string
+  title: string
+  ariaLabel?: string
+  isCopied?: boolean
+  onClick: () => void
+}) {
+  const visualKind = mediaRef.kind === 'folder' ? 'folder' : 'file'
+  return (
+    <button
+      type="button"
+      className={`message-attachment-card is-${visualKind}${
+        mediaRef.kind === 'image' ? ' is-image-fallback' : ''
+      }`}
+      title={title}
+      aria-label={ariaLabel}
+      onClick={onClick}
+    >
+      <span className="message-attachment-icon">
+        <FileTypeIcon path={mediaRef.path} size={16} workspacePath={workspacePath} />
+      </span>
+      <span className="message-attachment-copy">
+        <span className="message-attachment-name">{mediaRef.name}</span>
+        <span className="message-attachment-path">
+          {isCopied ? 'Copied' : formatChatMediaLocation(mediaRef.path, workspacePath)}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function ChatMessageImageAttachment({
+  mediaRef,
+  previewSrc,
+  workspacePath,
+  isCopied,
+  onPreviewImage,
+  onCopy
+}: {
+  mediaRef: ChatMediaRef
+  previewSrc: string
+  workspacePath?: string
+  isCopied: boolean
+  onPreviewImage?: (ref: ChatMediaRef) => void
+  onCopy: () => void
+}) {
+  const [previewFailed, setPreviewFailed] = useState(false)
+  useEffect(() => {
+    setPreviewFailed(false)
+  }, [mediaRef.path, previewSrc])
+
+  const title = onPreviewImage
+    ? `Preview ${mediaRef.name}`
+    : isCopied
+      ? 'Copied'
+      : `Copy ${mediaRef.name} path`
+  const ariaLabel = onPreviewImage
+    ? `Preview image ${mediaRef.name}`
+    : `Copy ${mediaRef.name} path`
+  const onClick = (): void => {
+    if (onPreviewImage) {
+      onPreviewImage(mediaRef)
+    } else {
+      onCopy()
+    }
+  }
+
+  if (!previewSrc || previewFailed) {
+    return (
+      <ChatMessageAttachmentCard
+        mediaRef={mediaRef}
+        workspacePath={workspacePath}
+        title={title}
+        ariaLabel={ariaLabel}
+        isCopied={!onPreviewImage && isCopied}
+        onClick={onClick}
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="message-attachment-card message-attachment-thumb is-image"
+      title={title}
+      aria-label={ariaLabel}
+      onClick={onClick}
+    >
+      <img
+        src={previewSrc}
+        alt={mediaRef.name}
+        loading="lazy"
+        decoding="async"
+        onError={() => setPreviewFailed(true)}
+      />
+    </button>
+  )
 }
 
 export function ChatMessageMediaStrip({
   refs,
-  workspacePath
+  workspacePath,
+  onPreviewImage
 }: {
   refs: ChatMediaRef[]
   workspacePath?: string
+  onPreviewImage?: (ref: ChatMediaRef) => void
 }) {
   const { copiedId, copy } = useCopyFeedback()
   if (refs.length === 0) return null
@@ -199,30 +320,124 @@ export function ChatMessageMediaStrip({
       {refs.map((ref) => {
         const previewSrc = ref.kind === 'image' ? chatMediaPreviewSrc(ref.path) : ''
         const isCopied = copiedId === ref.id
+        if (ref.kind === 'image') {
+          return (
+            <ChatMessageImageAttachment
+              key={ref.id}
+              mediaRef={ref}
+              previewSrc={previewSrc}
+              workspacePath={workspacePath}
+              isCopied={isCopied}
+              onPreviewImage={onPreviewImage}
+              onCopy={() => copy(ref.id, ref.path)}
+            />
+          )
+        }
         return (
-          <button
+          <ChatMessageAttachmentCard
             key={ref.id}
-            type="button"
-            className={`message-attachment-card is-${ref.kind}`}
+            mediaRef={ref}
+            workspacePath={workspacePath}
             title={isCopied ? 'Copied' : `Copy ${ref.name} path`}
+            isCopied={isCopied}
             onClick={() => copy(ref.id, ref.path)}
-          >
-            {previewSrc ? (
-              <img src={previewSrc} alt={ref.name} />
-            ) : (
-              <span className="message-attachment-icon">
-                <FileTypeIcon path={ref.path} size={16} workspacePath={workspacePath} />
-              </span>
-            )}
-            <span className="message-attachment-copy">
-              <span className="message-attachment-name">{ref.name}</span>
-              <span className="message-attachment-path">
-                {isCopied ? 'Copied' : formatChatMediaLocation(ref.path, workspacePath)}
-              </span>
-            </span>
-          </button>
+          />
         )
       })}
+    </div>
+  )
+}
+
+export function ChatMediaPreviewOverlay({
+  mediaRef,
+  workspacePath,
+  onClose
+}: {
+  mediaRef: ChatMediaRef | null
+  workspacePath?: string
+  onClose: () => void
+}) {
+  const { copiedId, copy } = useCopyFeedback()
+  const [previewFailed, setPreviewFailed] = useState(false)
+
+  useEffect(() => {
+    if (!mediaRef) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mediaRef, onClose])
+
+  useEffect(() => {
+    setPreviewFailed(false)
+  }, [mediaRef?.id, mediaRef?.path])
+
+  if (!mediaRef) return null
+
+  const previewSrc = mediaRef.kind === 'image' ? chatMediaPreviewSrc(mediaRef.path) : ''
+  const copyId = `preview:${mediaRef.id}`
+  const isCopied = copiedId === copyId
+  const location = formatChatMediaLocation(mediaRef.path, workspacePath)
+
+  const openPath = (): void => {
+    const api = typeof window !== 'undefined' ? window.api : undefined
+    void api?.openExternalOrPath?.(mediaRef.path)
+  }
+
+  return (
+    <div
+      className="chat-media-preview-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section className="chat-media-preview-dialog" role="dialog" aria-modal="true">
+        <header className="chat-media-preview-header">
+          <div className="chat-media-preview-title">
+            <span>{mediaRef.name}</span>
+            <small>{location}</small>
+          </div>
+          <button
+            className="chat-media-preview-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close image preview"
+          >
+            <XSymbolIcon />
+          </button>
+        </header>
+
+        <div className="chat-media-preview-body">
+          {previewSrc && !previewFailed ? (
+            <img
+              src={previewSrc}
+              alt={mediaRef.name}
+              decoding="async"
+              onError={() => setPreviewFailed(true)}
+            />
+          ) : (
+            <div className="chat-media-preview-fallback">
+              <FileTypeIcon path={mediaRef.path} size={42} workspacePath={workspacePath} />
+              <span className="chat-media-preview-fallback-name">{mediaRef.name}</span>
+              <small>{location}</small>
+            </div>
+          )}
+        </div>
+
+        <footer className="chat-media-preview-actions">
+          <button type="button" className="btn btn-sm" onClick={() => copy(copyId, mediaRef.path)}>
+            {isCopied ? 'Copied' : 'Copy path'}
+          </button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={openPath}>
+            Open file
+          </button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+      </section>
     </div>
   )
 }
