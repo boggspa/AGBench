@@ -953,13 +953,12 @@
 }
 
 .app-transcript.welcome-mode .welcome-usage-region-small {
-  height: calc(680px * 0.3);
   overflow: visible;
 }
 
 .welcome-usage-region-small .welcome-usage-dashboard {
   margin: 0 0 0 auto;
-  transform: scale(0.3);
+  transform: scale(0.54);
   transform-origin: top right;
 }
 
