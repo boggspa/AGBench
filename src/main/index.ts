@@ -279,7 +279,7 @@ import {
   grokAcpEnabled,
   grokReadOnlyMcpAdvertiseEnabled
 } from './grokGate'
-import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
+import { buildGrokCliArgs, grokWriteCapable, GROK_READ_ONLY_DENY_RULES } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import {
@@ -5811,12 +5811,27 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     }
   }
 
+  // Read-only seat: deny Grok's mutating tools at the CLI (Claude-Code-style
+  // --deny, single-sourced with the headless path) so Grok never ATTEMPTS them.
+  // Without this, Grok tries a write/shell tool, the host gate rejects it, and
+  // Grok treats the bare reject as a FATAL turn cancel (stopReason: cancelled /
+  // PermissionRejected) — abandoning the turn without answering from the reads
+  // it already did. Preventing the attempt is the fix; the onPermissionRequest
+  // gate stays as defense-in-depth. Reads stay available. NOTE: deliberately NOT
+  // --permission-mode plan here — over ACP that can route exit_plan_mode through
+  // a permission request our read-only gate would deny, re-triggering the cancel.
+  const grokAcpArgs = ['--no-auto-update']
+  if (grokReadOnlySeat) {
+    for (const rule of GROK_READ_ONLY_DENY_RULES) grokAcpArgs.push('--deny', rule)
+  }
+  grokAcpArgs.push('agent', 'stdio')
+
   runGrokAcpTurn({
     prompt: payload.prompt,
     cwd: payload.workspace!,
     mcpServers: grokMcpServers,
     spawnProcess: () => {
-      const child = spawn(binaryPath, ['--no-auto-update', 'agent', 'stdio'], {
+      const child = spawn(binaryPath, grokAcpArgs, {
         cwd: payload.workspace!,
         shell: false,
         env: createCliEnv(
