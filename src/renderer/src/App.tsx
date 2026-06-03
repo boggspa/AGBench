@@ -8929,21 +8929,17 @@ function App(): React.JSX.Element {
       // Only the actual bottom opts back into auto-follow. This keeps
       // transcript scrolling fully user-owned until they deliberately
       // return to the live edge.
-      // 1.0.72 — only re-engage auto-follow when the bottom is reached WITHOUT
-      // an outstanding user scroll-away. In Ensemble chats the messages-effect
-      // snap fires ~every frame; its PROGRAMMATIC scroll-to-bottom emits a
-      // scroll event that lands here with distance ≈ 0 and previously
-      // re-armed auto-follow + cleared `userScrolledAwayInFrameRef` — wiping a
-      // deliberate wheel/touch scroll-up before the next frame, so the user was
-      // pinned to the bottom and couldn't scroll. Gating the engage on the
-      // scroll-away latch lets the scroll-up stick; a real downward intent
-      // (handleUpwardIntent below) clears the latch so returning to the live
-      // edge re-engages as normal.
-      if (shouldEngageAutoFollow(distanceFromBottom) && !userScrolledAwayInFrameRef.current) {
+      if (shouldEngageAutoFollow(distanceFromBottom)) {
         autoFollowRef.current = true
-        // Returning to the bottom dismisses the "↓ N new messages" pill — the
-        // user has visually caught up. Mirror the state write onto the ref so
-        // the layout effect's next pass sees a zero baseline immediately.
+        // Once the user lands at the bottom again we forget any
+        // previously-recorded scroll-away so the next stream tick can
+        // re-pin without delay.
+        userScrolledAwayInFrameRef.current = false
+        // Returning to the bottom dismisses the "↓ N new messages"
+        // pill — the user has visually caught up, so there is
+        // nothing left to advertise. Mirror the state write onto
+        // the ref so the layout effect's next pass sees a zero
+        // baseline immediately, not on the following frame.
         if (unreadFromBottomCountRef.current !== 0) {
           unreadFromBottomCountRef.current = 0
           setUnreadFromBottomCount(0)
@@ -8972,16 +8968,10 @@ function App(): React.JSX.Element {
     if (!scroller) return
 
     const handleUpwardIntent = (deltaY: number) => {
-      if (deltaY > 0) {
-        // Downward intent — the user is heading back toward the live edge.
-        // Clear the scroll-away latch so reaching the bottom re-engages
-        // auto-follow (the position-based engage above is now gated on this
-        // flag, so without this a wheel/touch back to the bottom would never
-        // re-follow).
-        userScrolledAwayInFrameRef.current = false
-        return
-      }
-      if (deltaY === 0) return
+      // Only treat _upward_ movement as a scroll-away signal: scrolling
+      // further toward the bottom should not flip the flag (we'd just
+      // immediately re-engage on the next scroll event anyway).
+      if (deltaY >= 0) return
       // Only react when there's actually somewhere up to scroll. This
       // catches the race before the browser emits the corresponding
       // scroll event, including the common "wheel up from bottom"
