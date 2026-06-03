@@ -325,7 +325,7 @@ import {
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
-import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
+import { MCP_AUTO_ALLOWED_TOOLS, READ_ONLY_MCP_ADVERTISE_TOOLS } from './mcp/McpAutoAllowedTools'
 import { inheritedSubThreadPermissions } from './SubThreadPermissions'
 import { isReadOnlyBlockedTool } from './ToolClassTaxonomy'
 import {
@@ -600,6 +600,14 @@ const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
 const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
   ...AGENTBENCH_MCP_TOOLS,
   ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
+]
+// 1.0.72 — read-only safe subset for the flagged read-only MCP advertise path
+// (AGBENCH_GEMINI_READONLY_MCP). Derived from READ_ONLY_MCP_ADVERTISE_TOOLS
+// (= AGENTBENCH_MCP_TOOLS ∩ MCP_AUTO_ALLOWED_TOOLS, floor-tested non-mutating),
+// in bare + AGBench__-prefixed forms — the mutating floor is never present.
+const GEMINI_MCP_READ_ONLY_TOOL_NAMES = [
+  ...READ_ONLY_MCP_ADVERTISE_TOOLS,
+  ...READ_ONLY_MCP_ADVERTISE_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
 ]
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
@@ -3583,6 +3591,17 @@ function resolveGeminiApprovalModeForServices(approvalMode: string, settings: Ap
   if (!services || approvalMode === 'plan') return approvalMode
   if (services.shellCommands === 'deny' || services.fileChanges === 'deny') return 'plan'
   return approvalMode
+}
+
+// 1.0.72 — opt-in (default OFF) flag for the Gemini read-only MCP advertise path.
+// When ON, a plan-mode workspace Gemini run advertises the non-mutating safe
+// subset over the bridge instead of being seatbelt-killed. SECURITY: this drops
+// the --sandbox seatbelt (the ONLY containment for Gemini's NATIVE write/shell),
+// so it stays env-gated until runtime-write-verified that read-only Gemini still
+// refuses native writes. Env flag (dev/test), mirroring the grok/cursor gates.
+function geminiReadOnlyMcpAdvertiseEnabled(): boolean {
+  const v = process.env.AGBENCH_GEMINI_READONLY_MCP
+  return v === '1' || v === 'true' || v === 'yes'
 }
 
 function geminiWriteModeRequiresBridge(
@@ -9067,6 +9086,14 @@ async function runGeminiProvider(
     payload.scope,
     effectiveApprovalMode
   )
+  // 1.0.72 — flagged read-only MCP advertise (default OFF). Only a plan-mode
+  // workspace run with the bridge already enabled; drops the seatbelt + advertises
+  // the safe subset. Requires geminiMcpBridgeEnabled so the broker is started.
+  const geminiReadOnlyAdvertise =
+    geminiReadOnlyMcpAdvertiseEnabled() &&
+    settings.geminiMcpBridgeEnabled &&
+    !requiresGeminiWriteTools &&
+    payload.scope !== 'global'
   if (effectiveApprovalMode !== approvalMode) {
     sendAgentCompatError(
       event.sender,
@@ -9111,7 +9138,8 @@ async function runGeminiProvider(
     settings.geminiCheckpointingEnabled,
     payload.geminiWorktree || null,
     requiresGeminiWriteTools,
-    payload.externalPathGrants
+    payload.externalPathGrants,
+    geminiReadOnlyAdvertise
   )
   if (argsError) {
     sendAgentCompatError(event.sender, 'gemini', argsError, route)
@@ -9197,7 +9225,8 @@ async function runGeminiProvider(
       // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
       // connecting back to the broker. When write-capable AGBench MCP tools are
       // enabled, keep both the CLI --sandbox flag and GEMINI_SANDBOX env disabled.
-      ...(requiresGeminiWriteTools ? {} : { GEMINI_SANDBOX: 'true' }),
+      // The flagged read-only-advertise path drops it too (safe subset only).
+      ...(requiresGeminiWriteTools || geminiReadOnlyAdvertise ? {} : { GEMINI_SANDBOX: 'true' }),
       AGENTBENCH_RUN_ID: route.appRunId || '',
       AGENTBENCH_CHAT_ID: route.appChatId || '',
       AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
@@ -13106,7 +13135,10 @@ function appendGeminiCliSessionArgs(
   checkpointingEnabled: boolean = false,
   worktree: GeminiWorktreeLaunchOption = null,
   allowAgentbenchMcp: boolean = false,
-  externalPathGrants?: ExternalPathGrant[]
+  externalPathGrants?: ExternalPathGrant[],
+  // 1.0.72 — flagged read-only advertise: advertise the safe subset + drop the
+  // seatbelt for a plan-mode run (see geminiReadOnlyMcpAdvertiseEnabled).
+  readOnlyMcpAdvertise: boolean = false
 ): string | null {
   args.push('--approval-mode', approvalMode)
   // 1.0.5-EW42c — Gemini CLI uses `--include-directories <path>`
@@ -13143,16 +13175,28 @@ function appendGeminiCliSessionArgs(
   // swap this seatbelt for a strict read-only `--allowed-tools` allowlist
   // (advertise only the non-mutating subset; keep write/shell unadvertised AND
   // host-gated) and verify read-only Gemini still cannot write natively — a
-  // deliberate, write-verified follow-up, intentionally not rushed into 1.0.72.
+  // deliberate, write-verified follow-up. As of 1.0.72 a FLAGGED opt-in path
+  // (readOnlyMcpAdvertise, gated on AGBENCH_GEMINI_READONLY_MCP, default OFF)
+  // does exactly this — advertises the safe subset + drops the seatbelt —
+  // pending the runtime write-verification.
   // (Grok and Cursor share this plan-mode gap structurally: their CLIs expose
   // no per-run MCP in plan mode at all, so it can't be closed AGBench-side.)
-  if (!allowAgentbenchMcp) {
+  //
+  // SECURITY: dropping --sandbox removes the ONLY containment for Gemini's NATIVE
+  // write/shell, so the read-only-advertise path stays behind the default-OFF
+  // flag until verified. Default OFF ⇒ unchanged (seatbelt on, no read-only
+  // bridge). The advertised set is the non-mutating safe subset only.
+  const advertiseBridge = allowAgentbenchMcp || readOnlyMcpAdvertise
+  if (!advertiseBridge) {
     args.push('--sandbox')
   }
 
-  if (allowAgentbenchMcp) {
+  if (advertiseBridge) {
     args.push('--allowed-mcp-server-names', GEMINI_MCP_SERVER_NAME)
-    for (const toolName of GEMINI_MCP_ALLOWED_TOOL_NAMES) {
+    const advertisedToolNames = allowAgentbenchMcp
+      ? GEMINI_MCP_ALLOWED_TOOL_NAMES
+      : GEMINI_MCP_READ_ONLY_TOOL_NAMES
+    for (const toolName of advertisedToolNames) {
       args.push(`--allowed-tools=${toolName}`)
     }
   }
@@ -16692,6 +16736,11 @@ if (isGeminiMcpBridgeProcess) {
           'workspace',
           effectiveApprovalMode
         )
+        // 1.0.72 — flagged read-only MCP advertise (default OFF); see the run path.
+        const geminiReadOnlyAdvertise =
+          geminiReadOnlyMcpAdvertiseEnabled() &&
+          settings.geminiMcpBridgeEnabled &&
+          !requiresGeminiWriteTools
         const argsError = appendGeminiCliSessionArgs(
           args,
           model,
@@ -16700,7 +16749,9 @@ if (isGeminiMcpBridgeProcess) {
           resumePolicy.resumeSessionId,
           settings.geminiCheckpointingEnabled,
           worktree,
-          requiresGeminiWriteTools
+          requiresGeminiWriteTools,
+          undefined,
+          geminiReadOnlyAdvertise
         )
         if (argsError) {
           event.sender.send('gemini-session-data', `${argsError}\r\n`)
@@ -16749,8 +16800,11 @@ if (isGeminiMcpBridgeProcess) {
             ...resolveGeminiAuthProfileEnv(getDefaultGeminiAuthProfileId()),
             // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
             // connecting back to the broker. Keep it disabled whenever this session
-            // exposes write-capable AGBench MCP tools.
-            ...(requiresGeminiWriteTools ? {} : { GEMINI_SANDBOX: 'true' }),
+            // exposes write-capable AGBench MCP tools. The flagged read-only-
+            // advertise path drops it too (safe subset only).
+            ...(requiresGeminiWriteTools || geminiReadOnlyAdvertise
+              ? {}
+              : { GEMINI_SANDBOX: 'true' }),
             AGENTBENCH_RUN_ID: routedSession.appRunId || '',
             AGENTBENCH_CHAT_ID: routedSession.appChatId || '',
             // Phase I2: tag the Gemini interactive session so the bridge
