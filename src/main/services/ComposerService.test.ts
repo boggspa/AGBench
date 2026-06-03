@@ -631,3 +631,22 @@ describe('ComposerService', () => {
     expect(payload.handoffSourceRunId).toBe('source-run-1')
   })
 })
+
+describe('composeRun effectivePermissions (single-run read-only enforcement)', () => {
+  it('populates read-only effectivePermissions for a plan-mode run', () => {
+    const payload = compose({}, { approvalMode: 'plan' })
+    // The canonical permissions must be present so isReadOnlyBlockedTool() + the
+    // YOLO read-only suppression actually engage on the single-run path.
+    expect(payload.effectivePermissions).toBeDefined()
+    expect(payload.effectivePermissions?.readOnly).toBe(true)
+    expect(payload.effectivePermissions?.presetId).toBe('read_only')
+    // read_only preset hard-denies the mutating services.
+    expect(payload.effectivePermissions?.agenticServices.shellCommands).toBe('deny')
+    expect(payload.effectivePermissions?.agenticServices.fileChanges).toBe('deny')
+  })
+
+  it('leaves effectivePermissions undefined for a non-read-only run (unchanged behavior)', () => {
+    expect(compose({}, { approvalMode: 'default' }).effectivePermissions).toBeUndefined()
+    expect(compose({}, { approvalMode: 'auto_edit' }).effectivePermissions).toBeUndefined()
+  })
+})

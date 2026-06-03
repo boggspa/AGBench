@@ -2,6 +2,7 @@ import type { AgentRunPayload } from '../run/AgentRunTypes'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
+import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
 import {
   coalesceExternalPathGrants,
   stripExternalPathGrantOrder
@@ -169,6 +170,21 @@ export class ComposerService {
     }
     const providerMetadataPatch =
       Object.keys(providerMetadataPatchData).length > 0 ? providerMetadataPatchData : undefined
+    // 1.0.72 — populate the canonical read-only permissions for the SINGLE-run
+    // path. Previously only EnsembleOrchestrator called resolveEffectiveRunPermissions,
+    // so a regular plan-mode run carried `effectivePermissions: undefined` — which
+    // left isReadOnlyBlockedTool() (the fall-through-mutator hard-deny) AND the YOLO
+    // read-only suppression INERT for non-ensemble runs. Only populated for a
+    // read-only (plan) run, so non-read-only runs are byte-for-byte unchanged.
+    const effectiveRunPermissions =
+      approvalMode === 'plan'
+        ? resolveEffectiveRunPermissions({
+            provider,
+            workspacePath: scope === 'global' ? undefined : input.workspace || chat.workspacePath,
+            settings,
+            presetId: 'read_only'
+          })
+        : undefined
     const payload: ComposerRunPayload = {
       provider,
       scope,
@@ -194,6 +210,7 @@ export class ComposerService {
           ? (input.kimiThinkingEnabled ?? metadataBoolean(chat, 'kimiThinkingEnabled') ?? true)
           : null,
       approvalMode,
+      ...(effectiveRunPermissions ? { effectivePermissions: effectiveRunPermissions } : {}),
       imagePaths,
       providerSessionId: resumeDecision.sessionId || null,
       externalPathGrants,
