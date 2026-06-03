@@ -125,6 +125,25 @@ describe('runGrokAcpTurn', () => {
     expect(closes).toEqual([0])
   })
 
+  it('G5b — passes provided mcpServers to session/new (read-only scoped bridge)', () => {
+    const child = new FakeAcpChild()
+    const scopedBridge = {
+      name: 'agbench-grok',
+      type: 'stdio',
+      command: '/path/to/agbench',
+      args: ['--agentbench-gemini-mcp-bridge', '--socket', '/sock', '--safe-subset']
+    }
+    run(child, { mcpServers: [scopedBridge] })
+
+    child.emit({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 1 } })
+    // The session/new carries the AGBench scoped bridge instead of an empty list.
+    expect(child.sent()[1]).toMatchObject({
+      id: 2,
+      method: 'session/new',
+      params: { cwd: '/tmp/ws', mcpServers: [scopedBridge] }
+    })
+  })
+
   it('cancel() sends session/cancel then kills (only mid-turn)', () => {
     const child = new FakeAcpChild()
     const { handle } = run(child)

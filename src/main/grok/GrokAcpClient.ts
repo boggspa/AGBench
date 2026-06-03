@@ -37,6 +37,15 @@ export interface GrokAcpRunOptions {
   cwd: string
   /** Spawns `grok --no-auto-update agent stdio` (injected for testability). */
   spawnProcess: () => AcpChildProcess
+  /**
+   * G5b — MCP servers advertised to the session (session/new `mcpServers`). For
+   * a read-only Grok seat this is the single AGBench scoped bridge entry (safe
+   * subset only, launched with --safe-subset). Omitted/empty = no AGBench tools
+   * (the read-only G4 default). Each entry is an ACP stdio server descriptor;
+   * shape stays `unknown` here because the live ACP wire shape is confirmed by
+   * the gated trace, not assumed by the client.
+   */
+  mcpServers?: unknown[]
   /** Normalized run events: content / thinking / init(sessionId) / result / warning. */
   onEvent: (event: NormalizedGrokRunEvent) => void
   /** Called once with the spawned child (for the cancellation registry). */
@@ -162,8 +171,12 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
       }
       // Lifecycle correlation by request id (single sequential flow).
       if (message.id === ACP_ID.initialize && message.result) {
-        // Step 2 — create a session in the workspace; no MCP in read-only G4.
-        writeRpc(ACP_ID.sessionNew, 'session/new', { cwd: options.cwd, mcpServers: [] })
+        // Step 2 — create a session in the workspace. mcpServers carries the
+        // AGBench scoped bridge for a read-only seat (G5b); empty otherwise (G4).
+        writeRpc(ACP_ID.sessionNew, 'session/new', {
+          cwd: options.cwd,
+          mcpServers: options.mcpServers ?? []
+        })
         continue
       }
       if (message.id === ACP_ID.sessionNew && message.result) {

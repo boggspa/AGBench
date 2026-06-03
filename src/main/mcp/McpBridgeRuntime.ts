@@ -27,6 +27,13 @@ export const GEMINI_MCP_SERVER_NAME_LOWER = GEMINI_MCP_SERVER_NAME.toLowerCase()
 export const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 export const GEMINI_MCP_SOCKET_ARG = '--socket'
 export const GEMINI_MCP_TOKEN_ARG = '--token'
+// Fail-closed read-only scope flag. Carried in the bridge ARGV (not env) so it
+// is atomic with the spawn: a bridge launched with these args is scoped, full
+// stop. The bootstrap translates it to AGENTBENCH_MCP_SAFE_SUBSET=1 (the env the
+// tools/list + tools/call guard reads). Used by the Grok read-only seat, which
+// auto-runs MCP tools with NO host gate — so the advertised list + the call
+// reject ARE the entire safety boundary, and the scope must travel with the spawn.
+export const GEMINI_MCP_SAFE_SUBSET_ARG = '--safe-subset'
 export const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
   ...AGENTBENCH_MCP_TOOLS,
   ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
@@ -214,7 +221,9 @@ const VALID_BROKER_PARENT_PROVIDERS = new Set<ProviderId>([
   'gemini',
   'codex',
   'claude',
-  'kimi'
+  'kimi',
+  // Grok reaches the broker via its read-only scoped bridge (safe subset only).
+  'grok'
 ])
 const BRIDGE_LOG_MAX_BYTES = 1_048_576
 const DEFAULT_MAX_CAPTURE_OUTPUT_CHARS = 200_000
@@ -679,14 +688,21 @@ export class McpBridgeRuntime {
     return this.deps.getProcessExecPath?.() || process.execPath
   }
 
-  agentbenchMcpBridgeArgs(socketPath: string = this.deps.getGeminiMcpSocketPath()): string[] {
+  agentbenchMcpBridgeArgs(
+    socketPath: string = this.deps.getGeminiMcpSocketPath(),
+    safeSubset = false
+  ): string[] {
     return [
       ...(this.deps.isDev() ? [this.deps.getAppPath()] : []),
       GEMINI_MCP_BRIDGE_ARG,
       GEMINI_MCP_SOCKET_ARG,
       socketPath,
       GEMINI_MCP_TOKEN_ARG,
-      this.deps.getGeminiMcpBrokerToken()
+      this.deps.getGeminiMcpBrokerToken(),
+      // Read-only seat (Grok): append the scope flag LAST so socket/token
+      // index-based parsing is unaffected. Default false keeps the Gemini/Kimi
+      // launch args byte-identical (bridgeArgsMatchCurrentLaunch still matches).
+      ...(safeSubset ? [GEMINI_MCP_SAFE_SUBSET_ARG] : [])
     ]
   }
 

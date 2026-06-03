@@ -33,3 +33,21 @@ export function grokAcpEnabled(): boolean {
   const value = process.env.AGBENCH_GROK_ACP
   return value === '1' || value === 'true' || value === 'yes'
 }
+
+/**
+ * 1.0.72-G5b — Sub-gate that advertises AGBench's read-only MCP tools (the
+ * non-mutating safe subset: read/list/search + ask_user_question + ensemble
+ * coordination) to a READ-ONLY Grok seat over ACP, via a scoped bridge
+ * (mcpServers entry launched with --safe-subset).
+ *
+ * Default OFF — a deliberate seatbelt. The live trace proved Grok auto-runs MCP
+ * tools with NO session/request_permission, so the bridge's advertise list +
+ * tools/call reject are the ENTIRE safety boundary; this stays gated until that
+ * boundary is runtime-verified in a live Grok run. Only meaningful when the
+ * provider gate, grokAcpEnabled(), AND settings.geminiMcpBridgeEnabled are on,
+ * and only ever attached to a read-only (plan / non-write) seat.
+ */
+export function grokReadOnlyMcpAdvertiseEnabled(): boolean {
+  const value = process.env.AGBENCH_GROK_READONLY_MCP
+  return value === '1' || value === 'true' || value === 'yes'
+}

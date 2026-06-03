@@ -252,6 +252,7 @@ import {
 import {
   brokerRequest as mcpBridgeBrokerRequest,
   createMcpBridgeRuntime,
+  GEMINI_MCP_SAFE_SUBSET_ARG,
   mcpToolCallResponseFromBrokerResult as mcpBridgeToolCallResponseFromBrokerResult,
   startGeminiMcpBridgeProcess as startGeminiMcpBridgeProcessWithDeps
 } from './mcp/McpBridgeRuntime'
@@ -273,7 +274,11 @@ import {
 import { RunRepository } from './RunRepository'
 import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
-import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
+import {
+  experimentalGrokProviderEnabled,
+  grokAcpEnabled,
+  grokReadOnlyMcpAdvertiseEnabled
+} from './grokGate'
 import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
@@ -647,8 +652,11 @@ const {
   discoverGeminiMemory
 } = geminiDiscoveryHelpers
 
-function agentbenchMcpBridgeArgs(socketPath: string = geminiMcpSocketPath()): string[] {
-  return mcpBridgeRuntime.agentbenchMcpBridgeArgs(socketPath)
+function agentbenchMcpBridgeArgs(
+  socketPath: string = geminiMcpSocketPath(),
+  safeSubset = false
+): string[] {
+  return mcpBridgeRuntime.agentbenchMcpBridgeArgs(socketPath, safeSubset)
 }
 
 // Late-bound APNs handles. Constructed inside `app.whenReady()` (because
@@ -5750,9 +5758,56 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     state
   )
 
+  // G5b — read-only Grok seat: advertise AGBench's non-mutating MCP tools via a
+  // scoped bridge (safe subset only). The ACP trace proved Grok auto-runs MCP
+  // tools with NO session/request_permission, so the bridge's advertise list +
+  // tools/call reject are the ENTIRE safety boundary — hence --safe-subset
+  // (fail-closed, atomic with the spawn) and read-only-seat-only. Default OFF
+  // (grokReadOnlyMcpAdvertiseEnabled) until the boundary is live-verified.
+  let grokMcpServers: unknown[] = []
+  if (
+    grokReadOnlyMcpAdvertiseEnabled() &&
+    AppStore.getSettings().geminiMcpBridgeEnabled &&
+    !grokWriteCapable(payload.approvalMode)
+  ) {
+    try {
+      await mcpBridgeRuntime.startGeminiMcpBroker()
+      grokMcpServers = [
+        {
+          // Distinct from the global 'agbench' server (cursor web-fetch) so the
+          // two never collide in Grok's MCP registry. Exact proven stdio shape
+          // (name/type/command/args); routing identity rides Grok's child env
+          // (AGENTBENCH_RUN_ID/CHAT_ID/PARENT_PROVIDER already set on the spawn).
+          name: 'agbench-grok',
+          type: 'stdio',
+          command: process.execPath,
+          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath(), true)
+        }
+      ]
+    } catch (error) {
+      // Broker failed to start → no tools (safe). Grok still runs, just toolless.
+      grokMcpServers = []
+      sendAgentCompatLine(
+        event.sender,
+        'grok',
+        {
+          type: 'provider_warning',
+          provider: 'grok',
+          severity: 'warning',
+          title: 'Grok MCP bridge unavailable',
+          message: `AGBench could not start the MCP broker; Grok is running without AGBench tools. ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        },
+        state
+      )
+    }
+  }
+
   runGrokAcpTurn({
     prompt: payload.prompt,
     cwd: payload.workspace!,
+    mcpServers: grokMcpServers,
     spawnProcess: () => {
       const child = spawn(binaryPath, ['--no-auto-update', 'agent', 'stdio'], {
         cwd: payload.workspace!,
@@ -12910,6 +12965,14 @@ function mcpToolDefinitions() {
 }
 
 function startGeminiMcpBridgeProcess(): void {
+  // Fail-closed read-only scope: a bridge launched with --safe-subset (the Grok
+  // read-only seat) advertises + executes ONLY the non-mutating safe subset.
+  // Translate the argv flag to the env the tools/list + tools/call guard reads,
+  // so the scope is atomic with the spawn (argv travels with the process; we do
+  // not depend on the parent forwarding env to the MCP child).
+  if (process.argv.includes(GEMINI_MCP_SAFE_SUBSET_ARG)) {
+    process.env.AGENTBENCH_MCP_SAFE_SUBSET = '1'
+  }
   startGeminiMcpBridgeProcessWithDeps({
     getDefaultSocketPath: () => geminiMcpSocketPath(),
     getAppVersion: () => app.getVersion(),
