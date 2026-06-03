@@ -8,6 +8,7 @@ import os from 'os'
 import { dirname, join, resolve } from 'path'
 import type { WebContents } from 'electron'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { isReadOnlyAdvertisedTool } from './McpAutoAllowedTools'
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from '../KimiMcpBridge'
 import type {
   AppSettings,
@@ -471,13 +472,39 @@ export function handleMcpJsonRpcMessage(
     return
   }
   if (method === 'tools/list') {
-    writeMcpResponse(id, { tools: deps.getMcpToolDefinitions() }, transport, stdout)
+    // Read-only scoped bridge (AGENTBENCH_MCP_SAFE_SUBSET=1): advertise ONLY the
+    // non-mutating safe subset to a read-only seat (e.g. read-only Grok). The
+    // tools/call gate below is the matching enforcement.
+    const safeSubsetOnly =
+      (deps.env?.AGENTBENCH_MCP_SAFE_SUBSET ?? process.env.AGENTBENCH_MCP_SAFE_SUBSET) === '1'
+    const allTools = deps.getMcpToolDefinitions()
+    const tools = safeSubsetOnly
+      ? allTools.filter((tool) => isReadOnlyAdvertisedTool(tool.name))
+      : allTools
+    writeMcpResponse(id, { tools }, transport, stdout)
     return
   }
   if (method === 'tools/call') {
     const params = isRecord(request.params) ? request.params : {}
     const name = params.name
     const args = params.arguments || {}
+    // Read-only scoped bridge (AGENTBENCH_MCP_SAFE_SUBSET=1): refuse any tool
+    // outside the non-mutating safe subset rather than routing it to the broker.
+    // This is the ENFORCEMENT — a read-only Grok seat auto-runs MCP tools with no
+    // host gate, so a non-advertised (mutating) tool must be rejected right here.
+    const safeSubsetOnly =
+      (deps.env?.AGENTBENCH_MCP_SAFE_SUBSET ?? process.env.AGENTBENCH_MCP_SAFE_SUBSET) === '1'
+    if (safeSubsetOnly && !isReadOnlyAdvertisedTool(String(name))) {
+      bridgeLog(`tools/call REJECTED (read-only scope) name=${String(name)} id=${String(id)}`)
+      writeMcpError(
+        id,
+        -32601,
+        `Tool '${String(name)}' is not available to a read-only AGBench seat.`,
+        transport,
+        stdout
+      )
+      return
+    }
     bridgeLog(`tools/call name=${String(name)} id=${String(id)} args=${JSON.stringify(args).slice(0, 200)}`)
     const requestBroker = deps.brokerRequest || brokerRequest
     requestBroker(socketPath, {

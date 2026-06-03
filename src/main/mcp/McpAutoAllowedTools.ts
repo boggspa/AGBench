@@ -78,3 +78,14 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
 export const READ_ONLY_MCP_ADVERTISE_TOOLS: ReadonlyArray<AGBenchMcpToolName> = Object.freeze(
   AGENTBENCH_MCP_TOOLS.filter((tool) => MCP_AUTO_ALLOWED_TOOLS.has(tool))
 )
+
+/**
+ * Is this bare tool name in the read-only advertise subset? The bridge uses this
+ * to scope BOTH tools/list and tools/call for a read-only seat (notably Grok,
+ * which auto-runs MCP tools with NO host gate — so the advertised list AND the
+ * tools/call reject are the entire safety boundary). Unknown / mutating tools
+ * return false.
+ */
+export function isReadOnlyAdvertisedTool(name: string): boolean {
+  return (READ_ONLY_MCP_ADVERTISE_TOOLS as readonly string[]).includes(name)
+}

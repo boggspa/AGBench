@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { MCP_AUTO_ALLOWED_TOOLS, READ_ONLY_MCP_ADVERTISE_TOOLS } from './McpAutoAllowedTools'
+import {
+  MCP_AUTO_ALLOWED_TOOLS,
+  READ_ONLY_MCP_ADVERTISE_TOOLS,
+  isReadOnlyAdvertisedTool
+} from './McpAutoAllowedTools'
 
 describe('MCP_AUTO_ALLOWED_TOOLS', () => {
   it('auto-allows the four workspace read tools (1.0.71 read parity)', () => {
@@ -54,6 +58,30 @@ describe('READ_ONLY_MCP_ADVERTISE_TOOLS', () => {
   it('is a strict subset of the gate-skip set (every advertised tool is auto-allowed)', () => {
     for (const tool of READ_ONLY_MCP_ADVERTISE_TOOLS) {
       expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(true)
+    }
+  })
+})
+
+describe('isReadOnlyAdvertisedTool (bridge scope guard)', () => {
+  it('matches the safe coordination + read tools', () => {
+    for (const tool of ['ask_user_question', 'ensemble_yield', 'read_file', 'list_directory']) {
+      expect(isReadOnlyAdvertisedTool(tool)).toBe(true)
+    }
+  })
+
+  it('SAFETY: rejects every mutating-floor tool + unknown tools (the call-gate boundary)', () => {
+    for (const tool of [
+      'write_file',
+      'replace',
+      'apply_patch',
+      'run_shell_command',
+      'git_stage',
+      'git_commit',
+      'run_task',
+      'delegate_to_subthread',
+      'totally_unknown_future_tool'
+    ]) {
+      expect(isReadOnlyAdvertisedTool(tool)).toBe(false)
     }
   })
 })
