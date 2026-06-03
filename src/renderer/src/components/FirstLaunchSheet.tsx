@@ -951,6 +951,26 @@ export function FirstLaunchSheet({
               <QuotaProgressBar fraction={0.42} accent="var(--provider-claude-color)" />
               <span className="first-launch-sheet-usage-mock-pct">42%</span>
             </div>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Gemini</span>
+              <QuotaProgressBar fraction={0.31} accent="var(--provider-gemini-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">31%</span>
+            </div>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Kimi</span>
+              <QuotaProgressBar fraction={0.56} accent="var(--provider-kimi-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">56%</span>
+            </div>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Cursor</span>
+              <QuotaProgressBar fraction={0.12} accent="var(--provider-cursor-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">12%</span>
+            </div>
+            <div className="first-launch-sheet-usage-mock-row">
+              <span className="first-launch-sheet-usage-mock-label">Grok</span>
+              <QuotaProgressBar fraction={0.07} accent="var(--provider-grok-color)" />
+              <span className="first-launch-sheet-usage-mock-pct">7%</span>
+            </div>
           </div>
           <p className="first-launch-sheet-prose">
             Every run also shows a live token + cost tally next to Send, and the dashboard fills in
