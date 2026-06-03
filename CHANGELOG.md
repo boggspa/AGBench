@@ -4,6 +4,49 @@ Notable changes to AGBench, the local-first macOS desktop workbench for running
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.72 — 2026-06-04
+
+### Security
+- **Read-only means read-only** — choosing "Plan / read-only" for a run is now a
+  hard floor that nothing downstream can quietly loosen: full-auto can't override
+  it, delegated sub-agents inherit it, and uncategorised tools fail closed. The
+  posture is enforced identically across Gemini, Claude, Kimi, Codex, and Grok.
+- **Grok joins the read-only contract** — Grok now runs under read-only through a
+  scoped, fail-closed tool bridge that exposes only non-mutating (read / list /
+  search) tools, with the host denying any write the agent attempts.
+
+### Added
+- **Read-only that's still useful** — read-only agents keep full read parity
+  (list / read / search) without prompts, and the run surface explains what a
+  read-only seat can and can't do, by tool class.
+- **Welcome dashboard controls** — a compact dashboard mode plus Settings →
+  Appearance controls for heatmap layout, with swipeable heatmap cycles and
+  animated transitions.
+- **Clearer onboarding** — consistent provider hover states, all six usage
+  meters, and a one-line role flow.
+- **Bug reports as pre-filled GitHub issues** — the in-app reporter now opens a
+  ready-to-file issue.
+
+### Changed
+- **Denied writes stay honest** — a blocked or rejected edit is no longer counted
+  or shown as an applied file change; it reads "attempted (not applied)", and a
+  read-only agent is told its posture up front so a refused write doesn't
+  dead-end the turn.
+- **Steadier transcript** — the Ensemble transcript no longer fights your
+  scroll-up, agent questions resolve exactly once, and a message that anchors an
+  open prompt can't be deleted out from under it.
+- **Sturdier Codex** — a bad `config.toml` is surfaced clearly, a newer Codex CLI
+  warns instead of breaking silently, and resuming no longer trips on a
+  non-standard thread id; retired models were removed from the picker.
+- **Settings & sidebar persistence** — general settings and sidebar section
+  collapse now persist across launches.
+
+### Fixed
+- Ensemble: the "interrupted checkpoint" prompt no longer re-fires on every
+  message, and stale checkpoint cards were removed from the composer.
+- The MCP tool broker is confirmed up before a Claude run starts, with start
+  failures surfaced instead of silently degrading.
+
 ## 1.0.71 — 2026-06-02
 
 ### Added
