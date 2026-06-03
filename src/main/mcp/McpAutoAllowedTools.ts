@@ -1,4 +1,4 @@
-import type { AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
 
 /**
  * MCP tools that skip the per-call approval modal (auto-allowed).
@@ -64,3 +64,17 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'workspace_search',
   'workspace_symbols'
 ])
+
+/**
+ * Tools advertised to a READ-ONLY / plan seat: AGENTBENCH_MCP_TOOLS ∩
+ * MCP_AUTO_ALLOWED_TOOLS — the advertised universe narrowed to the gate-skip
+ * safe set. Single source of truth (DERIVED, never hand-listed), so a mutating
+ * tool can never appear here unless it is also wrongly added to
+ * MCP_AUTO_ALLOWED_TOOLS — which the SAFETY INVARIANT test forbids. The Gemini
+ * read-only --allowed-tools allowlist and the Grok read-only mcpServers
+ * safe-subset are both built from this set, so all three providers advertise an
+ * identical, provably non-mutating surface in read-only.
+ */
+export const READ_ONLY_MCP_ADVERTISE_TOOLS: ReadonlyArray<AGBenchMcpToolName> = Object.freeze(
+  AGENTBENCH_MCP_TOOLS.filter((tool) => MCP_AUTO_ALLOWED_TOOLS.has(tool))
+)

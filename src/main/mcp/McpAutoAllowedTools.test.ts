@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MCP_AUTO_ALLOWED_TOOLS } from './McpAutoAllowedTools'
+import { MCP_AUTO_ALLOWED_TOOLS, READ_ONLY_MCP_ADVERTISE_TOOLS } from './McpAutoAllowedTools'
 
 describe('MCP_AUTO_ALLOWED_TOOLS', () => {
   it('auto-allows the four workspace read tools (1.0.71 read parity)', () => {
@@ -26,6 +26,34 @@ describe('MCP_AUTO_ALLOWED_TOOLS', () => {
       'run_task'
     ] as const) {
       expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(false)
+    }
+  })
+})
+
+describe('READ_ONLY_MCP_ADVERTISE_TOOLS', () => {
+  it('advertises the safe coordination + read tools to a read-only seat', () => {
+    for (const tool of ['ask_user_question', 'ensemble_yield', 'read_file'] as const) {
+      expect(READ_ONLY_MCP_ADVERTISE_TOOLS).toContain(tool)
+    }
+  })
+
+  it('SAFETY INVARIANT: advertises NONE of the mutating floor', () => {
+    for (const tool of [
+      'write_file',
+      'replace',
+      'apply_patch',
+      'run_shell_command',
+      'git_stage',
+      'git_commit',
+      'run_task'
+    ] as const) {
+      expect(READ_ONLY_MCP_ADVERTISE_TOOLS).not.toContain(tool)
+    }
+  })
+
+  it('is a strict subset of the gate-skip set (every advertised tool is auto-allowed)', () => {
+    for (const tool of READ_ONLY_MCP_ADVERTISE_TOOLS) {
+      expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(true)
     }
   })
 })
