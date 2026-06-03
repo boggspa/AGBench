@@ -15,6 +15,17 @@
 // `--mode plan`; write mode is contained by a workspace-local deny-list) — see
 // the CR3 spike verdict in the blueprint. runCursorProvider runs read-only
 // until CR6 wires the write-mode deny-list + approval-ledger path.
+//
+// READ-ONLY COORDINATION GAP (1.0.72 — deliberately out-of-scope): unlike Codex /
+// Claude / Kimi (and the 1.0.72-prepped Gemini), a read-only Cursor seat keeps NO
+// AGBench MCP coordination tools (ask_user_question / ensemble_yield). This is a
+// cursor-agent limitation, not AGBench wiring: read-only == `--mode plan`, and
+// plan mode REJECTS ALL TOOLS including MCP (see CursorCliArgs / CursorMcpBridge /
+// CursorWorkspaceConfig + the CR3 spike), so there is no per-run MCP channel to
+// advertise a safe subset over — the web bridge below is write-mode-only for the
+// same reason. Closure depends on cursor-agent shipping a plan-mode-with-allowlisted-
+// MCP capability upstream (analogous to Gemini's --allowed-tools). Mirrors the
+// per-provider parity note at the Gemini sandbox choke in index.ts.
 export function experimentalCursorProviderEnabled(): boolean {
   if (isOptOut(process.env.AGBENCH_DISABLE_CURSOR)) return false
   // Legacy var, now interpreted as an explicit opt-OUT only (=0/false/no).
