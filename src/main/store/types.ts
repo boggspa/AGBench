@@ -1385,6 +1385,12 @@ export interface AppSettings {
      * is activity to show; the standalone heatmaps are unaffected.
      */
     dashboardEnabled?: boolean
+    /**
+     * Welcome dashboard display size. Large preserves the existing full-size
+     * layout; small renders the same dashboard scaled to 30% and pinned to the
+     * top-right of the welcome surface.
+     */
+    dashboardSize?: 'large' | 'small'
   }
   /**
    * Welcome-screen standalone heatmap visibility. All three heatmaps

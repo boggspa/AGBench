@@ -15291,6 +15291,8 @@ function App(): React.JSX.Element {
   const welcomeHeatmapLayout: 'single' | 'stacked' =
     settings?.welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
   const welcomeDashboardCardEnabled = settings?.dashboardStatPrefs?.dashboardEnabled !== false
+  const welcomeDashboardSize =
+    settings?.dashboardStatPrefs?.dashboardSize === 'small' ? 'small' : 'large'
   const welcomeHeatmapSlots: WelcomeHeatmapSlot[] = []
   if (welcomeWorkspaceActivityPath) {
     welcomeHeatmapSlots.push({
@@ -16540,7 +16542,7 @@ function App(): React.JSX.Element {
           )}
 
           {shouldShowWelcomeUsageDashboard && welcomeDashboardCardEnabled && (
-            <div className="welcome-usage-region">
+            <div className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize}`}>
               <WelcomeUsageDashboard
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}

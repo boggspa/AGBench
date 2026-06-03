@@ -947,6 +947,22 @@
   z-index: 3;
 }
 
+.welcome-usage-region-small {
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.app-transcript.welcome-mode .welcome-usage-region-small {
+  height: calc(680px * 0.3);
+  overflow: visible;
+}
+
+.welcome-usage-region-small .welcome-usage-dashboard {
+  margin: 0 0 0 auto;
+  transform: scale(0.3);
+  transform-origin: top right;
+}
+
 .welcome-usage-dashboard {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));

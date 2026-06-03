@@ -1543,6 +1543,7 @@ export function SettingsPanel({
     ? Math.max(0, Math.trunc(chatContextTurns))
     : 6
   const boundedTurns = Math.min(20, safeTurns)
+  const dashboardSize = dashboardStatPrefs?.dashboardSize === 'small' ? 'small' : 'large'
   const transcriptFontOptions = [...TRANSCRIPT_FONT_OPTIONS, ...installedFontOptions]
   const composerFontOptions = [...COMPOSER_FONT_OPTIONS, ...installedFontOptions]
   const transcriptFontSelectValue = getFontSelectValue(
@@ -2691,6 +2692,28 @@ export function SettingsPanel({
                         {dashboardStatPrefs?.dashboardEnabled !== false ? 'Visible' : 'Hidden'}
                       </span>
                     </label>
+                  </li>
+                  <li className="settings-dashboard-stats-row">
+                    <span className="settings-dashboard-stats-name">Dashboard size</span>
+                    <div className="settings-option-list settings-option-list-inline">
+                      {(['large', 'small'] as const).map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          className={`btn btn-sm ${dashboardSize === size ? '' : 'btn-ghost'}`}
+                          onClick={() =>
+                            onChange({
+                              dashboardStatPrefs: {
+                                ...(dashboardStatPrefs || {}),
+                                dashboardSize: size
+                              }
+                            })
+                          }
+                        >
+                          {size === 'small' ? 'Small' : 'Large'}
+                        </button>
+                      ))}
+                    </div>
                   </li>
                 </ul>
                 {(['calendar', 'duration', 'volume', 'spend'] as const).map((group) => {
