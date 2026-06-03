@@ -189,7 +189,18 @@ export function applyRuntimeProfileToPayload(
   if (!profile) return payload
   payload.runtimeProfile = profile
   if (profile.approvalMode) {
-    payload.approvalMode = profile.approvalMode
+    // SAFETY: a runtime profile must NOT silently LOOSEN an explicit read-only
+    // ('plan') seat to write-capable. The builtin profiles carry
+    // approvalMode:'default', which otherwise clobbered a user's explicit
+    // "Plan / Read-only" composer choice and dropped the read-only posture
+    // (observed live: a read-only Grok run went write-capable via
+    // builtin:grok:global, so the deny rules + host read-only gate never engaged).
+    // A profile MAY still tighten a non-read-only seat (including to 'plan').
+    const incomingReadOnly = (payload.approvalMode ?? '').trim() === 'plan'
+    const profileReadOnly = profile.approvalMode.trim() === 'plan'
+    if (!incomingReadOnly || profileReadOnly) {
+      payload.approvalMode = profile.approvalMode
+    }
   }
   return payload
 }
