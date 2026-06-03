@@ -108,21 +108,7 @@ interface SettingsPanelProps {
    * `src/renderer/src/lib/dashboardStatRegistry.ts` for the
    * canonical stat-key set.
    */
-  dashboardStatPrefs?: {
-    visibility?: Record<string, boolean>
-    resetAt?: number
-    /** 1.0.5-EW51 — show/hide the Workspaces tab (default true). */
-    workspacesTabEnabled?: boolean
-    /** 1.0.5-EW51 — max workspace cards shown (default 8, range 4–20). */
-    workspacesShown?: number
-    /** 1.0.5-EW52 — show/hide the Providers tab (default true). */
-    providersTabEnabled?: boolean
-    /** 1.0.5-EW52 — auto-cycle through dashboard tabs every N
-     * seconds while a welcome screen is mounted. 0 disables;
-     * undefined defaults to 180 (3 minutes). Clamped 30–3600
-     * client-side. */
-    autoCycleSeconds?: number
-  }
+  dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
   welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
@@ -231,19 +217,7 @@ interface SettingsPanelProps {
      * persistence layer merges the rest from the existing
      * settings via the standard `update-settings` IPC).
      */
-    dashboardStatPrefs?: {
-      visibility?: Record<string, boolean>
-      resetAt?: number
-      /** 1.0.5-EW51 — show/hide the Workspaces tab. */
-      workspacesTabEnabled?: boolean
-      /** 1.0.5-EW51 — max workspace cards on Workspaces tab. */
-      workspacesShown?: number
-      /** 1.0.5-EW52 — show/hide the Providers tab. */
-      providersTabEnabled?: boolean
-      /** 1.0.5-EW52 — auto-cycle through dashboard tabs every N
-       * seconds (0 disables, undefined defaults to 180s). */
-      autoCycleSeconds?: number
-    }
+    dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
     welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
@@ -2601,6 +2575,31 @@ export function SettingsPanel({
                   Toggle the standalone 90-day heatmaps shown underneath the composer on new chat
                   welcome screens. Sidebar activity stays unchanged.
                 </p>
+                <span className="settings-field-label">Layout</span>
+                <div className="settings-option-list settings-option-list-inline">
+                  {(['stacked', 'single'] as const).map((opt) => {
+                    const current =
+                      welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`btn btn-sm ${current === opt ? '' : 'btn-ghost'}`}
+                        onClick={() =>
+                          onChange({
+                            welcomeHeatmapPrefs: { ...(welcomeHeatmapPrefs || {}), layout: opt }
+                          })
+                        }
+                      >
+                        {opt === 'single' ? 'Single (cycle)' : 'Stacked'}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="settings-hint">
+                  Stacked shows every enabled heatmap at once; Single shows one at a time, cycling
+                  every 90 seconds through the enabled heatmaps.
+                </p>
                 <ul className="settings-dashboard-stats-list">
                   {[
                     {
@@ -2666,6 +2665,34 @@ export function SettingsPanel({
                   Toggle which chips appear in the welcome dashboard&apos;s stat grid. Hidden chips
                   stay tracked in the background — re-enable any time to see their data again.
                 </p>
+                <ul className="settings-dashboard-stats-list">
+                  <li className="settings-dashboard-stats-row">
+                    <span className="settings-dashboard-stats-name">
+                      Show welcome dashboard
+                      <small>
+                        Hide the entire Statistics card on the new-chat welcome screen. The
+                        standalone heatmaps are unaffected.
+                      </small>
+                    </span>
+                    <label className="settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={dashboardStatPrefs?.dashboardEnabled !== false}
+                        onChange={(e) =>
+                          onChange({
+                            dashboardStatPrefs: {
+                              ...(dashboardStatPrefs || {}),
+                              dashboardEnabled: e.target.checked
+                            }
+                          })
+                        }
+                      />
+                      <span className="settings-toggle-label">
+                        {dashboardStatPrefs?.dashboardEnabled !== false ? 'Visible' : 'Hidden'}
+                      </span>
+                    </label>
+                  </li>
+                </ul>
                 {(['calendar', 'duration', 'volume', 'spend'] as const).map((group) => {
                   const stats = getDashboardStatsByGroup(group)
                   if (stats.length === 0) return null

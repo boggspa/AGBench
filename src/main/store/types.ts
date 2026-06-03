@@ -1379,6 +1379,12 @@ export interface AppSettings {
      * cycle. Range 30–3600 enforced by the slider UI.
      */
     autoCycleSeconds?: number
+    /**
+     * 1.0.72 — Show/hide the entire welcome Statistics dashboard card.
+     * Default true (visible). When false the card is hidden even when there
+     * is activity to show; the standalone heatmaps are unaffected.
+     */
+    dashboardEnabled?: boolean
   }
   /**
    * Welcome-screen standalone heatmap visibility. All three heatmaps
@@ -1388,6 +1394,14 @@ export interface AppSettings {
     workspaceActivityEnabled?: boolean
     agbenchActivityEnabled?: boolean
     externalActivityEnabled?: boolean
+    /**
+     * 1.0.72 — Layout for the welcome standalone heatmaps:
+     *   - 'stacked' (default): every enabled heatmap stacked vertically
+     *     (the long-standing layout).
+     *   - 'single': one heatmap at a time, auto-cycling every 90s through
+     *     the enabled heatmaps (mirrors the dashboard tab auto-cycle).
+     */
+    layout?: 'single' | 'stacked'
   }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are

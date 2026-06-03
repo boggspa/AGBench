@@ -91,6 +91,7 @@ import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
 import { UsageHeatmap } from './components/UsageHeatmap'
 import { WorkspaceActivityHeatmap } from './components/WorkspaceActivityHeatmap'
+import { WelcomeHeatmaps, type WelcomeHeatmapSlot } from './components/WelcomeHeatmaps'
 import { useAppearance } from './hooks/useAppearance'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
@@ -15270,6 +15271,56 @@ function App(): React.JSX.Element {
     Boolean(welcomeWorkspaceActivityPath) ||
     (shouldShowWelcomeUsageDashboard &&
       (welcomeAgbenchHeatmapEnabled || welcomeExternalHeatmapEnabled))
+  // 1.0.72 — welcome heatmap layout (stacked = all stacked; single = one at a
+  // time auto-cycling every 90s) + whole-dashboard show/hide. The slots below
+  // are the renderable heatmaps in display order; WelcomeHeatmaps handles the
+  // stacked-vs-cycling presentation.
+  const welcomeHeatmapLayout: 'single' | 'stacked' =
+    settings?.welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
+  const welcomeDashboardCardEnabled = settings?.dashboardStatPrefs?.dashboardEnabled !== false
+  const welcomeHeatmapSlots: WelcomeHeatmapSlot[] = []
+  if (welcomeWorkspaceActivityPath) {
+    welcomeHeatmapSlots.push({
+      key: 'workspace',
+      node: (
+        <WorkspaceActivityHeatmap
+          workspacePath={welcomeWorkspaceActivityPath}
+          dayCount={90}
+          refreshKey={welcomeHeatmapRefreshKey}
+          className="usage-heatmap--welcome-standalone"
+        />
+      )
+    })
+  }
+  if (shouldShowWelcomeUsageDashboard && welcomeAgbenchHeatmapEnabled) {
+    welcomeHeatmapSlots.push({
+      key: 'agbench',
+      node: (
+        <UsageHeatmap
+          dayCount={90}
+          refreshKey={welcomeHeatmapRefreshKey}
+          title="AGBench Activity"
+          showProviderFilter
+          className="usage-heatmap--welcome-standalone"
+        />
+      )
+    })
+  }
+  if (shouldShowWelcomeUsageDashboard && welcomeExternalHeatmapEnabled) {
+    welcomeHeatmapSlots.push({
+      key: 'external',
+      node: (
+        <UsageHeatmap
+          dayCount={90}
+          refreshKey={welcomeHeatmapRefreshKey}
+          usageSource="external"
+          title="External Activity"
+          showProviderFilter
+          className="usage-heatmap--welcome-standalone"
+        />
+      )
+    })
+  }
   const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
     const style: CSSProperties = {}
     if (showGeminiTerminal && currentProvider === 'gemini') {
@@ -16475,7 +16526,7 @@ function App(): React.JSX.Element {
             </>
           )}
 
-          {shouldShowWelcomeUsageDashboard && (
+          {shouldShowWelcomeUsageDashboard && welcomeDashboardCardEnabled && (
             <div className="welcome-usage-region">
               <WelcomeUsageDashboard
                 data={welcomeUsageDashboardData}
@@ -19099,39 +19150,7 @@ function App(): React.JSX.Element {
               </div>
             )}
             {shouldShowWelcomeStandaloneHeatmaps && (
-              <div className="welcome-standalone-heatmaps">
-                {welcomeWorkspaceActivityPath && (
-                  <WorkspaceActivityHeatmap
-                    workspacePath={welcomeWorkspaceActivityPath}
-                    dayCount={90}
-                    refreshKey={welcomeHeatmapRefreshKey}
-                    className="usage-heatmap--welcome-standalone"
-                  />
-                )}
-                {shouldShowWelcomeUsageDashboard && (
-                  <>
-                    {welcomeAgbenchHeatmapEnabled && (
-                      <UsageHeatmap
-                        dayCount={90}
-                        refreshKey={welcomeHeatmapRefreshKey}
-                        title="AGBench Activity"
-                        showProviderFilter
-                        className="usage-heatmap--welcome-standalone"
-                      />
-                    )}
-                    {welcomeExternalHeatmapEnabled && (
-                      <UsageHeatmap
-                        dayCount={90}
-                        refreshKey={welcomeHeatmapRefreshKey}
-                        usageSource="external"
-                        title="External Activity"
-                        showProviderFilter
-                        className="usage-heatmap--welcome-standalone"
-                      />
-                    )}
-                  </>
-                )}
-              </div>
+              <WelcomeHeatmaps slots={welcomeHeatmapSlots} layout={welcomeHeatmapLayout} />
             )}
           </div>
         </div>
