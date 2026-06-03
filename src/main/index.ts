@@ -5781,14 +5781,21 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
       await mcpBridgeRuntime.startGeminiMcpBroker()
       grokMcpServers = [
         {
-          // Distinct from the global 'agbench' server (cursor web-fetch) so the
-          // two never collide in Grok's MCP registry. Exact proven stdio shape
-          // (name/type/command/args); routing identity rides Grok's child env
-          // (AGENTBENCH_RUN_ID/CHAT_ID/PARENT_PROVIDER already set on the spawn).
+          // ACP McpServer is an UNTAGGED enum: the stdio variant is
+          // {name, command, args, env} with NO `type` field and env REQUIRED. A
+          // stray `type:'stdio'` makes it match no variant (-32602 Invalid
+          // params, which also hangs the turn). Distinct name from the global
+          // 'agbench' server (cursor web-fetch) to avoid a registry collision.
+          // env carries the routing identity in the ACP EnvVariable shape
+          // ({name,value}) so the bridge's broker calls map to THIS run.
           name: 'agbench-grok',
-          type: 'stdio',
           command: process.execPath,
-          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath(), true)
+          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath(), true),
+          env: [
+            { name: 'AGENTBENCH_PARENT_PROVIDER', value: 'grok' },
+            { name: 'AGENTBENCH_RUN_ID', value: route.appRunId || '' },
+            { name: 'AGENTBENCH_CHAT_ID', value: route.appChatId || '' }
+          ]
         }
       ]
     } catch (error) {

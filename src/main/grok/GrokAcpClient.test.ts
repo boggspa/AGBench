@@ -253,6 +253,28 @@ describe('runGrokAcpTurn', () => {
     expect(events.some((e) => e.type === 'content' && e.text === 'hello')).toBe(true)
   })
 
+  it('fails the turn (no hang) when session/new returns a JSON-RPC error', async () => {
+    const child = new FakeAcpChild()
+    const { events, closes } = run(child)
+    child.emit({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 1 } })
+    // session/new rejected (e.g. a malformed mcpServers entry: -32602).
+    child.emit({
+      jsonrpc: '2.0',
+      id: 2,
+      error: { code: -32602, message: 'Invalid params', data: 'bad McpServer' }
+    })
+    // No sessionId arrives — the client must surface the error + close, NOT wait
+    // forever for a result (the "Thinking…" hang).
+    expect(
+      events.some((e) => e.type === 'provider_warning' && /session\/new failed/.test(e.text || ''))
+    ).toBe(true)
+    expect(child.killed).toBe(true)
+    // It never advanced to session/prompt.
+    expect(child.sent().some((m) => m.method === 'session/prompt')).toBe(false)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(closes.length).toBe(1)
+  })
+
   it('surfaces a spawn/process error as a provider_warning + closes', () => {
     const child = new FakeAcpChild()
     const { events, closes } = run(child)

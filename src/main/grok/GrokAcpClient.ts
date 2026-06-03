@@ -169,6 +169,32 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
         if (request) answerPermissionRequest(request)
         continue
       }
+      // A JSON-RPC ERROR response to one of our lifecycle requests (initialize /
+      // session/new / session/prompt) must FAIL the turn. The client only
+      // advances on `result`, so without this it waits forever for a result that
+      // never arrives — observed: a rejected session/new mcpServers entry hung the
+      // turn in "Thinking…". Surface the reason and kill so onClose fires.
+      if (
+        message.error &&
+        (message.id === ACP_ID.initialize ||
+          message.id === ACP_ID.sessionNew ||
+          message.id === ACP_ID.prompt)
+      ) {
+        const rpcError = message.error as { message?: string; data?: unknown }
+        const step =
+          message.id === ACP_ID.initialize
+            ? 'initialize'
+            : message.id === ACP_ID.sessionNew
+              ? 'session/new'
+              : 'session/prompt'
+        const detail = typeof rpcError?.data === 'string' ? ` (${rpcError.data})` : ''
+        options.onEvent({
+          type: 'provider_warning',
+          text: `Grok ACP ${step} failed: ${rpcError?.message || 'request error'}${detail}`
+        })
+        child.kill('SIGINT')
+        continue
+      }
       // Lifecycle correlation by request id (single sequential flow).
       if (message.id === ACP_ID.initialize && message.result) {
         // Step 2 — create a session in the workspace. mcpServers carries the
