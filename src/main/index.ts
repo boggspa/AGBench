@@ -2908,7 +2908,13 @@ async function requestAgenticServiceApproval(
   // would have prompted for", not "bypass every guardrail". Audit
   // trail records the bypass with reason `session_yolo` so the user
   // can review what got auto-allowed.
-  if (sessionYoloState.enabled) {
+  //
+  // 1.0.72 — but YOLO must NOT loosen an explicit read-only run. The deny check
+  // above already blocks file/shell, yet YOLO would otherwise auto-allow the
+  // 'ask' services a read-only posture leaves open (mcpTools / subThreadDelegation)
+  // — silently widening "read-only" into "trust everything". Skip the bypass for
+  // read-only sessions so the posture is never weakened by a global toggle.
+  if (sessionYoloState.enabled && !effectivePermissions?.readOnly) {
     auditService.recordAutomaticApprovalDecision(
       provider,
       auditRoute,
