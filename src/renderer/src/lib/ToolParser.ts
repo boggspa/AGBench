@@ -305,6 +305,24 @@ export function extractStatus(resultEvent: any): ToolActivityStatus {
   return 'success'
 }
 
+/**
+ * A tool-call whose RESULT came back as an error or a user-rejection did
+ * NOT do what it was asked. A read-only seat auto-denies write tools (Grok
+ * ACP `search_replace`, Claude `Edit` / `apply_patch`, …) and the denied
+ * `tool_result` is `{ status: 'error', output: 'User rejected the execution
+ * …' }`, which `extractStatus` maps to the 'error' activity status.
+ *
+ * Diff/aggregation + card consumers gate on this so a denied or failed edit
+ * stays OUT of the run diff, the "N files changed" count, the
+ * "Created/Edited/Deleted" summary, the Review-changes / Create-PR diff, and
+ * the "+N −M" pill / "Wrote …" label — the file on disk is unchanged. Gate
+ * on the generic status so this covers ANY provider whose edit was denied,
+ * not just Grok.
+ */
+export function isErroredToolStatus(status: ToolActivityStatus | null | undefined): boolean {
+  return status === 'error'
+}
+
 export type ToolCategory = 'task' | 'read' | 'write' | 'search' | 'shell' | 'unknown'
 
 const WRITE_LIKE_TOOL_NAMES = new Set([

@@ -5,7 +5,12 @@ import type {
   ToolActivity,
   ToolDiffFileSummary
 } from '../../../main/store/types'
-import { deriveToolDiffSummary, estimateLineChanges, parseUnifiedDiffSummary } from './ToolParser'
+import {
+  deriveToolDiffSummary,
+  estimateLineChanges,
+  isErroredToolStatus,
+  parseUnifiedDiffSummary
+} from './ToolParser'
 
 /**
  * "Task complete" file-change extractor — the fallback path the renderer
@@ -277,6 +282,14 @@ export function extractToolFileContributions(
   workspacePath?: string | null
 ): PerFileContribution[] {
   if (!activity) return []
+  // A write/edit whose RESULT was an error or user-rejection did NOT touch
+  // the file — the read-only gate (or the tool itself) refused it. Drop it
+  // here so it never reaches any getLiveToolFileDiffSummaries consumer: the
+  // "N files changed" pill, the Task Complete "Created/Edited/Deleted"
+  // summary, the per-workspace Diff Studio map, or the Review-changes /
+  // Create-PR run diff. The activity's diffSummary still describes what it
+  // WANTED to change, but a denied edit must not count as an applied one.
+  if (isErroredToolStatus(activity.status)) return []
   const toolName = activity.toolName || ''
   const parameters = activity.parameters || {}
   const fallbackStatus = statusFromToolName(toolName) ?? 'modified'

@@ -143,6 +143,26 @@ describe('ActivityInlineStats', () => {
       expect(result.additions).toBe(0)
       expect(result.deletions).toBe(0)
     })
+
+    it('suppresses the odometer for a denied/errored edit even with a full diff summary', () => {
+      // Read-only seat auto-denies `search_replace`; the tool_result is an
+      // error. The attempted +6/−4 still rides on the activity, but a denied
+      // edit changed nothing — never paint the pill.
+      const result = computeInlineStats({
+        toolName: 'search_replace',
+        status: 'error',
+        parameters: { old_string: 'a\nb\nc\nd', new_string: 'a\nB\nc\nd\ne\nf' },
+        diffSummary: {
+          additions: 6,
+          deletions: 4,
+          source: 'string_replace',
+          confidence: 'estimated'
+        },
+        resultText: 'User rejected the execution for tool search_replace'
+      })
+
+      expect(result.visible).toBe(false)
+    })
   })
 
   describe('inlineStatsForActivity', () => {
@@ -174,6 +194,25 @@ describe('ActivityInlineStats', () => {
         displayName: 'Editing…',
         category: 'unknown',
         status: 'running'
+      }
+      expect(inlineStatsForActivity(activity).visible).toBe(false)
+    })
+
+    it('returns invisible for a denied edit activity (status error)', () => {
+      const activity: ToolActivity = {
+        id: 't1',
+        toolName: 'search_replace',
+        displayName: 'Wrote README.md',
+        category: 'write',
+        status: 'error',
+        parameters: { file_path: 'README.md', old_string: 'a', new_string: 'a\nb' },
+        diffSummary: {
+          additions: 6,
+          deletions: 4,
+          source: 'string_replace',
+          confidence: 'estimated'
+        },
+        resultSummary: 'User rejected the execution for tool search_replace'
       }
       expect(inlineStatsForActivity(activity).visible).toBe(false)
     })

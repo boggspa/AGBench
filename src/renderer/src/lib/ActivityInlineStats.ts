@@ -1,5 +1,5 @@
 import type { ToolActivity, ToolActivityStatus, ToolDiffSummary } from '../../../main/store/types'
-import { deriveToolDiffSummary, estimateLineChanges } from './ToolParser'
+import { deriveToolDiffSummary, estimateLineChanges, isErroredToolStatus } from './ToolParser'
 
 /**
  * Pure helper that decides what (if anything) the per-row inline odometer
@@ -100,6 +100,12 @@ function lineChangesFromContent(
 }
 
 export function computeInlineStats(inputs: InlineStatInputs): InlineStatResult {
+  // A denied/errored edit (read-only seat auto-deny, tool error, …) changed
+  // nothing on disk — never paint a "+N −M" pill for it, even though the
+  // tool parameters still carry the old/new strings it WANTED to apply.
+  if (isErroredToolStatus(inputs.status)) {
+    return { visible: false, additions: 0, deletions: 0 }
+  }
   const parameters = inputs.parameters || {}
   const diffSummary =
     inputs.diffSummary || deriveToolDiffSummary(inputs.toolName, parameters, inputs.resultText)

@@ -11,6 +11,7 @@ import {
   deriveToolDiffSummary,
   extractMcpImageBlocks,
   getToolDisplayName,
+  isErroredToolStatus,
   isWriteLikeToolName,
   prettyPrintJson,
   unwrapMcpEnvelope
@@ -254,12 +255,21 @@ function buildSanitizedDetail(
   }
 
   if (activity.category === 'write' || isWriteLikeToolName(toolName)) {
+    // A denied/errored write changed nothing — don't assert "Wrote file" in
+    // the detail row either; mirror the title's attempted framing.
+    const denied = isErroredToolStatus(activity.status)
     const operation =
-      toolName === 'replace'
-        ? 'Edited file'
-        : toolName === 'create_file'
-          ? 'Created file'
-          : 'Wrote file'
+      toolName === 'create_file'
+        ? denied
+          ? 'Attempted to create file (not applied)'
+          : 'Created file'
+        : toolName === 'replace'
+          ? denied
+            ? 'Attempted to edit file (not applied)'
+            : 'Edited file'
+          : denied
+            ? 'Attempted to write file (not applied)'
+            : 'Wrote file'
     rows.push({ label: 'Action', value: operation })
 
     if (addedLines !== undefined || deletedLines !== undefined) {
@@ -386,6 +396,28 @@ function getFileActionLabel(activity: ToolActivity): string {
     return 'Wrote'
   if (toolName === 'read_file') return 'Read'
   return activity.displayName || activity.toolName || 'Used tool'
+}
+
+/**
+ * Base verb for an attempted-but-denied/errored write, used by
+ * `ActivityTitle` to render "Attempted to edit README.md" instead of the
+ * success-implying "Wrote README.md" when the edit's RESULT was a rejection
+ * or error. Defaults to "edit" — the common write op (search_replace /
+ * replace / apply_patch / Edit) — and only narrows to write/create/delete
+ * when the tool name says so.
+ */
+function attemptedWriteVerb(activity: ToolActivity): string {
+  const toolName = (activity.toolName || '').toLowerCase()
+  if (toolName.includes('delete')) return 'delete'
+  if (toolName.includes('create')) return 'create'
+  if (
+    toolName === 'write' ||
+    toolName === 'write_file' ||
+    toolName.endsWith('__write') ||
+    toolName.endsWith('__write_file')
+  )
+    return 'write'
+  return 'edit'
 }
 
 /**
@@ -1137,6 +1169,24 @@ function ActivityTitle({
 
   if (!filePath) {
     return <>{getReadableActivityDisplayName(activity)}</>
+  }
+
+  // A write/edit whose RESULT was denied or errored did NOT change the file
+  // — never render the success verb ("Wrote …" / "Edited …"), which reads as
+  // an applied change. Surface the attempt honestly instead; the row already
+  // carries the red error icon + the "User rejected …" result text in its
+  // expandable detail. Gate on the generic status so this covers any
+  // provider whose edit was denied (Grok search_replace, Claude Edit, …).
+  if (
+    isErroredToolStatus(activity.status) &&
+    (activity.category === 'write' || isWriteLikeToolName(activity.toolName || ''))
+  ) {
+    return (
+      <>
+        Attempted to {attemptedWriteVerb(activity)}{' '}
+        <strong className="activity-file-name">{getBaseName(filePath)}</strong>
+      </>
+    )
   }
 
   return (
@@ -1909,13 +1959,19 @@ function ActivityRow({
   if (durationText) chipText.push(durationText)
   const metaText = chipText.join(' · ')
   const parameters = activity.parameters || {}
-  const diffSummary =
-    activity.diffSummary ||
-    deriveToolDiffSummary(
-      activity.toolName,
-      parameters,
-      activity.resultSummary || activity.outputPreview
-    )
+  // A write/edit whose RESULT was denied or errored changed nothing — drop
+  // its diff so the expanded detail's per-file "+N −M" cards and the "Diff"
+  // row don't assert an applied change (the inline pill is suppressed in
+  // inlineStatsForActivity for the same reason). The "User rejected …"
+  // result text still renders in the detail.
+  const diffSummary = isErroredToolStatus(activity.status)
+    ? undefined
+    : activity.diffSummary ||
+      deriveToolDiffSummary(
+        activity.toolName,
+        parameters,
+        activity.resultSummary || activity.outputPreview
+      )
   // Pure helper that decides whether the per-row Codex-style `+X -Y` odometer
   // renders and what numbers it carries — handles MultiEdit `edits[]`,
   // Claude `Write` content, Gemini MCP write tools, and suppresses `+0 -0`

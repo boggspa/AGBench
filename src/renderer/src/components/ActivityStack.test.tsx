@@ -376,3 +376,80 @@ describe('ActivityStack controlled expansion (1.0.6-TV2)', () => {
     expect(html).not.toContain('data-expanded="true"')
   })
 })
+
+describe('ActivityStack denied / errored edit rendering', () => {
+  // Repro: a read-only ("Plan / Read-only") Grok seat asks to edit the
+  // README; Grok calls native `search_replace`; AGBench's gate auto-denies
+  // it (tool_result `{ status: 'error', output: 'User rejected …' }`). The
+  // file on disk is unchanged, so the card must NOT read as an applied
+  // "Wrote README.md +6 −4" change — it carries the attempted diff but the
+  // result was a rejection.
+  function makeDeniedEditActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
+    return {
+      id: 'tool-denied-1',
+      toolName: 'search_replace',
+      // createToolActivity would set this to "Wrote README.md"; the card must
+      // override it rather than fall back to it.
+      displayName: 'Wrote README.md',
+      category: 'write',
+      status: 'error',
+      startedAt: '2026-05-26T17:00:00Z',
+      endedAt: '2026-05-26T17:00:00.100Z',
+      durationMs: 100,
+      parameters: {
+        file_path: 'README.md',
+        old_string: 'one\ntwo\nthree\nfour',
+        new_string: 'one\nTWO\nthree\nfour\nfive\nsix'
+      },
+      diffSummary: {
+        additions: 6,
+        deletions: 4,
+        files: [{ path: 'README.md', status: 'modified', additions: 6, deletions: 4 }],
+        source: 'string_replace',
+        confidence: 'estimated'
+      },
+      resultSummary: 'User rejected the execution for tool search_replace',
+      filePath: 'README.md',
+      ...overrides
+    }
+  }
+
+  it('renders an attempted label, not "Wrote README.md", for a denied edit', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack activities={[makeDeniedEditActivity()]} provider="grok" />
+    )
+    expect(html).toContain('Attempted to edit')
+    expect(html).not.toContain('Wrote README.md')
+  })
+
+  it('does not paint the "+N −M" inline pill for a denied edit', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack activities={[makeDeniedEditActivity()]} provider="grok" />
+    )
+    // `activity-line-stats` is the inline odometer wrapper; it must be absent
+    // when the edit was denied even though diffSummary carries +6/−4.
+    expect(html).not.toContain('activity-line-stats')
+  })
+
+  it('still shows the success label + pill when the SAME edit is applied', () => {
+    // Control: gate is on the result status, not the tool. A successful edit
+    // keeps its "Edited" label and its odometer.
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeDeniedEditActivity({
+            id: 'tool-applied-1',
+            toolName: 'edit_file',
+            displayName: 'Edited README.md',
+            status: 'success',
+            resultSummary: 'Applied 1 edit'
+          })
+        ]}
+        provider="grok"
+      />
+    )
+    expect(html).toContain('Edited')
+    expect(html).not.toContain('Attempted')
+    expect(html).toContain('activity-line-stats')
+  })
+})

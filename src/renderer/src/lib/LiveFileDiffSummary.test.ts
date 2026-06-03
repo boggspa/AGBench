@@ -449,4 +449,75 @@ describe('LiveFileDiffSummary', () => {
       expect(__test__.countDiffStatsFromUnifiedDiff('not a diff')).toEqual({})
     })
   })
+
+  describe('rejected / errored edits do not count as file changes', () => {
+    // Repro: a read-only ("Plan / Read-only") Grok seat asks to edit the
+    // README, Grok calls native `search_replace`, and AGBench's gate
+    // auto-denies it — the tool_result is `{ status: 'error', output: 'User
+    // rejected the execution for tool search_replace' }`. The file on disk
+    // is unchanged, so the attempted +6/−4 must NOT surface as an applied
+    // change anywhere downstream.
+    const rejectedEdit = (): ToolActivity =>
+      baseActivity({
+        toolName: 'search_replace',
+        status: 'error',
+        filePath: 'README.md',
+        parameters: {
+          file_path: 'README.md',
+          old_string: 'one\ntwo\nthree\nfour',
+          new_string: 'one\nTWO\nthree\nfour\nfive\nsix'
+        },
+        // The activity still carries the diff it WANTED to apply — the gate
+        // must honour the result status, not the attempted diff.
+        diffSummary: {
+          additions: 6,
+          deletions: 4,
+          files: [{ path: 'README.md', status: 'modified', additions: 6, deletions: 4 }],
+          source: 'string_replace',
+          confidence: 'estimated'
+        },
+        resultSummary: 'User rejected the execution for tool search_replace'
+      })
+
+    it('extractToolFileContributions returns nothing for a denied edit', () => {
+      expect(extractToolFileContributions(rejectedEdit())).toEqual([])
+    })
+
+    it('getLiveToolFileDiffSummaries reports 0 files for a denied-edit-only run', () => {
+      const summaries = getLiveToolFileDiffSummaries([messageWith([rejectedEdit()])])
+      expect(summaries).toEqual([])
+    })
+
+    it('still counts the SAME edit when it succeeds (gate is on status, not the tool)', () => {
+      const applied = { ...rejectedEdit(), status: 'success' as const }
+      const contributions = extractToolFileContributions(applied)
+      expect(contributions).toHaveLength(1)
+      expect(contributions[0]).toMatchObject({
+        path: 'README.md',
+        status: 'modified',
+        additions: 6,
+        deletions: 4
+      })
+      const summaries = getLiveToolFileDiffSummaries([messageWith([applied])])
+      expect(summaries).toHaveLength(1)
+      expect(summaries[0]).toMatchObject({ path: 'README.md', status: 'modified' })
+    })
+
+    it('drops the denied edit but keeps a sibling applied edit in the same run', () => {
+      const applied = baseActivity({
+        id: 't2',
+        toolName: 'edit_file',
+        status: 'success',
+        filePath: 'src/App.tsx',
+        parameters: {
+          file_path: 'src/App.tsx',
+          old_string: 'a',
+          new_string: 'a\nb'
+        }
+      })
+      const summaries = getLiveToolFileDiffSummaries([messageWith([rejectedEdit(), applied])])
+      expect(summaries).toHaveLength(1)
+      expect(summaries[0].path).toBe('src/App.tsx')
+    })
+  })
 })

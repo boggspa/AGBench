@@ -72,7 +72,8 @@ import {
   pairToolResult,
   isToolUseEvent,
   isToolResultEvent,
-  estimateLineChanges
+  estimateLineChanges,
+  isErroredToolStatus
 } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -14589,6 +14590,12 @@ function App(): React.JSX.Element {
       for (const message of currentChat.messages || []) {
         if (message.runId && message.runId !== runId) continue
         for (const activity of message.toolActivities || []) {
+          // A denied/errored edit (e.g. a read-only seat auto-denying a
+          // write) did not change the file — keep it out of the
+          // "N files changed +A −B" pill and the Review-changes / Create-PR
+          // gate, even though its diffSummary still carries the attempted
+          // line counts.
+          if (isErroredToolStatus(activity.status)) continue
           const diff = activity.diffSummary
           if (!diff) continue
           if (typeof diff.additions === 'number') liveAdditions += diff.additions
@@ -14666,6 +14673,9 @@ function App(): React.JSX.Element {
     for (const message of currentChat.messages || []) {
       if (runId && message.runId && message.runId !== runId) continue
       for (const activity of message.toolActivities || []) {
+        // Skip denied/errored edits — a refused write changed nothing, so it
+        // must not inflate any external-path bucket's file/line totals.
+        if (isErroredToolStatus(activity.status)) continue
         const diff = activity.diffSummary
         if (!diff) continue
         const primaryPath = activity.filePath || diff.files?.[0]?.path
