@@ -2018,6 +2018,7 @@
 }
 
 .welcome-standalone-heatmaps--single {
+  position: relative;
   overflow: hidden;
 }
 
@@ -2026,21 +2027,49 @@
   width: 100%;
 }
 
-.welcome-standalone-heatmap-pane.is-cycling {
-  animation: welcome-heatmap-slide-over 280ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+.welcome-standalone-heatmap-pane.is-active,
+.welcome-standalone-heatmap-pane.is-incoming {
+  position: relative;
+  z-index: 2;
+}
+
+.welcome-standalone-heatmap-pane.is-outgoing {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.welcome-standalone-heatmap-pane.is-incoming {
+  animation: welcome-heatmap-swipe-in-left 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   will-change: transform;
 }
 
-@keyframes welcome-heatmap-slide-over {
+.welcome-standalone-heatmap-pane.is-outgoing {
+  animation: welcome-heatmap-swipe-out-right 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform;
+}
+
+@keyframes welcome-heatmap-swipe-in-left {
   from {
-    transform: translateX(22px);
+    transform: translateX(-100%);
   }
   to {
     transform: translateX(0);
   }
 }
 
-[data-reduce-motion="true"] .welcome-standalone-heatmap-pane.is-cycling {
+@keyframes welcome-heatmap-swipe-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+[data-reduce-motion="true"] .welcome-standalone-heatmap-pane.is-incoming,
+[data-reduce-motion="true"] .welcome-standalone-heatmap-pane.is-outgoing {
   animation: none;
 }
 

@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { visibleHeatmapSlots, type HeatmapLayout } from '../lib/welcomeHeatmapLayout'
 
+const HEATMAP_SWIPE_MS = 320
+
 export interface WelcomeHeatmapSlot {
   /** Stable identity for the heatmap (e.g. 'workspace' | 'agbench' | 'external'). */
   key: string
@@ -22,37 +24,64 @@ interface WelcomeHeatmapsProps {
  *     `cycleSeconds` (default 90s) — mirrors the dashboard tab auto-cycle.
  *
  * The interval lives here, so it unmounts automatically when the welcome region
- * disappears. Slots are rendered through a keyed Fragment (no wrapper element)
- * so the existing `.welcome-standalone-heatmaps > *` styling is untouched.
+ * disappears. Stacked slots still render through keyed Fragments so the existing
+ * vertical layout stays untouched; single mode mounts an outgoing pane only for
+ * the short swipe transition.
  */
 export function WelcomeHeatmaps({
   slots,
   layout,
   cycleSeconds = 90
 }: WelcomeHeatmapsProps): ReactElement | null {
-  const [tick, setTick] = useState(0)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [outgoingIndex, setOutgoingIndex] = useState<number | null>(null)
   const cycling = layout === 'single' && slots.length > 1
+
+  useEffect(() => {
+    setOutgoingIndex(null)
+    setActiveIndex((index) => (slots.length > 0 ? index % slots.length : 0))
+  }, [layout, slots.length])
 
   useEffect(() => {
     if (!cycling) return
     const ms = Math.max(5, cycleSeconds) * 1000
-    const id = setInterval(() => setTick((t) => t + 1), ms)
+    const id = setInterval(() => {
+      setOutgoingIndex(activeIndex)
+      setActiveIndex((activeIndex + 1) % slots.length)
+    }, ms)
     return () => clearInterval(id)
-  }, [cycling, cycleSeconds])
+  }, [activeIndex, cycling, cycleSeconds, slots.length])
+
+  useEffect(() => {
+    if (outgoingIndex === null) return
+    const id = window.setTimeout(() => setOutgoingIndex(null), HEATMAP_SWIPE_MS)
+    return () => window.clearTimeout(id)
+  }, [outgoingIndex])
 
   if (slots.length === 0) return null
 
-  const visible = visibleHeatmapSlots(slots, layout, tick)
+  const visible = visibleHeatmapSlots(slots, layout, activeIndex)
   const className = `welcome-standalone-heatmaps welcome-standalone-heatmaps--${layout}`
 
   if (layout === 'single') {
-    const slot = visible[0]
-    if (!slot) return null
+    const slot = slots[activeIndex % slots.length]
+    const outgoingSlot = outgoingIndex === null ? null : slots[outgoingIndex % slots.length]
+    const transitioning = Boolean(outgoingSlot && outgoingSlot.key !== slot.key)
     return (
       <div className={className}>
+        {transitioning && outgoingSlot && (
+          <div
+            key={`outgoing-${outgoingSlot.key}`}
+            className="welcome-standalone-heatmap-pane is-outgoing"
+          >
+            {outgoingSlot.node}
+          </div>
+        )}
         <div
-          key={slot.key}
-          className={`welcome-standalone-heatmap-pane${cycling ? ' is-cycling' : ''}`}
+          key={`active-${slot.key}`}
+          className={`welcome-standalone-heatmap-pane${
+            transitioning ? ' is-incoming' : ' is-active'
+          }`}
         >
           {slot.node}
         </div>
