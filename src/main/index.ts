@@ -5765,11 +5765,18 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
   // (fail-closed, atomic with the spawn) and read-only-seat-only. Default OFF
   // (grokReadOnlyMcpAdvertiseEnabled) until the boundary is live-verified.
   let grokMcpServers: unknown[] = []
-  if (
-    grokReadOnlyMcpAdvertiseEnabled() &&
-    AppStore.getSettings().geminiMcpBridgeEnabled &&
-    !grokWriteCapable(payload.approvalMode)
-  ) {
+  const grokAdvertiseFlag = grokReadOnlyMcpAdvertiseEnabled()
+  const grokBridgeEnabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
+  const grokReadOnlySeat = !grokWriteCapable(payload.approvalMode)
+  const grokMcpDebug = process.env.AGBENCH_GROK_DEBUG
+  if (grokMcpDebug === '1' || grokMcpDebug === 'true' || grokMcpDebug === 'yes') {
+    // Diagnostic: which gate condition gates the scoped read-only bridge. All
+    // three must be true for session/new to carry the agbench-grok server.
+    process.stderr.write(
+      `[grok-mcp] scoped-bridge gate advertiseFlag=${grokAdvertiseFlag} bridgeEnabled=${grokBridgeEnabled} readOnlySeat=${grokReadOnlySeat}\n`
+    )
+  }
+  if (grokAdvertiseFlag && grokBridgeEnabled && grokReadOnlySeat) {
     try {
       await mcpBridgeRuntime.startGeminiMcpBroker()
       grokMcpServers = [
