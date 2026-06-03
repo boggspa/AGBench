@@ -1387,6 +1387,10 @@
   gap: 10px;
 }
 
+.settings-mcp-server-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .settings-mcp-summary-card,
 .settings-mcp-server-card,
 .settings-mcp-management-card,

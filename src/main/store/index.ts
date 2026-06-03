@@ -212,6 +212,10 @@ function readJson<T>(filePath: string, defaultData: T): T {
   return defaultData
 }
 
+function objectOrUndefined<T extends object>(value: T | null | undefined): T | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
 function writeJson<T>(filePath: string, data: T) {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
   let fd: number | null = null
@@ -362,6 +366,10 @@ export class AppStore {
   static getSettings(): AppSettings {
     migrateLegacySettingsIfMissing()
     const stored = readJson<Partial<AppSettings>>(settingsPath, {})
+    const storedDashboardStatPrefs = objectOrUndefined(stored.dashboardStatPrefs)
+    const storedWelcomeHeatmapPrefs = objectOrUndefined(stored.welcomeHeatmapPrefs)
+    const storedApprovalTimeouts = objectOrUndefined(stored.approvalTimeouts)
+    const storedApprovalTimeoutProviderMs = objectOrUndefined(storedApprovalTimeouts?.perProviderMs)
     return {
       ...defaultSettings,
       ...stored,
@@ -389,9 +397,10 @@ export class AppStore {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
       },
+      dashboardStatPrefs: storedDashboardStatPrefs ? { ...storedDashboardStatPrefs } : undefined,
       welcomeHeatmapPrefs: {
         ...defaultSettings.welcomeHeatmapPrefs,
-        ...(stored.welcomeHeatmapPrefs || {})
+        ...(storedWelcomeHeatmapPrefs || {})
       },
       agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants)
         ? stored.agenticWorkspaceGrants
@@ -409,10 +418,10 @@ export class AppStore {
           : defaultSettings.autoResumeParentOnSubThreadCompletion,
       approvalTimeouts: {
         ...defaultSettings.approvalTimeouts,
-        ...(stored.approvalTimeouts || {}),
+        ...(storedApprovalTimeouts || {}),
         perProviderMs: {
           ...defaultSettings.approvalTimeouts.perProviderMs,
-          ...(stored.approvalTimeouts?.perProviderMs || {})
+          ...(storedApprovalTimeoutProviderMs || {})
         }
       }
     }

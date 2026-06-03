@@ -152,13 +152,16 @@ const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-
  * Collapsed-section memory for the top-level sidebar lists
  * (Pinned / Recents / Ensembles / Workspaces / Chats). Set semantics: an id
  * present in the set means the user has explicitly collapsed that
- * section. Default is empty (all expanded) for new users.
+ * section. Default is all collapsed for new users.
  *
  * Independent from `EXPANDED_WORKSPACES_STORAGE_KEY` — that one tracks
  * per-workspace chat-list expansion within the Workspaces section;
  * this one tracks the section header itself.
  */
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
+const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION_KEY =
+  'agbench-sidebar-collapsed-sections-default-version'
+const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION = 'all-collapsed-v1'
 type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
 const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
   'pinned',
@@ -167,6 +170,10 @@ const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
   'workspaces',
   'chats'
 ] as const
+
+function defaultCollapsedSidebarSections(): Set<SidebarSectionId> {
+  return new Set(SIDEBAR_SECTION_IDS)
+}
 
 type SidebarSettingsMenuPane = 'root' | 'themes' | 'composer' | 'accent' | 'system' | 'tool'
 
@@ -1195,7 +1202,7 @@ export function Sidebar({
     }
   )
   // Section-level collapse state for the top-level sidebar lists.
-  // Default empty (all expanded). `isSectionCollapsed` below applies a
+  // Default all collapsed. `isSectionCollapsed` below applies a
   // search-active override so a filter pass forces every section open
   // — otherwise a user with all sections collapsed would see no
   // results despite typing in the search box.
@@ -1203,16 +1210,21 @@ export function Sidebar({
     () => {
       try {
         const raw = localStorage.getItem(COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY)
-        if (!raw) return new Set<SidebarSectionId>()
+        if (!raw) return defaultCollapsedSidebarSections()
         const parsed = JSON.parse(raw)
-        if (!Array.isArray(parsed)) return new Set<SidebarSectionId>()
-        return new Set(
+        if (!Array.isArray(parsed)) return defaultCollapsedSidebarSections()
+        const saved = new Set(
           parsed.filter((value): value is SidebarSectionId =>
             SIDEBAR_SECTION_IDS.includes(value as SidebarSectionId)
           )
         )
+        const version = localStorage.getItem(COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION_KEY)
+        if (version !== COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION && saved.size === 0) {
+          return defaultCollapsedSidebarSections()
+        }
+        return saved
       } catch {
-        return new Set<SidebarSectionId>()
+        return defaultCollapsedSidebarSections()
       }
     }
   )
@@ -1655,6 +1667,10 @@ export function Sidebar({
       localStorage.setItem(
         COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY,
         JSON.stringify([...collapsedSidebarSections])
+      )
+      localStorage.setItem(
+        COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION_KEY,
+        COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION
       )
     } catch {
       // Ignore persistence errors in constrained environments.

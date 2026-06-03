@@ -64,7 +64,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'geminiMcpBridgeLastStatus',
   'bridgeDaemonEnabled',
   'codexSandboxFallback',
-  'updateChannel'
+  'updateChannel',
+  'approvalTimeouts'
 ])
 
 export const MIN_INSPECTOR_WIDTH = 300
@@ -198,6 +199,12 @@ export function sanitizeAgenticNetworkPolicy(
   fallback: 'allow' | 'deny'
 ): 'allow' | 'deny' {
   return value === 'allow' || value === 'deny' ? value : fallback
+}
+
+function sanitizeApprovalTimeoutMs(value: unknown, fallback: number): number {
+  const parsed = Math.round(Number(value))
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.max(5_000, Math.min(3_600_000, parsed))
 }
 
 export function normalizeEnsembleRunIdentity(value: unknown): EnsembleRunIdentity | undefined {
@@ -531,6 +538,12 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       const visibility = isRecord(prefs.visibility) ? prefs.visibility : current.visibility
       sanitized.dashboardStatPrefs = {
         ...current,
+        ...(typeof prefs.dashboardEnabled === 'boolean'
+          ? { dashboardEnabled: prefs.dashboardEnabled }
+          : {}),
+        ...(prefs.dashboardSize === 'large' || prefs.dashboardSize === 'small'
+          ? { dashboardSize: prefs.dashboardSize }
+          : {}),
         ...(visibility
           ? {
               visibility: Object.fromEntries(
@@ -568,6 +581,11 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       const prefs = isRecord(sanitized.welcomeHeatmapPrefs) ? sanitized.welcomeHeatmapPrefs : {}
       const current = deps.getSettings().welcomeHeatmapPrefs || {}
       sanitized.welcomeHeatmapPrefs = {
+        ...(prefs.layout === 'single' || prefs.layout === 'stacked'
+          ? { layout: prefs.layout }
+          : current.layout === 'single' || current.layout === 'stacked'
+            ? { layout: current.layout }
+            : {}),
         workspaceActivityEnabled:
           typeof prefs.workspaceActivityEnabled === 'boolean'
             ? prefs.workspaceActivityEnabled
@@ -580,6 +598,21 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
           typeof prefs.externalActivityEnabled === 'boolean'
             ? prefs.externalActivityEnabled
             : current.externalActivityEnabled
+      }
+    }
+    if ('approvalTimeouts' in sanitized) {
+      const prefs = isRecord(sanitized.approvalTimeouts) ? sanitized.approvalTimeouts : {}
+      const current = deps.getSettings().approvalTimeouts
+      const perProvider = isRecord(prefs.perProviderMs) ? prefs.perProviderMs : {}
+      sanitized.approvalTimeouts = {
+        enabled: typeof prefs.enabled === 'boolean' ? prefs.enabled : current.enabled,
+        perProviderMs: {
+          gemini: sanitizeApprovalTimeoutMs(perProvider.gemini, current.perProviderMs.gemini),
+          codex: sanitizeApprovalTimeoutMs(perProvider.codex, current.perProviderMs.codex),
+          claude: sanitizeApprovalTimeoutMs(perProvider.claude, current.perProviderMs.claude),
+          kimi: sanitizeApprovalTimeoutMs(perProvider.kimi, current.perProviderMs.kimi)
+        },
+        mainAuthorityMs: sanitizeApprovalTimeoutMs(prefs.mainAuthorityMs, current.mainAuthorityMs)
       }
     }
     if ('kimiSanitiserEnabled' in sanitized) {

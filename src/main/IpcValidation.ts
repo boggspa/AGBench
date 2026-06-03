@@ -373,8 +373,12 @@ function validateSettingsPatch(channel: string, value: unknown): void {
   }
   if (value.agenticServices !== undefined && !isRecord(value.agenticServices))
     throw new Error(`${channel} agenticServices must be an object.`)
+  if (value.dashboardStatPrefs !== undefined && !isRecord(value.dashboardStatPrefs))
+    throw new Error(`${channel} dashboardStatPrefs must be an object.`)
   if (value.welcomeHeatmapPrefs !== undefined && !isRecord(value.welcomeHeatmapPrefs))
     throw new Error(`${channel} welcomeHeatmapPrefs must be an object.`)
+  if (value.approvalTimeouts !== undefined && !isRecord(value.approvalTimeouts))
+    throw new Error(`${channel} approvalTimeouts must be an object.`)
   if (value.agenticWorkspaceGrants !== undefined)
     throw new Error(`${channel} cannot update workspace grants directly.`)
 }

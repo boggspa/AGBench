@@ -245,6 +245,40 @@ describe('IpcValidation', () => {
     )
   })
 
+  it('validates dashboard statistic setting patches', () => {
+    expect(() =>
+      validateIpcArgs('update-settings', [
+        {
+          dashboardStatPrefs: {
+            dashboardEnabled: true,
+            dashboardSize: 'small'
+          }
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('update-settings', [{ dashboardStatPrefs: 'hidden' }])).toThrow(
+      /dashboardStatPrefs/
+    )
+  })
+
+  it('validates approval timeout setting patches', () => {
+    expect(() =>
+      validateIpcArgs('update-settings', [
+        {
+          approvalTimeouts: {
+            enabled: false,
+            perProviderMs: {
+              gemini: 120_000
+            }
+          }
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('update-settings', [{ approvalTimeouts: 'off' }])).toThrow(
+      /approvalTimeouts/
+    )
+  })
+
   it('accepts explicit PTY stop requests', () => {
     expect(() => validateIpcArgs('stop-pty', ['terminal-1'])).not.toThrow()
   })
