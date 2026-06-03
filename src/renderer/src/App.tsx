@@ -8953,7 +8953,12 @@ function App(): React.JSX.Element {
     return () => {
       scroller.removeEventListener('scroll', onScroll)
     }
-  }, [])
+    // Re-bind on scroller remount. TranscriptPanel is keyed by appChatId
+    // (see its render site) and replaces the scroll node on chat-open; with an
+    // empty dep array this listener stayed orphaned on the initial 'no-chat'
+    // node, so the only auto-follow *disengage* write (above) never ran on the
+    // live scroller — auto-follow could never be turned off by a user scroll-up.
+  }, [currentChat?.appChatId])
 
   // Detect _real_ user-initiated upward scroll attempts. The plain
   // `scroll` event fires for both user input and programmatic writes
@@ -9040,7 +9045,9 @@ function App(): React.JSX.Element {
       scroller.removeEventListener('touchend', onTouchEnd)
       scroller.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+    // Re-bind on scroller remount (keyed by appChatId) — see the scroll-evaluate
+    // effect above. These wheel/touch/key listeners hold the explicit disengage.
+  }, [currentChat?.appChatId])
 
   // Listen for `CODE_BLOCK_RESIZE_EVENT` from individual
   // `HighlightedCodeBlock` instances. CodeMirror measures fenced code
@@ -9092,7 +9099,9 @@ function App(): React.JSX.Element {
       scroller.removeEventListener(CODE_BLOCK_RESIZE_EVENT, onCodeBlockResize)
       if (rafId !== null) cancelAnimationFrame(rafId)
     }
-  }, [])
+    // Re-bind on scroller remount (keyed by appChatId) — see the scroll-evaluate
+    // effect above. Otherwise code-block re-pins target the dead 'no-chat' node.
+  }, [currentChat?.appChatId])
 
   // Generalised re-pin: a SINGLE `ResizeObserver` on the inner transcript
   // content div (`.transcript-inner`) catches every source of late layout
@@ -9169,7 +9178,10 @@ function App(): React.JSX.Element {
       observer.disconnect()
       if (rafId !== null) cancelAnimationFrame(rafId)
     }
-  }, [])
+    // Re-observe on scroller remount (keyed by appChatId) — see the
+    // scroll-evaluate effect above. Otherwise the ResizeObserver watches the
+    // dead 'no-chat' content node and never re-measures the live transcript.
+  }, [currentChat?.appChatId])
 
   // Stick to bottom when the messages array reference changes. Streaming
   // updates produce a fresh `currentChat.messages` array via immutable
