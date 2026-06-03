@@ -40,6 +40,8 @@ describe('READ_ONLY_TOOL_PRESET', () => {
     expect(READ_ONLY_TOOL_PRESET).toContain('read_file')
     expect(READ_ONLY_TOOL_PRESET).toContain('list_directory')
     expect(READ_ONLY_TOOL_PRESET).toContain('grep')
+    // Non-mutating clarification tool — a read-only child can ask the user.
+    expect(READ_ONLY_TOOL_PRESET).toContain('ask_user_question')
   })
 })
 

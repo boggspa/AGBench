@@ -13104,6 +13104,17 @@ function appendGeminiCliSessionArgs(
   // mechanism. For read-only Gemini runs (where MCP isn't registered)
   // we still want the seatbelt sandbox, so keep `--sandbox` on that
   // path.
+  //
+  // KNOWN LIMITATION (1.0.72) — because the seatbelt blocks the bridge
+  // subprocess, Gemini in plan/read-only mode has NO AGBench MCP tools,
+  // including the non-mutating `ask_user_question` / `ensemble_yield` that
+  // Codex, Claude and Kimi keep available in plan mode. The deferred fix is to
+  // swap this seatbelt for a strict read-only `--allowed-tools` allowlist
+  // (advertise only the non-mutating subset; keep write/shell unadvertised AND
+  // host-gated) and verify read-only Gemini still cannot write natively — a
+  // deliberate, write-verified follow-up, intentionally not rushed into 1.0.72.
+  // (Grok and Cursor share this plan-mode gap structurally: their CLIs expose
+  // no per-run MCP in plan mode at all, so it can't be closed AGBench-side.)
   if (!allowAgentbenchMcp) {
     args.push('--sandbox')
   }
