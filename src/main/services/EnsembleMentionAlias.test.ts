@@ -8,6 +8,7 @@ import {
   getParticipantAliases,
   hasMention,
   isReservedMentionToken,
+  isUserMentionToken,
   normalizeAlias,
   resolvePhraseToParticipant
 } from './EnsembleMentionAlias'
@@ -155,6 +156,22 @@ describe('isReservedMentionToken', () => {
     expect(isReservedMentionToken('user')).toBe(false)
     expect(isReservedMentionToken('human')).toBe(false)
     expect(isReservedMentionToken('codex')).toBe(false)
+  })
+})
+
+describe('isUserMentionToken', () => {
+  it('matches the user-mention aliases (user / human / you)', () => {
+    expect(isUserMentionToken('user')).toBe(true)
+    expect(isUserMentionToken('human')).toBe(true)
+    expect(isUserMentionToken('you')).toBe(true)
+    // Case + surrounding whitespace are normalised away.
+    expect(isUserMentionToken('  USER ')).toBe(true)
+  })
+  it('does not match participants or the self-reserved tokens', () => {
+    expect(isUserMentionToken('codex')).toBe(false)
+    expect(isUserMentionToken('me')).toBe(false)
+    expect(isUserMentionToken('self')).toBe(false)
+    expect(isUserMentionToken('')).toBe(false)
   })
 })
 

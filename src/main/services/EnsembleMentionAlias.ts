@@ -564,3 +564,13 @@ export function resolvePhraseToParticipant(
 export function isReservedMentionToken(token: string): boolean {
   return RESERVED_TOKENS.has(token.trim().toLowerCase())
 }
+
+/** Companion to `isReservedMentionToken`: is this bare token one of the
+ * user-mention aliases (`user` / `human` / `you`)? The assistant-side
+ * `ParticipantMention` chip uses it to style an `@user` handback
+ * distinctly instead of letting it fall through to plain text. Reuses
+ * the canonical `USER_ALIASES` set so renderer + orchestrator can't
+ * drift. Exported for tests. */
+export function isUserMentionToken(token: string): boolean {
+  return USER_ALIASES.has(token.trim().toLowerCase())
+}

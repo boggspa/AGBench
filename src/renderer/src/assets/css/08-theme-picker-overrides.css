@@ -297,6 +297,19 @@
   background: transparent;
 }
 
+/* `@user` / `@human` / `@you` handback chip on the assistant side.
+ * Distinct from a participant mention: the inline colour echoes the
+ * user's bubble hue (--user-bubble-base, set by the React component)
+ * and a dotted underline marks it as an orchestration handback —
+ * control returns to the user — rather than a plain reference.
+ * Metric-neutral (colour + text-decoration only, no box-model change)
+ * so it does not perturb transcript height measurement. */
+.participant-mention--user {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
 /* ----- AgentMentionMenu autocomplete popover ----- */
 .agent-mention-menu {
   background: color-mix(in srgb, var(--panel-elevated-bg) 96%, transparent);

@@ -2,6 +2,7 @@ import { useContext, type ReactNode } from 'react'
 import { AgentIdentityContext } from './AgentIdentityContext'
 import { getProviderName } from './Sidebar'
 import type { ProviderId } from '../../../main/store/types'
+import { isUserMentionToken } from '../../../main/services/EnsembleMentionAlias'
 
 interface ParticipantMentionProps {
   /** Either an ensemble participant id (from a `[@Role](ensemble-dm://id)`
@@ -52,6 +53,22 @@ export function ParticipantMention({ reference, children }: ParticipantMentionPr
     participants.find((p) => p.provider === lower)
 
   if (!participant) {
+    // `@user` / `@human` / `@you` — a handback to the user, not a
+    // participant. Render the distinct user-mention chip (echoing the
+    // user's bubble colour) so an orchestration handback reads as a
+    // state change instead of bare prose. Uses the canonical alias set
+    // so it can never drift from the orchestrator's round-close gate.
+    if (isUserMentionToken(trimmed)) {
+      return (
+        <span
+          className="participant-mention participant-mention--user"
+          style={{ color: 'var(--user-bubble-base, var(--accent))' }}
+          title="Hands control back to you"
+        >
+          @{trimmed}
+        </span>
+      )
+    }
     // Unresolved — render the raw text so the message still reads.
     return <>{children ?? `@${trimmed}`}</>
   }
