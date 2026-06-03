@@ -2,6 +2,7 @@ import { Component, useEffect, useState, type ReactNode, type RefObject } from '
 import { DiffViewer } from './DiffViewer'
 import { TerminalPanel } from './TerminalPanel'
 import { BackgroundTasksPanel } from './BackgroundTasksPanel'
+import { ReadOnlyToolClassBreakdown } from './ToolClassBreakdown'
 import type {
   ChatRecord,
   DiffFileSummary,
@@ -1649,6 +1650,12 @@ function EnsembleCapabilitiesTab(props: InspectorProps) {
               <span>Permissions</span>
               <span>{permissionPresetLabel(participant.permissionPresetId)}</span>
             </div>
+            {participant.permissionPresetId === 'read_only' && (
+              <div className="safety-row">
+                <span>Tool access</span>
+                <ReadOnlyToolClassBreakdown />
+              </div>
+            )}
             <div className="safety-row">
               <span>Tokens</span>
               <span>
