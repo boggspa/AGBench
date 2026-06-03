@@ -7,6 +7,16 @@ const EXPANDED_WORKSPACES_STORAGE_KEY = 'agbench-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-thread-parent-ids'
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
 
+// Mirrors SIDEBAR_SECTION_IDS in Sidebar.tsx. The sidebar defaults every section
+// to collapsed for new users (ec5bcad, "all-collapsed-v1"), so tests that assert
+// on child rows opt the relevant section(s) open the way a user would by clicking
+// the header. Persisting a non-empty collapsed list also bypasses the new-user
+// default migration, pinning exactly these sections open.
+const SIDEBAR_SECTION_IDS = ['pinned', 'recents', 'ensembles', 'workspaces', 'chats'] as const
+function collapseSectionsExcept(...expanded: string[]): string {
+  return JSON.stringify(SIDEBAR_SECTION_IDS.filter((id) => !expanded.includes(id)))
+}
+
 function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   return {
     id: 'ws-1',
@@ -83,7 +93,8 @@ afterEach(() => {
 describe('Sidebar sub-thread collapse', () => {
   it('renders sub-thread children expanded by default', () => {
     stubSidebarStorage({
-      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1'])
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
     })
 
     const html = renderSidebar([
@@ -146,7 +157,13 @@ describe('Sidebar ensembles section', () => {
   })
 
   it('uses the silver ensemble dot in ensemble and pinned chat rows', () => {
-    stubSidebarStorage({})
+    stubSidebarStorage({
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept(
+        'pinned',
+        'recents',
+        'ensembles'
+      )
+    })
 
     const html = renderSidebar([
       makeChat({
@@ -179,7 +196,9 @@ describe('Sidebar ensembles section', () => {
   })
 
   it('1.0.7 — surfaces an unpinned ensemble chat in the Recents section', () => {
-    stubSidebarStorage({})
+    stubSidebarStorage({
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('recents')
+    })
 
     const html = renderSidebar([
       makeChat({ appChatId: 'solo-1', title: 'Solo', updatedAt: 2 }),
