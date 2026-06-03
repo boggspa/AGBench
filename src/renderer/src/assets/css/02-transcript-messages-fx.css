@@ -3127,6 +3127,17 @@
   padding: var(--space-xs) var(--space-md);
 }
 
+/* Ensemble round-status / handback chrome (round opened/closed, @-mention
+ * routing, "control returned to you"). Orchestration STATE CHANGES, not
+ * participant prose — a left accent bar + faint tint marks them as system
+ * authority instead of the muted system-note styling. Box-shadow + background
+ * only (no padding/border added) so the row's measured height is unchanged. */
+.message-bubble.system.system-round-status {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 8px;
+}
+
 .subthread-return-message {
   width: min(100%, 900px);
 }

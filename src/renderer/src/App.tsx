@@ -3,6 +3,7 @@ import type { CSSProperties, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
+import { ensembleRoundStatusClass } from './lib/ensembleRoundStatusClass'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
 import {
@@ -4517,7 +4518,7 @@ export const TranscriptPanel = memo(
                         )
                       })()
                     ) : (
-                      <div className={`message-bubble ${msg.role}`}>
+                      <div className={`message-bubble ${msg.role}${ensembleRoundStatusClass(msg)}`}>
                         {msg.role === 'assistant' ? (
                           <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
                         ) : (
