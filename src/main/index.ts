@@ -326,6 +326,7 @@ import {
 import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
 import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
+import { inheritedSubThreadPermissions } from './SubThreadPermissions'
 import {
   detectCrossProviderDelegationMisuse,
   crossProviderDelegationWarningMessage
@@ -11367,6 +11368,10 @@ async function executeGeminiMcpTool(
         sessionTrust: Boolean(context.sessionTrust),
         externalPathGrants: context.externalPathGrants,
         runtimeProfileId: inheritableRuntimeProfileId,
+        // SECURITY: a delegated sub-thread inherits the parent's resolved
+        // posture so a read-only participant can't escalate to write via
+        // delegation (see inheritedSubThreadPermissions for the full rationale).
+        effectivePermissions: inheritedSubThreadPermissions(context),
         // Phase J2: on recall, inject the existing sub-thread's
         // linked provider session id so the target provider's native
         // session resumes (Codex `thread/resume`, Claude SDK
