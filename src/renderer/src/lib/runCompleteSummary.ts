@@ -1,4 +1,4 @@
-import type { ChatRecord, ChatRun } from '../../../main/store/types'
+import type { ChatRecord, ChatRun, EnsembleRoundParticipantState } from '../../../main/store/types'
 import { formatContextTokens } from './contextWindows'
 import { extractUsageCount, extractUsageCountsFromCandidate } from './usageStats'
 
@@ -102,6 +102,43 @@ export const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSu
 }
 
 /**
+ * Per-participant outcome rollup for a finished ensemble round — the panel's
+ * round-close "who passed, who skipped, who failed" ask. Reads the terminal
+ * status on each `activeRound.participants[]` entry (finishRound resolves every
+ * participant to a terminal status by round close):
+ *
+ *   - Contributed: answered | yielded   (mirrors ComplexityEscalation's
+ *   - Failed:      failed | unreachable   ANSWER_STATUSES / FAILURE_STATUSES)
+ *   - Skipped:     anything else (user-skipped, produced-no-content,
+ *                  cancelled, or paused/sleeping)
+ *
+ * Returned as label/value rows so they slot straight into the existing
+ * run-complete summary grid. Empty buckets are omitted; participant labels
+ * prefer the role, falling back to the provider id.
+ */
+export const buildRoundOutcomeRows = (chat: ChatRecord | null): RunCompleteSummaryRow[] => {
+  const participants = chat?.ensemble?.activeRound?.participants || []
+  if (participants.length === 0) return []
+  const label = (p: EnsembleRoundParticipantState): string => p.role?.trim() || p.provider
+  const contributed = participants.filter((p) => p.status === 'answered' || p.status === 'yielded')
+  const failed = participants.filter((p) => p.status === 'failed' || p.status === 'unreachable')
+  const skipped = participants.filter(
+    (p) => !['answered', 'yielded', 'failed', 'unreachable'].includes(p.status)
+  )
+  const rows: RunCompleteSummaryRow[] = []
+  if (contributed.length > 0) {
+    rows.push({ label: 'Contributed', value: contributed.map(label).join(', ') })
+  }
+  if (skipped.length > 0) {
+    rows.push({ label: 'Skipped', value: skipped.map(label).join(', ') })
+  }
+  if (failed.length > 0) {
+    rows.push({ label: 'Failed', value: failed.map(label).join(', ') })
+  }
+  return rows
+}
+
+/**
  * Ensemble variant of {@link buildRunCompleteSummaryRows}. Aggregates
  * across every participant run that belongs to the round so the user
  * sees ALL models that contributed, not just the last speaker's.
@@ -153,6 +190,10 @@ export const buildEnsembleRoundSummaryRows = (
     label: 'Status',
     value: cancelled ? 'Cancelled' : 'Complete'
   })
+
+  // Per-participant outcome rollup (who contributed / skipped / failed) — the
+  // panel's round-close "who passed / skipped / failed" ask.
+  rows.push(...buildRoundOutcomeRows(chat))
 
   // Round-envelope duration.
   const startedAtMs = round.startedAt ? new Date(round.startedAt).getTime() : NaN
