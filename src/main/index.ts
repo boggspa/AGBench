@@ -330,7 +330,11 @@ import {
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
-import { MCP_AUTO_ALLOWED_TOOLS, READ_ONLY_MCP_ADVERTISE_TOOLS } from './mcp/McpAutoAllowedTools'
+import {
+  MCP_AUTO_ALLOWED_TOOLS,
+  READ_ONLY_MCP_ADVERTISE_TOOLS,
+  isReadOnlyAdvertisedTool
+} from './mcp/McpAutoAllowedTools'
 import { inheritedSubThreadPermissions } from './SubThreadPermissions'
 import { isReadOnlyBlockedTool } from './ToolClassTaxonomy'
 import {
@@ -5691,6 +5695,34 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 // streams session/update onto the same run-event sink as the headless path
 // (applyGrokRunEvent). Gated behind grokAcpEnabled(); headless stays fallback.
 // No MCP / tool mediation yet (read-only) — that's G5.
+// Distinct MCP server name for Grok's read-only scoped bridge (kept off the
+// global 'agbench' name to avoid a registry collision with the cursor web-fetch
+// server). Single-sourced so the session/new entry and the permission-allow
+// check below agree.
+const GROK_SCOPED_MCP_SERVER_NAME = 'agbench-grok'
+
+// Is this ACP permission request for one of OUR scoped-bridge tools? The
+// agbench-grok bridge advertises ONLY the non-mutating safe subset (--safe-subset
+// enforces it), so when Grok asks to use an `agbench-grok__<tool>` we allow it
+// even on a read-only seat — that read/coordination surface is exactly what the
+// read-only Grok seat was given. Defense-in-depth: confirm the unprefixed tool is
+// actually in the advertised safe set (the bridge also rejects anything else at
+// tools/call). Grok routes these via `use_tool`, so check the wrapper's
+// rawInput.tool_name too, not just the title.
+function grokScopedBridgeSafeToolRequested(request: {
+  toolName?: string
+  rawToolCall?: unknown
+}): boolean {
+  const prefix = `${GROK_SCOPED_MCP_SERVER_NAME}__`
+  const raw = request.rawToolCall as { rawInput?: { tool_name?: unknown } } | undefined
+  for (const candidate of [request.toolName, raw?.rawInput?.tool_name]) {
+    if (typeof candidate === 'string' && candidate.startsWith(prefix)) {
+      return isReadOnlyAdvertisedTool(candidate.slice(prefix.length))
+    }
+  }
+  return false
+}
+
 async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
   const route = routeWithRunId('grok', payload)
   if (!experimentalGrokProviderEnabled()) {
@@ -5788,7 +5820,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           // 'agbench' server (cursor web-fetch) to avoid a registry collision.
           // env carries the routing identity in the ACP EnvVariable shape
           // ({name,value}) so the bridge's broker calls map to THIS run.
-          name: 'agbench-grok',
+          name: GROK_SCOPED_MCP_SERVER_NAME,
           command: process.execPath,
           args: agentbenchMcpBridgeArgs(geminiMcpSocketPath(), true),
           env: [
@@ -5869,6 +5901,11 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     // The G5a transport seam turns 'deny' into a rejected outcome, so nothing
     // runs without an explicit allow — no silent shell.
     onPermissionRequest: async (request) => {
+      // Allow OUR read-only scoped bridge's safe tools (the advertised
+      // non-mutating subset) even on a read-only seat — that read/coordination
+      // surface is exactly what this seat was given. Without this, Grok asks to
+      // use an agbench-grok__<tool> and the read-only deny below cancels the turn.
+      if (grokScopedBridgeSafeToolRequested(request)) return 'allow'
       if (!grokWriteCapable(payload.approvalMode)) return 'deny'
       const service = grokToolKindToService(request.toolKind)
       const allowed = await requestAgenticServiceApproval(
