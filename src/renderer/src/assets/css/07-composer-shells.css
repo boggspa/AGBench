@@ -2938,3 +2938,86 @@
   background: color-mix(in srgb, #ffffff 5%, transparent);
 }
 
+/* ============================================================
+ * NATIVE-SHELL POSTURE PILL — "Full Workspace Access" (auto_edit)
+ * RED → AMBER, via the maintainer's rim-highlight idiom (a9d5482)
+ * --------------------------------------------------------------
+ * The permission chip is a POSTURE indicator, not an error: it
+ * tells the user the agent currently has workspace-write power.
+ * The shell-agnostic default (shard 08, lines ~7138-7145 dark /
+ * ~8030-8035 light) paints `auto_edit` alarm-RED (#ef4444 dark /
+ * #b91c1c light). For the AGBench *native* shell we recolour it to
+ * a calmer AMBER posture pill — amber rim + faint amber tint +
+ * readable amber text — matching the `has-failures` / attention
+ * rim the maintainer uses elsewhere (`#f0a93f` amber). The codex
+ * shell keeps its authentic orange and the other shells keep the
+ * shared red; this override is native-only.
+ *
+ * CASCADE — shard 07 loads BEFORE shard 08, so at equal
+ * specificity shard 08's rules (some `!important`) would still
+ * win on source order. We out-specific them with a REPEATED-
+ * attribute prefix — the same trick the maintainer uses for
+ * obsidian/alabaster, here tripled so we clear shard 08's
+ * deepest competitor (the LIGHT-theme `.is-selected` checkmark
+ * at 0,5,0) too:
+ * `[data-composer-style="default"]×3`:
+ *   - trigger          → 0,5,0  (beats 0,2,0 dark / 0,3,0 light !important)
+ *   - -primary span    → 0,6,0  (beats 0,3,0 dark / 0,4,0 light !important)
+ *   - popover row label → 0,5,0  (beats 0,3,0 dark / 0,4,0 light)
+ *   - selected check    → 0,6,0  (beats 0,4,0 dark / 0,5,0 light)
+ * so it wins regardless of source order, in EVERY theme. (The
+ * popover-row rules in shard 08 are not `!important`, so winning
+ * the cascade by specificity alone is enough there.)
+ *
+ * LIGHT + DARK readability — the text colour is
+ * `color-mix(#f0a93f, var(--text-primary))`, NOT a fixed amber.
+ * `--text-primary` is ~white on dark themes (→ amber brightens,
+ * vivid on the dark chip) and ~near-black on light themes (→ amber
+ * darkens to a deep ochre, readable on the light chip). One rule
+ * adapts to all themes (incl. citrus/alabaster/paper that the
+ * 3-theme `:is()` light list omits). The amber rim + tint reinforce
+ * the signal so the chip reads as "posture" even where text
+ * contrast is gentlest. NOT a red fill, NOT alarm-red.
+ * ============================================================ */
+
+/* Closed-state chip — rim + faint amber tint + amber border. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary)) !important;
+  border-color: color-mix(in srgb, #f0a93f 50%, var(--composer-border)) !important;
+  background: color-mix(in srgb, #f0a93f 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a93f 10%, transparent);
+}
+
+/* The label span carries its own `color` (+ `!important` in shard
+ * 08), so tint it directly — one class deeper than the trigger
+ * selector above to clear shard 08's `-primary !important` rule. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary)) !important;
+}
+
+/* Hover — slightly firmer amber rim, still calm. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #f0a93f 62%, var(--composer-border)) !important;
+  background: color-mix(in srgb, #f0a93f 12%, transparent);
+}
+
+/* Open-state popover — row label + selected check pick up the same
+ * amber so the dropdown legend matches the chip the user just saw.
+ * The popover is portaled to <body> but `[data-composer-style]`
+ * lives on <html>, so the descendant selector still scopes it to
+ * the native shell. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"]
+  .composer-combined-picker-row-label {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary));
+}
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
+  .composer-combined-picker-check {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary));
+}
+

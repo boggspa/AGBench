@@ -2443,6 +2443,150 @@
   background: color-mix(in srgb, var(--composer-bg) 78%, var(--accent) 22%);
 }
 
+/* ============================================================
+ * NATIVE-SHELL COMPOSER CONSOLE RIM (CSS-only)
+ * --------------------------------------------------------------
+ * Gives the AGBench *native* composer (`data-composer-style=
+ * "default"`) the maintainer's "rim highlight" identity — the
+ * same idiom committed in a9d5482 for `.participant-health-card`
+ * / `.agent-question-card` / `.compact-tool-trace`: a whole-
+ * perimeter rim (NOT a left rail) drawn as an `inset 0 0 0 1px`
+ * glow, optionally tinted by state/provider, with a faint tint.
+ *
+ * WHY a `::after` (and not the host border/box-shadow):
+ *   - The host `.composer-surface` already owns `border` +
+ *     `box-shadow` across THREE prompt-surface variants (glass /
+ *     classic / solid, lines ~2409-2439) plus the focus-within +
+ *     per-provider focus glows above. Restating box-shadow on the
+ *     host at equal specificity would clobber the glass backdrop
+ *     shadow. Drawing the rim on a dedicated `::after` layers the
+ *     instrument rim ON TOP without disturbing any of that, so it
+ *     reads identically across every surface/theme.
+ *   - `::before` is already taken (the side-vignette gradient),
+ *     so the rim uses `::after`. For the native shell `::after`
+ *     is otherwise free (themed shells terminal/stub/modular/
+ *     satellite use their own `::after`, but those are scoped to
+ *     their own `data-composer-style`, never `default`).
+ *
+ * SCOPE — native shell ONLY. The codex / claude hat-tip shells
+ * set their own `.composer-surface` chrome (shard 07) and must
+ * keep their identity, so every rule here is prefixed with
+ * `[data-composer-style="default"]`.
+ *
+ * HAND-OFF to Agent-Aura FX — when the Advanced-FX "Agent Aura"
+ * is enabled the surface carries `.fx-agent-aura` and shard 05
+ * already paints a richer running/approval/failed treatment
+ * (incl. its own `.composer-surface::after`). We therefore EXIT
+ * via `:not(.fx-agent-aura)` so the two never fight: idle rim
+ * when FX-aura is off, full aura when it's on.
+ *
+ * The rim line colour adapts to light + dark automatically: it
+ * is a `color-mix` against `--text-primary` / the provider token,
+ * never a fixed rgba, so it stays subtle on both.
+ * ============================================================ */
+
+/* Calm idle rim — neutral, always-on. A single faint perimeter
+ * line that gives the console a defined edge without a glow. */
+[data-composer-style="default"] .composer-surface:not(.fx-agent-aura)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Sits above the ::before vignette (z-index:0) and the surface
+   * fill, but below the actual composer controls (z-index:2). */
+  z-index: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 5%, transparent);
+  transition: box-shadow 160ms ease;
+}
+
+/* Provider-tinted idle rim. `.app-transcript.provider-<id>` is an
+ * EXISTING always-on hook (App.tsx:16259) and is an ancestor of
+ * the composer-surface — the same hook the per-provider focus
+ * glows above already use. The rim warms toward the provider's
+ * brand token (a faint inner line + an even fainter outer halo +
+ * a whisper of background tint), so the native console quietly
+ * signals which agent it's wired to. Kept well under the focus
+ * glow's intensity so focus still reads as the louder state. */
+[data-composer-style="default"]
+  .app-transcript.provider-gemini
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-gemini-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-codex
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-codex-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-claude
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-claude-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-kimi
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-kimi-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-grok
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-grok-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-cursor
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-cursor-color) 4%, transparent);
+}
+
+/*
+ * TODO(App.tsx phase): RUNNING / agent-active rim is intentionally
+ * NOT added here. The only running/approval hook on the surface
+ * today is `.fx-agent-aura.fx-status-{running,approval,failed}`,
+ * which (a) is present ONLY when Advanced-FX "Agent Aura" is
+ * enabled and (b) is already fully painted by shard 05. An
+ * always-on running rim needs a dedicated, FX-independent class on
+ * `.composer-surface` (e.g. `is-running` driven by
+ * `isCurrentChatRunning` / `runFxStatus`) which lands in the
+ * App.tsx slice. When it does, mirror the rim idiom here:
+ *   --composer-rim: color-mix(in srgb, var(--accent) 42%, var(--panel-border));
+ * on `[data-composer-style="default"] .composer-surface.is-running::after`.
+ *
+ * TODO(App.tsx phase): ENSEMBLE vs SINGLE rim is also deferred.
+ * `.app-transcript.chat-kind-ensemble` IS an existing ancestor
+ * hook (App.tsx:16259), but an ensemble has no single provider
+ * brand colour, so a tasteful ensemble rim needs a deliberate
+ * neutral/multi tone chosen in the App.tsx slice rather than
+ * invented here.
+ */
+
+/* Reduce-motion: the rim itself is static (no pulse/animation),
+ * but kill the colour-cross-fade transition so provider/focus
+ * changes snap instead of easing. */
+[data-reduce-motion="true"]
+  [data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)::after {
+  transition: none;
+}
+
 .composer-control-footer {
   margin-top: auto;
   display: flex;
