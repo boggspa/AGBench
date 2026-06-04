@@ -3011,7 +3011,7 @@ export function SettingsPanel({
 
               {/*
                 1.0.5-EW26 — Kimi (Moonshot) compatibility filter.
-                Off by default. When enabled, ensemble-mode Kimi
+                On by default. Ensemble-mode Kimi
                 participants get their prompt context scanned by
                 `src/main/lib/kimiSanitiser.ts` before spawn:
                 sentences containing curated trigger keywords

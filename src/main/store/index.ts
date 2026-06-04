@@ -135,16 +135,20 @@ const defaultSettings: AppSettings = {
   // General lets the user dial 0–25%. Applied in `formatCost.ts`
   // before FX conversion so the bias is currency-agnostic.
   currencyOverestimatePercent: 0,
+  dashboardStatPrefs: {
+    dashboardSize: 'small'
+  },
   welcomeHeatmapPrefs: {
+    layout: 'single',
     workspaceActivityEnabled: true,
     agbenchActivityEnabled: true,
     externalActivityEnabled: true
   },
-  // 1.0.5-EW26 — Kimi compatibility filter defaults. Off by
-  // default; the user opts in from Settings → General when they
-  // hit a Moonshot content_filter rejection on an incidental
-  // topic. Custom keywords stay empty until the user adds any.
-  kimiSanitiserEnabled: false,
+  // 1.0.5-EW26 — Kimi compatibility filter defaults. On by
+  // default so Moonshot content_filter retries get the compatibility
+  // pass automatically. Custom keywords stay empty until the user
+  // adds any.
+  kimiSanitiserEnabled: true,
   kimiSanitiserCustomKeywords: '',
   // 1.0.7-M10 — second-pass classifier stays opt-in; when unset
   // or false, the retry envelope remains keyword-only.
@@ -415,7 +419,10 @@ export class AppStore {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
       },
-      dashboardStatPrefs: storedDashboardStatPrefs ? { ...storedDashboardStatPrefs } : undefined,
+      dashboardStatPrefs: {
+        ...(defaultSettings.dashboardStatPrefs || {}),
+        ...(storedDashboardStatPrefs || {})
+      },
       welcomeHeatmapPrefs: {
         ...defaultSettings.welcomeHeatmapPrefs,
         ...(storedWelcomeHeatmapPrefs || {})
