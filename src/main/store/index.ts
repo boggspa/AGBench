@@ -31,7 +31,8 @@ import {
   ProductCrashRecord,
   RuntimeProfile,
   HandoffCard,
-  HandoffCardFilter
+  HandoffCardFilter,
+  ProductUpdateChangelog
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
 import { createDefaultEnsembleConfig } from '../EnsembleDefaults'
@@ -184,7 +185,7 @@ const defaultSettings: AppSettings = {
   geminiMcpBridgeLastStatus: undefined,
   bridgeDaemonEnabled: true,
   codexSandboxFallback: 'ask_rerun',
-  updateChannel: 'debug',
+  updateChannel: 'stable',
   approvalTimeouts: {
     enabled: true,
     // Defaults mirror DEFAULT_APPROVAL_TIMEOUT_POLICY in
@@ -221,6 +222,43 @@ function readJson<T>(filePath: string, defaultData: T): T {
 
 function objectOrUndefined<T extends object>(value: T | null | undefined): T | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function normalizeUpdateChangelog(value: unknown): ProductUpdateChangelog | undefined {
+  const record = objectOrUndefined(value as Record<string, unknown> | null | undefined)
+  if (!record || typeof record.version !== 'string' || !record.version.trim()) {
+    return undefined
+  }
+  const releaseNotes = record.releaseNotes
+  const normalized: ProductUpdateChangelog = {
+    version: record.version.trim()
+  }
+  if (typeof record.releaseName === 'string' && record.releaseName.trim()) {
+    normalized.releaseName = record.releaseName.trim()
+  }
+  if (typeof record.releaseDate === 'string' && record.releaseDate.trim()) {
+    normalized.releaseDate = record.releaseDate.trim()
+  }
+  if (typeof releaseNotes === 'string') {
+    normalized.releaseNotes = releaseNotes
+  } else if (Array.isArray(releaseNotes)) {
+    const notes = releaseNotes
+      .map((item) => {
+        const noteRecord = objectOrUndefined(item as Record<string, unknown> | null | undefined)
+        if (!noteRecord || typeof noteRecord.version !== 'string' || !noteRecord.version.trim()) {
+          return null
+        }
+        return {
+          version: noteRecord.version.trim(),
+          note: typeof noteRecord.note === 'string' ? noteRecord.note : null
+        }
+      })
+      .filter((item): item is { version: string; note: string | null } => item !== null)
+    if (notes.length > 0) {
+      normalized.releaseNotes = notes
+    }
+  }
+  return normalized
 }
 
 function normalizeSettingsFontFamily(value: unknown, fallback: string): string {
@@ -414,6 +452,7 @@ export class AppStore {
     const storedWelcomeHeatmapPrefs = objectOrUndefined(stored.welcomeHeatmapPrefs)
     const storedApprovalTimeouts = objectOrUndefined(stored.approvalTimeouts)
     const storedApprovalTimeoutProviderMs = objectOrUndefined(storedApprovalTimeouts?.perProviderMs)
+    const pendingUpdateChangelog = normalizeUpdateChangelog(stored.pendingUpdateChangelog)
     return {
       ...defaultSettings,
       ...stored,
@@ -464,6 +503,12 @@ export class AppStore {
         stored.nativeSubAgentRequests === 'provider' || stored.nativeSubAgentRequests === 'agbench'
           ? stored.nativeSubAgentRequests
           : 'ask',
+      lastSeenChangelogVersion:
+        typeof stored.lastSeenChangelogVersion === 'string' &&
+        stored.lastSeenChangelogVersion.trim()
+          ? stored.lastSeenChangelogVersion.trim()
+          : undefined,
+      pendingUpdateChangelog,
       // Normalize: a stored non-boolean (e.g. an older settings file
       // where the field is missing) falls back to the default (true)
       // so the auto-resume behaviour is on for upgrading users.

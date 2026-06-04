@@ -4,7 +4,11 @@ import {
   type UpdateInfo,
   type ProgressInfo
 } from 'electron-updater'
-import type { ProductUpdateChannel } from './store/types'
+import type {
+  ProductUpdateChannel,
+  ProductUpdateReleaseNoteInfo,
+  ProductUpdateReleaseNotes
+} from './store/types'
 
 /**
  * UpdateService — Phase G2 wrapper around `electron-updater`.
@@ -61,6 +65,10 @@ export interface UpdateStateSnapshot {
   enabled: boolean
   channel: ProductUpdateChannel
   latestVersion?: string
+  releaseName?: string
+  releaseDate?: string
+  releaseNotes?: ProductUpdateReleaseNotes
+  releasePageUrl?: string
   downloadProgress?: ProgressInfo
   errorMessage?: string
   /** When the last manual or automatic check was attempted. ISO. */
@@ -73,6 +81,10 @@ export class UpdateService {
   private channel: ProductUpdateChannel = 'debug'
   private status: UpdateStatus = 'disabled'
   private latestVersion: string | undefined
+  private releaseName: string | undefined
+  private releaseDate: string | undefined
+  private releaseNotes: ProductUpdateReleaseNotes | undefined
+  private releasePageUrl: string | undefined
   private downloadProgress: ProgressInfo | undefined
   private errorMessage: string | undefined
   private lastCheckedAt: string | undefined
@@ -98,6 +110,9 @@ export class UpdateService {
     this.channel = args.channel
     if (!args.enabled || args.channel === 'debug') {
       this.status = 'disabled'
+      this.downloadProgress = undefined
+      this.errorMessage = undefined
+      this.clearReleaseMetadata()
       this.publish()
       return
     }
@@ -112,6 +127,9 @@ export class UpdateService {
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
     this.status = 'idle'
+    this.downloadProgress = undefined
+    this.errorMessage = undefined
+    this.clearReleaseMetadata()
     this.publish()
   }
 
@@ -123,6 +141,8 @@ export class UpdateService {
     this.status = 'checking'
     this.lastCheckedAt = new Date().toISOString()
     this.errorMessage = undefined
+    this.downloadProgress = undefined
+    this.clearReleaseMetadata()
     this.publish()
     try {
       const result = await autoUpdater.checkForUpdates()
@@ -171,6 +191,10 @@ export class UpdateService {
       enabled: this.status !== 'disabled',
       channel: this.channel,
       latestVersion: this.latestVersion,
+      releaseName: this.releaseName,
+      releaseDate: this.releaseDate,
+      releaseNotes: this.releaseNotes,
+      releasePageUrl: this.releasePageUrl,
       downloadProgress: this.downloadProgress,
       errorMessage: this.errorMessage,
       lastCheckedAt: this.lastCheckedAt
@@ -195,11 +219,12 @@ export class UpdateService {
     })
     autoUpdater.on('update-available', (info) => {
       this.status = 'available'
-      this.latestVersion = info.version
+      this.applyUpdateInfo(info)
       this.publish()
     })
     autoUpdater.on('update-not-available', () => {
       this.status = 'not-available'
+      this.clearReleaseMetadata()
       this.publish()
     })
     autoUpdater.on('error', (err) => {
@@ -212,10 +237,28 @@ export class UpdateService {
     })
     autoUpdater.on('update-downloaded', (info) => {
       this.status = 'downloaded'
-      this.latestVersion = info.version
+      this.applyUpdateInfo(info)
       this.downloadProgress = undefined
       this.publish()
     })
+  }
+
+  private applyUpdateInfo(info: UpdateInfo): void {
+    this.latestVersion = info.version
+    this.releaseName = info.releaseName || undefined
+    this.releaseDate = info.releaseDate || undefined
+    this.releaseNotes = normalizeReleaseNotes(info.releaseNotes)
+    this.releasePageUrl = info.version
+      ? `https://github.com/boggspa/AGBench/releases/tag/v${info.version}`
+      : undefined
+  }
+
+  private clearReleaseMetadata(): void {
+    this.latestVersion = undefined
+    this.releaseName = undefined
+    this.releaseDate = undefined
+    this.releaseNotes = undefined
+    this.releasePageUrl = undefined
   }
 
   private handleError(message: string): void {
@@ -238,4 +281,23 @@ export class UpdateService {
       }
     }
   }
+}
+
+function normalizeReleaseNotes(
+  notes: UpdateInfo['releaseNotes']
+): ProductUpdateReleaseNotes | undefined {
+  if (typeof notes === 'string') return notes
+  if (!Array.isArray(notes)) return undefined
+  const normalized = notes
+    .map((note): ProductUpdateReleaseNoteInfo | null => {
+      if (!note || typeof note.version !== 'string' || !note.version.trim()) {
+        return null
+      }
+      return {
+        version: note.version.trim(),
+        note: typeof note.note === 'string' ? note.note : null
+      }
+    })
+    .filter((note): note is ProductUpdateReleaseNoteInfo => note !== null)
+  return normalized.length > 0 ? normalized : undefined
 }

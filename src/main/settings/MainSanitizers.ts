@@ -7,6 +7,7 @@ import type {
   HandoffCard,
   HandoffCardFilter,
   ProviderId,
+  ProductUpdateChangelog,
   RuntimeProfile,
   ScheduledTask,
   WorkspaceRecord
@@ -65,6 +66,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'bridgeDaemonEnabled',
   'codexSandboxFallback',
   'updateChannel',
+  'lastSeenChangelogVersion',
+  'pendingUpdateChangelog',
   'approvalTimeouts'
 ])
 
@@ -205,6 +208,40 @@ function sanitizeApprovalTimeoutMs(value: unknown, fallback: number): number {
   const parsed = Math.round(Number(value))
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback
   return Math.max(5_000, Math.min(3_600_000, parsed))
+}
+
+function sanitizeUpdateChangelog(value: unknown): ProductUpdateChangelog | undefined {
+  const record = isRecord(value) ? value : {}
+  const version = typeof record.version === 'string' ? record.version.trim() : ''
+  if (!version) return undefined
+
+  const changelog: ProductUpdateChangelog = { version }
+  if (typeof record.releaseName === 'string' && record.releaseName.trim()) {
+    changelog.releaseName = record.releaseName.trim()
+  }
+  if (typeof record.releaseDate === 'string' && record.releaseDate.trim()) {
+    changelog.releaseDate = record.releaseDate.trim()
+  }
+  if (typeof record.releaseNotes === 'string') {
+    changelog.releaseNotes = record.releaseNotes
+  } else if (Array.isArray(record.releaseNotes)) {
+    const notes = record.releaseNotes
+      .map((item) => {
+        const noteRecord = isRecord(item) ? item : {}
+        const noteVersion =
+          typeof noteRecord.version === 'string' ? noteRecord.version.trim() : ''
+        if (!noteVersion) return null
+        return {
+          version: noteVersion,
+          note: typeof noteRecord.note === 'string' ? noteRecord.note : null
+        }
+      })
+      .filter((item): item is { version: string; note: string | null } => item !== null)
+    if (notes.length > 0) {
+      changelog.releaseNotes = notes
+    }
+  }
+  return changelog
 }
 
 export function normalizeEnsembleRunIdentity(value: unknown): EnsembleRunIdentity | undefined {
@@ -613,6 +650,24 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
           kimi: sanitizeApprovalTimeoutMs(perProvider.kimi, current.perProviderMs.kimi)
         },
         mainAuthorityMs: sanitizeApprovalTimeoutMs(prefs.mainAuthorityMs, current.mainAuthorityMs)
+      }
+    }
+    if ('lastSeenChangelogVersion' in sanitized) {
+      if (
+        typeof sanitized.lastSeenChangelogVersion === 'string' &&
+        sanitized.lastSeenChangelogVersion.trim()
+      ) {
+        sanitized.lastSeenChangelogVersion = sanitized.lastSeenChangelogVersion.trim()
+      } else {
+        delete sanitized.lastSeenChangelogVersion
+      }
+    }
+    if ('pendingUpdateChangelog' in sanitized) {
+      const changelog = sanitizeUpdateChangelog(sanitized.pendingUpdateChangelog)
+      if (changelog) {
+        sanitized.pendingUpdateChangelog = changelog
+      } else {
+        delete sanitized.pendingUpdateChangelog
       }
     }
     if ('kimiSanitiserEnabled' in sanitized) {

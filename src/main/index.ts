@@ -153,6 +153,8 @@ import {
   ProductCrashInput,
   ProductDiagnosticsExportResult,
   ProductOperationsStatus,
+  ProductChangelogSnapshot,
+  ProductUpdateChangelog,
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
@@ -10188,7 +10190,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
   const recentCrashes = AppStore.getProductCrashes({ limit: 20 })
 
   return buildProductOperationsStatus({
-    updateChannel: settings.updateChannel || 'debug',
+    updateChannel: settings.updateChannel || 'stable',
     appName: app.getName() || 'AGBench',
     appVersion: app.getVersion() || 'unknown',
     isPackaged: app.isPackaged,
@@ -14554,9 +14556,35 @@ if (isGeminiMcpBridgeProcess) {
       channel: initialSettings.updateChannel,
       enabled: autoUpdateEnabled
     })
+    const updateSnapshotToChangelog = (
+      snapshot: UpdateStateSnapshot
+    ): ProductUpdateChangelog | undefined => {
+      if (!snapshot.latestVersion) return undefined
+      return {
+        version: snapshot.latestVersion,
+        ...(snapshot.releaseName ? { releaseName: snapshot.releaseName } : {}),
+        ...(snapshot.releaseDate ? { releaseDate: snapshot.releaseDate } : {}),
+        ...(snapshot.releaseNotes ? { releaseNotes: snapshot.releaseNotes } : {})
+      }
+    }
+    const changelogSnapshot = (): ProductChangelogSnapshot => {
+      const settings = AppStore.getSettings()
+      return {
+        currentVersion: app.getVersion() || 'unknown',
+        lastSeenChangelogVersion: settings.lastSeenChangelogVersion,
+        pendingUpdateChangelog: settings.pendingUpdateChangelog,
+        latestUpdateChangelog: updateSnapshotToChangelog(updateService.snapshot())
+      }
+    }
     // Broadcast snapshot changes to the renderer so the Settings panel
     // can show live status.
     updateService.subscribe((snapshot: UpdateStateSnapshot) => {
+      if (snapshot.status === 'downloaded') {
+        const pendingUpdateChangelog = updateSnapshotToChangelog(snapshot)
+        if (pendingUpdateChangelog) {
+          AppStore.updateSettings({ pendingUpdateChangelog })
+        }
+      }
       try {
         mainWindow?.webContents.send('update-status-changed', snapshot)
       } catch {
@@ -14612,6 +14640,18 @@ if (isGeminiMcpBridgeProcess) {
       updateService.quitAndInstall()
       return updateService.snapshot()
     })
+    ipcMain.handle('changelog-snapshot', () => changelogSnapshot())
+    ipcMain.handle('mark-changelog-seen', (_, version: string) => {
+      const normalizedVersion = typeof version === 'string' ? version.trim() : ''
+      if (!normalizedVersion) return changelogSnapshot()
+      AppStore.updateSettings({ lastSeenChangelogVersion: normalizedVersion })
+      return changelogSnapshot()
+    })
+    if (updateService.snapshot().enabled) {
+      setTimeout(() => {
+        void updateService.checkForUpdates()
+      }, 3000)
+    }
 
     ipcMain.handle(
       'bridge-finalize-pairing',

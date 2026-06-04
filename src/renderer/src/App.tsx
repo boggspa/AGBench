@@ -52,6 +52,7 @@ import {
   RunRecoveryRecord,
   ProductOperationsStatus,
   ProductUpdateChannel,
+  ProductChangelogSnapshot,
   ChatScope,
   RuntimeProfile,
   HandoffCard,
@@ -96,6 +97,7 @@ import { WorkspaceActivityHeatmap } from './components/WorkspaceActivityHeatmap'
 import { WelcomeHeatmaps, type WelcomeHeatmapSlot } from './components/WelcomeHeatmaps'
 import { useAppearance } from './hooks/useAppearance'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
+import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { ProviderBadgeIcon, Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
@@ -104,6 +106,8 @@ import { SettingsSidebar } from './components/SettingsSidebar'
 import { SubThreadCreator } from './components/SubThreadCreator'
 import { FirstLaunchSheet } from './components/FirstLaunchSheet'
 import { BugReportSheet, type BugReportSubmission } from './components/BugReportSheet'
+import { ChangelogSheet } from './components/ChangelogSheet'
+import { UpdatePill } from './components/UpdatePill'
 import {
   WorkSessionSetupSheet,
   type WorkSessionSetupConfirmInput
@@ -5094,7 +5098,7 @@ function App(): React.JSX.Element {
   )
   const [codexSandboxFallback, setCodexSandboxFallback] =
     useState<CodexSandboxFallbackMode>('ask_rerun')
-  const [updateChannel, setUpdateChannel] = useState<ProductUpdateChannel>('debug')
+  const [updateChannel, setUpdateChannel] = useState<ProductUpdateChannel>('stable')
   const [approvalTimeouts, setApprovalTimeouts] = useState<AppSettings['approvalTimeouts']>({
     enabled: true,
     perProviderMs: { gemini: 120_000, codex: 30_000, claude: 120_000, kimi: 60_000 },
@@ -5308,6 +5312,26 @@ function App(): React.JSX.Element {
    * state — the sheet
    * resets every open. */
   const [showBugReportSheet, setShowBugReportSheet] = useState(false)
+  const updateStatus = useUpdateStatus()
+  const [showChangelogSheet, setShowChangelogSheet] = useState(false)
+  const [changelogSnapshot, setChangelogSnapshot] = useState<ProductChangelogSnapshot | null>(null)
+  const autoChangelogOpenedRef = useRef(false)
+  const refreshChangelogSnapshot = useCallback(
+    async (): Promise<ProductChangelogSnapshot | null> => {
+      try {
+        const next = await window.api.changelogSnapshot()
+        setChangelogSnapshot(next)
+        return next
+      } catch {
+        return null
+      }
+    },
+    []
+  )
+  const handleOpenChangelogSheet = useCallback(() => {
+    setShowChangelogSheet(true)
+    void refreshChangelogSnapshot()
+  }, [refreshChangelogSnapshot])
   /** 1.0.4-AK2 — Work Session setup sheet open/closed state.
    * Opened by the composer's "Work Session" button (alongside
    * Turn/Continuous). On confirm, persists the WorkSessionConfig
@@ -5341,6 +5365,27 @@ function App(): React.JSX.Element {
       cancelled = true
     }
   }, [])
+  useEffect(() => {
+    void refreshChangelogSnapshot()
+  }, [refreshChangelogSnapshot])
+  useEffect(() => {
+    if (autoChangelogOpenedRef.current) return
+    if (!changelogSnapshot || appVersion === 'unknown') return
+    if (changelogSnapshot.pendingUpdateChangelog?.version !== appVersion) return
+    if (changelogSnapshot.lastSeenChangelogVersion === appVersion) return
+    autoChangelogOpenedRef.current = true
+    setShowChangelogSheet(true)
+  }, [appVersion, changelogSnapshot])
+  const handleDismissChangelogSheet = useCallback(() => {
+    setShowChangelogSheet(false)
+    const pendingVersion = changelogSnapshot?.pendingUpdateChangelog?.version
+    if (!pendingVersion || pendingVersion !== appVersion) return
+    if (changelogSnapshot?.lastSeenChangelogVersion === appVersion) return
+    void window.api
+      .markChangelogSeen(appVersion)
+      .then((next) => setChangelogSnapshot(next))
+      .catch(() => {})
+  }, [appVersion, changelogSnapshot])
   const handleSubmitBugReport = useCallback(
     async (submission: BugReportSubmission): Promise<void> => {
       const api = window.api as typeof window.api & {
@@ -6857,7 +6902,7 @@ function App(): React.JSX.Element {
     setGeminiMcpBridgeEnabledState(Boolean(s.geminiMcpBridgeEnabled))
     setGeminiMcpBridgeStatus(s.geminiMcpBridgeLastStatus || null)
     setCodexSandboxFallback(s.codexSandboxFallback || 'ask_rerun')
-    setUpdateChannel(s.updateChannel || 'debug')
+    setUpdateChannel(s.updateChannel || 'stable')
     if (s.approvalTimeouts) {
       setApprovalTimeouts(s.approvalTimeouts)
     }
@@ -16298,6 +16343,16 @@ function App(): React.JSX.Element {
             >
               <GhostCompanionIcon />
             </button>
+            <button
+              className={`chat-corner-btn chat-corner-btn-changelog ${showChangelogSheet ? 'active' : ''}`}
+              type="button"
+              onClick={handleOpenChangelogSheet}
+              title={showChangelogSheet ? 'Hide changelog sheet' : 'Open changelog sheet'}
+              aria-label="Toggle changelog sheet"
+              aria-pressed={showChangelogSheet}
+            >
+              <span className="chat-corner-symbol">i</span>
+            </button>
             {/*
               First-launch onboarding sheet re-opener. The sheet
               auto-shows on a fresh install and stays available
@@ -16335,6 +16390,7 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">!</span>
             </button>
+            <UpdatePill snapshot={updateStatus.snapshot} onOpen={handleOpenChangelogSheet} />
           </div>
 
           <div className="chat-corner-controls chat-corner-controls-right">
@@ -19543,6 +19599,16 @@ function App(): React.JSX.Element {
         theme={appearance.themeAppearance || 'system'}
         promptBubble={appearance.userBubbleColor || 'system'}
         ensembleSummary={bugReportEnsembleSummary}
+      />
+      <ChangelogSheet
+        open={showChangelogSheet}
+        onDismiss={handleDismissChangelogSheet}
+        changelogSnapshot={changelogSnapshot}
+        updateSnapshot={updateStatus.snapshot}
+        busy={updateStatus.busy}
+        onCheckForUpdates={updateStatus.checkForUpdates}
+        onDownloadUpdate={updateStatus.downloadUpdate}
+        onInstallUpdateNow={updateStatus.installUpdateNow}
       />
       {/* 1.0.4-AK2 — Work Session setup sheet. z-index 9130 sits
           above BugReportSheet (9120) since opening a Work Session

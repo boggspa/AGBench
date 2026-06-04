@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback } from 'react'
+import type { UpdateStateSnapshot } from '../../../main/UpdateService'
+import { useUpdateStatus } from '../hooks/useUpdateStatus'
 
 /**
  * UpdateStatusPane — Phase G2 sub-section of Settings → System.
@@ -15,79 +17,14 @@ import React, { useCallback, useEffect, useState } from 'react'
  * reshape the Settings layout later.
  */
 
-interface UpdateSnapshot {
-  status:
-    | 'disabled'
-    | 'idle'
-    | 'checking'
-    | 'available'
-    | 'not-available'
-    | 'downloading'
-    | 'downloaded'
-    | 'error'
-  enabled: boolean
-  channel: 'debug' | 'stable' | 'nightly'
-  latestVersion?: string
-  downloadProgress?: {
-    bytesPerSecond: number
-    percent: number
-    transferred: number
-    total: number
-  }
-  errorMessage?: string
-  lastCheckedAt?: string
-}
-
 export function UpdateStatusPane(): React.JSX.Element {
-  const [snap, setSnap] = useState<UpdateSnapshot | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const refresh = useCallback(async () => {
-    try {
-      const next = (await window.api.updateSnapshot()) as UpdateSnapshot
-      setSnap(next)
-    } catch {
-      // Ignore — IPC handler may not be registered yet during a hot
-      // reload; the next event will repopulate.
-    }
-  }, [])
-
-  useEffect(() => {
-    void Promise.resolve().then(() => refresh())
-    if (typeof window.api.onUpdateStatusChanged === 'function') {
-      window.api.onUpdateStatusChanged((next) => setSnap(next as UpdateSnapshot))
-    }
-  }, [refresh])
-
-  const handleCheck = useCallback(async () => {
-    setBusy(true)
-    try {
-      const next = (await window.api.checkForUpdates()) as UpdateSnapshot
-      setSnap(next)
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  const handleDownload = useCallback(async () => {
-    setBusy(true)
-    try {
-      const next = (await window.api.downloadUpdate()) as UpdateSnapshot
-      setSnap(next)
-    } finally {
-      setBusy(false)
-    }
-  }, [])
+  const { snapshot: snap, busy, checkForUpdates, downloadUpdate, installUpdateNow } =
+    useUpdateStatus()
 
   const handleInstall = useCallback(async () => {
     if (!confirm('Install update and restart AGBench now?')) return
-    setBusy(true)
-    try {
-      await window.api.installUpdateNow()
-    } finally {
-      setBusy(false)
-    }
-  }, [])
+    await installUpdateNow()
+  }, [installUpdateNow])
 
   if (!snap) {
     return (
@@ -136,7 +73,7 @@ export function UpdateStatusPane(): React.JSX.Element {
           disabled={
             busy || !snap.enabled || snap.status === 'checking' || snap.status === 'downloading'
           }
-          onClick={() => void handleCheck()}
+          onClick={() => void checkForUpdates()}
         >
           {snap.status === 'checking' ? 'Checking…' : 'Check for updates'}
         </button>
@@ -145,7 +82,7 @@ export function UpdateStatusPane(): React.JSX.Element {
             type="button"
             className="btn btn-sm btn-primary"
             disabled={busy}
-            onClick={() => void handleDownload()}
+            onClick={() => void downloadUpdate()}
           >
             Download
           </button>
@@ -174,7 +111,7 @@ export function UpdateStatusPane(): React.JSX.Element {
   )
 }
 
-function labelForStatus(status: UpdateSnapshot['status']): string {
+function labelForStatus(status: UpdateStateSnapshot['status']): string {
   switch (status) {
     case 'disabled':
       return 'Disabled'

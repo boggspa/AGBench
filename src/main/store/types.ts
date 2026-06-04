@@ -168,6 +168,23 @@ export type PermissionPresetId =
   | 'custom'
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off'
 export type ProductUpdateChannel = 'debug' | 'stable' | 'nightly'
+export interface ProductUpdateReleaseNoteInfo {
+  version: string
+  note: string | null
+}
+export type ProductUpdateReleaseNotes = string | ProductUpdateReleaseNoteInfo[]
+export interface ProductUpdateChangelog {
+  version: string
+  releaseName?: string
+  releaseDate?: string
+  releaseNotes?: ProductUpdateReleaseNotes
+}
+export interface ProductChangelogSnapshot {
+  currentVersion: string
+  lastSeenChangelogVersion?: string
+  pendingUpdateChangelog?: ProductUpdateChangelog
+  latestUpdateChangelog?: ProductUpdateChangelog
+}
 /** Phase M1 — picks which runtime path AGBench uses for Gemini runs.
  *
  *   - `'auto'` (default): use the API runtime when an API key /
@@ -1460,6 +1477,8 @@ export interface AppSettings {
   bridgeDaemonEnabled?: boolean
   codexSandboxFallback: CodexSandboxFallbackMode
   updateChannel: ProductUpdateChannel
+  lastSeenChangelogVersion?: string
+  pendingUpdateChangelog?: ProductUpdateChangelog
   /** Per-provider + main-authority approval timeout policy (Phase E1.1).
    * When an approval enters the pending registry, a timer fires after
    * the matching ms value and auto-denies the request. `enabled: false`

@@ -2798,6 +2798,168 @@
   font-size: 0.85em;
 }
 
+/* ── Changelog + Update Pill ───────────────────────────────────────── */
+.chat-corner-controls .chat-corner-update-pill {
+  width: auto;
+  min-width: 44px;
+  padding: 3px 9px;
+  color: rgba(245, 250, 255, 0.98);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent, #5a8cff) 58%, transparent), rgba(255, 255, 255, 0.12)),
+    rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 48%, transparent);
+}
+.chat-corner-update-pill-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.chat-corner-controls .chat-corner-update-pill-downloading {
+  min-width: 36px;
+}
+.chat-corner-controls .chat-corner-update-pill-error {
+  background:
+    linear-gradient(135deg, rgba(220, 80, 80, 0.4), rgba(255, 255, 255, 0.1)),
+    rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 150, 150, 0.35);
+}
+.changelog-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9140;
+  padding: 32px 24px;
+}
+.changelog-sheet {
+  width: min(680px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 26px 20px;
+}
+.changelog-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.changelog-sheet-header-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.changelog-sheet-glyph {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1em;
+  font-weight: 800;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  background: color-mix(in srgb, var(--accent, #5a8cff) 16%, transparent);
+  color: color-mix(in srgb, var(--accent, #5a8cff) 78%, white);
+  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 36%, transparent);
+}
+.changelog-sheet-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.18em;
+  font-weight: 650;
+}
+.changelog-sheet-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.86em;
+}
+.changelog-sheet-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.25em;
+  line-height: 1;
+}
+.changelog-sheet-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+.changelog-sheet-progress {
+  position: relative;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.changelog-sheet-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--accent, #5a8cff) 68%, transparent);
+  transition: width 180ms ease;
+}
+.changelog-sheet-progress span {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.76em;
+  font-weight: 700;
+}
+.changelog-sheet-error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(220, 80, 80, 0.12);
+  color: rgba(255, 200, 200, 0.94);
+  font-size: 0.86em;
+}
+.changelog-sheet-notes {
+  min-height: 180px;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 14px;
+}
+.changelog-sheet-notes pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.48;
+}
+.changelog-sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* User-message collapse — long pasted briefs are truncated by default with a
  * "Show more" affordance under the bubble. Styling reuses the existing user
  * bubble; we only need the inner content wrapper, the gradient fade, and the

@@ -37,6 +37,7 @@ import {
   ProductCrashRecord,
   ProductDiagnosticsExportResult,
   ProductOperationsStatus,
+  ProductChangelogSnapshot,
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
@@ -485,7 +486,9 @@ declare global {
       downloadUpdate: () => Promise<UpdateStateSnapshot>
       installUpdateOnQuit: () => Promise<UpdateStateSnapshot>
       installUpdateNow: () => Promise<UpdateStateSnapshot>
-      onUpdateStatusChanged: (callback: (snapshot: UpdateStateSnapshot) => void) => void
+      changelogSnapshot: () => Promise<ProductChangelogSnapshot>
+      markChangelogSeen: (version: string) => Promise<ProductChangelogSnapshot>
+      onUpdateStatusChanged: (callback: (snapshot: UpdateStateSnapshot) => void) => () => void
       bridgeNetworkingStatus: () => Promise<{
         lan: {
           enabled: boolean

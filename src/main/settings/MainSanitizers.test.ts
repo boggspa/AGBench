@@ -143,4 +143,32 @@ describe('MainSanitizers settings patches', () => {
       mainAuthorityMs: 60_000
     })
   })
+
+  it('sanitizes changelog persistence settings', () => {
+    const settings = makeSettings()
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+
+    const sanitized = sanitizeSettingsPatch({
+      lastSeenChangelogVersion: ' 1.0.73 ',
+      pendingUpdateChangelog: {
+        version: ' 1.0.74 ',
+        releaseName: ' AGBench 1.0.74 ',
+        releaseDate: ' 2026-06-04T13:00:00.000Z ',
+        releaseNotes: [
+          { version: ' 1.0.74 ', note: 'Updater pill.' },
+          { version: '', note: 'ignored' }
+        ]
+      }
+    })
+
+    expect(sanitized).toMatchObject({
+      lastSeenChangelogVersion: '1.0.73',
+      pendingUpdateChangelog: {
+        version: '1.0.74',
+        releaseName: 'AGBench 1.0.74',
+        releaseDate: '2026-06-04T13:00:00.000Z',
+        releaseNotes: [{ version: '1.0.74', note: 'Updater pill.' }]
+      }
+    })
+  })
 })

@@ -381,8 +381,13 @@ const api = {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdateOnQuit: () => ipcRenderer.invoke('install-update-on-quit'),
   installUpdateNow: () => ipcRenderer.invoke('install-update-now'),
+  changelogSnapshot: () => ipcRenderer.invoke('changelog-snapshot'),
+  markChangelogSeen: (version: string) => ipcRenderer.invoke('mark-changelog-seen', version),
   onUpdateStatusChanged: (callback: (snapshot: unknown) => void) => {
-    ipcRenderer.on('update-status-changed', (_event, snapshot) => callback(snapshot))
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown): void =>
+      callback(snapshot)
+    ipcRenderer.on('update-status-changed', listener)
+    return () => ipcRenderer.removeListener('update-status-changed', listener)
   },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
