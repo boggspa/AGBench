@@ -4,6 +4,38 @@ Notable changes to AGBench, the local-first macOS desktop workbench for running
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.73 — 2026-06-04
+
+### Added
+- **Commit & open PRs from the composer** — the Review changes menu now drives a
+  real Git flow: see your branch and changed files, write a message and Stage all
+  & Commit, then Create PR once the branch is pushed and ready (gated on a live
+  readiness check).
+- **Clearer Ensemble cost & escalation** — each round shows real vs. estimated
+  spend (a latency line + an "API-equivalent" badge on estimates), and the
+  orchestrator's escalation signals surface inline, so a multi-seat panel's value
+  is visible rather than guessed.
+- **Optional "why?" on approvals** — attach a short intent note when you allow or
+  deny an agent action; it's recorded in the approval ledger.
+
+### Changed
+- **Refined native composer** — the AGBench shell is now a cohesive console: the
+  input sits in a framed module (solid black/white outer frame, theme-tone inner
+  panel + provider rim, full-bleed and squared), the Ensemble / Create-PR / Steer
+  rows match the same solid frame, and the permission picker sits up front beside
+  the + button. Onboarding and Settings → Appearance previews reflect the new look.
+- **Deleting a chat tidies up after itself** — removing a chat now also clears
+  that chat's own run-forensic artifacts (and only those).
+
+### Fixed
+- **Kimi tool calls** — repeated calls coalesce into a single inline card that
+  updates in place (instead of stacking) and now show the target filename,
+  matching the other providers.
+- **Bug Report Refinement** — tidied how the in-app reporter shows your workspace
+  (now a friendly `~/…` label).
+- Onboarding, empty states, the welcome dashboard, provider accent colours, and
+  the Diff Studio / File Editor light themes all got polish + readability fixes.
+
 ## 1.0.72 — 2026-06-04
 
 ### Security
