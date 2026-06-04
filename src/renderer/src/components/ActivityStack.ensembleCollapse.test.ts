@@ -3,25 +3,16 @@ import { buildCompactGroupLabel, buildTimelineItems } from './ActivityStack'
 import type { ToolActivity } from '../../../main/store/types'
 
 /*
- * 1.0.4-AS2 — Ensemble-mode collapse pattern.
+ * 1.0.74 — Same-tool timeline grouping (unified single + ensemble).
  *
- * The user picked pattern (a) from three options: "Only the
- * currently-running activity stays expanded; everything terminal
- * collapses into a `▾ N activities` group above it."
- *
- * `buildTimelineItems(activities, { collapseAllTerminal: true })`
- * implements that pattern by:
- *   - Treating every non-running, non-error activity (read /
- *     write / shell / task / search / unknown) as a collapse
- *     candidate, not just read+search like the default.
- *   - Dropping the min-group-size from 3 to 1 so even a single
- *     completed activity collapses.
- *   - Leaving running / pending / error activities inline so the
- *     active step + anything the user needs to act on is always
- *     visible.
- *
- * Single-provider chats stay on the default (read/search,
- * min-3) path — verified by tests below.
+ * `buildTimelineItems` collapses runs of 2+ CONSECUTIVE terminal
+ * activities of the SAME family (read / write / shell / search /
+ * task) into one expandable `compact-group`; clicking the group
+ * reveals every call in the run (Codex/Claude-style). A family change
+ * breaks the run, so distinct tools never merge into a vague blob.
+ * Errors, running, pending and `ensemble_yield` stay inline. Both
+ * single-provider and ensemble chats use this exact behaviour — there
+ * is no per-mode split (the old `collapseAllTerminal` option is gone).
  */
 
 function activity(overrides: Partial<ToolActivity> = {}): ToolActivity {
@@ -35,183 +26,140 @@ function activity(overrides: Partial<ToolActivity> = {}): ToolActivity {
   } as ToolActivity
 }
 
-describe('buildTimelineItems — default (single-provider) behavior', () => {
-  it('only groups read+search activities (writes stay inline regardless of count)', () => {
+describe('buildTimelineItems — same-tool grouping (unified single + ensemble)', () => {
+  it('groups 2+ consecutive same-family activities into a compact group', () => {
     const acts: ToolActivity[] = [
       activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
       activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
-      activity({ id: 'w1', category: 'write', toolName: 'edit' }),
       activity({ id: 'r3', category: 'read', toolName: 'read_file' })
     ]
     const items = buildTimelineItems(acts)
-    // The two-read run at the front now collapses (min-2 in AS2b).
-    // The write is its own category (never collapses solo). The
-    // trailing single read stays inline (only one in its run).
+    expect(items.length).toBe(1)
+    expect(items[0].type).toBe('compact-group')
+  })
+
+  it('now groups consecutive writes too (consistent with reads — were inline before)', () => {
+    const acts: ToolActivity[] = [
+      activity({ id: 'w1', category: 'write' }),
+      activity({ id: 'w2', category: 'write' }),
+      activity({ id: 'w3', category: 'write' })
+    ]
+    const items = buildTimelineItems(acts)
+    expect(items.length).toBe(1)
+    expect(items[0].type).toBe('compact-group')
+  })
+
+  it('breaks a group at a family boundary (read-run, lone write, lone read)', () => {
+    const acts: ToolActivity[] = [
+      activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'w1', category: 'write' }),
+      activity({ id: 'r3', category: 'read', toolName: 'read_file' })
+    ]
+    const items = buildTimelineItems(acts)
     expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity', 'activity'])
   })
 
-  it('groups 2+ consecutive read/search activities into a compact group (AS2b min)', () => {
+  it('does NOT merge different consecutive families into one blob', () => {
+    const acts: ToolActivity[] = [
+      activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'w1', category: 'write' }),
+      activity({ id: 's1', category: 'shell' }),
+      activity({ id: 't1', category: 'task' })
+    ]
+    const items = buildTimelineItems(acts)
+    expect(items.map((i) => i.type)).toEqual(['activity', 'activity', 'activity', 'activity'])
+  })
+
+  it('separates read and search into distinct same-family groups', () => {
     const acts: ToolActivity[] = [
       activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
       activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
-      activity({ id: 'r3', category: 'read', toolName: 'read_file' })
+      activity({ id: 's1', category: 'search', toolName: 'grep' }),
+      activity({ id: 's2', category: 'search', toolName: 'grep' })
     ]
     const items = buildTimelineItems(acts)
-    expect(items.length).toBe(1)
-    expect(items[0].type).toBe('compact-group')
+    expect(items.map((i) => i.type)).toEqual(['compact-group', 'compact-group'])
   })
 
-  it('does NOT collapse write/shell/task activities even when 3+ consecutive', () => {
-    const acts: ToolActivity[] = [
-      activity({ id: 'w1', category: 'write', toolName: 'edit' }),
-      activity({ id: 'w2', category: 'write', toolName: 'edit' }),
-      activity({ id: 'w3', category: 'write', toolName: 'edit' })
-    ]
+  it('keeps a solitary same-family activity inline (min-2)', () => {
+    const acts: ToolActivity[] = [activity({ id: 'w1', category: 'write' })]
     const items = buildTimelineItems(acts)
-    expect(items.map((i) => i.type)).toEqual(['activity', 'activity', 'activity'])
+    expect(items.map((i) => i.type)).toEqual(['activity'])
   })
-})
 
-describe('buildTimelineItems — Ensemble mode (collapseAllTerminal: true)', () => {
-  it('collapses every terminal activity — read, write, shell, task — into one group', () => {
+  it('leaves the currently-running activity inline; collapses the prior same-family run', () => {
     const acts: ToolActivity[] = [
       activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
-      activity({ id: 'w1', category: 'write', toolName: 'edit' }),
-      activity({ id: 's1', category: 'shell', toolName: 'bash' }),
-      activity({ id: 't1', category: 'task', toolName: 'unknown' })
+      activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'live', category: 'read', toolName: 'read_file', status: 'running' })
     ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
-    expect(items.length).toBe(1)
-    expect(items[0].type).toBe('compact-group')
-    if (items[0].type === 'compact-group') {
-      expect(items[0].activities.length).toBe(4)
-    }
-  })
-
-  it('keeps SINGLE terminal activities inline in Ensemble too (AS2b — min-2)', () => {
-    // Pre-AS2b: ensemble threshold was 1, so even one solitary
-    // completed write collapsed into a "1 activity" header that
-    // hid useful context (which file, what edit, etc.). AS2b
-    // raised the threshold to 2 across both modes so single
-    // terminal activities stay readable inline.
-    const acts: ToolActivity[] = [activity({ id: 'w1', category: 'write', status: 'success' })]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
-    expect(items.length).toBe(1)
-    expect(items[0].type).toBe('activity')
-  })
-
-  it('isolates a solitary terminal activity (no adjacent collapsibles) as inline', () => {
-    // The key invariant from user feedback: single activities
-    // shouldn't collapse. When a terminal activity is the only
-    // candidate in its run (because the surrounding activities
-    // are running/pending/errors), it stays inline.
-    const acts: ToolActivity[] = [
-      activity({ id: 'pend', category: 'write', status: 'pending' }),
-      activity({ id: 'w1', category: 'write', status: 'success' }),
-      activity({ id: 'live', category: 'write', status: 'running' })
-    ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
-    // All three stay inline: pend is non-candidate, w1 is solo
-    // collapsible (no adjacent collapsibles → stays inline by
-    // the min-2 threshold), live is non-candidate.
-    expect(items.map((i) => i.type)).toEqual(['activity', 'activity', 'activity'])
-  })
-
-  it('leaves the currently-running activity inline + collapses the prior terminals', () => {
-    const acts: ToolActivity[] = [
-      activity({ id: 'r1', category: 'read', status: 'success' }),
-      activity({ id: 'w1', category: 'write', status: 'success' }),
-      activity({ id: 's1', category: 'shell', status: 'success' }),
-      activity({ id: 'live', category: 'write', status: 'running' })
-    ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
-    // Three terminals collapse, the running one stays inline.
+    const items = buildTimelineItems(acts)
     expect(items.length).toBe(2)
     expect(items[0].type).toBe('compact-group')
     expect(items[1].type).toBe('activity')
-    if (items[1].type === 'activity') {
-      expect(items[1].activity.id).toBe('live')
-    }
+    if (items[1].type === 'activity') expect(items[1].activity.id).toBe('live')
   })
 
-  it('keeps errors inline so the user can act on them, even when surrounding activities collapse', () => {
+  it('keeps errors inline between same-family groups', () => {
     const acts: ToolActivity[] = [
-      activity({ id: 'r1', category: 'read', status: 'success' }),
-      activity({ id: 'r2', category: 'read', status: 'success' }),
-      activity({ id: 'err', category: 'shell', status: 'error' }),
-      activity({ id: 'r3', category: 'read', status: 'success' }),
-      activity({ id: 'r4', category: 'read', status: 'success' })
+      activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'err', category: 'read', toolName: 'read_file', status: 'error' }),
+      activity({ id: 'r3', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r4', category: 'read', toolName: 'read_file' })
     ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
-    // Two compact groups (one each side of the error) + the error inline.
+    const items = buildTimelineItems(acts)
     expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity', 'compact-group'])
-    if (items[1].type === 'activity') {
-      expect(items[1].activity.id).toBe('err')
-    }
+    if (items[1].type === 'activity') expect(items[1].activity.id).toBe('err')
   })
 
-  it('keeps pending activities inline (active step is always readable)', () => {
+  it('keeps pending activities inline', () => {
     const acts: ToolActivity[] = [
-      activity({ id: 'r1', category: 'read', status: 'success' }),
-      activity({ id: 'r2', category: 'read', status: 'success' }),
+      activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
       activity({ id: 'pend', category: 'write', status: 'pending' })
     ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
+    const items = buildTimelineItems(acts)
     expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity'])
-    if (items[1].type === 'activity') {
-      expect(items[1].activity.id).toBe('pend')
-    }
+    if (items[1].type === 'activity') expect(items[1].activity.id).toBe('pend')
   })
 
   it('produces an empty timeline for empty input', () => {
-    expect(buildTimelineItems([], { collapseAllTerminal: true })).toEqual([])
+    expect(buildTimelineItems([])).toEqual([])
   })
 
   it('keeps ensemble_yield activities inline (social-glue exception, all alias forms)', () => {
-    // Three aliases: bare, Codex-style, Claude-style. All should
-    // stay inline even though their status is terminal.
     const yields: ToolActivity[] = [
       activity({ id: 'y1', toolName: 'ensemble_yield', category: 'task' }),
       activity({ id: 'y2', toolName: 'mcp_AGBench_ensemble_yield', category: 'task' }),
       activity({ id: 'y3', toolName: 'mcp__AGBench__ensemble_yield', category: 'task' })
     ]
-    const items = buildTimelineItems(yields, { collapseAllTerminal: true })
+    const items = buildTimelineItems(yields)
     expect(items.length).toBe(3)
     expect(items.every((i) => i.type === 'activity')).toBe(true)
   })
 
-  it('separates the inline ensemble_yield from a surrounding collapsed group', () => {
-    // Read+read → yield → read+read. The two read-pairs collapse
-    // around the yield (which stays inline), producing
-    // [group, yield, group].
+  it('separates an inline ensemble_yield from surrounding same-family groups', () => {
     const acts: ToolActivity[] = [
-      activity({ id: 'r1', category: 'read', status: 'success' }),
-      activity({ id: 'r2', category: 'read', status: 'success' }),
+      activity({ id: 'r1', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r2', category: 'read', toolName: 'read_file' }),
       activity({ id: 'y1', toolName: 'ensemble_yield', category: 'task', status: 'success' }),
-      activity({ id: 'r3', category: 'read', status: 'success' }),
-      activity({ id: 'r4', category: 'read', status: 'success' })
+      activity({ id: 'r3', category: 'read', toolName: 'read_file' }),
+      activity({ id: 'r4', category: 'read', toolName: 'read_file' })
     ]
-    const items = buildTimelineItems(acts, { collapseAllTerminal: true })
+    const items = buildTimelineItems(acts)
     expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity', 'compact-group'])
-    if (items[1].type === 'activity') {
-      expect(items[1].activity.id).toBe('y1')
-    }
+    if (items[1].type === 'activity') expect(items[1].activity.id).toBe('y1')
   })
 })
 
 /*
- * 1.0.4-AS2b — smarter compact-group labels. Pre-AS2b the
- * heterogeneous (Ensemble) fallback emitted a generic
- * "N activities". User feedback: "'activity' is a bit generic
- * when we have so many useful ways of presenting transparent,
- * and useful information whilst still being able to compactify".
- *
- * The new label picks the dominant category and emits
- * category-specific phrasing — "Edited 3 files", "Ran 2
- * commands", etc. — with a "+N more" suffix when the group
- * spans multiple categories.
+ * buildCompactGroupLabel is UNCHANGED — same-family groups resolve to
+ * a single-family label ("Read 3 files", "Edited 2 files"), and the
+ * function still defensively handles heterogeneous inputs.
  */
-describe('buildCompactGroupLabel (AS2b)', () => {
+describe('buildCompactGroupLabel', () => {
   it('keeps the descriptive read+search phrasing for pure read/search groups', () => {
     expect(
       buildCompactGroupLabel([
@@ -285,11 +233,6 @@ describe('buildCompactGroupLabel (AS2b)', () => {
   })
 
   it('picks the highest-count category as the dominant label', () => {
-    // 2 writes, 1 shell, 3 reads → reads dominate → "Read 3 files (+3 more)"
-    // But reads alone (pure read/search) doesn't qualify as heterogeneous,
-    // so we only test this when otherCount > 0. Here writes contribute
-    // to otherCount, so we land in the heterogeneous branch with reads
-    // as dominant.
     expect(
       buildCompactGroupLabel([
         activity({ id: 'r1', category: 'read', toolName: 'read_file' }),

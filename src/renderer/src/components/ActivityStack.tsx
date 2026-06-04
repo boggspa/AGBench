@@ -24,7 +24,6 @@ import { FileTypeIcon } from './FileTypeIcon'
 import { DigitOdometer } from './DigitOdometer'
 import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
-import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
@@ -809,35 +808,29 @@ export function buildCompactGroupLabel(activities: readonly ToolActivity[]): str
   return `${dominantLabel} (+${remainder} more)`
 }
 
-function isCompactGroupCandidate(activity: ToolActivity): boolean {
-  if (activity.status === 'error' || activity.status === 'running' || activity.status === 'pending')
-    return false
-  return activity.category === 'read' || isSearchActivity(activity)
+/** Family key for same-tool grouping — search is split from generic
+ * reads (distinct tools), everything else groups by category. */
+function activityFamilyKey(activity: ToolActivity): string {
+  if (isSearchActivity(activity)) return 'search'
+  return activity.category
 }
 
 /**
- * 1.0.4-AS2 — Ensemble-mode collapse predicate. In Ensemble chats
- * we collapse EVERY terminal activity (any non-running, non-pending
- * status across all categories) into the compact group above the
- * currently-running one — pattern (a) from the user's three
- * options: "Only the currently-running activity stays expanded;
- * everything terminal collapses into a `▾ N activities` group
- * above it."
- *
- * Errors are NOT compacted (they want to remain individually
- * visible so the user can act on them). Running + pending stay
- * inline so the active step is always readable.
+ * Whether an activity can fold into a same-tool compact group.
+ * Unified across single-provider + ensemble chats (1.0.74): every
+ * TERMINAL activity is groupable EXCEPT errors / running / pending
+ * (those stay inline so the active step + anything to act on is
+ * always readable) and `ensemble_yield` (the social-glue routing
+ * chip the user follows the conversation by).
  */
-function isEnsembleCollapseCandidate(activity: ToolActivity): boolean {
+function isGroupableActivity(activity: ToolActivity): boolean {
   if (activity.status === 'error' || activity.status === 'running' || activity.status === 'pending')
     return false
-  // 1.0.4-AS2 — `ensemble_yield` activities stay inline even in
-  // Ensemble chats. They're the social glue between turns
-  // (provider-tinted target chip + role name) carrying high-signal
-  // routing info, not the same category of "every-turn noise" that
-  // file reads / shell calls produce. Collapsing them would hide
-  // the @target chip the user relies on to follow the conversation.
-  // Match every aliased form: bare `ensemble_yield`,
+  // `ensemble_yield` activities stay inline even when terminal —
+  // they're the social glue between turns (provider-tinted target
+  // chip + role name) carrying high-signal routing info, not the
+  // every-turn noise that file reads / shell calls produce. Match
+  // every aliased form: bare `ensemble_yield`,
   // `mcp_AGBench_ensemble_yield` (Codex), `mcp__AGBench__ensemble_yield`
   // (Claude), and any future namespaced variant.
   const tool = (activity.toolName || '').toLowerCase()
@@ -846,54 +839,40 @@ function isEnsembleCollapseCandidate(activity: ToolActivity): boolean {
 }
 
 /**
- * 1.0.4-AS2 — `buildTimelineItems` is now provider/chat-mode aware.
+ * Group the activity timeline into same-tool compact groups (1.0.74).
  *
- * Default (single-provider chats): preserves the existing
- * read/search compact-group pattern with a min-group-size of 3
- * — the chats stay scannable when there are lots of activities
- * but small bursts inline naturally.
- *
- * Ensemble (`collapseAllTerminal: true`): every terminal
- * activity (any non-running, non-error status across every
- * category — read, write, shell, search, task) collapses into
- * the same compact group, and the threshold drops to 1 so even a
- * single completed activity collapses. The currently-running
- * activity stays expanded inline. Errors stay individually
- * visible so the user can act on them.
- *
- * The render component (`ActivityCompactGroup`) already handles
- * heterogeneous category mixes via its `visibleFamilies` icon
- * array — we just feed it more diverse activities.
+ * Unified across single-provider AND ensemble chats — both behave
+ * identically (consistency + clarity over per-mode cleverness). Runs
+ * of 2+ CONSECUTIVE terminal activities of the SAME family (reads,
+ * edits, shells, searches, tasks…) collapse into one expandable
+ * `compact-group`; clicking it reveals every call in the run
+ * (Codex/Claude-style). A family change breaks the run, so distinct
+ * tools never merge into a vague "used N tools" blob. Errors,
+ * running, pending and `ensemble_yield` stay inline.
  */
-export function buildTimelineItems(
-  activities: ToolActivity[],
-  options: { collapseAllTerminal?: boolean } = {}
-): ActivityTimelineItem[] {
+export function buildTimelineItems(activities: ToolActivity[]): ActivityTimelineItem[] {
   const items: ActivityTimelineItem[] = []
   let index = 0
-
-  const isCandidate = options.collapseAllTerminal
-    ? isEnsembleCollapseCandidate
-    : isCompactGroupCandidate
-  // 1.0.4-AS2b — keep single-activity entries inline even in
-  // Ensemble. A solitary terminal activity carries useful
-  // context (which file was edited, which command ran, the tool
-  // arguments etc.) that gets hidden behind a generic header
-  // when we collapse N=1 into a group. Both modes now require
-  // at least 2 consecutive activities before grouping — the
-  // visual win from grouping only materialises with two or more.
+  // A solitary terminal activity carries useful context (which file,
+  // which command, the args) that a group header hides — so require
+  // at least 2 consecutive same-family calls before grouping.
   const minGroupSize = 2
 
   while (index < activities.length) {
     const activity = activities[index]
-    if (!isCandidate(activity)) {
+    if (!isGroupableActivity(activity)) {
       items.push({ type: 'activity', activity })
       index += 1
       continue
     }
 
+    const familyKey = activityFamilyKey(activity)
     const group: ToolActivity[] = []
-    while (index < activities.length && isCandidate(activities[index])) {
+    while (
+      index < activities.length &&
+      isGroupableActivity(activities[index]) &&
+      activityFamilyKey(activities[index]) === familyKey
+    ) {
       group.push(activities[index])
       index += 1
     }
@@ -1522,15 +1501,16 @@ export function ActivityStack({
   // Phase L5 slice 3 — lifted expansion state. The set of ids that
   // are currently open. Single-open mode (default + always in
   // compactDensity) auto-collapses other rows when one expands;
-  // ⌘/Shift click opts into multi-open. The TurnReceiptCard's
-  // master toggle expands/collapses ALL expandable rows at once.
+  // ⌘/Shift click opts into multi-open. (1.0.74 — the per-turn
+  // master expand/collapse toggle was removed along with the
+  // turn-receipt strip; expansion is now purely per-row / per-group.)
   //
   // 1.0.6-TV2 — when the parent passes a controlled set + change
   // handler (transcript virtualisation), defer to those so expansion
   // survives unmount/remount; otherwise keep the original local state.
   // The wrapper resolves updater functions against the live value so
-  // every internal call site (`toggleExpand`, expand/collapse-all)
-  // keeps its `setExpandedIds(prev => ...)` shape unchanged.
+  // every internal call site (e.g. `toggleExpand`) keeps its
+  // `setExpandedIds(prev => ...)` shape unchanged.
   const [localExpandedIds, setLocalExpandedIds] = useExpandedIdsState()
   const isExpansionControlled =
     expandedActivityIds !== undefined && onExpandedActivityIdsChange !== undefined
@@ -1549,12 +1529,10 @@ export function ActivityStack({
   const allowMultiOpen = !compactDensity
 
   if (!activities || activities.length === 0) return null
-  // 1.0.4-AS2 — Ensemble chats collapse every terminal activity into
-  // the compact group so only the currently-running one stays
-  // expanded inline. Pattern (a) from the maintainer's three options. Solo
-  // chats keep the existing read/search compact-group behavior.
-  const collapseAllTerminal = chat?.chatKind === 'ensemble'
-  const timelineItems = buildTimelineItems(topLevelActivities, { collapseAllTerminal })
+  // 1.0.74 — same-tool grouping is unified across single + ensemble
+  // (no per-mode split): runs of 2+ consecutive same-family terminal
+  // activities fold into one expandable compact group.
+  const timelineItems = buildTimelineItems(topLevelActivities)
 
   const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
     return thread.toolActivityIds
@@ -1578,18 +1556,6 @@ export function ActivityStack({
       return next
     })
   }
-  const handleExpandAll = (): void => {
-    const all = new Set<string>()
-    for (const activity of topLevelActivities) {
-      all.add(activity.id)
-    }
-    setExpandedIds(all)
-  }
-  const handleCollapseAll = (): void => {
-    setExpandedIds(new Set())
-  }
-  const expandedCount = expandedIds.size
-
   return (
     <div className="activity-timeline">
       {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
@@ -1635,22 +1601,6 @@ export function ActivityStack({
           />
         )
       })}
-      {/* Phase L3 slice 5 — turn-receipt tape. Renders only when this
-       * tool group has ≥2 activities and nothing is still running.
-       * Pure derived render — no message, no history-replay concern.
-       * Slice 6 forwards `compactDensity` so the tape collapses to a
-       * one-line summary in compact mode.
-       * Phase L5 slice 3 — also forwards the expand/collapse-all
-       * handlers + current expanded count so the tape can host the
-       * master toggle button. */}
-      <TurnReceiptCard
-        activities={topLevelActivities}
-        compact={compactDensity}
-        expandedCount={expandedCount}
-        expandableCount={topLevelActivities.length}
-        onExpandAll={handleExpandAll}
-        onCollapseAll={handleCollapseAll}
-      />
     </div>
   )
 }
