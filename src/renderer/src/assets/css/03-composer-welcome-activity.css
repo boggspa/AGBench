@@ -2874,38 +2874,26 @@
   border-top: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
-/* Corner fix (ensemble only) — the TOP segment of the merged frame
+/* Corner fix (single + ensemble) — the TOP segment of the merged frame
  * showed HARD top corners that poked past the stack's rounded top
- * (dark + light). Two compounding causes, both addressed here:
- *   1. The first row sits flush at the frame top. `.ensemble-above-row`
- *      carries `overflow: hidden` + (from the merge `> *` rule above)
- *      `border-radius: 0`, so when it IS the first child it is a SQUARE
- *      clip box whose corners cut across the frame's rounded top. We
- *      round the actual first child's TOP corners so the frame radius
- *      shows through.
- *   2. `.ensemble-above-row::before` (shard 09) is a full-bleed
- *      `inset: 0` overlay with `border-radius: inherit`, which resolves
- *      to 0 inside this merge context — a square overlay. The prior fix
- *      targeted `> *:first-child::before`, but in a WORKSPACE-backed
- *      ensemble the first child is `.composer-above-bar` (whose ::before
- *      is killed to `background: none`), so it never reached the real
- *      offender. We round it BY CLASS instead, and only when the
- *      ensemble row is itself the first (top) child, with a full
- *      `border-radius` shorthand (top rounded, bottom square) so it
- *      defeats the inherited `0` outright.
- * Scoped to `.chat-kind-ensemble` + the native console-merge context;
- * single-provider shells are untouched. No `overflow: hidden` is added
- * to the stack — that would clip the participant / queued popovers. */
+ * (dark + light, BOTH shells). The first row sits flush at the frame
+ * top and carries `overflow: hidden` (`.composer-above-bar` shard 07 in
+ * single-provider, `.ensemble-above-row` shard 09 in ensemble) while the
+ * merge `> *` rule above sets `border-radius: 0` — so the first child is
+ * a SQUARE clip box whose corners cut across the frame's rounded top.
+ * Round the actual first child's TOP corners so the frame radius shows
+ * through (its own overflow-clip then rounds with it). The first-child
+ * rounding is UN-SCOPED (single + ensemble). For ensemble we ALSO round
+ * the first row's full-bleed `::before` tint overlay (shard 09,
+ * `border-radius: inherit` → 0); single-provider kills that ::before so
+ * it needs no rounding (rule below stays ensemble-only). No
+ * `overflow: hidden` is added to the stack — that would clip the
+ * participant / queued / Create-PR popovers. */
 [data-composer-style="default"]
-  .app-transcript.chat-kind-ensemble
+  .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
-  > *:first-child,
-[data-composer-style="default"]
-  .app-transcript.chat-kind-ensemble
-  .composer-area:has(.composer-above-bar-stack)
-  .composer-above-bar-stack
-  > .ensemble-above-row:first-child {
+  > *:first-child {
   border-top-left-radius: calc(var(--radius-lg) * 2.45);
   border-top-right-radius: calc(var(--radius-lg) * 2.45);
 }
