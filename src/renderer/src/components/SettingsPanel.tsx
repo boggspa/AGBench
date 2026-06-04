@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { MascotGhost } from './AppChromeSymbols'
 import type {
   AgenticNetworkPolicy,
   AgenticServiceId,
@@ -4718,6 +4719,7 @@ export function SettingsPanel({
             </div>
             {workspaces.length === 0 ? (
               <div className="settings-workspaces-empty" role="note">
+                <MascotGhost size={30} />
                 <strong>No workspaces yet.</strong>
                 <span>
                   Use <em>Add workspace</em> above to point AGBench at your first project folder.

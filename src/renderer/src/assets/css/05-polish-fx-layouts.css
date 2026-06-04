@@ -1982,6 +1982,16 @@
   font-size: var(--font-size-xs);
 }
 
+/* Friendlier empty states — a centred brand ghost above the copy. */
+.app-sidebar .sidebar-empty-state--ghost {
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+}
+.app-sidebar .sidebar-empty-state--ghost .mascot-ghost {
+  color: color-mix(in srgb, var(--text-primary) 34%, transparent);
+}
+
 .app-sidebar .run-summary {
   margin: 0 var(--space-md) var(--space-sm);
   border-radius: 14px;

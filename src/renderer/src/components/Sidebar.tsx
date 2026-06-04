@@ -7,6 +7,7 @@ import {
   type MouseEvent,
   type ReactNode
 } from 'react'
+import { MascotGhost } from './AppChromeSymbols'
 import type {
   WorkspaceRecord,
   ChatRecord,
@@ -2801,7 +2802,11 @@ export function Sidebar({
                     )
                   })}
                   {visibleGlobalChats.length === 0 && !isSidebarSearchActive && (
-                    <div className="sidebar-empty-state">No chats yet.</div>
+                    <div className="sidebar-empty-state sidebar-empty-state--ghost">
+                      <MascotGhost size={28} />
+                      <strong>No chats yet</strong>
+                      <span>Hit + above to start one.</span>
+                    </div>
                   )}
                 </div>
               )}
