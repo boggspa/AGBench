@@ -2755,6 +2755,41 @@
   box-shadow: none !important;
 }
 
+/* ── Console alignment: ABOVE-ROWS match the solid frame ─────────────
+ * The Ensemble row, the Create-PR / Review row, and the Steer/Queue row
+ * used the OLD composer look — `var(--composer-bg)` theme tone + a themed
+ * side-vignette (::before) — the very treatment the console redesign
+ * replaced on the surface. That left them clashing with the new solid
+ * black/white frame below. Re-skin them to match the frame: solid pure
+ * black (dark) / white (light) fill, vignette killed, with a neutral
+ * hairline rim for definition. Provider colour stays on the chips, so the
+ * whole stack (rows + composer) reads as one cohesive instrument. Native
+ * chat composers only (single + ensemble); other shells untouched. */
+[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: color-mix(in srgb, var(--text-primary) 17%, transparent);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
 /* INNER module — the readable input. NORMAL theme-tone surface so
  * the textarea + controls always sit on theme tone (light-on-dark
  * / dark-on-light), NEVER on the inverted contrast glass. Seated
