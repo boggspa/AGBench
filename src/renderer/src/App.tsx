@@ -176,7 +176,10 @@ import {
   rebindWelcomeEnsembleChatToGlobal,
   rebindWelcomeEnsembleChatToWorkspace
 } from './lib/ensembleWelcomeWorkspace'
-import { withSessionActivityLedger } from './lib/sessionActivityLedger'
+import {
+  deriveParticipantRenameContinuity,
+  withSessionActivityLedger
+} from './lib/sessionActivityLedger'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -4440,6 +4443,19 @@ export const TranscriptPanel = memo(
                           currentProviderLabel,
                           currentProvider
                         )
+                        // 1.0.7 — participant-rename continuity. The
+                        // header keeps the FROZEN role label; this quiet
+                        // badge tells the reader the seat has since been
+                        // renamed (e.g. "Planner" here is the seat now
+                        // called "Architect") so they can follow one
+                        // participant across a mid-session rename. Ledger-
+                        // preferred, with a frozen-vs-current fallback —
+                        // see deriveParticipantRenameContinuity.
+                        const renameContinuity = deriveParticipantRenameContinuity(
+                          msg,
+                          currentChat?.ensemble?.participants,
+                          currentChat?.ensemble?.sessionActivityLedger
+                        )
                         return (
                           <div className={`message-meta${provider ? ` provider-${provider}` : ''}`}>
                             <span className="message-meta-label">{label}</span>
@@ -4450,6 +4466,15 @@ export const TranscriptPanel = memo(
                                 aria-label={`Model ${modelBadge}`}
                               >
                                 {modelBadge}
+                              </span>
+                            )}
+                            {renameContinuity && (
+                              <span
+                                className="message-meta-renamed-from"
+                                title={`Now: ${renameContinuity.currentRole}`}
+                                aria-label={`Renamed from ${renameContinuity.fromRole}; now ${renameContinuity.currentRole}`}
+                              >
+                                renamed from {renameContinuity.fromRole}
                               </span>
                             )}
                           </div>

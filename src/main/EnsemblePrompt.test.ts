@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEnsembleParticipantPrompt,
+  buildParticipantTokenMap,
   formatRoundModeInstructions,
   formatSameProviderDisambiguationNote,
   formatToolTraceSummary,
@@ -381,8 +382,10 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'Walk through this codebase.',
       roundId: 'round-1'
     })
-    // Roster marker present for the first speaker
-    expect(prompt).toContain('Claude / Reviewer (you — first speaker)')
+    // Roster marker present for the first speaker. 1.0.7 — the
+    // rename-stable handle `#p1` now sits between the role and the
+    // position marker (Claude's id sorts first → `p1`).
+    expect(prompt).toContain('Claude / Reviewer #p1 (you — first speaker)')
     // Scoping rule present in the Rules section
     expect(prompt).toContain('SPEAKING FIRST in a multi-participant round')
     expect(prompt).toContain('Scope the problem and propose a direction')
@@ -401,7 +404,8 @@ describe('Ensemble prompt composition', () => {
     // 1.0.4-AJ — middle slot now carries an explicit position
     // count ("you — position 2 of 3") to give the model a turn-
     // awareness signal. The first-speaker rule itself stays off.
-    expect(prompt).toContain('Codex / Worker (you — position 2 of 3)')
+    // 1.0.7 — `#p2` (Codex's id sorts second) sits before the marker.
+    expect(prompt).toContain('Codex / Worker #p2 (you — position 2 of 3)')
     expect(prompt).not.toContain('first speaker')
     expect(prompt).not.toContain('SPEAKING FIRST')
   })
@@ -421,8 +425,9 @@ describe('Ensemble prompt composition', () => {
       roundId: 'round-1'
     })
     // Even for the single participant, no "first speaker" framing
-    // since there's no second/third speaker to defer to.
-    expect(prompt).toContain('Claude / Reviewer (you)')
+    // since there's no second/third speaker to defer to. 1.0.7 — a
+    // solo roster still gets a handle (`#p1`) for tag consistency.
+    expect(prompt).toContain('Claude / Reviewer #p1 (you)')
     expect(prompt).not.toContain('first speaker')
     expect(prompt).not.toContain('SPEAKING FIRST')
   })
@@ -443,7 +448,7 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'Close out the round.',
       roundId: 'round-1'
     })
-    expect(prompt).toContain('Gemini / Researcher (you — last speaker, position 3 of 3)')
+    expect(prompt).toContain('Gemini / Researcher #p3 (you — last speaker, position 3 of 3)')
     expect(prompt).toContain('SPEAKING LAST in this turn-bound round')
     expect(prompt).toContain('position 3 of 3')
     expect(prompt).toContain('`ensemble_yield(target: ...)` cannot route')
@@ -462,7 +467,8 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).not.toContain('SPEAKING LAST')
     expect(prompt).not.toContain('last speaker')
     // Middle slot in 3+ round gets the bare position marker
-    expect(prompt).toContain('Codex / Worker (you — position 2 of 3)')
+    // (1.0.7 — with the `#p2` handle ahead of it).
+    expect(prompt).toContain('Codex / Worker #p2 (you — position 2 of 3)')
   })
 
   it('does NOT emit the last-speaker rule in continuous orchestration mode', () => {
@@ -486,8 +492,8 @@ describe('Ensemble prompt composition', () => {
     // Continuous-mode speaker at the bottom of the roster still
     // gets a position marker for context (the round can extend
     // via the hop budget; "position 3 of 3" reflects roster
-    // position, not a hard-end).
-    expect(prompt).toContain('Gemini / Researcher (you — position 3 of 3)')
+    // position, not a hard-end). 1.0.7 — `#p3` handle ahead of it.
+    expect(prompt).toContain('Gemini / Researcher #p3 (you — position 3 of 3)')
   })
 
   it('emits the hops-near-cap rule when continuous round is near its limit', () => {
@@ -650,6 +656,186 @@ describe('Ensemble prompt composition', () => {
       'refer to the active workspace named in `Round subject:` above, NOT to AGBench'
     )
     expect(prompt).not.toContain('self-reflective mode')
+  })
+})
+
+/*
+ * 1.0.7 — rename-stable participant handle (`#pN`) in the agent-
+ * visible tag.
+ *
+ * The handle is derived from a STABLE ordering of the roster by the
+ * immutable participant id (NOT `order`, NOT `role`), so a seat keeps
+ * the same `#pN` across role renames + speaking-order reshuffles. It's
+ * an identity anchor — `#`-prefixed so it can never resolve as an
+ * `@`-mention — that lets a reader tie a renamed seat's later messages
+ * back to its earlier frozen-role messages.
+ */
+describe('buildParticipantTokenMap (1.0.7 stable handle)', () => {
+  it('assigns p1..pN by stable id sort, independent of speaking order', () => {
+    // Speaking `order` is deliberately reversed vs id sort to prove
+    // the token tracks the id, not the order.
+    const map = buildParticipantTokenMap([
+      { ...ensemble.participants[0], id: 'gemini', order: 1 },
+      { ...ensemble.participants[1], id: 'codex', order: 2 },
+      { ...ensemble.participants[2], id: 'claude', order: 3 }
+    ])
+    // claude < codex < gemini lexicographically.
+    expect(map.get('claude')).toBe('p1')
+    expect(map.get('codex')).toBe('p2')
+    expect(map.get('gemini')).toBe('p3')
+  })
+
+  it('is stable across a role rename (token keyed on id, not role)', () => {
+    const before = buildParticipantTokenMap([
+      { ...ensemble.participants[0], id: 'seat-a', role: 'Planner' },
+      { ...ensemble.participants[1], id: 'seat-b', role: 'Worker' }
+    ])
+    const after = buildParticipantTokenMap([
+      { ...ensemble.participants[0], id: 'seat-a', role: 'Architect' }, // renamed
+      { ...ensemble.participants[1], id: 'seat-b', role: 'Worker' }
+    ])
+    expect(after.get('seat-a')).toBe(before.get('seat-a'))
+    expect(after.get('seat-b')).toBe(before.get('seat-b'))
+  })
+
+  it('is stable across a speaking-order reshuffle', () => {
+    const before = buildParticipantTokenMap([
+      { ...ensemble.participants[0], id: 'seat-a', order: 1 },
+      { ...ensemble.participants[1], id: 'seat-b', order: 2 }
+    ])
+    const after = buildParticipantTokenMap([
+      { ...ensemble.participants[1], id: 'seat-b', order: 1 }, // moved up
+      { ...ensemble.participants[0], id: 'seat-a', order: 2 }
+    ])
+    expect(after.get('seat-a')).toBe(before.get('seat-a'))
+    expect(after.get('seat-b')).toBe(before.get('seat-b'))
+  })
+
+  it('dedupes repeated ids and tolerates an empty roster', () => {
+    expect(buildParticipantTokenMap(undefined).size).toBe(0)
+    expect(buildParticipantTokenMap([]).size).toBe(0)
+    const dup = buildParticipantTokenMap([
+      { ...ensemble.participants[0], id: 'x' },
+      { ...ensemble.participants[1], id: 'x' }
+    ])
+    expect(dup.size).toBe(1)
+    expect(dup.get('x')).toBe('p1')
+  })
+})
+
+describe('Ensemble tag carries the #pN handle (1.0.7)', () => {
+  function chatWithParticipantMessages(): ChatRecord {
+    const base = chat()
+    // Stamp ensembleParticipantId so the tag can resolve a seat token.
+    return {
+      ...base,
+      messages: [
+        {
+          id: 'u1',
+          role: 'user',
+          content: 'Initial request',
+          timestamp: '2026-05-24T00:00:00.000Z'
+        },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: 'Review response',
+          timestamp: '2026-05-24T00:00:01.000Z',
+          metadata: {
+            ensembleProvider: 'claude',
+            ensembleRole: 'Reviewer',
+            ensembleParticipantId: 'claude'
+          }
+        }
+      ]
+    }
+  }
+
+  it('appends #pN to the transcript tag for a message with a roster-resolved id', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chatWithParticipantMessages(),
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2',
+      chatContextTurns: 4
+    })
+    // claude sorts first → #p1.
+    expect(prompt).toContain('[Claude / Reviewer #p1]')
+  })
+
+  it('keeps the frozen role but the CURRENT seat handle after a rename (continuity)', () => {
+    // The historical message froze role "Reviewer"; the roster has
+    // since renamed that same id to "Critic". The transcript tag must
+    // keep the FROZEN role (Reviewer) yet still carry the stable seat
+    // handle (#p1) so a reader can tie the two together.
+    const renamedConfig: EnsembleConfig = {
+      ...ensemble,
+      participants: ensemble.participants.map((p) =>
+        p.id === 'claude' ? { ...p, role: 'Critic' } : p
+      )
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chatWithParticipantMessages(),
+      config: renamedConfig,
+      participant: renamedConfig.participants[1],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2',
+      chatContextTurns: 4
+    })
+    // Frozen role retained in the transcript line...
+    expect(prompt).toContain('[Claude / Reviewer #p1]')
+    // ...and the CURRENT roster line shows the renamed role with the
+    // SAME handle, anchoring the identity across the rename.
+    expect(prompt).toContain('Claude / Critic #p1')
+  })
+
+  it('omits the handle for a message whose id is no longer in the roster', () => {
+    const base = chatWithParticipantMessages()
+    const orphan: ChatRecord = {
+      ...base,
+      messages: [
+        ...base.messages,
+        {
+          id: 'a2',
+          role: 'assistant',
+          content: 'Departed participant response',
+          timestamp: '2026-05-24T00:00:02.000Z',
+          metadata: {
+            ensembleProvider: 'kimi',
+            ensembleRole: 'Coder',
+            ensembleParticipantId: 'removed-seat'
+          }
+        }
+      ]
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: orphan,
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2',
+      chatContextTurns: 4
+    })
+    // No roster seat for `removed-seat` → bare provider/role tag.
+    expect(prompt).toContain('[Kimi / Coder]')
+    expect(prompt).not.toContain('Kimi / Coder #')
+  })
+
+  it('leaves messages without an ensembleParticipantId in the bare tag form', () => {
+    // The base fixture message (a1) here intentionally has NO
+    // participant id — older transcript rows predate the id stamp.
+    const base = chat() // unmodified: a1 lacks ensembleParticipantId
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: base,
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2',
+      chatContextTurns: 4
+    })
+    expect(prompt).toContain('[Claude / Reviewer]')
+    expect(prompt).not.toContain('[Claude / Reviewer #')
   })
 })
 

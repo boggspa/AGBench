@@ -149,7 +149,18 @@ function applyChairSummaryOrder(
 
 export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput): string {
   const orderedParticipants = getOrderedEnsembleParticipants(input.config, input.currentPrompt)
-  const participantLabel = `${providerLabel(input.participant.provider)} / ${input.participant.role || 'Participant'}`
+  // 1.0.7 — rename-stable participant handles (`#p3`) keyed on the
+  // immutable participant id. Built from the FULL roster (not just the
+  // enabled/ordered subset) so a message authored by a participant who
+  // was later disabled still resolves to its seat token, and so the
+  // self-label, roster lines, and tagged transcript all reference the
+  // SAME handle. See `buildParticipantTokenMap` for the derivation +
+  // why the `#`-prefixed token is resolver-safe.
+  const participantTokens = buildParticipantTokenMap(input.config.participants)
+  const selfToken = participantTokens.get(input.participant.id)
+  const participantLabel = `${providerLabel(input.participant.provider)} / ${input.participant.role || 'Participant'}${
+    selfToken ? ` #${selfToken}` : ''
+  }`
   const orchestrationMode =
     input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
   const maxContinuationHops = input.config.maxContinuationHops || 6
@@ -256,7 +267,15 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         modelHintRaw ? `@${titleCase(modelHintRaw)}` : ''
       ].filter(Boolean)
       const hint = hintTokens.length ? ` — address with ${hintTokens.join(' or ')}` : ''
-      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}${hint}`
+      // 1.0.7 — rename-stable handle (`#p3`). Placed right after the
+      // role so the roster line mirrors the transcript tag form
+      // (`Provider / Role #pN`). It's an identity anchor, not an
+      // addressing form — the `@Role` / `@Model` hints above remain
+      // the routing handles; `#pN` lets a reader (human or agent)
+      // tie a renamed seat back to its earlier frozen-role messages.
+      const rosterToken = participantTokens.get(participant.id)
+      const tokenSuffix = rosterToken ? ` #${rosterToken}` : ''
+      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${tokenSuffix}${marker}${hint}`
     })
     .join('\n')
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
@@ -267,7 +286,14 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // skipped. Either both ship together or neither does.
   const hasWorkspaceStanza = workspaceStanza !== null
   const sessionEventsStanza = formatSessionEventsStanza(input.config)
-  const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
+  // Threaded into the tagged-transcript builder so every
+  // `[Provider / Role #pN]` header carries the same handle the
+  // roster + self-label use.
+  const transcript = buildTaggedTranscript(
+    input.chat.messages || [],
+    input.chatContextTurns || 8,
+    participantTokens
+  )
 
   return [
     'AGBench Ensemble Mode',
@@ -563,14 +589,71 @@ export function formatToolTraceSummary(activities: readonly ToolActivity[] | und
   return `(tools: ${segments.join(' · ')}${suffix})`
 }
 
-function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): string {
+/**
+ * 1.0.7 — stable per-participant handle for the agent-visible
+ * transcript tag (`[Codex / Planner #p3]`).
+ *
+ * Problem it solves: the tag historically carried only `provider /
+ * role`. When the user renames a participant's role mid-session
+ * ("Planner" → "Architect"), agents lost the thread — there was no
+ * rename-stable identifier they could anchor on to address a peer
+ * across the change. The role is mutable; the model name can be
+ * shared by multiple participants; only the participant **id** is
+ * both stable and unique. But the raw id (`ensemble-participant-7`,
+ * or a base36-timestamp fallback) is long + opaque — unfit for an
+ * inline tag every model reads each round.
+ *
+ * The token derives a short, readable `pN` handle from a STABLE
+ * ordering of the roster by participant id (NOT by `order`, which
+ * the user can reshuffle, and NOT by `role`, which they can
+ * rename). Sorting by the immutable id means a given participant
+ * keeps the same `pN` across renames AND reorders — the exact
+ * mutations this feature targets. (Adding/removing a roster member
+ * can shift the indices, since they're roster-relative; that's an
+ * accepted trade-off for a readable sequential form, and matches
+ * the "unique within the roster" contract rather than a globally
+ * frozen handle.)
+ *
+ * The `#`-prefix is deliberate and load-bearing for resolver
+ * safety: `EnsembleMentionAlias`'s `MENTION_REGEX` requires a
+ * LETTER immediately after `@`, so `@#p3` can never match as a
+ * standalone mention — the token cannot be mistaken for, or
+ * resolve to, a participant. When an agent copies the full role
+ * form `@Planner #p3`, the resolver consumes `planner` (the role
+ * alias) and leaves ` #p3` as trailing prose, exactly as it would
+ * any other trailing word. The token is purely additive: it adds
+ * NO alias to the resolver and widens NO contract.
+ */
+export function buildParticipantTokenMap(
+  participants: readonly EnsembleParticipant[] | undefined
+): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!participants || participants.length === 0) return map
+  // Stable ordering keyed on the immutable id so the token survives
+  // role renames + speaking-order reshuffles. Dedupe ids defensively
+  // (a malformed roster could repeat one) so each id maps to exactly
+  // one token.
+  const ids = Array.from(new Set(participants.map((p) => p.id).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
+  )
+  ids.forEach((id, index) => {
+    map.set(id, `p${index + 1}`)
+  })
+  return map
+}
+
+function buildTaggedTranscript(
+  messages: ChatMessage[],
+  contextTurns: number,
+  participantTokens?: Map<string, string>
+): string {
   const relevant = messages
     .filter((message) => message.role !== 'tool')
     .slice(-Math.max(1, contextTurns * 2))
   const lines: string[] = []
   let used = 0
   for (const message of relevant) {
-    const tag = messageTag(message)
+    const tag = messageTag(message, participantTokens)
     // M6 (1.0.7) — thinking-ephemerality. Strip any inlined reasoning chain
     // from a message authored by an ephemeral-reasoning provider before it
     // enters FUTURE-round context, keyed on the message's own authoring
@@ -599,13 +682,28 @@ function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): s
   return lines.join('\n\n')
 }
 
-function messageTag(message: ChatMessage): string {
+function messageTag(message: ChatMessage, participantTokens?: Map<string, string>): string {
   if (message.role === 'user') return 'User'
   if (message.role === 'assistant') {
     const provider = message.metadata?.ensembleProvider as ProviderId | undefined
     const role =
       typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
-    if (provider) return `${providerLabel(provider)}${role ? ` / ${role}` : ''}`
+    if (provider) {
+      // 1.0.7 — append the rename-stable participant handle (`#p3`)
+      // when this message carries an `ensembleParticipantId` that maps
+      // to a CURRENT roster seat. Messages from a participant since
+      // removed from the roster (or older messages predating the id
+      // stamp) carry no token and fall back to the bare provider/role
+      // form. See `buildParticipantTokenMap` for why the token is
+      // resolver-safe.
+      const participantId =
+        typeof message.metadata?.ensembleParticipantId === 'string'
+          ? message.metadata.ensembleParticipantId
+          : ''
+      const token = participantId ? participantTokens?.get(participantId) : undefined
+      const tokenSuffix = token ? ` #${token}` : ''
+      return `${providerLabel(provider)}${role ? ` / ${role}` : ''}${tokenSuffix}`
+    }
     return 'Assistant'
   }
   if (message.role === 'error') return 'Error'

@@ -2824,6 +2824,34 @@
   opacity: 0.6;
 }
 
+/* 1.0.7 — participant-rename continuity note. Sits after the speaker
+ * label (and model badge, when present) as a quiet "renamed from
+ * Planner" aside so a reader can tell a renamed seat's earlier
+ * frozen-role messages belong to the participant now under a new
+ * name. Deliberately understated: it reads as muted meta-text
+ * (NOT the bold provider tint — `--text-muted` rather than the
+ * `color: inherit` the model badge uses) and italic so it never
+ * competes with the identity label it annotates. The leading `·`
+ * mirrors the model-badge separator so the row stays one coherent
+ * typographic line, and it respects the maintainer's rim-highlight
+ * direction by adding no border/background of its own. */
+.message-meta-renamed-from {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  opacity: 0.85;
+  font-weight: 400;
+  font-style: italic;
+  position: relative;
+}
+.message-meta-renamed-from::before {
+  content: '·';
+  display: inline-block;
+  margin-right: var(--space-sm);
+  font-style: normal;
+  opacity: 0.6;
+}
+
 /* Provider-tinted assistant message labels. Each assistant message
  * gets a `.provider-{name}` class hook on its `.message-meta`
  * element so the per-message speaker label ("Codex" / "Claude /
