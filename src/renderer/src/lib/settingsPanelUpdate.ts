@@ -1,0 +1,56 @@
+import type {
+  AppSettings,
+  AgenticServicesSettings,
+  NativeSubAgentRequestPolicy,
+  GeminiApiRuntimeMode,
+  CodexSandboxFallbackMode,
+  ProductUpdateChannel
+} from '../../../main/store/types'
+
+export type SettingsPanelUpdate = {
+  mode?: AppSettings['appearanceMode']
+  visualEffectStyle?: AppSettings['visualEffectStyle']
+  themeAppearance?: AppSettings['themeAppearance']
+  themeCornerStyle?: AppSettings['themeCornerStyle']
+  themeAccentStyle?: AppSettings['themeAccentStyle']
+  toolIconAccent?: AppSettings['toolIconAccent']
+  userBubbleColor?: AppSettings['userBubbleColor']
+  promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
+  composerStyle?: AppSettings['composerStyle']
+  transcriptFontFamily?: AppSettings['transcriptFontFamily']
+  composerFontFamily?: AppSettings['composerFontFamily']
+  funFxEnabled?: boolean
+  funFxMode?: AppSettings['funFxMode']
+  advancedFx?: AppSettings['advancedFx']
+  reduceTransparency?: boolean
+  reduceMotion?: boolean
+  compactDensity?: boolean
+  geminiCheckpointingEnabled?: boolean
+  // Phase M1 Step 6 — Gemini API vs CLI runtime selection. See
+  // GeminiApiRuntimeMode in main/store/types.ts. Defaults to 'auto'.
+  geminiApiRuntime?: GeminiApiRuntimeMode
+  chatContextTurns?: number
+  /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
+  currency?: AppSettings['currency']
+  /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
+  currencyOverestimatePercent?: AppSettings['currencyOverestimatePercent']
+  /**
+   * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
+   * visibility map + global "reset all" timestamp). See
+   * AppSettings.dashboardStatPrefs for the persisted shape.
+   */
+  dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
+  welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
+  /** 1.0.5-EW26 — Kimi compatibility filter. */
+  kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
+  kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
+  claudeBinaryPath?: string
+  kimiBinaryPath?: string
+  agenticServices?: AgenticServicesSettings
+  nativeSubAgentRequests?: NativeSubAgentRequestPolicy
+  autoResumeParentOnSubThreadCompletion?: boolean
+  geminiMcpBridgeEnabled?: boolean
+  codexSandboxFallback?: CodexSandboxFallbackMode
+  updateChannel?: ProductUpdateChannel
+  approvalTimeouts?: AppSettings['approvalTimeouts']
+}

@@ -1,0 +1,201 @@
+interface CodexModelOption {
+  id: string
+  label?: string
+  description?: string
+  isDefault?: boolean
+  supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>
+  defaultReasoningEffort?: string | null
+  additionalSpeedTiers?: string[]
+  /** 1.0.7-mini — ISO date (YYYY-MM-DD) when this model is retired by the
+   * provider. When set, the model picker renders a small clock + ordinal-
+   * date pill on the row (red, !important-styled so theme/shell rules can't
+   * override the warning colour). Pre-1.0.7 this was baked into `label` as
+   * "(retiring Jun 2)" which (a) flashed on first paint then resolved away
+   * via `modelDisplayName.ts` and (b) wasn't machine-readable. Drop this
+   * field once the model is actually removed from the list. */
+  retiresAt?: string
+}
+
+const CODEX_DEFAULT_MODELS = [
+  {
+    id: 'gpt-5.5',
+    label: 'GPT-5.5',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium',
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'gpt-5.4',
+    label: 'GPT-5.4',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium',
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4 Mini',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low' },
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+    // No Fast tier — per product spec only 5.5 + 5.4 retain Fast.
+  },
+  {
+    id: 'gpt-5.3-codex-spark',
+    label: 'GPT-5.3 Codex Spark',
+    supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
+    defaultReasoningEffort: 'low'
+    // Fast tier removed alongside 5.3 — see note above.
+  }
+  // gpt-5.2 and gpt-5.3-codex were HARD-retired (the API rejects requests for
+  // them) and removed from the picker. The authoritative removal lives in the
+  // main process (CODEX_RETIRED_MODEL_IDS, applied in the get-agent-models
+  // handler); this renderer fallback list is only shown on mount before IPC
+  // resolves / on IPC failure, so it's kept in sync by deletion here.
+] satisfies CodexModelOption[]
+const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id
+const CLAUDE_THINKING_EFFORTS = [
+  { reasoningEffort: 'off' },
+  { reasoningEffort: 'low' },
+  { reasoningEffort: 'medium' },
+  { reasoningEffort: 'high' }
+]
+const CLAUDE_DEFAULT_MODELS = [
+  {
+    id: 'default',
+    label: 'Default',
+    description: 'Claude Code configured default',
+    isDefault: true,
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
+    description: 'Most capable — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-8-1m',
+    label: 'Claude Opus 4.8 1M',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    // 1M variants are intentionally excluded from the paid Fast tier.
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6',
+    description: 'Balanced — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7 Legacy',
+    description: 'Previous Opus — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-7-1m',
+    label: 'Claude Opus 4.7 1M Legacy',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
+    id: 'claude-opus-4-6',
+    label: 'Claude Opus 4.6 Legacy',
+    description: 'Previous Opus generation',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  }
+] satisfies CodexModelOption[]
+const KIMI_DEFAULT_MODELS = [
+  { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI model', isDefault: true }
+] satisfies CodexModelOption[]
+const KIMI_DEFAULT_MODEL = KIMI_DEFAULT_MODELS[0].id
+// Single source of truth for Gemini's composer model list. Mirrors the
+// claude/kimi constants above so `getProviderModelOptions` returns the
+// same `CodexModelOption[]` shape for every provider and the composer's
+// `<option>` rendering no longer needs a Gemini-only inline branch.
+const GEMINI_DEFAULT_MODELS = [
+  { id: 'cli-default', label: 'CLI Default', isDefault: true },
+  { id: 'auto', label: 'Auto' },
+  { id: 'pro', label: 'Pro' },
+  { id: 'flash', label: 'Flash' },
+  { id: 'flash-lite', label: 'Flash Lite' }
+] satisfies CodexModelOption[]
+// Grok — `grok-build` is the real CLI model id (`grok models` → default). It is
+// Grok Build 0.1 (xAI's agentic-coding model: 256K ctx, $1/$2 per 1M) — NOT
+// "Grok 4.3", a separate xAI API model the subscription Grok Build CLI doesn't
+// expose. (The TUI `/model` confirms "Grok Build (current)".) grok-4.3 /
+// grok-code-fast can be added here if/when `grok -m` exposes them under the
+// cached SuperGrok auth.
+const GROK_DEFAULT_MODELS = [
+  { id: 'grok-build', label: 'Grok Build 0.1', isDefault: true }
+] satisfies CodexModelOption[]
+// Cursor (Composer 2.5). Two selectable variants = the model + its Fast mode
+// (the Fast toggle modelled as a second model id, like Cursor's own picker).
+// composer-2.5-fast is Cursor's default; composer-2.5 is the slower/normal tier.
+const CURSOR_DEFAULT_MODELS = [
+  { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
+  { id: 'composer-2.5', label: 'Composer 2.5' }
+] satisfies CodexModelOption[]
+const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
+const CLAUDE_MODEL_IDS = new Set([
+  'default',
+  'sonnet',
+  'opus',
+  'haiku',
+  'custom',
+  'claude-opus-4-8',
+  'claude-opus-4-8-1m',
+  'claude-opus-4-7',
+  'claude-opus-4-7-1m',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'claude-opus-4-6'
+])
+const KIMI_MODEL_IDS = new Set(KIMI_DEFAULT_MODELS.map((model) => model.id))
+const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
+const isCodexModelId = (modelId: string): boolean =>
+  modelId.startsWith('gpt-') || modelId.includes('codex')
+const isClaudeModelId = (modelId: string): boolean =>
+  CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
+const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
+const normalizeProviderModelKey = (model?: string | null): string =>
+  String(model || '')
+    .trim()
+    .toLowerCase()
+
+export type { CodexModelOption }
+export {
+  CODEX_DEFAULT_MODELS,
+  CODEX_DEFAULT_MODEL,
+  CLAUDE_THINKING_EFFORTS,
+  CLAUDE_DEFAULT_MODELS,
+  KIMI_DEFAULT_MODELS,
+  KIMI_DEFAULT_MODEL,
+  GEMINI_DEFAULT_MODELS,
+  GROK_DEFAULT_MODELS,
+  CURSOR_DEFAULT_MODELS,
+  GEMINI_MODEL_IDS,
+  CLAUDE_MODEL_IDS,
+  KIMI_MODEL_IDS,
+  isGeminiModelId,
+  isCodexModelId,
+  isClaudeModelId,
+  isKimiModelId,
+  normalizeProviderModelKey
+}

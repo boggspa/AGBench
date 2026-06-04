@@ -34,7 +34,6 @@ import {
   AgenticServicesSettings,
   AgenticWorkspaceGrant,
   AgenticServiceId,
-  NativeSubAgentRequestPolicy,
   GeminiApiRuntimeMode,
   GeminiMcpBridgeStatus,
   CodexSandboxFallbackMode,
@@ -63,11 +62,80 @@ import {
 import {
   canonicalizeExternalPathGrantMetadata,
   collectExternalPathGrantsFromMetadata,
-  coalesceExternalPathGrants,
   reorderExternalPathGrantsByPath
 } from '../../main/store/ExternalPathGrants'
 import { describeExternalPath } from './lib/ExternalPathRepoDetect'
 import type { ExternalPathGitMetadata } from './lib/ExternalPathRepoDetect'
+import type {
+  ModelUsageAggregate,
+  UsageWindowAggregate,
+  UsageBalanceAggregate
+} from './lib/usageAggregateTypes'
+export type {
+  ModelUsageAggregate,
+  UsageWindowAggregate,
+  UsageBalanceAggregate
+} from './lib/usageAggregateTypes'
+import { isNativeSubAgentPreferenceApproval } from './lib/agentApprovalTypes'
+import type { AgentApprovalAction, AgentApprovalRequest } from './lib/agentApprovalTypes'
+import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeFormat'
+import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
+import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
+import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
+import {
+  MIN_RIGHT_PANEL_WIDTH,
+  MAX_RIGHT_PANEL_WIDTH,
+  MIN_WORKSPACE_SIDEBAR_WIDTH,
+  MAX_WORKSPACE_SIDEBAR_WIDTH,
+  clampPanelWidth,
+  clampWorkspaceSidebarWidth,
+  getStoredFileEditorWidth,
+  getStoredWorkspaceSidebarWidth
+} from './lib/panelWidths'
+import { getProviderLabel, providerModelColorClass } from './lib/providerLabels'
+import {
+  GLOBAL_USAGE_WORKSPACE_ID,
+  getChatProvider,
+  getChatScope,
+  isGlobalChat,
+  getUsageWorkspaceIdForChat
+} from './lib/chatScope'
+import { renderAgentApprovalPreview } from './lib/agentApprovalPreview'
+import {
+  CODEX_DEFAULT_MODELS,
+  CODEX_DEFAULT_MODEL,
+  CLAUDE_THINKING_EFFORTS,
+  CLAUDE_DEFAULT_MODELS,
+  KIMI_DEFAULT_MODELS,
+  KIMI_DEFAULT_MODEL,
+  GEMINI_DEFAULT_MODELS,
+  GROK_DEFAULT_MODELS,
+  CURSOR_DEFAULT_MODELS,
+  isGeminiModelId,
+  isCodexModelId,
+  isClaudeModelId,
+  isKimiModelId,
+  normalizeProviderModelKey
+} from './lib/providerModelDefaults'
+import type { CodexModelOption } from './lib/providerModelDefaults'
+import {
+  WORKTREE_DIFF_UNAVAILABLE_TEXT,
+  createWorktreeDiffUnavailable,
+  resolveGeminiWorktreeConfig,
+  isGeminiWorktreeDiffUnavailable,
+  getDiffWorkspacePath
+} from './lib/geminiWorktree'
+import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
+import {
+  buildChatTokenTally,
+  formatThreadTokenTally,
+  formatEnsembleTokenBreakdown
+} from './lib/threadTokenTally'
+import { formatAssistantMessageLabel } from './lib/assistantMessageLabel'
+import { buildCodexUsageWindows } from './lib/codexUsageWindows'
+import type { QueuedRunRequest, RunRouteEventPayload, ActiveRunContext } from './lib/runRequestTypes'
+import { MessageActionsChip } from './components/MessageActionsChip'
+import { CockpitPanel } from './components/CockpitPanel'
 import {
   createToolActivity,
   pairToolResult,
@@ -291,9 +359,7 @@ import { AgentQuestionCard, type AgentQuestionState } from './components/AgentQu
 import {
   extractModelUsageEntriesFromStats,
   extractResetHintsFromText,
-  extractUsageCostUsd,
   extractUsageCount,
-  extractUsageCountsFromCandidate,
   extractUsageLimits,
   isProviderExecutionToolEvent,
   mergeUsageReset,
@@ -337,81 +403,6 @@ import {
 } from './components/FxLayers'
 import { ComposerCumulativeTimecode, ComposerRunTimecode } from './components/ComposerTimecodes'
 
-// Phase L6 slice 1 — exported so `ModelUsageCard` (and the related
-// per-provider block + heatmap) can type their props off the same
-// shapes that App.tsx already produces in `refreshUsageSummary`.
-// No data-shape changes; just visibility for sibling components.
-//
-// Phase L6 slice 2 — `planName` added as an optional tier-badge
-// string (e.g. "Pro", "Max x5", "Moderato", "Google Account"). The
-// `refreshUsageSummary` codepath leaves it `undefined` for now;
-// per-provider subscription detection lands in a follow-up. The
-// ModelUsageCard renders the badge pill only when this field is
-// present + non-empty, so undefined values are visually inert.
-export interface ModelUsageAggregate {
-  provider: ProviderId
-  model: string
-  planName?: string
-  runs: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  durationMs: number
-  inputTokenLimit?: number
-  outputTokenLimit?: number
-  totalTokenLimit?: number
-  resetAt?: string
-  resetText?: string
-  windows?: UsageWindowAggregate[]
-  balances?: UsageBalanceAggregate[]
-  quotaSource?: string
-  quotaFetchedAt?: string
-  quotaConfigured?: boolean
-  quotaError?: string
-  quotaStale?: boolean
-}
-
-export interface UsageWindowAggregate {
-  id: string
-  label: string
-  runs: number
-  totalTokens: number
-  runLimitMax?: number
-  limitLabel: string
-  resetAt?: string
-  trackingOnly?: boolean
-  usedPercent?: number
-  remainingPercent?: number
-  limitWindowSeconds?: number
-}
-
-export interface UsageBalanceAggregate {
-  id: string
-  label: string
-  amount: number
-  unit: string
-  subtitle?: string
-  resetAt?: string
-}
-
-interface CodexModelOption {
-  id: string
-  label?: string
-  description?: string
-  isDefault?: boolean
-  supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>
-  defaultReasoningEffort?: string | null
-  additionalSpeedTiers?: string[]
-  /** 1.0.7-mini — ISO date (YYYY-MM-DD) when this model is retired by the
-   * provider. When set, the model picker renders a small clock + ordinal-
-   * date pill on the row (red, !important-styled so theme/shell rules can't
-   * override the warning colour). Pre-1.0.7 this was baked into `label` as
-   * "(retiring Jun 2)" which (a) flashed on first paint then resolved away
-   * via `modelDisplayName.ts` and (b) wasn't machine-readable. Drop this
-   * field once the model is actually removed from the list. */
-  retiresAt?: string
-}
-
 type RunCompleteNotice = {
   timestamp: string
   exitCode: number
@@ -428,13 +419,6 @@ const formatBytes = (value?: number): string => {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
-}
-
-type ChatTokenTally = {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  explicitCostUsd: number
 }
 
 type PersistentSessionStatus =
@@ -454,12 +438,6 @@ type PersistentSessionStatus =
 //
 // Imports below the const block — see top-of-file `import` group.
 
-const DEFAULT_FILE_EDITOR_WIDTH = 390
-const MIN_RIGHT_PANEL_WIDTH = 300
-const MAX_RIGHT_PANEL_WIDTH = 720
-const DEFAULT_WORKSPACE_SIDEBAR_WIDTH = 260
-const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
-const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
 const FX_BURST_DURATION_MS = 1150
 const GHOST_COMPANION_STORAGE_KEY = 'agbench.ghostCompanionEnabled'
 /**
@@ -508,22 +486,6 @@ const FILE_DIFF_STATUSES = new Set<DiffFileSummary['status']>([
   'too_large',
   'hidden_sensitive'
 ])
-
-const toDateTimeLocalValue = (date: Date): string => {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-const formatScheduledRunTime = (iso: string): string => {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return 'unscheduled'
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 /**
  * Welcome-dashboard tab descriptors. Each entry carries an icon
@@ -587,8 +549,6 @@ function ProviderTabIcon(): React.JSX.Element {
 // builder still accepts a `range` param, but the UI only ever calls
 // it with '30d' from one site.) The WELCOME_USAGE_RANGES constant +
 // rangeLabelFor helper were removed alongside the toggle JSX.
-
-const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
 // `ActivityContributionGrid` retired in Welcome L1 — the welcome
 // dashboard now hosts the sidebar's UsageHeatmap (logarithmic
@@ -1255,184 +1215,13 @@ function WelcomeUsageDashboard({
   )
 }
 
-const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
-  if (!Array.isArray(value)) return []
-  const grants: ExternalPathGrant[] = []
-  // Slice 2 of the external-path-redesign arc: the previous hard
-  // filter `grant.provider !== 'codex'` was a leftover from the
-  // era when only Codex CLI consumed external-path grants. The
-  // CLI translation layer (`externalPathGrantsToCliAddDirArgs` in
-  // main/index.ts) has been provider-agnostic for a while now —
-  // Gemini, Claude, and Kimi all consume the same grant list via
-  // `--add-dir <path>`. Loosen the filter so runtime-issued grants
-  // for any provider can persist into chat metadata.
-  // 1.0.6-CRUX21 — grok + cursor are first-class; their signed grants must
-  // persist into chat metadata too (integrity still guarded by issuedBy/sig).
-  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set([
-    'codex',
-    'claude',
-    'gemini',
-    'kimi',
-    'grok',
-    'cursor'
-  ])
-  for (const item of value) {
-    if (!item || typeof item !== 'object') continue
-    const grant = item as Partial<ExternalPathGrant>
-    const providerToken = grant.provider as ProviderId | undefined
-    if (!providerToken || !VALID_PROVIDERS.has(providerToken)) continue
-    if (typeof grant.path !== 'string' || !grant.path.trim()) continue
-    if (grant.issuedBy !== 'main' || typeof grant.signature !== 'string' || !grant.signature)
-      continue
-    const access = grant.access === 'write' ? 'write' : 'read'
-    grants.push({
-      id: grant.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      provider: providerToken,
-      workspaceId: grant.workspaceId,
-      chatId: grant.chatId,
-      path: grant.path.trim(),
-      kind: grant.kind === 'directory' ? 'directory' : 'file',
-      access,
-      duration: grant.duration || 'thisThread',
-      securityScopedBookmark: grant.securityScopedBookmark,
-      issuedBy: 'main',
-      signature: grant.signature,
-      createdAt: grant.createdAt || new Date().toISOString(),
-      // 1.0.6-EW66 — preserve the persisted display order through
-      // normalization so a user's drag-reorder survives reload.
-      // `coalesceExternalPathGrants` (below) self-heals any missing
-      // value from createdAt sequence, so undefined is safe here.
-      order: typeof grant.order === 'number' ? grant.order : undefined
-    })
-  }
-  return coalesceExternalPathGrants(grants)
-}
-
-const normalizeGeminiResumeTarget = (value?: string): string | undefined => {
-  const target = value?.trim()
-  if (!target || target.toLowerCase() === 'unknown') return undefined
-  return target && /^[a-zA-Z0-9][a-zA-Z0-9._:@/-]{0,511}$/.test(target) ? target : undefined
-}
-
 // sanitizeContextText moved to `src/main/PromptComposition.ts` and re-exported below.
 
 // (Previously: `renderGeminiMessage(text)` returned `<MarkdownMessage content={text} />`.
 // Removed — the transcript now calls `<MarkdownMessage content chat>` directly so
 // the chat is available for `[@Name](agent://uuid)` chip lookups.)
 
-const formatApprovalChangePreview = (changes: any): string => {
-  if (!Array.isArray(changes) || changes.length === 0) return ''
-  return changes
-    .map((change) => {
-      const kind = String(change?.kind || change?.type || change?.operation || 'update')
-      const filePath = String(
-        change?.path || change?.filePath || change?.file_path || change?.target || ''
-      )
-      const additions = Number(change?.additions || change?.added || 0)
-      const deletions = Number(change?.deletions || change?.deleted || 0)
-      const stats = additions || deletions ? ' (+' + additions + ' -' + deletions + ')' : ''
-      return (kind + (filePath ? ' ' + filePath : '') + stats).trim()
-    })
-    .filter(Boolean)
-    .join('\\n')
-}
-
-const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
-  if (!preview || typeof preview !== 'object') return null
-  const command = typeof preview.command === 'string' ? preview.command : ''
-  const cwd = typeof preview.cwd === 'string' ? preview.cwd : ''
-  const toolName = typeof preview.toolName === 'string' ? preview.toolName : ''
-  const taskPreview = typeof preview.task === 'string' ? preview.task : ''
-  const patchPreview =
-    typeof preview.patchPreview === 'string'
-      ? preview.patchPreview
-      : typeof preview.diff === 'string'
-        ? preview.diff
-        : typeof preview.patch === 'string'
-          ? preview.patch
-          : ''
-  const changesPreview = formatApprovalChangePreview(preview.changes)
-  const kind = typeof preview.kind === 'string' ? preview.kind : 'approval'
-  const hasDetails = command || cwd || toolName || taskPreview || patchPreview || changesPreview
-  if (!hasDetails) return null
-
-  return (
-    <div className="agent-approval-preview">
-      <div className="agent-approval-preview-header">{kind}</div>
-      {toolName && (
-        <div className="agent-approval-preview-row">
-          <span>Tool</span>
-          <code>{toolName}</code>
-        </div>
-      )}
-      {cwd && (
-        <div className="agent-approval-preview-row">
-          <span>Cwd</span>
-          <code>{cwd}</code>
-        </div>
-      )}
-      {command && (
-        <div className="agent-approval-preview-block">
-          <span>Command</span>
-          <pre>{command}</pre>
-        </div>
-      )}
-      {taskPreview && (
-        <div className="agent-approval-preview-block">
-          <span>Task</span>
-          <pre>{taskPreview}</pre>
-        </div>
-      )}
-      {changesPreview && (
-        <div className="agent-approval-preview-block">
-          <span>Files</span>
-          <pre>{changesPreview}</pre>
-        </div>
-      )}
-      {patchPreview && (
-        <div className="agent-approval-preview-block">
-          <span>Diff preview</span>
-          <pre>{patchPreview}</pre>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // clampContextTurns moved to `src/main/PromptComposition.ts` and re-exported below.
-
-const clampPanelWidth = (value: number): number => {
-  return Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(MAX_RIGHT_PANEL_WIDTH, Math.round(value)))
-}
-
-const clampWorkspaceSidebarWidth = (value: number): number => {
-  return Math.max(
-    MIN_WORKSPACE_SIDEBAR_WIDTH,
-    Math.min(MAX_WORKSPACE_SIDEBAR_WIDTH, Math.round(value))
-  )
-}
-
-const getStoredFileEditorWidth = (): number => {
-  try {
-    const stored = window.localStorage.getItem('agbench.fileEditorWidth')
-    const parsed = stored ? Number(stored) : DEFAULT_FILE_EDITOR_WIDTH
-    return Number.isFinite(parsed) ? clampPanelWidth(parsed) : DEFAULT_FILE_EDITOR_WIDTH
-  } catch {
-    return DEFAULT_FILE_EDITOR_WIDTH
-  }
-}
-
-const getStoredWorkspaceSidebarWidth = (): number => {
-  try {
-    const stored = window.localStorage.getItem('agbench.workspaceSidebarWidth')
-    const parsed = stored ? Number(stored) : DEFAULT_WORKSPACE_SIDEBAR_WIDTH
-    return Number.isFinite(parsed)
-      ? clampWorkspaceSidebarWidth(parsed)
-      : DEFAULT_WORKSPACE_SIDEBAR_WIDTH
-  } catch {
-    return DEFAULT_WORKSPACE_SIDEBAR_WIDTH
-  }
-}
 
 const getStoredGhostCompanionEnabled = (): boolean => {
   try {
@@ -1519,121 +1308,6 @@ const clampGeminiTerminalHeight = (value: number): number => {
 // Re-exported below from the canonical module so existing call sites keep working
 // without an import-statement migration; future call sites should import directly.
 
-const MAX_REVIEW_DIFF_CHARS = 90000
-
-const summarizeReviewDiffFile = (summary: DiffFileSummary): string => {
-  const details: string[] = [summary.status]
-
-  if (typeof summary.additions === 'number' || typeof summary.deletions === 'number') {
-    details.push(`+${summary.additions || 0}/-${summary.deletions || 0}`)
-  }
-  if (summary.isSensitive) {
-    details.push('sensitive content omitted')
-  }
-  if (summary.isBinary) {
-    details.push('binary')
-  }
-  if (summary.isNoise) {
-    details.push('noise')
-  }
-  if (summary.previewKind && summary.previewKind !== 'none') {
-    details.push(`preview: ${summary.previewKind}`)
-  }
-
-  return `- ${summary.path} (${details.join(', ')})`
-}
-
-const collectReviewDiffText = (diffObj: any): string => {
-  const chunks: string[] = []
-  const seen = new Set<string>()
-
-  const appendChunk = (value: unknown) => {
-    if (typeof value !== 'string') return
-    const text = value.trim()
-    if (!text || seen.has(text)) return
-    seen.add(text)
-    chunks.push(text)
-  }
-
-  appendChunk(diffObj?.diffText)
-
-  if (Array.isArray(diffObj?.summaries)) {
-    diffObj.summaries.forEach((summary: DiffFileSummary) => appendChunk(summary.diffText))
-  }
-
-  return chunks.join('\n\n')
-}
-
-const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
-  const summaries = Array.isArray(diffObj?.summaries)
-    ? diffObj.summaries.filter((summary: DiffFileSummary) => summary?.path)
-    : []
-  const summaryText =
-    summaries.length > 0
-      ? summaries.map(summarizeReviewDiffFile).join('\n')
-      : diffObj?.statusText
-        ? `Git status:\n${diffObj.statusText}`
-        : diffObj?.text || 'No file-level summary was available.'
-
-  const fullDiffText = collectReviewDiffText(diffObj)
-  const diffText =
-    fullDiffText.length > MAX_REVIEW_DIFF_CHARS
-      ? `${fullDiffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[Diff truncated by AGBench before sending to Gemini. Inspect the workspace with read-only commands if needed.]`
-      : fullDiffText
-
-  const diffBlock = diffText
-    ? `Current diff text:\n~~~diff\n${diffText}\n~~~`
-    : 'No inline diff text was available. Inspect current changes with read-only commands if needed.'
-
-  return [
-    'You are performing a read-only code review of the current workspace diff, equivalent to Codex /review.',
-    'Review only the current uncommitted workspace changes. Do not edit files, apply patches, stage files, commit files, run formatters, or make any workspace changes.',
-    'If the included diff is incomplete, inspect the workspace using read-only commands such as git status --short, git diff --cached, git diff, and file reads.',
-    'Return findings first, ordered by severity. For each finding include severity, file/location, issue, impact, and a concrete suggested fix. If there are no findings, say so explicitly and mention residual risks or testing gaps.',
-    `Diff source status: ${diffObj?.type || 'unknown'}.`,
-    `Current diff summary:\n${summaryText}`,
-    diffBlock
-  ].join('\n\n')
-}
-
-interface QueuedRunRequest {
-  appRunId?: string
-  scope?: ChatScope
-  provider: ProviderId
-  prompt: string
-  displayPrompt?: string
-  overrideModel?: string
-  existingPrompt?: string
-  selectedModelType: string
-  customModel: string
-  approvalMode: string
-  sessionTrust: boolean
-  imageAttachments: ImageAttachment[]
-  externalPathGrants?: ExternalPathGrant[]
-  geminiWorktree?: GeminiWorktreeConfig
-  codexNativeReview?: boolean
-  codexReasoningEffort?: string | null
-  codexServiceTier?: string | null
-  claudeReasoningEffort?: string | null
-  claudeFastMode?: boolean | null
-  kimiThinkingEnabled?: boolean
-  scheduledTaskId?: string
-  workspaceRecord?: WorkspaceRecord
-  chatRecord?: ChatRecord
-  preserveComposer?: boolean
-  runtimeProfileId?: string
-  geminiAuthProfileId?: string | null
-  handoffSourceRunId?: string
-  /**
-   * A2 (1.0.3) — DM routing through the ensemble orchestrator. When
-   * set on an ensemble chat dispatch, the resulting round contains
-   * just this one participant. Ignored on solo chats. Held on the
-   * request envelope (not chat-level state) because each dispatch is
-   * an independent decision — the next send might be a full round.
-   */
-  dmTargetParticipantId?: string
-}
-
 interface ComposerPermissionState {
   paths: string[]
   message: string
@@ -1641,122 +1315,6 @@ interface ComposerPermissionState {
   source: GeminiPermissionRequest['source'] | null
 }
 
-interface RunRouteEventPayload {
-  provider?: ProviderId
-  appRunId?: string
-  appChatId?: string
-  data?: string
-  error?: string
-  code?: number | null
-  stats?: any
-}
-
-interface ActiveRunContext {
-  runId: string
-  chatId: string
-  provider: ProviderId
-  adapter: GeminiStreamAdapter
-  warnings: RunWarning[]
-  usageResetHints: Map<string, { resetAt?: string; resetText?: string }>
-  errorCount: number
-  capacityFallbackShown?: boolean
-  toolCallsCount: number
-  preSnapshot: any
-  baseWorkspacePath: string | null
-  workspacePath: string | null
-  workspaceId?: string
-  worktree?: GeminiWorktreeConfig
-  checkpointingEnabled?: boolean
-  startedAt: string | null
-  diffUnavailable: boolean
-  scheduledTaskId: string | null
-}
-
-type AgentApprovalAction =
-  | 'accept'
-  | 'acceptForSession'
-  | 'acceptForWorkspace'
-  | 'decline'
-  | 'cancel'
-  | 'useProviderNative'
-  | 'useAGBenchSubthread'
-  // Slice 4 of the external-path-redesign arc. See the same union
-  // in src/main/store/types.ts:84 — mirrored here because App.tsx
-  // declares its own copy rather than importing the canonical
-  // definition. A follow-up unification would import from types.ts.
-  | 'grantExternalPathRead'
-  | 'grantExternalPathEdit'
-  | 'declineExternalPath'
-
-interface AgentApprovalRequest {
-  id: string
-  provider: ProviderId
-  appRunId?: string
-  appChatId?: string
-  method: string
-  title: string
-  body: string
-  preview?: any
-  actions: AgentApprovalAction[]
-}
-
-const isNativeSubAgentPreferenceApproval = (request: AgentApprovalRequest | null): boolean =>
-  Boolean(
-    request?.actions?.includes('useProviderNative') ||
-    request?.actions?.includes('useAGBenchSubthread')
-  )
-
-const WORKTREE_DIFF_UNAVAILABLE_TEXT =
-  'Gemini worktree mode is active, but the effective worktree path is not known. Diff Studio is disabled so it does not show changes from the original workspace.'
-const CODEX_DEFAULT_MODELS = [
-  {
-    id: 'gpt-5.5',
-    label: 'GPT-5.5',
-    supportedReasoningEfforts: [
-      { reasoningEffort: 'medium' },
-      { reasoningEffort: 'high' },
-      { reasoningEffort: 'xhigh' }
-    ],
-    defaultReasoningEffort: 'medium',
-    additionalSpeedTiers: ['fast']
-  },
-  {
-    id: 'gpt-5.4',
-    label: 'GPT-5.4',
-    supportedReasoningEfforts: [
-      { reasoningEffort: 'medium' },
-      { reasoningEffort: 'high' },
-      { reasoningEffort: 'xhigh' }
-    ],
-    defaultReasoningEffort: 'medium',
-    additionalSpeedTiers: ['fast']
-  },
-  {
-    id: 'gpt-5.4-mini',
-    label: 'GPT-5.4 Mini',
-    supportedReasoningEfforts: [
-      { reasoningEffort: 'low' },
-      { reasoningEffort: 'medium' },
-      { reasoningEffort: 'high' },
-      { reasoningEffort: 'xhigh' }
-    ],
-    defaultReasoningEffort: 'medium'
-    // No Fast tier — per product spec only 5.5 + 5.4 retain Fast.
-  },
-  {
-    id: 'gpt-5.3-codex-spark',
-    label: 'GPT-5.3 Codex Spark',
-    supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
-    defaultReasoningEffort: 'low'
-    // Fast tier removed alongside 5.3 — see note above.
-  }
-  // gpt-5.2 and gpt-5.3-codex were HARD-retired (the API rejects requests for
-  // them) and removed from the picker. The authoritative removal lives in the
-  // main process (CODEX_RETIRED_MODEL_IDS, applied in the get-agent-models
-  // handler); this renderer fallback list is only shown on mount before IPC
-  // resolves / on IPC failure, so it's kept in sync by deletion here.
-] satisfies CodexModelOption[]
-const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id
 const DEFAULT_AGENTIC_SERVICES: AgenticServicesSettings = {
   shellCommands: 'workspace',
   fileChanges: 'ask',
@@ -1764,296 +1322,6 @@ const DEFAULT_AGENTIC_SERVICES: AgenticServicesSettings = {
   subThreadDelegation: 'ask',
   networkAccess: 'allow'
 }
-const CLAUDE_THINKING_EFFORTS = [
-  { reasoningEffort: 'off' },
-  { reasoningEffort: 'low' },
-  { reasoningEffort: 'medium' },
-  { reasoningEffort: 'high' }
-]
-const CLAUDE_DEFAULT_MODELS = [
-  {
-    id: 'default',
-    label: 'Default',
-    description: 'Claude Code configured default',
-    isDefault: true,
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-  },
-  {
-    id: 'claude-opus-4-8',
-    label: 'Claude Opus 4.8',
-    description: 'Most capable — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
-    additionalSpeedTiers: ['fast']
-  },
-  {
-    id: 'claude-opus-4-8-1m',
-    label: 'Claude Opus 4.8 1M',
-    description: '1M context window — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-    // 1M variants are intentionally excluded from the paid Fast tier.
-  },
-  {
-    id: 'claude-sonnet-4-6',
-    label: 'Claude Sonnet 4.6',
-    description: 'Balanced — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-  },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
-  {
-    id: 'claude-opus-4-7',
-    label: 'Claude Opus 4.7 Legacy',
-    description: 'Previous Opus — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
-    additionalSpeedTiers: ['fast']
-  },
-  {
-    id: 'claude-opus-4-7-1m',
-    label: 'Claude Opus 4.7 1M Legacy',
-    description: '1M context window — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-  },
-  {
-    id: 'claude-opus-4-6',
-    label: 'Claude Opus 4.6 Legacy',
-    description: 'Previous Opus generation',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
-    additionalSpeedTiers: ['fast']
-  }
-] satisfies CodexModelOption[]
-const KIMI_DEFAULT_MODELS = [
-  { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI model', isDefault: true }
-] satisfies CodexModelOption[]
-const KIMI_DEFAULT_MODEL = KIMI_DEFAULT_MODELS[0].id
-// Single source of truth for Gemini's composer model list. Mirrors the
-// claude/kimi constants above so `getProviderModelOptions` returns the
-// same `CodexModelOption[]` shape for every provider and the composer's
-// `<option>` rendering no longer needs a Gemini-only inline branch.
-const GEMINI_DEFAULT_MODELS = [
-  { id: 'cli-default', label: 'CLI Default', isDefault: true },
-  { id: 'auto', label: 'Auto' },
-  { id: 'pro', label: 'Pro' },
-  { id: 'flash', label: 'Flash' },
-  { id: 'flash-lite', label: 'Flash Lite' }
-] satisfies CodexModelOption[]
-// Grok — `grok-build` is the real CLI model id (`grok models` → default). It is
-// Grok Build 0.1 (xAI's agentic-coding model: 256K ctx, $1/$2 per 1M) — NOT
-// "Grok 4.3", a separate xAI API model the subscription Grok Build CLI doesn't
-// expose. (The TUI `/model` confirms "Grok Build (current)".) grok-4.3 /
-// grok-code-fast can be added here if/when `grok -m` exposes them under the
-// cached SuperGrok auth.
-const GROK_DEFAULT_MODELS = [
-  { id: 'grok-build', label: 'Grok Build 0.1', isDefault: true }
-] satisfies CodexModelOption[]
-// Cursor (Composer 2.5). Two selectable variants = the model + its Fast mode
-// (the Fast toggle modelled as a second model id, like Cursor's own picker).
-// composer-2.5-fast is Cursor's default; composer-2.5 is the slower/normal tier.
-const CURSOR_DEFAULT_MODELS = [
-  { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
-  { id: 'composer-2.5', label: 'Composer 2.5' }
-] satisfies CodexModelOption[]
-const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
-const CLAUDE_MODEL_IDS = new Set([
-  'default',
-  'sonnet',
-  'opus',
-  'haiku',
-  'custom',
-  'claude-opus-4-8',
-  'claude-opus-4-8-1m',
-  'claude-opus-4-7',
-  'claude-opus-4-7-1m',
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5',
-  'claude-opus-4-6'
-])
-const KIMI_MODEL_IDS = new Set(KIMI_DEFAULT_MODELS.map((model) => model.id))
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000
-const GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
-
-const getChatProvider = (chat?: ChatRecord | null): ProviderId => chat?.provider || 'gemini'
-const getChatScope = (chat?: Pick<ChatRecord, 'scope'> | null): ChatScope =>
-  chat?.scope === 'global' ? 'global' : 'workspace'
-const isGlobalChat = (chat?: Pick<ChatRecord, 'scope'> | null): boolean =>
-  getChatScope(chat) === 'global'
-const getUsageWorkspaceIdForChat = (chat?: ChatRecord | null): string | undefined =>
-  isGlobalChat(chat) ? GLOBAL_USAGE_WORKSPACE_ID : chat?.workspaceId
-const getProviderLabel = (provider: ProviderId): string => {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  if (provider === 'grok') return 'Grok'
-  if (provider === 'cursor') return 'Cursor'
-  return 'Gemini'
-}
-const formatAssistantMessageLabel = (
-  message: ChatMessage,
-  fallbackLabel: string,
-  fallbackProvider: ProviderId | null
-): { label: string; provider: ProviderId | null; modelBadge: string | null } => {
-  const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
-  if (!provider) {
-    // Solo chats: use the chat-level provider as the colouring hook.
-    // The label is still the plain provider name (no role suffix
-    // since there's no ensemble context). The composer chip already
-    // shows the model in solo chats — no need to duplicate it here.
-    return { label: fallbackLabel, provider: fallbackProvider, modelBadge: null }
-  }
-  const role =
-    typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
-  // Ensemble preview: surface the participant's short model name as a
-  // dim badge appended to "Provider / Role". Prep work for 1.0.4 where
-  // two Claudes or two Codexes will share a provider — the model is
-  // the only thing that visually distinguishes them in the transcript.
-  // Falls back to no badge when the participant doesn't carry a model
-  // (legacy ensemble chats from before this metadata existed).
-  const ensembleModel =
-    typeof message.metadata?.ensembleModel === 'string' ? message.metadata.ensembleModel : ''
-  const ensembleReasoningEffort =
-    typeof message.metadata?.ensembleReasoningEffort === 'string'
-      ? message.metadata.ensembleReasoningEffort
-      : ''
-  const ensembleThinkingEnabled =
-    typeof message.metadata?.ensembleThinkingEnabled === 'boolean'
-      ? message.metadata.ensembleThinkingEnabled
-      : undefined
-  const modelName = ensembleModel ? shortModelName(provider, '', ensembleModel) : null
-  // Append a reasoning/thinking suffix when the participant carried one
-  // through dispatch so the header mirrors the composer chip the user
-  // picked ("5.5 Extra High", "Opus 4.7 · Max", "K2.6 Thinking"). The
-  // reasoning helper short-circuits to '' for providers without a
-  // reasoning axis (Gemini) or when the effort is 'off'.
-  const reasoningSuffix = modelName
-    ? reasoningDisplayLabel({
-        provider,
-        // `reasoningDisplayLabel` doesn't read `composerStyle` — only the
-        // sibling `formatComposerModelChip` does — but the shared
-        // `ComposerChipContext` interface requires it. Any valid value
-        // works; `'default'` is the most neutral.
-        composerStyle: 'default',
-        modelId: ensembleModel,
-        modelLabel: '',
-        codexReasoningEffort: provider === 'codex' ? ensembleReasoningEffort : undefined,
-        claudeReasoningEffort: provider === 'claude' ? ensembleReasoningEffort : undefined,
-        kimiThinkingEnabled: provider === 'kimi' ? ensembleThinkingEnabled : undefined
-      })
-    : ''
-  const modelBadge = modelName
-    ? reasoningSuffix
-      ? `${modelName} ${reasoningSuffix}`
-      : modelName
-    : null
-  return {
-    label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
-    provider,
-    modelBadge: modelBadge || null
-  }
-}
-const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
-  return runs.reduce<ChatTokenTally>(
-    (total, run) => {
-      const counts = extractUsageCountsFromCandidate(run?.stats)
-      return {
-        inputTokens: total.inputTokens + counts.inputTokens,
-        outputTokens: total.outputTokens + counts.outputTokens,
-        totalTokens: total.totalTokens + counts.totalTokens,
-        explicitCostUsd: total.explicitCostUsd + extractUsageCostUsd(run?.stats)
-      }
-    },
-    { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0 }
-  )
-}
-// 1.0.5-EW25 — Routes through `formatCost` so the user's selected
-// display currency wins. Pre-EW25 this hard-coded the `$` symbol +
-// `<$0.01` floor; the floor logic now lives in `formatCost.ts` and
-// is per-currency aware. Callers that previously didn't pass a
-// currency get USD by default — backward-compatible.
-//
-// 1.0.5-EW34 — Threads the user's conservative-overestimate bias
-// percent (sub-slice e) into the same call. Default 0 keeps the
-// behaviour identical for callers that don't pass a bias.
-const formatExplicitCostUsd = (
-  costUsd: number,
-  currency: DisplayCurrency = 'USD',
-  overestimatePercent: number = 0
-): string => formatCost(costUsd, currency, undefined, overestimatePercent)
-const formatThreadTokenTally = (
-  _providerLabel: string,
-  tally: ChatTokenTally,
-  currency: DisplayCurrency = 'USD',
-  overestimatePercent: number = 0
-): string | null => {
-  if (tally.totalTokens <= 0) return null
-  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
-  // Provider label dropped — the user already knows which provider
-  // they're talking to (the provider chip is right next to this
-  // tally), and the inline real-estate is tight. `_providerLabel`
-  // kept as a positional arg so the call site doesn't change shape.
-  return `${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
-}
-
-/**
- * B1 (1.0.3) — per-participant breakdown for the ensemble tally
- * footer's hover tooltip. The footer chip itself keeps the compact
- * aggregate format (`Σin / Σout · $total`) so the visual budget
- * stays tight; the breakdown surfaces on hover via the `title`
- * attribute for users who want to see "where did the cost come
- * from?" without leaving the composer.
- *
- * Groups `runs` by `ensembleParticipantId` and matches each group
- * to the participant's role for the tooltip label. Participants
- * with no runs are omitted so the tooltip doesn't list zeros.
- */
-const formatEnsembleTokenBreakdown = (
-  runs: ChatRun[],
-  participants: EnsembleParticipant[],
-  currency: DisplayCurrency = 'USD',
-  overestimatePercent: number = 0
-): string | null => {
-  if (!runs.length || !participants.length) return null
-  const byParticipant = new Map<string, ChatTokenTally>()
-  for (const run of runs) {
-    const pid = run.ensembleParticipantId
-    if (!pid) continue
-    const counts = extractUsageCountsFromCandidate(run.stats)
-    const cost = extractUsageCostUsd(run.stats)
-    const existing = byParticipant.get(pid) || {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-      explicitCostUsd: 0
-    }
-    byParticipant.set(pid, {
-      inputTokens: existing.inputTokens + counts.inputTokens,
-      outputTokens: existing.outputTokens + counts.outputTokens,
-      totalTokens: existing.totalTokens + counts.totalTokens,
-      explicitCostUsd: existing.explicitCostUsd + cost
-    })
-  }
-  if (byParticipant.size === 0) return null
-  const lines: string[] = []
-  for (const participant of participants) {
-    const tally = byParticipant.get(participant.id)
-    if (!tally || tally.totalTokens <= 0) continue
-    const label = participant.role || participant.provider
-    const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
-    lines.push(
-      `${label}: ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
-    )
-  }
-  return lines.length > 0 ? lines.join('\n') : null
-}
-const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
-const isCodexModelId = (modelId: string): boolean =>
-  modelId.startsWith('gpt-') || modelId.includes('codex')
-const isClaudeModelId = (modelId: string): boolean =>
-  CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
-const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
-const normalizeProviderModelKey = (model?: string | null): string =>
-  String(model || '')
-    .trim()
-    .toLowerCase()
-
 const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
   paths: [],
   message: '',
@@ -2062,512 +1330,6 @@ const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
 }
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = []
 const EMPTY_IMAGE_ATTACHMENTS: ImageAttachment[] = []
-
-function CockpitPanel({
-  lanes,
-  handoffCards,
-  onClose,
-  onOpenThread,
-  onCancelRun,
-  onRetryRun,
-  onDuplicateRun,
-  onCreateHandoff,
-  onDispatchHandoff,
-  onArchiveHandoff
-}: {
-  lanes: RunLane[]
-  handoffCards: HandoffCard[]
-  onClose: () => void
-  onOpenThread: (chatId?: string) => void
-  onCancelRun: (lane: RunLane) => void
-  onRetryRun: (lane: RunLane) => void
-  onDuplicateRun: (lane: RunLane) => void
-  onCreateHandoff: (lane: RunLane) => void
-  onDispatchHandoff: (card: HandoffCard) => void
-  onArchiveHandoff: (card: HandoffCard) => void
-}) {
-  const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
-  const activeCount = lanes.filter((lane) => lane.phase === 'active').length
-  const waitingCount = lanes.filter(
-    (lane) => lane.phase === 'queued' || lane.phase === 'scheduled' || lane.phase === 'paused'
-  ).length
-  const failedCount = lanes.filter((lane) => lane.phase === 'failed').length
-  const openHandoffs = handoffCards.filter((card) => card.status === 'draft')
-
-  return (
-    <div className="cockpit-overlay" role="dialog" aria-modal="true" aria-label="Agent cockpit">
-      <div className="cockpit-panel">
-        <div className="cockpit-header">
-          <div>
-            <span className="cockpit-kicker">AGBench cockpit</span>
-            <h2>Run lanes</h2>
-            <p>Global queue, profile, handoff, and workspace collision supervision.</p>
-          </div>
-          <button className="cockpit-close-btn" type="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
-        <div className="cockpit-metrics">
-          <span>
-            <strong>{activeCount}</strong> active
-          </span>
-          <span>
-            <strong>{waitingCount}</strong> waiting
-          </span>
-          <span>
-            <strong>{failedCount}</strong> failed
-          </span>
-          <span>
-            <strong>{openHandoffs.length}</strong> handoffs
-          </span>
-        </div>
-        <div className="cockpit-body">
-          <div className="cockpit-lanes">
-            {providerIds.map((provider) => {
-              const providerLanes = lanes.filter((lane) => lane.provider === provider)
-              return (
-                <section key={provider} className={`cockpit-provider provider-${provider}`}>
-                  <div className="cockpit-provider-header">
-                    <strong>{getProviderLabel(provider)}</strong>
-                    <span>
-                      {providerLanes.filter((lane) => lane.phase === 'active').length}/1 running
-                    </span>
-                  </div>
-                  {providerLanes.length === 0 ? (
-                    <div className="cockpit-empty">No lanes.</div>
-                  ) : (
-                    providerLanes.map((lane) => (
-                      <article key={lane.id} className={`cockpit-lane phase-${lane.phase}`}>
-                        <div className="cockpit-lane-main">
-                          <span className="cockpit-lane-phase">{lane.phase}</span>
-                          <strong>{lane.chatTitle || lane.chatId || 'Untitled chat'}</strong>
-                          <p>{lane.promptPreview || 'No prompt preview available.'}</p>
-                        </div>
-                        <div className="cockpit-lane-meta">
-                          <span>{lane.runtimeProfileName || 'Default runtime'}</span>
-                          {lane.workspacePath && (
-                            <span title={lane.workspacePath}>
-                              {lane.workspacePath.split(/[\\/]/).pop() || lane.workspacePath}
-                            </span>
-                          )}
-                          {lane.blockedReason && <span>{lane.blockedReason}</span>}
-                          {lane.conflictSummary && (
-                            <span className="cockpit-conflict">{lane.conflictSummary}</span>
-                          )}
-                        </div>
-                        <div className="cockpit-lane-actions">
-                          <button
-                            type="button"
-                            onClick={() => onOpenThread(lane.chatId)}
-                            disabled={!lane.chatId}
-                          >
-                            Open
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onCancelRun(lane)}
-                            disabled={
-                              !lane.runId ||
-                              (lane.phase !== 'active' &&
-                                lane.phase !== 'queued' &&
-                                lane.phase !== 'paused')
-                            }
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onRetryRun(lane)}
-                            disabled={!lane.runId}
-                          >
-                            Retry
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDuplicateRun(lane)}
-                            disabled={!lane.chatId}
-                          >
-                            Duplicate
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onCreateHandoff(lane)}
-                            disabled={!lane.runId || !lane.chatId}
-                          >
-                            Handoff
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                  )}
-                </section>
-              )
-            })}
-          </div>
-          <aside className="cockpit-handoffs">
-            <div className="cockpit-provider-header">
-              <strong>User-mediated handoffs</strong>
-              <span>{openHandoffs.length} draft</span>
-            </div>
-            {openHandoffs.length === 0 ? (
-              <div className="cockpit-empty">
-                Create a handoff from any completed or active run.
-              </div>
-            ) : (
-              openHandoffs.map((card) => (
-                <article key={card.id} className="cockpit-handoff-card">
-                  <strong>{getProviderLabel(card.sourceProvider)} handoff</strong>
-                  <p>{compactPromptPreview(card.summary || card.finalPrompt)}</p>
-                  {card.selectedFiles.length > 0 && (
-                    <span>{card.selectedFiles.length} file refs</span>
-                  )}
-                  <div className="cockpit-lane-actions">
-                    <button type="button" onClick={() => onOpenThread(card.sourceChatId)}>
-                      Source
-                    </button>
-                    <button type="button" onClick={() => onDispatchHandoff(card)}>
-                      Dispatch
-                    </button>
-                    <button type="button" onClick={() => onArchiveHandoff(card)}>
-                      Archive
-                    </button>
-                  </div>
-                </article>
-              ))
-            )}
-          </aside>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const getGeminiWorktreeResumeKey = (worktree?: GeminiWorktreeConfig | null): string => {
-  if (!worktree?.enabled) {
-    return 'disabled'
-  }
-  return ['enabled', worktree.name || '', worktree.effectivePath || ''].join('\u0000')
-}
-
-const getLastGeminiRunForResume = (chat: ChatRecord): ChatRun | undefined => {
-  const runs = [...(chat.runs || [])].reverse()
-  return runs.find((candidate) => (candidate.provider || getChatProvider(chat)) === 'gemini')
-}
-
-const resolveGeminiResumeForRun = (
-  chat: ChatRecord,
-  requestedModel: string | undefined,
-  approvalMode: string,
-  worktree?: GeminiWorktreeConfig | null,
-  geminiAuthProfileId?: string | null
-): { sessionId?: string; skippedReason?: string } => {
-  const sessionId = normalizeGeminiResumeTarget(chat.linkedGeminiSessionId)
-  if (!sessionId) {
-    return {}
-  }
-
-  if (approvalMode !== 'plan') {
-    return {
-      skippedReason:
-        'Starting a fresh Gemini session because write-capable Gemini runs cannot safely resume CLI sessions; Gemini can persist plan-mode tool limits inside a resumed session.'
-    }
-  }
-
-  const lastRun = getLastGeminiRunForResume(chat)
-  if (!lastRun) {
-    return { sessionId }
-  }
-
-  const previousAuthProfileId =
-    typeof lastRun.geminiAuthProfileId === 'string' ? lastRun.geminiAuthProfileId : null
-  const nextAuthProfileId = geminiAuthProfileId || null
-  if (previousAuthProfileId !== nextAuthProfileId) {
-    return {
-      skippedReason:
-        'Starting a fresh Gemini session because the selected Gemini auth profile changed.'
-    }
-  }
-
-  const previousApprovalMode = lastRun.approvalMode || 'default'
-  if (previousApprovalMode !== approvalMode) {
-    return {
-      skippedReason: `Starting a fresh Gemini session because approval mode changed from ${previousApprovalMode} to ${approvalMode}.`
-    }
-  }
-
-  const previousModel = lastRun.requestedModel || lastRun.actualModel
-  const previousModelKey = normalizeProviderModelKey(previousModel)
-  const nextModelKey = normalizeProviderModelKey(requestedModel)
-  if (previousModelKey && nextModelKey && previousModelKey !== nextModelKey) {
-    return {
-      skippedReason: `Starting a fresh Gemini session because model changed from ${previousModel} to ${requestedModel}.`
-    }
-  }
-
-  const previousWorktreeKey = getGeminiWorktreeResumeKey(lastRun.geminiWorktree)
-  const nextWorktreeKey = getGeminiWorktreeResumeKey(worktree)
-  if (previousWorktreeKey !== nextWorktreeKey) {
-    return {
-      skippedReason: 'Starting a fresh Gemini session because the Gemini worktree setting changed.'
-    }
-  }
-
-  return { sessionId }
-}
-
-const getCodexFiveHourLimit = (model: string): { max?: number; label: string } => {
-  const normalized = model.toLowerCase()
-  if (normalized.includes('spark')) return { label: 'separate dynamic limit' }
-  if (normalized.includes('5.3') && normalized.includes('codex'))
-    return { max: 3000, label: '30-3000 msgs / 5h' }
-  if (normalized.includes('5.4-mini') || normalized.includes('mini'))
-    return { max: 7000, label: '60-7000 msgs / 5h' }
-  if (normalized.includes('5.4')) return { max: 2000, label: '20-2000 msgs / 5h' }
-  if (normalized.includes('5.5')) return { max: 1600, label: '15-1600 msgs / 5h' }
-  return { label: 'plan-dependent / 5h' }
-}
-
-const labelCodexRateLimitBucket = (snapshot: any, model: string): string => {
-  const duration = Number(snapshot?.primary?.windowDurationMins || 0)
-  const rawName = String(snapshot?.limitName || snapshot?.limitId || '').trim()
-  const isSpark = /spark/i.test(rawName) || model.toLowerCase().includes('spark')
-
-  if (duration >= 295 && duration <= 305) return isSpark ? 'Spark 5h' : '5h'
-  if (duration >= 10020 && duration <= 10140) return isSpark ? 'Spark weekly' : 'Weekly'
-  if (duration > 0 && duration < 120) return rawName || `${duration}m`
-  return rawName || 'Codex quota'
-}
-
-const isCodexSparkQuotaLabel = (label: string): boolean => /spark|gpt-5\.3-codex-spark/i.test(label)
-
-const codexQuotaIdentityLabel = (label: string): string => {
-  const normalized = label.toLowerCase().replace(/\s+/g, ' ').trim()
-  if (normalized === 'session' || normalized === '5h' || normalized === '5 h') return '5h'
-  if (normalized === 'weekly' || normalized === '7-day') return 'weekly'
-  return normalized
-}
-
-const codexQuotaDisplayLabel = (label: string): string => {
-  const normalized = label.toLowerCase().replace(/\s+/g, ' ').trim()
-  if (normalized === 'session' || normalized === '5h' || normalized === '5 h') return '5h'
-  if (normalized === 'weekly' || normalized === '7-day') return 'Weekly'
-  return label
-}
-
-const codexQuotaDisplayOrder = (label: string): number => {
-  const identity = codexQuotaIdentityLabel(label)
-  if (identity === '5h') return 0
-  if (identity === 'weekly') return 1
-  const weekly = identity.includes('weekly') || identity.includes('7-day')
-  const spark = isCodexSparkQuotaLabel(label)
-  if (spark && !weekly) return 2
-  if (spark && weekly) return 3
-  return weekly ? 5 : 4
-}
-
-const dedupeCodexQuotaWindows = (windows: UsageWindowAggregate[]): UsageWindowAggregate[] => {
-  const seen = new Set<string>()
-  return windows.filter((windowEntry) => {
-    const key = [
-      codexQuotaIdentityLabel(windowEntry.label),
-      windowEntry.resetAt || '',
-      Math.round(Number(windowEntry.usedPercent || 0))
-    ].join(':')
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-const buildRateLimitWindow = (
-  id: string,
-  label: string,
-  snapshot: any
-): UsageWindowAggregate | null => {
-  const primary = snapshot?.primary
-  if (!primary) return null
-  const usedPercent = Math.max(0, Math.min(100, Number(primary.usedPercent || 0)))
-  const remainingPercent = Math.max(0, Math.min(100, 100 - usedPercent))
-  return {
-    id,
-    label,
-    runs: 0,
-    totalTokens: 0,
-    limitLabel: `${Math.round(remainingPercent)}% remaining`,
-    resetAt: primary.resetsAt ? new Date(primary.resetsAt * 1000).toISOString() : undefined,
-    trackingOnly: true,
-    // Honest names: usedPercent = USED, remainingPercent = REMAINING.
-    // (Earlier this code stored `remainingPercent` in `usedPercent`
-    // because the bar visualised "available capacity"; the L6
-    // follow-up flips the bar to fill with USAGE and updates the
-    // naming to match.)
-    usedPercent,
-    remainingPercent
-  }
-}
-
-const buildCodexUsageWindows = (
-  records: UsageRecord[],
-  model: string,
-  now: number,
-  codexStatus?: any,
-  showAuthoritativeWindows = true
-): UsageWindowAggregate[] => {
-  const authoritativeWindows = Array.isArray(codexStatus?.codexUsage?.windows)
-    ? codexStatus.codexUsage.windows
-    : []
-  if (authoritativeWindows.length > 0) {
-    if (!showAuthoritativeWindows) {
-      return []
-    }
-    return dedupeCodexQuotaWindows(
-      authoritativeWindows.map((windowEntry: any, index: number) => {
-        const label = codexQuotaDisplayLabel(String(windowEntry.label || 'Codex quota'))
-        const remainingPercent = Math.max(
-          0,
-          Math.min(
-            100,
-            Number(windowEntry.remainingPercent ?? 100 - Number(windowEntry.usedPercent || 0))
-          )
-        )
-        const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
-        return {
-          id: `codex-account-${windowEntry.id || index}`,
-          label,
-          runs: 0,
-          totalTokens: 0,
-          limitLabel: windowEntry.limitLabel || `${Math.round(remainingPercent)}% remaining`,
-          resetAt: windowEntry.resetAt,
-          trackingOnly: false,
-          // Honest names: usedPercent = USED, remainingPercent = REMAINING.
-          usedPercent,
-          remainingPercent
-        }
-      })
-    ).sort((a, b) => {
-      return codexQuotaDisplayOrder(a.label) - codexQuotaDisplayOrder(b.label)
-    })
-  }
-
-  const rateLimitBuckets = [
-    ...(codexStatus?.rateLimits ? [codexStatus.rateLimits] : []),
-    ...(codexStatus?.rateLimitsByLimitId && typeof codexStatus.rateLimitsByLimitId === 'object'
-      ? Object.values(codexStatus.rateLimitsByLimitId)
-      : [])
-  ]
-  const realRateLimitWindows = dedupeCodexQuotaWindows(
-    rateLimitBuckets
-      .flatMap((bucket: any, index: number) => {
-        const id = bucket?.limitId || bucket?.limitName || index
-        const windows: Array<UsageWindowAggregate | null> = [
-          buildRateLimitWindow(
-            `account-${id}-primary`,
-            labelCodexRateLimitBucket(bucket, model),
-            bucket
-          )
-        ]
-        if (bucket?.secondary) {
-          const secondaryBucket = { ...bucket, primary: bucket.secondary }
-          windows.push(
-            buildRateLimitWindow(
-              `account-${id}-secondary`,
-              labelCodexRateLimitBucket(secondaryBucket, model),
-              secondaryBucket
-            )
-          )
-        }
-        return windows
-      })
-      .filter(Boolean)
-      .map((windowEntry: any) => ({
-        ...windowEntry,
-        label: codexQuotaDisplayLabel(windowEntry.label)
-      }))
-      .filter(Boolean) as UsageWindowAggregate[]
-  )
-
-  if (realRateLimitWindows.length > 0) {
-    return realRateLimitWindows.sort((a, b) => {
-      return codexQuotaDisplayOrder(a.label) - codexQuotaDisplayOrder(b.label)
-    })
-  }
-
-  const fiveHourLimit = getCodexFiveHourLimit(model)
-  const fiveHourRecords = records.filter(
-    (record) => now - record.timestamp <= FIVE_HOURS_MS && record.usageKind !== 'reset_hint'
-  )
-  const weeklyRecords = records.filter(
-    (record) => now - record.timestamp <= WEEK_MS && record.usageKind !== 'reset_hint'
-  )
-  const fiveHourReset =
-    fiveHourRecords.length > 0
-      ? new Date(
-          Math.min(...fiveHourRecords.map((record) => record.timestamp + FIVE_HOURS_MS))
-        ).toISOString()
-      : undefined
-  const weeklyReset =
-    weeklyRecords.length > 0
-      ? new Date(
-          Math.min(...weeklyRecords.map((record) => record.timestamp + WEEK_MS))
-        ).toISOString()
-      : undefined
-
-  return [
-    ...realRateLimitWindows,
-    {
-      id: '5h',
-      label: model.toLowerCase().includes('spark') ? 'Spark 5h' : '5h',
-      runs: fiveHourRecords.length,
-      totalTokens: fiveHourRecords.reduce((total, record) => total + (record.totalTokens || 0), 0),
-      runLimitMax: fiveHourLimit.max,
-      limitLabel: fiveHourLimit.label,
-      resetAt: fiveHourReset,
-      trackingOnly: !fiveHourLimit.max
-    },
-    {
-      id: 'weekly',
-      label: model.toLowerCase().includes('spark') ? 'Spark weekly' : 'Weekly',
-      runs: weeklyRecords.length,
-      totalTokens: weeklyRecords.reduce((total, record) => total + (record.totalTokens || 0), 0),
-      limitLabel: model.toLowerCase().includes('spark')
-        ? 'separate dynamic weekly cap'
-        : 'weekly cap may apply',
-      resetAt: weeklyReset,
-      trackingOnly: true
-    }
-  ]
-}
-
-const createWorktreeDiffUnavailable = () => ({
-  type: 'error',
-  text: WORKTREE_DIFF_UNAVAILABLE_TEXT
-})
-
-const resolveGeminiWorktreeConfig = (
-  workspace?: WorkspaceRecord | null
-): GeminiWorktreeConfig | undefined => {
-  const worktree = workspace?.geminiWorktree
-  if (!worktree?.enabled) {
-    return undefined
-  }
-
-  const name = typeof worktree.name === 'string' ? worktree.name.trim() : undefined
-  const effectivePath =
-    typeof worktree.effectivePath === 'string' ? worktree.effectivePath.trim() : undefined
-  return {
-    enabled: true,
-    ...(name ? { name } : {}),
-    ...(effectivePath ? { effectivePath } : {})
-  }
-}
-
-const isGeminiWorktreeDiffUnavailable = (worktree?: GeminiWorktreeConfig | null): boolean =>
-  Boolean(worktree?.enabled && !worktree.effectivePath)
-
-const getDiffWorkspacePath = (
-  workspace: WorkspaceRecord,
-  worktree?: GeminiWorktreeConfig | null
-): string => (worktree?.enabled && worktree.effectivePath ? worktree.effectivePath : workspace.path)
 
 const createAppRunId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -2734,105 +1496,6 @@ type TranscriptPanelProps = {
    * `cost_usd` (Codex / Grok / Cursor). Absent → no estimate.
    */
   providerRates?: RendererProviderRates
-}
-
-/**
- * 1.0.4-AQ4 — small Copy + Delete action group rendered inside
- * each message bubble. Visible only on hover via CSS
- * (`.message-bubble:hover .message-actions-chip`). Two icon-only
- * buttons:
- *   • Copy — writes the bubble's content to the clipboard via the
- *     `onCopy` callback (host calls `navigator.clipboard.writeText`).
- *   • Delete — calls the `onDelete` callback (host gates with
- *     `confirm()` before removing the message from the transcript).
- *
- * Kept as a tiny inline component so the bubble render blocks
- * stay readable. Doesn't take the message directly — the parent
- * binds `msg.content` / `msg.id` into the callbacks so this
- * component stays role-agnostic.
- */
-function MessageActionsChip({
-  onCopy,
-  onDelete,
-  copied = false,
-  label
-}: {
-  onCopy: () => void
-  onDelete: () => void
-  /** 1.0.8 — when true the copy button shows a transient confirmation
-   * (driven by the host's shared `useCopyFeedback`). */
-  copied?: boolean
-  label: string
-}): React.JSX.Element {
-  return (
-    <div className="message-actions-chip" role="group" aria-label={`Actions for ${label}`}>
-      <button
-        type="button"
-        className={`message-actions-chip-button message-actions-chip-button--copy${
-          copied ? ' is-copied' : ''
-        }`}
-        onClick={onCopy}
-        title={copied ? 'Copied' : 'Copy message content to clipboard'}
-        aria-label={copied ? `Copied ${label} content` : `Copy ${label} content`}
-      >
-        {copied ? (
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M13.5 4.5 6 12 2.5 8.5" />
-          </svg>
-        ) : (
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <rect x="5" y="5" width="9" height="9" rx="1.5" />
-            <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
-          </svg>
-        )}
-      </button>
-      <button
-        type="button"
-        className="message-actions-chip-button message-actions-chip-button--delete"
-        onClick={onDelete}
-        title="Delete message from transcript"
-        aria-label={`Delete ${label}`}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M3 4h10" />
-          <path d="M5.5 4V2.5C5.5 2.22 5.72 2 6 2h4c.28 0 .5.22.5.5V4" />
-          <path d="M4.5 4l.5 9c.04.55.5 1 1 1h4c.5 0 .96-.45 1-1l.5-9" />
-          <path d="M7 7v5" />
-          <path d="M9 7v5" />
-        </svg>
-      </button>
-    </div>
-  )
 }
 
 /**
@@ -4914,53 +3577,6 @@ export const TranscriptPanel = memo(
     previous.autoFollowRef === next.autoFollowRef
 )
 
-type SettingsPanelUpdate = {
-  mode?: AppSettings['appearanceMode']
-  visualEffectStyle?: AppSettings['visualEffectStyle']
-  themeAppearance?: AppSettings['themeAppearance']
-  themeCornerStyle?: AppSettings['themeCornerStyle']
-  themeAccentStyle?: AppSettings['themeAccentStyle']
-  toolIconAccent?: AppSettings['toolIconAccent']
-  userBubbleColor?: AppSettings['userBubbleColor']
-  promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
-  composerStyle?: AppSettings['composerStyle']
-  transcriptFontFamily?: AppSettings['transcriptFontFamily']
-  composerFontFamily?: AppSettings['composerFontFamily']
-  funFxEnabled?: boolean
-  funFxMode?: AppSettings['funFxMode']
-  advancedFx?: AppSettings['advancedFx']
-  reduceTransparency?: boolean
-  reduceMotion?: boolean
-  compactDensity?: boolean
-  geminiCheckpointingEnabled?: boolean
-  // Phase M1 Step 6 — Gemini API vs CLI runtime selection. See
-  // GeminiApiRuntimeMode in main/store/types.ts. Defaults to 'auto'.
-  geminiApiRuntime?: GeminiApiRuntimeMode
-  chatContextTurns?: number
-  /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
-  currency?: AppSettings['currency']
-  /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
-  currencyOverestimatePercent?: AppSettings['currencyOverestimatePercent']
-  /**
-   * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
-   * visibility map + global "reset all" timestamp). See
-   * AppSettings.dashboardStatPrefs for the persisted shape.
-   */
-  dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
-  welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
-  /** 1.0.5-EW26 — Kimi compatibility filter. */
-  kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
-  kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
-  claudeBinaryPath?: string
-  kimiBinaryPath?: string
-  agenticServices?: AgenticServicesSettings
-  nativeSubAgentRequests?: NativeSubAgentRequestPolicy
-  autoResumeParentOnSubThreadCompletion?: boolean
-  geminiMcpBridgeEnabled?: boolean
-  codexSandboxFallback?: CodexSandboxFallbackMode
-  updateChannel?: ProductUpdateChannel
-  approvalTimeouts?: AppSettings['approvalTimeouts']
-}
 
 function App(): React.JSX.Element {
   // Shared copy-to-clipboard feedback for every in-app copy affordance

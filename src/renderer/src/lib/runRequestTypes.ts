@@ -1,0 +1,80 @@
+import type { GeminiStreamAdapter } from './GeminiAdapter'
+import type { ImageAttachment } from './imageAttachments'
+import type {
+  ChatScope,
+  ProviderId,
+  WorkspaceRecord,
+  ChatRecord,
+  ExternalPathGrant,
+  GeminiWorktreeConfig,
+  RunWarning
+} from '../../../main/store/types'
+
+export interface QueuedRunRequest {
+  appRunId?: string
+  scope?: ChatScope
+  provider: ProviderId
+  prompt: string
+  displayPrompt?: string
+  overrideModel?: string
+  existingPrompt?: string
+  selectedModelType: string
+  customModel: string
+  approvalMode: string
+  sessionTrust: boolean
+  imageAttachments: ImageAttachment[]
+  externalPathGrants?: ExternalPathGrant[]
+  geminiWorktree?: GeminiWorktreeConfig
+  codexNativeReview?: boolean
+  codexReasoningEffort?: string | null
+  codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
+  kimiThinkingEnabled?: boolean
+  scheduledTaskId?: string
+  workspaceRecord?: WorkspaceRecord
+  chatRecord?: ChatRecord
+  preserveComposer?: boolean
+  runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
+  handoffSourceRunId?: string
+  /**
+   * A2 (1.0.3) — DM routing through the ensemble orchestrator. When
+   * set on an ensemble chat dispatch, the resulting round contains
+   * just this one participant. Ignored on solo chats. Held on the
+   * request envelope (not chat-level state) because each dispatch is
+   * an independent decision — the next send might be a full round.
+   */
+  dmTargetParticipantId?: string
+}
+
+export interface RunRouteEventPayload {
+  provider?: ProviderId
+  appRunId?: string
+  appChatId?: string
+  data?: string
+  error?: string
+  code?: number | null
+  stats?: any
+}
+
+export interface ActiveRunContext {
+  runId: string
+  chatId: string
+  provider: ProviderId
+  adapter: GeminiStreamAdapter
+  warnings: RunWarning[]
+  usageResetHints: Map<string, { resetAt?: string; resetText?: string }>
+  errorCount: number
+  capacityFallbackShown?: boolean
+  toolCallsCount: number
+  preSnapshot: any
+  baseWorkspacePath: string | null
+  workspacePath: string | null
+  workspaceId?: string
+  worktree?: GeminiWorktreeConfig
+  checkpointingEnabled?: boolean
+  startedAt: string | null
+  diffUnavailable: boolean
+  scheduledTaskId: string | null
+}
