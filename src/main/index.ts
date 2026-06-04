@@ -88,6 +88,7 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
+import { GitService } from './services/GitService'
 import { AppShellStatsService } from './services/AppShellStatsService'
 import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
@@ -14529,6 +14530,8 @@ if (isGeminiMcpBridgeProcess) {
       }
     })
 
+    const gitService = new GitService()
+
     // Phase G2: auto-update wiring. Default-off (env override available).
     // Only enabled in packaged builds AND when updateChannel != 'debug'.
     // The `AGBENCH_AUTO_UPDATE` env var forces enable/disable for
@@ -15740,110 +15743,106 @@ if (isGeminiMcpBridgeProcess) {
       }
     })
 
+    const gitPayloadPath = (payload?: { workspacePath?: string; repoPath?: string }) =>
+      typeof payload?.repoPath === 'string' && payload.repoPath.trim()
+        ? payload.repoPath
+        : payload?.workspacePath || ''
+
+    ipcMain.handle(
+      'git:snapshot',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.snapshot(gitPayloadPath(payload))
+    )
+
+    ipcMain.handle(
+      'git:stage',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          paths?: string[]
+          all?: boolean
+          update?: boolean
+          patch?: string
+        }
+      ) =>
+        gitService.stage({
+          repoPath: gitPayloadPath(payload),
+          paths: payload?.paths,
+          all: payload?.all,
+          update: payload?.update,
+          patch: payload?.patch
+        })
+    )
+
+    ipcMain.handle(
+      'git:commit',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          message?: string
+        }
+      ) =>
+        gitService.commit({
+          repoPath: gitPayloadPath(payload),
+          message: payload?.message || ''
+        })
+    )
+
+    ipcMain.handle(
+      'git:push',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          setUpstream?: boolean
+          remote?: string
+        }
+      ) =>
+        gitService.push({
+          repoPath: gitPayloadPath(payload),
+          setUpstream: payload?.setUpstream,
+          remote: payload?.remote
+        })
+    )
+
+    ipcMain.handle(
+      'github:pr-status',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.pullRequestStatus(gitPayloadPath(payload))
+    )
+
     ipcMain.handle(
       'create-github-pr',
       async (
         _event,
         payload?: {
           workspacePath?: string
+          repoPath?: string
           title?: string
           body?: string
           draft?: boolean
           openInBrowser?: boolean
         }
       ) => {
-        const requestedPath = expandHomePath(payload?.workspacePath || '')
-        if (!requestedPath) {
-          return { ok: false, error: 'A workspace path is required to open a pull request.' }
-        }
-        try {
-          const stat = await fs.stat(requestedPath)
-          if (!stat.isDirectory()) {
-            return { ok: false, error: 'Workspace path is not a directory.' }
+        const result = await gitService.createPullRequest({
+          repoPath: gitPayloadPath(payload),
+          title: payload?.title,
+          body: payload?.body,
+          draft: payload?.draft
+        })
+        if (result.ok) {
+          const url = result.data.url
+          if (url && payload?.openInBrowser !== false) {
+            shell.openExternal(url).catch(() => {})
           }
-        } catch {
-          return { ok: false, error: 'Workspace path does not exist on disk.' }
+          return { ok: true, ...result.data }
         }
-        const args = ['pr', 'create']
-        const title = typeof payload?.title === 'string' ? payload.title.trim() : ''
-        const body = typeof payload?.body === 'string' ? payload.body.trim() : ''
-        if (title) {
-          args.push('--title', title)
-        }
-        if (body) {
-          args.push('--body', body)
-        }
-        if (!title && !body) {
-          args.push('--fill')
-        }
-        if (payload?.draft) {
-          args.push('--draft')
-        }
-        return await new Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>(
-          (resolve) => {
-            let stdout = ''
-            let stderr = ''
-            let settled = false
-            let child: ReturnType<typeof spawn>
-            try {
-              child = spawn('gh', args, {
-                cwd: requestedPath,
-                env: { ...process.env },
-                stdio: ['ignore', 'pipe', 'pipe']
-              })
-            } catch (error) {
-              resolve({
-                ok: false,
-                error: `Failed to launch \`gh\`: ${error instanceof Error ? error.message : String(error)}`
-              })
-              return
-            }
-            const settle = (result: {
-              ok: boolean
-              url?: string
-              error?: string
-              stderr?: string
-            }) => {
-              if (settled) return
-              settled = true
-              resolve(result)
-            }
-            child.stdout?.on('data', (chunk: Buffer) => {
-              stdout += chunk.toString('utf8')
-            })
-            child.stderr?.on('data', (chunk: Buffer) => {
-              stderr += chunk.toString('utf8')
-            })
-            child.on('error', (error) => {
-              const message =
-                (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-                  ? 'GitHub CLI (`gh`) is not installed or not on PATH. Install it from https://cli.github.com.'
-                  : `Failed to launch \`gh\`: ${error.message}`
-              settle({ ok: false, error: message })
-            })
-            child.on('close', (code) => {
-              const trimmedOut = stdout.trim()
-              const trimmedErr = stderr.trim()
-              if (code === 0) {
-                const url = trimmedOut.match(/https?:\/\/[^\s]+/)?.[0]
-                if (url && payload?.openInBrowser !== false) {
-                  shell.openExternal(url).catch(() => {})
-                }
-                settle({ ok: true, url, stderr: trimmedErr || undefined })
-              } else {
-                settle({
-                  ok: false,
-                  error: trimmedErr || trimmedOut || `\`gh pr create\` exited with code ${code}.`,
-                  stderr: trimmedErr || undefined
-                })
-              }
-            })
-            setTimeout(
-              () => settle({ ok: false, error: '`gh pr create` timed out after 30s.' }),
-              30_000
-            )
-          }
-        )
+        return result
       }
     )
 

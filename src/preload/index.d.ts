@@ -48,6 +48,7 @@ import type { UpdateStateSnapshot } from '../main/UpdateService'
 import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
+import type { GitPrSummary, GitRepositorySnapshot, GitResult } from '../main/services/GitService'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -316,8 +317,36 @@ declare global {
       getCodexUsageSnapshot: () => Promise<any>
       getExternalUsage: () => Promise<UsageRecord[]>
       probeGrokUsage: () => Promise<GrokUsageSnapshot>
+      gitSnapshot: (payload: {
+        workspacePath?: string
+        repoPath?: string
+      }) => Promise<GitResult<GitRepositorySnapshot>>
+      gitStage: (payload: {
+        workspacePath?: string
+        repoPath?: string
+        paths?: string[]
+        all?: boolean
+        update?: boolean
+        patch?: string
+      }) => Promise<GitResult<GitRepositorySnapshot>>
+      gitCommit: (payload: {
+        workspacePath?: string
+        repoPath?: string
+        message: string
+      }) => Promise<GitResult<GitRepositorySnapshot>>
+      gitPush: (payload: {
+        workspacePath?: string
+        repoPath?: string
+        setUpstream?: boolean
+        remote?: string
+      }) => Promise<GitResult<GitRepositorySnapshot>>
+      githubPrStatus: (payload: {
+        workspacePath?: string
+        repoPath?: string
+      }) => Promise<GitResult<GitPrSummary>>
       createGithubPr: (payload: {
         workspacePath?: string
+        repoPath?: string
         title?: string
         body?: string
         draft?: boolean

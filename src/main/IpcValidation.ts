@@ -130,6 +130,11 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'store-kimi-api-key': ['optionalString'],
   'clear-kimi-api-key': [],
   // GitHub PR creation (optional payload with target path / options).
+  'git:snapshot': ['optionalObject'],
+  'git:stage': ['optionalObject'],
+  'git:commit': ['optionalObject'],
+  'git:push': ['optionalObject'],
+  'github:pr-status': ['optionalObject'],
   'create-github-pr': ['optionalObject'],
   'agentic-yolo-get': [],
   'agentic-yolo-set': ['boolean'],

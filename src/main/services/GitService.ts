@@ -1,0 +1,475 @@
+import { spawn } from 'child_process'
+import { promises as fs } from 'fs'
+import { homedir } from 'os'
+import { dirname, join, resolve } from 'path'
+
+const DEFAULT_TIMEOUT_MS = 30_000
+
+export interface GitCommandResult {
+  stdout: string
+  stderr: string
+  code: number
+}
+
+export interface GitCommandRunner {
+  (command: string, args: string[], options: { cwd: string; timeoutMs?: number }): Promise<GitCommandResult>
+}
+
+export interface GitFileStatus {
+  path: string
+  originalPath?: string
+  index: string
+  workingTree: string
+  kind: 'created' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflicted' | 'ignored'
+  staged: boolean
+  unstaged: boolean
+}
+
+export interface GitRepositorySnapshot {
+  requestedPath: string
+  repoRoot: string
+  branch?: string
+  commit?: string
+  detached: boolean
+  upstream?: string
+  remoteName?: string
+  remoteUrl?: string
+  ahead: number
+  behind: number
+  files: GitFileStatus[]
+  counts: {
+    changed: number
+    staged: number
+    unstaged: number
+    untracked: number
+  }
+  clean: boolean
+}
+
+export interface GitPrSummary {
+  number?: number
+  url?: string
+  state?: string
+  isDraft?: boolean
+  headRefName?: string
+  baseRefName?: string
+  checks?: Array<{
+    name?: string
+    status?: string
+    conclusion?: string
+    url?: string
+  }>
+}
+
+export type GitResult<T> = { ok: true; data: T } | { ok: false; error: string; stderr?: string }
+
+export interface GitStageInput {
+  repoPath: string
+  paths?: string[]
+  all?: boolean
+  update?: boolean
+  patch?: string
+}
+
+export interface GitCommitInput {
+  repoPath: string
+  message: string
+}
+
+export interface GitPushInput {
+  repoPath: string
+  setUpstream?: boolean
+  remote?: string
+}
+
+export interface GitCreatePrInput {
+  repoPath: string
+  title?: string
+  body?: string
+  draft?: boolean
+}
+
+export class GitService {
+  private run: GitCommandRunner
+  private timeoutMs: number
+
+  constructor(options: { run?: GitCommandRunner; timeoutMs?: number } = {}) {
+    this.run = options.run || runCommand
+    this.timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS
+  }
+
+  async snapshot(inputPath: string): Promise<GitResult<GitRepositorySnapshot>> {
+    try {
+      return { ok: true, data: await this.buildSnapshot(inputPath) }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async stage(input: GitStageInput): Promise<GitResult<GitRepositorySnapshot>> {
+    try {
+      const repo = await this.resolveRepository(input.repoPath)
+      const paths = sanitizePaths(input.paths)
+      if (input.patch && input.patch.trim()) {
+        return {
+          ok: false,
+          error: 'Patch staging is not available through the desktop Git service yet.'
+        }
+      }
+      if (input.all) {
+        await this.mustRun('git', ['add', '-A'], repo.repoRoot)
+      } else if (input.update) {
+        await this.mustRun('git', ['add', '-u'], repo.repoRoot)
+      } else if (paths.length > 0) {
+        await this.mustRun('git', ['add', '--', ...paths], repo.repoRoot)
+      } else {
+        return { ok: false, error: 'Choose files to stage or pass all=true.' }
+      }
+      return { ok: true, data: await this.buildSnapshot(repo.repoRoot) }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async commit(input: GitCommitInput): Promise<GitResult<GitRepositorySnapshot>> {
+    try {
+      const message = input.message.trim()
+      if (!message) return { ok: false, error: 'Commit message is required.' }
+      const repo = await this.resolveRepository(input.repoPath)
+      const staged = await this.run('git', ['diff', '--cached', '--quiet'], {
+        cwd: repo.repoRoot,
+        timeoutMs: this.timeoutMs
+      })
+      if (staged.code === 0) return { ok: false, error: 'No staged changes to commit.' }
+      await this.mustRun('git', ['commit', '-m', message], repo.repoRoot)
+      return { ok: true, data: await this.buildSnapshot(repo.repoRoot) }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async push(input: GitPushInput): Promise<GitResult<GitRepositorySnapshot>> {
+    try {
+      const snapshot = await this.buildSnapshot(input.repoPath)
+      if (snapshot.detached || !snapshot.branch) {
+        return { ok: false, error: 'Cannot push from a detached HEAD. Create or switch to a branch first.' }
+      }
+      const remote = input.remote?.trim() || snapshot.remoteName || 'origin'
+      const args =
+        snapshot.upstream && !input.setUpstream
+          ? ['push']
+          : ['push', '-u', remote, snapshot.branch]
+      await this.mustRun('git', args, snapshot.repoRoot)
+      return { ok: true, data: await this.buildSnapshot(snapshot.repoRoot) }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async createPullRequest(input: GitCreatePrInput): Promise<GitResult<GitPrSummary>> {
+    try {
+      const snapshot = await this.buildSnapshot(input.repoPath)
+      if (snapshot.detached || !snapshot.branch) {
+        return { ok: false, error: 'Cannot create a pull request from a detached HEAD.' }
+      }
+      const args = ['pr', 'create']
+      const title = input.title?.trim() || ''
+      const body = input.body?.trim() || ''
+      if (title) args.push('--title', title)
+      if (body) args.push('--body', body)
+      if (!title && !body) args.push('--fill')
+      if (input.draft) args.push('--draft')
+
+      const result = await this.run('gh', args, { cwd: snapshot.repoRoot, timeoutMs: this.timeoutMs })
+      if (result.code !== 0) {
+        return {
+          ok: false,
+          error: result.stderr.trim() || result.stdout.trim() || '`gh pr create` failed.',
+          stderr: result.stderr.trim() || undefined
+        }
+      }
+      return {
+        ok: true,
+        data: {
+          url: result.stdout.trim().match(/https?:\/\/[^\s]+/)?.[0],
+          headRefName: snapshot.branch
+        }
+      }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async pullRequestStatus(inputPath: string): Promise<GitResult<GitPrSummary>> {
+    try {
+      const snapshot = await this.buildSnapshot(inputPath)
+      if (snapshot.detached || !snapshot.branch) {
+        return { ok: false, error: 'Cannot read pull request status from a detached HEAD.' }
+      }
+      const result = await this.run(
+        'gh',
+        [
+          'pr',
+          'view',
+          '--json',
+          'number,url,state,isDraft,headRefName,baseRefName,statusCheckRollup'
+        ],
+        { cwd: snapshot.repoRoot, timeoutMs: this.timeoutMs }
+      )
+      if (result.code !== 0) {
+        return {
+          ok: false,
+          error: result.stderr.trim() || result.stdout.trim() || '`gh pr view` failed.',
+          stderr: result.stderr.trim() || undefined
+        }
+      }
+      const parsed = JSON.parse(result.stdout || '{}') as Record<string, unknown>
+      const checks = Array.isArray(parsed.statusCheckRollup)
+        ? parsed.statusCheckRollup.map((item) => {
+            const record = isRecord(item) ? item : {}
+            return {
+              name: stringField(record.name),
+              status: stringField(record.status),
+              conclusion: stringField(record.conclusion),
+              url: stringField(record.detailsUrl) || stringField(record.url)
+            }
+          })
+        : undefined
+      return {
+        ok: true,
+        data: {
+          number: typeof parsed.number === 'number' ? parsed.number : undefined,
+          url: stringField(parsed.url),
+          state: stringField(parsed.state),
+          isDraft: typeof parsed.isDraft === 'boolean' ? parsed.isDraft : undefined,
+          headRefName: stringField(parsed.headRefName),
+          baseRefName: stringField(parsed.baseRefName),
+          checks
+        }
+      }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async resolveRepository(inputPath: string): Promise<{ requestedPath: string; repoRoot: string }> {
+    const rawPath = expandHomePath(inputPath || '').trim()
+    if (!rawPath) throw new Error('Repository path is required.')
+    const requestedPath = resolve(rawPath)
+    let cwd = requestedPath
+    try {
+      const stat = await fs.stat(requestedPath)
+      if (!stat.isDirectory()) cwd = dirname(requestedPath)
+    } catch {
+      throw new Error('Path does not exist on disk.')
+    }
+    const result = await this.run('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      timeoutMs: this.timeoutMs
+    })
+    if (result.code !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || 'Path is not inside a git repository.')
+    }
+    return {
+      requestedPath,
+      repoRoot: result.stdout.trim()
+    }
+  }
+
+  private async buildSnapshot(inputPath: string): Promise<GitRepositorySnapshot> {
+    const repo = await this.resolveRepository(inputPath)
+    const [branchResult, commitResult, upstreamResult, remoteResult, statusResult] =
+      await Promise.all([
+        this.run('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+          cwd: repo.repoRoot,
+          timeoutMs: this.timeoutMs
+        }),
+        this.run('git', ['rev-parse', '--short', 'HEAD'], {
+          cwd: repo.repoRoot,
+          timeoutMs: this.timeoutMs
+        }),
+        this.run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], {
+          cwd: repo.repoRoot,
+          timeoutMs: this.timeoutMs
+        }),
+        this.run('git', ['config', '--get', 'remote.origin.url'], {
+          cwd: repo.repoRoot,
+          timeoutMs: this.timeoutMs
+        }),
+        this.run('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+          cwd: repo.repoRoot,
+          timeoutMs: this.timeoutMs
+        })
+      ])
+
+    const branch = branchResult.code === 0 ? branchResult.stdout.trim() : undefined
+    const upstream = upstreamResult.code === 0 ? upstreamResult.stdout.trim() : undefined
+    const files = parseStatusPorcelainZ(statusResult.stdout)
+    const aheadBehind = upstream
+      ? await this.readAheadBehind(repo.repoRoot)
+      : { ahead: 0, behind: 0 }
+
+    return {
+      requestedPath: repo.requestedPath,
+      repoRoot: repo.repoRoot,
+      branch,
+      commit: commitResult.code === 0 ? commitResult.stdout.trim() : undefined,
+      detached: !branch,
+      upstream,
+      remoteName: upstream?.includes('/') ? upstream.split('/')[0] : remoteResult.code === 0 ? 'origin' : undefined,
+      remoteUrl: remoteResult.code === 0 ? remoteResult.stdout.trim() : undefined,
+      ahead: aheadBehind.ahead,
+      behind: aheadBehind.behind,
+      files,
+      counts: {
+        changed: files.length,
+        staged: files.filter((file) => file.staged).length,
+        unstaged: files.filter((file) => file.unstaged).length,
+        untracked: files.filter((file) => file.kind === 'untracked').length
+      },
+      clean: files.length === 0
+    }
+  }
+
+  private async readAheadBehind(repoRoot: string): Promise<{ ahead: number; behind: number }> {
+    const result = await this.run('git', ['rev-list', '--left-right', '--count', 'HEAD...@{u}'], {
+      cwd: repoRoot,
+      timeoutMs: this.timeoutMs
+    })
+    if (result.code !== 0) return { ahead: 0, behind: 0 }
+    const [aheadRaw, behindRaw] = result.stdout.trim().split(/\s+/)
+    return {
+      ahead: Number(aheadRaw) || 0,
+      behind: Number(behindRaw) || 0
+    }
+  }
+
+  private async mustRun(command: string, args: string[], cwd: string): Promise<GitCommandResult> {
+    const result = await this.run(command, args, { cwd, timeoutMs: this.timeoutMs })
+    if (result.code !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `${command} ${args.join(' ')} failed.`)
+    }
+    return result
+  }
+}
+
+export function parseStatusPorcelainZ(output: string): GitFileStatus[] {
+  const entries: GitFileStatus[] = []
+  const parts = output.split('\0')
+  let i = 0
+  while (i < parts.length) {
+    const entry = parts[i]
+    if (!entry || entry.length < 3) {
+      i++
+      continue
+    }
+    const index = entry[0] || ' '
+    const workingTree = entry[1] || ' '
+    const path = entry.slice(3)
+    let originalPath: string | undefined
+    if ((index === 'R' || index === 'C') && i + 1 < parts.length) {
+      originalPath = parts[i + 1] || undefined
+      i += 2
+    } else {
+      i++
+    }
+    entries.push({
+      path,
+      originalPath,
+      index,
+      workingTree,
+      kind: classifyStatus(index, workingTree),
+      staged: index !== ' ' && index !== '?' && index !== '!',
+      unstaged: workingTree !== ' ' || index === '?' || index === '!'
+    })
+  }
+  return entries
+}
+
+async function runCommand(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeoutMs?: number }
+): Promise<GitCommandResult> {
+  return await new Promise((resolve) => {
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    const timeout = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      resolve({ stdout, stderr: `${command} timed out after ${options.timeoutMs || DEFAULT_TIMEOUT_MS}ms.`, code: -1 })
+    }, options.timeoutMs || DEFAULT_TIMEOUT_MS)
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      const message =
+        error.code === 'ENOENT'
+          ? `${command} is not installed or not on PATH.`
+          : `Failed to launch ${command}: ${error.message}`
+      resolve({ stdout, stderr: message, code: -1 })
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve({ stdout, stderr, code: code ?? 0 })
+    })
+  })
+}
+
+function classifyStatus(
+  index: string,
+  workingTree: string
+): GitFileStatus['kind'] {
+  if (index === '?' || workingTree === '?') return 'untracked'
+  if (index === '!' || workingTree === '!') return 'ignored'
+  if (index === 'U' || workingTree === 'U' || (index === 'A' && workingTree === 'A')) {
+    return 'conflicted'
+  }
+  if (index === 'R' || workingTree === 'R') return 'renamed'
+  if (index === 'A' || workingTree === 'A') return 'created'
+  if (index === 'D' || workingTree === 'D') return 'deleted'
+  return 'modified'
+}
+
+function sanitizePaths(paths: string[] | undefined): string[] {
+  if (!Array.isArray(paths)) return []
+  return paths.map((path) => path.trim()).filter((path) => path && !path.startsWith('/'))
+}
+
+function expandHomePath(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (raw === '~') return homedir()
+  if (raw.startsWith('~/')) return join(homedir(), raw.slice(2))
+  return raw
+}
+
+function failure<T>(error: unknown): GitResult<T> {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : String(error)
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}

@@ -6,6 +6,7 @@ import type {
 } from '../main/store/types'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
+import type { GitPrSummary, GitRepositorySnapshot, GitResult } from '../main/services/GitService'
 
 type ComposerImageAttachment = {
   id?: string
@@ -132,8 +133,29 @@ const api = {
   getCodexUsageSnapshot: () => ipcRenderer.invoke('get-codex-usage-snapshot'),
   getExternalUsage: () => ipcRenderer.invoke('get-external-usage'),
   probeGrokUsage: () => ipcRenderer.invoke('grok-usage:probe'),
+  gitSnapshot: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('git:snapshot', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitStage: (payload: {
+    workspacePath?: string
+    repoPath?: string
+    paths?: string[]
+    all?: boolean
+    update?: boolean
+    patch?: string
+  }) => ipcRenderer.invoke('git:stage', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitCommit: (payload: { workspacePath?: string; repoPath?: string; message: string }) =>
+    ipcRenderer.invoke('git:commit', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitPush: (payload: {
+    workspacePath?: string
+    repoPath?: string
+    setUpstream?: boolean
+    remote?: string
+  }) => ipcRenderer.invoke('git:push', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  githubPrStatus: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('github:pr-status', payload) as Promise<GitResult<GitPrSummary>>,
   createGithubPr: (payload: {
     workspacePath?: string
+    repoPath?: string
     title?: string
     body?: string
     draft?: boolean
