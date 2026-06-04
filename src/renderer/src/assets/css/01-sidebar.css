@@ -454,17 +454,23 @@
   align-items: center;
   gap: 7px;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  /* Rim-highlight chrome: a clean rim — white on dark themes, black on light,
+     via the theme-aware --text-primary — with NO inner fill/frosting. (Opted
+     out of the native-glass tile-chrome groups in shards 06 + 08.) */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: transparent;
   color: color-mix(in srgb, var(--sidebar-text) 82%, transparent);
-  transition: border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .sidebar-search-field:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--sidebar-border));
-  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  /* Rim glow on typing / selection — brighter rim + a soft halo, still no fill. */
+  border-color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  background: transparent;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text-primary) 30%, transparent),
+    0 0 9px color-mix(in srgb, var(--text-primary) 16%, transparent);
 }
 
 .sidebar-search-field input {

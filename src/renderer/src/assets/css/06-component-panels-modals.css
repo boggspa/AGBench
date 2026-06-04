@@ -455,7 +455,6 @@
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(
   .sidebar-masthead,
-  .sidebar-search-field,
   .sidebar-empty-state,
   .run-summary,
   .model-usage-summary,

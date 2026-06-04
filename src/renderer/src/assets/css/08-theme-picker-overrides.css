@@ -4223,7 +4223,6 @@
  * Run Summary, Model Usage, footer button) — light frosted tiles. */
 [data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar :is(
   .sidebar-masthead,
-  .sidebar-search-field,
   .sidebar-empty-state,
   .run-summary,
   .model-usage-summary,
