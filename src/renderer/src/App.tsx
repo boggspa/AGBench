@@ -10753,11 +10753,16 @@ function App(): React.JSX.Element {
       queuedRunQueueCount > 0 ||
       rawLogs.length > 0 ||
       Boolean(pendingAgentApproval))
+  // Ensemble has no single provider — point the aura at a dedicated
+  // multi-provider palette (`fx-provider-ensemble`, shard 05) instead of
+  // the active provider's single-brand aura, so the glow reads as the
+  // whole ensemble rather than (e.g.) Codex.
+  const auraProviderKey = isCurrentEnsembleChat ? 'ensemble' : currentProvider
   const appAgentAuraClass = showAgentAuraFx
-    ? `fx-agent-aura-root fx-provider-${currentProvider} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
+    ? `fx-agent-aura-root fx-provider-${auraProviderKey} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
     : ''
   const composerAgentAuraClass = showAgentAuraFx
-    ? `fx-agent-aura fx-provider-${currentProvider} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
+    ? `fx-agent-aura fx-provider-${auraProviderKey} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
     : ''
   // Phase K-followup — `providerSessionLabel` ("New Codex thread" /
   // "{Provider} session linked") removed alongside its only consumer
