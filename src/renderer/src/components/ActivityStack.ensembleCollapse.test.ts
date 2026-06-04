@@ -152,6 +152,25 @@ describe('buildTimelineItems — same-tool grouping (unified single + ensemble)'
     expect(items.map((i) => i.type)).toEqual(['compact-group', 'activity', 'compact-group'])
     if (items[1].type === 'activity') expect(items[1].activity.id).toBe('y1')
   })
+
+  it('does NOT merge same-family calls from DIFFERENT ensemble providers (keeps attribution)', () => {
+    const acts: ToolActivity[] = [
+      activity({ id: 'a', category: 'write', metadata: { ensembleProvider: 'codex' } }),
+      activity({ id: 'b', category: 'write', metadata: { ensembleProvider: 'claude' } })
+    ]
+    const items = buildTimelineItems(acts)
+    expect(items.map((i) => i.type)).toEqual(['activity', 'activity'])
+  })
+
+  it('groups a same-family run from the SAME ensemble provider', () => {
+    const acts: ToolActivity[] = [
+      activity({ id: 'a', category: 'write', metadata: { ensembleProvider: 'codex' } }),
+      activity({ id: 'b', category: 'write', metadata: { ensembleProvider: 'codex' } })
+    ]
+    const items = buildTimelineItems(acts)
+    expect(items.length).toBe(1)
+    expect(items[0].type).toBe('compact-group')
+  })
 })
 
 /*

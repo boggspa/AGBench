@@ -808,11 +808,17 @@ export function buildCompactGroupLabel(activities: readonly ToolActivity[]): str
   return `${dominantLabel} (+${remainder} more)`
 }
 
-/** Family key for same-tool grouping — search is split from generic
- * reads (distinct tools), everything else groups by category. */
+/** Grouping key for same-tool folding — a run folds only when consecutive
+ * calls share BOTH the acting provider AND the tool family. Keying on the
+ * provider keeps ENSEMBLE cross-provider attribution intact (Codex's edit
+ * and Claude's edit never merge into one anonymous "Edited 2 files"
+ * group); single-provider chats have one actor so this reduces to pure
+ * family grouping (consistent behaviour). Search is split from generic
+ * reads (distinct tools). */
 function activityFamilyKey(activity: ToolActivity): string {
-  if (isSearchActivity(activity)) return 'search'
-  return activity.category
+  const actor = activity.metadata?.ensembleProvider ?? activity.metadata?.provider ?? ''
+  const family = isSearchActivity(activity) ? 'search' : activity.category
+  return `${actor}|${family}`
 }
 
 /**
