@@ -1495,9 +1495,6 @@ export function Sidebar({
   }, [chats])
   const currentScopeTitle =
     currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'AGBench')
-  const currentScopeMeta = currentWorkspace
-    ? getWorkspaceMeta(currentWorkspace)
-    : 'System-wide agent threads'
   const runningCount = runningChatIdSet.size
   const primaryNewTitle = currentWorkspace
     ? `New chat in ${currentWorkspace.displayName}`
@@ -1955,7 +1952,6 @@ export function Sidebar({
                 {currentScopeTitle}
               </strong>
             )}
-            <span title={currentWorkspace?.path || currentScopeMeta}>{currentScopeMeta}</span>
           </div>
           <div className="sidebar-new-menu-wrap" ref={newMenuWrapRef}>
             <button

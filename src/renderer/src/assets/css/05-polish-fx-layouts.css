@@ -1594,12 +1594,12 @@
      intentional, replacing the old spaced-caps eyebrow. */
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--text-primary);
   font-family:
     "Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI", sans-serif;
-  font-size: 19px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.1;
@@ -1607,8 +1607,8 @@
 }
 
 .sidebar-product-ghost {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
   object-fit: contain;
   margin-top: -1px;
