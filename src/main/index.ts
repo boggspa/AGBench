@@ -4048,6 +4048,30 @@ function claudeProgrammaticUsageWarning(runtime: 'sdk' | 'cli-print', usesApiKey
   return `${runtimeLabel} is a programmatic Claude path. Anthropic says programmatic Claude usage uses separate Agent SDK credit from 2026-06-15, not the normal interactive Claude Code subscription limit. Use interactive Claude in a terminal when you need native Claude Code subscription-limit behavior.`
 }
 
+// Recover a single tool-call identifier from a bridge tool payload, regardless
+// of which field the provider populates. A `ToolCall` notification keys it `id`;
+// the matching `ToolResult` echoes it under `tool_call_id` (and some shapes use
+// `call_id` / `tool_id`). Resolving both branches through the SAME ordered
+// lookup guarantees the call and its result share one id, so the renderer
+// coalesces them into one inline card instead of stacking each event. Mirrors
+// the multi-field lookup Grok's mapper already uses (GrokStreamingJson). Falls
+// back to a unique generated id only when no identifier is present at all (which
+// keeps two genuinely id-less calls from merging).
+function cliProviderToolId(payload: Record<string, unknown>, prefix: string): string {
+  const candidates = [
+    payload.tool_call_id,
+    payload.toolCallId,
+    payload.id,
+    payload.tool_id,
+    payload.toolId,
+    payload.call_id
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown): void {
   if (!isRecord(event)) return
   const params = nestedRecord(event, 'params')
@@ -4097,23 +4121,34 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown)
 
   if (event.method === 'event' && params.type === 'ToolCall') {
     const toolFunction = nestedRecord(payload, 'function')
+    // Kimi tool calls must COALESCE with their matching ToolResult into one
+    // inline card (the way Codex/Claude/Grok do). The renderer pairs a result
+    // back to its call by `tool_id`, so the call and the result MUST resolve to
+    // the SAME stable id. Kimi keys the call identifier as `id` here, but the
+    // result echoes it under `tool_call_id` (see the ToolResult branch + the
+    // wire-protocol approval echo in ApprovalService, `request_id: payload.id`).
+    // Mirror Grok's multi-field id lookup (GrokStreamingJson) so the same value
+    // is recovered regardless of which field Kimi populates on each side.
+    const toolCallId = cliProviderToolId(payload, 'tool')
+    // Moonshot/OpenAI function-calling sends `function.arguments` as a
+    // JSON-ENCODED STRING, so the old `isRecord(...)` check dropped them to `{}`
+    // — that's why the card never showed the target filename. normalizeMcpTool-
+    // Arguments parses the string (or passes an object through) so ToolParser
+    // can surface `file_path`/`path` in the card label.
+    const rawToolArgs = toolFunction.arguments ?? payload.arguments
     sendAgentCompatLine(
       state.sender,
       state.provider,
       {
         type: 'tool_use',
-        tool_id: typeof payload.id === 'string' ? payload.id : `tool-${Date.now()}`,
+        tool_id: toolCallId,
         tool_name:
           typeof toolFunction.name === 'string'
             ? toolFunction.name
             : typeof payload.name === 'string'
               ? payload.name
               : 'tool',
-        parameters: isRecord(toolFunction.arguments)
-          ? toolFunction.arguments
-          : isRecord(payload.arguments)
-            ? payload.arguments
-            : {},
+        parameters: normalizeMcpToolArguments(rawToolArgs),
         provider: state.provider
       },
       state
@@ -4122,13 +4157,15 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown)
 
   if (event.method === 'event' && params.type === 'ToolResult') {
     const returnValue = nestedRecord(payload, 'return_value')
+    // Same stable-id resolution as the ToolCall branch above so the result
+    // pairs back to its call card instead of stacking as a fresh orphan.
+    const toolResultId = cliProviderToolId(payload, 'tool')
     sendAgentCompatLine(
       state.sender,
       state.provider,
       {
         type: 'tool_result',
-        tool_id:
-          typeof payload.tool_call_id === 'string' ? payload.tool_call_id : `tool-${Date.now()}`,
+        tool_id: toolResultId,
         status: returnValue.is_error ? 'error' : 'success',
         output: contentPartsToText(returnValue.output || returnValue.message || ''),
         provider: state.provider
