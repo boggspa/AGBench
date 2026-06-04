@@ -2691,10 +2691,16 @@
     var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
 }
 
+/* Active sidebar chat under the agent-aura FX — RIM chrome, NOT the old
+ * left "fingernail" sliver (`inset 2px 0 0`). Provider-tinted rim that
+ * matches the non-aura `.sidebar-chat-item.active` treatment + a soft
+ * aura outer glow, so workspace chat threads read with the same rim
+ * highlights as every other thread even when Agent-Aura FX is on. */
 .fx-agent-aura-root .sidebar-chat-item.active,
 .fx-agent-aura-root .sidebar-chat-row.active {
   box-shadow:
-    inset 2px 0 0 rgb(var(--agent-aura-rgb, 87 148 255) / 0.82),
+    inset 0 0 0 1px color-mix(in srgb, var(--chat-provider-accent, var(--accent)) 42%, var(--panel-border)),
+    inset 0 0 12px color-mix(in srgb, var(--chat-provider-accent, var(--accent)) 10%, transparent),
     0 0 22px rgb(var(--agent-aura-rgb, 87 148 255) / 0.12);
 }
 
