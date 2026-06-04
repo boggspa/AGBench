@@ -2639,7 +2639,8 @@
  * pops against it. Background only; the variant's blur/shadow
  * survive. */
 [data-composer-style="default"] .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg) 30%, rgba(0, 0, 0, 0.94) 70%);
+  /* Pure black frame — NO theme tint (per maintainer: black, not "dark"). */
+  background: rgba(0, 0, 0, 0.95);
 }
 [data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-surface,
@@ -2647,21 +2648,19 @@
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="classic"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-surface {
-  /* Glassy variants already blur what's behind them, so a slightly
-   * lighter black veil over the glass reads as a smoked pane. */
-  background: color-mix(in srgb, var(--composer-glass-bg) 34%, rgba(0, 0, 0, 0.9) 66%);
+  /* Glassy variants blur what's behind them; a pure-black veil (no theme
+   * tint) reads as a smoked black pane while the blur still breathes. */
+  background: rgba(0, 0, 0, 0.9);
 }
 [data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
 [data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
-  /* No blur to lean on — firmer black mix so the frame still reads
-   * as a near-black pane, but kept calm. */
-  background: color-mix(in srgb, var(--composer-bg-solid) 24%, #050608 76%);
+  /* No blur to lean on — pure opaque black (no theme tint). */
+  background: #000000;
 }
 
-/* OUTER frame — the five LIGHT themes: a near-WHITE glass tint so
- * the frame reads as a clean white pane around the theme-tone
- * module. Same variant split, mixing toward white instead of
- * black. */
+/* OUTER frame — the five LIGHT themes: PURE WHITE (no theme tint, per
+ * maintainer: white, not "light") so the frame reads as a clean white
+ * pane around the theme-tone module. Same variant split. */
 :is(
     [data-theme="light"],
     [data-theme="citrus"],
@@ -2670,7 +2669,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg) 28%, rgba(255, 255, 255, 0.96) 72%);
+  background: rgba(255, 255, 255, 0.96);
 }
 :is(
     [data-theme="light"],
@@ -2720,7 +2719,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-glass-bg) 32%, rgba(255, 255, 255, 0.92) 68%);
+  background: rgba(255, 255, 255, 0.91);
 }
 :is(
     [data-theme="light"],
@@ -2738,7 +2737,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"][data-reduce-transparency="true"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg-solid) 22%, #ffffff 78%);
+  background: #ffffff;
 }
 
 /* INNER module — the readable input. NORMAL theme-tone surface so
