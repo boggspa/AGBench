@@ -803,16 +803,16 @@
   min-width: 78px;
 }
 .ensemble-hierarchy-tile.provider-claude {
-  border-color: color-mix(in srgb, var(--provider-claude, #d68a4d) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-claude-color, #d97706) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-codex {
-  border-color: color-mix(in srgb, var(--provider-codex, #3b82f6) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-codex-color, #6366f1) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-gemini {
-  border-color: color-mix(in srgb, var(--provider-gemini, #4d8edb) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-gemini-color, #2563eb) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-kimi {
-  border-color: color-mix(in srgb, var(--provider-kimi, #6fb04a) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-kimi-color, #84a33b) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-grok {
   border-color: color-mix(in srgb, var(--provider-grok-color) 48%, var(--panel-border));
@@ -1123,6 +1123,19 @@
 }
 .welcome-usage-tab.active::after {
   background: var(--accent);
+}
+/* Welcome L9 polish — the underline now previews faintly on hover (was
+ * colour-only) and the tab is keyboard-focusable with a visible accent
+ * underline, so the tab strip reads as crisp under both pointer + keyboard. */
+.welcome-usage-tab:hover:not(.active)::after {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.welcome-usage-tab:focus-visible {
+  outline: none;
+  color: var(--text-primary);
+}
+.welcome-usage-tab:focus-visible::after {
+  background: color-mix(in srgb, var(--accent) 58%, transparent);
 }
 
 /* Range toggle (elsewhere in the app) keeps its historical pill style. */
@@ -2096,6 +2109,10 @@
   font-weight: 600;
   color: color-mix(in srgb, var(--accent) 80%, var(--text-primary) 20%);
 }
+.welcome-usage-empty--range .mascot-ghost {
+  color: color-mix(in srgb, var(--text-primary) 32%, transparent);
+  margin-bottom: 4px;
+}
 
 /* 1.0.6-CRUX43 — the model-meter FILL also reads its provider brand colour via
  * `currentColor` (see .welcome-usage-model-meter-fill), so it's added to each
@@ -2424,6 +2441,470 @@
 .composer-surface.is-drag-over {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--composer-bg) 78%, var(--accent) 22%);
+}
+
+/* ============================================================
+ * NATIVE-SHELL COMPOSER CONSOLE RIM (CSS-only)
+ * --------------------------------------------------------------
+ * Gives the AGBench *native* composer (`data-composer-style=
+ * "default"`) the maintainer's "rim highlight" identity — the
+ * same idiom committed in a9d5482 for `.participant-health-card`
+ * / `.agent-question-card` / `.compact-tool-trace`: a whole-
+ * perimeter rim (NOT a left rail) drawn as an `inset 0 0 0 1px`
+ * glow, optionally tinted by state/provider, with a faint tint.
+ *
+ * WHY a `::after` (and not the host border/box-shadow):
+ *   - The host `.composer-surface` already owns `border` +
+ *     `box-shadow` across THREE prompt-surface variants (glass /
+ *     classic / solid, lines ~2409-2439) plus the focus-within +
+ *     per-provider focus glows above. Restating box-shadow on the
+ *     host at equal specificity would clobber the glass backdrop
+ *     shadow. Drawing the rim on a dedicated `::after` layers the
+ *     instrument rim ON TOP without disturbing any of that, so it
+ *     reads identically across every surface/theme.
+ *   - `::before` is already taken (the side-vignette gradient),
+ *     so the rim uses `::after`. For the native shell `::after`
+ *     is otherwise free (themed shells terminal/stub/modular/
+ *     satellite use their own `::after`, but those are scoped to
+ *     their own `data-composer-style`, never `default`).
+ *
+ * SCOPE — native shell ONLY. The codex / claude hat-tip shells
+ * set their own `.composer-surface` chrome (shard 07) and must
+ * keep their identity, so every rule here is prefixed with
+ * `[data-composer-style="default"]`.
+ *
+ * HAND-OFF to Agent-Aura FX — when the Advanced-FX "Agent Aura"
+ * is enabled the surface carries `.fx-agent-aura` and shard 05
+ * already paints a richer running/approval/failed treatment
+ * (incl. its own `.composer-surface::after`). We therefore EXIT
+ * via `:not(.fx-agent-aura)` so the two never fight: idle rim
+ * when FX-aura is off, full aura when it's on.
+ *
+ * The rim line colour adapts to light + dark automatically: it
+ * is a `color-mix` against `--text-primary` / the provider token,
+ * never a fixed rgba, so it stays subtle on both.
+ * ============================================================ */
+
+/* Calm idle rim — neutral, always-on. A single faint perimeter
+ * line that gives the console a defined edge without a glow. */
+[data-composer-style="default"] .composer-surface:not(.fx-agent-aura)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Sits above the ::before vignette (z-index:0) and the surface
+   * fill, but below the actual composer controls (z-index:2). */
+  z-index: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 5%, transparent);
+  transition: box-shadow 160ms ease;
+}
+
+/* Provider-tinted idle rim. `.app-transcript.provider-<id>` is an
+ * EXISTING always-on hook (App.tsx:16259) and is an ancestor of
+ * the composer-surface — the same hook the per-provider focus
+ * glows above already use. The rim warms toward the provider's
+ * brand token (a faint inner line + an even fainter outer halo +
+ * a whisper of background tint), so the native console quietly
+ * signals which agent it's wired to. Kept well under the focus
+ * glow's intensity so focus still reads as the louder state. */
+[data-composer-style="default"]
+  .app-transcript.provider-gemini
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-gemini-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-codex
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-codex-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-claude
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-claude-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-kimi
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-kimi-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-grok
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-grok-color) 4%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-cursor
+  .composer-surface:not(.fx-agent-aura)::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 7%, transparent);
+  background: color-mix(in srgb, var(--provider-cursor-color) 4%, transparent);
+}
+
+/*
+ * TODO(App.tsx phase): RUNNING / agent-active rim is intentionally
+ * NOT added here. The only running/approval hook on the surface
+ * today is `.fx-agent-aura.fx-status-{running,approval,failed}`,
+ * which (a) is present ONLY when Advanced-FX "Agent Aura" is
+ * enabled and (b) is already fully painted by shard 05. An
+ * always-on running rim needs a dedicated, FX-independent class on
+ * `.composer-surface` (e.g. `is-running` driven by
+ * `isCurrentChatRunning` / `runFxStatus`) which lands in the
+ * App.tsx slice. When it does, mirror the rim idiom here:
+ *   --composer-rim: color-mix(in srgb, var(--accent) 42%, var(--panel-border));
+ * on `[data-composer-style="default"] .composer-surface.is-running::after`.
+ *
+ * TODO(App.tsx phase): ENSEMBLE vs SINGLE rim is also deferred.
+ * `.app-transcript.chat-kind-ensemble` IS an existing ancestor
+ * hook (App.tsx:16259), but an ensemble has no single provider
+ * brand colour, so a tasteful ensemble rim needs a deliberate
+ * neutral/multi tone chosen in the App.tsx slice rather than
+ * invented here.
+ */
+
+/* Reduce-motion: the rim itself is static (no pulse/animation),
+ * but kill the colour-cross-fade transition so provider/focus
+ * changes snap instead of easing. */
+[data-reduce-motion="true"]
+  [data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)::after {
+  transition: none;
+}
+
+/* ============================================================
+ * NATIVE-SHELL COMPOSER "CONSOLE" REDESIGN — POLARITY FRAME
+ * --------------------------------------------------------------
+ * The maintainer's vision: turn the native composer
+ * (`data-composer-style="default"`) into an *instrument*. Two
+ * nested surfaces:
+ *
+ *   OUTER  `.composer-surface`       → a translucent glass shown as
+ *          the FRAME around the input (via the surface's perimeter
+ *          padding) AND as the bed under the relocated telemetry
+ *          row. REFINEMENT (flips slice 2): it now follows theme
+ *          POLARITY rather than contrast — a near-BLACK glass on
+ *          DARK themes, a near-WHITE glass on the five LIGHT themes.
+ *          So on dark the frame is darker/blacker than the theme-
+ *          tone module (the module pops against a black frame); on
+ *          light it is a clean white frame. Carries the slice-1
+ *          provider rim on its ::after.
+ *
+ *   INNER  `.composer-inner-module`  → the actual INPUT (textarea
+ *          + slash/mention menus + the control-footer), on a NORMAL
+ *          THEME-TONE surface so text + controls stay perfectly
+ *          readable. Rendered FULL-WIDTH with HARD corners as an
+ *          edge-to-edge instrument panel, carrying the provider rim
+ *          on its own perimeter.
+ *
+ * READABILITY — the input always sits on the theme-tone module, so
+ * text stays theme-correct (light-on-dark / dark-on-light). The
+ * relocated `.composer-telemetry-row` now sits on the outer frame;
+ * it uses theme text colours (light-on-black on dark, dark-on-white
+ * on light), which stays readable against the polarity glass.
+ *
+ * SURFACE VARIANTS — `.composer-surface` has three prompt-surface
+ * variants (glass / classic / solid, lines ~2409-2439), each
+ * setting its own `background` + `backdrop-filter` + `box-shadow`.
+ * We override ONLY `background` here (leaving every variant's
+ * backdrop-filter + box-shadow untouched, so glass stays glassy,
+ * classic stays classic, solid stays opaque). The polarity tint is
+ * a `color-mix` toward near-black (dark themes) / near-white (light
+ * themes); the SOLID variant gets a firmer mix (no blur to lean
+ * on). The base rule below covers the default/dark case; the
+ * light-theme `:is(...)` block flips the polarity to a white glass.
+ *
+ * SCOPE — native shell only. Codex / claude / grok shells own
+ * their `.composer-surface` chrome (shard 07/10) and are never
+ * `default`, so they are untouched.
+ * ============================================================ */
+
+/* OUTER frame — DARK themes (default): a near-BLACK glass tint so
+ * the frame reads darker/blacker than the theme-tone module, which
+ * pops against it. Background only; the variant's blur/shadow
+ * survive. */
+[data-composer-style="default"] .composer-surface {
+  /* Pure black frame — NO theme tint (per maintainer: black, not "dark"). */
+  background: rgba(0, 0, 0, 0.95);
+}
+[data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="classic"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-surface {
+  /* Glassy variants blur what's behind them; a pure-black veil (no theme
+   * tint) reads as a smoked black pane while the blur still breathes. */
+  background: rgba(0, 0, 0, 0.9);
+}
+[data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
+[data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
+  /* No blur to lean on — pure opaque black (no theme tint). */
+  background: #000000;
+}
+
+/* OUTER frame — the five LIGHT themes: PURE WHITE (no theme tint, per
+ * maintainer: white, not "light") so the frame reads as a clean white
+ * pane around the theme-tone module. Same variant split. */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .composer-surface {
+  background: rgba(255, 255, 255, 0.96);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="liquid_glass"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="classic"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"]
+  .composer-surface {
+  background: rgba(255, 255, 255, 0.91);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="solid"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-reduce-transparency="true"]
+  .composer-surface {
+  background: #ffffff;
+}
+
+/* ── Console refinement: SOLID outer frame (chat composers) ──────────
+ * The maintainer wants the native composer's OUTER frame to read as a
+ * pure black/white bezel with NO themed gradient — the theme tone lives
+ * on the INNER module instead. Kill the surface side-vignette (::before:
+ * base + per-provider tints in this shard + the ensemble tints in shard
+ * 09) for the default shell's CHAT composers. The provider RIM (::after)
+ * is untouched. !important lets one rule beat the per-provider + ensemble
+ * ::before variants without specificity gymnastics; scoped to
+ * `.app-transcript` so the separately-polished welcome surface keeps its
+ * own look. */
+[data-composer-style="default"] .app-transcript .composer-surface::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Console alignment: ABOVE-ROWS match the solid frame ─────────────
+ * The Ensemble row, the Create-PR / Review row, and the Steer/Queue row
+ * used the OLD composer look — `var(--composer-bg)` theme tone + a themed
+ * side-vignette (::before) — the very treatment the console redesign
+ * replaced on the surface. That left them clashing with the new solid
+ * black/white frame below. Re-skin them to match the frame: solid pure
+ * black (dark) / white (light) fill, vignette killed, with a neutral
+ * hairline rim for definition. Provider colour stays on the chips, so the
+ * whole stack (rows + composer) reads as one cohesive instrument. Native
+ * chat composers only (single + ensemble); other shells untouched. */
+[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: color-mix(in srgb, var(--text-primary) 17%, transparent);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* INNER module — the readable input. NORMAL theme-tone surface so
+ * the textarea + controls always sit on theme tone (light-on-dark
+ * / dark-on-light), NEVER on the inverted contrast glass. Seated
+ * into the frame with a subtle inset seam (hairline + faint inner
+ * shadow) and a matching radius. Provider rim is carried in shard
+ * 07. Only active on the native shell; on the other shells the
+ * wrapper is layout-transparent (`display: contents`) so their
+ * own composer chrome is unaffected.
+ *
+ * DEFAULT (every NON-native shell) — `display: contents`: the
+ * wrapper vanishes from layout and its children (textarea + the
+ * two control rows) stay *effective* children of `.composer-
+ * surface` exactly as before this redesign. This mirrors the
+ * existing `.composer-bottom-controls` contract and is what keeps
+ * codex / claude / grok / kimi / cursor untouched. */
+.composer-inner-module {
+  display: contents;
+}
+
+[data-composer-style="default"] .composer-inner-module {
+  position: relative;
+  z-index: 2; /* above the surface ::before vignette (0) + ::after rim (1) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  background: var(--composer-bg);
+  /* Refinement — FULL WIDTH + HARD CORNERS. The maintainer wants the
+   * module as a crisp edge-to-edge instrument panel rather than a
+   * rounded inset card. Bleed across the surface's 14px horizontal
+   * frame padding with matching negative margins so the module spans
+   * the full surface width; square the corners. The surface keeps
+   * `overflow: hidden`, so the panel's edges clip cleanly to the
+   * frame's rounded outer corners. The theme-tone fill, provider rim
+   * (shard 07), and inset seam all survive. */
+  /* Full-bleed: width must be 100% PLUS the surface's 2×14px frame
+   * padding, or `width:100%` (content-box) + a negative margin only
+   * reaches the LEFT edge and falls ~28px short on the RIGHT. */
+  width: calc(100% + 28px);
+  max-width: none;
+  margin-left: -14px;
+  margin-right: -14px;
+  border-radius: 0;
+  /* Seat into the contrast frame: a hairline ring + a soft inner
+   * seam so the module reads as a panel dropped into the glass. */
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+  padding: 10px 10px 6px;
+  transition: box-shadow 160ms ease;
+}
+
+/* The inner module owns the theme-tone fill, so neutralise the
+ * outer surface's side-vignette in the central area — let the
+ * vignette read only in the frame (where the glass is). We do
+ * this by keeping the module opaque-enough; on the glass variants
+ * the theme `--composer-bg` is itself translucent, so nudge it
+ * toward solid so the input never shows the inverted glass behind
+ * it (HARD readability rule). */
+[data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="classic"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-inner-module {
+  background: color-mix(in srgb, var(--composer-bg) 86%, var(--composer-bg-solid) 14%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[data-composer-style="default"][data-prompt-surface="solid"] .composer-inner-module,
+[data-composer-style="default"][data-reduce-transparency="true"] .composer-inner-module {
+  background: var(--composer-bg-solid);
+}
+
+/* Welcome mode keeps the hard-cornered full-width panel; only the
+ * horizontal bleed changes because the welcome surface uses a wider
+ * 16px frame padding (vs 14px), so match the negative margins. */
+.welcome-mode[data-composer-style="default"] .composer-inner-module,
+[data-composer-style="default"] .welcome-mode .composer-inner-module {
+  border-radius: 0;
+  width: calc(100% + 32px); /* welcome's 2×16px frame padding */
+  margin-left: -16px;
+  margin-right: -16px;
+}
+
+/* ── Console refinement: themed INNER in LIGHT (chat composers) ──────
+ * The outer is now pure white in light themes, so the inner module's
+ * near-white `--composer-bg` blended into it and the theme stopped
+ * reading on the panel. Give the LIGHT inner a distinct themed surface:
+ * a subtle vertical gradient nudged off pure-white toward the text
+ * colour, so it reads as a themed panel the way the dark inner's tone
+ * reads against black. Theme-relative (no per-theme values) so it holds
+ * across light / citrus / mist / sage / alabaster; the extra
+ * `.app-transcript` class beats the glass/solid inner variants. The DARK
+ * inner is deliberately left as the flat `--composer-bg` tone (the
+ * maintainer confirmed dark reads correctly). */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .app-transcript
+  .composer-inner-module {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--composer-bg) 93%, var(--text-primary) 7%),
+    color-mix(in srgb, var(--composer-bg) 87%, var(--text-primary) 13%)
+  );
+}
+
+/* Reduce-motion: snap the inner-module seam transition. */
+[data-reduce-motion="true"] [data-composer-style="default"] .composer-inner-module {
+  transition: none;
 }
 
 .composer-control-footer {
@@ -4001,6 +4482,30 @@
   color: var(--text-secondary);
 }
 
+/* Order-4 — optional one-line "why" note for an approval decision.
+ * Low-friction: a quiet single-line field that sits between the
+ * request preview and the action buttons. Never required; persisted
+ * onto the approval-ledger row's metadata when filled. */
+.composer-permission-note {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--surface-input, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-xs, 4px);
+  padding: var(--space-2xs, 4px) var(--space-xs, 8px);
+}
+
+.composer-permission-note::placeholder {
+  color: var(--text-muted);
+}
+
+.composer-permission-note:focus-visible {
+  outline: none;
+  border-color: var(--accent, rgba(255, 165, 0, 0.5));
+}
+
 .composer-permission-paths {
   display: flex;
   flex-direction: column;
@@ -4141,6 +4646,25 @@
   gap: 7px;
   max-width: calc(100% - 32px);
   min-width: 0;
+}
+
+/* ── Console refinement: schedule/runtime row ABOVE the input ────────
+ * In single-provider native chats the schedule + runtime-profile row
+ * was absolutely positioned (top:10px) and so got painted BEHIND the
+ * console redesign's inner module (z-index:2, full-bleed) — the row
+ * shared the same z-index but lost the paint order. Lift it into normal
+ * flow ABOVE the inner module (it precedes it in the DOM) and above it
+ * on the z-axis, so it reads as a clean right-aligned row over the
+ * textarea instead of a hidden float. Native chat composers only; the
+ * ensemble composer doesn't render this row, and the other shells keep
+ * the original floating placement. */
+[data-composer-style="default"] .app-transcript .composer-top-toggles {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 3;
+  max-width: none;
+  margin-bottom: 6px;
 }
 
 @container (max-width: 560px) {
@@ -5144,15 +5668,18 @@
 }
 
 .diff-file-row:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
 .diff-file-row + .diff-file-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
-.diff-file-row:hover { background: rgba(255,255,255,0.04); }
-.diff-file-row.selected { background: rgba(255,255,255,0.06); border-left-color: var(--accent); }
+.diff-file-row:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.diff-file-row.selected {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-left-color: var(--accent);
+}
 
 button.diff-file-row {
   appearance: none;
@@ -5176,7 +5703,7 @@ button.diff-file-row {
 .diff-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .diff-file-type-icon {
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
   flex-shrink: 0;
 }
 
@@ -5208,7 +5735,7 @@ button.diff-file-row {
 .diff-file-badge.modified { background: rgba(90,140,255,0.12); color: var(--accent); }
 .diff-file-badge.deleted { background: rgba(229,77,77,0.12); color: var(--danger); }
 .diff-file-badge.untracked { background: rgba(245,166,35,0.12); color: var(--warning); }
-.diff-file-badge.noise { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.diff-file-badge.noise { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-muted); }
 
 .diff-detail {
   flex: 1;
@@ -5225,7 +5752,7 @@ button.diff-file-row {
 }
 
 .diff-lines-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
   background: color-mix(in srgb, var(--app-bg-sunken) 70%, transparent);
 }
 
@@ -5237,8 +5764,8 @@ button.diff-file-row {
   padding: 3px var(--space-md);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .diff-detail-header {
@@ -5269,8 +5796,8 @@ button.diff-file-row {
   color: var(--text-tertiary);
   text-align: right;
   user-select: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.10);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .diff-line-code {
@@ -5279,7 +5806,7 @@ button.diff-file-row {
 
 .diff-line.meta {
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
 }
 
 .diff-line.add .diff-line-code,
@@ -5295,7 +5822,7 @@ button.diff-file-row {
 }
 
 .diff-line + .diff-line {
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .diff-line.add { background: var(--diff-add-bg); color: var(--diff-add-text); }

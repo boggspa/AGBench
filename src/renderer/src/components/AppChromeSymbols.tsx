@@ -131,6 +131,34 @@ export function GhostCompanionIcon() {
   )
 }
 
+/**
+ * Standalone brand-ghost glyph for empty states — same silhouette as
+ * GhostCompanionIcon but without the corner-symbol wrapper, so it can be
+ * sized via the `size` prop and tinted by the parent's `color`
+ * (currentColor stroke). Used by the friendlier sidebar / settings
+ * empty states.
+ */
+export function MascotGhost({ size = 32 }: { size?: number }) {
+  return (
+    <svg
+      className="mascot-ghost"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.2 13.2V6.5a4.8 4.8 0 0 1 9.6 0v6.7l-1.7-1.1-1.6 1.1-1.5-1.1-1.5 1.1-1.6-1.1-1.7 1.1z" />
+      <path d="M5.8 6.4h.1M10.1 6.4h.1" />
+      <path d="M6.5 9.2c.8.5 2.2.5 3 0" />
+    </svg>
+  )
+}
+
 export function SkyWeatherIcon() {
   return (
     <span className="chat-corner-symbol">

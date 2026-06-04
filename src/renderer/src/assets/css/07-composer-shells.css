@@ -66,6 +66,20 @@
 [data-composer-style="codex"] .composer-inline-pickers {
   margin-top: 0;
 }
+/* AGBench native (default) shell — adopt the standard control order the
+ * other shells use: the permission / tool-grants picker sits right after
+ * the + attach button instead of trailing at the very end. The default
+ * shell was the only one without an order block, so it fell back to DOM
+ * order (permission last). Mirrors the codex order below; the base
+ * .composer-inline-pickers-left (shard 03) is already flex, so only
+ * `order` is needed. Model right-aligns so it sits beside the send cluster. */
+[data-composer-style="default"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="default"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="default"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="default"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="default"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="default"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
 [data-composer-style="codex"] .composer-inline-pickers-left {
   display: flex;
   align-items: center;
@@ -1259,6 +1273,227 @@
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-diff-action-menu button:disabled {
   color: rgba(29, 29, 31, 0.38);
 }
+
+/* ============================================================
+ * Git controls (Phase Git-U1) — the real user-driven commit flow
+ * (gitSnapshot → review → stage/commit → gated PR) rendered inside the
+ * above-bar's diff-action menu. Inherits the menu's surface/typography;
+ * these rules add the status block, the commit message input, and the
+ * gated PR affordance, matching the existing `.composer-above-bar-*`
+ * look. The menu items reuse the menu-button visuals already defined on
+ * `.composer-diff-action-menu button`.
+ * ============================================================ */
+.composer-git-controls {
+  display: grid;
+  gap: 6px;
+  min-width: 232px;
+}
+.composer-git-status {
+  display: grid;
+  gap: 2px;
+  padding: 2px 9px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+  margin-bottom: 1px;
+}
+.composer-git-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+.composer-git-status-line.is-muted {
+  color: color-mix(in srgb, var(--text-secondary) 64%, transparent);
+}
+.composer-git-status-line.is-error {
+  color: #f08080;
+}
+.composer-git-branch {
+  font-weight: 600;
+  font-feature-settings: 'tnum';
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+}
+.composer-git-status-clean {
+  color: #6ddfa8;
+}
+.composer-git-status-counts {
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+  font-feature-settings: 'tnum';
+}
+
+/* The Review-changes / Create-PR rows reuse the menu-button shape so they
+ * sit flush with the rest of the menu. */
+.composer-git-menu-item {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-align: left;
+  padding: 7px 9px;
+  transition: background 0.16s, color 0.16s;
+}
+.composer-git-menu-item:hover:not(:disabled),
+.composer-git-menu-item:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  outline: none;
+}
+.composer-git-menu-item:disabled {
+  color: color-mix(in srgb, var(--text-secondary) 52%, transparent);
+  cursor: not-allowed;
+}
+.composer-git-menu-item.is-pending {
+  opacity: 0.7;
+  cursor: progress;
+}
+.composer-git-menu-item.is-success {
+  color: #6ddfa8;
+}
+.composer-git-menu-item.is-error {
+  color: #f08080;
+}
+
+/* Commit row — message input + a primary-styled commit button. The input
+ * borrows the above-bar action's pill chrome so it reads as part of the
+ * same control family. */
+.composer-git-commit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 1px 4px 0;
+}
+.composer-git-commit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 13%, transparent);
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 88%, transparent);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 5px 9px;
+  border-radius: 8px;
+  transition: border-color 0.16s, background 0.16s;
+}
+.composer-git-commit-input::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 56%, transparent);
+}
+.composer-git-commit-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--text-primary) 18%);
+  background: color-mix(in srgb, var(--composer-bg-solid) 52%, transparent);
+}
+.composer-git-commit-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.composer-git-commit-button {
+  flex: 0 0 auto;
+  margin-left: 0;
+  white-space: nowrap;
+}
+.composer-git-feedback {
+  padding: 0 9px 1px;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+}
+.composer-git-feedback.is-error {
+  color: #f08080;
+}
+.composer-git-feedback.is-success {
+  color: #6ddfa8;
+}
+.composer-git-feedback.is-muted {
+  color: color-mix(in srgb, var(--text-secondary) 64%, transparent);
+}
+/* When PR is gated off, surface the reason on its own muted line under
+ * the (disabled) label rather than only in the tooltip. */
+.composer-git-pr {
+  display: grid;
+  gap: 1px;
+}
+.composer-git-pr-reason {
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, var(--text-secondary) 58%, transparent);
+  font-weight: 400;
+}
+
+/* Light themes — mirror the diff-action-menu / above-bar light overrides. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-branch {
+  color: rgba(29, 29, 31, 0.92);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-status {
+  border-bottom-color: var(--surface-border);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-menu-item:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-menu-item:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-menu-item:disabled {
+  color: rgba(29, 29, 31, 0.38);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-commit-input {
+  color: rgba(29, 29, 31, 0.88);
+  border-color: var(--surface-border);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-commit-input::placeholder {
+  color: rgba(29, 29, 31, 0.45);
+}
+
+/* Header git-state pill (above-bar) — sits next to the files-changed pill.
+ * Compact staged/unstaged + push/PR-ready signal sourced from gitSnapshot. */
+.composer-git-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+.composer-git-state-clean {
+  color: #6ddfa8;
+}
+.composer-git-state-staged {
+  color: color-mix(in srgb, #ffffff 82%, transparent);
+  font-feature-settings: 'tnum';
+}
+.composer-git-state-unstaged {
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+.composer-git-state-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: calc(var(--font-size-xs) - 1px);
+  border: 1px solid transparent;
+}
+.composer-git-state-flag.is-push {
+  color: #f0c674;
+  border-color: color-mix(in srgb, #f0c674 36%, transparent);
+}
+.composer-git-state-flag.is-pr {
+  color: #6ddfa8;
+  border-color: color-mix(in srgb, #6ddfa8 36%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-git-state-staged {
+  color: rgba(29, 29, 31, 0.82);
+}
+
+/* Respect reduce-motion — drop the control transitions entirely. */
+[data-reduce-motion="true"] .composer-git-menu-item,
+[data-reduce-motion="true"] .composer-git-commit-input,
+[data-reduce-motion="true"] .composer-git-commit-button {
+  transition: none;
+}
+
 /* (Previously the default style hid the above-bar entirely; we now show it
  * with the `.style-default` shape so workspace branch + diff + Create-PR
  * are visible regardless of composer style.) */
@@ -2936,5 +3171,163 @@
 
 [data-interface-style="kimi"] .activity-row-inline .activity-detail:hover {
   background: color-mix(in srgb, #ffffff 5%, transparent);
+}
+
+/* ============================================================
+ * NATIVE-SHELL POSTURE PILL — "Full Workspace Access" (auto_edit)
+ * RED → AMBER, via the maintainer's rim-highlight idiom (a9d5482)
+ * --------------------------------------------------------------
+ * The permission chip is a POSTURE indicator, not an error: it
+ * tells the user the agent currently has workspace-write power.
+ * The shell-agnostic default (shard 08, lines ~7138-7145 dark /
+ * ~8030-8035 light) paints `auto_edit` alarm-RED (#ef4444 dark /
+ * #b91c1c light). For the AGBench *native* shell we recolour it to
+ * a calmer AMBER posture pill — amber rim + faint amber tint +
+ * readable amber text — matching the `has-failures` / attention
+ * rim the maintainer uses elsewhere (`#f0a93f` amber). The codex
+ * shell keeps its authentic orange and the other shells keep the
+ * shared red; this override is native-only.
+ *
+ * CASCADE — shard 07 loads BEFORE shard 08, so at equal
+ * specificity shard 08's rules (some `!important`) would still
+ * win on source order. We out-specific them with a REPEATED-
+ * attribute prefix — the same trick the maintainer uses for
+ * obsidian/alabaster, here tripled so we clear shard 08's
+ * deepest competitor (the LIGHT-theme `.is-selected` checkmark
+ * at 0,5,0) too:
+ * `[data-composer-style="default"]×3`:
+ *   - trigger          → 0,5,0  (beats 0,2,0 dark / 0,3,0 light !important)
+ *   - -primary span    → 0,6,0  (beats 0,3,0 dark / 0,4,0 light !important)
+ *   - popover row label → 0,5,0  (beats 0,3,0 dark / 0,4,0 light)
+ *   - selected check    → 0,6,0  (beats 0,4,0 dark / 0,5,0 light)
+ * so it wins regardless of source order, in EVERY theme. (The
+ * popover-row rules in shard 08 are not `!important`, so winning
+ * the cascade by specificity alone is enough there.)
+ *
+ * LIGHT + DARK readability — the text colour is
+ * `color-mix(#f0a93f, var(--text-primary))`, NOT a fixed amber.
+ * `--text-primary` is ~white on dark themes (→ amber brightens,
+ * vivid on the dark chip) and ~near-black on light themes (→ amber
+ * darkens to a deep ochre, readable on the light chip). One rule
+ * adapts to all themes (incl. citrus/alabaster/paper that the
+ * 3-theme `:is()` light list omits). The amber rim + tint reinforce
+ * the signal so the chip reads as "posture" even where text
+ * contrast is gentlest. NOT a red fill, NOT alarm-red.
+ * ============================================================ */
+
+/* Closed-state chip — rim + faint amber tint + amber border. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary)) !important;
+  border-color: color-mix(in srgb, #f0a93f 50%, var(--composer-border)) !important;
+  background: color-mix(in srgb, #f0a93f 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a93f 10%, transparent);
+}
+
+/* The label span carries its own `color` (+ `!important` in shard
+ * 08), so tint it directly — one class deeper than the trigger
+ * selector above to clear shard 08's `-primary !important` rule. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary)) !important;
+}
+
+/* Hover — slightly firmer amber rim, still calm. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #f0a93f 62%, var(--composer-border)) !important;
+  background: color-mix(in srgb, #f0a93f 12%, transparent);
+}
+
+/* Open-state popover — row label + selected check pick up the same
+ * amber so the dropdown legend matches the chip the user just saw.
+ * The popover is portaled to <body> but `[data-composer-style]`
+ * lives on <html>, so the descendant selector still scopes it to
+ * the native shell. */
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"]
+  .composer-combined-picker-row-label {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary));
+}
+[data-composer-style="default"][data-composer-style="default"][data-composer-style="default"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
+  .composer-combined-picker-check {
+  color: color-mix(in srgb, #f0a93f 72%, var(--text-primary));
+}
+
+/* ============================================================
+ * CONSOLE REDESIGN — PROVIDER RIM ON THE INNER MODULE
+ * --------------------------------------------------------------
+ * Slice 1 (shard 03) carries the provider rim on the OUTER frame
+ * (`.composer-surface::after`). The console redesign adds a second
+ * nested surface, `.composer-inner-module` (the readable input),
+ * and the maintainer wants the provider highlight on the rims of
+ * BOTH. The module's own `box-shadow` is spent on the inset seam
+ * (shard 03), so — exactly like slice 1 did for the surface — the
+ * provider rim is drawn on a dedicated `::after` overlay so it
+ * layers on top of the seam without disturbing it.
+ *
+ * Same hooks + discipline as slice 1: per-provider via the always-
+ * on `.app-transcript.provider-<id>` ancestor, native shell only,
+ * steps aside for the FX agent-aura (`:not(.fx-agent-aura)` on the
+ * surface), reduce-motion snaps the cross-fade. Kept a touch
+ * softer than the outer rim so the frame stays the louder edge and
+ * the two rims read as one continuous highlight rather than two
+ * competing lines.
+ * ============================================================ */
+[data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1; /* above the module fill, below its controls (z 2) */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 4%, transparent);
+  transition: box-shadow 160ms ease;
+}
+[data-composer-style="default"]
+  .app-transcript.provider-gemini
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-codex
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-claude
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-kimi
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-grok
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-cursor
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 13%, transparent);
+}
+[data-reduce-motion="true"]
+  [data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  transition: none;
 }
 

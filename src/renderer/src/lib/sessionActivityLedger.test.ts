@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatRecord, EnsembleParticipant } from '../../../main/store/types'
-import { withSessionActivityLedger } from './sessionActivityLedger'
+import type {
+  ChatMessage,
+  ChatRecord,
+  EnsembleParticipant,
+  SessionActivityLedgerEntry
+} from '../../../main/store/types'
+import {
+  deriveParticipantRenameContinuity,
+  withSessionActivityLedger
+} from './sessionActivityLedger'
 
 function participant(overrides: Partial<EnsembleParticipant> = {}): EnsembleParticipant {
   return {
@@ -97,5 +105,127 @@ describe('sessionActivityLedger', () => {
     const updated = withSessionActivityLedger(before, { ...before })
 
     expect(updated.ensemble?.sessionActivityLedger).toBeUndefined()
+  })
+})
+
+/*
+ * 1.0.7 — participant-rename continuity for the transcript. A small
+ * "renamed from X" note that lets a reader follow one seat across a
+ * mid-session role rename. Ledger-preferred with a frozen-vs-current
+ * fallback; never mutates the frozen `ensembleRole`.
+ */
+describe('deriveParticipantRenameContinuity', () => {
+  function assistantMsg(overrides: Partial<ChatMessage['metadata']> = {}): ChatMessage {
+    return {
+      id: 'a1',
+      role: 'assistant',
+      content: 'Prior turn.',
+      timestamp: '2026-05-27T00:00:00.000Z',
+      metadata: {
+        ensembleProvider: 'claude',
+        ensembleRole: 'Planner',
+        ensembleParticipantId: 'p1',
+        ...overrides
+      }
+    }
+  }
+
+  const renameEntry = (
+    overrides: Partial<SessionActivityLedgerEntry> = {}
+  ): SessionActivityLedgerEntry => ({
+    id: 'e1',
+    timestamp: '2026-05-27T00:01:00.000Z',
+    changedBy: 'user',
+    scope: 'participant',
+    target: 'p1',
+    oldValue: 'Claude / Planner',
+    newValue: 'Claude / Architect',
+    reason: 'Participant role/name changed.',
+    ...overrides
+  })
+
+  it('returns null when the message is not an ensemble assistant message', () => {
+    const roster = [participant({ id: 'p1', role: 'Architect' })]
+    expect(
+      deriveParticipantRenameContinuity(
+        { role: 'user', metadata: { ensembleParticipantId: 'p1' } },
+        roster,
+        []
+      )
+    ).toBeNull()
+  })
+
+  it('returns null when the frozen role matches the current role', () => {
+    const roster = [participant({ id: 'p1', role: 'Planner' })]
+    expect(deriveParticipantRenameContinuity(assistantMsg(), roster, [])).toBeNull()
+  })
+
+  it('falls back to frozen-vs-current when the ledger has no matching entry', () => {
+    // Ledger empty (rename aged out) — the frozen role drives the note.
+    const roster = [participant({ id: 'p1', role: 'Architect' })]
+    const result = deriveParticipantRenameContinuity(assistantMsg(), roster, [])
+    expect(result).toEqual({ fromRole: 'Planner', currentRole: 'Architect' })
+  })
+
+  it('prefers the ledger entry when present and consistent with the frozen role', () => {
+    const roster = [participant({ id: 'p1', role: 'Architect' })]
+    const result = deriveParticipantRenameContinuity(assistantMsg(), roster, [renameEntry()])
+    expect(result).toEqual({ fromRole: 'Planner', currentRole: 'Architect' })
+  })
+
+  it('uses the ledger old role when the message carries no frozen role', () => {
+    // Older transcript row predating the ensembleRole stamp.
+    const roster = [participant({ id: 'p1', role: 'Architect' })]
+    const msg = assistantMsg({ ensembleRole: undefined })
+    const result = deriveParticipantRenameContinuity(msg, roster, [renameEntry()])
+    expect(result).toEqual({ fromRole: 'Planner', currentRole: 'Architect' })
+  })
+
+  it('ignores a stale intermediate ledger rename that does not land on the current role', () => {
+    // Seat renamed Planner→Architect, then Architect→Lead. Current is
+    // Lead. The Planner→Architect entry must NOT mislabel this. The
+    // message frozen as "Planner" should report the per-message-
+    // accurate frozen role as the "from".
+    const roster = [participant({ id: 'p1', role: 'Lead' })]
+    const ledger = [
+      renameEntry({ id: 'e1', oldValue: 'Claude / Planner', newValue: 'Claude / Architect' }),
+      renameEntry({ id: 'e2', oldValue: 'Claude / Architect', newValue: 'Claude / Lead' })
+    ]
+    const result = deriveParticipantRenameContinuity(assistantMsg(), roster, ledger)
+    expect(result).toEqual({ fromRole: 'Planner', currentRole: 'Lead' })
+  })
+
+  it('returns null when the participant id is not in the current roster', () => {
+    const roster = [participant({ id: 'other', role: 'Architect' })]
+    expect(deriveParticipantRenameContinuity(assistantMsg(), roster, [renameEntry()])).toBeNull()
+  })
+
+  it('does not fire for a rename-then-rename-back to the original name', () => {
+    // Planner→Architect→Planner. A message frozen as the original
+    // "Planner" matches the current name again → no confusing note.
+    const roster = [participant({ id: 'p1', role: 'Planner' })]
+    const ledger = [
+      renameEntry({ id: 'e1', oldValue: 'Claude / Planner', newValue: 'Claude / Architect' }),
+      renameEntry({ id: 'e2', oldValue: 'Claude / Architect', newValue: 'Claude / Planner' })
+    ]
+    expect(deriveParticipantRenameContinuity(assistantMsg(), roster, ledger)).toBeNull()
+  })
+
+  it('ignores non-rename participant events sharing the seat', () => {
+    // A permission-preset entry (target is the LABEL, not the id) must
+    // not be mistaken for a rename. With an empty role-rename history
+    // the frozen-vs-current fallback still drives the note.
+    const roster = [participant({ id: 'p1', role: 'Architect' })]
+    const ledger = [
+      renameEntry({
+        id: 'perm',
+        target: 'Claude / Planner permission preset',
+        oldValue: 'read_only',
+        newValue: 'workspace_write',
+        reason: 'Participant permission preset changed.'
+      })
+    ]
+    const result = deriveParticipantRenameContinuity(assistantMsg(), roster, ledger)
+    expect(result).toEqual({ fromRole: 'Planner', currentRole: 'Architect' })
   })
 })

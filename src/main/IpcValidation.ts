@@ -114,6 +114,13 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'download-update': [],
   'install-update-on-quit': [],
   'install-update-now': [],
+  // Changelog sheet (update-pill feature): `changelog-snapshot` is a no-arg
+  // read returning ProductChangelogSnapshot | null; `mark-changelog-seen`
+  // persists the last-seen version. The handler coerces a missing/empty
+  // version defensively (returns the snapshot unchanged), so optionalString
+  // mirrors the store-*-api-key channels rather than nonEmptyString.
+  'changelog-snapshot': [],
+  'mark-changelog-seen': ['optionalString'],
   // Agent-question modal replies (the payload object carries questionId).
   'answer-agent-question': ['optionalObject'],
   'cancel-agent-question': ['optionalObject'],
@@ -130,6 +137,12 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'store-kimi-api-key': ['optionalString'],
   'clear-kimi-api-key': [],
   // GitHub PR creation (optional payload with target path / options).
+  'git:snapshot': ['optionalObject'],
+  'git:stage': ['optionalObject'],
+  'git:commit': ['optionalObject'],
+  'git:push': ['optionalObject'],
+  'github:pr-status': ['optionalObject'],
+  'github:pr-readiness': ['optionalObject'],
   'create-github-pr': ['optionalObject'],
   'agentic-yolo-get': [],
   'agentic-yolo-set': ['boolean'],

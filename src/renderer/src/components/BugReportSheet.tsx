@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildGitHubIssueUrl } from '../lib/githubIssueUrl'
+import { tildifyHomePath } from '../lib/ActivityPathDisplay'
 
 /**
  * BugReportSheet — inline bug-report capture for AGBench testers.
@@ -240,8 +241,12 @@ export function BugReportSheet({
     return () => window.cancelAnimationFrame(frame)
   }, [open, initialSurface])
 
+  // Home-abbreviate the workspace path (`/Users/<name>/…` → `~/…`) so a
+  // reporter's OS username never lands in the read-only preview, the local
+  // bug-reports.md, or the pre-filled PUBLIC GitHub issue. The project folder
+  // stays visible for triage; only the home/user prefix is stripped.
   const workspaceLabel = useMemo(
-    () => currentWorkspacePath || '(global chat)',
+    () => (currentWorkspacePath ? tildifyHomePath(currentWorkspacePath) : '(global chat)'),
     [currentWorkspacePath]
   )
 
@@ -408,9 +413,19 @@ export function BugReportSheet({
 
         <form className="bug-report-sheet-form" onSubmit={handleSubmit}>
           <div className="bug-report-sheet-field">
-            <label className="bug-report-sheet-label" htmlFor="bug-report-title">
-              Title <span className="bug-report-sheet-required">*</span>
-            </label>
+            <div className="bug-report-sheet-label-row">
+              <label className="bug-report-sheet-label" htmlFor="bug-report-title">
+                Title <span className="bug-report-sheet-required">*</span>
+              </label>
+              <span
+                className={`bug-report-sheet-char-counter${
+                  title.length > 120 ? ' bug-report-sheet-char-counter-warn' : ''
+                }`}
+                aria-hidden
+              >
+                {title.length}/140
+              </span>
+            </div>
             <input
               ref={titleInputRef}
               id="bug-report-title"
@@ -596,6 +611,9 @@ export function BugReportSheet({
           <footer className="bug-report-sheet-footer">
             {confirmation ? (
               <span className="bug-report-sheet-confirmation" role="status">
+                <span className="bug-report-sheet-confirmation-check" aria-hidden>
+                  ✓
+                </span>
                 {confirmation}
               </span>
             ) : (

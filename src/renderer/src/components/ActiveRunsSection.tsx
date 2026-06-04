@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
+import { MascotGhost } from './AppChromeSymbols'
 import type {
   ChatRecord,
   ProviderId,
@@ -117,7 +118,10 @@ export function ActiveRunsSection({
       {!collapsed && (
         <div className="sidebar-active-runs-list">
           {visibleJobs.length === 0 && (
-            <div className="sidebar-active-runs-empty">No active runs</div>
+            <div className="sidebar-active-runs-empty">
+              <MascotGhost size={13} />
+              <span>No active runs</span>
+            </div>
           )}
           {visibleJobs.map((job) => {
             const chat = job.chatId ? chatById.get(job.chatId) || null : null

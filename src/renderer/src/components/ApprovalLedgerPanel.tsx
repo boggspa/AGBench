@@ -516,6 +516,11 @@ function ApprovalLedgerRow({
   )
   const outcomeLabel = formatOutcome(record)
   const outcomeKind = outcomeKindFor(record)
+  // Order-4 — optional one-line "why" note the user attached at
+  // decision time. Stored on the ledger row's metadata as `intentNote`
+  // (no schema migration). Surfaced read-only as a dedicated detail
+  // line; only shown when present.
+  const intentNote = intentNoteFor(record)
 
   return (
     <li className={`approval-ledger-row approval-ledger-row-${outcomeKind}`}>
@@ -556,6 +561,7 @@ function ApprovalLedgerRow({
             <DetailLine label="Decision source" value={record.decisionSource} />
           )}
           {record.grantedScope && <DetailLine label="Granted scope" value={record.grantedScope} />}
+          {intentNote && <DetailLine label="Note" value={intentNote} />}
           <DetailLine label="Requested" value={requestedAt} />
           {respondedAt && <DetailLine label="Responded" value={respondedAt} />}
           {record.expiration && (
@@ -613,6 +619,16 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso
   }
+}
+
+/** Order-4 — the optional one-line "why" note the user attached when
+ * making this decision. Lives on the ledger metadata channel as
+ * `intentNote` (no schema migration). Returns undefined when absent or
+ * not a non-empty string. */
+function intentNoteFor(record: ApprovalLedgerRecord): string | undefined {
+  const note = record.metadata?.intentNote
+  if (typeof note === 'string' && note.trim().length > 0) return note.trim()
+  return undefined
 }
 
 /** True when the record was auto-denied by the Phase E1 timer (vs

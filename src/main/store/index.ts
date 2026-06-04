@@ -31,7 +31,8 @@ import {
   ProductCrashRecord,
   RuntimeProfile,
   HandoffCard,
-  HandoffCardFilter
+  HandoffCardFilter,
+  ProductUpdateChangelog
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
 import { createDefaultEnsembleConfig } from '../EnsembleDefaults'
@@ -97,6 +98,10 @@ const runEventHashCache = new Map<string, string>()
 // so their global chats have a usable runtime out of the box. Unconditional:
 // unused default profiles for a force-disabled provider are harmless data.
 const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+const LEGACY_AGBENCH_FONT_STACK =
+  '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
+const AGBENCH_DEFAULT_FONT_STACK =
+  '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif'
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -120,8 +125,7 @@ const defaultSettings: AppSettings = {
   userBubbleColor: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
-  transcriptFontFamily:
-    '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
+  transcriptFontFamily: AGBENCH_DEFAULT_FONT_STACK,
   composerFontFamily: 'match-transcript',
   // 1.0.5-EW25 — Display currency for cost / token-spend chips.
   // USD by default; user can switch to GBP / EUR via Settings →
@@ -132,16 +136,20 @@ const defaultSettings: AppSettings = {
   // General lets the user dial 0–25%. Applied in `formatCost.ts`
   // before FX conversion so the bias is currency-agnostic.
   currencyOverestimatePercent: 0,
+  dashboardStatPrefs: {
+    dashboardSize: 'small'
+  },
   welcomeHeatmapPrefs: {
+    layout: 'single',
     workspaceActivityEnabled: true,
     agbenchActivityEnabled: true,
     externalActivityEnabled: true
   },
-  // 1.0.5-EW26 — Kimi compatibility filter defaults. Off by
-  // default; the user opts in from Settings → General when they
-  // hit a Moonshot content_filter rejection on an incidental
-  // topic. Custom keywords stay empty until the user adds any.
-  kimiSanitiserEnabled: false,
+  // 1.0.5-EW26 — Kimi compatibility filter defaults. On by
+  // default so Moonshot content_filter retries get the compatibility
+  // pass automatically. Custom keywords stay empty until the user
+  // adds any.
+  kimiSanitiserEnabled: true,
   kimiSanitiserCustomKeywords: '',
   // 1.0.7-M10 — second-pass classifier stays opt-in; when unset
   // or false, the retry envelope remains keyword-only.
@@ -177,7 +185,7 @@ const defaultSettings: AppSettings = {
   geminiMcpBridgeLastStatus: undefined,
   bridgeDaemonEnabled: true,
   codexSandboxFallback: 'ask_rerun',
-  updateChannel: 'debug',
+  updateChannel: 'stable',
   approvalTimeouts: {
     enabled: true,
     // Defaults mirror DEFAULT_APPROVAL_TIMEOUT_POLICY in
@@ -214,6 +222,50 @@ function readJson<T>(filePath: string, defaultData: T): T {
 
 function objectOrUndefined<T extends object>(value: T | null | undefined): T | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function normalizeUpdateChangelog(value: unknown): ProductUpdateChangelog | undefined {
+  const record = objectOrUndefined(value as Record<string, unknown> | null | undefined)
+  if (!record || typeof record.version !== 'string' || !record.version.trim()) {
+    return undefined
+  }
+  const releaseNotes = record.releaseNotes
+  const normalized: ProductUpdateChangelog = {
+    version: record.version.trim()
+  }
+  if (typeof record.releaseName === 'string' && record.releaseName.trim()) {
+    normalized.releaseName = record.releaseName.trim()
+  }
+  if (typeof record.releaseDate === 'string' && record.releaseDate.trim()) {
+    normalized.releaseDate = record.releaseDate.trim()
+  }
+  if (typeof releaseNotes === 'string') {
+    normalized.releaseNotes = releaseNotes
+  } else if (Array.isArray(releaseNotes)) {
+    const notes = releaseNotes
+      .map((item) => {
+        const noteRecord = objectOrUndefined(item as Record<string, unknown> | null | undefined)
+        if (!noteRecord || typeof noteRecord.version !== 'string' || !noteRecord.version.trim()) {
+          return null
+        }
+        return {
+          version: noteRecord.version.trim(),
+          note: typeof noteRecord.note === 'string' ? noteRecord.note : null
+        }
+      })
+      .filter((item): item is { version: string; note: string | null } => item !== null)
+    if (notes.length > 0) {
+      normalized.releaseNotes = notes
+    }
+  }
+  return normalized
+}
+
+function normalizeSettingsFontFamily(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  return trimmed === LEGACY_AGBENCH_FONT_STACK ? AGBENCH_DEFAULT_FONT_STACK : trimmed
 }
 
 function writeJson<T>(filePath: string, data: T) {
@@ -283,6 +335,36 @@ function migrateLegacySettingsIfMissing() {
 
 function runEventFilePath(runId: string): string {
   return path.join(runEventsDir, safeRunEventFileName(runId))
+}
+
+// Per-run artifact directory. Mirrors the path derivation in
+// appendRunStreamArtifact (the `.jsonl`-stripped run file name is used as a
+// dedicated directory holding stdout/stderr/stdin .log files for the run), so
+// every artifact for a given runId lives under exactly this path. Deriving it
+// from `safeRunEventFileName` keeps deletion in lockstep with creation.
+function runArtifactDirPath(runId: string): string {
+  return path.join(runArtifactsDir, safeRunEventFileName(runId).replace(/\.jsonl$/, ''))
+}
+
+// Best-effort, non-fatal cleanup of one run's on-disk forensic data: its
+// run-event `.jsonl` ledger and its artifact directory. Each removal is mapped
+// from a KNOWN runId via the deterministic safeRunEventFileName transform — we
+// never readdir-and-match-by-prefix, so a sibling run whose id is a prefix of
+// this one (e.g. `run-1` vs `run-1-extra`) can never be caught: the targets are
+// exact file/dir names (`run-1.jsonl` ≠ `run-1-extra.jsonl`). Missing files are
+// ignored so a partially-written run cannot abort the chat deletion.
+function deleteRunForensicFiles(runId: string): void {
+  if (!runId) return
+  try {
+    fs.rmSync(runEventFilePath(runId), { force: true })
+  } catch (e) {
+    console.error(`Failed to delete run-event file for run ${runId}`, e)
+  }
+  try {
+    fs.rmSync(runArtifactDirPath(runId), { recursive: true, force: true })
+  } catch (e) {
+    console.error(`Failed to delete run artifacts for run ${runId}`, e)
+  }
 }
 
 function readRunEventFile(filePath: string): RunEventRecord[] {
@@ -370,6 +452,7 @@ export class AppStore {
     const storedWelcomeHeatmapPrefs = objectOrUndefined(stored.welcomeHeatmapPrefs)
     const storedApprovalTimeouts = objectOrUndefined(stored.approvalTimeouts)
     const storedApprovalTimeoutProviderMs = objectOrUndefined(storedApprovalTimeouts?.perProviderMs)
+    const pendingUpdateChangelog = normalizeUpdateChangelog(stored.pendingUpdateChangelog)
     return {
       ...defaultSettings,
       ...stored,
@@ -384,6 +467,14 @@ export class AppStore {
             ? null
             : defaultSettings.defaultGeminiAuthProfileId,
       geminiAuthProfiles: Array.isArray(stored.geminiAuthProfiles) ? stored.geminiAuthProfiles : [],
+      transcriptFontFamily: normalizeSettingsFontFamily(
+        stored.transcriptFontFamily,
+        defaultSettings.transcriptFontFamily || AGBENCH_DEFAULT_FONT_STACK
+      ),
+      composerFontFamily: normalizeSettingsFontFamily(
+        stored.composerFontFamily,
+        defaultSettings.composerFontFamily || 'match-transcript'
+      ),
       // Phase M1 — coerce any non-enum value (missing, typo'd, legacy)
       // back to the safe default so the eventual API-vs-CLI dispatch
       // logic never sees an unexpected mode.
@@ -397,7 +488,10 @@ export class AppStore {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
       },
-      dashboardStatPrefs: storedDashboardStatPrefs ? { ...storedDashboardStatPrefs } : undefined,
+      dashboardStatPrefs: {
+        ...(defaultSettings.dashboardStatPrefs || {}),
+        ...(storedDashboardStatPrefs || {})
+      },
       welcomeHeatmapPrefs: {
         ...defaultSettings.welcomeHeatmapPrefs,
         ...(storedWelcomeHeatmapPrefs || {})
@@ -409,6 +503,12 @@ export class AppStore {
         stored.nativeSubAgentRequests === 'provider' || stored.nativeSubAgentRequests === 'agbench'
           ? stored.nativeSubAgentRequests
           : 'ask',
+      lastSeenChangelogVersion:
+        typeof stored.lastSeenChangelogVersion === 'string' &&
+        stored.lastSeenChangelogVersion.trim()
+          ? stored.lastSeenChangelogVersion.trim()
+          : undefined,
+      pendingUpdateChangelog,
       // Normalize: a stored non-boolean (e.g. an older settings file
       // where the field is missing) falls back to the default (true)
       // so the auto-resume behaviour is on for upgrading users.
@@ -872,6 +972,19 @@ export class AppStore {
   }
 
   static deleteChat(chatId: string) {
+    // Read the chat's KNOWN runs before unlinking so we can clean up its
+    // per-run forensic files (run-event ledger + artifacts) that would
+    // otherwise be orphaned on disk forever. Derived purely from this chat's
+    // own runIds (never a directory scan), so a sibling chat's similar/prefixed
+    // run files are guaranteed untouched. All cleanup is best-effort.
+    const chat = this.getChat(chatId)
+    const runs = Array.isArray(chat?.runs) ? chat.runs : []
+    for (const run of runs) {
+      if (run && typeof run.runId === 'string') {
+        deleteRunForensicFiles(run.runId)
+      }
+    }
+
     const chatPath = path.join(chatsDir, `${chatId}.json`)
     if (fs.existsSync(chatPath)) {
       fs.unlinkSync(chatPath)

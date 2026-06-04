@@ -23,6 +23,13 @@ vi.mock('electron-updater', () => ({
 
 import { UpdateService } from './UpdateService'
 
+function emitUpdaterEvent(name: string, payload?: unknown): void {
+  const handler = mockAutoUpdater.on.mock.calls.find((call) => call[0] === name)?.[1]
+  if (typeof handler === 'function') {
+    handler(payload)
+  }
+}
+
 describe('UpdateService', () => {
   beforeEach(() => {
     mockAutoUpdater.checkForUpdates.mockClear()
@@ -168,6 +175,74 @@ describe('UpdateService', () => {
     const snap = svc.snapshot()
     expect(snap.lastCheckedAt).toBeDefined()
     expect(new Date(snap.lastCheckedAt!).getTime()).toBeGreaterThan(0)
+  })
+
+  it('captures release metadata when an update is available', () => {
+    const svc = new UpdateService()
+    svc.configure({ channel: 'stable', enabled: true })
+    emitUpdaterEvent('update-available', {
+      version: '1.0.73',
+      files: [],
+      path: 'AGBench-1.0.73.dmg',
+      sha512: 'abc',
+      releaseName: 'AGBench 1.0.73',
+      releaseDate: '2026-06-04T12:00:00.000Z',
+      releaseNotes: 'New updater UI.'
+    })
+
+    expect(svc.snapshot()).toMatchObject({
+      status: 'available',
+      latestVersion: '1.0.73',
+      releaseName: 'AGBench 1.0.73',
+      releaseDate: '2026-06-04T12:00:00.000Z',
+      releaseNotes: 'New updater UI.',
+      releasePageUrl: 'https://github.com/boggspa/AGBench/releases/tag/v1.0.73'
+    })
+  })
+
+  it('preserves full changelog arrays when an update is downloaded', () => {
+    const svc = new UpdateService()
+    svc.configure({ channel: 'stable', enabled: true })
+    emitUpdaterEvent('update-downloaded', {
+      version: '1.0.74',
+      files: [],
+      path: 'AGBench-1.0.74.dmg',
+      sha512: 'abc',
+      releaseDate: '2026-06-04T13:00:00.000Z',
+      releaseNotes: [
+        { version: '1.0.74', note: 'Second update.' },
+        { version: '1.0.73', note: null }
+      ]
+    })
+
+    expect(svc.snapshot()).toMatchObject({
+      status: 'downloaded',
+      latestVersion: '1.0.74',
+      releaseNotes: [
+        { version: '1.0.74', note: 'Second update.' },
+        { version: '1.0.73', note: null }
+      ]
+    })
+  })
+
+  it('clears stale release metadata when no update is available', () => {
+    const svc = new UpdateService()
+    svc.configure({ channel: 'stable', enabled: true })
+    emitUpdaterEvent('update-available', {
+      version: '1.0.73',
+      files: [],
+      path: 'AGBench-1.0.73.dmg',
+      sha512: 'abc',
+      releaseDate: '2026-06-04T12:00:00.000Z',
+      releaseNotes: 'New updater UI.'
+    })
+    emitUpdaterEvent('update-not-available')
+
+    expect(svc.snapshot()).toMatchObject({
+      status: 'not-available',
+      latestVersion: undefined,
+      releaseNotes: undefined
+    })
   })
 
   it('reconfigure to debug after enabled returns to disabled', () => {

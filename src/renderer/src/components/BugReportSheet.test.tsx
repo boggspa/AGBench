@@ -61,6 +61,9 @@ describe('BugReportSheet', () => {
     // is empty — that's the strongest signal that the field is
     // required (the form refuses to submit until it's populated).
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled/)
+    // Live character counter for the 140-char title cap (starts at 0/140).
+    expect(html).toContain('bug-report-sheet-char-counter')
+    expect(html).toContain('0/140')
   })
 
   it('renders all four severity options with "minor" pre-selected', () => {
@@ -153,7 +156,10 @@ describe('BugReportSheet', () => {
     // Values render verbatim — these are the auto-captured strings.
     expect(html).toContain('1.0.1')
     expect(html).toContain('codex')
-    expect(html).toContain('/Users/dev/projects/agbench')
+    // Workspace path is home-abbreviated (~/) so a reporter's OS username
+    // never appears in the preview or the pre-filled (public) GitHub issue.
+    expect(html).toContain('~/projects/agbench')
+    expect(html).not.toContain('/Users/dev/projects/agbench')
     expect(html).toContain('default')
     expect(html).toContain('4 participants')
   })

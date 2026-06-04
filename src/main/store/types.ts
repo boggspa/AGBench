@@ -168,6 +168,23 @@ export type PermissionPresetId =
   | 'custom'
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off'
 export type ProductUpdateChannel = 'debug' | 'stable' | 'nightly'
+export interface ProductUpdateReleaseNoteInfo {
+  version: string
+  note: string | null
+}
+export type ProductUpdateReleaseNotes = string | ProductUpdateReleaseNoteInfo[]
+export interface ProductUpdateChangelog {
+  version: string
+  releaseName?: string
+  releaseDate?: string
+  releaseNotes?: ProductUpdateReleaseNotes
+}
+export interface ProductChangelogSnapshot {
+  currentVersion: string
+  lastSeenChangelogVersion?: string
+  pendingUpdateChangelog?: ProductUpdateChangelog
+  latestUpdateChangelog?: ProductUpdateChangelog
+}
 /** Phase M1 — picks which runtime path AGBench uses for Gemini runs.
  *
  *   - `'auto'` (default): use the API runtime when an API key /
@@ -999,6 +1016,8 @@ export type ProviderToolingCapabilityId =
   | Exclude<AgenticServiceId, 'subThreadDelegation'>
   | 'creativeApps'
   | 'networkAccess'
+  | 'elicit'
+  | 'delegate'
 
 export interface ProviderCapabilityWarning {
   id: string
@@ -1386,9 +1405,8 @@ export interface AppSettings {
      */
     dashboardEnabled?: boolean
     /**
-     * Welcome dashboard display size. Large preserves the existing full-size
-     * layout; small renders the same dashboard scaled to 30% and pinned to the
-     * top-right of the welcome surface.
+     * Welcome dashboard display size. Small is the default compact welcome
+     * treatment; large preserves the full-size layout.
      */
     dashboardSize?: 'large' | 'small'
   }
@@ -1402,9 +1420,9 @@ export interface AppSettings {
     externalActivityEnabled?: boolean
     /**
      * 1.0.72 — Layout for the welcome standalone heatmaps:
-     *   - 'stacked' (default): every enabled heatmap stacked vertically
+     *   - 'stacked': every enabled heatmap stacked vertically
      *     (the long-standing layout).
-     *   - 'single': one heatmap at a time, auto-cycling every 90s through
+     *   - 'single' (default): one heatmap at a time, auto-cycling every 90s through
      *     the enabled heatmaps (mirrors the dashboard tab auto-cycle).
      */
     layout?: 'single' | 'stacked'
@@ -1415,9 +1433,8 @@ export interface AppSettings {
    * containing a configured trigger keyword (default list +
    * `kimiSanitiserCustomKeywords`) is replaced with a redacted
    * placeholder before the Kimi process spawns. Other
-   * participants always see the unfiltered prompt. Default
-   * `false` — opt-in for users who hit Moonshot content_filter
-   * rejections on incidental world-news / geopolitics digressions. */
+   * participants always see the unfiltered prompt. Default `true`
+   * so Moonshot compatibility retries are available out of the box. */
   kimiSanitiserEnabled: boolean
   /** 1.0.5-EW26 — Newline-separated extra trigger keywords the
    * user wants the Kimi compatibility filter to catch on top of
@@ -1460,6 +1477,8 @@ export interface AppSettings {
   bridgeDaemonEnabled?: boolean
   codexSandboxFallback: CodexSandboxFallbackMode
   updateChannel: ProductUpdateChannel
+  lastSeenChangelogVersion?: string
+  pendingUpdateChangelog?: ProductUpdateChangelog
   /** Per-provider + main-authority approval timeout policy (Phase E1.1).
    * When an approval enters the pending registry, a timer fires after
    * the matching ms value and auto-denies the request. `enabled: false`

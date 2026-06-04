@@ -817,79 +817,89 @@ export function FirstLaunchSheet({
                       applies to the preview too. For the other shells these
                       wrappers are layout-neutral (textarea-wrap is a plain
                       relative box; bottom-controls is display:contents).
+
+                      Console redesign — both the textarea-wrap AND the
+                      bottom-controls are wrapped together in
+                      .composer-inner-module (theme-tone inset panel inside
+                      the solid frame), mirroring the real default composer.
+                      The base `.composer-inner-module { display: contents }`
+                      rule keeps this layout-neutral for the non-default
+                      shell previews; the chips stay OUTSIDE/above it.
                     */}
-                    <div className="composer-textarea-wrap">
-                      <div
-                        className="composer-textarea settings-composer-preview-textarea"
-                        aria-hidden="true"
-                        style={{ minHeight: '60px' }}
-                      >
-                        {composerPreview.placeholder}
+                    <div className="composer-inner-module">
+                      <div className="composer-textarea-wrap">
+                        <div
+                          className="composer-textarea settings-composer-preview-textarea"
+                          aria-hidden="true"
+                          style={{ minHeight: '60px' }}
+                        >
+                          {composerPreview.placeholder}
+                        </div>
                       </div>
-                    </div>
-                    <div className="composer-bottom-controls">
-                      <div className="composer-control-footer settings-composer-preview-footer">
-                        <div className="composer-inline-pickers">
-                          <div className="composer-inline-pickers-left" aria-hidden="true">
-                            <button
-                              type="button"
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="attach"
-                              tabIndex={-1}
-                            >
-                              +
-                            </button>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="provider"
-                            >
-                              {composerPreview.providerLabel}
-                            </span>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="permission"
-                            >
-                              {composerPreview.permissionLabel}
-                            </span>
-                            <span
-                              className="composer-picker-label settings-composer-preview-control"
-                              data-composer-control="model"
-                            >
-                              {composerPreview.modelLabel}
-                            </span>
-                          </div>
-                          <div className="composer-inline-actions" aria-hidden="true">
-                            <span className="context-wheel settings-composer-preview-context">
-                              <svg viewBox="0 0 18 18" width="18" height="18">
-                                <circle
-                                  cx="9"
-                                  cy="9"
-                                  r="6.6"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  opacity="0.22"
-                                />
-                                <path
-                                  d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </span>
-                            <span className="composer-thread-token-tally">44%</span>
-                            <span className="composer-send-cluster">
+                      <div className="composer-bottom-controls">
+                        <div className="composer-control-footer settings-composer-preview-footer">
+                          <div className="composer-inline-pickers">
+                            <div className="composer-inline-pickers-left" aria-hidden="true">
                               <button
                                 type="button"
-                                className="composer-action-btn run-btn"
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="attach"
                                 tabIndex={-1}
-                                aria-label="Preview send button"
                               >
-                                ↑
+                                +
                               </button>
-                            </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="provider"
+                              >
+                                {composerPreview.providerLabel}
+                              </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="permission"
+                              >
+                                {composerPreview.permissionLabel}
+                              </span>
+                              <span
+                                className="composer-picker-label settings-composer-preview-control"
+                                data-composer-control="model"
+                              >
+                                {composerPreview.modelLabel}
+                              </span>
+                            </div>
+                            <div className="composer-inline-actions" aria-hidden="true">
+                              <span className="context-wheel settings-composer-preview-context">
+                                <svg viewBox="0 0 18 18" width="18" height="18">
+                                  <circle
+                                    cx="9"
+                                    cy="9"
+                                    r="6.6"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    opacity="0.22"
+                                  />
+                                  <path
+                                    d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </span>
+                              <span className="composer-thread-token-tally">44%</span>
+                              <span className="composer-send-cluster">
+                                <button
+                                  type="button"
+                                  className="composer-action-btn run-btn"
+                                  tabIndex={-1}
+                                  aria-label="Preview send button"
+                                >
+                                  ↑
+                                </button>
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1053,6 +1063,12 @@ export function FirstLaunchSheet({
             <li>
               <strong>Cmd-K command palette.</strong> Anywhere in the app, press <kbd>Cmd</kbd>+
               <kbd>K</kbd> for the global command palette.
+            </li>
+            <li>
+              <strong>Commit &amp; open PRs from the composer.</strong> The composer&apos;s{' '}
+              <em>Review changes</em> menu has a real Git flow — see your branch and changed files,
+              write a message and <em>Stage all &amp; Commit</em>, then <em>Create PR</em> once the
+              branch is pushed and ready.
             </li>
             <li>
               <strong>Permission picker colour-codes the mode.</strong> Plan = blue (read-only),

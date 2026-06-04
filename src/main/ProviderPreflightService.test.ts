@@ -66,6 +66,26 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         enforcement: 'none',
         requiresApproval: false,
         tools: []
+      },
+      elicit: {
+        id: 'elicit',
+        label: 'Ask the user',
+        state: 'available',
+        source: 'agentbench',
+        enforcedByAgentBench: true,
+        enforcement: 'agentbench',
+        requiresApproval: false,
+        tools: ['ask_user_question']
+      },
+      delegate: {
+        id: 'delegate',
+        label: 'Delegate to sub-thread',
+        state: 'gated',
+        source: 'agentbench',
+        enforcedByAgentBench: true,
+        enforcement: 'agentbench',
+        requiresApproval: true,
+        tools: ['delegate_to_subthread']
       }
     },
     approvals: {

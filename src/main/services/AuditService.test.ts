@@ -61,6 +61,17 @@ describe('AuditService', () => {
     )
   })
 
+  it('threads an optional intent note through extraMetadata (Order-4)', () => {
+    const { deps } = makeDeps()
+    const service = new AuditService(deps)
+    service.resolveApprovalLedgerResponse('approval-1', 'accept', 'user', {
+      intentNote: 'reviewed the diff, safe'
+    })
+    expect(deps.resolveApprovalResponse).toHaveBeenCalledWith('approval-1', 'accept', 'user', {
+      intentNote: 'reviewed the diff, safe'
+    })
+  })
+
   it('does not throw when ledger response resolution fails', () => {
     const error = new Error('ledger unavailable')
     const { deps, errors } = makeDeps({

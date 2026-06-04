@@ -55,8 +55,9 @@
   margin: 3px 0 5px;
   padding: 6px 10px;
   color: color-mix(in srgb, var(--text-primary) 88%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--accent-primary) 35%, transparent);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 70%);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 5%, transparent);
   border-radius: 10px;
 }
 
@@ -212,29 +213,31 @@
  * `{ input, result, timeline }` view — kept distinct from the line so
  * the transcript stays scannable even with multiple traces expanded.
  *
- * Status comes through the line's left-edge accent (data-status) and
+ * Status comes through the line's rim highlight (data-status) and
  * the status pill colour. Provider attribution comes through the
  * provider-tinted name chip (.compact-tool-trace-provider).
  */
 .compact-tool-trace {
+  --compact-tool-rim: color-mix(in srgb, var(--border-subtle) 60%, transparent);
   width: min(760px, 100%);
   margin: 2px 0;
-  border-left: 2px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
-  border-radius: 0 4px 4px 0;
+  border: 1px solid var(--compact-tool-rim);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .compact-tool-trace[data-status="success"] {
-  border-left-color: color-mix(in srgb, var(--tool-success) 60%, transparent);
+  --compact-tool-rim: color-mix(in srgb, var(--tool-success) 42%, transparent);
 }
 .compact-tool-trace[data-status="error"] {
-  border-left-color: color-mix(in srgb, var(--tool-error) 70%, transparent);
+  --compact-tool-rim: color-mix(in srgb, var(--tool-error) 48%, transparent);
 }
 .compact-tool-trace[data-status="warning"] {
-  border-left-color: color-mix(in srgb, var(--tool-warning) 65%, transparent);
+  --compact-tool-rim: color-mix(in srgb, var(--tool-warning) 46%, transparent);
 }
 .compact-tool-trace[data-status="running"],
 .compact-tool-trace[data-status="pending"] {
-  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  --compact-tool-rim: color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
 .compact-tool-trace-line {
@@ -760,4 +763,3 @@
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
   background: color-mix(in srgb, var(--content-bg) 60%, transparent);
 }
-

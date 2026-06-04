@@ -1,0 +1,44 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'fs'
+import { AppStore } from './store'
+
+const userDataPath = vi.hoisted(() => `/tmp/agbench-settings-test-${process.pid}`)
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: () => userDataPath
+  }
+}))
+
+describe('AppStore settings defaults', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('defaults packaged update checks to the stable channel', () => {
+    expect(AppStore.getSettings().updateChannel).toBe('stable')
+  })
+
+  it('normalizes persisted changelog metadata on load', () => {
+    AppStore.updateSettings({
+      lastSeenChangelogVersion: ' 1.0.72 ',
+      pendingUpdateChangelog: {
+        version: ' 1.0.73 ',
+        releaseName: ' AGBench 1.0.73 ',
+        releaseDate: ' 2026-06-04T12:00:00.000Z ',
+        releaseNotes: [{ version: ' 1.0.73 ', note: 'Updater UI.' }, { version: '', note: '' }]
+      }
+    })
+
+    expect(AppStore.getSettings()).toMatchObject({
+      lastSeenChangelogVersion: '1.0.72',
+      pendingUpdateChangelog: {
+        version: '1.0.73',
+        releaseName: 'AGBench 1.0.73',
+        releaseDate: '2026-06-04T12:00:00.000Z',
+        releaseNotes: [{ version: '1.0.73', note: 'Updater UI.' }]
+      }
+    })
+  })
+})

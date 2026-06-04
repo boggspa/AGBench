@@ -88,6 +88,7 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
+import { GitService } from './services/GitService'
 import { AppShellStatsService } from './services/AppShellStatsService'
 import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
@@ -153,6 +154,8 @@ import {
   ProductCrashInput,
   ProductDiagnosticsExportResult,
   ProductOperationsStatus,
+  ProductChangelogSnapshot,
+  ProductUpdateChangelog,
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
@@ -4045,6 +4048,30 @@ function claudeProgrammaticUsageWarning(runtime: 'sdk' | 'cli-print', usesApiKey
   return `${runtimeLabel} is a programmatic Claude path. Anthropic says programmatic Claude usage uses separate Agent SDK credit from 2026-06-15, not the normal interactive Claude Code subscription limit. Use interactive Claude in a terminal when you need native Claude Code subscription-limit behavior.`
 }
 
+// Recover a single tool-call identifier from a bridge tool payload, regardless
+// of which field the provider populates. A `ToolCall` notification keys it `id`;
+// the matching `ToolResult` echoes it under `tool_call_id` (and some shapes use
+// `call_id` / `tool_id`). Resolving both branches through the SAME ordered
+// lookup guarantees the call and its result share one id, so the renderer
+// coalesces them into one inline card instead of stacking each event. Mirrors
+// the multi-field lookup Grok's mapper already uses (GrokStreamingJson). Falls
+// back to a unique generated id only when no identifier is present at all (which
+// keeps two genuinely id-less calls from merging).
+function cliProviderToolId(payload: Record<string, unknown>, prefix: string): string {
+  const candidates = [
+    payload.tool_call_id,
+    payload.toolCallId,
+    payload.id,
+    payload.tool_id,
+    payload.toolId,
+    payload.call_id
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown): void {
   if (!isRecord(event)) return
   const params = nestedRecord(event, 'params')
@@ -4094,23 +4121,34 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown)
 
   if (event.method === 'event' && params.type === 'ToolCall') {
     const toolFunction = nestedRecord(payload, 'function')
+    // Kimi tool calls must COALESCE with their matching ToolResult into one
+    // inline card (the way Codex/Claude/Grok do). The renderer pairs a result
+    // back to its call by `tool_id`, so the call and the result MUST resolve to
+    // the SAME stable id. Kimi keys the call identifier as `id` here, but the
+    // result echoes it under `tool_call_id` (see the ToolResult branch + the
+    // wire-protocol approval echo in ApprovalService, `request_id: payload.id`).
+    // Mirror Grok's multi-field id lookup (GrokStreamingJson) so the same value
+    // is recovered regardless of which field Kimi populates on each side.
+    const toolCallId = cliProviderToolId(payload, 'tool')
+    // Moonshot/OpenAI function-calling sends `function.arguments` as a
+    // JSON-ENCODED STRING, so the old `isRecord(...)` check dropped them to `{}`
+    // — that's why the card never showed the target filename. normalizeMcpTool-
+    // Arguments parses the string (or passes an object through) so ToolParser
+    // can surface `file_path`/`path` in the card label.
+    const rawToolArgs = toolFunction.arguments ?? payload.arguments
     sendAgentCompatLine(
       state.sender,
       state.provider,
       {
         type: 'tool_use',
-        tool_id: typeof payload.id === 'string' ? payload.id : `tool-${Date.now()}`,
+        tool_id: toolCallId,
         tool_name:
           typeof toolFunction.name === 'string'
             ? toolFunction.name
             : typeof payload.name === 'string'
               ? payload.name
               : 'tool',
-        parameters: isRecord(toolFunction.arguments)
-          ? toolFunction.arguments
-          : isRecord(payload.arguments)
-            ? payload.arguments
-            : {},
+        parameters: normalizeMcpToolArguments(rawToolArgs),
         provider: state.provider
       },
       state
@@ -4119,13 +4157,15 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown)
 
   if (event.method === 'event' && params.type === 'ToolResult') {
     const returnValue = nestedRecord(payload, 'return_value')
+    // Same stable-id resolution as the ToolCall branch above so the result
+    // pairs back to its call card instead of stacking as a fresh orphan.
+    const toolResultId = cliProviderToolId(payload, 'tool')
     sendAgentCompatLine(
       state.sender,
       state.provider,
       {
         type: 'tool_result',
-        tool_id:
-          typeof payload.tool_call_id === 'string' ? payload.tool_call_id : `tool-${Date.now()}`,
+        tool_id: toolResultId,
         status: returnValue.is_error ? 'error' : 'success',
         output: contentPartsToText(returnValue.output || returnValue.message || ''),
         provider: state.provider
@@ -10188,7 +10228,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
   const recentCrashes = AppStore.getProductCrashes({ limit: 20 })
 
   return buildProductOperationsStatus({
-    updateChannel: settings.updateChannel || 'debug',
+    updateChannel: settings.updateChannel || 'stable',
     appName: app.getName() || 'AGBench',
     appVersion: app.getVersion() || 'unknown',
     isPackaged: app.isPackaged,
@@ -13147,6 +13187,31 @@ function resolveNativeVibrancy(
   return useNativeGlass ? NATIVE_GLASS_VIBRANCY : undefined
 }
 
+/*
+ * Per-theme opaque backdrop for popout BrowserWindows. Before React
+ * mounts (and applies `data-theme`), the OS paints `backgroundColor`.
+ * A hardcoded `#1e1e1e` flashed a dark slab on the light themes
+ * (light/citrus/mist/sage/alabaster), which is jarring. We mirror
+ * each light theme's `--app-bg` so the pre-paint matches the rendered
+ * surface; every dark theme (and `system`/`dark`, which the renderer
+ * resolves to the dark `:root`) keeps the original `#1e1e1e`.
+ * Returns undefined when a glass window is used (caller passes the
+ * transparent backdrop in that case).
+ */
+const LIGHT_THEME_POPOUT_BACKDROPS: Record<string, string> = {
+  light: '#f4f6f8',
+  citrus: '#f4f6f8',
+  mist: '#eef4f6',
+  sage: '#f0f5f0',
+  alabaster: '#f4f3ef'
+}
+
+function resolvePopoutBackgroundColor(useGlassWindow: boolean): string {
+  if (useGlassWindow) return '#00000000'
+  const theme = AppStore.getSettings().themeAppearance
+  return LIGHT_THEME_POPOUT_BACKDROPS[theme] ?? '#1e1e1e'
+}
+
 function resolveWorkspaceChild(workspace: string, filePath: string): string {
   const workspaceRoot = resolve(workspace)
   const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
@@ -13671,7 +13736,7 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
         : undefined,
     visualEffectState: 'active',
     transparent: false,
-    backgroundColor: useGlassWindow ? '#00000000' : '#1e1e1e',
+    backgroundColor: resolvePopoutBackgroundColor(useGlassWindow),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -14502,6 +14567,8 @@ if (isGeminiMcpBridgeProcess) {
       }
     })
 
+    const gitService = new GitService()
+
     // Phase G2: auto-update wiring. Default-off (env override available).
     // Only enabled in packaged builds AND when updateChannel != 'debug'.
     // The `AGBENCH_AUTO_UPDATE` env var forces enable/disable for
@@ -14529,9 +14596,35 @@ if (isGeminiMcpBridgeProcess) {
       channel: initialSettings.updateChannel,
       enabled: autoUpdateEnabled
     })
+    const updateSnapshotToChangelog = (
+      snapshot: UpdateStateSnapshot
+    ): ProductUpdateChangelog | undefined => {
+      if (!snapshot.latestVersion) return undefined
+      return {
+        version: snapshot.latestVersion,
+        ...(snapshot.releaseName ? { releaseName: snapshot.releaseName } : {}),
+        ...(snapshot.releaseDate ? { releaseDate: snapshot.releaseDate } : {}),
+        ...(snapshot.releaseNotes ? { releaseNotes: snapshot.releaseNotes } : {})
+      }
+    }
+    const changelogSnapshot = (): ProductChangelogSnapshot => {
+      const settings = AppStore.getSettings()
+      return {
+        currentVersion: app.getVersion() || 'unknown',
+        lastSeenChangelogVersion: settings.lastSeenChangelogVersion,
+        pendingUpdateChangelog: settings.pendingUpdateChangelog,
+        latestUpdateChangelog: updateSnapshotToChangelog(updateService.snapshot())
+      }
+    }
     // Broadcast snapshot changes to the renderer so the Settings panel
     // can show live status.
     updateService.subscribe((snapshot: UpdateStateSnapshot) => {
+      if (snapshot.status === 'downloaded') {
+        const pendingUpdateChangelog = updateSnapshotToChangelog(snapshot)
+        if (pendingUpdateChangelog) {
+          AppStore.updateSettings({ pendingUpdateChangelog })
+        }
+      }
       try {
         mainWindow?.webContents.send('update-status-changed', snapshot)
       } catch {
@@ -14587,6 +14680,18 @@ if (isGeminiMcpBridgeProcess) {
       updateService.quitAndInstall()
       return updateService.snapshot()
     })
+    ipcMain.handle('changelog-snapshot', () => changelogSnapshot())
+    ipcMain.handle('mark-changelog-seen', (_, version: string) => {
+      const normalizedVersion = typeof version === 'string' ? version.trim() : ''
+      if (!normalizedVersion) return changelogSnapshot()
+      AppStore.updateSettings({ lastSeenChangelogVersion: normalizedVersion })
+      return changelogSnapshot()
+    })
+    if (updateService.snapshot().enabled) {
+      setTimeout(() => {
+        void updateService.checkForUpdates()
+      }, 3000)
+    }
 
     ipcMain.handle(
       'bridge-finalize-pairing',
@@ -15675,110 +15780,112 @@ if (isGeminiMcpBridgeProcess) {
       }
     })
 
+    const gitPayloadPath = (payload?: { workspacePath?: string; repoPath?: string }) =>
+      typeof payload?.repoPath === 'string' && payload.repoPath.trim()
+        ? payload.repoPath
+        : payload?.workspacePath || ''
+
+    ipcMain.handle(
+      'git:snapshot',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.snapshot(gitPayloadPath(payload))
+    )
+
+    ipcMain.handle(
+      'git:stage',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          paths?: string[]
+          all?: boolean
+          update?: boolean
+          patch?: string
+        }
+      ) =>
+        gitService.stage({
+          repoPath: gitPayloadPath(payload),
+          paths: payload?.paths,
+          all: payload?.all,
+          update: payload?.update,
+          patch: payload?.patch
+        })
+    )
+
+    ipcMain.handle(
+      'git:commit',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          message?: string
+        }
+      ) =>
+        gitService.commit({
+          repoPath: gitPayloadPath(payload),
+          message: payload?.message || ''
+        })
+    )
+
+    ipcMain.handle(
+      'git:push',
+      async (
+        _event,
+        payload?: {
+          workspacePath?: string
+          repoPath?: string
+          setUpstream?: boolean
+          remote?: string
+        }
+      ) =>
+        gitService.push({
+          repoPath: gitPayloadPath(payload),
+          setUpstream: payload?.setUpstream,
+          remote: payload?.remote
+        })
+    )
+
+    ipcMain.handle(
+      'github:pr-status',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.pullRequestStatus(gitPayloadPath(payload))
+    )
+
+    ipcMain.handle(
+      'github:pr-readiness',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.pullRequestReadiness(gitPayloadPath(payload))
+    )
+
     ipcMain.handle(
       'create-github-pr',
       async (
         _event,
         payload?: {
           workspacePath?: string
+          repoPath?: string
           title?: string
           body?: string
           draft?: boolean
           openInBrowser?: boolean
         }
       ) => {
-        const requestedPath = expandHomePath(payload?.workspacePath || '')
-        if (!requestedPath) {
-          return { ok: false, error: 'A workspace path is required to open a pull request.' }
-        }
-        try {
-          const stat = await fs.stat(requestedPath)
-          if (!stat.isDirectory()) {
-            return { ok: false, error: 'Workspace path is not a directory.' }
+        const result = await gitService.createPullRequest({
+          repoPath: gitPayloadPath(payload),
+          title: payload?.title,
+          body: payload?.body,
+          draft: payload?.draft
+        })
+        if (result.ok) {
+          const url = result.data.url
+          if (url && payload?.openInBrowser !== false) {
+            shell.openExternal(url).catch(() => {})
           }
-        } catch {
-          return { ok: false, error: 'Workspace path does not exist on disk.' }
+          return { ok: true, ...result.data }
         }
-        const args = ['pr', 'create']
-        const title = typeof payload?.title === 'string' ? payload.title.trim() : ''
-        const body = typeof payload?.body === 'string' ? payload.body.trim() : ''
-        if (title) {
-          args.push('--title', title)
-        }
-        if (body) {
-          args.push('--body', body)
-        }
-        if (!title && !body) {
-          args.push('--fill')
-        }
-        if (payload?.draft) {
-          args.push('--draft')
-        }
-        return await new Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>(
-          (resolve) => {
-            let stdout = ''
-            let stderr = ''
-            let settled = false
-            let child: ReturnType<typeof spawn>
-            try {
-              child = spawn('gh', args, {
-                cwd: requestedPath,
-                env: { ...process.env },
-                stdio: ['ignore', 'pipe', 'pipe']
-              })
-            } catch (error) {
-              resolve({
-                ok: false,
-                error: `Failed to launch \`gh\`: ${error instanceof Error ? error.message : String(error)}`
-              })
-              return
-            }
-            const settle = (result: {
-              ok: boolean
-              url?: string
-              error?: string
-              stderr?: string
-            }) => {
-              if (settled) return
-              settled = true
-              resolve(result)
-            }
-            child.stdout?.on('data', (chunk: Buffer) => {
-              stdout += chunk.toString('utf8')
-            })
-            child.stderr?.on('data', (chunk: Buffer) => {
-              stderr += chunk.toString('utf8')
-            })
-            child.on('error', (error) => {
-              const message =
-                (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-                  ? 'GitHub CLI (`gh`) is not installed or not on PATH. Install it from https://cli.github.com.'
-                  : `Failed to launch \`gh\`: ${error.message}`
-              settle({ ok: false, error: message })
-            })
-            child.on('close', (code) => {
-              const trimmedOut = stdout.trim()
-              const trimmedErr = stderr.trim()
-              if (code === 0) {
-                const url = trimmedOut.match(/https?:\/\/[^\s]+/)?.[0]
-                if (url && payload?.openInBrowser !== false) {
-                  shell.openExternal(url).catch(() => {})
-                }
-                settle({ ok: true, url, stderr: trimmedErr || undefined })
-              } else {
-                settle({
-                  ok: false,
-                  error: trimmedErr || trimmedOut || `\`gh pr create\` exited with code ${code}.`,
-                  stderr: trimmedErr || undefined
-                })
-              }
-            })
-            setTimeout(
-              () => settle({ ok: false, error: '`gh pr create` timed out after 30s.' }),
-              30_000
-            )
-          }
-        )
+        return result
       }
     )
 
@@ -16692,7 +16799,17 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle(
       'respond-agent-approval',
-      async (_, requestId: string, action: AgentApprovalAction) => {
+      async (_, requestId: string, action: AgentApprovalAction, intentNote?: string) => {
+        // Order-4 — optional one-line "why" note captured in the
+        // approval card. Trim + cap defensively (the renderer already
+        // trims, but the IPC boundary is untrusted) and ride it on the
+        // existing ledger metadata channel as `intentNote`. Empty stays
+        // off the metadata entirely so we never persist a blank note.
+        const trimmedIntentNote =
+          typeof intentNote === 'string' ? intentNote.trim().slice(0, 280) : ''
+        const resolveOptions = trimmedIntentNote
+          ? { extraMetadata: { intentNote: trimmedIntentNote } }
+          : undefined
         // Slice 5 v2 of the external-path-redesign arc. When the user
         // clicks "Grant read access" / "Grant edit access" in an
         // external-path approval modal, peek at the pending approval's stashed
@@ -16744,7 +16861,7 @@ if (isGeminiMcpBridgeProcess) {
             }
           }
         }
-        return approvalServiceInstance.resolve(requestId, action)
+        return approvalServiceInstance.resolve(requestId, action, resolveOptions)
       }
     )
 

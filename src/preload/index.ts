@@ -6,6 +6,12 @@ import type {
 } from '../main/store/types'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
+import type {
+  GitPrReadiness,
+  GitPrSummary,
+  GitRepositorySnapshot,
+  GitResult
+} from '../main/services/GitService'
 
 type ComposerImageAttachment = {
   id?: string
@@ -132,8 +138,31 @@ const api = {
   getCodexUsageSnapshot: () => ipcRenderer.invoke('get-codex-usage-snapshot'),
   getExternalUsage: () => ipcRenderer.invoke('get-external-usage'),
   probeGrokUsage: () => ipcRenderer.invoke('grok-usage:probe'),
+  gitSnapshot: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('git:snapshot', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitStage: (payload: {
+    workspacePath?: string
+    repoPath?: string
+    paths?: string[]
+    all?: boolean
+    update?: boolean
+    patch?: string
+  }) => ipcRenderer.invoke('git:stage', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitCommit: (payload: { workspacePath?: string; repoPath?: string; message: string }) =>
+    ipcRenderer.invoke('git:commit', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  gitPush: (payload: {
+    workspacePath?: string
+    repoPath?: string
+    setUpstream?: boolean
+    remote?: string
+  }) => ipcRenderer.invoke('git:push', payload) as Promise<GitResult<GitRepositorySnapshot>>,
+  githubPrStatus: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('github:pr-status', payload) as Promise<GitResult<GitPrSummary>>,
+  githubPrReadiness: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('github:pr-readiness', payload) as Promise<GitResult<GitPrReadiness>>,
   createGithubPr: (payload: {
     workspacePath?: string
+    repoPath?: string
     title?: string
     body?: string
     draft?: boolean
@@ -177,8 +206,11 @@ const api = {
       | 'cancel'
       | 'grantExternalPathRead'
       | 'grantExternalPathEdit'
-      | 'declineExternalPath'
-  ) => ipcRenderer.invoke('respond-agent-approval', requestId, action),
+      | 'declineExternalPath',
+    // Order-4 — optional one-line "why" note. Persisted onto the
+    // approval-ledger row's metadata; never required.
+    intentNote?: string
+  ) => ipcRenderer.invoke('respond-agent-approval', requestId, action, intentNote),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
   openWorkspacePopout: (input: { kind: 'file-editor' | 'diff-studio'; workspacePath: string }) =>
@@ -378,8 +410,13 @@ const api = {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdateOnQuit: () => ipcRenderer.invoke('install-update-on-quit'),
   installUpdateNow: () => ipcRenderer.invoke('install-update-now'),
+  changelogSnapshot: () => ipcRenderer.invoke('changelog-snapshot'),
+  markChangelogSeen: (version: string) => ipcRenderer.invoke('mark-changelog-seen', version),
   onUpdateStatusChanged: (callback: (snapshot: unknown) => void) => {
-    ipcRenderer.on('update-status-changed', (_event, snapshot) => callback(snapshot))
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown): void =>
+      callback(snapshot)
+    ipcRenderer.on('update-status-changed', listener)
+    return () => ipcRenderer.removeListener('update-status-changed', listener)
   },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),

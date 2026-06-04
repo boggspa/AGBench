@@ -311,13 +311,22 @@ function labelForDelegationName(name: string, provider: ProviderId): string {
   return name || 'Delegated activity'
 }
 
+// The five functional-control rows. The DISPLAY-only elicit/delegate rows are
+// excluded from this enforcement tally so they never shift the count.
+const TOOLING_CONTROL_KEYS = [
+  'shellCommands',
+  'fileChanges',
+  'mcpTools',
+  'creativeApps',
+  'networkAccess'
+] as const
+
 function toolPolicyLabel(contract?: ProviderCapabilityContract | null): string | undefined {
   if (!contract) return undefined
-  const controlled = Object.values(contract.tools).filter(
-    (tool) => tool.enforcedByAgentBench
-  ).length
+  const controlRows = TOOLING_CONTROL_KEYS.map((key) => contract.tools[key])
+  const controlled = controlRows.filter((tool) => tool.enforcedByAgentBench).length
   return controlled > 0
-    ? `AGBench-enforced (${controlled}/${Object.values(contract.tools).length})`
+    ? `AGBench-enforced (${controlled}/${controlRows.length})`
     : 'provider-managed'
 }
 

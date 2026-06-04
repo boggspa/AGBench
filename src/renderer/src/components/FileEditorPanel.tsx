@@ -58,22 +58,22 @@ const codeEditorTheme = EditorView.theme(
       whiteSpace: 'pre'
     },
     '.cm-gutters': {
-      background: 'rgba(0,0,0,0.18)',
+      background: 'var(--cm-gutter-bg)',
       color: 'var(--text-muted)',
-      borderRight: '1px solid rgba(255,255,255,0.06)'
+      borderRight: '1px solid var(--cm-gutter-border)'
     },
     '.cm-activeLine': {
-      background: 'rgba(255,255,255,0.045)'
+      background: 'var(--cm-active-line)'
     },
     '.cm-activeLineGutter': {
-      background: 'rgba(255,255,255,0.045)',
+      background: 'var(--cm-active-line)',
       color: 'var(--text-secondary)'
     },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
       background: 'color-mix(in srgb, var(--accent) 34%, transparent)'
     },
     '.cm-matchingBracket, .cm-nonmatchingBracket': {
-      background: 'rgba(255,255,255,0.12)',
+      background: 'var(--cm-bracket-match)',
       outline: '1px solid var(--accent)'
     },
     '.cm-line ::selection, .cm-content ::selection': {
@@ -84,23 +84,26 @@ const codeEditorTheme = EditorView.theme(
 )
 
 const codeHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: '#ff8fb3', fontWeight: '600' },
-  { tag: [tags.name, tags.deleted, tags.character, tags.macroName], color: '#f6f0ff' },
-  { tag: [tags.propertyName, tags.variableName, tags.labelName], color: '#b9d7ff' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#8fd6ff' },
-  { tag: [tags.className, tags.definition(tags.typeName), tags.typeName], color: '#ffd27d' },
-  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: '#c7a6ff' },
-  { tag: [tags.string, tags.special(tags.string)], color: '#9be69f' },
-  { tag: [tags.regexp, tags.escape], color: '#86e1d1' },
+  { tag: tags.keyword, color: 'var(--cm-keyword)', fontWeight: '600' },
+  { tag: [tags.name, tags.deleted, tags.character, tags.macroName], color: 'var(--cm-name)' },
+  { tag: [tags.propertyName, tags.variableName, tags.labelName], color: 'var(--cm-property)' },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    color: 'var(--cm-function)'
+  },
+  { tag: [tags.className, tags.definition(tags.typeName), tags.typeName], color: 'var(--cm-type)' },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--cm-number)' },
+  { tag: [tags.string, tags.special(tags.string)], color: 'var(--cm-string)' },
+  { tag: [tags.regexp, tags.escape], color: 'var(--cm-regexp)' },
   {
     tag: [tags.comment, tags.lineComment, tags.blockComment],
-    color: 'rgba(255,255,255,0.42)',
+    color: 'var(--cm-comment)',
     fontStyle: 'italic'
   },
-  { tag: tags.meta, color: '#9aa7ff' },
-  { tag: tags.heading, color: '#f4f7ff', fontWeight: '700' },
+  { tag: tags.meta, color: 'var(--cm-meta)' },
+  { tag: tags.heading, color: 'var(--cm-heading)', fontWeight: '700' },
   { tag: tags.link, color: 'var(--accent)', textDecoration: 'underline' },
-  { tag: tags.invalid, color: '#ff8080' }
+  { tag: tags.invalid, color: 'var(--cm-invalid)' }
 ])
 
 const shellLanguage = StreamLanguage.define(shell)
