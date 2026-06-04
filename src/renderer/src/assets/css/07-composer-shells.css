@@ -3021,3 +3021,78 @@
   color: color-mix(in srgb, #f0a93f 72%, var(--text-primary));
 }
 
+/* ============================================================
+ * CONSOLE REDESIGN — PROVIDER RIM ON THE INNER MODULE
+ * --------------------------------------------------------------
+ * Slice 1 (shard 03) carries the provider rim on the OUTER frame
+ * (`.composer-surface::after`). The console redesign adds a second
+ * nested surface, `.composer-inner-module` (the readable input),
+ * and the maintainer wants the provider highlight on the rims of
+ * BOTH. The module's own `box-shadow` is spent on the inset seam
+ * (shard 03), so — exactly like slice 1 did for the surface — the
+ * provider rim is drawn on a dedicated `::after` overlay so it
+ * layers on top of the seam without disturbing it.
+ *
+ * Same hooks + discipline as slice 1: per-provider via the always-
+ * on `.app-transcript.provider-<id>` ancestor, native shell only,
+ * steps aside for the FX agent-aura (`:not(.fx-agent-aura)` on the
+ * surface), reduce-motion snaps the cross-fade. Kept a touch
+ * softer than the outer rim so the frame stays the louder edge and
+ * the two rims read as one continuous highlight rather than two
+ * competing lines.
+ * ============================================================ */
+[data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1; /* above the module fill, below its controls (z 2) */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 4%, transparent);
+  transition: box-shadow 160ms ease;
+}
+[data-composer-style="default"]
+  .app-transcript.provider-gemini
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-gemini-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-codex
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-codex-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-claude
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-claude-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-kimi
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-kimi-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-grok
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-grok-color) 13%, transparent);
+}
+[data-composer-style="default"]
+  .app-transcript.provider-cursor
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--provider-cursor-color) 13%, transparent);
+}
+[data-reduce-motion="true"]
+  [data-composer-style="default"]
+  .composer-surface:not(.fx-agent-aura)
+  .composer-inner-module::after {
+  transition: none;
+}
+

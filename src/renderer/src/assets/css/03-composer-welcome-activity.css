@@ -2587,6 +2587,226 @@
   transition: none;
 }
 
+/* ============================================================
+ * NATIVE-SHELL COMPOSER "CONSOLE" REDESIGN — CONTRAST FRAME
+ * --------------------------------------------------------------
+ * The maintainer's vision: turn the native composer
+ * (`data-composer-style="default"`) into an *instrument*. Two
+ * nested surfaces:
+ *
+ *   OUTER  `.composer-surface`       → a translucent CONTRAST
+ *          glass shown ONLY as the FRAME around the input (via
+ *          the surface's existing perimeter padding, 14px). It is
+ *          in CONTRAST OPPOSITION to the theme: a light/white-
+ *          tinted glass on DARK themes, a dark/black-tinted glass
+ *          on the five LIGHT themes. Carries the slice-1 provider
+ *          rim on its ::after.
+ *
+ *   INNER  `.composer-inner-module`  → the actual INPUT (textarea
+ *          + slash/mention menus + the two bottom-control rows),
+ *          on a NORMAL THEME-TONE surface so text + controls stay
+ *          perfectly readable. Seated into the frame with a subtle
+ *          inset seam, and carrying the provider rim on its own
+ *          perimeter.
+ *
+ * HARD READABILITY RULE — the contrast glass is the FRAME ONLY
+ * (the perimeter padding). The textarea + controls NEVER sit on
+ * the inverted glass; they sit on the theme-tone inner module. So
+ * on a dark theme the input text stays light-on-dark inside the
+ * module, with the white-glass frame visible only as the halo.
+ *
+ * SURFACE VARIANTS — `.composer-surface` has three prompt-surface
+ * variants (glass / classic / solid, lines ~2409-2439), each
+ * setting its own `background` + `backdrop-filter` + `box-shadow`.
+ * We override ONLY `background` here (leaving every variant's
+ * backdrop-filter + box-shadow untouched, so glass stays glassy,
+ * classic stays classic, solid stays opaque). The contrast tint
+ * is a `color-mix` toward white (dark themes) / black (light
+ * themes); the SOLID variant gets a firmer mix (no blur to lean
+ * on). The base rule below covers the default/dark case; the
+ * light-theme `:is(...)` block flips the polarity to a dark glass.
+ *
+ * SCOPE — native shell only. Codex / claude / grok shells own
+ * their `.composer-surface` chrome (shard 07/10) and are never
+ * `default`, so they are untouched.
+ * ============================================================ */
+
+/* OUTER frame — DARK themes (default): a faint WHITE glass tint
+ * shows through the perimeter padding, in contrast to the dark
+ * theme. Background only; the variant's blur/shadow survive. */
+[data-composer-style="default"] .composer-surface {
+  background: color-mix(in srgb, var(--composer-bg) 64%, rgba(255, 255, 255, 0.9) 36%);
+}
+[data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="classic"] .composer-surface,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-surface {
+  /* Glassy variants already blur what's behind them, so a lighter
+   * white veil over the glass reads as a frosted contrast pane. */
+  background: color-mix(in srgb, var(--composer-glass-bg) 62%, rgba(255, 255, 255, 0.85) 38%);
+}
+[data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
+[data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
+  /* No blur to lean on — firmer white mix so the frame still
+   * reads as a contrast pane, but kept opaque + calm. */
+  background: color-mix(in srgb, var(--composer-bg-solid) 80%, #ffffff 20%);
+}
+
+/* OUTER frame — the five LIGHT themes: flip polarity to a DARK
+ * glass tint in contrast to the light theme. Same variant split,
+ * mixing toward black instead of white. */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .composer-surface {
+  background: color-mix(in srgb, var(--composer-bg) 70%, rgba(12, 14, 20, 0.82) 30%);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="liquid_glass"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="classic"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"]
+  .composer-surface {
+  background: color-mix(in srgb, var(--composer-glass-bg) 64%, rgba(12, 14, 20, 0.8) 36%);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-prompt-surface="solid"]
+  .composer-surface,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"][data-reduce-transparency="true"]
+  .composer-surface {
+  background: color-mix(in srgb, var(--composer-bg-solid) 84%, #0c0e14 16%);
+}
+
+/* INNER module — the readable input. NORMAL theme-tone surface so
+ * the textarea + controls always sit on theme tone (light-on-dark
+ * / dark-on-light), NEVER on the inverted contrast glass. Seated
+ * into the frame with a subtle inset seam (hairline + faint inner
+ * shadow) and a matching radius. Provider rim is carried in shard
+ * 07. Only active on the native shell; on the other shells the
+ * wrapper is layout-transparent (`display: contents`) so their
+ * own composer chrome is unaffected.
+ *
+ * DEFAULT (every NON-native shell) — `display: contents`: the
+ * wrapper vanishes from layout and its children (textarea + the
+ * two control rows) stay *effective* children of `.composer-
+ * surface` exactly as before this redesign. This mirrors the
+ * existing `.composer-bottom-controls` contract and is what keeps
+ * codex / claude / grok / kimi / cursor untouched. */
+.composer-inner-module {
+  display: contents;
+}
+
+[data-composer-style="default"] .composer-inner-module {
+  position: relative;
+  z-index: 2; /* above the surface ::before vignette (0) + ::after rim (1) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  background: var(--composer-bg);
+  border-radius: calc(var(--radius-lg) * 1.7);
+  /* Seat into the contrast frame: a hairline ring + a soft inner
+   * seam so the module reads as a panel dropped into the glass. */
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+  padding: 10px 10px 6px;
+  transition: box-shadow 160ms ease;
+}
+
+/* The inner module owns the theme-tone fill, so neutralise the
+ * outer surface's side-vignette in the central area — let the
+ * vignette read only in the frame (where the glass is). We do
+ * this by keeping the module opaque-enough; on the glass variants
+ * the theme `--composer-bg` is itself translucent, so nudge it
+ * toward solid so the input never shows the inverted glass behind
+ * it (HARD readability rule). */
+[data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="classic"] .composer-inner-module,
+[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-inner-module {
+  background: color-mix(in srgb, var(--composer-bg) 86%, var(--composer-bg-solid) 14%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[data-composer-style="default"][data-prompt-surface="solid"] .composer-inner-module,
+[data-composer-style="default"][data-reduce-transparency="true"] .composer-inner-module {
+  background: var(--composer-bg-solid);
+}
+
+/* Tighten the outer padding a touch in welcome mode so the frame
+ * stays a frame (not a slab) at the larger welcome radius. */
+.welcome-mode[data-composer-style="default"] .composer-inner-module,
+[data-composer-style="default"] .welcome-mode .composer-inner-module {
+  border-radius: calc(var(--radius-lg) * 1.6);
+}
+
+/* Reduce-motion: snap the inner-module seam transition. */
+[data-reduce-motion="true"] [data-composer-style="default"] .composer-inner-module {
+  transition: none;
+}
+
 .composer-control-footer {
   margin-top: auto;
   display: flex;
