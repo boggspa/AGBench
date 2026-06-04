@@ -2775,7 +2775,10 @@
    * `overflow: hidden`, so the panel's edges clip cleanly to the
    * frame's rounded outer corners. The theme-tone fill, provider rim
    * (shard 07), and inset seam all survive. */
-  width: 100%;
+  /* Full-bleed: width must be 100% PLUS the surface's 2×14px frame
+   * padding, or `width:100%` (content-box) + a negative margin only
+   * reaches the LEFT edge and falls ~28px short on the RIGHT. */
+  width: calc(100% + 28px);
   max-width: none;
   margin-left: -14px;
   margin-right: -14px;
@@ -2818,6 +2821,7 @@
 .welcome-mode[data-composer-style="default"] .composer-inner-module,
 [data-composer-style="default"] .welcome-mode .composer-inner-module {
   border-radius: 0;
+  width: calc(100% + 32px); /* welcome's 2×16px frame padding */
   margin-left: -16px;
   margin-right: -16px;
 }
