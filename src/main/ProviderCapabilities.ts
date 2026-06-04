@@ -1,6 +1,5 @@
 import type {
   AgenticNetworkPolicy,
-  AgenticServiceId,
   AgenticServicePolicy,
   AgenticServicesSettings,
   AppSettings,
@@ -24,7 +23,38 @@ const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   fileChanges: 'File changes',
   mcpTools: 'MCP and tool calls',
   creativeApps: 'Creative app tools',
-  networkAccess: 'Network access'
+  networkAccess: 'Network access',
+  elicit: 'Ask the user',
+  delegate: 'Delegate to sub-thread'
+}
+
+/** The original five "functional control" rows whose AGBench-enforcement is
+ * tallied across the renderer (ToolingContractCard `enforcedCount`,
+ * SettingsPanel contract hint) and main (ProviderPreflightService delegated
+ * chip, DelegationAudit policy label). The `elicit` / `delegate` rows are
+ * DISPLAY-only additions and are intentionally excluded from these tallies so
+ * promoting `subThreadDelegation` to a first-class row does not double-count
+ * against its existing settings gate or inflate the enforced/delegated counts.
+ * Consumers that tally enforcement MUST iterate this list rather than
+ * `Object.values(contract.tools)`. */
+export const TOOLING_CONTROL_IDS = [
+  'shellCommands',
+  'fileChanges',
+  'mcpTools',
+  'creativeApps',
+  'networkAccess'
+] as const satisfies readonly ProviderToolingCapabilityId[]
+
+export type ToolingControlId = (typeof TOOLING_CONTROL_IDS)[number]
+
+/** The five functional-control rows of a contract, in canonical order. Tally
+ * sites (enforced/delegated counts) MUST use this rather than
+ * `Object.values(contract.tools)` so the DISPLAY-only `elicit` / `delegate`
+ * rows never shift the enforced/delegated numerator or denominator. */
+export function toolingControlRows(
+  tools: Record<ProviderToolingCapabilityId, ProviderToolingCapability>
+): ProviderToolingCapability[] {
+  return TOOLING_CONTROL_IDS.map((id) => tools[id])
 }
 
 interface BuildProviderCapabilityContractInput {
@@ -59,7 +89,7 @@ function serviceRequiresApproval(policy?: AgenticServicePolicy): boolean {
 }
 
 function serviceCapability(
-  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
+  id: ProviderToolingCapabilityId,
   policy: AgenticServicePolicy | undefined,
   source: ProviderToolingCapability['source'],
   tools: string[],
@@ -80,7 +110,7 @@ function serviceCapability(
 }
 
 function unavailableCapability(
-  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
+  id: ProviderToolingCapabilityId,
   source: ProviderToolingCapability['source'],
   details: string
 ): ProviderToolingCapability {
@@ -98,7 +128,7 @@ function unavailableCapability(
 }
 
 function delegatedCapability(
-  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
+  id: ProviderToolingCapabilityId,
   policy: AgenticServicePolicy | undefined,
   tools: string[],
   details: string
@@ -113,6 +143,82 @@ function delegatedCapability(
     policy,
     requiresApproval: policy !== 'allow' && policy !== 'deny',
     tools,
+    details
+  }
+}
+
+/** `ask_user_question` (the `ui_elicitation` tool class) lets a participant
+ * ask the user a clarifying question mid-run. It is a universally
+ * auto-allowed AGBench MCP tool (see AgentbenchMcpTools `ask_user_question`),
+ * so it carries no service-policy gate — it is reachable whenever the AGBench
+ * MCP bridge is advertised to the provider, and provider-managed otherwise.
+ * DISPLAY-only row: excluded from the enforced/delegated tallies. */
+function elicitCapability(
+  source: ProviderToolingCapability['source'],
+  mcpAvailable: boolean,
+  details: string,
+  unavailableDetails?: string
+): ProviderToolingCapability {
+  const bridgeBacked = source === 'bridge' || source === 'agentbench'
+  if (bridgeBacked && !mcpAvailable) {
+    return unavailableCapability('elicit', source, unavailableDetails || details)
+  }
+  return {
+    id: 'elicit',
+    label: TOOLING_LABELS.elicit,
+    state: bridgeBacked ? 'available' : 'delegated',
+    source,
+    enforcedByAgentBench: bridgeBacked,
+    enforcement: bridgeBacked ? source : 'provider',
+    requiresApproval: false,
+    tools: ['ask_user_question'],
+    details
+  }
+}
+
+/** `delegate_to_subthread` (`subThreadDelegation`) lets a participant spawn a
+ * cross-provider sub-thread. It IS gated by the existing
+ * `agenticServices.subThreadDelegation` settings policy (see the
+ * SettingsPanel tool→service map). Promoting it to a first-class row must NOT
+ * change that gate or the enforcement tallies, so this is a DISPLAY-only row
+ * excluded from `TOOLING_CONTROL_IDS`; the gate semantics stay in
+ * PermissionService / EffectiveRunPermissions exactly as before. Its state is
+ * derived from the same `subThreadDelegation` policy the gate already reads. */
+function delegateCapability(
+  source: ProviderToolingCapability['source'],
+  policy: AgenticServicePolicy | undefined,
+  mcpAvailable: boolean,
+  details: string,
+  unavailableDetails?: string
+): ProviderToolingCapability {
+  const bridgeBacked = source === 'bridge' || source === 'agentbench'
+  if (bridgeBacked && !mcpAvailable) {
+    return unavailableCapability('delegate', source, unavailableDetails || details)
+  }
+  if (!bridgeBacked) {
+    return {
+      id: 'delegate',
+      label: TOOLING_LABELS.delegate,
+      state: policy === 'deny' ? 'blocked' : 'delegated',
+      source,
+      enforcedByAgentBench: false,
+      enforcement: policy === 'deny' ? 'best_effort' : 'provider',
+      policy,
+      requiresApproval: policy !== 'allow' && policy !== 'deny',
+      tools: ['delegate_to_subthread'],
+      details
+    }
+  }
+  return {
+    id: 'delegate',
+    label: TOOLING_LABELS.delegate,
+    state: serviceState(policy),
+    source,
+    enforcedByAgentBench: true,
+    enforcement: source,
+    policy,
+    requiresApproval: serviceRequiresApproval(policy),
+    tools: ['delegate_to_subthread'],
     details
   }
 }
@@ -371,6 +477,8 @@ export function buildProviderCapabilityContract({
   let shellCommands: ProviderToolingCapability
   let fileChanges: ProviderToolingCapability
   let mcpTools: ProviderToolingCapability
+  let elicit: ProviderToolingCapability
+  let delegate: ProviderToolingCapability
   let mcp: ProviderMcpCapability
 
   if (provider === 'gemini') {
@@ -397,6 +505,17 @@ export function buildProviderCapabilityContract({
         ['read_file', 'list_directory'],
         'Gemini uses the AGBench MCP bridge for workspace read/list tools.'
       )
+      elicit = elicitCapability(
+        'bridge',
+        true,
+        'Gemini can ask the user a clarifying question through the AGBench MCP bridge (auto-allowed).'
+      )
+      delegate = delegateCapability(
+        'bridge',
+        services.subThreadDelegation,
+        true,
+        'Gemini can spawn cross-provider sub-threads through the AGBench MCP bridge, gated by the sub-thread delegation setting.'
+      )
     } else {
       shellCommands = unavailableCapability(
         'shellCommands',
@@ -412,6 +531,17 @@ export function buildProviderCapabilityContract({
         'mcpTools',
         'bridge',
         'AGBench MCP tools are not advertised to Gemini until the bridge is enabled, installed, and available.'
+      )
+      elicit = elicitCapability(
+        'bridge',
+        false,
+        'Gemini cannot ask the user through AGBench until the MCP bridge is enabled, installed, and available.'
+      )
+      delegate = delegateCapability(
+        'bridge',
+        services.subThreadDelegation,
+        false,
+        'Gemini cannot delegate to sub-threads through AGBench until the MCP bridge is enabled, installed, and available.'
       )
       warnings.push(
         warning(
@@ -449,6 +579,17 @@ export function buildProviderCapabilityContract({
       'Codex file approvals and diffs are routed through AGBench.'
     )
     mcpTools = serviceCapability('mcpTools', services.mcpTools, 'provider', mcp.tools, mcp.message)
+    elicit = elicitCapability(
+      'agentbench',
+      true,
+      'Codex can ask the user a clarifying question through the AGBench MCP tool surface (auto-allowed).'
+    )
+    delegate = delegateCapability(
+      'agentbench',
+      services.subThreadDelegation,
+      true,
+      'Codex can spawn cross-provider sub-threads through AGBench, gated by the sub-thread delegation setting.'
+    )
     if (settings.codexSandboxFallback === 'ask_rerun') {
       warnings.push(
         warning(
@@ -485,6 +626,33 @@ export function buildProviderCapabilityContract({
             mcp.tools,
             mcp.message || `${label} MCP status is unavailable.`
           )
+    if (provider === 'claude' || provider === 'kimi') {
+      elicit = elicitCapability(
+        'bridge',
+        mcp.available,
+        `${label} can ask the user a clarifying question through the AGBench MCP bridge (auto-allowed).`,
+        `AGBench cannot route ${label} user questions until the AGBench MCP bridge is available.`
+      )
+      delegate = delegateCapability(
+        'bridge',
+        services.subThreadDelegation,
+        mcp.available,
+        `${label} can spawn cross-provider sub-threads through the AGBench MCP bridge, gated by the sub-thread delegation setting.`,
+        `AGBench cannot route ${label} sub-thread delegation until the AGBench MCP bridge is available.`
+      )
+    } else {
+      elicit = elicitCapability(
+        'provider',
+        false,
+        `${label} user-question handling is delegated to the provider CLI; AGBench does not advertise its elicitation tool here yet.`
+      )
+      delegate = delegateCapability(
+        'provider',
+        services.subThreadDelegation,
+        false,
+        `${label} sub-thread delegation is delegated to the provider CLI; AGBench does not advertise its delegation tool here yet.`
+      )
+    }
     warnings.push(
       warning(
         `${provider}-provider-managed-tools`,
@@ -532,7 +700,9 @@ export function buildProviderCapabilityContract({
       fileChanges,
       mcpTools,
       creativeApps,
-      networkAccess
+      networkAccess,
+      elicit,
+      delegate
     },
     approvals: approvalContract(provider, requestedMode, effectiveMode),
     mcp,

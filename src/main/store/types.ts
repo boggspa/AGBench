@@ -999,6 +999,8 @@ export type ProviderToolingCapabilityId =
   | Exclude<AgenticServiceId, 'subThreadDelegation'>
   | 'creativeApps'
   | 'networkAccess'
+  | 'elicit'
+  | 'delegate'
 
 export interface ProviderCapabilityWarning {
   id: string

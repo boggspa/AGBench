@@ -4,6 +4,7 @@ import type {
   ProviderCapabilityWarning,
   ProviderId
 } from './store/types'
+import { toolingControlRows } from './ProviderCapabilities'
 
 export type ProviderPreflightState = 'ready' | 'repairable' | 'blocked'
 export type ProviderPreflightRepairAction =
@@ -97,16 +98,18 @@ export class ProviderPreflightService {
       }
     }
 
-    const delegatedTools = Object.values(contract.tools).filter(
-      (tool) => !tool.enforcedByAgentBench
-    )
+    // Tally over the five functional-control rows only. The DISPLAY-only
+    // elicit/delegate rows are intentionally excluded so promoting
+    // subThreadDelegation to a row never inflates this count.
+    const controlRows = toolingControlRows(contract.tools)
+    const delegatedTools = controlRows.filter((tool) => !tool.enforcedByAgentBench)
     if (delegatedTools.length > 0) {
       chips.unshift(
         warning(
           `${input.provider}-delegated-enforcement`,
           'info',
           'Provider-managed controls',
-          `${delegatedTools.length}/${Object.values(contract.tools).length} tooling controls are delegated or best-effort for ${label}.`
+          `${delegatedTools.length}/${controlRows.length} tooling controls are delegated or best-effort for ${label}.`
         )
       )
     }

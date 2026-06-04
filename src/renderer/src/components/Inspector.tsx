@@ -1154,14 +1154,20 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
     )
   }
 
-  const tools = [
+  // The five functional-control rows drive the AGBench-enforcement tally. The
+  // elicit/delegate rows are DISPLAY-only additions: they render in the strip
+  // but are deliberately excluded from `enforcedCount` so promoting
+  // subThreadDelegation to a row does not double-count against its existing
+  // settings gate or change the "X/5 controls" number.
+  const controlTools = [
     contract.tools.shellCommands,
     contract.tools.fileChanges,
     contract.tools.mcpTools,
     contract.tools.creativeApps,
     contract.tools.networkAccess
   ]
-  const enforcedCount = tools.filter((tool) => tool.enforcedByAgentBench).length
+  const displayTools = [...controlTools, contract.tools.elicit, contract.tools.delegate]
+  const enforcedCount = controlTools.filter((tool) => tool.enforcedByAgentBench).length
   return (
     <div className="safety-card">
       <h4>{safeText(contract.label, 'Provider')} tooling contract</h4>
@@ -1198,7 +1204,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
       <div className="safety-row">
         <span>AGBench enforcement</span>
         <span style={{ color: enforcedCount > 0 ? 'var(--success)' : 'var(--warning)' }}>
-          {enforcedCount}/{tools.length} controls
+          {enforcedCount}/{controlTools.length} controls
         </span>
       </div>
       <div className="safety-row">
@@ -1215,7 +1221,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
           marginTop: 'var(--space-md)'
         }}
       >
-        {tools.map((tool, idx) => (
+        {displayTools.map((tool, idx) => (
           <div
             key={safeText(tool.id) || `tool-${idx}`}
             style={{ borderTop: '1px solid var(--panel-border)', paddingTop: 'var(--space-sm)' }}

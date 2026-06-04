@@ -3621,12 +3621,15 @@ export function SettingsPanel({
                     {providerCapabilities.mcp.state}, creative apps are{' '}
                     {providerCapabilities.tools.creativeApps.state};{' '}
                     {
-                      Object.values(providerCapabilities.tools).filter(
-                        (tool) => tool.enforcedByAgentBench
-                      ).length
+                      [
+                        providerCapabilities.tools.shellCommands,
+                        providerCapabilities.tools.fileChanges,
+                        providerCapabilities.tools.mcpTools,
+                        providerCapabilities.tools.creativeApps,
+                        providerCapabilities.tools.networkAccess
+                      ].filter((tool) => tool.enforcedByAgentBench).length
                     }
-                    /{Object.values(providerCapabilities.tools).length} controls are
-                    AGBench-enforced.
+                    /5 controls are AGBench-enforced.
                   </div>
                 )}
                 {!providerCapabilities && (

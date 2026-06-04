@@ -54,7 +54,9 @@ function makeCapabilityContract(provider: ProviderId): ProviderCapabilityContrac
       fileChanges: tool('fileChanges', 'Files'),
       mcpTools: tool('mcpTools', 'MCP'),
       creativeApps: tool('creativeApps', 'Creative apps'),
-      networkAccess: tool('networkAccess', 'Network')
+      networkAccess: tool('networkAccess', 'Network'),
+      elicit: tool('elicit', 'Ask the user'),
+      delegate: tool('delegate', 'Delegate to sub-thread')
     },
     approvals: {
       requestedMode: 'default',
