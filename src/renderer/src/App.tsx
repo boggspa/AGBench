@@ -99,6 +99,8 @@ import { useAppearance } from './hooks/useAppearance'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
+import { GitCommitControls } from './components/GitCommitControls'
+import type { GitRepositorySnapshot } from '../../main/services/GitService'
 import { ProviderBadgeIcon, Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel'
@@ -5504,6 +5506,20 @@ function App(): React.JSX.Element {
   const setCreatePrStateFor = (path: string, next: CreatePrState): void =>
     setCreatePrStateByPath((prev) => ({ ...prev, [path]: next }))
   const [diffActionMenuOpen, setDiffActionMenuOpen] = useState(false)
+  // Live git snapshot lifted out of the GitCommitControls menu so the
+  // above-bar header can surface real repo state (branch, changed-file
+  // count, staged/unstaged, push/PR readiness) sourced from
+  // `gitSnapshot` rather than the stale `currentWorkspace.branch` /
+  // tool-derived diff counts. Null until the menu opens (lazy fetch) or
+  // the repo read fails.
+  const [primaryGitSnapshot, setPrimaryGitSnapshot] = useState<GitRepositorySnapshot | null>(null)
+  // Drop the lifted snapshot whenever the workspace changes so a stale
+  // repo's branch/counts never bleed into a freshly-switched workspace
+  // before its menu is reopened.
+  const currentWorkspacePath = currentWorkspace?.path
+  useEffect(() => {
+    setPrimaryGitSnapshot(null)
+  }, [currentWorkspacePath])
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
   type AttachedWindowSnapshot = {
     handleID: string
@@ -15812,19 +15828,12 @@ function App(): React.JSX.Element {
     window.setTimeout(() => setCreatePrStateFor(workspacePath, { status: 'idle' }), 6000)
   }
 
-  const handlePrimeCommitChangesPrompt = () => {
-    const fileCount = latestRunDiffStats.filesChanged
-    const diffSummary =
-      fileCount > 0
-        ? `${fileCount} ${fileCount === 1 ? 'file' : 'files'} changed (+${latestRunDiffStats.additions} -${latestRunDiffStats.deletions})`
-        : 'the current workspace changes'
-    setPrompt(
-      `Commit ${diffSummary}. Review the diff first, choose a concise commit message, then run the commit.`
-    )
-    window.requestAnimationFrame(() => {
-      composerTextareaRef.current?.focus()
-    })
-  }
+  // Phase Git-U1 — `handlePrimeCommitChangesPrompt` (which injected a
+  // "Commit N files… review the diff, then run the commit" prompt at the
+  // agent) has been removed. Committing is now a real user-driven flow
+  // via GitCommitControls (gitSnapshot → gitStage → gitCommit) in the
+  // composer above-bar's diff-action menu, so the model is no longer
+  // asked to drive git on the user's behalf.
 
   // Composer-unification (Phase J1): Gemini's standalone /stats, /help,
   // GEMINI.md, /restore, persistent-session and checkpoints buttons are
@@ -17061,8 +17070,17 @@ function App(): React.JSX.Element {
                         <span>
                           {currentWorkspace.displayName}
                           {' · '}
+                          {/* Phase Git-U1 — prefer the LIVE branch from
+                            gitSnapshot (populated once the diff-action menu
+                            has been opened); fall back to the workspace
+                            record's cached branch before the first read. A
+                            detached snapshot reads "detached HEAD". */}
                           <em className="composer-above-bar-secondary-branch">
-                            {currentWorkspace?.branch || 'detached'}
+                            {primaryGitSnapshot
+                              ? primaryGitSnapshot.detached
+                                ? 'detached HEAD'
+                                : primaryGitSnapshot.branch || 'detached'
+                              : currentWorkspace?.branch || 'detached'}
                           </em>
                         </span>
                       </span>
@@ -17114,6 +17132,64 @@ function App(): React.JSX.Element {
                           </span>
                         )}
                       </span>
+                      {/* Phase Git-U1 — live git-state pill driven by
+                        gitSnapshot (populated once the diff-action menu has
+                        been opened). Surfaces staged/unstaged state and
+                        push/PR readiness right in the header so the user can
+                        see what the Review/Commit/Create-PR menu will act on
+                        without opening it. Rendered only once a snapshot is
+                        in hand so the header stays stable pre-read. */}
+                      {primaryGitSnapshot &&
+                        (() => {
+                          const c = primaryGitSnapshot.counts
+                          const stagedTitle = primaryGitSnapshot.clean
+                            ? 'Working tree clean'
+                            : `${c.changed} changed · ${c.staged} staged · ${c.unstaged} unstaged${
+                                c.untracked > 0 ? ` · ${c.untracked} new` : ''
+                              }`
+                          const needsPush =
+                            !primaryGitSnapshot.detached &&
+                            !!primaryGitSnapshot.branch &&
+                            (!primaryGitSnapshot.upstream || primaryGitSnapshot.ahead > 0)
+                          const prReady =
+                            !primaryGitSnapshot.detached &&
+                            !!primaryGitSnapshot.branch &&
+                            !!primaryGitSnapshot.remoteUrl
+                          return (
+                            <span
+                              className="composer-git-state-pill"
+                              title={stagedTitle}
+                              data-git-clean={primaryGitSnapshot.clean ? 'true' : 'false'}
+                            >
+                              {primaryGitSnapshot.clean ? (
+                                <span className="composer-git-state-clean">clean</span>
+                              ) : c.staged > 0 ? (
+                                <span className="composer-git-state-staged">{c.staged} staged</span>
+                              ) : (
+                                <span className="composer-git-state-unstaged">unstaged</span>
+                              )}
+                              {needsPush ? (
+                                <span
+                                  className="composer-git-state-flag is-push"
+                                  title={
+                                    primaryGitSnapshot.upstream
+                                      ? `${primaryGitSnapshot.ahead} commit(s) to push`
+                                      : 'No upstream — push to set one'
+                                  }
+                                >
+                                  push
+                                </span>
+                              ) : prReady ? (
+                                <span
+                                  className="composer-git-state-flag is-pr"
+                                  title="Branch is pushed and ready for a PR"
+                                >
+                                  PR ready
+                                </span>
+                              ) : null}
+                            </span>
+                          )
+                        })()}
                       {/*
                     Composer-unification (Phase J1): once the chat has
                     activity, External Path + Worktree migrate from the
@@ -17138,6 +17214,13 @@ function App(): React.JSX.Element {
                         // 1.0.6-EW66-1d — primary workspace's PR state is now
                         // read from the per-path map keyed by its own path.
                         const primaryPrState = getCreatePrState(currentWorkspace?.path)
+                        // Phase Git-U1 — the trigger button keeps "Review
+                        // changes" as the FIRST/primary action whenever there's
+                        // a diff (the canonical safety entry point); it falls
+                        // back to the PR label otherwise. The menu it opens is
+                        // now the real user-driven GitCommitControls (status +
+                        // review + stage/commit + gated PR) — no more agent
+                        // prompt-injection for committing.
                         const createPrLabel =
                           primaryPrState.status === 'pending'
                             ? 'Creating…'
@@ -17159,60 +17242,25 @@ function App(): React.JSX.Element {
                               aria-expanded={diffActionMenuOpen}
                               title={
                                 primaryPrState.message ||
-                                'Choose what to do with the current workspace changes'
+                                'Review, commit, or open a PR for the current workspace'
                               }
                             >
                               {primaryLabel}
                             </button>
                             {diffActionMenuOpen && (
                               <div className="composer-diff-action-menu" role="menu">
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setDiffActionMenuOpen(false)
-                                    setRightTab('diff')
-                                  }}
-                                  disabled={!hasReviewableDiff}
-                                  title={
-                                    hasReviewableDiff
-                                      ? 'Open Diff Studio to review the latest run changes'
-                                      : 'No latest run diff is available yet'
-                                  }
-                                >
-                                  Review changes
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setDiffActionMenuOpen(false)
-                                    handlePrimeCommitChangesPrompt()
-                                  }}
-                                  disabled={!hasReviewableDiff}
-                                  title={
-                                    hasReviewableDiff
-                                      ? 'Ask the current agent to review and commit these changes'
-                                      : 'No latest run diff is available to commit yet'
-                                  }
-                                >
-                                  Commit Changes
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setDiffActionMenuOpen(false)
+                                <GitCommitControls
+                                  workspacePath={currentWorkspace?.path}
+                                  open={diffActionMenuOpen}
+                                  hasReviewableDiff={hasReviewableDiff}
+                                  onReviewChanges={() => setRightTab('diff')}
+                                  onClose={() => setDiffActionMenuOpen(false)}
+                                  onCreatePr={() =>
                                     void handleCreateGithubPr(currentWorkspace?.path)
-                                  }}
-                                  disabled={primaryPrState.status === 'pending'}
-                                  title={
-                                    primaryPrState.message ||
-                                    'Run `gh pr create --fill` against the current branch'
                                   }
-                                >
-                                  {createPrLabel}
-                                </button>
+                                  prState={primaryPrState}
+                                  onSnapshot={setPrimaryGitSnapshot}
+                                />
                               </div>
                             )}
                           </span>
