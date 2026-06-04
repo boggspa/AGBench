@@ -2427,6 +2427,21 @@
 .bug-report-sheet-required {
   color: #f0b050;
 }
+.bug-report-sheet-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bug-report-sheet-char-counter {
+  font-size: 0.72em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  transition: color 140ms ease;
+}
+.bug-report-sheet-char-counter-warn {
+  color: #f0b050;
+}
 .bug-report-sheet-input,
 .bug-report-sheet-textarea {
   width: 100%;
@@ -2471,7 +2486,8 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease,
+    box-shadow 140ms ease;
 }
 .bug-report-sheet-severity-chip:hover {
   border-color: rgba(255, 255, 255, 0.2);
@@ -2510,6 +2526,15 @@
 .bug-report-sheet-severity-chip-checked.bug-report-sheet-severity-chip-blocking {
   border-color: color-mix(in srgb, #f85149 55%, transparent);
   background: color-mix(in srgb, #f85149 10%, rgba(255, 255, 255, 0.02));
+}
+/* Selected severity reads crisper: a subtle lift + soft shadow + bolder
+ * label, layered on top of the per-severity tint above. */
+.bug-report-sheet-severity-chip-checked {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+.bug-report-sheet-severity-chip-checked .bug-report-sheet-severity-chip-label {
+  font-weight: 700;
 }
 .bug-report-sheet-context {
   display: flex;
@@ -2580,13 +2605,61 @@
   border-radius: 4px;
 }
 .bug-report-sheet-confirmation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.86em;
   font-weight: 600;
   color: #7fdc9a;
+  animation: bug-report-confirm-in 240ms ease;
+}
+.bug-report-sheet-confirmation-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #3fb950 24%, transparent);
+  color: #8ef0a8;
+  font-size: 0.72em;
+  line-height: 1;
+  animation: bug-report-check-pop 320ms cubic-bezier(0.2, 0.8, 0.2, 1.4);
+}
+@keyframes bug-report-confirm-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bug-report-check-pop {
+  0% {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 .bug-report-sheet-footer-actions {
   display: flex;
   gap: 8px;
+}
+/* Honour the in-app reduce-motion setting — no pop/slide for the saved
+ * confirmation, its check, or the selected-chip lift. */
+[data-reduce-motion='true'] .bug-report-sheet-confirmation,
+[data-reduce-motion='true'] .bug-report-sheet-confirmation-check,
+[data-reduce-motion='true'] .bug-report-sheet-severity-chip,
+[data-reduce-motion='true'] .bug-report-sheet-severity-chip-checked {
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 /* Light-mode tweaks. Mirrors the same pattern as FirstLaunchSheet —

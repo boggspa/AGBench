@@ -61,6 +61,9 @@ describe('BugReportSheet', () => {
     // is empty — that's the strongest signal that the field is
     // required (the form refuses to submit until it's populated).
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled/)
+    // Live character counter for the 140-char title cap (starts at 0/140).
+    expect(html).toContain('bug-report-sheet-char-counter')
+    expect(html).toContain('0/140')
   })
 
   it('renders all four severity options with "minor" pre-selected', () => {

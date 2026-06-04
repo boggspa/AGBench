@@ -413,9 +413,19 @@ export function BugReportSheet({
 
         <form className="bug-report-sheet-form" onSubmit={handleSubmit}>
           <div className="bug-report-sheet-field">
-            <label className="bug-report-sheet-label" htmlFor="bug-report-title">
-              Title <span className="bug-report-sheet-required">*</span>
-            </label>
+            <div className="bug-report-sheet-label-row">
+              <label className="bug-report-sheet-label" htmlFor="bug-report-title">
+                Title <span className="bug-report-sheet-required">*</span>
+              </label>
+              <span
+                className={`bug-report-sheet-char-counter${
+                  title.length > 120 ? ' bug-report-sheet-char-counter-warn' : ''
+                }`}
+                aria-hidden
+              >
+                {title.length}/140
+              </span>
+            </div>
             <input
               ref={titleInputRef}
               id="bug-report-title"
@@ -601,6 +611,9 @@ export function BugReportSheet({
           <footer className="bug-report-sheet-footer">
             {confirmation ? (
               <span className="bug-report-sheet-confirmation" role="status">
+                <span className="bug-report-sheet-confirmation-check" aria-hidden>
+                  ✓
+                </span>
                 {confirmation}
               </span>
             ) : (
