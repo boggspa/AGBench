@@ -1055,6 +1055,12 @@ export function FirstLaunchSheet({
               <kbd>K</kbd> for the global command palette.
             </li>
             <li>
+              <strong>Commit &amp; open PRs from the composer.</strong> The composer&apos;s{' '}
+              <em>Review changes</em> menu has a real Git flow — see your branch and changed files,
+              write a message and <em>Stage all &amp; Commit</em>, then <em>Create PR</em> once the
+              branch is pushed and ready.
+            </li>
+            <li>
               <strong>Permission picker colour-codes the mode.</strong> Plan = blue (read-only),
               Default = neutral, Full Workspace Access / Auto-edit = red (orange in the Codex shell)
               — these can edit files. Read it before you hit Enter so you know how much freedom the
