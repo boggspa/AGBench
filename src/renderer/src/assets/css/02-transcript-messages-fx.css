@@ -3185,12 +3185,14 @@
 
 /* Ensemble round-status / handback chrome (round opened/closed, @-mention
  * routing, "control returned to you"). Orchestration STATE CHANGES, not
- * participant prose — a left accent bar + faint tint marks them as system
+ * participant prose — a rim highlight + faint tint marks them as system
  * authority instead of the muted system-note styling. Box-shadow + background
  * only (no padding/border added) so the row's measured height is unchanged. */
 .message-bubble.system.system-round-status {
   background: color-mix(in srgb, var(--accent) 7%, transparent);
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 9%, transparent);
   border-radius: 8px;
 }
 
@@ -3204,12 +3206,14 @@
  * strip mirrors the chip layouts in `.ensemble-above-row-chips`
  * so the visual vocabulary stays consistent across the app. */
 .participant-health-card {
+  --participant-health-rim: color-mix(in srgb, var(--panel-border) 60%, transparent);
   width: min(100%, 900px);
   margin: 6px 0;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  border: 1px solid var(--participant-health-rim);
   background: color-mix(in srgb, var(--surface-elevated) 50%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 3%, transparent);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3217,15 +3221,21 @@
   color: var(--text-secondary);
 }
 .participant-health-card.all-ok {
-  /* Subtle green-tinted left rail when every participant is
+  /* Subtle green-tinted rim when every participant is
    * reachable. Helps the user skim a long transcript and see
    * "yep, the panel was healthy here" without parsing chips. */
-  border-left: 3px solid color-mix(in srgb, #2ea043 55%, transparent);
+  --participant-health-rim: color-mix(in srgb, #2ea043 42%, var(--panel-border));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #2ea043 9%, transparent),
+    0 0 0 1px color-mix(in srgb, #2ea043 8%, transparent);
 }
 .participant-health-card.has-failures {
-  /* Amber rail when any participant came back unreachable. The
+  /* Amber rim when any participant came back unreachable. The
    * chip strip below shows WHICH one(s). */
-  border-left: 3px solid color-mix(in srgb, #f0a93f 65%, transparent);
+  --participant-health-rim: color-mix(in srgb, #f0a93f 50%, var(--panel-border));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #f0a93f 10%, transparent),
+    0 0 0 1px color-mix(in srgb, #f0a93f 8%, transparent);
 }
 .participant-health-card-header {
   display: flex;
@@ -3318,14 +3328,13 @@
 
 .subthread-return-card {
   width: min(100%, 860px);
-  border: 1px solid rgb(var(--agent-accent-rgb) / 0.2);
-  border-left: 3px solid rgb(var(--agent-accent-rgb) / 0.62);
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.28);
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgb(var(--agent-accent-rgb) / 0.12), transparent 58%),
     rgb(255 255 255 / 0.035);
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.024),
+    inset 0 0 0 1px rgb(var(--agent-accent-rgb) / 0.08),
     0 14px 34px rgb(0 0 0 / 0.16);
   color: var(--text-primary);
   padding: 0.78rem 0.9rem 0.9rem;
@@ -3800,25 +3809,35 @@
 /* QMOD (1.0.3) — `ask_user_question` MCP tool surface. Extends the
  * existing .plan-choice-card visual; only adds the bits that diverge:
  *   - Context sub-paragraph beneath the question.
- *   - Provider-tinted left border so the user sees who's asking.
+ *   - Provider-tinted rim so the user sees who's asking.
  *   - Free-text textarea path (Cmd/Ctrl+Enter submits, Esc dismisses).
  *   - Dismiss × in the top-right that cancels the parked tool call.
  */
 .agent-question-card {
   position: relative;
-  border-left-width: 3px;
+  --agent-question-rim: rgb(var(--agent-accent-rgb) / 0.24);
+  border-color: var(--agent-question-rim);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--agent-accent-rgb) / 0.06),
+    0 0 18px rgb(var(--agent-accent-rgb) / 0.07);
 }
 .agent-question-card.provider-codex {
-  border-left-color: var(--provider-codex-color);
+  --agent-question-rim: color-mix(in srgb, var(--provider-codex-color) 58%, transparent);
 }
 .agent-question-card.provider-claude {
-  border-left-color: var(--provider-claude-color);
+  --agent-question-rim: color-mix(in srgb, var(--provider-claude-color) 58%, transparent);
 }
 .agent-question-card.provider-gemini {
-  border-left-color: var(--provider-gemini-color);
+  --agent-question-rim: color-mix(in srgb, var(--provider-gemini-color) 58%, transparent);
 }
 .agent-question-card.provider-kimi {
-  border-left-color: var(--provider-kimi-color);
+  --agent-question-rim: color-mix(in srgb, var(--provider-kimi-color) 58%, transparent);
+}
+.agent-question-card.provider-grok {
+  --agent-question-rim: color-mix(in srgb, var(--provider-grok-color) 58%, transparent);
+}
+.agent-question-card.provider-cursor {
+  --agent-question-rim: color-mix(in srgb, var(--provider-cursor-color) 58%, transparent);
 }
 .agent-question-card-question {
   font-weight: 600;
