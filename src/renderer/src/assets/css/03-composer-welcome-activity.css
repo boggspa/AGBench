@@ -1124,6 +1124,19 @@
 .welcome-usage-tab.active::after {
   background: var(--accent);
 }
+/* Welcome L9 polish — the underline now previews faintly on hover (was
+ * colour-only) and the tab is keyboard-focusable with a visible accent
+ * underline, so the tab strip reads as crisp under both pointer + keyboard. */
+.welcome-usage-tab:hover:not(.active)::after {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.welcome-usage-tab:focus-visible {
+  outline: none;
+  color: var(--text-primary);
+}
+.welcome-usage-tab:focus-visible::after {
+  background: color-mix(in srgb, var(--accent) 58%, transparent);
+}
 
 /* Range toggle (elsewhere in the app) keeps its historical pill style. */
 .welcome-usage-range {
@@ -2095,6 +2108,10 @@
   font-style: normal;
   font-weight: 600;
   color: color-mix(in srgb, var(--accent) 80%, var(--text-primary) 20%);
+}
+.welcome-usage-empty--range .mascot-ghost {
+  color: color-mix(in srgb, var(--text-primary) 32%, transparent);
+  margin-bottom: 4px;
 }
 
 /* 1.0.6-CRUX43 — the model-meter FILL also reads its provider brand colour via

@@ -124,6 +124,7 @@ import {
   FolderSymbolIcon,
   GhostCompanionIcon,
   LinkCircleSymbolIcon,
+  MascotGhost,
   ModelSymbolIcon,
   OverviewSymbolIcon,
   PermissionSymbolIcon,
@@ -878,6 +879,7 @@ function WelcomeUsageDashboard({
           replaces the stat grid / chart inside. */}
       {!data.hasActivity ? (
         <div className="welcome-usage-empty welcome-usage-empty--range">
+          <MascotGhost size={34} />
           <strong>No activity in the last 30 days.</strong>
           <span>Kick off a run on this workspace to start filling the dashboard.</span>
         </div>
