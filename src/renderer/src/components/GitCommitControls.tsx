@@ -27,7 +27,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { GitRepositorySnapshot, GitResult } from '../../../main/services/GitService'
+import type { GitPrReadiness, GitRepositorySnapshot, GitResult } from '../../../main/services/GitService'
 
 export interface GitCommitControlsProps {
   /** Workspace path to operate on. When absent the controls render a
@@ -63,6 +63,10 @@ type ActionState = {
 }
 
 /**
+ * FALLBACK PR-readiness — used only while the canonical backend
+ * `githubPrReadiness` is loading or unavailable (older build / `gh`
+ * missing). When the backend readiness resolves it is preferred.
+ *
  * Whether the repo is in a state where opening a PR can plausibly
  * succeed. Mirrors GitService.createPullRequest's own guards (not
  * detached, has a branch, has a remote) plus a "there is something to
@@ -102,6 +106,11 @@ export function GitCommitControls({
   onSnapshot
 }: GitCommitControlsProps): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<GitRepositorySnapshot | null>(null)
+  // Canonical PR readiness from the backend (Codex's githubPrReadiness,
+  // 8d348fc) — checks detached / remote / push-first AND existing PRs via
+  // gh. Preferred over the local computePrReadiness mirror; null while it
+  // loads or if the API / `gh` is unavailable, in which case we fall back.
+  const [serverReadiness, setServerReadiness] = useState<GitPrReadiness | null>(null)
   const [loadState, setLoadState] = useState<ActionState>({ status: 'idle' })
   const [commitState, setCommitState] = useState<ActionState>({ status: 'idle' })
   const [message, setMessage] = useState('')
@@ -161,11 +170,31 @@ export function GitCommitControls({
     }
   }, [workspacePath])
 
+  // Canonical PR-readiness fetch (backend, gh-aware). Runs alongside the
+  // snapshot fetch; any failure leaves serverReadiness null so the local
+  // mirror takes over — this never blocks commit/status. Guarded for
+  // older builds that predate the githubPrReadiness API.
+  const refreshReadiness = useCallback(async () => {
+    if (!workspacePath || typeof window.api?.githubPrReadiness !== 'function') {
+      setServerReadiness(null)
+      return
+    }
+    try {
+      const result = await window.api.githubPrReadiness({ workspacePath })
+      if (!mountedRef.current) return
+      setServerReadiness(result.ok ? result.data : null)
+    } catch {
+      if (!mountedRef.current) return
+      setServerReadiness(null)
+    }
+  }, [workspacePath])
+
   // Lazily (re)fetch whenever the menu opens or the workspace changes.
   useEffect(() => {
     if (!open) return
     void refreshSnapshot()
-  }, [open, refreshSnapshot])
+    void refreshReadiness()
+  }, [open, refreshSnapshot, refreshReadiness])
 
   const handleCommit = useCallback(async () => {
     const trimmed = message.trim()
@@ -207,6 +236,8 @@ export function GitCommitControls({
       setMessage('')
       setSnapshot(committed.data)
       onSnapshotRef.current?.(committed.data)
+      // The new commit changes ahead/push state — refresh the canonical PR gate.
+      void refreshReadiness()
       setCommitState({ status: 'success', message: 'Committed.' })
     } catch (error) {
       if (!mountedRef.current) return
@@ -215,9 +246,14 @@ export function GitCommitControls({
         message: error instanceof Error ? error.message : 'Failed to commit.'
       })
     }
-  }, [message, workspacePath, refreshSnapshot])
+  }, [message, workspacePath, refreshSnapshot, refreshReadiness])
 
-  const prReadiness = computePrReadiness(snapshot)
+  // Prefer the canonical backend readiness (gh-aware: detached, remote,
+  // push-first, AND existing-PR detection); fall back to the local mirror
+  // while it loads or if the API / `gh` is unavailable.
+  const prReadiness: { canCreate: boolean; reason: string } = serverReadiness
+    ? { canCreate: serverReadiness.canCreatePullRequest, reason: serverReadiness.reason ?? '' }
+    : computePrReadiness(snapshot)
   const prLabel =
     prState.status === 'pending'
       ? 'Creating…'
