@@ -4613,6 +4613,25 @@
   min-width: 0;
 }
 
+/* ── Console refinement: schedule/runtime row ABOVE the input ────────
+ * In single-provider native chats the schedule + runtime-profile row
+ * was absolutely positioned (top:10px) and so got painted BEHIND the
+ * console redesign's inner module (z-index:2, full-bleed) — the row
+ * shared the same z-index but lost the paint order. Lift it into normal
+ * flow ABOVE the inner module (it precedes it in the DOM) and above it
+ * on the z-axis, so it reads as a clean right-aligned row over the
+ * textarea instead of a hidden float. Native chat composers only; the
+ * ensemble composer doesn't render this row, and the other shells keep
+ * the original floating placement. */
+[data-composer-style="default"] .app-transcript .composer-top-toggles {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 3;
+  max-width: none;
+  margin-bottom: 6px;
+}
+
 @container (max-width: 560px) {
   .composer-top-toggles {
     position: static;
