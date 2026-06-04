@@ -2740,6 +2740,21 @@
   background: #ffffff;
 }
 
+/* ── Console refinement: SOLID outer frame (chat composers) ──────────
+ * The maintainer wants the native composer's OUTER frame to read as a
+ * pure black/white bezel with NO themed gradient — the theme tone lives
+ * on the INNER module instead. Kill the surface side-vignette (::before:
+ * base + per-provider tints in this shard + the ensemble tints in shard
+ * 09) for the default shell's CHAT composers. The provider RIM (::after)
+ * is untouched. !important lets one rule beat the per-provider + ensemble
+ * ::before variants without specificity gymnastics; scoped to
+ * `.app-transcript` so the separately-polished welcome surface keeps its
+ * own look. */
+[data-composer-style="default"] .app-transcript .composer-surface::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
 /* INNER module — the readable input. NORMAL theme-tone surface so
  * the textarea + controls always sit on theme tone (light-on-dark
  * / dark-on-light), NEVER on the inverted contrast glass. Seated
@@ -2823,6 +2838,33 @@
   width: calc(100% + 32px); /* welcome's 2×16px frame padding */
   margin-left: -16px;
   margin-right: -16px;
+}
+
+/* ── Console refinement: themed INNER in LIGHT (chat composers) ──────
+ * The outer is now pure white in light themes, so the inner module's
+ * near-white `--composer-bg` blended into it and the theme stopped
+ * reading on the panel. Give the LIGHT inner a distinct themed surface:
+ * a subtle vertical gradient nudged off pure-white toward the text
+ * colour, so it reads as a themed panel the way the dark inner's tone
+ * reads against black. Theme-relative (no per-theme values) so it holds
+ * across light / citrus / mist / sage / alabaster; the extra
+ * `.app-transcript` class beats the glass/solid inner variants. The DARK
+ * inner is deliberately left as the flat `--composer-bg` tone (the
+ * maintainer confirmed dark reads correctly). */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .app-transcript
+  .composer-inner-module {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--composer-bg) 93%, var(--text-primary) 7%),
+    color-mix(in srgb, var(--composer-bg) 87%, var(--text-primary) 13%)
+  );
 }
 
 /* Reduce-motion: snap the inner-module seam transition. */
