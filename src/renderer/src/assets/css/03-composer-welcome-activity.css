@@ -2790,6 +2790,86 @@
   box-shadow: none !important;
 }
 
+/* ── Console MERGE: above-rows + input share ONE segmented frame ─────
+ * Rather than separate floating pills, the above-row stack (Create-PR /
+ * Ensemble / Steer-Queue) and the input surface read as a single
+ * instrument: the stack is the rounded TOP of one frame, the surface
+ * the rounded BOTTOM, flush at the seam, with hairline dividers between
+ * segments. Gated on :has(.composer-above-bar-stack) — a row-less
+ * composer keeps its standalone rounded surface. The per-row solid fill
+ * above is now the frame tone the stack carries; the rows themselves go
+ * transparent + borderless inside it (the fill above stays as the
+ * fallback for a row rendered outside the stack). Native shell only. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack {
+  gap: 0;
+  background: rgba(0, 0, 0, 0.95);
+  border: 1px solid var(--composer-border);
+  border-bottom: none;
+  border-radius: calc(var(--radius-lg) * 2.45) calc(var(--radius-lg) * 2.45) 0 0;
+  box-shadow: var(--composer-shadow);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack {
+  background: rgba(255, 255, 255, 0.96);
+}
+/* Each above-row → flush, chrome-less segment (inherits the frame tone). */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > * {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+/* Hairline divider between adjacent segments (never above the first). */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > * + * {
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+/* Surface → rounded BOTTOM of the frame: pull flush to the stack,
+ * square its top corners, divider seam to the last segment. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface {
+  margin-top: calc(-1 * var(--space-sm));
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+/* Corner fix — the ensemble per-row ::before tint (shard 09) is a
+ * full-bleed SQUARE overlay re-enabled on ensemble composers; on the
+ * FIRST segment its square top corners poked past the frame's rounded
+ * top (the hard-edge overlap, dark + light). Round them to match the
+ * frame. Single-provider shells kill the ::before above, so this is a
+ * no-op there. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > *:first-child::before {
+  border-top-left-radius: calc(var(--radius-lg) * 2.45);
+  border-top-right-radius: calc(var(--radius-lg) * 2.45);
+}
+
 /* INNER module — the readable input. NORMAL theme-tone surface so
  * the textarea + controls always sit on theme tone (light-on-dark
  * / dark-on-light), NEVER on the inverted contrast glass. Seated
@@ -5543,6 +5623,26 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.popout-chat-transcript {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  --composer-reserved-height: 0px;
+  --composer-scroll-under-padding: calc(var(--space-lg) * 2);
+}
+
+.popout-chat-transcript .transcript-scroll {
+  padding: calc(var(--space-lg) * 2.5) var(--chat-side-gutter)
+    calc(var(--space-lg) * 2);
+  scroll-padding-top: calc(var(--space-lg) * 2.5);
+  scroll-padding-bottom: calc(var(--space-lg) * 2);
+}
+
+.popout-chat-transcript .transcript-inner {
+  max-width: min(100%, var(--composer-content-max-width));
 }
 
 /* 1.0.5-EW33 — File Editor popout: sidebar+main layout.
