@@ -292,9 +292,11 @@ import {
 } from './lib/usageStats'
 import {
   buildEnsembleRoundSummaryRows,
+  buildEscalationChips,
   buildRunCompleteSummaryRows,
   formatWorkDuration
 } from './lib/runCompleteSummary'
+import { fetchProviderRates, type RendererProviderRates } from './lib/providerRateEstimate'
 import {
   getMemoryPreviewText,
   mergeCommandPaletteItems,
@@ -2709,6 +2711,20 @@ type TranscriptPanelProps = {
    * is disengaged. A stable ref, so it never perturbs the memo.
    */
   autoFollowRef?: React.MutableRefObject<boolean>
+  /**
+   * 1.0.7 — display currency + conservative-overestimate bias (Settings →
+   * General), threaded in so the ensemble run-complete card's Cost row routes
+   * through `formatCost`. Defaults to USD / 0 when omitted.
+   */
+  currency?: DisplayCurrency
+  currencyOverestimatePercent?: number
+  /**
+   * 1.0.7 — per-provider rate table (USD per 1M tokens) from the
+   * `providerRates:get` IPC. Used ONLY to project a clearly-badged
+   * API-equivalent cost for subscription/credit seats that emit no
+   * `cost_usd` (Codex / Grok / Cursor). Absent → no estimate.
+   */
+  providerRates?: RendererProviderRates
 }
 
 /**
@@ -4150,7 +4166,10 @@ export const TranscriptPanel = memo(
     copiedId,
     copy,
     virtualize,
-    autoFollowRef
+    autoFollowRef,
+    currency,
+    currencyOverestimatePercent,
+    providerRates
   }: TranscriptPanelProps) {
     const visibleMessages = useMemo(() => {
       const source = isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages
@@ -4174,10 +4193,25 @@ export const TranscriptPanel = memo(
       // last speaker's), round-envelope duration, and summed tokens.
       // Solo chats: the original single-run summary.
       if (currentChat?.chatKind === 'ensemble' && currentChat.ensemble?.activeRound) {
-        return buildEnsembleRoundSummaryRows(currentChat, runCompleteNotice?.exitCode !== 0)
+        return buildEnsembleRoundSummaryRows(currentChat, runCompleteNotice?.exitCode !== 0, {
+          currency,
+          overestimatePercent: currencyOverestimatePercent,
+          providerRates
+        })
       }
       return buildRunCompleteSummaryRows(currentRun)
-    }, [currentChat, currentRun, runCompleteNotice?.exitCode])
+    }, [
+      currentChat,
+      currentRun,
+      runCompleteNotice?.exitCode,
+      currency,
+      currencyOverestimatePercent,
+      providerRates
+    ])
+    // 1.0.7 (M5 surfacing) — advisory chips for the dark-shipped escalation
+    // signals on the current round. Read-only: the orchestrator persists
+    // these; we just surface label + recommended action.
+    const escalationChips = useMemo(() => buildEscalationChips(currentChat), [currentChat])
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
       const runById = new Map<string, ChatRun>()
@@ -4723,6 +4757,22 @@ export const TranscriptPanel = memo(
                   </div>
                 </div>
               )}
+              {escalationChips.length > 0 && (
+                <div
+                  className="ensemble-escalation-advisory"
+                  role="status"
+                  aria-label="Round advisories"
+                >
+                  {escalationChips.map((chip) => (
+                    <div key={chip.id} className={`ensemble-escalation-chip tone-${chip.tone}`}>
+                      <span className="ensemble-escalation-chip-label">{chip.label}</span>
+                      {chip.action && (
+                        <span className="ensemble-escalation-chip-action">{chip.action}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="file-change-summary-card">
                 <div className="file-change-summary-header">
                   <strong>File changes</strong>
@@ -4887,6 +4937,10 @@ function App(): React.JSX.Element {
   // transient "Copied" state consistent across the transcript.
   const { copiedId, copy } = useCopyFeedback()
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  // 1.0.7 — per-provider rate table (USD per 1M tokens) for the ensemble
+  // run-complete card's projected cost estimate. Hydrated once at mount from
+  // the `providerRates:get` IPC; empty until then (no estimate shown).
+  const [providerRates, setProviderRates] = useState<RendererProviderRates>({})
   const [chatContextTurns, setChatContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS)
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([])
   const [workspacesHydrated, setWorkspacesHydrated] = useState(false)
@@ -5197,6 +5251,25 @@ function App(): React.JSX.Element {
       } catch {
         // Silent — baked-in EW25 constants remain in effect.
       }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  /**
+   * 1.0.7 — one-shot fetch of the per-provider rate table over the existing
+   * `providerRates:get` IPC. Powers the ensemble run-complete card's projected
+   * cost ESTIMATE for subscription/credit seats (Codex / Grok / Cursor) that
+   * report no `cost_usd`. The rates are USD per 1M tokens and barely change
+   * during a session, so one read at mount is enough; on failure we leave the
+   * map empty and simply render no estimate.
+   */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const rates = await fetchProviderRates()
+      if (cancelled) return
+      setProviderRates(rates)
     })()
     return () => {
       cancelled = true
@@ -16499,6 +16572,9 @@ function App(): React.JSX.Element {
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}
+                currency={displayCurrency}
+                currencyOverestimatePercent={overestimatePercent}
+                providerRates={providerRates}
               />
             </>
           )}
