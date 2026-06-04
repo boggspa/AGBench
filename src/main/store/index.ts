@@ -299,6 +299,36 @@ function runEventFilePath(runId: string): string {
   return path.join(runEventsDir, safeRunEventFileName(runId))
 }
 
+// Per-run artifact directory. Mirrors the path derivation in
+// appendRunStreamArtifact (the `.jsonl`-stripped run file name is used as a
+// dedicated directory holding stdout/stderr/stdin .log files for the run), so
+// every artifact for a given runId lives under exactly this path. Deriving it
+// from `safeRunEventFileName` keeps deletion in lockstep with creation.
+function runArtifactDirPath(runId: string): string {
+  return path.join(runArtifactsDir, safeRunEventFileName(runId).replace(/\.jsonl$/, ''))
+}
+
+// Best-effort, non-fatal cleanup of one run's on-disk forensic data: its
+// run-event `.jsonl` ledger and its artifact directory. Each removal is mapped
+// from a KNOWN runId via the deterministic safeRunEventFileName transform — we
+// never readdir-and-match-by-prefix, so a sibling run whose id is a prefix of
+// this one (e.g. `run-1` vs `run-1-extra`) can never be caught: the targets are
+// exact file/dir names (`run-1.jsonl` ≠ `run-1-extra.jsonl`). Missing files are
+// ignored so a partially-written run cannot abort the chat deletion.
+function deleteRunForensicFiles(runId: string): void {
+  if (!runId) return
+  try {
+    fs.rmSync(runEventFilePath(runId), { force: true })
+  } catch (e) {
+    console.error(`Failed to delete run-event file for run ${runId}`, e)
+  }
+  try {
+    fs.rmSync(runArtifactDirPath(runId), { recursive: true, force: true })
+  } catch (e) {
+    console.error(`Failed to delete run artifacts for run ${runId}`, e)
+  }
+}
+
 function readRunEventFile(filePath: string): RunEventRecord[] {
   try {
     if (!fs.existsSync(filePath)) return []
@@ -897,6 +927,19 @@ export class AppStore {
   }
 
   static deleteChat(chatId: string) {
+    // Read the chat's KNOWN runs before unlinking so we can clean up its
+    // per-run forensic files (run-event ledger + artifacts) that would
+    // otherwise be orphaned on disk forever. Derived purely from this chat's
+    // own runIds (never a directory scan), so a sibling chat's similar/prefixed
+    // run files are guaranteed untouched. All cleanup is best-effort.
+    const chat = this.getChat(chatId)
+    const runs = Array.isArray(chat?.runs) ? chat.runs : []
+    for (const run of runs) {
+      if (run && typeof run.runId === 'string') {
+        deleteRunForensicFiles(run.runId)
+      }
+    }
+
     const chatPath = path.join(chatsDir, `${chatId}.json`)
     if (fs.existsSync(chatPath)) {
       fs.unlinkSync(chatPath)
