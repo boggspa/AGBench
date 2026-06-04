@@ -1,3 +1,5 @@
+import type { RunQueueJobStatus } from '../../../main/store/types'
+
 /**
  * Find the first queued job that can dispatch right now.
  *
@@ -18,3 +20,6 @@ export function findNextRunnableQueueIndex<T>(jobs: T[], canDispatch: (job: T) =
   if (!jobs || jobs.length === 0) return -1
   return jobs.findIndex((job) => canDispatch(job))
 }
+
+export const isTerminalRunQueueStatus = (status?: RunQueueJobStatus): boolean =>
+  status === 'completed' || status === 'failed' || status === 'cancelled'
