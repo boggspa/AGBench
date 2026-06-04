@@ -139,6 +139,32 @@
   --diff-del-text: #f08080;
   --diff-hunk: #5a8cff;
 
+  /* CodeMirror syntax + editor chrome (File Editor / popout).
+   * Defaults here are the original dark-mode palette so dark themes
+   * render IDENTICALLY to before var-ization. Light themes
+   * (light/citrus/mist/sage/alabaster) override these with a
+   * readable dark-on-light editor palette below. FileEditorPanel.tsx
+   * consumes these via `color: var(--cm-…)` inside its CodeMirror
+   * HighlightStyle + EditorView.theme — CodeMirror emits those
+   * declarations into a stylesheet, so the vars resolve at runtime
+   * and follow `data-theme` like any other token. */
+  --cm-keyword: #ff8fb3;
+  --cm-name: #f6f0ff;
+  --cm-property: #b9d7ff;
+  --cm-function: #8fd6ff;
+  --cm-type: #ffd27d;
+  --cm-number: #c7a6ff;
+  --cm-string: #9be69f;
+  --cm-regexp: #86e1d1;
+  --cm-comment: rgba(255, 255, 255, 0.42);
+  --cm-meta: #9aa7ff;
+  --cm-heading: #f4f7ff;
+  --cm-invalid: #ff8080;
+  --cm-gutter-bg: rgba(0, 0, 0, 0.18);
+  --cm-gutter-border: rgba(255, 255, 255, 0.06);
+  --cm-active-line: rgba(255, 255, 255, 0.045);
+  --cm-bracket-match: rgba(255, 255, 255, 0.12);
+
   /* Tool Activity */
   --tool-running: #5a8cff;
   --tool-success: #4cc38a;
@@ -228,6 +254,30 @@
   --theme-wash-soft: 8%;
   --theme-wash-medium: 13%;
   --theme-wash-strong: 18%;
+  /* Light-theme diff: dark text on faint tints (was bright-on-white). */
+  --diff-add-bg: rgba(12, 132, 82, 0.16);
+  --diff-add-text: #0a7f50;
+  --diff-del-bg: rgba(198, 52, 66, 0.16);
+  --diff-del-text: #bc2e3d;
+  --diff-hunk: #0550ae;
+  /* Light-editor syntax palette (muted VS Code / GitHub light).
+   * Dark-on-near-white with WCAG-ish contrast. */
+  --cm-keyword: #cf222e;
+  --cm-name: #1f2328;
+  --cm-property: #0550ae;
+  --cm-function: #8250df;
+  --cm-type: #953800;
+  --cm-number: #0a7c42;
+  --cm-string: #0a3069;
+  --cm-regexp: #116329;
+  --cm-comment: #6e7781;
+  --cm-meta: #8250df;
+  --cm-heading: #0550ae;
+  --cm-invalid: #cf222e;
+  --cm-gutter-bg: rgba(18, 21, 27, 0.05);
+  --cm-gutter-border: rgba(18, 21, 27, 0.10);
+  --cm-active-line: rgba(18, 21, 27, 0.045);
+  --cm-bracket-match: rgba(18, 21, 27, 0.12);
 }
 
 [data-theme="midnight"] {
@@ -372,6 +422,28 @@
   --theme-wash-soft: 8%;
   --theme-wash-medium: 13%;
   --theme-wash-strong: 18%;
+  /* Light-theme diff + editor palette (mist — teal-leaning). */
+  --diff-add-bg: rgba(12, 132, 82, 0.16);
+  --diff-add-text: #0a7f50;
+  --diff-del-bg: rgba(198, 52, 66, 0.16);
+  --diff-del-text: #bc2e3d;
+  --diff-hunk: #2e7180;
+  --cm-keyword: #b91c50;
+  --cm-name: #142127;
+  --cm-property: #0f6b78;
+  --cm-function: #7a52c8;
+  --cm-type: #8a4b14;
+  --cm-number: #0a7c42;
+  --cm-string: #0a4f5c;
+  --cm-regexp: #116329;
+  --cm-comment: #5a7077;
+  --cm-meta: #7a52c8;
+  --cm-heading: #2e7180;
+  --cm-invalid: #cf222e;
+  --cm-gutter-bg: rgba(18, 29, 35, 0.05);
+  --cm-gutter-border: rgba(18, 29, 35, 0.10);
+  --cm-active-line: rgba(18, 29, 35, 0.045);
+  --cm-bracket-match: rgba(18, 29, 35, 0.12);
 }
 
 [data-theme="sage"] {
@@ -414,6 +486,28 @@
   --theme-wash-soft: 8%;
   --theme-wash-medium: 13%;
   --theme-wash-strong: 18%;
+  /* Light-theme diff + editor palette (sage — green-leaning). */
+  --diff-add-bg: rgba(12, 132, 82, 0.16);
+  --diff-add-text: #0a7f50;
+  --diff-del-bg: rgba(198, 52, 66, 0.16);
+  --diff-del-text: #bc2e3d;
+  --diff-hunk: #4b7a4f;
+  --cm-keyword: #b5263b;
+  --cm-name: #16201a;
+  --cm-property: #2c6a8c;
+  --cm-function: #7a52c8;
+  --cm-type: #8a4b14;
+  --cm-number: #2f6f1f;
+  --cm-string: #0a3069;
+  --cm-regexp: #116329;
+  --cm-comment: #5f6f5f;
+  --cm-meta: #7a52c8;
+  --cm-heading: #4b7a4f;
+  --cm-invalid: #cf222e;
+  --cm-gutter-bg: rgba(22, 32, 22, 0.05);
+  --cm-gutter-border: rgba(22, 32, 22, 0.10);
+  --cm-active-line: rgba(22, 32, 22, 0.045);
+  --cm-bracket-match: rgba(22, 32, 22, 0.12);
 }
 
 [data-theme="graphite"] {
@@ -726,6 +820,30 @@
   --theme-wash-soft: 8%;
   --theme-wash-medium: 13%;
   --theme-wash-strong: 18%;
+  /* Light-theme diff (matches the alabaster popout override in
+   * 09-ensemble-work-session.css so the in-app diff viewer reads
+   * the same) + light-editor syntax palette. */
+  --diff-add-bg: rgba(12, 132, 82, 0.16);
+  --diff-add-text: #0a7f50;
+  --diff-del-bg: rgba(198, 52, 66, 0.16);
+  --diff-del-text: #bc2e3d;
+  --diff-hunk: #596174;
+  --cm-keyword: #cf222e;
+  --cm-name: #1f2328;
+  --cm-property: #0550ae;
+  --cm-function: #8250df;
+  --cm-type: #953800;
+  --cm-number: #0a7c42;
+  --cm-string: #0a3069;
+  --cm-regexp: #116329;
+  --cm-comment: #6e7781;
+  --cm-meta: #8250df;
+  --cm-heading: #0550ae;
+  --cm-invalid: #cf222e;
+  --cm-gutter-bg: rgba(18, 21, 27, 0.05);
+  --cm-gutter-border: rgba(18, 21, 27, 0.10);
+  --cm-active-line: rgba(18, 21, 27, 0.045);
+  --cm-bracket-match: rgba(18, 21, 27, 0.12);
   /* Cool halo wash — lavender/blue at very low alpha. The
    * polar inverse of obsidian's warm peach/copper halo. */
   --alabaster-halo-cool: rgba(120, 140, 200, 0.10);

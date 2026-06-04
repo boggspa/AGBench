@@ -13147,6 +13147,31 @@ function resolveNativeVibrancy(
   return useNativeGlass ? NATIVE_GLASS_VIBRANCY : undefined
 }
 
+/*
+ * Per-theme opaque backdrop for popout BrowserWindows. Before React
+ * mounts (and applies `data-theme`), the OS paints `backgroundColor`.
+ * A hardcoded `#1e1e1e` flashed a dark slab on the light themes
+ * (light/citrus/mist/sage/alabaster), which is jarring. We mirror
+ * each light theme's `--app-bg` so the pre-paint matches the rendered
+ * surface; every dark theme (and `system`/`dark`, which the renderer
+ * resolves to the dark `:root`) keeps the original `#1e1e1e`.
+ * Returns undefined when a glass window is used (caller passes the
+ * transparent backdrop in that case).
+ */
+const LIGHT_THEME_POPOUT_BACKDROPS: Record<string, string> = {
+  light: '#f4f6f8',
+  citrus: '#f4f6f8',
+  mist: '#eef4f6',
+  sage: '#f0f5f0',
+  alabaster: '#f4f3ef'
+}
+
+function resolvePopoutBackgroundColor(useGlassWindow: boolean): string {
+  if (useGlassWindow) return '#00000000'
+  const theme = AppStore.getSettings().themeAppearance
+  return LIGHT_THEME_POPOUT_BACKDROPS[theme] ?? '#1e1e1e'
+}
+
 function resolveWorkspaceChild(workspace: string, filePath: string): string {
   const workspaceRoot = resolve(workspace)
   const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
@@ -13671,7 +13696,7 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
         : undefined,
     visualEffectState: 'active',
     transparent: false,
-    backgroundColor: useGlassWindow ? '#00000000' : '#1e1e1e',
+    backgroundColor: resolvePopoutBackgroundColor(useGlassWindow),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

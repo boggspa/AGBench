@@ -5161,15 +5161,18 @@
 }
 
 .diff-file-row:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
 .diff-file-row + .diff-file-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
-.diff-file-row:hover { background: rgba(255,255,255,0.04); }
-.diff-file-row.selected { background: rgba(255,255,255,0.06); border-left-color: var(--accent); }
+.diff-file-row:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.diff-file-row.selected {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-left-color: var(--accent);
+}
 
 button.diff-file-row {
   appearance: none;
@@ -5193,7 +5196,7 @@ button.diff-file-row {
 .diff-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .diff-file-type-icon {
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
   flex-shrink: 0;
 }
 
@@ -5225,7 +5228,7 @@ button.diff-file-row {
 .diff-file-badge.modified { background: rgba(90,140,255,0.12); color: var(--accent); }
 .diff-file-badge.deleted { background: rgba(229,77,77,0.12); color: var(--danger); }
 .diff-file-badge.untracked { background: rgba(245,166,35,0.12); color: var(--warning); }
-.diff-file-badge.noise { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.diff-file-badge.noise { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-muted); }
 
 .diff-detail {
   flex: 1;
@@ -5242,7 +5245,7 @@ button.diff-file-row {
 }
 
 .diff-lines-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
   background: color-mix(in srgb, var(--app-bg-sunken) 70%, transparent);
 }
 
@@ -5254,8 +5257,8 @@ button.diff-file-row {
   padding: 3px var(--space-md);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .diff-detail-header {
@@ -5286,8 +5289,8 @@ button.diff-file-row {
   color: var(--text-tertiary);
   text-align: right;
   user-select: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.10);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .diff-line-code {
@@ -5296,7 +5299,7 @@ button.diff-file-row {
 
 .diff-line.meta {
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
 }
 
 .diff-line.add .diff-line-code,
@@ -5312,7 +5315,7 @@ button.diff-file-row {
 }
 
 .diff-line + .diff-line {
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .diff-line.add { background: var(--diff-add-bg); color: var(--diff-add-text); }
