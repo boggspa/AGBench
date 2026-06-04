@@ -2126,81 +2126,91 @@ export function SettingsPanel({
                         Obsidian/Alabaster two-rect split + reorder CSS
                         applies to this preview (layout-neutral for the
                         other shells).
+
+                        Console redesign — wrap BOTH the textarea-wrap and
+                        the bottom-controls together in .composer-inner-module
+                        (theme-tone inset panel inside the solid frame), to
+                        match the real default composer. Layout-neutral for
+                        the non-default shell previews via the base
+                        `.composer-inner-module { display: contents }` rule;
+                        the chips stay OUTSIDE/above it.
                       */}
-                      <div className="composer-textarea-wrap">
-                        <textarea
-                          className="composer-textarea settings-composer-preview-textarea"
-                          value={composerPreviewText}
-                          onChange={(e) => setComposerPreviewText(e.target.value)}
-                          placeholder={composerPreviewMeta.placeholder}
-                          rows={3}
-                          aria-label="Composer font preview text"
-                          style={{ fontFamily: previewComposerFontFamily }}
-                        />
-                      </div>
-                      <div className="composer-bottom-controls">
-                        <div className="composer-control-footer settings-composer-preview-footer">
-                          <div className="composer-inline-pickers">
-                            <div className="composer-inline-pickers-left" aria-hidden="true">
-                              <button
-                                type="button"
-                                className="composer-picker-label settings-composer-preview-control"
-                                data-composer-control="attach"
-                                tabIndex={-1}
-                              >
-                                +
-                              </button>
-                              <span
-                                className="composer-picker-label settings-composer-preview-control"
-                                data-composer-control="provider"
-                              >
-                                {composerPreviewMeta.providerLabel}
-                              </span>
-                              <span
-                                className="composer-picker-label settings-composer-preview-control"
-                                data-composer-control="permission"
-                              >
-                                {composerPreviewMeta.permissionLabel}
-                              </span>
-                              <span
-                                className="composer-picker-label settings-composer-preview-control"
-                                data-composer-control="model"
-                              >
-                                {composerPreviewMeta.modelLabel}
-                              </span>
-                            </div>
-                            <div className="composer-inline-actions" aria-hidden="true">
-                              <span className="context-wheel settings-composer-preview-context">
-                                <svg viewBox="0 0 18 18" width="18" height="18">
-                                  <circle
-                                    cx="9"
-                                    cy="9"
-                                    r="6.6"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    opacity="0.22"
-                                  />
-                                  <path
-                                    d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                </svg>
-                              </span>
-                              <span className="composer-thread-token-tally">44%</span>
-                              <span className="composer-send-cluster">
+                      <div className="composer-inner-module">
+                        <div className="composer-textarea-wrap">
+                          <textarea
+                            className="composer-textarea settings-composer-preview-textarea"
+                            value={composerPreviewText}
+                            onChange={(e) => setComposerPreviewText(e.target.value)}
+                            placeholder={composerPreviewMeta.placeholder}
+                            rows={3}
+                            aria-label="Composer font preview text"
+                            style={{ fontFamily: previewComposerFontFamily }}
+                          />
+                        </div>
+                        <div className="composer-bottom-controls">
+                          <div className="composer-control-footer settings-composer-preview-footer">
+                            <div className="composer-inline-pickers">
+                              <div className="composer-inline-pickers-left" aria-hidden="true">
                                 <button
                                   type="button"
-                                  className="composer-action-btn run-btn"
+                                  className="composer-picker-label settings-composer-preview-control"
+                                  data-composer-control="attach"
                                   tabIndex={-1}
-                                  aria-label="Preview send button"
                                 >
-                                  ↑
+                                  +
                                 </button>
-                              </span>
+                                <span
+                                  className="composer-picker-label settings-composer-preview-control"
+                                  data-composer-control="provider"
+                                >
+                                  {composerPreviewMeta.providerLabel}
+                                </span>
+                                <span
+                                  className="composer-picker-label settings-composer-preview-control"
+                                  data-composer-control="permission"
+                                >
+                                  {composerPreviewMeta.permissionLabel}
+                                </span>
+                                <span
+                                  className="composer-picker-label settings-composer-preview-control"
+                                  data-composer-control="model"
+                                >
+                                  {composerPreviewMeta.modelLabel}
+                                </span>
+                              </div>
+                              <div className="composer-inline-actions" aria-hidden="true">
+                                <span className="context-wheel settings-composer-preview-context">
+                                  <svg viewBox="0 0 18 18" width="18" height="18">
+                                    <circle
+                                      cx="9"
+                                      cy="9"
+                                      r="6.6"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      opacity="0.22"
+                                    />
+                                    <path
+                                      d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                </span>
+                                <span className="composer-thread-token-tally">44%</span>
+                                <span className="composer-send-cluster">
+                                  <button
+                                    type="button"
+                                    className="composer-action-btn run-btn"
+                                    tabIndex={-1}
+                                    aria-label="Preview send button"
+                                  >
+                                    ↑
+                                  </button>
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2580,8 +2590,7 @@ export function SettingsPanel({
                 <span className="settings-field-label">Layout</span>
                 <div className="settings-option-list settings-option-list-inline">
                   {(['stacked', 'single'] as const).map((opt) => {
-                    const current =
-                      welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
+                    const current = welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
                     return (
                       <button
                         key={opt}

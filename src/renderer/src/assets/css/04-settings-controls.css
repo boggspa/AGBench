@@ -349,6 +349,97 @@
   border-color: color-mix(in srgb, var(--surface-border, var(--panel-border)) 78%, transparent);
 }
 
+/* ── DEFAULT preview — mirror the console redesign ───────────────────
+ * The AGBench-native ("default") composer was reskinned to the console
+ * look in shards 03 + 07: a SOLID black/white OUTER frame (vignette
+ * killed) with a theme-tone INNER module sitting inside it. Those real
+ * rules are scoped to `.app-transcript`, so they never reach these
+ * static preview cards (no `.app-transcript` ancestor) — the previews
+ * kept rendering the OLD theme-tinted look. Re-create the console look
+ * HERE, scoped strictly to the `default` style so the codex / claude /
+ * gemini / kimi / grok / cursor / obsidian / alabaster previews are
+ * untouched. The card carries both `data-composer-style` and
+ * `data-theme`, so the light-theme split keys off the same card. */
+
+/* OUTER frame — solid pure black (dark), pure white (the 5 light
+ * themes); no themed gradient (the tone lives on the inner module). */
+.settings-composer-preview-card[data-composer-style="default"] .composer-surface {
+  background: rgba(0, 0, 0, 0.95);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .settings-composer-preview-card[data-composer-style="default"]
+  .composer-surface {
+  background: rgba(255, 255, 255, 0.96);
+}
+/* Kill the surface side-vignette so the frame reads as a clean bezel. */
+.settings-composer-preview-card[data-composer-style="default"] .composer-surface::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* ABOVE-BAR — match the solid frame + kill its own side-vignette. */
+.settings-composer-preview-card[data-composer-style="default"] .composer-above-bar {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: color-mix(in srgb, var(--text-primary) 17%, transparent);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .settings-composer-preview-card[data-composer-style="default"]
+  .composer-above-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.settings-composer-preview-card[data-composer-style="default"] .composer-above-bar::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* INNER module — the theme-tone inset panel inside the solid frame.
+ * The real `[data-composer-style="default"] .composer-inner-module`
+ * rule (shard 03) reaches the preview and would make it FULL-BLEED
+ * (width calc(100% + 28px) + negative margins) to bleed across the
+ * surface's frame padding; in the cramped preview that overflows, so
+ * pin it to the surface (width:100%; max-width:none; margin:0) with a
+ * rounded inset look. The flex column + gap are restated so the layout
+ * holds regardless of cascade order. */
+.settings-composer-preview-card[data-composer-style="default"] .composer-inner-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--composer-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+/* The 5 LIGHT themes — the outer is now pure white, so a near-white
+ * `--composer-bg` inner would vanish into the frame. Nudge the inner
+ * tone toward the text colour so it reads as a distinct themed panel. */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .settings-composer-preview-card[data-composer-style="default"]
+  .composer-inner-module {
+  background: color-mix(in srgb, var(--composer-bg) 90%, var(--text-primary) 10%);
+}
+
 /* Model usage tab — cross-provider quota dashboard.
  *
  * Headline-tile strip up top (Total tokens / Runs / Providers), then
