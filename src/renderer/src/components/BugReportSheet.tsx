@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildGitHubIssueUrl } from '../lib/githubIssueUrl'
+import { tildifyHomePath } from '../lib/ActivityPathDisplay'
 
 /**
  * BugReportSheet — inline bug-report capture for AGBench testers.
@@ -240,8 +241,12 @@ export function BugReportSheet({
     return () => window.cancelAnimationFrame(frame)
   }, [open, initialSurface])
 
+  // Home-abbreviate the workspace path (`/Users/<name>/…` → `~/…`) so a
+  // reporter's OS username never lands in the read-only preview, the local
+  // bug-reports.md, or the pre-filled PUBLIC GitHub issue. The project folder
+  // stays visible for triage; only the home/user prefix is stripped.
   const workspaceLabel = useMemo(
-    () => currentWorkspacePath || '(global chat)',
+    () => (currentWorkspacePath ? tildifyHomePath(currentWorkspacePath) : '(global chat)'),
     [currentWorkspacePath]
   )
 

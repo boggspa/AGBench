@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { displayPathRelativeToWorkspace } from './ActivityPathDisplay'
+import { displayPathRelativeToWorkspace, tildifyHomePath } from './ActivityPathDisplay'
 
 describe('displayPathRelativeToWorkspace', () => {
   describe('workspace-relative truncation', () => {
@@ -158,5 +158,35 @@ describe('displayPathRelativeToWorkspace', () => {
       // `/Users` alone is not a personal home — leave it as-is.
       expect(displayPathRelativeToWorkspace('/Users', undefined)).toBe('/Users')
     })
+  })
+})
+
+describe('tildifyHomePath', () => {
+  it('collapses a macOS home prefix to ~/ (strips the OS username)', () => {
+    expect(tildifyHomePath('/Users/bob/Documents/AGBench')).toBe('~/Documents/AGBench')
+  })
+
+  it('keeps the project folder + intermediate segments', () => {
+    expect(tildifyHomePath('/Users/alice/code/proj/src')).toBe('~/code/proj/src')
+  })
+
+  it('returns a non-home path unchanged (nothing to strip)', () => {
+    expect(tildifyHomePath('/Volumes/External/proj')).toBe('/Volumes/External/proj')
+  })
+
+  it('does not collapse bare `/Users` (no user segment)', () => {
+    expect(tildifyHomePath('/Users')).toBe('/Users')
+  })
+
+  it('trims surrounding whitespace before collapsing', () => {
+    expect(tildifyHomePath('  /Users/bob/x  ')).toBe('~/x')
+  })
+
+  it('returns "" for empty / nullish / non-string inputs', () => {
+    expect(tildifyHomePath('')).toBe('')
+    expect(tildifyHomePath('   ')).toBe('')
+    expect(tildifyHomePath(null)).toBe('')
+    expect(tildifyHomePath(undefined)).toBe('')
+    expect(tildifyHomePath(42 as unknown as string)).toBe('')
   })
 })

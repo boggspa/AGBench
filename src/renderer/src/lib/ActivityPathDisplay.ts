@@ -41,6 +41,22 @@ function startsWithSegment(haystack: string, prefix: string): boolean {
 }
 
 /**
+ * Collapse a macOS home-directory prefix (`/Users/<user>/…`) to `~/…`,
+ * stripping the OS username. Used for compact display AND to keep a user's
+ * home path — which embeds their account name — out of anything shared
+ * publicly, e.g. the pre-filled GitHub issue produced by the bug reporter.
+ * Non-home paths (and bare `/Users` with no user segment) are returned
+ * trimmed but otherwise unchanged. Empty / nullish / non-string → ''.
+ */
+export function tildifyHomePath(filePath: string | undefined | null): string {
+  if (!filePath || typeof filePath !== 'string') return ''
+  const trimmed = filePath.trim()
+  if (!trimmed) return ''
+  const homeMatch = trimmed.match(HOME_PREFIX_RE)
+  return homeMatch ? `~/${trimmed.slice(homeMatch[0].length)}` : trimmed
+}
+
+/**
  * Returns a display-friendly path:
  *   - workspace-relative when the file lives under `workspacePath`
  *   - `~/...` form when the file lives under the macOS home directory
@@ -69,10 +85,5 @@ export function displayPathRelativeToWorkspace(
     }
   }
 
-  const homeMatch = trimmedPath.match(HOME_PREFIX_RE)
-  if (homeMatch) {
-    return `~/${trimmedPath.slice(homeMatch[0].length)}`
-  }
-
-  return trimmedPath
+  return tildifyHomePath(trimmedPath)
 }

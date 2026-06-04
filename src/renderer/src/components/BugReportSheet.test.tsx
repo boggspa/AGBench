@@ -153,7 +153,10 @@ describe('BugReportSheet', () => {
     // Values render verbatim — these are the auto-captured strings.
     expect(html).toContain('1.0.1')
     expect(html).toContain('codex')
-    expect(html).toContain('/Users/dev/projects/agbench')
+    // Workspace path is home-abbreviated (~/) so a reporter's OS username
+    // never appears in the preview or the pre-filled (public) GitHub issue.
+    expect(html).toContain('~/projects/agbench')
+    expect(html).not.toContain('/Users/dev/projects/agbench')
     expect(html).toContain('default')
     expect(html).toContain('4 participants')
   })
