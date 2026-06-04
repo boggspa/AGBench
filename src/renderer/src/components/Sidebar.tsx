@@ -8,6 +8,7 @@ import {
   type ReactNode
 } from 'react'
 import { MascotGhost } from './AppChromeSymbols'
+import agbenchGhostMark from '../assets/agbench-ghost-mark.png'
 import type {
   WorkspaceRecord,
   ChatRecord,
@@ -1936,7 +1937,15 @@ export function Sidebar({
       <div className="sidebar-content">
         <div className="sidebar-masthead">
           <div className="sidebar-masthead-copy">
-            <span className="sidebar-product-label">AGBench</span>
+            <span className="sidebar-product-label">
+              <img
+                src={agbenchGhostMark}
+                className="sidebar-product-ghost"
+                alt=""
+                aria-hidden
+              />
+              AGBench
+            </span>
             {/* On the first-launch zero-state `currentScopeTitle` falls
                 back to "AGBench" (no workspace, no global chat), which
                 would render "AGBench" twice stacked. Suppress the

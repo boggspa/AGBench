@@ -1590,12 +1590,28 @@
  * label (the masthead's eyebrow) rather than competing with
  * the workspace name below it. */
 .sidebar-product-label {
-  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
-  font-size: 10px;
-  font-weight: 760;
-  letter-spacing: 0.115em;
-  line-height: 1;
-  text-transform: uppercase;
+  /* Brand wordmark: ghost mark + "AGBench" in Avenir Next — large +
+     intentional, replacing the old spaced-caps eyebrow. */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-family:
+    "Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-transform: none;
+}
+
+.sidebar-product-ghost {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  margin-top: -1px;
 }
 
 .sidebar-masthead-copy strong {
