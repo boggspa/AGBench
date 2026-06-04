@@ -3304,21 +3304,42 @@ input:disabled, select:disabled, textarea:disabled {
   font-weight: 600;
 }
 
+/* Run details — ROW list mirroring the File-changes layout: each metric
+ * is a [LABEL  value] row with alternating stripes + hairline separators,
+ * instead of the old multi-column grid. Same stripe idiom as
+ * .file-change-summary-item so the two sections read as one card. */
 .run-complete-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  display: flex;
+  flex-direction: column;
 }
 
 .run-complete-summary-item {
   min-width: 0;
-  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 7px var(--space-md);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
   color: var(--text-secondary);
 }
 
+.run-complete-summary-item:first-child {
+  border-top: none;
+}
+
+.run-complete-summary-item:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.run-complete-summary-item:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .run-complete-summary-item span {
-  display: block;
-  margin-bottom: 3px;
+  flex: 0 0 auto;
+  width: 120px;
   color: var(--text-tertiary);
   font-size: 10.5px;
   font-weight: 700;
@@ -3327,7 +3348,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .run-complete-summary-item strong {
-  display: block;
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--text-primary);
   font-size: var(--font-size-xs);
