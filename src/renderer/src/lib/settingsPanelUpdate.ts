@@ -19,6 +19,7 @@ export type SettingsPanelUpdate = {
   composerStyle?: AppSettings['composerStyle']
   transcriptFontFamily?: AppSettings['transcriptFontFamily']
   composerFontFamily?: AppSettings['composerFontFamily']
+  keyCommandBindings?: AppSettings['keyCommandBindings']
   funFxEnabled?: boolean
   funFxMode?: AppSettings['funFxMode']
   advancedFx?: AppSettings['advancedFx']

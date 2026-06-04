@@ -208,6 +208,11 @@ export type ProductOperationStatus = 'ok' | 'warning' | 'error' | 'unknown'
 export type ExternalPathGrantAccess = 'read' | 'write'
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace'
 export type NativeSubAgentRequestPolicy = 'ask' | 'provider' | 'agbench'
+export type KeyCommandModifier = 'primary' | 'shift' | 'alt'
+export interface KeyCommandBinding {
+  key: string
+  modifiers: KeyCommandModifier[]
+}
 export type AgentApprovalAction =
   | 'accept'
   | 'acceptForSession'
@@ -1330,6 +1335,7 @@ export interface AppSettings {
   composerStyle: ComposerStyle
   transcriptFontFamily?: string
   composerFontFamily?: string
+  keyCommandBindings?: Record<string, KeyCommandBinding | null>
   /** 1.0.5-EW25 — Display currency for cost / token-spend chips.
    * The underlying USD value comes verbatim from provider event
    * payloads (`cost_usd`); the renderer converts to the user's

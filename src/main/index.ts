@@ -1574,12 +1574,8 @@ async function maybePropagateSubThreadResult(chatId: string | undefined): Promis
   // Notify the renderer so both the parent and sub-thread re-render
   // with the new state (parent has the synthetic message; sub-thread
   // shows the "returned" timestamp).
-  try {
-    mainWindow?.webContents.send('chat-updated', updatedParent)
-    mainWindow?.webContents.send('chat-updated', updatedSubThread)
-  } catch {
-    // Window may be destroyed — ignore.
-  }
+  broadcastChatUpdated(updatedParent)
+  broadcastChatUpdated(updatedSubThread)
   // Auto-resume the parent agent if the user has opted in. Without
   // this the back-propagated result above just sits in the parent
   // transcript forever — the parent's run already finished (usually
@@ -1720,11 +1716,7 @@ async function maybeAutoResumeParentAgent(args: {
     updatedAt: Date.now()
   }
   AppStore.saveChat(parentWithPrompt)
-  try {
-    mainWindow?.webContents.send('chat-updated', parentWithPrompt)
-  } catch {
-    // Renderer may be detached — non-fatal.
-  }
+  broadcastChatUpdated(parentWithPrompt)
 
   // Audit before dispatch so the timeline shows the intent even if
   // dispatch fails on a transient preflight error.
@@ -1817,11 +1809,7 @@ function surfaceSubThreadDispatchFailure(args: {
         updatedAt: Date.now()
       }
       AppStore.saveChat(updated)
-      try {
-        mainWindow?.webContents.send('chat-updated', updated)
-      } catch {
-        // Renderer not attached — non-fatal.
-      }
+      broadcastChatUpdated(updated)
     }
   } catch {
     // Sub-thread record gone (deleted between spawn + dispatch) —
@@ -1911,7 +1899,7 @@ function safeSendToWebContents(
 
 function saveAndBroadcastChat(chat: ChatRecord): void {
   AppStore.saveChat(chat)
-  safeSendToWebContents(mainWindow, 'chat-updated', chat)
+  broadcastChatUpdated(chat)
   // 1.0.5-PO2 — Notify open workspace popouts that something in
   // their workspace may have changed. The popout debounces a
   // re-fetch on its end; we just need to tell it something
@@ -1936,6 +1924,18 @@ function broadcastWorkspacePopoutRefresh(workspacePath: string, reason: string):
     if (!key.endsWith(suffix)) continue
     safeSendToWebContents(win, 'workspace-popout-refresh', { workspacePath, reason })
   }
+}
+
+function broadcastChatUpdated(chat: ChatRecord): void {
+  safeSendToWebContents(mainWindow, 'chat-updated', chat)
+  broadcastChatPopoutUpdate(chat)
+}
+
+function broadcastChatPopoutUpdate(chat: ChatRecord): void {
+  if (!chat?.appChatId || workspacePopoutWindows.size === 0) return
+  const win = workspacePopoutWindows.get(`chat:${chat.appChatId}`)
+  if (!win || win.isDestroyed()) return
+  safeSendToWebContents(win, 'chat-updated', chat)
 }
 
 function getPersistedEnsembleWakeups(): EnsembleWakeupRecord[] {
@@ -8646,11 +8646,7 @@ function geminiApiProviderDeps() {
         updatedAt: Date.now()
       }
       AppStore.saveChat(updated)
-      try {
-        mainWindow?.webContents.send('chat-updated', updated)
-      } catch {
-        // Renderer may be detached — non-fatal.
-      }
+      broadcastChatUpdated(updated)
     }
   }
 }
@@ -10844,11 +10840,7 @@ async function executeGeminiMcpTool(
             updatedAt: Date.now()
           }
           AppStore.saveChat(updatedParent)
-          try {
-            mainWindow?.webContents.send('chat-updated', updatedParent)
-          } catch {
-            // Best-effort — renderer not yet attached.
-          }
+          broadcastChatUpdated(updatedParent)
         }
       } catch {
         // Best-effort; missing card is non-fatal vs missing run.
@@ -11001,12 +10993,7 @@ async function executeGeminiMcpTool(
           })
         }
       })()
-      try {
-        mainWindow?.webContents.send('chat-updated', subThread)
-      } catch {
-        // Window not yet ready — F2's back-propagation will fire
-        // chat-updated again on completion.
-      }
+      broadcastChatUpdated(subThread)
       // Phase J2: tool_result text honestly describes spawn vs recall.
       text = isRecall
         ? `Continued ${providerArg} sub-thread "${subThread.title}" (id=${subThread.appChatId}). ` +
@@ -12931,14 +12918,27 @@ function createWindow(): void {
 
 function parseWorkspacePopoutInput(input: unknown): {
   kind: WorkspacePopoutKind
-  workspacePath: string
+  workspacePath?: string
+  chatId?: string
 } {
   if (!isRecord(input)) {
     throw new Error('Popout request is invalid.')
   }
-  const kind = input.kind === 'file-editor' || input.kind === 'diff-studio' ? input.kind : null
+  const kind =
+    input.kind === 'file-editor' || input.kind === 'diff-studio' || input.kind === 'chat'
+      ? input.kind
+      : null
   if (!kind) {
     throw new Error('Popout kind is invalid.')
+  }
+  if (kind === 'chat') {
+    const chatId = requireNonEmptyString(input.chatId, 'Chat')
+    const chat = AppStore.getChat(chatId)
+    if (!chat) {
+      throw new Error('Chat does not exist.')
+    }
+    const workspacePath = chat.workspacePath || undefined
+    return { kind, chatId, workspacePath }
   }
   const workspacePath = requireRegisteredWorkspace(
     requireNonEmptyString(input.workspacePath, 'Workspace'),
@@ -12950,26 +12950,28 @@ function parseWorkspacePopoutInput(input: unknown): {
 async function loadWorkspacePopoutWindow(
   win: BrowserWindow,
   kind: WorkspacePopoutKind,
-  workspacePath: string
+  workspacePath: string | undefined,
+  chatId?: string
 ): Promise<void> {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     const target = new URL(process.env['ELECTRON_RENDERER_URL'])
     target.searchParams.set('popout', kind)
-    target.searchParams.set('workspace', workspacePath)
+    if (workspacePath) target.searchParams.set('workspace', workspacePath)
+    if (chatId) target.searchParams.set('chat', chatId)
     await win.loadURL(target.toString())
     return
   }
+  const query: Record<string, string> = { popout: kind }
+  if (workspacePath) query.workspace = workspacePath
+  if (chatId) query.chat = chatId
   await win.loadFile(join(__dirname, '../renderer/index.html'), {
-    query: {
-      popout: kind,
-      workspace: workspacePath
-    }
+    query
   })
 }
 
 async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
-  const { kind, workspacePath } = parseWorkspacePopoutInput(input)
-  const key = `${kind}:${workspacePath}`
+  const { kind, workspacePath, chatId } = parseWorkspacePopoutInput(input)
+  const key = kind === 'chat' ? `chat:${chatId}` : `${kind}:${workspacePath}`
   const existing = workspacePopoutWindows.get(key)
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore()
@@ -12983,11 +12985,16 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
     isMac &&
     (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
     !settings.reduceTransparency
-  const title = kind === 'file-editor' ? 'AGBench File Editor' : 'AGBench Diff Studio'
+  const title =
+    kind === 'file-editor'
+      ? 'AGBench File Editor'
+      : kind === 'diff-studio'
+        ? 'AGBench Diff Studio'
+        : 'AGBench Chat'
   const win = new BrowserWindow({
-    width: kind === 'file-editor' ? 980 : 1120,
+    width: kind === 'file-editor' ? 980 : kind === 'diff-studio' ? 1120 : 900,
     height: kind === 'file-editor' ? 720 : 760,
-    minWidth: 720,
+    minWidth: kind === 'chat' ? 520 : 720,
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
@@ -13025,7 +13032,7 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
       workspacePopoutWindows.delete(key)
     }
   })
-  await loadWorkspacePopoutWindow(win, kind, workspacePath)
+  await loadWorkspacePopoutWindow(win, kind, workspacePath, chatId)
   return { ok: true }
 }
 
@@ -14334,6 +14341,7 @@ if (isGeminiMcpBridgeProcess) {
     )
     ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
       chatService.saveChat(chat)
+      broadcastChatPopoutUpdate(chat)
       broadcastThreadUpdate(chat?.appChatId)
     })
     ipcMain.handle('delete-chat', (_, chatId: string) => {
@@ -14811,7 +14819,7 @@ if (isGeminiMcpBridgeProcess) {
           updatedAt: now
         }
         AppStore.saveChat(updatedChat)
-        safeSendToWebContents(mainWindow, 'chat-updated', updatedChat)
+        broadcastChatUpdated(updatedChat)
 
         return { ok: true, grants: newGrants, path: selectedPath }
       }
@@ -16120,7 +16128,7 @@ if (isGeminiMcpBridgeProcess) {
                   updatedAt: Date.now()
                 }
                 AppStore.saveChat(updatedChat)
-                mainWindow?.webContents.send('chat-updated', updatedChat)
+                broadcastChatUpdated(updatedChat)
               }
             } catch (err) {
               console.warn('[ExternalPathGrant] runtime grant persistence failed', err)

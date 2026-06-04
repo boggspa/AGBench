@@ -1,0 +1,115 @@
+import { memo, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import type { ProviderId } from '../../../main/store/types'
+import { formatContextTokens } from '../lib/contextWindows'
+import { formatCostAlwaysOn, type DisplayCurrency } from '../lib/formatCost'
+import { estimateRunCostUsd, type RendererProviderRates } from '../lib/providerRateEstimate'
+import type { ChatTokenTally } from '../lib/threadTokenTally'
+
+const LIVE_TICK_MS = 1000
+const APPROX_CHARS_PER_TOKEN = 4
+
+type LiveThreadTokenTallyProps = {
+  baseTally: ChatTokenTally
+  currency: DisplayCurrency
+  model: string | undefined
+  overestimatePercent: number
+  provider: ProviderId
+  providerRates: RendererProviderRates
+  running: boolean
+  liveOutputTokens: number
+  title: string
+}
+
+export function estimateLiveOutputTokensFromChars(charCount: number): number {
+  if (!Number.isFinite(charCount) || charCount <= 0) return 0
+  return Math.ceil(charCount / APPROX_CHARS_PER_TOKEN)
+}
+
+export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
+  baseTally,
+  currency,
+  model,
+  overestimatePercent,
+  provider,
+  providerRates,
+  running,
+  liveOutputTokens,
+  title
+}: LiveThreadTokenTallyProps): ReactElement | null {
+  const targetOutputTokens =
+    baseTally.outputTokens + (running ? Math.max(0, Math.trunc(liveOutputTokens)) : 0)
+  const targetOutputRef = useRef(targetOutputTokens)
+  const baseOutputRef = useRef(baseTally.outputTokens)
+  const [displayedOutputTokens, setDisplayedOutputTokens] = useState(targetOutputTokens)
+
+  useEffect(() => {
+    targetOutputRef.current = targetOutputTokens
+    baseOutputRef.current = baseTally.outputTokens
+    if (!running) {
+      setDisplayedOutputTokens(targetOutputTokens)
+    } else {
+      setDisplayedOutputTokens((current) =>
+        current < baseTally.outputTokens ? baseTally.outputTokens : current
+      )
+    }
+  }, [baseTally.outputTokens, running, targetOutputTokens])
+
+  useEffect(() => {
+    if (!running) return
+    const interval = window.setInterval(() => {
+      setDisplayedOutputTokens((current) => {
+        const target = targetOutputRef.current
+        const baseOutput = baseOutputRef.current
+        if (current < baseOutput) return baseOutput
+        if (current >= target) return target
+        const step = Math.max(1, Math.ceil((target - current) / 2))
+        return Math.min(target, current + step)
+      })
+    }, LIVE_TICK_MS)
+    return () => window.clearInterval(interval)
+  }, [running])
+
+  const label = useMemo(() => {
+    const liveOutputExtra = Math.max(0, displayedOutputTokens - baseTally.outputTokens)
+    const liveCostUsd = running
+      ? estimateRunCostUsd(providerRates, provider, model, 0, liveOutputExtra)
+      : 0
+    const totalCostUsd = baseTally.explicitCostUsd + liveCostUsd
+    const cost =
+      totalCostUsd > 0
+        ? formatCostAlwaysOn(totalCostUsd, currency, undefined, overestimatePercent)
+        : ''
+    const prefix = running && liveCostUsd > 0 ? '~' : ''
+    return `${formatContextTokens(baseTally.inputTokens)} in / ${formatContextTokens(
+      displayedOutputTokens
+    )} out${cost ? ` · ${prefix}${cost}` : ''}`
+  }, [
+    baseTally.explicitCostUsd,
+    baseTally.inputTokens,
+    baseTally.outputTokens,
+    currency,
+    displayedOutputTokens,
+    model,
+    overestimatePercent,
+    provider,
+    providerRates,
+    running
+  ])
+
+  if (baseTally.totalTokens <= 0 && displayedOutputTokens <= 0) return null
+
+  const liveTitle =
+    running && liveOutputTokens > 0
+      ? `${title}\n\nLive output and projected cost update once per second while this run is active.`
+      : title
+
+  return (
+    <span
+      className={`composer-thread-token-tally${running ? ' is-live' : ''}`}
+      title={liveTitle}
+      aria-live="off"
+    >
+      {label}
+    </span>
+  )
+})

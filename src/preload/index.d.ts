@@ -418,6 +418,10 @@ declare global {
       openWorkspacePopout: (input: {
         kind: 'file-editor' | 'diff-studio'
         workspacePath: string
+      } | {
+        kind: 'chat'
+        chatId: string
+        workspacePath?: string
       }) => Promise<{ ok: true }>
       quitApp: () => Promise<boolean>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
@@ -919,7 +923,7 @@ declare global {
       ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
-      onChatUpdated: (callback: (chat: ChatRecord) => void) => void
+      onChatUpdated: (callback: (chat: ChatRecord) => void) => () => void
       onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void
       onWorkspacePopoutRefresh: (
         callback: (payload: { workspacePath: string; reason: string }) => void

@@ -78,6 +78,11 @@ import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
 import {
+  getKeyCommandForEvent,
+  resolveKeyCommandBindings,
+  type KeyCommandId
+} from './lib/keyCommands'
+import {
   MIN_RIGHT_PANEL_WIDTH,
   MAX_RIGHT_PANEL_WIDTH,
   MIN_WORKSPACE_SIDEBAR_WIDTH,
@@ -123,7 +128,6 @@ import {
 import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
 import {
   buildChatTokenTally,
-  formatThreadTokenTally,
   formatEnsembleTokenBreakdown
 } from './lib/threadTokenTally'
 import { buildCodexUsageWindows } from './lib/codexUsageWindows'
@@ -181,6 +185,7 @@ import {
   ArrowUpSendIcon,
   AppleTerminalIcon,
   ChatMediaIcon,
+  ChatPopoutIcon,
   ClaudeReturnSymbolIcon,
   ClockSymbolIcon,
   CommandSymbolIcon,
@@ -349,6 +354,10 @@ import {
   type HostWeatherVisualState
 } from './components/FxLayers'
 import { ComposerCumulativeTimecode, ComposerRunTimecode } from './components/ComposerTimecodes'
+import {
+  LiveThreadTokenTally,
+  estimateLiveOutputTokensFromChars
+} from './components/LiveThreadTokenTally'
 import { WelcomeWorkspacePicker } from './components/WelcomeWorkspacePicker'
 import { WelcomeUsageDashboard } from './components/WelcomeUsageDashboard'
 import { ComposerWorkspaceSwitcher } from './components/ComposerWorkspaceSwitcher'
@@ -446,11 +455,25 @@ const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 
 
 
+const getInitialChatPopoutChatId = (): string => {
+  if (typeof window === 'undefined') return ''
+  const params = new URLSearchParams(window.location.search)
+  return params.get('popout') === 'chat' ? params.get('chat') || '' : ''
+}
+
+const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
+  'starting',
+  'active',
+  'cancelling'
+])
+
 function App(): React.JSX.Element {
   // Shared copy-to-clipboard feedback for every in-app copy affordance
   // (message chips, latest-response button). One instance keeps the
   // transient "Copied" state consistent across the transcript.
   const { copiedId, copy } = useCopyFeedback()
+  const chatPopoutChatIdRef = useRef(getInitialChatPopoutChatId())
+  const isChatPopoutWindow = Boolean(chatPopoutChatIdRef.current)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   // 1.0.7 — per-provider rate table (USD per 1M tokens) for the ensemble
   // run-complete card's projected cost estimate. Hydrated once at mount from
@@ -652,7 +675,7 @@ function App(): React.JSX.Element {
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
   // EnsembleSetupSheet retired in 1.0.3 — no modal state required.
   // EnsembleParticipantsAboveRow handles configuration inline.
-  const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
+  const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(() => !isChatPopoutWindow)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   /**
    * First-launch onboarding hint visibility. Renders a faint
@@ -1334,6 +1357,8 @@ function App(): React.JSX.Element {
     return `${enabled.length} participants · ${mode} · ${labels}`
   }, [currentChat?.ensemble])
   const hasWorkspaceContext = Boolean(currentWorkspace && currentChat && !isCurrentGlobalChat)
+  const currentWorkspacePopoutPath = currentWorkspace?.path || currentChat?.workspacePath || ''
+  const canOpenWorkspacePopout = Boolean(currentWorkspacePopoutPath)
   const isCurrentChatProviderLocked = Boolean(
     currentChat &&
     ((currentChat.messages?.length || 0) > 0 ||
@@ -1783,6 +1808,9 @@ function App(): React.JSX.Element {
     if (!chatId) return false
     for (const ctx of activeRunsRef.current.values()) {
       if (ctx.chatId === chatId) return true
+    }
+    for (const job of runQueueJobsRef.current) {
+      if (job.chatId === chatId && ACTIVE_RUN_QUEUE_STATUSES.has(job.status)) return true
     }
     return false
   }
@@ -2493,6 +2521,50 @@ function App(): React.JSX.Element {
     setWorkspaces(wsList)
     setWorkspacesHydrated(true)
     await rehydrateQueuedRuns(wsList).catch(() => {})
+    if (isChatPopoutWindow) {
+      const popoutChat = allChats.find((chat) => chat.appChatId === chatPopoutChatIdRef.current)
+      if (popoutChat) {
+        const provider = getChatProvider(popoutChat)
+        chatByIdRef.current.set(popoutChat.appChatId, popoutChat)
+        currentChatIdRef.current = popoutChat.appChatId
+        if (isGlobalChat(popoutChat)) {
+          setCurrentWorkspace(null)
+          currentWorkspaceIdRef.current = null
+        } else {
+          const workspaceForChat =
+            wsList.find((workspace) => workspace.id === popoutChat.workspaceId) ||
+            (popoutChat.workspacePath
+              ? {
+                  id: popoutChat.workspaceId || popoutChat.workspacePath,
+                  path: popoutChat.workspacePath,
+                  displayName:
+                    popoutChat.workspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace',
+                  lastOpenedAt: Date.now(),
+                  createdAt: Date.now(),
+                  pinned: false
+                }
+              : null)
+          setCurrentWorkspace(workspaceForChat)
+          currentWorkspaceIdRef.current = workspaceForChat?.id || popoutChat.workspaceId || null
+          if (workspaceForChat?.path) {
+            window.api
+              .checkTrust(workspaceForChat.path)
+              .then(setTrustResult)
+              .catch(() => {})
+          }
+        }
+        setCurrentChat(popoutChat)
+        applyChatComposerSelection(popoutChat, provider)
+        void refreshUsageSummary(getUsageWorkspaceIdForChat(popoutChat), provider)
+        void refreshProviderMetadata(provider, popoutChat.workspacePath)
+        setRawLogs(rawLogsByChatIdRef.current.get(popoutChat.appChatId) || [])
+        hydrateThreadRawLogsFromEvents(popoutChat.appChatId)
+        setShowFallbackUX(false)
+        setIsThinking(runningChatIds.has(popoutChat.appChatId))
+        return
+      }
+      console.warn('[chat-popout] requested chat was not found:', chatPopoutChatIdRef.current)
+    }
     if (wsList.length > 0) {
       // Sort by lastOpenedAt descending
       const sorted = [...wsList].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
@@ -2625,6 +2697,9 @@ function App(): React.JSX.Element {
     if (next.composerFontFamily !== undefined) {
       settingsPatch.composerFontFamily = next.composerFontFamily
       appearance.update({ composerFontFamily: next.composerFontFamily })
+    }
+    if (next.keyCommandBindings !== undefined) {
+      settingsPatch.keyCommandBindings = next.keyCommandBindings
     }
     if (next.funFxEnabled !== undefined) {
       settingsPatch.funFxEnabled = next.funFxEnabled
@@ -9506,9 +9581,31 @@ function App(): React.JSX.Element {
     }
   }
 
+  const openWorkspacePopoutWindow = useCallback(
+    (kind: 'file-editor' | 'diff-studio') => {
+      if (!currentWorkspacePopoutPath) return
+      void window.api.openWorkspacePopout({
+        kind,
+        workspacePath: currentWorkspacePopoutPath
+      })
+    },
+    [currentWorkspacePopoutPath]
+  )
+
+  const openChatPopoutWindow = useCallback(() => {
+    if (!currentChat?.appChatId) return
+    void window.api.openWorkspacePopout({
+      kind: 'chat',
+      chatId: currentChat.appChatId,
+      workspacePath: currentChat.workspacePath
+    })
+  }, [currentChat?.appChatId, currentChat?.workspacePath])
+
   const keyboardActionsRef = useRef({
     clearImagePermissions,
     handleRun,
+    openChatPopoutWindow,
+    openWorkspacePopoutWindow,
     rememberCurrentChatComposerSelection,
     setCommandPaletteQuery,
     setIsCommandPaletteOpen,
@@ -9517,6 +9614,8 @@ function App(): React.JSX.Element {
   keyboardActionsRef.current = {
     clearImagePermissions,
     handleRun,
+    openChatPopoutWindow,
+    openWorkspacePopoutWindow,
     rememberCurrentChatComposerSelection,
     setCommandPaletteQuery,
     setIsCommandPaletteOpen,
@@ -9534,87 +9633,96 @@ function App(): React.JSX.Element {
         tagName === 'textarea' ||
         tagName === 'select'
       )
-      const hasModifier = event.metaKey || event.ctrlKey
+      const command = getKeyCommandForEvent(
+        event,
+        resolveKeyCommandBindings(settings?.keyCommandBindings)
+      )
+      if (!command || (isEditableTarget && !command.allowWhenEditable)) {
+        return
+      }
 
-      if (event.key === 'Escape') {
-        if (isCommandPaletteOpen) {
-          event.preventDefault()
-          keyboardActions.setIsCommandPaletteOpen(false)
-          keyboardActions.setCommandPaletteQuery('')
+      const runKeyCommand = (commandId: KeyCommandId): void => {
+        if (commandId === 'close-overlays') {
+          if (isCommandPaletteOpen) {
+            keyboardActions.setIsCommandPaletteOpen(false)
+            keyboardActions.setCommandPaletteQuery('')
+            return
+          }
+          if (showSettings) {
+            setShowSettings(false)
+            return
+          }
+          if (permissionRequestPaths.length > 0) {
+            keyboardActions.clearImagePermissions()
+            return
+          }
+          if (selectedModelType === 'custom') {
+            setCustomModel('')
+            setSelectedModelType(lastNonCustomModelType)
+            keyboardActions.rememberCurrentChatComposerSelection({
+              customModel: '',
+              selectedModelType: lastNonCustomModelType
+            })
+            if (currentProvider === 'gemini') {
+              keyboardActions.syncPersistentModelSelection(lastNonCustomModelType)
+            }
+          }
           return
         }
-        if (showSettings) {
-          event.preventDefault()
-          setShowSettings(false)
+        if (commandId === 'run-prompt') {
+          keyboardActions.handleRun()
           return
         }
-        if (permissionRequestPaths.length > 0) {
-          event.preventDefault()
-          keyboardActions.clearImagePermissions()
+        if (commandId === 'command-palette') {
+          keyboardActions.setIsCommandPaletteOpen(true)
           return
         }
-        if (selectedModelType === 'custom') {
-          event.preventDefault()
-          setCustomModel('')
-          setSelectedModelType(lastNonCustomModelType)
-          keyboardActions.rememberCurrentChatComposerSelection({
-            customModel: '',
-            selectedModelType: lastNonCustomModelType
+        if (commandId === 'settings') {
+          if (isChatPopoutWindow) return
+          setShowSettings(true)
+          return
+        }
+        if (commandId === 'toggle-sidebar') {
+          if (isChatPopoutWindow) return
+          setShowWorkspaceSidebar((current) => !current)
+          return
+        }
+        if (commandId === 'toggle-inspector') {
+          if (isChatPopoutWindow) return
+          const nextShowInspector = !appearance.showInspector
+          if (nextShowInspector && window.innerWidth <= 1180) {
+            setShowFileEditor(false)
+          }
+          appearance.update({ showInspector: nextShowInspector })
+          return
+        }
+        if (commandId === 'toggle-file-editor') {
+          if (isChatPopoutWindow) return
+          if (!hasWorkspaceContext) return
+          setShowFileEditor((current) => {
+            const nextShowFileEditor = !current
+            if (nextShowFileEditor && window.innerWidth <= 1180 && appearance.showInspector) {
+              appearance.update({ showInspector: false })
+            }
+            return nextShowFileEditor
           })
-          if (currentProvider === 'gemini') {
-            keyboardActions.syncPersistentModelSelection(lastNonCustomModelType)
-          }
           return
         }
-      }
-
-      if (hasModifier && event.key === 'Enter') {
-        event.preventDefault()
-        keyboardActions.handleRun()
-        return
-      }
-
-      if (!hasModifier) {
-        return
-      }
-
-      const shortcutKey = event.key.toLowerCase()
-      if (shortcutKey === 'k') {
-        event.preventDefault()
-        keyboardActions.setIsCommandPaletteOpen(true)
-        return
-      }
-
-      if (shortcutKey === ',') {
-        event.preventDefault()
-        setShowSettings(true)
-        return
-      }
-
-      if (isEditableTarget) {
-        return
-      }
-
-      if (shortcutKey === 'b') {
-        event.preventDefault()
-        setShowWorkspaceSidebar((current) => !current)
-      } else if (shortcutKey === 'i') {
-        event.preventDefault()
-        const nextShowInspector = !appearance.showInspector
-        if (nextShowInspector && window.innerWidth <= 1180) {
-          setShowFileEditor(false)
+        if (commandId === 'open-diff-studio-window') {
+          keyboardActions.openWorkspacePopoutWindow('diff-studio')
+          return
         }
-        appearance.update({ showInspector: nextShowInspector })
-      } else if (shortcutKey === 'e') {
-        event.preventDefault()
-        setShowFileEditor((current) => {
-          const nextShowFileEditor = !current
-          if (nextShowFileEditor && window.innerWidth <= 1180 && appearance.showInspector) {
-            appearance.update({ showInspector: false })
-          }
-          return nextShowFileEditor
-        })
+        if (commandId === 'open-file-editor-window') {
+          keyboardActions.openWorkspacePopoutWindow('file-editor')
+          return
+        }
+        if (commandId === 'popout-chat-window') {
+          keyboardActions.openChatPopoutWindow()
+        }
       }
+
+      event.preventDefault()
+      runKeyCommand(command.id)
     }
 
     window.addEventListener('keydown', handleAppKeyDown)
@@ -9626,7 +9734,10 @@ function App(): React.JSX.Element {
     lastNonCustomModelType,
     permissionRequestPaths.length,
     selectedModelType,
-    showSettings
+    settings?.keyCommandBindings,
+    showSettings,
+    hasWorkspaceContext,
+    isChatPopoutWindow
   ])
 
   const isOldVersion = geminiVersion !== 'unknown' && geminiVersion < '0.39.1'
@@ -9660,18 +9771,39 @@ function App(): React.JSX.Element {
     }
     return map
   }, [chats])
+  const activeRunQueueChatIds = useMemo(
+    () =>
+      runQueueJobs
+        .filter((job) => job.chatId && ACTIVE_RUN_QUEUE_STATUSES.has(job.status))
+        .map((job) => job.chatId!)
+        .filter(Boolean),
+    [runQueueJobs]
+  )
   const runningChatIdsArray = useMemo(
     () =>
-      visibleRunningChatIds(
-        runningChatIds,
-        pendingAgentApprovalByChatId,
-        chatsByAppChatIdForRunning
+      Array.from(
+        new Set([
+          ...visibleRunningChatIds(
+            runningChatIds,
+            pendingAgentApprovalByChatId,
+            chatsByAppChatIdForRunning
+          ),
+          ...activeRunQueueChatIds
+        ])
       ),
-    [runningChatIds, pendingAgentApprovalByChatId, chatsByAppChatIdForRunning]
+    [runningChatIds, pendingAgentApprovalByChatId, chatsByAppChatIdForRunning, activeRunQueueChatIds]
+  )
+  const hasCurrentChatActiveRunQueueJob = Boolean(
+    currentChat?.appChatId &&
+      runQueueJobs.some(
+        (job) =>
+          job.chatId === currentChat.appChatId && ACTIVE_RUN_QUEUE_STATUSES.has(job.status)
+      )
   )
   const isCurrentChatRunning = Boolean(
     currentChat?.appChatId &&
     (runningChatIds.has(currentChat.appChatId) ||
+      hasCurrentChatActiveRunQueueJob ||
       currentChat.ensemble?.activeRound?.status === 'running')
   )
   const isCurrentEnsembleChat = currentChat?.chatKind === 'ensemble'
@@ -10140,6 +10272,43 @@ function App(): React.JSX.Element {
     () => buildChatTokenTally(currentChat?.runs || []),
     [currentChat?.runs]
   )
+  const liveRunOutputTokens = useMemo(() => {
+    if (!isCurrentChatRunning || !currentChat) return 0
+    const activeRunIds = new Set(
+      (currentChat.runs || [])
+        .filter((run) => !run.endedAt || run.status === 'running' || run.status === 'queued')
+        .map((run) => run.runId)
+        .filter((runId): runId is string => Boolean(runId))
+    )
+    if (activeRunIds.size === 0 && currentRun?.runId) {
+      activeRunIds.add(currentRun.runId)
+    }
+    const activeRoundStartedAt =
+      currentChat.ensemble?.activeRound?.status === 'running'
+        ? Date.parse(currentChat.ensemble.activeRound.startedAt || '')
+        : Number.NaN
+    let liveChars = 0
+    for (const message of currentChat.messages || []) {
+      if (message.role !== 'assistant') continue
+      if (message.runId && activeRunIds.has(message.runId)) {
+        liveChars += message.content?.length || 0
+        continue
+      }
+      if (Number.isFinite(activeRoundStartedAt)) {
+        const messageTime = Date.parse(message.timestamp || '')
+        if (Number.isFinite(messageTime) && messageTime >= activeRoundStartedAt) {
+          liveChars += message.content?.length || 0
+        }
+      }
+    }
+    return estimateLiveOutputTokensFromChars(liveChars)
+  }, [
+    currentChat,
+    currentChat?.ensemble?.activeRound?.startedAt,
+    currentChat?.ensemble?.activeRound?.status,
+    currentRun?.runId,
+    isCurrentChatRunning
+  ])
   // 1.0.4-AR10 — cumulative session timecode base. Derived from the
   // sealed run records (`endedAt - startedAt` per run, summed) so it
   // survives reloads automatically and pauses naturally between runs
@@ -10148,7 +10317,8 @@ function App(): React.JSX.Element {
     () => computeCumulativeRunBaseMs(currentChat?.runs),
     [currentChat?.runs]
   )
-  const cumulativeChatTokens = chatTokenTally.totalTokens
+  const cumulativeChatTokens =
+    chatTokenTally.totalTokens + (isCurrentChatRunning ? liveRunOutputTokens : 0)
   const latestRunLimits = extractUsageLimits(currentRun?.stats)
   const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
   const contextWindowSize = resolveContextWindow(
@@ -10173,12 +10343,7 @@ function App(): React.JSX.Element {
     0,
     Math.min(25, Number(settings?.currencyOverestimatePercent ?? 0) || 0)
   )
-  const threadTokenTallyLabel = formatThreadTokenTally(
-    currentProviderLabel,
-    chatTokenTally,
-    displayCurrency,
-    overestimatePercent
-  )
+  const threadTokenTallyHasValue = chatTokenTally.totalTokens > 0 || liveRunOutputTokens > 0
   // B1 (1.0.3) — per-participant breakdown for the ensemble tally
   // footer's hover tooltip. Solo chats: `null` (the existing
   // `contextLabel` stays as the tooltip). Ensemble chats: a
@@ -11548,7 +11713,7 @@ function App(): React.JSX.Element {
     'Inspectors',
     'Custom'
   ]
-  const appMainStyle = showWorkspaceSidebar
+  const appMainStyle = showWorkspaceSidebar && !isChatPopoutWindow
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
     : undefined
   const interfaceStyle = appearance.composerStyle
@@ -11564,13 +11729,19 @@ function App(): React.JSX.Element {
   // approvals → the approval-ledger panel; usage → welcome dashboard.
 
   return (
-    <div className={`app-root ${fxBurstClass} ${appAgentAuraClass} ${providerShellClass}`}>
+    <div
+      className={`app-root ${fxBurstClass} ${appAgentAuraClass} ${providerShellClass} ${
+        isChatPopoutWindow ? 'chat-popout-window' : ''
+      }`}
+    >
       <div className="window-drag-strip" aria-hidden />
       <div
-        className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass}`}
+        className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass} ${
+          isChatPopoutWindow ? 'chat-popout-main' : ''
+        }`}
         style={appMainStyle}
       >
-        {showWorkspaceSidebar && (
+        {showWorkspaceSidebar && !isChatPopoutWindow && (
           <>
             {/*
               Sidebar swap. In Settings full-app takeover layout
@@ -11614,14 +11785,8 @@ function App(): React.JSX.Element {
                   toolIconAccent: appearance.toolIconAccent
                 }}
                 onAppearanceQuickChange={handleSettingsChange}
-                canOpenWorkspacePopout={Boolean(
-                  currentWorkspace?.path || currentChat?.workspacePath
-                )}
-                onOpenWorkspacePopout={(kind) => {
-                  const workspacePath = currentWorkspace?.path || currentChat?.workspacePath
-                  if (!workspacePath) return
-                  void window.api.openWorkspacePopout({ kind, workspacePath })
-                }}
+                canOpenWorkspacePopout={canOpenWorkspacePopout}
+                onOpenWorkspacePopout={openWorkspacePopoutWindow}
                 onQuitApp={() => {
                   void window.api.quitApp?.()
                 }}
@@ -11674,7 +11839,7 @@ function App(): React.JSX.Element {
           so its ref stays valid and its state survives the round-trip
           back to the chat surface.
         */}
-        {showSettings && (
+        {!isChatPopoutWindow && showSettings && (
           <div className="app-settings-pane" role="region" aria-label="Settings">
             <SettingsPanel
               layout="takeover"
@@ -11691,6 +11856,7 @@ function App(): React.JSX.Element {
               composerStyle={appearance.composerStyle}
               transcriptFontFamily={appearance.transcriptFontFamily}
               composerFontFamily={appearance.composerFontFamily}
+              keyCommandBindings={settings?.keyCommandBindings}
               reduceTransparency={appearance.reduceTransparency}
               reduceMotion={appearance.reduceMotion}
               compactDensity={appearance.compactDensity}
@@ -11805,18 +11971,19 @@ function App(): React.JSX.Element {
               <span>{chatContextNotice.message}</span>
             </div>
           )}
-          <div
-            className={`chat-corner-controls chat-corner-controls-left ${showWorkspaceSidebar ? '' : 'chat-corner-controls-workspace-hidden'}`}
-          >
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={() => setShowWorkspaceSidebar((current) => !current)}
-              title={`${showWorkspaceSidebar ? 'Hide' : 'Show'} workspace sidebar`}
-              aria-label="Toggle workspace sidebar"
+          {!isChatPopoutWindow && (
+            <div
+              className={`chat-corner-controls chat-corner-controls-left ${showWorkspaceSidebar ? '' : 'chat-corner-controls-workspace-hidden'}`}
             >
-              <SidebarCornerIcon direction="left" isOpen={showWorkspaceSidebar} />
-            </button>
+              <button
+                className="chat-corner-btn"
+                type="button"
+                onClick={() => setShowWorkspaceSidebar((current) => !current)}
+                title={`${showWorkspaceSidebar ? 'Hide' : 'Show'} workspace sidebar`}
+                aria-label="Toggle workspace sidebar"
+              >
+                <SidebarCornerIcon direction="left" isOpen={showWorkspaceSidebar} />
+              </button>
             <button
               className={`chat-corner-btn ${shouldShowSkyVisualFxInFxMode ? 'active' : ''}`}
               type="button"
@@ -11886,10 +12053,12 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">!</span>
             </button>
-            <UpdatePill snapshot={updateStatus.snapshot} onOpen={handleOpenChangelogSheet} />
-          </div>
+              <UpdatePill snapshot={updateStatus.snapshot} onOpen={handleOpenChangelogSheet} />
+            </div>
+          )}
 
-          <div className="chat-corner-controls chat-corner-controls-right">
+          {!isChatPopoutWindow && (
+            <div className="chat-corner-controls chat-corner-controls-right">
             <button
               className={`chat-corner-btn ${showCockpit ? 'active' : ''}`}
               type="button"
@@ -11947,53 +12116,50 @@ function App(): React.JSX.Element {
             <button
               className="chat-corner-btn"
               type="button"
-              onClick={() => {
-                const workspacePath = currentWorkspace?.path
-                if (!workspacePath) return
-                void window.api.openWorkspacePopout({
-                  kind: 'file-editor',
-                  workspacePath
-                })
-              }}
+              onClick={() => openWorkspacePopoutWindow('file-editor')}
               title="Open file editor in new window"
               aria-label="Open file editor in new window"
-              disabled={!hasWorkspaceContext}
+              disabled={!canOpenWorkspacePopout}
             >
               <span className="chat-corner-symbol">↗</span>
             </button>
             <button
               className="chat-corner-btn"
               type="button"
-              onClick={() => {
-                const workspacePath = currentWorkspace?.path
-                if (!workspacePath) return
-                void window.api.openWorkspacePopout({
-                  kind: 'diff-studio',
-                  workspacePath
-                })
-              }}
+              onClick={() => openWorkspacePopoutWindow('diff-studio')}
               title="Open Diff Studio in new window"
               aria-label="Open Diff Studio in new window"
-              disabled={!hasWorkspaceContext}
+              disabled={!canOpenWorkspacePopout}
             >
               <span className="chat-corner-symbol">Δ</span>
             </button>
             <button
               className="chat-corner-btn"
               type="button"
-              onClick={() => {
-                const nextShowInspector = !appearance.showInspector
-                if (nextShowInspector && window.innerWidth <= 1180 && showFileEditor) {
-                  setShowFileEditor(false)
-                }
-                appearance.update({ showInspector: nextShowInspector })
-              }}
-              title={`${appearance.showInspector ? 'Hide' : 'Show'} inspector`}
-              aria-label="Toggle inspector"
+              onClick={openChatPopoutWindow}
+              title="Pop out chat window"
+              aria-label="Pop out chat window"
+              disabled={!currentChat}
             >
-              <SidebarCornerIcon direction="right" isOpen={appearance.showInspector} />
+              <ChatPopoutIcon />
             </button>
-          </div>
+              <button
+                className="chat-corner-btn"
+                type="button"
+                onClick={() => {
+                  const nextShowInspector = !appearance.showInspector
+                  if (nextShowInspector && window.innerWidth <= 1180 && showFileEditor) {
+                    setShowFileEditor(false)
+                  }
+                  appearance.update({ showInspector: nextShowInspector })
+                }}
+                title={`${appearance.showInspector ? 'Hide' : 'Show'} inspector`}
+                aria-label="Toggle inspector"
+              >
+                <SidebarCornerIcon direction="right" isOpen={appearance.showInspector} />
+              </button>
+            </div>
+          )}
 
           {/*
             1.0.4 — "↓ N new messages" jump-to-latest pill (Slack/
@@ -14822,7 +14988,7 @@ function App(): React.JSX.Element {
               {/* Console redesign — close .composer-inner-module (the readable input/controls surface) */}
               <div
                 className="composer-telemetry-row"
-                data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
+                data-has-token-tally={threadTokenTallyHasValue ? 'true' : 'false'}
               >
                 <ComposerRunTimecode
                   running={isCurrentChatRunning}
@@ -14922,10 +15088,18 @@ function App(): React.JSX.Element {
                     }
                   />
                 )}
-                {threadTokenTallyLabel && (
-                  <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
-                    {threadTokenTallyLabel}
-                  </span>
+                {threadTokenTallyHasValue && (
+                  <LiveThreadTokenTally
+                    baseTally={chatTokenTally}
+                    currency={displayCurrency}
+                    model={contextModelId}
+                    overestimatePercent={overestimatePercent}
+                    provider={currentProvider}
+                    providerRates={providerRates}
+                    running={isCurrentChatRunning}
+                    liveOutputTokens={liveRunOutputTokens}
+                    title={threadTokenTallyTooltip}
+                  />
                 )}
               </div>
               {/*
@@ -15002,7 +15176,7 @@ function App(): React.JSX.Element {
           </div>
         </div>
 
-        {showFileEditor && hasWorkspaceContext && (
+        {!isChatPopoutWindow && showFileEditor && hasWorkspaceContext && (
           <>
             <div
               className="panel-resize-handle"
@@ -15021,7 +15195,7 @@ function App(): React.JSX.Element {
           </>
         )}
 
-        {appearance.showInspector && (
+        {!isChatPopoutWindow && appearance.showInspector && (
           <>
             <div
               className="panel-resize-handle"
@@ -15093,7 +15267,7 @@ function App(): React.JSX.Element {
         )}
       </div>
 
-      {showCockpit && (
+      {!isChatPopoutWindow && showCockpit && (
         <CockpitPanel
           lanes={runLanes}
           handoffCards={handoffCards}
@@ -15128,7 +15302,7 @@ function App(): React.JSX.Element {
         (10000) so it always wins focus on a new install while still
         deferring to genuine approval prompts. */}
       <FirstLaunchSheet
-        open={showFirstLaunchSheet}
+        open={!isChatPopoutWindow && showFirstLaunchSheet}
         onDismiss={handleDismissFirstLaunchSheet}
         onOpenSettings={() => {
           // Closing the sheet AND opening settings in a single click
@@ -15167,7 +15341,7 @@ function App(): React.JSX.Element {
           wins when both happen to be open, and stays below the
           creative-action approval modal (10000). */}
       <BugReportSheet
-        open={showBugReportSheet}
+        open={!isChatPopoutWindow && showBugReportSheet}
         onDismiss={() => setShowBugReportSheet(false)}
         onSubmit={handleSubmitBugReport}
         appVersion={appVersion}
@@ -15183,7 +15357,7 @@ function App(): React.JSX.Element {
         ensembleSummary={bugReportEnsembleSummary}
       />
       <ChangelogSheet
-        open={showChangelogSheet}
+        open={!isChatPopoutWindow && showChangelogSheet}
         onDismiss={handleDismissChangelogSheet}
         changelogSnapshot={changelogSnapshot}
         updateSnapshot={updateStatus.snapshot}

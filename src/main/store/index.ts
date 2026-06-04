@@ -127,6 +127,7 @@ const defaultSettings: AppSettings = {
   composerStyle: 'default',
   transcriptFontFamily: AGBENCH_DEFAULT_FONT_STACK,
   composerFontFamily: 'match-transcript',
+  keyCommandBindings: {},
   // 1.0.5-EW25 — Display currency for cost / token-spend chips.
   // USD by default; user can switch to GBP / EUR via Settings →
   // General. Rates are static approximations (see `formatCost.ts`).
@@ -222,6 +223,32 @@ function readJson<T>(filePath: string, defaultData: T): T {
 
 function objectOrUndefined<T extends object>(value: T | null | undefined): T | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function normalizeKeyCommandBindings(
+  value: Partial<AppSettings>['keyCommandBindings']
+): AppSettings['keyCommandBindings'] {
+  const record = objectOrUndefined(value as Record<string, unknown> | null | undefined)
+  if (!record) return {}
+  const normalized: AppSettings['keyCommandBindings'] = {}
+  for (const [id, binding] of Object.entries(record)) {
+    if (binding === null) {
+      normalized[id] = null
+      continue
+    }
+    const bindingRecord = objectOrUndefined(binding as Record<string, unknown> | null | undefined)
+    if (!bindingRecord) continue
+    const key = typeof bindingRecord.key === 'string' ? bindingRecord.key.trim() : ''
+    if (!key) continue
+    const modifiers = Array.isArray(bindingRecord.modifiers)
+      ? bindingRecord.modifiers.filter(
+          (modifier): modifier is 'primary' | 'shift' | 'alt' =>
+            modifier === 'primary' || modifier === 'shift' || modifier === 'alt'
+        )
+      : []
+    normalized[id] = { key, modifiers }
+  }
+  return normalized
 }
 
 function normalizeUpdateChangelog(value: unknown): ProductUpdateChangelog | undefined {
@@ -475,6 +502,7 @@ export class AppStore {
         stored.composerFontFamily,
         defaultSettings.composerFontFamily || 'match-transcript'
       ),
+      keyCommandBindings: normalizeKeyCommandBindings(stored.keyCommandBindings),
       // Phase M1 — coerce any non-enum value (missing, typo'd, legacy)
       // back to the safe default so the eventual API-vs-CLI dispatch
       // logic never sees an unexpected mode.

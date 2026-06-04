@@ -6,10 +6,12 @@ import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { PopoutApp } from './PopoutApp'
 
-const isPopout = new URLSearchParams(window.location.search).has('popout')
+const params = new URLSearchParams(window.location.search)
+const popoutKind = params.get('popout')
+const isUtilityPopout = Boolean(popoutKind && popoutKind !== 'chat')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>{isPopout ? <PopoutApp /> : <App />}</ErrorBoundary>
+    <ErrorBoundary>{isUtilityPopout ? <PopoutApp /> : <App />}</ErrorBoundary>
   </StrictMode>
 )

@@ -35,6 +35,25 @@
   z-index: 4;
 }
 
+.chat-popout-window .app-main {
+  width: 100vw;
+  min-width: 0;
+}
+
+.chat-popout-window .app-transcript {
+  --chat-side-gutter: clamp(22px, 5vw, 64px);
+  --composer-content-max-width: min(980px, calc(100vw - 32px));
+  border-left: none;
+}
+
+.chat-popout-window .transcript-scroll {
+  padding-top: 42px;
+}
+
+.chat-popout-window .composer-area {
+  padding-inline: clamp(12px, 2.4vw, 28px);
+}
+
 .composer-area > .provider-shell-status-row,
 .composer-area > .composer-above-bar,
 .composer-area > .composer-header-row,
@@ -3574,6 +3593,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-thread-token-tally.is-live {
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--accent));
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.composer-thread-token-tally.is-live::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 78%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  vertical-align: 1px;
 }
 
 .composer-run-timecode {

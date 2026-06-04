@@ -1403,7 +1403,8 @@
   gap: 8px;
 }
 
-.settings-readonly-pill {
+.settings-readonly-pill,
+.settings-editable-pill {
   display: inline-flex;
   align-items: center;
   min-height: 20px;
@@ -1415,6 +1416,12 @@
   font-size: var(--font-size-xs);
   font-weight: 750;
   line-height: 1;
+}
+
+.settings-editable-pill {
+  border-color: color-mix(in srgb, var(--success, #35c178) 36%, transparent);
+  background: color-mix(in srgb, var(--success, #35c178) 10%, transparent);
+  color: color-mix(in srgb, var(--success, #35c178) 88%, var(--text-primary) 12%);
 }
 
 .settings-audit-toolbar {
@@ -1803,7 +1810,7 @@
 
 .settings-key-command-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.55fr) max-content;
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.55fr) minmax(220px, max-content) max-content;
   gap: 12px;
   align-items: center;
   padding: 10px;
@@ -1829,6 +1836,13 @@
   min-width: 0;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+.settings-key-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .settings-key-command-keycap {
@@ -1859,8 +1873,30 @@
   font-weight: 700;
 }
 
-.settings-key-command-status-planned {
+.settings-key-command-status-default {
   color: var(--text-tertiary);
+}
+
+.settings-key-command-status-custom {
+  color: var(--accent);
+}
+
+.settings-key-command-status-conflict {
+  color: var(--danger, #ff5f57);
+}
+
+.settings-key-command-recording {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 6px 8px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }
 
 .settings-label {
@@ -2052,6 +2088,10 @@
 
   .settings-key-command-status {
     justify-self: start;
+  }
+
+  .settings-key-command-actions {
+    justify-content: flex-start;
   }
 
   .settings-effects-radio-list {
@@ -3354,6 +3394,7 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   font-weight: 650;
+  text-align: right;
   overflow-wrap: anywhere;
 }
 

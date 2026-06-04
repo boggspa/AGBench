@@ -112,6 +112,28 @@ export function ChatMediaIcon() {
   )
 }
 
+export function ChatPopoutIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="2.4" y="3.1" width="8.3" height="9.8" rx="1.4" />
+        <path d="M4.4 5.8h4.2" />
+        <path d="M4.4 8h3.4" />
+        <path d="M4.4 10.2h2.6" />
+        <path d="M9.6 2.7h3.7v3.7" />
+        <path d="M8.9 7.1 13 3" />
+      </svg>
+    </span>
+  )
+}
+
 export function GhostCompanionIcon() {
   return (
     <span className="chat-corner-symbol">

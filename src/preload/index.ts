@@ -213,7 +213,11 @@ const api = {
   ) => ipcRenderer.invoke('respond-agent-approval', requestId, action, intentNote),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
-  openWorkspacePopout: (input: { kind: 'file-editor' | 'diff-studio'; workspacePath: string }) =>
+  openWorkspacePopout: (
+    input:
+      | { kind: 'file-editor' | 'diff-studio'; workspacePath: string }
+      | { kind: 'chat'; chatId: string; workspacePath?: string }
+  ) =>
     ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
   quitApp: () => ipcRenderer.invoke('app:quit') as Promise<boolean>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
@@ -742,7 +746,9 @@ const api = {
     ipcRenderer.on('scheduled-tasks-changed', (_event, payload) => callback(payload))
   },
   onChatUpdated: (callback: (chat: unknown) => void) => {
-    ipcRenderer.on('chat-updated', (_event, chat) => callback(chat))
+    const wrapped = (_event: unknown, chat: unknown): void => callback(chat)
+    ipcRenderer.on('chat-updated', wrapped)
+    return () => ipcRenderer.removeListener('chat-updated', wrapped)
   },
   onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => {
     const wrapped = (_event: unknown, snapshot: AppShellStatsSnapshot): void => callback(snapshot)

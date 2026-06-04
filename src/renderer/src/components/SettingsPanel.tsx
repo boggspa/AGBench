@@ -53,6 +53,17 @@ import {
 } from '../lib/typefaceOptions'
 import { setFxRatesPerUsd } from '../lib/formatCost'
 import { formatResetShort } from '../lib/UsageFormat'
+import {
+  KEY_COMMAND_DEFINITIONS,
+  KEY_COMMAND_GROUPS,
+  bindingFromKeyboardEvent,
+  findKeyCommandConflict,
+  formatKeyCommandBinding,
+  hasCustomKeyCommandBinding,
+  resolveKeyCommandBindings,
+  sanitizeKeyCommandOverrides,
+  type KeyCommandId
+} from '../lib/keyCommands'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -84,6 +95,7 @@ interface SettingsPanelProps {
   composerStyle: ComposerStyle
   transcriptFontFamily: string
   composerFontFamily: string
+  keyCommandBindings?: AppSettings['keyCommandBindings']
   reduceTransparency: boolean
   reduceMotion: boolean
   compactDensity: boolean
@@ -201,6 +213,7 @@ interface SettingsPanelProps {
     composerStyle?: ComposerStyle
     transcriptFontFamily?: string
     composerFontFamily?: string
+    keyCommandBindings?: AppSettings['keyCommandBindings']
     reduceTransparency?: boolean
     reduceMotion?: boolean
     compactDensity?: boolean
@@ -932,149 +945,6 @@ const MCP_TOOL_CATALOG = AGENTBENCH_MCP_TOOLS.map((name) => ({
   return groupDelta === 0 ? a.label.localeCompare(b.label) : groupDelta
 })
 
-type SettingsKeyCommandGroup = 'Global' | 'Composer' | 'Panels' | 'Pickers' | 'Editor'
-
-type SettingsKeyCommand = {
-  id: string
-  group: SettingsKeyCommandGroup
-  command: string
-  description: string
-  keys: string[]
-  status?: 'active' | 'planned'
-}
-
-const SETTINGS_KEY_COMMAND_GROUPS: SettingsKeyCommandGroup[] = [
-  'Global',
-  'Composer',
-  'Panels',
-  'Pickers',
-  'Editor'
-]
-
-const SETTINGS_KEY_COMMANDS: SettingsKeyCommand[] = [
-  {
-    id: 'command-palette',
-    group: 'Global',
-    command: 'Command palette',
-    description: 'Open the app-wide command palette.',
-    keys: ['Cmd/Ctrl', 'K']
-  },
-  {
-    id: 'settings',
-    group: 'Global',
-    command: 'Open Settings',
-    description: 'Open the Settings takeover from anywhere in the app.',
-    keys: ['Cmd/Ctrl', ',']
-  },
-  {
-    id: 'close-overlays',
-    group: 'Global',
-    command: 'Close overlay',
-    description:
-      'Close Settings, command palette, active modal, or dismiss a pending custom model edit.',
-    keys: ['Esc']
-  },
-  {
-    id: 'run-prompt',
-    group: 'Composer',
-    command: 'Run prompt',
-    description: 'Submit the current composer prompt even when focus is inside the composer.',
-    keys: ['Cmd/Ctrl', 'Enter']
-  },
-  {
-    id: 'send-composer',
-    group: 'Composer',
-    command: 'Send from composer',
-    description: 'Submit the focused composer prompt.',
-    keys: ['Enter']
-  },
-  {
-    id: 'composer-newline',
-    group: 'Composer',
-    command: 'New line',
-    description: 'Insert a new line without submitting the prompt.',
-    keys: ['Shift', 'Enter']
-  },
-  {
-    id: 'slash-menu',
-    group: 'Composer',
-    command: 'Slash menu',
-    description: 'Open slash command suggestions from the composer.',
-    keys: ['/']
-  },
-  {
-    id: 'mention-agent',
-    group: 'Composer',
-    command: 'Mention sub-agent',
-    description: 'Mention a sub-agent or Ensemble participant from the composer.',
-    keys: ['@']
-  },
-  {
-    id: 'mention-file',
-    group: 'Composer',
-    command: 'Reference file',
-    description: 'Reference a specific file by path so the agent reads it as part of the turn.',
-    keys: ['-@']
-  },
-  {
-    id: 'toggle-sidebar',
-    group: 'Panels',
-    command: 'Toggle sidebar',
-    description: 'Show or hide the workspace and thread sidebar.',
-    keys: ['Cmd/Ctrl', 'B']
-  },
-  {
-    id: 'toggle-inspector',
-    group: 'Panels',
-    command: 'Toggle inspector',
-    description: 'Show or hide the run inspector.',
-    keys: ['Cmd/Ctrl', 'I']
-  },
-  {
-    id: 'toggle-file-editor',
-    group: 'Panels',
-    command: 'Toggle file editor',
-    description: 'Show or hide the file editor panel.',
-    keys: ['Cmd/Ctrl', 'E']
-  },
-  {
-    id: 'picker-move',
-    group: 'Pickers',
-    command: 'Move selection',
-    description: 'Navigate model, permission, slash, and mention picker rows.',
-    keys: ['Arrow keys']
-  },
-  {
-    id: 'picker-select',
-    group: 'Pickers',
-    command: 'Choose highlighted item',
-    description: 'Select the highlighted picker row.',
-    keys: ['Enter']
-  },
-  {
-    id: 'picker-dismiss',
-    group: 'Pickers',
-    command: 'Dismiss picker',
-    description: 'Close the active picker without choosing an item.',
-    keys: ['Esc']
-  },
-  {
-    id: 'save-editor',
-    group: 'Editor',
-    command: 'Save file editor buffer',
-    description: 'Save the currently focused file editor buffer.',
-    keys: ['Cmd/Ctrl', 'S']
-  },
-  {
-    id: 'shortcut-remapping',
-    group: 'Global',
-    command: 'Customize bindings',
-    description: 'Editable shortcut recording, conflict detection, and persistence are planned.',
-    keys: ['Unassigned'],
-    status: 'planned'
-  }
-]
-
 export type SettingsTab =
   | 'appearance'
   | 'behavior'
@@ -1359,6 +1229,7 @@ export function SettingsPanel({
   composerStyle,
   transcriptFontFamily,
   composerFontFamily,
+  keyCommandBindings,
   reduceTransparency,
   reduceMotion,
   compactDensity,
@@ -1453,6 +1324,8 @@ export function SettingsPanel({
   const [composerPreviewText, setComposerPreviewText] = useState('')
   const [mcpToolQuery, setMcpToolQuery] = useState('')
   const [keyCommandQuery, setKeyCommandQuery] = useState('')
+  const [recordingKeyCommandId, setRecordingKeyCommandId] = useState<KeyCommandId | null>(null)
+  const [keyCommandRecordError, setKeyCommandRecordError] = useState('')
   const [kimiClassifierEnabled, setKimiClassifierEnabled] = useState(false)
   const [kimiClassifierStatus, setKimiClassifierStatus] = useState('disabled')
   const [fxSnapshot, setFxSnapshot] = useState<FxRateSnapshot | null>(null)
@@ -1722,18 +1595,87 @@ export function SettingsPanel({
       .toLowerCase()
     return haystack.includes(mcpToolSearch)
   })
+  const resolvedKeyCommandBindings = resolveKeyCommandBindings(keyCommandBindings)
+  const sanitizedKeyCommandOverrides = sanitizeKeyCommandOverrides(keyCommandBindings)
   const keyCommandSearch = keyCommandQuery.trim().toLowerCase()
-  const filteredKeyCommands = SETTINGS_KEY_COMMANDS.filter((command) => {
+  const keyCommandRows = KEY_COMMAND_DEFINITIONS.map((definition) => {
+    const binding = resolvedKeyCommandBindings[definition.id]
+    const conflict = binding
+      ? findKeyCommandConflict(definition.id, binding, resolvedKeyCommandBindings)
+      : null
+    return {
+      ...definition,
+      binding,
+      keys: formatKeyCommandBinding(binding),
+      conflict,
+      customized: hasCustomKeyCommandBinding(definition.id, keyCommandBindings)
+    }
+  })
+  const filteredKeyCommands = keyCommandRows.filter((command) => {
     if (!keyCommandSearch) return true
-    const haystack = [command.group, command.command, command.description, command.keys.join(' ')]
+    const haystack = [
+      command.group,
+      command.command,
+      command.description,
+      command.keys.join(' '),
+      command.conflict?.command || '',
+      command.customized ? 'custom' : 'default'
+    ]
       .join(' ')
       .toLowerCase()
     return haystack.includes(keyCommandSearch)
   })
-  const activeKeyCommandCount = SETTINGS_KEY_COMMANDS.filter(
-    (command) => command.status !== 'planned'
-  ).length
-  const plannedKeyCommandCount = SETTINGS_KEY_COMMANDS.length - activeKeyCommandCount
+  const activeKeyCommandCount = keyCommandRows.filter((command) => command.binding !== null).length
+  const customizedKeyCommandCount = keyCommandRows.filter((command) => command.customized).length
+  const conflictKeyCommandCount = keyCommandRows.filter((command) => command.conflict).length
+  const updateKeyCommandOverrides = (next: AppSettings['keyCommandBindings']): void => {
+    onChange({ keyCommandBindings: sanitizeKeyCommandOverrides(next) })
+  }
+  const resetKeyCommand = (commandId: KeyCommandId): void => {
+    const next = { ...sanitizedKeyCommandOverrides }
+    delete next[commandId]
+    updateKeyCommandOverrides(next)
+    setKeyCommandRecordError('')
+    if (recordingKeyCommandId === commandId) setRecordingKeyCommandId(null)
+  }
+  const unassignKeyCommand = (commandId: KeyCommandId): void => {
+    updateKeyCommandOverrides({ ...sanitizedKeyCommandOverrides, [commandId]: null })
+    setKeyCommandRecordError('')
+    if (recordingKeyCommandId === commandId) setRecordingKeyCommandId(null)
+  }
+  useEffect(() => {
+    if (!recordingKeyCommandId) return
+    const handleRecordingKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        setRecordingKeyCommandId(null)
+        setKeyCommandRecordError('')
+        return
+      }
+      const binding = bindingFromKeyboardEvent(event)
+      if (!binding) return
+      event.preventDefault()
+      event.stopPropagation()
+      const nextResolved = {
+        ...resolveKeyCommandBindings(sanitizedKeyCommandOverrides),
+        [recordingKeyCommandId]: binding
+      }
+      const conflict = findKeyCommandConflict(recordingKeyCommandId, binding, nextResolved)
+      if (conflict) {
+        setKeyCommandRecordError(`Already used by ${conflict.command}.`)
+        return
+      }
+      updateKeyCommandOverrides({
+        ...sanitizedKeyCommandOverrides,
+        [recordingKeyCommandId]: binding
+      })
+      setRecordingKeyCommandId(null)
+      setKeyCommandRecordError('')
+    }
+    window.addEventListener('keydown', handleRecordingKeyDown, true)
+    return () => window.removeEventListener('keydown', handleRecordingKeyDown, true)
+  }, [recordingKeyCommandId, sanitizedKeyCommandOverrides])
   const codexUsage = codexStatus?.codexUsage
   const codexUsageConfigured = Boolean(
     codexUsage?.configured ||
@@ -4508,11 +4450,11 @@ export function SettingsPanel({
                     <h4 className="sidebar-section-title" style={{ margin: 0 }}>
                       Keyboard shortcuts
                     </h4>
-                    <span className="settings-readonly-pill">Read-only v1</span>
+                    <span className="settings-editable-pill">Editable</span>
                   </div>
                   <p className="settings-hint">
-                    A read-only command map for the shortcuts AGBench currently handles. Remapping
-                    will need conflict detection and persisted accelerator settings in a later pass.
+                    User-editable bindings for the app commands AGBench currently dispatches.
+                    Conflicting shortcuts are blocked while recording.
                   </p>
                 </div>
               </div>
@@ -4525,8 +4467,8 @@ export function SettingsPanel({
                 </article>
                 <article className="settings-key-commands-summary-card">
                   <span>Command groups</span>
-                  <strong>{SETTINGS_KEY_COMMAND_GROUPS.length}</strong>
-                  <small>global, composer, panels, pickers, editor</small>
+                  <strong>{KEY_COMMAND_GROUPS.length}</strong>
+                  <small>global, panels, windows</small>
                 </article>
                 <article className="settings-key-commands-summary-card">
                   <span>Visible now</span>
@@ -4537,8 +4479,12 @@ export function SettingsPanel({
                 </article>
                 <article className="settings-key-commands-summary-card">
                   <span>Customization</span>
-                  <strong>{plannedKeyCommandCount}</strong>
-                  <small>planned editable binding surface</small>
+                  <strong>{customizedKeyCommandCount}</strong>
+                  <small>
+                    {conflictKeyCommandCount > 0
+                      ? `${conflictKeyCommandCount} conflict${conflictKeyCommandCount === 1 ? '' : 's'}`
+                      : 'custom bindings'}
+                  </small>
                 </article>
               </div>
 
@@ -4555,8 +4501,17 @@ export function SettingsPanel({
                 </label>
                 <div className="settings-audit-toolbar-meta">
                   <span>
-                    {filteredKeyCommands.length} of {SETTINGS_KEY_COMMANDS.length} commands
+                    {filteredKeyCommands.length} of {KEY_COMMAND_DEFINITIONS.length} commands
                   </span>
+                  {customizedKeyCommandCount > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => updateKeyCommandOverrides({})}
+                    >
+                      Reset all
+                    </button>
+                  )}
                   {keyCommandSearch && (
                     <button
                       type="button"
@@ -4572,7 +4527,7 @@ export function SettingsPanel({
 
             <div className="settings-group span-all">
               <div className="settings-key-command-groups">
-                {SETTINGS_KEY_COMMAND_GROUPS.map((group) => {
+                {KEY_COMMAND_GROUPS.map((group) => {
                   const groupCommands = filteredKeyCommands.filter(
                     (command) => command.group === group
                   )
@@ -4600,11 +4555,61 @@ export function SettingsPanel({
                                 </kbd>
                               ))}
                             </div>
+                            <div className="settings-key-command-actions">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => {
+                                  setRecordingKeyCommandId(command.id)
+                                  setKeyCommandRecordError('')
+                                }}
+                              >
+                                {recordingKeyCommandId === command.id ? 'Press keys' : 'Record'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => resetKeyCommand(command.id)}
+                                disabled={!command.customized}
+                              >
+                                Reset
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => unassignKeyCommand(command.id)}
+                                disabled={command.binding === null}
+                              >
+                                Unassign
+                              </button>
+                            </div>
                             <span
-                              className={`settings-key-command-status settings-key-command-status-${command.status ?? 'active'}`}
+                              className={`settings-key-command-status ${
+                                command.conflict
+                                  ? 'settings-key-command-status-conflict'
+                                  : command.customized
+                                    ? 'settings-key-command-status-custom'
+                                    : 'settings-key-command-status-default'
+                              }`}
                             >
-                              {command.status === 'planned' ? 'Planned' : 'Active'}
+                              {command.conflict
+                                ? 'Conflict'
+                                : command.customized
+                                  ? 'Custom'
+                                  : 'Default'}
                             </span>
+                            {recordingKeyCommandId === command.id && (
+                              <div className="settings-key-command-recording" role="status">
+                                <span>
+                                  {keyCommandRecordError || 'Press a new shortcut, or Esc to cancel.'}
+                                </span>
+                              </div>
+                            )}
+                            {command.conflict && (
+                              <div className="settings-key-command-recording" role="status">
+                                <span>Conflicts with {command.conflict.command}.</span>
+                              </div>
+                            )}
                           </article>
                         ))}
                       </div>
