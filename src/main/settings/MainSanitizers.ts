@@ -1,3 +1,5 @@
+import type { WebContentsConsoleMessageEventParams } from 'electron'
+import type { AppearanceMode } from '../store/types'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import type {
@@ -770,3 +772,25 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
 }
 
 export type MainSanitizers = ReturnType<typeof createMainSanitizers>
+
+export function consoleMessageLevelToNumber(
+  level: WebContentsConsoleMessageEventParams['level'] | number
+): number {
+  if (typeof level === 'number') return level
+  switch (level) {
+    case 'debug':
+      return 0
+    case 'info':
+      return 1
+    case 'warning':
+      return 2
+    case 'error':
+      return 3
+    default:
+      return 1
+  }
+}
+
+export function isAppearanceMode(value: unknown): value is AppearanceMode {
+  return value === 'solid' || value === 'soft_glass' || value === 'native_glass'
+}

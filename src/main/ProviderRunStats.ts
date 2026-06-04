@@ -1,3 +1,4 @@
+import type { AgentRunRoute } from './run/AgentRunTypes'
 import type { ProviderId } from './store/types'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -211,4 +212,25 @@ export function geminiUsageMetadataToStats(
     duration_ms: durationMs,
     ...(options.alreadyRecorded ? { _agentbench_usage_recorded: true } : {})
   })
+}
+
+export function buildAgentExitStats(
+  provider: ProviderId,
+  route?: AgentRunRoute | null
+): Record<string, unknown> | undefined {
+  if (!route || typeof route !== 'object') return undefined
+  const tokenUsage = (route as { tokenUsage?: unknown }).tokenUsage
+  if (!tokenUsage || typeof tokenUsage !== 'object') return undefined
+  const startedAt = (route as { startedAt?: unknown }).startedAt
+  const durationMs =
+    typeof startedAt === 'number' && Number.isFinite(startedAt)
+      ? Math.max(0, Date.now() - startedAt)
+      : 0
+  if (provider === 'codex') {
+    return codexUsageToStats(tokenUsage, durationMs)
+  }
+  return {
+    ...(tokenUsage as Record<string, unknown>),
+    duration_ms: durationMs
+  }
 }

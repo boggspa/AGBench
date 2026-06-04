@@ -104,3 +104,138 @@ export function codexPatchPreviewFromValue(value: any): string {
   if (Array.isArray(value.changes)) return codexPatchPreviewFromValue(value.changes)
   return summarizeCodexFileChanges([value])
 }
+
+export function codexToolUseFromItem(item: any): any | null {
+  if (!item || typeof item !== 'object') return null
+  if (item.type === 'commandExecution') {
+    const command = codexCommandText(item.command || '')
+    const editMetadata = codexCommandFileEditMetadata(
+      command,
+      codexString(item.aggregatedOutput || item.output || item.stdout || item.stderr || '')
+    )
+    if (editMetadata) {
+      return {
+        type: 'tool_use',
+        tool_id: item.id,
+        tool_name: editMetadata.toolName,
+        parameters: editMetadata.parameters,
+        provider: 'codex'
+      }
+    }
+    return {
+      type: 'tool_use',
+      tool_id: item.id,
+      tool_name: 'run_shell_command',
+      parameters: {
+        command,
+        cwd: item.cwd || ''
+      },
+      provider: 'codex'
+    }
+  }
+  if (item.type === 'fileChange') {
+    const firstChange = Array.isArray(item.changes) ? item.changes[0] : undefined
+    const kind = firstChange?.kind || 'update'
+    const toolName =
+      kind === 'create' || kind === 'add'
+        ? 'create_file'
+        : kind === 'delete'
+          ? 'delete_file'
+          : 'edit_file'
+    return {
+      type: 'tool_use',
+      tool_id: item.id,
+      tool_name: toolName,
+      parameters: {
+        path: firstChange?.path || '',
+        changes: item.changes || []
+      },
+      provider: 'codex'
+    }
+  }
+  if (item.type === 'mcpToolCall') {
+    return {
+      type: 'tool_use',
+      tool_id: item.id,
+      tool_name: item.tool || 'mcp_tool',
+      parameters: item.arguments || {},
+      provider: 'codex',
+      server: item.server
+    }
+  }
+  if (item.type === 'dynamicToolCall') {
+    return {
+      type: 'tool_use',
+      tool_id: item.id,
+      tool_name: item.tool || 'dynamic_tool',
+      parameters: item.arguments || {},
+      provider: 'codex',
+      namespace: item.namespace
+    }
+  }
+  return null
+}
+
+export function codexToolResultFromItem(item: any): any | null {
+  if (!item || typeof item !== 'object') return null
+  if (item.type === 'commandExecution') {
+    const output = item.aggregatedOutput || ''
+    const command = codexCommandText(item.command || '')
+    const editMetadata = codexCommandFileEditMetadata(
+      command,
+      codexString(output || item.output || item.stdout || item.stderr || '')
+    )
+    return {
+      type: 'tool_result',
+      tool_id: item.id,
+      tool_name: editMetadata?.toolName || 'run_shell_command',
+      status:
+        item.status === 'failed' ? 'error' : item.status === 'declined' ? 'warning' : 'success',
+      output,
+      result: {
+        exitCode: item.exitCode,
+        durationMs: item.durationMs
+      },
+      provider: 'codex'
+    }
+  }
+  if (item.type === 'fileChange') {
+    return {
+      type: 'tool_result',
+      tool_id: item.id,
+      tool_name: codexToolUseFromItem(item)?.tool_name || 'edit_file',
+      status:
+        item.status === 'failed' ? 'error' : item.status === 'declined' ? 'warning' : 'success',
+      output: Array.isArray(item.changes)
+        ? item.changes
+            .map((change: any) => `${change.kind || 'update'} ${change.path || ''}`)
+            .join('\n')
+        : '',
+      result: item,
+      provider: 'codex'
+    }
+  }
+  if (item.type === 'mcpToolCall') {
+    return {
+      type: 'tool_result',
+      tool_id: item.id,
+      tool_name: item.tool || 'mcp_tool',
+      status: item.status === 'failed' ? 'error' : 'success',
+      output: item.error ? JSON.stringify(item.error) : JSON.stringify(item.result || {}),
+      result: item.result || item.error || {},
+      provider: 'codex'
+    }
+  }
+  if (item.type === 'dynamicToolCall') {
+    return {
+      type: 'tool_result',
+      tool_id: item.id,
+      tool_name: item.tool || 'dynamic_tool',
+      status: item.success === false || item.status === 'failed' ? 'error' : 'success',
+      output: JSON.stringify(item.contentItems || {}),
+      result: item,
+      provider: 'codex'
+    }
+  }
+  return null
+}

@@ -1,0 +1,41 @@
+import type { AgenticServiceId, AgentApprovalAction } from './store/types'
+export const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
+  shellCommands: 'Shell commands',
+  fileChanges: 'File changes',
+  mcpTools: 'Tool calls',
+  subThreadDelegation: 'Sub-thread delegation'
+}
+
+export function agenticServiceBlockedMessage(service: AgenticServiceId): string {
+  return `${AGENTIC_SERVICE_LABELS[service]} blocked by AGBench settings.`
+}
+
+export function agenticServiceDisabledMessage(service: AgenticServiceId): string {
+  if (service === 'subThreadDelegation') {
+    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in AGBench settings.`
+  }
+  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in AGBench settings.`
+}
+
+export const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
+  'shellCommands',
+  'fileChanges',
+  'mcpTools',
+  'subThreadDelegation'
+])
+
+export function assertAgenticServiceId(value: unknown): AgenticServiceId {
+  if (typeof value === 'string' && AGENTIC_SERVICE_IDS.has(value as AgenticServiceId)) {
+    return value as AgenticServiceId
+  }
+  throw new Error('Unknown agentic service id.')
+}
+
+export function approvalActionsForPolicy(policy: string, workspacePath?: string): AgentApprovalAction[] {
+  const actions: AgentApprovalAction[] = ['accept']
+  if (policy === 'workspace' && workspacePath) {
+    actions.push('acceptForWorkspace')
+  }
+  actions.push('acceptForSession', 'decline')
+  return actions
+}

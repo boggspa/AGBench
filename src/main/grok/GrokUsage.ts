@@ -1,3 +1,4 @@
+import { GROK_PROJECTED_INPUT_USD_PER_MILLION, GROK_PROJECTED_OUTPUT_USD_PER_MILLION } from '../index.constants'
 // Grok SUBSCRIPTION-CREDITS usage — distinct from token/cost usage.
 //
 // SuperGrok/grok.com CLI auth bills by a subscription credit pool (a percent +
@@ -283,4 +284,18 @@ export function probeGrokUsage(deps: GrokUsageProbeDeps): Promise<GrokUsageSnaps
     timers.push(setTimer(() => child?.write('\r'), readyDelayMs + selectDelayMs))
     timers.push(setTimer(() => finish(parseGrokUsage(buffer, now())), timeoutMs))
   })
+}
+
+export function estimateProjectedTokenUsage(
+  promptText: string | undefined,
+  responseText: string | undefined
+): { input_tokens: number; output_tokens: number; total_tokens: number; total_cost_usd: number } {
+  const estimate = (text: string | undefined): number =>
+    Math.max(0, Math.ceil((text || '').length / 4))
+  const input_tokens = estimate(promptText)
+  const output_tokens = estimate(responseText)
+  const total_cost_usd =
+    (input_tokens / 1_000_000) * GROK_PROJECTED_INPUT_USD_PER_MILLION +
+    (output_tokens / 1_000_000) * GROK_PROJECTED_OUTPUT_USD_PER_MILLION
+  return { input_tokens, output_tokens, total_tokens: input_tokens + output_tokens, total_cost_usd }
 }

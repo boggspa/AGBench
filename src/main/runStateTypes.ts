@@ -1,0 +1,109 @@
+import type Electron from 'electron'
+import type {
+  ChatScope,
+  EffectiveRunPermissions,
+  EnsembleRunIdentity,
+  ExternalPathGrant,
+  ProviderId
+} from './store/types'
+export interface CodexRunState {
+  sender: Electron.WebContents
+  threadId: string
+  startedAt: number
+  scope?: ChatScope
+  cwd: string
+  workspacePath?: string
+  turnId?: string
+  model: string
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
+  appRunId?: string
+  appChatId?: string
+  tokenUsage?: any
+  assistantTextByItemId: Map<string, string>
+  timelineStartedItemIds: Set<string>
+  reasoningTextByItemId: Map<string, string>
+  commandOutputByItemId: Map<string, string>
+  filePatchByItemId: Map<string, any>
+  hostRerunRequestedItemIds: Set<string>
+  completed: boolean
+}
+
+export interface GeminiToolContext {
+  sender: Electron.WebContents
+  scope: ChatScope
+  cwd: string
+  workspacePath?: string
+  appRunId?: string
+  appChatId?: string
+  providerSessionId?: string | null
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
+}
+
+// Phase B3: AgenticApprovalWaiter moved into
+// `src/main/services/ApprovalService.ts` as `PendingGeminiToolApproval`.
+// HostCommandApproval is still referenced by `HostCommandResult` callers
+// in `continueCodexAfterHostRerun`, so the interface stays here.
+
+export interface HostCommandApproval {
+  sender: Electron.WebContents
+  provider: 'codex'
+  command: unknown
+  commandText: string
+  cwd: string
+  workspacePath?: string
+  threadId: string
+  model: string
+  appRunId?: string
+  appChatId?: string
+  reason: string
+  output: string
+}
+
+export interface HostCommandResult {
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  error?: string
+  timedOut: boolean
+  durationMs: number
+}
+
+export interface CliProviderStreamState {
+  provider: ProviderId
+  sender: Electron.WebContents
+  startedAt: number
+  model: string
+  fallback: boolean
+  completed: boolean
+  assistantText: string
+  thinkingText?: string
+  thinkingStarted?: boolean
+  providerSessionId?: string | null
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
+  runId?: string | null
+  appRunId?: string
+  appChatId?: string
+  tokenUsage?: any
+  /**
+   * 1.0.6-G5e — Grok's terminal stopReason when it is NOT a normal end (e.g.
+   * 'Cancelled', 'MaxTokens'). Grok exits 0 even when it self-cancels a turn
+   * mid-reasoning before answering/writing, so we remember the real reason here
+   * to report an honest result status instead of a misleading 'success'.
+   */
+  grokStopReason?: string
+}

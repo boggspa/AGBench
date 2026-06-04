@@ -201,3 +201,14 @@ export function claudePermissionModeForApproval(approvalMode?: string): string {
   if (approvalMode === 'plan') return 'plan'
   return 'acceptEdits'
 }
+
+export function normalizeCodexModel(model?: string | null): string {
+  const trimmed = typeof model === 'string' ? model.trim() : ''
+  if (
+    !trimmed ||
+    ['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'].includes(trimmed)
+  ) {
+    return CODEX_STATIC_MODELS[0].id
+  }
+  return trimmed
+}

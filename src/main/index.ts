@@ -11,11 +11,10 @@ import {
 } from 'electron'
 import type {
   BrowserWindowConstructorOptions,
-  MenuItemConstructorOptions,
-  WebContentsConsoleMessageEventParams
+  MenuItemConstructorOptions
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
+import { dirname, isAbsolute, join, parse, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
@@ -25,6 +24,95 @@ import * as pty from 'node-pty'
 import os from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
+import {
+  contentPartsToText,
+  extractProviderSessionId,
+  extractProviderText,
+  extractProviderThinkingText,
+  nestedRecord,
+  cliProviderToolId
+} from './providers/ProviderEventText'
+import type {
+  CodexRunState,
+  GeminiToolContext,
+  HostCommandApproval,
+  HostCommandResult,
+  CliProviderStreamState
+} from './runStateTypes'
+import {
+  resolveWorkspaceDirectory,
+  resolveHostDirectory,
+  resolveScopedDirectory,
+  resolveGeminiMcpPath,
+  resolveWorkspaceChild,
+  toWorkspaceRelativePath
+} from './PathScope'
+import {
+  stripAnsi,
+  appendLimitedOutput,
+  stringifyJsonFragment,
+  asRecord,
+  readStringField
+} from './gemini/GeminiCapabilityParsing'
+import {
+  GEMINI_CAPABILITY_KINDS,
+  GEMINI_CAPABILITY_COMMANDS,
+  GEMINI_CAPABILITY_TIMEOUT_MS,
+  type GeminiCapabilityKind,
+  type GeminiCapabilityItem,
+  type GeminiCapabilitySection,
+  type GeminiCapabilitiesState,
+  type GeminiCapabilityProcessResult
+} from './geminiCapabilityTypes'
+import {
+  mcpJson,
+  clampInteger,
+  normalizeMcpToolArguments,
+  isAGBenchMcpToolName
+} from './mcp/McpResultHelpers'
+import {
+  AGENTIC_SERVICE_LABELS,
+  agenticServiceBlockedMessage,
+  agenticServiceDisabledMessage,
+  assertAgenticServiceId,
+  approvalActionsForPolicy
+} from './AgenticServiceMessages'
+import { normalizeRunRoute, createFallbackRunId, routeWithRunId } from './run/RunRoute'
+import {
+  codexSandboxForMode,
+  buildCodexUserInput,
+  normalizeCodexTurnStatus
+} from './codex/CodexRunPolicy'
+import { ensembleWakeupsEnabled } from './featureGates'
+import {
+  GEMINI_MCP_SERVER_NAME,
+  GEMINI_MCP_BRIDGE_ARG,
+  GEMINI_MCP_ALLOWED_TOOL_NAMES,
+  GEMINI_MCP_READ_ONLY_TOOL_NAMES
+} from './geminiMcpConstants'
+import {
+  MAX_EDITOR_FILE_BYTES,
+  MAX_EDITOR_FILES,
+  MAX_EDITOR_DEPTH,
+  SKIP_EDITOR_DIRS,
+  MAX_SCHEDULE_TIMER_DELAY_MS,
+  GROK_USAGE_FRESH_TTL_MS,
+  GROK_SCOPED_MCP_SERVER_NAME,
+  KIMI_WIRE_PROTOCOL_FALLBACK,
+  KIMI_WIRE_PROTOCOL_INFO_TIMEOUT_MS,
+  PROBE_TIMEOUT_MS,
+  KNOWN_OFF_PATH_CODEX_BINARIES,
+  LIGHT_THEME_POPOUT_BACKDROPS,
+  RUN_MANAGER_PROVIDERS
+} from './index.constants'
+import type {
+  McpToolContentBlock,
+  McpToolExecutionResult,
+  AttachedWindowSnapshot,
+  BackgroundSubThreadTranscriptState,
+  WorkspacePopoutKind
+} from './index.types'
+import { appendGeminiCliWorktreeArgs } from './gemini/GeminiCliArgs'
 import {
   CodexAppServerClient,
   codexConfigParseUserMessage,
@@ -38,6 +126,8 @@ import {
   codexPatchPreviewFromValue,
   codexString,
   codexTimelineItemId,
+  codexToolResultFromItem,
+  codexToolUseFromItem,
   summarizeCodexFileChanges
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
@@ -99,7 +189,12 @@ import {
   probeAllProviderRates
 } from './services/ProviderRateService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
-import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
+import {
+  buildAgentExitStats,
+  codexUsageToStats,
+  extractProviderUsage,
+  mergeProviderUsage
+} from './ProviderRunStats'
 import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 import {
   canonicalizeExternalPathGrantMetadata,
@@ -175,8 +270,10 @@ import {
   MIN_WINDOW_WIDTH,
   assertProviderId,
   availableProviderIds,
+  consoleMessageLevelToNumber,
   createMainSanitizers,
   imageAttachmentSnapshots,
+  isAppearanceMode,
   isRecord,
   normalizeEnsembleRunIdentity,
   optionalNumber,
@@ -197,7 +294,8 @@ import {
   CODEX_STATIC_MODELS,
   claudePermissionModeForApproval,
   getStaticProviderModels,
-  normalizeCliProviderModel
+  normalizeCliProviderModel,
+  normalizeCodexModel
 } from './providers/StaticProviderModels'
 import {
   applyRuntimeProfileToPayload as applyRuntimeProfileToPayloadViaCliRuntime,
@@ -305,6 +403,7 @@ import {
 } from './cursor/CursorMcpBridge'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
+  estimateProjectedTokenUsage,
   probeGrokUsage,
   parseGrokUsage,
   type GrokUsageSnapshot,
@@ -340,7 +439,6 @@ import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
 import {
   MCP_AUTO_ALLOWED_TOOLS,
-  READ_ONLY_MCP_ADVERTISE_TOOLS,
   isReadOnlyAdvertisedTool
 } from './mcp/McpAutoAllowedTools'
 import { inheritedSubThreadPermissions } from './SubThreadPermissions'
@@ -512,34 +610,7 @@ const mcpBrowserConsoleBuffer: Array<{
   url?: string
 }> = []
 
-function consoleMessageLevelToNumber(
-  level: WebContentsConsoleMessageEventParams['level'] | number
-): number {
-  if (typeof level === 'number') return level
-  switch (level) {
-    case 'debug':
-      return 0
-    case 'info':
-      return 1
-    case 'warning':
-      return 2
-    case 'error':
-      return 3
-    default:
-      return 1
-  }
-}
 
-type McpToolContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; mimeType: string; data: string }
-
-type McpToolExecutionResult = {
-  text: string
-  isError?: boolean
-  structuredContent?: Record<string, unknown>
-  content?: McpToolContentBlock[]
-}
 
 // Phase J3: session-scoped YOLO mode. When the user clicks "Trust this
 // session" on any approval modal, every subsequent `requestAgenticServiceApproval`
@@ -578,31 +649,6 @@ function getSessionYoloMode(): { enabled: boolean; enabledAt: string | null } {
 const NATIVE_GLASS_VIBRANCY: BrowserWindowConstructorOptions['vibrancy'] = 'sidebar'
 let appliedNativeGlassState: string | null = null
 const FILE_ICON_CACHE = new Map<string, string | null>()
-const MAX_EDITOR_FILE_BYTES = 1_500_000
-const MAX_EDITOR_FILES = 900
-const MAX_EDITOR_DEPTH = 6
-const SKIP_EDITOR_DIRS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'build',
-  'out',
-  '.next',
-  '.vite',
-  '.turbo',
-  'coverage',
-  '.cache'
-])
-const GEMINI_CAPABILITY_KINDS = ['mcp', 'extensions', 'skills', 'agents'] as const
-const GEMINI_CAPABILITY_COMMANDS = {
-  mcp: ['mcp', 'list'],
-  extensions: ['extensions', 'list'],
-  skills: ['skills', 'list'],
-  agents: ['agents', 'list']
-} as const
-const GEMINI_CAPABILITY_TIMEOUT_MS = 8_000
-const MAX_CAPABILITY_OUTPUT_CHARS = 200_000
-const MAX_SCHEDULE_TIMER_DELAY_MS = 2_147_000_000
 // MCP server registration name advertised to every provider's MCP client.
 // This becomes the namespace prefix the agent sees in its tool list:
 // `AGBench__delegate_to_subthread`, `mcp__AGBench__git_status`, etc.
@@ -611,21 +657,7 @@ const MAX_SCHEDULE_TIMER_DELAY_MS = 2_147_000_000
 // intentionally retain their legacy `agentbench` form so installed
 // Codex / Gemini / Claude / Kimi configurations and existing usage
 // records continue to work without a migration step.
-const GEMINI_MCP_SERVER_NAME = 'AGBench'
-const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
-const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
-  ...AGENTBENCH_MCP_TOOLS,
-  ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
-]
-// 1.0.72 — read-only safe subset for the flagged read-only MCP advertise path
-// (AGBENCH_GEMINI_READONLY_MCP). Derived from READ_ONLY_MCP_ADVERTISE_TOOLS
-// (= AGENTBENCH_MCP_TOOLS ∩ MCP_AUTO_ALLOWED_TOOLS, floor-tested non-mutating),
-// in bare + AGBench__-prefixed forms — the mutating floor is never present.
-const GEMINI_MCP_READ_ONLY_TOOL_NAMES = [
-  ...READ_ONLY_MCP_ADVERTISE_TOOLS,
-  ...READ_ONLY_MCP_ADVERTISE_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
-]
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 
@@ -706,10 +738,6 @@ let sessionCheckpointStoreRef: SessionCheckpointStore | null = null
 // timer; the consumer (`schedule_wakeup` MCP handler) null-checks.
 let soloChatWakeupServiceRef: SoloChatWakeupService | null = null
 
-function ensembleWakeupsEnabled(): boolean {
-  const value = process.env.AGBENCH_ENSEMBLE_WAKEUPS
-  return value === '1' || value === 'true' || value === 'yes'
-}
 
 /**
  * 1.0.5-C0 — Feature gates for the C-series work absorbed from the
@@ -732,18 +760,6 @@ function ensembleWakeupsEnabled(): boolean {
  *   capability snapshot exposed via IPC so the runtime can flip
  *   it without an app restart.
  */
-export function concurrentLanesEnabled(): boolean {
-  const value = process.env.AGBENCH_CONCURRENT_LANES
-  return value === '1' || value === 'true' || value === 'yes'
-}
-export function permissionEnvelopesEnabled(): boolean {
-  const value = process.env.AGBENCH_PERMISSION_ENVELOPES
-  return value === '1' || value === 'true' || value === 'yes'
-}
-export function composerContenteditableEnabled(): boolean {
-  const value = process.env.AGBENCH_COMPOSER_CONTENTEDITABLE
-  return value === '1' || value === 'true' || value === 'yes'
-}
 // experimentalGrokProviderEnabled() now lives in the pure ./grokGate module
 // (imported above) so the services + IpcValidation can share one gate
 // implementation without importing this Electron-heavy module.
@@ -775,24 +791,6 @@ let creativeApprovalGateRef: CreativeApprovalGate | null = null
 // `appwatch.start` has been called against this handle. Set / cleared by the
 // `executeAppwatchStart` / `executeAppwatchStop` MCP tool wrappers so the
 // renderer pill can flip between "attached" and "streaming" without polling.
-type AttachedWindowStreamingSnapshot = {
-  fps: number
-  bufferSeconds: number
-  frameCount: number
-  startedAt: string
-}
-type AttachedWindowSnapshot = {
-  handleID: string
-  windowMeta: {
-    windowID: number
-    title: string
-    bundleID: string
-    applicationName: string
-    pid: number
-  }
-  attachedAt: string
-  streaming?: AttachedWindowStreamingSnapshot
-}
 let attachedWindowSnapshot: AttachedWindowSnapshot | null = null
 
 const desktopToolExecutors = createDesktopToolExecutors({
@@ -868,27 +866,6 @@ async function writeJsonFile(filePath: string, value: any): Promise<void> {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
-interface BackgroundSubThreadTranscriptState {
-  runId: string
-  chatId: string
-  parentChatId: string
-  provider: ProviderId
-  parentProvider: ProviderId
-  prompt: string
-  returnResultToParent: boolean
-  promptMessageId: string
-  assistantMessageId: string
-  startedAt: string
-  content: string
-  actualModel?: string
-  providerSessionId?: string
-  stats?: unknown
-  status: 'running' | 'success' | 'failed'
-  errorMessage?: string
-  flushTimer?: ReturnType<typeof setTimeout>
-  flushedOnce?: boolean
-  finalized?: boolean
-}
 
 const backgroundSubThreadTranscripts = new Map<string, BackgroundSubThreadTranscriptState>()
 
@@ -1009,7 +986,6 @@ process.stdout.on('error', (err) => {
   throw err
 })
 
-type GeminiCapabilityKind = (typeof GEMINI_CAPABILITY_KINDS)[number]
 
 function loadOrCreateExternalGrantSigningSecret(): Buffer {
   const secretPath = join(app.getPath('userData'), 'external-grant-signing-secret')
@@ -1032,117 +1008,8 @@ function loadOrCreateExternalGrantSigningSecret(): Buffer {
   }
   return secret
 }
-type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
 
-interface GeminiCapabilityItem {
-  id: string
-  name: string
-  status?: string
-  detail?: string
-  raw: string
-}
 
-interface GeminiCapabilitySection {
-  kind: GeminiCapabilityKind
-  command: string[]
-  format: GeminiCapabilityFormat
-  items: GeminiCapabilityItem[]
-  stdout: string
-  stderr: string
-  status: number | null
-  timedOut: boolean
-  error?: string
-  parsingError?: string
-  truncated?: boolean
-}
-
-interface GeminiCapabilitiesState {
-  refreshedAt: string
-  workspace?: string
-  sections: Record<GeminiCapabilityKind, GeminiCapabilitySection>
-}
-
-interface GeminiCapabilityProcessResult {
-  args: string[]
-  stdout: string
-  stderr: string
-  exitCode: number | null
-  timedOut: boolean
-  error?: string
-  truncated?: boolean
-}
-
-interface CodexRunState {
-  sender: Electron.WebContents
-  threadId: string
-  startedAt: number
-  scope?: ChatScope
-  cwd: string
-  workspacePath?: string
-  turnId?: string
-  model: string
-  approvalMode?: string
-  sessionTrust?: boolean
-  externalPathGrants?: ExternalPathGrant[]
-  runtimeProfileId?: string
-  effectivePermissions?: EffectiveRunPermissions
-  ensembleRun?: EnsembleRunIdentity
-  appRunId?: string
-  appChatId?: string
-  tokenUsage?: any
-  assistantTextByItemId: Map<string, string>
-  timelineStartedItemIds: Set<string>
-  reasoningTextByItemId: Map<string, string>
-  commandOutputByItemId: Map<string, string>
-  filePatchByItemId: Map<string, any>
-  hostRerunRequestedItemIds: Set<string>
-  completed: boolean
-}
-
-interface GeminiToolContext {
-  sender: Electron.WebContents
-  scope: ChatScope
-  cwd: string
-  workspacePath?: string
-  appRunId?: string
-  appChatId?: string
-  providerSessionId?: string | null
-  approvalMode?: string
-  sessionTrust?: boolean
-  externalPathGrants?: ExternalPathGrant[]
-  runtimeProfileId?: string
-  effectivePermissions?: EffectiveRunPermissions
-  ensembleRun?: EnsembleRunIdentity
-}
-
-// Phase B3: AgenticApprovalWaiter moved into
-// `src/main/services/ApprovalService.ts` as `PendingGeminiToolApproval`.
-// HostCommandApproval is still referenced by `HostCommandResult` callers
-// in `continueCodexAfterHostRerun`, so the interface stays here.
-
-interface HostCommandApproval {
-  sender: Electron.WebContents
-  provider: 'codex'
-  command: unknown
-  commandText: string
-  cwd: string
-  workspacePath?: string
-  threadId: string
-  model: string
-  appRunId?: string
-  appChatId?: string
-  reason: string
-  output: string
-}
-
-interface HostCommandResult {
-  stdout: string
-  stderr: string
-  exitCode: number | null
-  error?: string
-  timedOut: boolean
-  durationMs: number
-}
 
 // Phase B3: the five pending-approval registries (pendingCodexApprovals,
 // pendingKimiApprovals, pendingGeminiToolApprovals, pendingHostCommandApprovals,
@@ -1470,35 +1337,6 @@ async function ensureProviderRunPreflight(
   return false
 }
 
-interface CliProviderStreamState {
-  provider: ProviderId
-  sender: Electron.WebContents
-  startedAt: number
-  model: string
-  fallback: boolean
-  completed: boolean
-  assistantText: string
-  thinkingText?: string
-  thinkingStarted?: boolean
-  providerSessionId?: string | null
-  approvalMode?: string
-  sessionTrust?: boolean
-  externalPathGrants?: ExternalPathGrant[]
-  runtimeProfileId?: string
-  effectivePermissions?: EffectiveRunPermissions
-  ensembleRun?: EnsembleRunIdentity
-  runId?: string | null
-  appRunId?: string
-  appChatId?: string
-  tokenUsage?: any
-  /**
-   * 1.0.6-G5e — Grok's terminal stopReason when it is NOT a normal end (e.g.
-   * 'Cancelled', 'MaxTokens'). Grok exits 0 even when it self-cancels a turn
-   * mid-reasoning before answering/writing, so we remember the real reason here
-   * to report an honest result status instead of a misleading 'success'.
-   */
-  grokStopReason?: string
-}
 
 const runManager = new RunManager<any>()
 const permissionService = new PermissionService({ runManager, sessionGrants: agenticSessionGrants })
@@ -1506,7 +1344,6 @@ const providerPreflightService = new ProviderPreflightService()
 let runRepository: RunRepository | null = null
 let runQueueServiceRef: RunQueueService | null = null
 
-const RUN_MANAGER_PROVIDERS: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
 
 function getActiveAgbenchThreadCount(): number {
   const chatIds = new Set<string>()
@@ -2769,37 +2606,6 @@ function expireRunScopedApprovalLedger(session: {
   }
 }
 
-const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
-  shellCommands: 'Shell commands',
-  fileChanges: 'File changes',
-  mcpTools: 'Tool calls',
-  subThreadDelegation: 'Sub-thread delegation'
-}
-
-function agenticServiceBlockedMessage(service: AgenticServiceId): string {
-  return `${AGENTIC_SERVICE_LABELS[service]} blocked by AGBench settings.`
-}
-
-function agenticServiceDisabledMessage(service: AgenticServiceId): string {
-  if (service === 'subThreadDelegation') {
-    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in AGBench settings.`
-  }
-  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in AGBench settings.`
-}
-
-const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
-  'shellCommands',
-  'fileChanges',
-  'mcpTools',
-  'subThreadDelegation'
-])
-
-function assertAgenticServiceId(value: unknown): AgenticServiceId {
-  if (typeof value === 'string' && AGENTIC_SERVICE_IDS.has(value as AgenticServiceId)) {
-    return value as AgenticServiceId
-  }
-  throw new Error('Unknown agentic service id.')
-}
 
 function getAgenticServicePolicy(
   service: AgenticServiceId,
@@ -2817,14 +2623,6 @@ function hasAgenticWorkspaceGrant(
   return permissionService.hasWorkspaceGrant(settings, provider, workspacePath, service)
 }
 
-function approvalActionsForPolicy(policy: string, workspacePath?: string): AgentApprovalAction[] {
-  const actions: AgentApprovalAction[] = ['accept']
-  if (policy === 'workspace' && workspacePath) {
-    actions.push('acceptForWorkspace')
-  }
-  actions.push('acceptForSession', 'decline')
-  return actions
-}
 
 function ensembleApprovalContext(
   identity: EnsembleRunIdentity | undefined,
@@ -3176,45 +2974,9 @@ async function ensureWorkspaceTrustForRun(
   return false
 }
 
-function resolveWorkspaceDirectory(workspacePath: string, requestedCwd?: string | null): string {
-  const workspaceRoot = resolve(workspacePath)
-  const cwd =
-    requestedCwd && requestedCwd.trim()
-      ? isAbsolute(requestedCwd)
-        ? resolve(requestedCwd)
-        : resolve(workspaceRoot, requestedCwd)
-      : workspaceRoot
-  if (!isPathInsideWorkspace(workspaceRoot, cwd)) {
-    throw new Error('Command cwd is outside the workspace.')
-  }
-  return cwd
-}
 
-function resolveHostDirectory(baseCwd: string, requestedCwd?: string | null): string {
-  return requestedCwd && requestedCwd.trim()
-    ? isAbsolute(requestedCwd)
-      ? resolve(requestedCwd)
-      : resolve(baseCwd, requestedCwd)
-    : resolve(baseCwd)
-}
 
-function resolveScopedDirectory(
-  scope: ChatScope,
-  baseCwd: string,
-  workspacePath: string | undefined,
-  requestedCwd?: string | null
-): string {
-  return scope === 'global'
-    ? resolveHostDirectory(baseCwd, requestedCwd)
-    : resolveWorkspaceDirectory(workspacePath || baseCwd, requestedCwd)
-}
 
-function resolveGeminiMcpPath(workspacePath: string, filePath: string): string {
-  if (typeof filePath !== 'string' || !filePath.trim()) {
-    throw new Error('A workspace path is required.')
-  }
-  return resolveWorkspaceChild(workspacePath, filePath)
-}
 
 function resolveGeminiMcpScopedPath(context: GeminiToolContext, filePath: string): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
@@ -3887,127 +3649,13 @@ function rebuildBridgeApnsPusherFromSettings(): void {
 // sidebar GrokCreditsMeter and the Settings Provider-Telemetry card share a
 // single real probe instead of each spawning the TUI. Only `observed`
 // snapshots are cached; non-observed results fall through to a fresh probe.
-const GROK_USAGE_FRESH_TTL_MS = 2 * 60_000
 let grokUsageProbeCache: { snapshot: GrokUsageSnapshot; fetchedAt: number } | null = null
 
-function contentPartsToText(value: any, options: { includeThinking?: boolean } = {}): string {
-  if (typeof value === 'string') return value
-  if (!value) return ''
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => contentPartsToText(item, options))
-      .filter(Boolean)
-      .join('')
-  }
-  if (typeof value !== 'object') return ''
-  if (typeof value.text === 'string') return value.text
-  if (typeof value.think === 'string') return options.includeThinking ? value.think : ''
-  if (typeof value.thinking === 'string') return options.includeThinking ? value.thinking : ''
-  if (typeof value.reasoning === 'string') return options.includeThinking ? value.reasoning : ''
-  if (typeof value.content === 'string') return value.content
-  if (Array.isArray(value.content)) return contentPartsToText(value.content, options)
-  if (Array.isArray(value.message?.content))
-    return contentPartsToText(value.message.content, options)
-  return ''
-}
 
-function contentPartsToThinkingText(value: any): string {
-  if (!value) return ''
-  if (Array.isArray(value)) return value.map(contentPartsToThinkingText).filter(Boolean).join('')
-  if (typeof value !== 'object') return ''
-  const direct =
-    typeof value.think === 'string'
-      ? value.think
-      : typeof value.thinking === 'string'
-        ? value.thinking
-        : typeof value.reasoning === 'string'
-          ? value.reasoning
-          : ''
-  const nested = Array.isArray(value.content)
-    ? contentPartsToThinkingText(value.content)
-    : Array.isArray(value.message?.content)
-      ? contentPartsToThinkingText(value.message.content)
-      : ''
-  return `${direct}${nested}`
-}
 
-function extractProviderText(event: any): string {
-  if (!event) return ''
-  if (typeof event === 'string') return event
-  const params = event.params || {}
-  const payload = params.payload || event.payload || {}
-  if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta')
-    return event.delta.text || ''
-  // 1.0.5-S1 — Claude Agent SDK partial messages. When the SDK call
-  // passes `includePartialMessages: true` we get `stream_event` frames
-  // (SDKPartialAssistantMessage) whose `event` field carries the raw
-  // Anthropic message-stream event. We care about
-  // content_block_delta / text_delta — pull the incremental chunk so
-  // Claude streams text token-by-token like Codex does, instead of
-  // dumping the entire response in one cumulative `assistant` event
-  // at the end of the turn. The dedup logic in
-  // handleCliProviderJsonEvent already drops the trailing cumulative
-  // event safely (slice-to-empty when text === accumulated).
-  if (event.type === 'stream_event') {
-    const inner = event.event || {}
-    if (inner.type === 'content_block_delta' && inner.delta?.type === 'text_delta')
-      return inner.delta.text || ''
-  }
-  if (event.type === 'assistant' || event.type === 'message' || event.type === 'message_delta')
-    return contentPartsToText(event.message?.content || event.content || event.delta)
-  if (event.type === 'result' && typeof event.result === 'string') return event.result
-  if (event.method === 'event' && params.type === 'ContentPart') return contentPartsToText(payload)
-  if (params.type === 'ContentPart') return contentPartsToText(payload)
-  if (typeof event.text === 'string') return event.text
-  return ''
-}
 
-function extractProviderThinkingText(event: any): string {
-  if (!event || typeof event === 'string') return ''
-  const params = event.params || {}
-  const payload = params.payload || event.payload || {}
-  if (event.type === 'assistant' || event.type === 'message' || event.type === 'message_delta') {
-    return contentPartsToThinkingText(event.message?.content || event.content || event.delta)
-  }
-  if (event.method === 'event' && params.type === 'ContentPart')
-    return contentPartsToThinkingText(payload)
-  if (params.type === 'ContentPart') return contentPartsToThinkingText(payload)
-  return contentPartsToThinkingText(event)
-}
 
-function nestedRecord(source: Record<string, unknown>, key: string): Record<string, unknown> {
-  const value = source[key]
-  return isRecord(value) ? value : {}
-}
 
-function extractProviderSessionId(event: unknown): string | null {
-  if (!isRecord(event)) return null
-  const session = nestedRecord(event, 'session')
-  const message = nestedRecord(event, 'message')
-  const params = nestedRecord(event, 'params')
-  const result = nestedRecord(event, 'result')
-  const resultSession = nestedRecord(result, 'session')
-  const candidates = [
-    event.session_id,
-    event.sessionId,
-    session.id,
-    session.session_id,
-    message.session_id,
-    params.session_id,
-    event.providerThreadId,
-    event.provider_thread_id,
-    event.threadId,
-    result.session_id,
-    result.sessionId,
-    result.providerThreadId,
-    resultSession.id,
-    resultSession.session_id
-  ]
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
-  }
-  return null
-}
 
 function updateCliProviderSession(
   state: CliProviderStreamState,
@@ -4057,20 +3705,6 @@ function claudeProgrammaticUsageWarning(runtime: 'sdk' | 'cli-print', usesApiKey
 // the multi-field lookup Grok's mapper already uses (GrokStreamingJson). Falls
 // back to a unique generated id only when no identifier is present at all (which
 // keeps two genuinely id-less calls from merging).
-function cliProviderToolId(payload: Record<string, unknown>, prefix: string): string {
-  const candidates = [
-    payload.tool_call_id,
-    payload.toolCallId,
-    payload.id,
-    payload.tool_id,
-    payload.toolId,
-    payload.call_id
-  ]
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
 
 function emitCliProviderToolEvent(state: CliProviderStreamState, event: unknown): void {
   if (!isRecord(event)) return
@@ -4484,21 +4118,6 @@ function handleCursorStreamEvent(state: CliProviderStreamState, event: unknown) 
 // grok-build rates ($1/M input, $2/M output) — an xAI API-equivalent
 // projection, NOT a SuperGrok subscription bill. `total_cost_usd` is the field
 // the renderer's extractUsageCostUsd reads, so the `· $x` cost surfaces too.
-const GROK_PROJECTED_INPUT_USD_PER_MILLION = 1.0
-const GROK_PROJECTED_OUTPUT_USD_PER_MILLION = 2.0
-function estimateProjectedTokenUsage(
-  promptText: string | undefined,
-  responseText: string | undefined
-): { input_tokens: number; output_tokens: number; total_tokens: number; total_cost_usd: number } {
-  const estimate = (text: string | undefined): number =>
-    Math.max(0, Math.ceil((text || '').length / 4))
-  const input_tokens = estimate(promptText)
-  const output_tokens = estimate(responseText)
-  const total_cost_usd =
-    (input_tokens / 1_000_000) * GROK_PROJECTED_INPUT_USD_PER_MILLION +
-    (output_tokens / 1_000_000) * GROK_PROJECTED_OUTPUT_USD_PER_MILLION
-  return { input_tokens, output_tokens, total_tokens: input_tokens + output_tokens, total_cost_usd }
-}
 
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   if (state.provider === 'grok') {
@@ -5744,7 +5363,6 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 // global 'agbench' name to avoid a registry collision with the cursor web-fetch
 // server). Single-sourced so the session/new entry and the permission-allow
 // check below agree.
-const GROK_SCOPED_MCP_SERVER_NAME = 'agbench-grok'
 
 // Is this ACP permission request for one of OUR scoped-bridge tools? The
 // agbench-grok bridge advertises ONLY the non-mutating safe subset (--safe-subset
@@ -6030,8 +5648,6 @@ function respondToKimiWireRequest(child: ChildProcess, requestId: string | numbe
   child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', id: requestId, result }) + '\n')
 }
 
-const KIMI_WIRE_PROTOCOL_FALLBACK = '1.9'
-const KIMI_WIRE_PROTOCOL_INFO_TIMEOUT_MS = 3_000
 
 function extractKimiWireProtocol(value: unknown, depth = 0): string | null {
   if (depth > 4 || !value) return null
@@ -6811,12 +6427,6 @@ function getCodexClient(): CodexAppServerClient {
   return codexClient
 }
 
-function normalizeRunRoute(route?: AgentRunRoute | null): AgentRunRoute {
-  return {
-    ...(route?.appRunId ? { appRunId: String(route.appRunId) } : {}),
-    ...(route?.appChatId ? { appChatId: String(route.appChatId) } : {})
-  }
-}
 
 /**
  * 1.0.4-AD — pre-flight reachability probe for an ensemble participant.
@@ -6839,7 +6449,6 @@ function normalizeRunRoute(route?: AgentRunRoute | null): AgentRunRoute {
  * is allowed to be defensive without a dedicated try/catch around
  * every adapter call.
  */
-const PROBE_TIMEOUT_MS = 1000
 
 async function probeEnsembleParticipant(
   participant: EnsembleParticipant
@@ -6896,17 +6505,7 @@ async function probeCliParticipant(
   }
 }
 
-function createFallbackRunId(provider: ProviderId): string {
-  return `${provider}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
 
-function routeWithRunId(provider: ProviderId, route?: AgentRunRoute | null): AgentRunRoute {
-  const normalized = normalizeRunRoute(route)
-  return {
-    ...normalized,
-    appRunId: normalized.appRunId || createFallbackRunId(provider)
-  }
-}
 
 function registerRunSession(
   provider: ProviderId,
@@ -7155,26 +6754,6 @@ function sendAgentCompatError(
   }
 }
 
-function buildAgentExitStats(
-  provider: ProviderId,
-  route?: AgentRunRoute | null
-): Record<string, unknown> | undefined {
-  if (!route || typeof route !== 'object') return undefined
-  const tokenUsage = (route as { tokenUsage?: unknown }).tokenUsage
-  if (!tokenUsage || typeof tokenUsage !== 'object') return undefined
-  const startedAt = (route as { startedAt?: unknown }).startedAt
-  const durationMs =
-    typeof startedAt === 'number' && Number.isFinite(startedAt)
-      ? Math.max(0, Date.now() - startedAt)
-      : 0
-  if (provider === 'codex') {
-    return codexUsageToStats(tokenUsage, durationMs)
-  }
-  return {
-    ...(tokenUsage as Record<string, unknown>),
-    duration_ms: durationMs
-  }
-}
 
 function sendAgentCompatExit(
   sender: Electron.WebContents,
@@ -7204,16 +6783,6 @@ function sendAgentCompatExit(
   }
 }
 
-function normalizeCodexModel(model?: string | null): string {
-  const trimmed = typeof model === 'string' ? model.trim() : ''
-  if (
-    !trimmed ||
-    ['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'].includes(trimmed)
-  ) {
-    return CODEX_STATIC_MODELS[0].id
-  }
-  return trimmed
-}
 
 function codexApprovalPolicyForMode(
   approvalMode?: string,
@@ -7226,9 +6795,6 @@ function codexApprovalPolicyForMode(
   return 'on-request'
 }
 
-function codexSandboxForMode(approvalMode?: string): 'read-only' | 'workspace-write' {
-  return approvalMode === 'plan' ? 'read-only' : 'workspace-write'
-}
 
 function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPathGrant[] {
   if (!Array.isArray(grants)) return []
@@ -7412,22 +6978,7 @@ function codexSandboxPolicyForMode(
   }
 }
 
-function buildCodexUserInput(prompt: string, imagePaths: string[] = []) {
-  const input: any[] = [{ type: 'text', text: prompt, text_elements: [] }]
-  for (const imagePath of imagePaths) {
-    if (typeof imagePath === 'string' && imagePath.trim()) {
-      input.push({ type: 'localImage', path: imagePath.trim() })
-    }
-  }
-  return input
-}
 
-function normalizeCodexTurnStatus(status?: string): string {
-  if (status === 'completed') return 'success'
-  if (status === 'interrupted') return 'cancelled'
-  if (status === 'failed') return 'failed'
-  return status || 'success'
-}
 
 function createCodexRunState(
   sender: Electron.WebContents,
@@ -7589,140 +7140,7 @@ function emitCodexPlanItem(state: CodexRunState, item: any) {
   }
 }
 
-function codexToolUseFromItem(item: any): any | null {
-  if (!item || typeof item !== 'object') return null
-  if (item.type === 'commandExecution') {
-    const command = codexCommandText(item.command || '')
-    const editMetadata = codexCommandFileEditMetadata(
-      command,
-      codexString(item.aggregatedOutput || item.output || item.stdout || item.stderr || '')
-    )
-    if (editMetadata) {
-      return {
-        type: 'tool_use',
-        tool_id: item.id,
-        tool_name: editMetadata.toolName,
-        parameters: editMetadata.parameters,
-        provider: 'codex'
-      }
-    }
-    return {
-      type: 'tool_use',
-      tool_id: item.id,
-      tool_name: 'run_shell_command',
-      parameters: {
-        command,
-        cwd: item.cwd || ''
-      },
-      provider: 'codex'
-    }
-  }
-  if (item.type === 'fileChange') {
-    const firstChange = Array.isArray(item.changes) ? item.changes[0] : undefined
-    const kind = firstChange?.kind || 'update'
-    const toolName =
-      kind === 'create' || kind === 'add'
-        ? 'create_file'
-        : kind === 'delete'
-          ? 'delete_file'
-          : 'edit_file'
-    return {
-      type: 'tool_use',
-      tool_id: item.id,
-      tool_name: toolName,
-      parameters: {
-        path: firstChange?.path || '',
-        changes: item.changes || []
-      },
-      provider: 'codex'
-    }
-  }
-  if (item.type === 'mcpToolCall') {
-    return {
-      type: 'tool_use',
-      tool_id: item.id,
-      tool_name: item.tool || 'mcp_tool',
-      parameters: item.arguments || {},
-      provider: 'codex',
-      server: item.server
-    }
-  }
-  if (item.type === 'dynamicToolCall') {
-    return {
-      type: 'tool_use',
-      tool_id: item.id,
-      tool_name: item.tool || 'dynamic_tool',
-      parameters: item.arguments || {},
-      provider: 'codex',
-      namespace: item.namespace
-    }
-  }
-  return null
-}
 
-function codexToolResultFromItem(item: any): any | null {
-  if (!item || typeof item !== 'object') return null
-  if (item.type === 'commandExecution') {
-    const output = item.aggregatedOutput || ''
-    const command = codexCommandText(item.command || '')
-    const editMetadata = codexCommandFileEditMetadata(
-      command,
-      codexString(output || item.output || item.stdout || item.stderr || '')
-    )
-    return {
-      type: 'tool_result',
-      tool_id: item.id,
-      tool_name: editMetadata?.toolName || 'run_shell_command',
-      status:
-        item.status === 'failed' ? 'error' : item.status === 'declined' ? 'warning' : 'success',
-      output,
-      result: {
-        exitCode: item.exitCode,
-        durationMs: item.durationMs
-      },
-      provider: 'codex'
-    }
-  }
-  if (item.type === 'fileChange') {
-    return {
-      type: 'tool_result',
-      tool_id: item.id,
-      tool_name: codexToolUseFromItem(item)?.tool_name || 'edit_file',
-      status:
-        item.status === 'failed' ? 'error' : item.status === 'declined' ? 'warning' : 'success',
-      output: Array.isArray(item.changes)
-        ? item.changes
-            .map((change: any) => `${change.kind || 'update'} ${change.path || ''}`)
-            .join('\n')
-        : '',
-      result: item,
-      provider: 'codex'
-    }
-  }
-  if (item.type === 'mcpToolCall') {
-    return {
-      type: 'tool_result',
-      tool_id: item.id,
-      tool_name: item.tool || 'mcp_tool',
-      status: item.status === 'failed' ? 'error' : 'success',
-      output: item.error ? JSON.stringify(item.error) : JSON.stringify(item.result || {}),
-      result: item.result || item.error || {},
-      provider: 'codex'
-    }
-  }
-  if (item.type === 'dynamicToolCall') {
-    return {
-      type: 'tool_result',
-      tool_id: item.id,
-      tool_name: item.tool || 'dynamic_tool',
-      status: item.success === false || item.status === 'failed' ? 'error' : 'success',
-      output: JSON.stringify(item.contentItems || {}),
-      result: item,
-      provider: 'codex'
-    }
-  }
-  return null
-}
 
 function handleCodexNotification(message: any) {
   const state = findCodexRunStateForMessage(message)
@@ -8935,7 +8353,6 @@ function runCodexExecFallback(
  * app-server behaviour, and silently spawning a different CLI than the one the
  * user configured is a far riskier failure mode than an upgrade nag.
  */
-const KNOWN_OFF_PATH_CODEX_BINARIES = ['/Applications/Codex.app/Contents/Resources/codex']
 
 async function maybeWarnNewerCodexBinary(
   sender: Electron.WebContents,
@@ -9841,56 +9258,11 @@ async function readCliVersion(command: string): Promise<string> {
   })
 }
 
-function isAppearanceMode(value: unknown): value is AppearanceMode {
-  return value === 'solid' || value === 'soft_glass' || value === 'native_glass'
-}
 
-function stripAnsi(value: string): string {
-  return value.replace(new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, 'g'), '')
-}
 
-function appendLimitedOutput(
-  current: string,
-  chunk: Buffer
-): { value: string; truncated: boolean } {
-  const next = current + chunk.toString('utf8')
-  if (next.length <= MAX_CAPABILITY_OUTPUT_CHARS) {
-    return { value: next, truncated: false }
-  }
 
-  return {
-    value: `${next.slice(0, MAX_CAPABILITY_OUTPUT_CHARS)}\n[output truncated]`,
-    truncated: true
-  }
-}
 
-function stringifyJsonFragment(value: unknown): string {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  return value as Record<string, unknown>
-}
-
-function readStringField(record: Record<string, unknown>, fields: string[]): string | undefined {
-  for (const field of fields) {
-    const value = record[field]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-    if (typeof value === 'number' || typeof value === 'boolean') {
-      return String(value)
-    }
-  }
-  return undefined
-}
 
 function extractCapabilityJsonEntries(
   value: unknown,
@@ -10405,25 +9777,7 @@ async function repairKnownStaleGeminiMcpBridgeConfigs(cwd?: string): Promise<voi
   return mcpBridgeRuntime.repairKnownStaleGeminiMcpBridgeConfigs(cwd)
 }
 
-function normalizeMcpToolArguments(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { value }
-    } catch {
-      return { value }
-    }
-  }
-  if (typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, any>
-  }
-  return { value }
-}
 
-function isAGBenchMcpToolName(value: unknown): value is AGBenchMcpToolName {
-  return AGENTBENCH_MCP_TOOLS.includes(value as AGBenchMcpToolName)
-}
 
 function formatHostCommandResult(result: HostCommandResult): string {
   const parts = [
@@ -10435,31 +9789,12 @@ function formatHostCommandResult(result: HostCommandResult): string {
   return parts.join('\n\n')
 }
 
-const MAX_MCP_TEXT_CHARS = 200_000
 // MCP_AUTO_ALLOWED_TOOLS lives in ./mcp/McpAutoAllowedTools (imported at top).
 // Extracted so its no-mutating-tools safety invariant can be unit-tested —
 // see McpAutoAllowedTools.test.ts. Membership SKIPS the host approval gate, so
 // only non-mutating tools may ever be added there.
 
-function mcpJson(value: unknown): string {
-  const text = JSON.stringify(value, null, 2)
-  if (text.length <= MAX_MCP_TEXT_CHARS) return text
-  return JSON.stringify(
-    {
-      truncated: true,
-      originalLength: text.length,
-      preview: text.slice(0, MAX_MCP_TEXT_CHARS)
-    },
-    null,
-    2
-  )
-}
 
-function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.max(min, Math.min(max, Math.trunc(parsed)))
-}
 
 function mcpStructuredJsonResult(
   value: Record<string, unknown>,
@@ -13198,13 +12533,6 @@ function resolveNativeVibrancy(
  * Returns undefined when a glass window is used (caller passes the
  * transparent backdrop in that case).
  */
-const LIGHT_THEME_POPOUT_BACKDROPS: Record<string, string> = {
-  light: '#f4f6f8',
-  citrus: '#f4f6f8',
-  mist: '#eef4f6',
-  sage: '#f0f5f0',
-  alabaster: '#f4f3ef'
-}
 
 function resolvePopoutBackgroundColor(useGlassWindow: boolean): string {
   if (useGlassWindow) return '#00000000'
@@ -13212,69 +12540,8 @@ function resolvePopoutBackgroundColor(useGlassWindow: boolean): string {
   return LIGHT_THEME_POPOUT_BACKDROPS[theme] ?? '#1e1e1e'
 }
 
-function resolveWorkspaceChild(workspace: string, filePath: string): string {
-  const workspaceRoot = resolve(workspace)
-  const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
-  const rel = relative(workspaceRoot, targetPath)
-  if (
-    rel === '' ||
-    rel === '..' ||
-    rel.startsWith(`..${sep}`) ||
-    isAbsolute(rel) ||
-    !isPathInsideWorkspace(workspaceRoot, targetPath)
-  ) {
-    throw new Error('Path is outside the workspace.')
-  }
-  return targetPath
-}
 
-function toWorkspaceRelativePath(workspace: string, targetPath: string): string {
-  return relative(resolve(workspace), resolve(targetPath)).replace(/\\/g, '/')
-}
 
-function appendGeminiCliWorktreeArgs(
-  args: string[],
-  worktree: GeminiWorktreeLaunchOption = null
-): string | null {
-  if (!worktree) {
-    return null
-  }
-
-  let enabled = false
-  let name: string | undefined
-
-  if (typeof worktree === 'boolean') {
-    enabled = worktree
-  } else if (typeof worktree === 'string') {
-    enabled = true
-    name = worktree
-  } else {
-    enabled = Boolean(worktree.enabled)
-    name = typeof worktree.name === 'string' ? worktree.name : undefined
-  }
-
-  if (!enabled) {
-    return null
-  }
-
-  const normalizedName = name?.trim()
-  if (normalizedName) {
-    const hasParentTraversal = normalizedName.split(/[\\/]+/).some((part) => part === '..')
-    if (
-      normalizedName.startsWith('-') ||
-      isAbsolute(normalizedName) ||
-      hasParentTraversal ||
-      !/^[a-zA-Z0-9._/-]+$/.test(normalizedName)
-    ) {
-      return 'Invalid Gemini worktree name provided. Execution blocked.'
-    }
-    args.push('--worktree', normalizedName)
-    return null
-  }
-
-  args.push('--worktree')
-  return null
-}
 
 async function listWorkspaceFileEntries(workspace: string): Promise<WorkspaceFileEntry[]> {
   const workspaceRoot = resolve(workspace)
@@ -13661,7 +12928,6 @@ function createWindow(): void {
   }
 }
 
-type WorkspacePopoutKind = 'file-editor' | 'diff-studio'
 
 function parseWorkspacePopoutInput(input: unknown): {
   kind: WorkspacePopoutKind
