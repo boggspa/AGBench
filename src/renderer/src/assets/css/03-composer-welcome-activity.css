@@ -803,16 +803,16 @@
   min-width: 78px;
 }
 .ensemble-hierarchy-tile.provider-claude {
-  border-color: color-mix(in srgb, var(--provider-claude, #d68a4d) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-claude-color, #d97706) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-codex {
-  border-color: color-mix(in srgb, var(--provider-codex, #3b82f6) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-codex-color, #6366f1) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-gemini {
-  border-color: color-mix(in srgb, var(--provider-gemini, #4d8edb) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-gemini-color, #2563eb) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-kimi {
-  border-color: color-mix(in srgb, var(--provider-kimi, #6fb04a) 48%, var(--panel-border));
+  border-color: color-mix(in srgb, var(--provider-kimi-color, #84a33b) 48%, var(--panel-border));
 }
 .ensemble-hierarchy-tile.provider-grok {
   border-color: color-mix(in srgb, var(--provider-grok-color) 48%, var(--panel-border));
