@@ -15817,6 +15817,12 @@ if (isGeminiMcpBridgeProcess) {
     )
 
     ipcMain.handle(
+      'github:pr-readiness',
+      async (_event, payload?: { workspacePath?: string; repoPath?: string }) =>
+        gitService.pullRequestReadiness(gitPayloadPath(payload))
+    )
+
+    ipcMain.handle(
       'create-github-pr',
       async (
         _event,

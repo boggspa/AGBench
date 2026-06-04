@@ -135,6 +135,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'git:commit': ['optionalObject'],
   'git:push': ['optionalObject'],
   'github:pr-status': ['optionalObject'],
+  'github:pr-readiness': ['optionalObject'],
   'create-github-pr': ['optionalObject'],
   'agentic-yolo-get': [],
   'agentic-yolo-set': ['boolean'],

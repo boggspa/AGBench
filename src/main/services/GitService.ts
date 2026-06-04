@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { homedir } from 'os'
-import { dirname, join, resolve } from 'path'
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'path'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -11,8 +11,14 @@ export interface GitCommandResult {
   code: number
 }
 
+export interface GitCommandOptions {
+  cwd: string
+  timeoutMs?: number
+  env?: Record<string, string>
+}
+
 export interface GitCommandRunner {
-  (command: string, args: string[], options: { cwd: string; timeoutMs?: number }): Promise<GitCommandResult>
+  (command: string, args: string[], options: GitCommandOptions): Promise<GitCommandResult>
 }
 
 export interface GitFileStatus {
@@ -59,6 +65,15 @@ export interface GitPrSummary {
     conclusion?: string
     url?: string
   }>
+}
+
+export interface GitPrReadiness {
+  snapshot: GitRepositorySnapshot
+  existingPullRequest?: GitPrSummary
+  canCreatePullRequest: boolean
+  shouldPushFirst: boolean
+  reason?: string
+  warnings: string[]
 }
 
 export type GitResult<T> = { ok: true; data: T } | { ok: false; error: string; stderr?: string }
@@ -109,7 +124,7 @@ export class GitService {
   async stage(input: GitStageInput): Promise<GitResult<GitRepositorySnapshot>> {
     try {
       const repo = await this.resolveRepository(input.repoPath)
-      const paths = sanitizePaths(input.paths)
+      const paths = sanitizeRepoPaths(input.paths, repo.repoRoot)
       if (input.patch && input.patch.trim()) {
         return {
           ok: false,
@@ -154,6 +169,9 @@ export class GitService {
       if (snapshot.detached || !snapshot.branch) {
         return { ok: false, error: 'Cannot push from a detached HEAD. Create or switch to a branch first.' }
       }
+      if (!snapshot.remoteUrl && !input.remote?.trim()) {
+        return { ok: false, error: 'No git remote is configured. Add a remote before pushing.' }
+      }
       const remote = input.remote?.trim() || snapshot.remoteName || 'origin'
       const args =
         snapshot.upstream && !input.setUpstream
@@ -172,6 +190,16 @@ export class GitService {
       if (snapshot.detached || !snapshot.branch) {
         return { ok: false, error: 'Cannot create a pull request from a detached HEAD.' }
       }
+      if (!snapshot.remoteUrl) {
+        return { ok: false, error: 'No git remote is configured. Add and push to a remote before creating a pull request.' }
+      }
+      if (!snapshot.upstream || snapshot.ahead > 0) {
+        return { ok: false, error: 'Push the current branch before creating a pull request.' }
+      }
+      const existingPr = await this.readPullRequestSummary(snapshot.repoRoot)
+      if (existingPr.ok && existingPr.summary?.url) {
+        return { ok: false, error: 'This branch already has a pull request.', stderr: existingPr.summary.url }
+      }
       const args = ['pr', 'create']
       const title = input.title?.trim() || ''
       const body = input.body?.trim() || ''
@@ -180,7 +208,7 @@ export class GitService {
       if (!title && !body) args.push('--fill')
       if (input.draft) args.push('--draft')
 
-      const result = await this.run('gh', args, { cwd: snapshot.repoRoot, timeoutMs: this.timeoutMs })
+      const result = await this.runGh(args, snapshot.repoRoot)
       if (result.code !== 0) {
         return {
           ok: false,
@@ -206,45 +234,58 @@ export class GitService {
       if (snapshot.detached || !snapshot.branch) {
         return { ok: false, error: 'Cannot read pull request status from a detached HEAD.' }
       }
-      const result = await this.run(
-        'gh',
-        [
-          'pr',
-          'view',
-          '--json',
-          'number,url,state,isDraft,headRefName,baseRefName,statusCheckRollup'
-        ],
-        { cwd: snapshot.repoRoot, timeoutMs: this.timeoutMs }
-      )
-      if (result.code !== 0) {
+      const existingPr = await this.readPullRequestSummary(snapshot.repoRoot)
+      if (!existingPr.ok) {
         return {
           ok: false,
-          error: result.stderr.trim() || result.stdout.trim() || '`gh pr view` failed.',
-          stderr: result.stderr.trim() || undefined
+          error: existingPr.error,
+          stderr: existingPr.stderr
         }
       }
-      const parsed = JSON.parse(result.stdout || '{}') as Record<string, unknown>
-      const checks = Array.isArray(parsed.statusCheckRollup)
-        ? parsed.statusCheckRollup.map((item) => {
-            const record = isRecord(item) ? item : {}
-            return {
-              name: stringField(record.name),
-              status: stringField(record.status),
-              conclusion: stringField(record.conclusion),
-              url: stringField(record.detailsUrl) || stringField(record.url)
-            }
-          })
-        : undefined
+      if (!existingPr.summary) {
+        return { ok: false, error: 'No pull request found for the current branch.' }
+      }
+      return { ok: true, data: existingPr.summary }
+    } catch (error) {
+      return failure(error)
+    }
+  }
+
+  async pullRequestReadiness(inputPath: string): Promise<GitResult<GitPrReadiness>> {
+    try {
+      const snapshot = await this.buildSnapshot(inputPath)
+      const warnings: string[] = []
+      let existingPullRequest: GitPrSummary | undefined
+      if (!snapshot.detached && snapshot.branch && snapshot.remoteUrl) {
+        const existingPr = await this.readPullRequestSummary(snapshot.repoRoot)
+        if (existingPr.ok) {
+          existingPullRequest = existingPr.summary
+        } else if (!existingPr.notFound) {
+          warnings.push(existingPr.error)
+        }
+      }
+      let reason: string | undefined
+      if (snapshot.detached || !snapshot.branch) {
+        reason = 'Cannot create a pull request from a detached HEAD.'
+      } else if (!snapshot.remoteUrl) {
+        reason = 'No git remote is configured.'
+      } else if (!snapshot.upstream || snapshot.ahead > 0) {
+        reason = 'Push the current branch before creating a pull request.'
+      } else if (existingPullRequest?.url) {
+        reason = 'This branch already has a pull request.'
+      }
+      const shouldPushFirst = Boolean(
+        snapshot.branch && snapshot.remoteUrl && (!snapshot.upstream || snapshot.ahead > 0)
+      )
       return {
         ok: true,
         data: {
-          number: typeof parsed.number === 'number' ? parsed.number : undefined,
-          url: stringField(parsed.url),
-          state: stringField(parsed.state),
-          isDraft: typeof parsed.isDraft === 'boolean' ? parsed.isDraft : undefined,
-          headRefName: stringField(parsed.headRefName),
-          baseRefName: stringField(parsed.baseRefName),
-          checks
+          snapshot,
+          ...(existingPullRequest ? { existingPullRequest } : {}),
+          canCreatePullRequest: !reason,
+          shouldPushFirst,
+          ...(reason ? { reason } : {}),
+          warnings
         }
       }
     } catch (error) {
@@ -274,6 +315,43 @@ export class GitService {
       requestedPath,
       repoRoot: result.stdout.trim()
     }
+  }
+
+  private async readPullRequestSummary(repoRoot: string): Promise<
+    | { ok: true; summary?: GitPrSummary }
+    | { ok: false; error: string; stderr?: string; notFound?: boolean }
+  > {
+    const result = await this.runGh(
+      [
+        'pr',
+        'view',
+        '--json',
+        'number,url,state,isDraft,headRefName,baseRefName,statusCheckRollup'
+      ],
+      repoRoot
+    )
+    if (result.code !== 0) {
+      const stderr = result.stderr.trim()
+      const stdout = result.stdout.trim()
+      const message = stderr || stdout || '`gh pr view` failed.'
+      if (isNoPullRequestMessage(message)) {
+        return { ok: true }
+      }
+      return {
+        ok: false,
+        error: message,
+        stderr: stderr || undefined
+      }
+    }
+    return { ok: true, summary: parsePullRequestSummary(result.stdout) }
+  }
+
+  private async runGh(args: string[], cwd: string): Promise<GitCommandResult> {
+    return this.run('gh', args, {
+      cwd,
+      timeoutMs: this.timeoutMs,
+      env: { GH_PROMPT_DISABLED: '1' }
+    })
   }
 
   private async buildSnapshot(inputPath: string): Promise<GitRepositorySnapshot> {
@@ -389,7 +467,7 @@ export function parseStatusPorcelainZ(output: string): GitFileStatus[] {
 async function runCommand(
   command: string,
   args: string[],
-  options: { cwd: string; timeoutMs?: number }
+  options: GitCommandOptions
 ): Promise<GitCommandResult> {
   return await new Promise((resolve) => {
     let stdout = ''
@@ -397,7 +475,7 @@ async function runCommand(
     let settled = false
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: { ...process.env },
+      env: { ...process.env, ...(command === 'gh' ? { GH_PROMPT_DISABLED: '1' } : {}), ...options.env },
       stdio: ['ignore', 'pipe', 'pipe']
     })
     const timeout = setTimeout(() => {
@@ -446,9 +524,27 @@ function classifyStatus(
   return 'modified'
 }
 
-function sanitizePaths(paths: string[] | undefined): string[] {
+function sanitizeRepoPaths(paths: string[] | undefined, repoRoot: string): string[] {
   if (!Array.isArray(paths)) return []
-  return paths.map((path) => path.trim()).filter((path) => path && !path.startsWith('/'))
+  const sanitized: string[] = []
+  for (const candidate of paths) {
+    const trimmed = String(candidate || '').trim()
+    if (!trimmed) continue
+    if (isAbsolute(trimmed)) {
+      throw new Error('Stage paths must be relative to the repository.')
+    }
+    const normalized = normalize(trimmed)
+    if (normalized === '.' || normalized === '..' || normalized.startsWith(`..${sep}`)) {
+      throw new Error('Stage paths must stay inside the repository.')
+    }
+    const resolvedPath = resolve(repoRoot, normalized)
+    const relativePath = relative(repoRoot, resolvedPath)
+    if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+      throw new Error('Stage paths must stay inside the repository.')
+    }
+    sanitized.push(relativePath)
+  }
+  return sanitized
 }
 
 function expandHomePath(value?: string | null): string {
@@ -457,6 +553,39 @@ function expandHomePath(value?: string | null): string {
   if (raw === '~') return homedir()
   if (raw.startsWith('~/')) return join(homedir(), raw.slice(2))
   return raw
+}
+
+function parsePullRequestSummary(output: string): GitPrSummary {
+  const parsed = JSON.parse(output || '{}') as Record<string, unknown>
+  const checks = Array.isArray(parsed.statusCheckRollup)
+    ? parsed.statusCheckRollup.map((item) => {
+        const record = isRecord(item) ? item : {}
+        return {
+          name: stringField(record.name),
+          status: stringField(record.status),
+          conclusion: stringField(record.conclusion),
+          url: stringField(record.detailsUrl) || stringField(record.url)
+        }
+      })
+    : undefined
+  return {
+    number: typeof parsed.number === 'number' ? parsed.number : undefined,
+    url: stringField(parsed.url),
+    state: stringField(parsed.state),
+    isDraft: typeof parsed.isDraft === 'boolean' ? parsed.isDraft : undefined,
+    headRefName: stringField(parsed.headRefName),
+    baseRefName: stringField(parsed.baseRefName),
+    checks
+  }
+}
+
+function isNoPullRequestMessage(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('no pull requests found') ||
+    normalized.includes('no open pull requests') ||
+    normalized.includes('could not find any pull requests')
+  )
 }
 
 function failure<T>(error: unknown): GitResult<T> {

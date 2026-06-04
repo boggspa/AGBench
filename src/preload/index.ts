@@ -6,7 +6,12 @@ import type {
 } from '../main/store/types'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
-import type { GitPrSummary, GitRepositorySnapshot, GitResult } from '../main/services/GitService'
+import type {
+  GitPrReadiness,
+  GitPrSummary,
+  GitRepositorySnapshot,
+  GitResult
+} from '../main/services/GitService'
 
 type ComposerImageAttachment = {
   id?: string
@@ -153,6 +158,8 @@ const api = {
   }) => ipcRenderer.invoke('git:push', payload) as Promise<GitResult<GitRepositorySnapshot>>,
   githubPrStatus: (payload: { workspacePath?: string; repoPath?: string }) =>
     ipcRenderer.invoke('github:pr-status', payload) as Promise<GitResult<GitPrSummary>>,
+  githubPrReadiness: (payload: { workspacePath?: string; repoPath?: string }) =>
+    ipcRenderer.invoke('github:pr-readiness', payload) as Promise<GitResult<GitPrReadiness>>,
   createGithubPr: (payload: {
     workspacePath?: string
     repoPath?: string
