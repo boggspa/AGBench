@@ -1,6 +1,9 @@
+export const LEGACY_AGBENCH_FONT_STACK =
+  '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
+
 export const FONT_STACKS = {
   agbench:
-    '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
+    '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
   compact: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
   humanist:
     '"Avenir Next", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -45,6 +48,7 @@ export function normalizeFontFamily(
 ): string {
   if (typeof value !== 'string') return fallback
   const trimmed = value.trim()
+  if (trimmed === LEGACY_AGBENCH_FONT_STACK) return FONT_STACKS.agbench
   return trimmed.length > 0 ? trimmed : fallback
 }
 
@@ -63,7 +67,10 @@ export function resolveComposerFontFamily(
 }
 
 export function getFontSelectValue(options: TypefaceOption[], value: string): string {
-  return options.some((option) => option.value === value) ? value : CUSTOM_FONT_SELECT_VALUE
+  const normalizedValue = normalizeFontFamily(value, value)
+  return options.some((option) => option.value === normalizedValue)
+    ? normalizedValue
+    : CUSTOM_FONT_SELECT_VALUE
 }
 
 export function quoteInstalledFontFamily(fontFamily: string): string {

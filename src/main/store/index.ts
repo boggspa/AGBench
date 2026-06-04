@@ -97,6 +97,10 @@ const runEventHashCache = new Map<string, string>()
 // so their global chats have a usable runtime out of the box. Unconditional:
 // unused default profiles for a force-disabled provider are harmless data.
 const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+const LEGACY_AGBENCH_FONT_STACK =
+  '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
+const AGBENCH_DEFAULT_FONT_STACK =
+  '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif'
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -120,8 +124,7 @@ const defaultSettings: AppSettings = {
   userBubbleColor: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
-  transcriptFontFamily:
-    '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
+  transcriptFontFamily: AGBENCH_DEFAULT_FONT_STACK,
   composerFontFamily: 'match-transcript',
   // 1.0.5-EW25 — Display currency for cost / token-spend chips.
   // USD by default; user can switch to GBP / EUR via Settings →
@@ -214,6 +217,13 @@ function readJson<T>(filePath: string, defaultData: T): T {
 
 function objectOrUndefined<T extends object>(value: T | null | undefined): T | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function normalizeSettingsFontFamily(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  return trimmed === LEGACY_AGBENCH_FONT_STACK ? AGBENCH_DEFAULT_FONT_STACK : trimmed
 }
 
 function writeJson<T>(filePath: string, data: T) {
@@ -384,6 +394,14 @@ export class AppStore {
             ? null
             : defaultSettings.defaultGeminiAuthProfileId,
       geminiAuthProfiles: Array.isArray(stored.geminiAuthProfiles) ? stored.geminiAuthProfiles : [],
+      transcriptFontFamily: normalizeSettingsFontFamily(
+        stored.transcriptFontFamily,
+        defaultSettings.transcriptFontFamily || AGBENCH_DEFAULT_FONT_STACK
+      ),
+      composerFontFamily: normalizeSettingsFontFamily(
+        stored.composerFontFamily,
+        defaultSettings.composerFontFamily || 'match-transcript'
+      ),
       // Phase M1 — coerce any non-enum value (missing, typo'd, legacy)
       // back to the safe default so the eventual API-vs-CLI dispatch
       // logic never sees an unexpected mode.

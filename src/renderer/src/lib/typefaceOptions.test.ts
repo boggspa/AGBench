@@ -4,6 +4,7 @@ import {
   COMPOSER_FONT_OPTIONS,
   CUSTOM_FONT_SELECT_VALUE,
   FONT_STACKS,
+  LEGACY_AGBENCH_FONT_STACK,
   TRANSCRIPT_FONT_OPTIONS,
   getFontSelectValue,
   normalizeComposerFontFamily,
@@ -25,6 +26,7 @@ describe('typeface option lists', () => {
     expect(TRANSCRIPT_FONT_OPTIONS).not.toContainEqual(
       expect.objectContaining({ value: COMPOSER_FONT_MATCH_TRANSCRIPT })
     )
+    expect(FONT_STACKS.agbench).toContain('"Avenir Next", Avenir')
   })
 
   it('puts match-transcript first for composer options', () => {
@@ -43,6 +45,10 @@ describe('normalizeFontFamily', () => {
   it('uses the requested fallback for non-string and blank values', () => {
     expect(normalizeFontFamily(undefined, FONT_STACKS.system)).toBe(FONT_STACKS.system)
     expect(normalizeFontFamily('   ', FONT_STACKS.compact)).toBe(FONT_STACKS.compact)
+  })
+
+  it('normalizes the old SF Pro AGBench default to the current default stack', () => {
+    expect(normalizeFontFamily(LEGACY_AGBENCH_FONT_STACK)).toBe(FONT_STACKS.agbench)
   })
 })
 
@@ -67,6 +73,12 @@ describe('composer font resolution', () => {
 describe('getFontSelectValue', () => {
   it('returns known option values unchanged', () => {
     expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, FONT_STACKS.agbench)).toBe(
+      FONT_STACKS.agbench
+    )
+  })
+
+  it('maps the old SF Pro AGBench default to the current default option', () => {
+    expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, LEGACY_AGBENCH_FONT_STACK)).toBe(
       FONT_STACKS.agbench
     )
   })
