@@ -29,6 +29,24 @@ import {
   type HeatmapGrid
 } from '../lib/UsageHeatmap'
 
+/**
+ * Module-level per-source cache of the last successfully fetched usage
+ * records, keyed by `usageSource` ('agbench' | 'external' | …).
+ *
+ * Why: in the welcome "single (cycle)" layout the heatmap REMOUNTS every
+ * time the cycle swaps slots, which would otherwise reset `records` to []
+ * and run the swipe-in animation over a blank grid until the async IPC
+ * fetch resolves — a visible flash on EVERY cycle. By retaining the last
+ * grid here and seeding `records` from it on mount (PRE-WARM), a remount
+ * paints the previously-rendered grid instantly and then silently
+ * refreshes in the background (RETAIN).
+ *
+ * Keyed by source so external/agbench/workspace data never bleed into one
+ * another. Lives at module scope (survives unmount) but resets on full
+ * page reload, which is the desired lifetime.
+ */
+const usageHeatmapCache = new Map<string, UsageRecord[]>()
+
 const TIME_LABELS = ['00', '04', '08', '12', '16', '20'] // hour-of-day ticks shown on the left rail
 const PROVIDER_FILTERS: Array<{ id: HeatmapProviderFilter; label: string }> = [
   { id: 'all', label: 'All' },
@@ -104,12 +122,23 @@ export function UsageHeatmap({
   showProviderFilter = false,
   className
 }: UsageHeatmapProps) {
-  const [records, setRecords] = useState<UsageRecord[]>([])
+  // PRE-WARM: seed from the per-source cache (if any) via a lazy
+  // initializer so a remount paints the retained grid synchronously on the
+  // first render — before the IPC fetch below resolves — instead of
+  // flashing an empty grid. Falls back to [] on the very first ever fetch.
+  const [records, setRecords] = useState<UsageRecord[]>(
+    () => usageHeatmapCache.get(usageSource) ?? []
+  )
   const [loading, setLoading] = useState(false)
   const [providerFilter, setProviderFilter] = useState<HeatmapProviderFilter>('all')
 
   useEffect(() => {
     let cancelled = false
+    // If `usageSource` changed without a remount, immediately repaint with
+    // that source's cached grid (if any) so we never show stale data from
+    // the previous source while the new fetch is in flight. On a fresh
+    // mount this matches the lazy initializer and is a no-op.
+    setRecords(usageHeatmapCache.get(usageSource) ?? [])
     const frame = window.requestAnimationFrame(() => {
       if (cancelled) return
       setLoading(true)
@@ -123,12 +152,17 @@ export function UsageHeatmap({
           : window.api.getUsage
       loader()
         .then((latest) => {
+          // RETAIN: persist the freshest grid for this source BEFORE
+          // committing it, so the next remount/cycle pre-warms instantly.
+          // Keyed by source to keep external/agbench/workspace isolated.
+          usageHeatmapCache.set(usageSource, latest)
           if (!cancelled) setRecords(latest)
         })
         .catch(() => {
           // Best-effort: render an empty heatmap rather than crashing
-          // the whole card if the IPC fails.
-          if (!cancelled) setRecords([])
+          // the whole card if the IPC fails. Leave any cached grid in
+          // place — don't clobber a good cache on a transient failure.
+          if (!cancelled) setRecords(usageHeatmapCache.get(usageSource) ?? [])
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
