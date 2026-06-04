@@ -5412,6 +5412,13 @@ function App(): React.JSX.Element {
   const [pendingApprovalQueueByChatId, setPendingApprovalQueueByChatId] = useState<
     Record<string, AgentApprovalRequest[]>
   >({})
+  // Order-4 — optional one-line "why" note the user can attach to an
+  // approval decision. Rides the existing approval-ledger metadata
+  // channel as `{ intentNote }` (no schema migration). At most one
+  // approval card is on screen at a time (the queue head), so a single
+  // string suffices; it's cleared whenever an approval resolves so the
+  // next queued request starts blank.
+  const [intentNote, setIntentNote] = useState('')
   const [isSendConfirming, setIsSendConfirming] = useState(false)
   // 1.0.6-EW66-1d — Create-PR state is now keyed by workspace PATH
   // so the primary workspace and each WRITE-access additional
@@ -13474,8 +13481,13 @@ function App(): React.JSX.Element {
   }
 
   const handleAgentApprovalAction = async (requestId: string, action: AgentApprovalAction) => {
+    // Order-4 — capture the optional intent note (trimmed) at decision
+    // time and pass it down to the IPC, which stamps it onto the ledger
+    // row's metadata. Empty stays undefined so we never persist a blank
+    // note. Always optional — never gates the decision.
+    const noteForDecision = intentNote.trim() || undefined
     try {
-      await window.api.respondAgentApproval(requestId, action)
+      await window.api.respondAgentApproval(requestId, action, noteForDecision)
       setRawLogs((prev) => [
         ...prev,
         {
@@ -13505,6 +13517,9 @@ function App(): React.JSX.Element {
       // approval so this distinction didn't matter.
       const composerChatId = getCurrentComposerStateChatId()
       setPendingAgentApproval((prev) => (prev?.id === requestId ? null : prev))
+      // Order-4 — reset the intent note so the next queued approval
+      // (or the next request entirely) starts with an empty field.
+      setIntentNote('')
       if (composerChatId) {
         advanceApprovalQueueForChat(composerChatId)
       }
@@ -17799,6 +17814,21 @@ function App(): React.JSX.Element {
                         </div>
                       )}
                       {renderAgentApprovalPreview(pendingAgentApproval.preview)}
+                      {/* Order-4 — optional one-line intent note. Always
+                        optional: it never blocks approve/deny. The text
+                        is captured at click time in
+                        `handleAgentApprovalAction` and persisted onto
+                        the approval-ledger row's metadata as
+                        `intentNote` (no schema migration). */}
+                      <input
+                        type="text"
+                        className="composer-permission-note"
+                        value={intentNote}
+                        onChange={(e) => setIntentNote(e.target.value)}
+                        placeholder="why? (optional)"
+                        aria-label="Optional note explaining this approval decision"
+                        maxLength={280}
+                      />
                       <div className="composer-permission-actions">
                         {(pendingAgentApproval.actions || ['accept']).includes('accept') && (
                           <button

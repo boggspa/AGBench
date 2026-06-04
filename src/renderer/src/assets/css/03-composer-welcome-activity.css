@@ -4018,6 +4018,30 @@
   color: var(--text-secondary);
 }
 
+/* Order-4 — optional one-line "why" note for an approval decision.
+ * Low-friction: a quiet single-line field that sits between the
+ * request preview and the action buttons. Never required; persisted
+ * onto the approval-ledger row's metadata when filled. */
+.composer-permission-note {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--surface-input, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-xs, 4px);
+  padding: var(--space-2xs, 4px) var(--space-xs, 8px);
+}
+
+.composer-permission-note::placeholder {
+  color: var(--text-muted);
+}
+
+.composer-permission-note:focus-visible {
+  outline: none;
+  border-color: var(--accent, rgba(255, 165, 0, 0.5));
+}
+
 .composer-permission-paths {
   display: flex;
   flex-direction: column;

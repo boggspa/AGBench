@@ -177,8 +177,11 @@ const api = {
       | 'cancel'
       | 'grantExternalPathRead'
       | 'grantExternalPathEdit'
-      | 'declineExternalPath'
-  ) => ipcRenderer.invoke('respond-agent-approval', requestId, action),
+      | 'declineExternalPath',
+    // Order-4 — optional one-line "why" note. Persisted onto the
+    // approval-ledger row's metadata; never required.
+    intentNote?: string
+  ) => ipcRenderer.invoke('respond-agent-approval', requestId, action, intentNote),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
   openWorkspacePopout: (input: { kind: 'file-editor' | 'diff-studio'; workspacePath: string }) =>

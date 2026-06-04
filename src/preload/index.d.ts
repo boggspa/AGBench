@@ -363,7 +363,11 @@ declare global {
         numTurns?: number
       ) => Promise<any>
       startAgentReview: (provider: ProviderId, threadId: string, params?: any) => Promise<any>
-      respondAgentApproval: (requestId: string, action: AgentApprovalAction) => Promise<boolean>
+      respondAgentApproval: (
+        requestId: string,
+        action: AgentApprovalAction,
+        intentNote?: string
+      ) => Promise<boolean>
       writeGeminiInput: (data: string) => Promise<boolean>
       getDiff: (workspace: string) => Promise<{
         type: 'not_repo' | 'no_changes' | 'changes' | 'error'

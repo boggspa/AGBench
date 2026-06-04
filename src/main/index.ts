@@ -16717,7 +16717,17 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle(
       'respond-agent-approval',
-      async (_, requestId: string, action: AgentApprovalAction) => {
+      async (_, requestId: string, action: AgentApprovalAction, intentNote?: string) => {
+        // Order-4 — optional one-line "why" note captured in the
+        // approval card. Trim + cap defensively (the renderer already
+        // trims, but the IPC boundary is untrusted) and ride it on the
+        // existing ledger metadata channel as `intentNote`. Empty stays
+        // off the metadata entirely so we never persist a blank note.
+        const trimmedIntentNote =
+          typeof intentNote === 'string' ? intentNote.trim().slice(0, 280) : ''
+        const resolveOptions = trimmedIntentNote
+          ? { extraMetadata: { intentNote: trimmedIntentNote } }
+          : undefined
         // Slice 5 v2 of the external-path-redesign arc. When the user
         // clicks "Grant read access" / "Grant edit access" in an
         // external-path approval modal, peek at the pending approval's stashed
@@ -16769,7 +16779,7 @@ if (isGeminiMcpBridgeProcess) {
             }
           }
         }
-        return approvalServiceInstance.resolve(requestId, action)
+        return approvalServiceInstance.resolve(requestId, action, resolveOptions)
       }
     )
 
