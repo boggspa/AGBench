@@ -2588,54 +2588,58 @@
 }
 
 /* ============================================================
- * NATIVE-SHELL COMPOSER "CONSOLE" REDESIGN — CONTRAST FRAME
+ * NATIVE-SHELL COMPOSER "CONSOLE" REDESIGN — POLARITY FRAME
  * --------------------------------------------------------------
  * The maintainer's vision: turn the native composer
  * (`data-composer-style="default"`) into an *instrument*. Two
  * nested surfaces:
  *
- *   OUTER  `.composer-surface`       → a translucent CONTRAST
- *          glass shown ONLY as the FRAME around the input (via
- *          the surface's existing perimeter padding, 14px). It is
- *          in CONTRAST OPPOSITION to the theme: a light/white-
- *          tinted glass on DARK themes, a dark/black-tinted glass
- *          on the five LIGHT themes. Carries the slice-1 provider
- *          rim on its ::after.
+ *   OUTER  `.composer-surface`       → a translucent glass shown as
+ *          the FRAME around the input (via the surface's perimeter
+ *          padding) AND as the bed under the relocated telemetry
+ *          row. REFINEMENT (flips slice 2): it now follows theme
+ *          POLARITY rather than contrast — a near-BLACK glass on
+ *          DARK themes, a near-WHITE glass on the five LIGHT themes.
+ *          So on dark the frame is darker/blacker than the theme-
+ *          tone module (the module pops against a black frame); on
+ *          light it is a clean white frame. Carries the slice-1
+ *          provider rim on its ::after.
  *
  *   INNER  `.composer-inner-module`  → the actual INPUT (textarea
- *          + slash/mention menus + the two bottom-control rows),
- *          on a NORMAL THEME-TONE surface so text + controls stay
- *          perfectly readable. Seated into the frame with a subtle
- *          inset seam, and carrying the provider rim on its own
- *          perimeter.
+ *          + slash/mention menus + the control-footer), on a NORMAL
+ *          THEME-TONE surface so text + controls stay perfectly
+ *          readable. Rendered FULL-WIDTH with HARD corners as an
+ *          edge-to-edge instrument panel, carrying the provider rim
+ *          on its own perimeter.
  *
- * HARD READABILITY RULE — the contrast glass is the FRAME ONLY
- * (the perimeter padding). The textarea + controls NEVER sit on
- * the inverted glass; they sit on the theme-tone inner module. So
- * on a dark theme the input text stays light-on-dark inside the
- * module, with the white-glass frame visible only as the halo.
+ * READABILITY — the input always sits on the theme-tone module, so
+ * text stays theme-correct (light-on-dark / dark-on-light). The
+ * relocated `.composer-telemetry-row` now sits on the outer frame;
+ * it uses theme text colours (light-on-black on dark, dark-on-white
+ * on light), which stays readable against the polarity glass.
  *
  * SURFACE VARIANTS — `.composer-surface` has three prompt-surface
  * variants (glass / classic / solid, lines ~2409-2439), each
  * setting its own `background` + `backdrop-filter` + `box-shadow`.
  * We override ONLY `background` here (leaving every variant's
  * backdrop-filter + box-shadow untouched, so glass stays glassy,
- * classic stays classic, solid stays opaque). The contrast tint
- * is a `color-mix` toward white (dark themes) / black (light
+ * classic stays classic, solid stays opaque). The polarity tint is
+ * a `color-mix` toward near-black (dark themes) / near-white (light
  * themes); the SOLID variant gets a firmer mix (no blur to lean
  * on). The base rule below covers the default/dark case; the
- * light-theme `:is(...)` block flips the polarity to a dark glass.
+ * light-theme `:is(...)` block flips the polarity to a white glass.
  *
  * SCOPE — native shell only. Codex / claude / grok shells own
  * their `.composer-surface` chrome (shard 07/10) and are never
  * `default`, so they are untouched.
  * ============================================================ */
 
-/* OUTER frame — DARK themes (default): a faint WHITE glass tint
- * shows through the perimeter padding, in contrast to the dark
- * theme. Background only; the variant's blur/shadow survive. */
+/* OUTER frame — DARK themes (default): a near-BLACK glass tint so
+ * the frame reads darker/blacker than the theme-tone module, which
+ * pops against it. Background only; the variant's blur/shadow
+ * survive. */
 [data-composer-style="default"] .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg) 64%, rgba(255, 255, 255, 0.9) 36%);
+  background: color-mix(in srgb, var(--composer-bg) 30%, rgba(0, 0, 0, 0.94) 70%);
 }
 [data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-surface,
@@ -2643,20 +2647,21 @@
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="classic"] .composer-surface,
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-surface {
-  /* Glassy variants already blur what's behind them, so a lighter
-   * white veil over the glass reads as a frosted contrast pane. */
-  background: color-mix(in srgb, var(--composer-glass-bg) 62%, rgba(255, 255, 255, 0.85) 38%);
+  /* Glassy variants already blur what's behind them, so a slightly
+   * lighter black veil over the glass reads as a smoked pane. */
+  background: color-mix(in srgb, var(--composer-glass-bg) 34%, rgba(0, 0, 0, 0.9) 66%);
 }
 [data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
 [data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
-  /* No blur to lean on — firmer white mix so the frame still
-   * reads as a contrast pane, but kept opaque + calm. */
-  background: color-mix(in srgb, var(--composer-bg-solid) 80%, #ffffff 20%);
+  /* No blur to lean on — firmer black mix so the frame still reads
+   * as a near-black pane, but kept calm. */
+  background: color-mix(in srgb, var(--composer-bg-solid) 24%, #050608 76%);
 }
 
-/* OUTER frame — the five LIGHT themes: flip polarity to a DARK
- * glass tint in contrast to the light theme. Same variant split,
- * mixing toward black instead of white. */
+/* OUTER frame — the five LIGHT themes: a near-WHITE glass tint so
+ * the frame reads as a clean white pane around the theme-tone
+ * module. Same variant split, mixing toward white instead of
+ * black. */
 :is(
     [data-theme="light"],
     [data-theme="citrus"],
@@ -2665,7 +2670,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg) 70%, rgba(12, 14, 20, 0.82) 30%);
+  background: color-mix(in srgb, var(--composer-bg) 28%, rgba(255, 255, 255, 0.96) 72%);
 }
 :is(
     [data-theme="light"],
@@ -2715,7 +2720,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-glass-bg) 64%, rgba(12, 14, 20, 0.8) 36%);
+  background: color-mix(in srgb, var(--composer-glass-bg) 32%, rgba(255, 255, 255, 0.92) 68%);
 }
 :is(
     [data-theme="light"],
@@ -2733,7 +2738,7 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"][data-reduce-transparency="true"]
   .composer-surface {
-  background: color-mix(in srgb, var(--composer-bg-solid) 84%, #0c0e14 16%);
+  background: color-mix(in srgb, var(--composer-bg-solid) 22%, #ffffff 78%);
 }
 
 /* INNER module — the readable input. NORMAL theme-tone surface so
@@ -2762,7 +2767,19 @@
   flex-direction: column;
   gap: var(--space-sm);
   background: var(--composer-bg);
-  border-radius: calc(var(--radius-lg) * 1.7);
+  /* Refinement — FULL WIDTH + HARD CORNERS. The maintainer wants the
+   * module as a crisp edge-to-edge instrument panel rather than a
+   * rounded inset card. Bleed across the surface's 14px horizontal
+   * frame padding with matching negative margins so the module spans
+   * the full surface width; square the corners. The surface keeps
+   * `overflow: hidden`, so the panel's edges clip cleanly to the
+   * frame's rounded outer corners. The theme-tone fill, provider rim
+   * (shard 07), and inset seam all survive. */
+  width: 100%;
+  max-width: none;
+  margin-left: -14px;
+  margin-right: -14px;
+  border-radius: 0;
   /* Seat into the contrast frame: a hairline ring + a soft inner
    * seam so the module reads as a panel dropped into the glass. */
   box-shadow:
@@ -2795,11 +2812,14 @@
   background: var(--composer-bg-solid);
 }
 
-/* Tighten the outer padding a touch in welcome mode so the frame
- * stays a frame (not a slab) at the larger welcome radius. */
+/* Welcome mode keeps the hard-cornered full-width panel; only the
+ * horizontal bleed changes because the welcome surface uses a wider
+ * 16px frame padding (vs 14px), so match the negative margins. */
 .welcome-mode[data-composer-style="default"] .composer-inner-module,
 [data-composer-style="default"] .welcome-mode .composer-inner-module {
-  border-radius: calc(var(--radius-lg) * 1.6);
+  border-radius: 0;
+  margin-left: -16px;
+  margin-right: -16px;
 }
 
 /* Reduce-motion: snap the inner-module seam transition. */

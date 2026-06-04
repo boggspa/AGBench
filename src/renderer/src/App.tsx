@@ -17411,7 +17411,7 @@ function App(): React.JSX.Element {
                 Schedule + runtime-profile controls remain — those
                 are genuinely actionable.
               */}
-              {(scheduleControls || runtimeProfileControl) && (
+              {!isCurrentEnsembleChat && (scheduleControls || runtimeProfileControl) && (
                 <div className="composer-top-toggles">
                   {scheduleControls}
                   {runtimeProfileControl}
@@ -19279,20 +19279,24 @@ function App(): React.JSX.Element {
                       </div>
                     )}
                   </div>
-                  <div
-                    className="composer-telemetry-row"
-                    data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
-                  >
-                    <ComposerRunTimecode
-                      running={isCurrentChatRunning}
-                      startedAt={composerRunTimecodeStartedAt}
-                    />
-                    <ComposerCumulativeTimecode
-                      running={isCurrentChatRunning}
-                      startedAt={composerRunTimecodeStartedAt}
-                      cumulativeBaseMs={cumulativeRunBaseMs}
-                    />
-                    {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
+                  {/* 1.0.6-EW68 — close .composer-bottom-controls */}
+                </div>
+              </div>
+              {/* Console redesign — close .composer-inner-module (the readable input/controls surface) */}
+              <div
+                className="composer-telemetry-row"
+                data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
+              >
+                <ComposerRunTimecode
+                  running={isCurrentChatRunning}
+                  startedAt={composerRunTimecodeStartedAt}
+                />
+                <ComposerCumulativeTimecode
+                  running={isCurrentChatRunning}
+                  startedAt={composerRunTimecodeStartedAt}
+                  cumulativeBaseMs={cumulativeRunBaseMs}
+                />
+                {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
                     Pre-AS3 the attached-window UX was an inline pill in the
                     action row that took ~120px and showed the app name +
                     title + close glyph. the maintainer asked for a single themed
@@ -19302,47 +19306,47 @@ function App(): React.JSX.Element {
                     surfaces the attached app name; a small pulse dot
                     signals an active SCStream (kept the at-a-glance
                     "live capture" cue from the old pill). */}
-                    <button
-                      type="button"
-                      className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}${!attachedWindow && resumeAppWatchSnapshot ? ' is-resumable' : ''}`}
-                      onClick={() => {
-                        // M11 — both "attach fresh" and "resume" route through the
-                        // picker (macOS requires a gesture to re-grant a window);
-                        // handleAttachWindow clears the stash on success.
-                        if (attachedWindow) void handleDetachWindow()
-                        else void handleAttachWindow()
-                      }}
-                      title={
-                        attachedWindow
-                          ? attachedWindow.streaming
-                            ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
-                            : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
-                          : resumeAppWatchSnapshot
-                            ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}${resumeAppWatchSnapshot.windowMeta.title ? ` — ${resumeAppWatchSnapshot.windowMeta.title}` : ''} · click to re-pick`
-                            : 'Screen Watch — click to pick a window for the AI to see'
-                      }
-                      aria-label={
-                        attachedWindow
-                          ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
-                          : resumeAppWatchSnapshot
-                            ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}`
-                            : 'Open Screen Watch picker'
-                      }
-                      data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
-                      data-resumable={!attachedWindow && resumeAppWatchSnapshot ? 'true' : 'false'}
-                    >
-                      <ScreenWatchSymbolIcon />
-                      {attachedWindow?.streaming && (
-                        <span className="composer-screen-watch-button-dot" aria-hidden="true" />
-                      )}
-                      {!attachedWindow && resumeAppWatchSnapshot && (
-                        <span
-                          className="composer-screen-watch-button-dot composer-screen-watch-button-dot--resume"
-                          aria-hidden="true"
-                        />
-                      )}
-                    </button>
-                    {/* 1.0.5-AR12c — Workspace switcher in its new home.
+                <button
+                  type="button"
+                  className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}${!attachedWindow && resumeAppWatchSnapshot ? ' is-resumable' : ''}`}
+                  onClick={() => {
+                    // M11 — both "attach fresh" and "resume" route through the
+                    // picker (macOS requires a gesture to re-grant a window);
+                    // handleAttachWindow clears the stash on success.
+                    if (attachedWindow) void handleDetachWindow()
+                    else void handleAttachWindow()
+                  }}
+                  title={
+                    attachedWindow
+                      ? attachedWindow.streaming
+                        ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
+                        : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
+                      : resumeAppWatchSnapshot
+                        ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}${resumeAppWatchSnapshot.windowMeta.title ? ` — ${resumeAppWatchSnapshot.windowMeta.title}` : ''} · click to re-pick`
+                        : 'Screen Watch — click to pick a window for the AI to see'
+                  }
+                  aria-label={
+                    attachedWindow
+                      ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
+                      : resumeAppWatchSnapshot
+                        ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}`
+                        : 'Open Screen Watch picker'
+                  }
+                  data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
+                  data-resumable={!attachedWindow && resumeAppWatchSnapshot ? 'true' : 'false'}
+                >
+                  <ScreenWatchSymbolIcon />
+                  {attachedWindow?.streaming && (
+                    <span className="composer-screen-watch-button-dot" aria-hidden="true" />
+                  )}
+                  {!attachedWindow && resumeAppWatchSnapshot && (
+                    <span
+                      className="composer-screen-watch-button-dot composer-screen-watch-button-dot--resume"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+                {/* 1.0.5-AR12c — Workspace switcher in its new home.
                      Sits between the timecodes / Screen Watch cluster
                      on the left and the token tally on the right. The
                      `composer-workspace-button` class gets a
@@ -19350,14 +19354,14 @@ function App(): React.JSX.Element {
                      auto`) so the two auto-margins (this + the tally)
                      split the free space. Hidden in global chats —
                      same gating as the previous top-row mount. */}
-                    {!isCurrentGlobalChat && (
-                      <ComposerWorkspaceSwitcher
-                        workspaces={workspaces}
-                        currentWorkspace={currentWorkspace}
-                        onPickExisting={handleSelectExistingWorkspace}
-                        onAddNewWorkspace={handleSelectWorkspace}
-                        onSelectNoWorkspace={handleNewGlobalChat}
-                        /*
+                {!isCurrentGlobalChat && (
+                  <ComposerWorkspaceSwitcher
+                    workspaces={workspaces}
+                    currentWorkspace={currentWorkspace}
+                    onPickExisting={handleSelectExistingWorkspace}
+                    onAddNewWorkspace={handleSelectWorkspace}
+                    onSelectNoWorkspace={handleNewGlobalChat}
+                    /*
                         1.0.6-EW66 — multi-workspace manager. The
                         additional-workspace grants + their repo
                         metadata drive the "Current workspaces" list;
@@ -19366,31 +19370,27 @@ function App(): React.JSX.Element {
                         grants to (welcome-state chats get the picker
                         without those affordances).
                       */
-                        additionalGrants={externalPathGrants}
-                        repoMetadata={externalPathRepoMetadata}
-                        composerStyle={appearance.composerStyle}
-                        onReorderWorkspaces={
-                          currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
-                        }
-                        onRemoveWorkspacePath={
-                          currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
-                        }
-                        onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
-                        onAddKnownWorkspace={
-                          currentChat?.appChatId ? handleAddKnownWorkspaceAsSecondary : undefined
-                        }
-                      />
-                    )}
-                    {threadTokenTallyLabel && (
-                      <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
-                        {threadTokenTallyLabel}
-                      </span>
-                    )}
-                  </div>
-                  {/* 1.0.6-EW68 — close .composer-bottom-controls */}
-                </div>
+                    additionalGrants={externalPathGrants}
+                    repoMetadata={externalPathRepoMetadata}
+                    composerStyle={appearance.composerStyle}
+                    onReorderWorkspaces={
+                      currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
+                    }
+                    onRemoveWorkspacePath={
+                      currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
+                    }
+                    onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
+                    onAddKnownWorkspace={
+                      currentChat?.appChatId ? handleAddKnownWorkspaceAsSecondary : undefined
+                    }
+                  />
+                )}
+                {threadTokenTallyLabel && (
+                  <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
+                    {threadTokenTallyLabel}
+                  </span>
+                )}
               </div>
-              {/* Console redesign — close .composer-inner-module (the readable input/controls surface) */}
               {/*
                 Composer-unification (Phase J1): removed the codex-style
                 decorative footer chip strip. It mirrored info already in
