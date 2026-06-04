@@ -66,6 +66,20 @@
 [data-composer-style="codex"] .composer-inline-pickers {
   margin-top: 0;
 }
+/* AGBench native (default) shell — adopt the standard control order the
+ * other shells use: the permission / tool-grants picker sits right after
+ * the + attach button instead of trailing at the very end. The default
+ * shell was the only one without an order block, so it fell back to DOM
+ * order (permission last). Mirrors the codex order below; the base
+ * .composer-inline-pickers-left (shard 03) is already flex, so only
+ * `order` is needed. Model right-aligns so it sits beside the send cluster. */
+[data-composer-style="default"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="default"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="default"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="default"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="default"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="default"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
 [data-composer-style="codex"] .composer-inline-pickers-left {
   display: flex;
   align-items: center;
