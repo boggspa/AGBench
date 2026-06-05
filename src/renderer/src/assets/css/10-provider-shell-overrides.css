@@ -2253,3 +2253,51 @@
 .composer-slash-menu.shell-cursor .composer-slash-item.is-active {
   background: var(--cursor-shell-hover) !important;
 }
+
+/* Pane opacity sliders are multiplicative by default so the system theme can
+ * keep its intended glass density. Once the user moves a slider away from
+ * 100%, promote it to an explicit override after the provider/theme shards. */
+:root {
+  --sidebar-opacity-override-bg: var(--sidebar-bg);
+  --main-pane-opacity-override-bg: var(--content-bg);
+}
+
+[data-interface-style="gemini"] {
+  --sidebar-opacity-override-bg: color-mix(in srgb, #0a1020 92%, transparent);
+  --main-pane-opacity-override-bg: color-mix(in srgb, #0a1020 88%, transparent);
+}
+
+[data-interface-style="kimi"] {
+  --sidebar-opacity-override-bg: color-mix(in srgb, #080808 96%, transparent);
+  --main-pane-opacity-override-bg: color-mix(in srgb, #080808 92%, transparent);
+}
+
+[data-interface-style="grok"] {
+  --sidebar-opacity-override-bg: var(--grok-bg);
+  --main-pane-opacity-override-bg: var(--grok-bg);
+}
+
+[data-interface-style="cursor"] {
+  --sidebar-opacity-override-bg: var(--cursor-shell-bg);
+  --main-pane-opacity-override-bg: var(--cursor-shell-bg);
+}
+
+[data-sidebar-opacity-override="true"] .app-sidebar {
+  background: color-mix(in srgb, var(--sidebar-opacity-override-bg) var(--sidebar-opacity-100), transparent) !important;
+  background-image: none !important;
+}
+
+[data-sidebar-opacity-override="true"] .app-sidebar::before,
+[data-sidebar-opacity-override="true"] .app-sidebar::after {
+  opacity: var(--sidebar-opacity-factor) !important;
+}
+
+[data-main-pane-opacity-override="true"] .app-transcript,
+[data-main-pane-opacity-override="true"] .app-settings-pane {
+  background: color-mix(in srgb, var(--main-pane-opacity-override-bg) var(--main-pane-opacity-100), transparent) !important;
+  background-image: none !important;
+}
+
+[data-main-pane-opacity-override="true"] .app-transcript::after {
+  opacity: var(--main-pane-opacity-factor) !important;
+}

@@ -233,6 +233,16 @@ export function useAppearance() {
     root.setAttribute('data-fx-mode', next.funFxMode)
     const sidebarOpacityFactor = next.sidebarOpacity / 100
     const mainPaneOpacityFactor = next.mainPaneOpacity / 100
+    root.setAttribute(
+      'data-sidebar-opacity-override',
+      String(next.sidebarOpacity !== DEFAULT_PANE_OPACITY)
+    )
+    root.setAttribute(
+      'data-main-pane-opacity-override',
+      String(next.mainPaneOpacity !== DEFAULT_PANE_OPACITY)
+    )
+    root.style.setProperty('--sidebar-opacity-factor', String(sidebarOpacityFactor))
+    root.style.setProperty('--main-pane-opacity-factor', String(mainPaneOpacityFactor))
     root.style.setProperty('--sidebar-opacity-100', `${100 * sidebarOpacityFactor}%`)
     root.style.setProperty('--sidebar-opacity-88', `${88 * sidebarOpacityFactor}%`)
     root.style.setProperty('--sidebar-opacity-42', `${42 * sidebarOpacityFactor}%`)

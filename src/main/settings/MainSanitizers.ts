@@ -50,6 +50,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'showInspector',
   'inspectorWidth',
   'sidebarWidth',
+  'sidebarOpacity',
+  'mainPaneOpacity',
   'funFxEnabled',
   'funFxMode',
   'advancedFx',
@@ -717,7 +719,13 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
         delete sanitized.windowBounds
       }
     }
-    for (const key of ['chatContextTurns', 'inspectorWidth', 'sidebarWidth'] as const) {
+    for (const key of [
+      'chatContextTurns',
+      'inspectorWidth',
+      'sidebarWidth',
+      'sidebarOpacity',
+      'mainPaneOpacity'
+    ] as const) {
       if (key in sanitized) {
         const value = Number(sanitized[key])
         if (Number.isFinite(value)) {
@@ -727,6 +735,8 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
             sanitized[key] = clampDimension(value, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH)
           } else if (key === 'sidebarWidth') {
             sanitized[key] = clampDimension(value, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+          } else if (key === 'sidebarOpacity' || key === 'mainPaneOpacity') {
+            sanitized[key] = clampDimension(value, 0, 100, 100)
           } else {
             sanitized[key] = Math.max(0, Math.trunc(value))
           }
