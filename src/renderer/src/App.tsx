@@ -175,7 +175,6 @@ import { SubThreadCreator } from './components/SubThreadCreator'
 import { FirstLaunchSheet } from './components/FirstLaunchSheet'
 import { BugReportSheet, type BugReportSubmission } from './components/BugReportSheet'
 import { ChangelogSheet } from './components/ChangelogSheet'
-import { UpdatePill } from './components/UpdatePill'
 import {
   WorkSessionSetupSheet,
   type WorkSessionSetupConfirmInput
@@ -11802,6 +11801,8 @@ function App(): React.JSX.Element {
                 ensembleModeEnabled={isEnsembleModeEnabled}
                 onSelectChat={handleSelectChat}
                 onOpenSettings={() => setShowSettings(true)}
+                updateSnapshot={updateStatus.snapshot}
+                onOpenChangelog={handleOpenChangelogSheet}
                 appearanceQuickSettings={{
                   composerStyle: appearance.composerStyle,
                   themeAccentStyle: appearance.themeAccentStyle,
@@ -12083,7 +12084,6 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">!</span>
             </button>
-              <UpdatePill snapshot={updateStatus.snapshot} onOpen={handleOpenChangelogSheet} />
             </div>
           )}
 

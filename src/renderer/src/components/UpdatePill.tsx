@@ -4,6 +4,10 @@ import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 interface UpdatePillProps {
   snapshot: UpdateStateSnapshot | null
   onOpen: () => void
+  /** 'corner' = the chat-corner icon button (default); 'sidebar' = the accent
+   * pill in the sidebar masthead. Both gate on the same actionable statuses,
+   * so the pill is absent at rest. */
+  variant?: 'corner' | 'sidebar'
 }
 
 const ACTIONABLE_UPDATE_STATUSES = new Set<UpdateStateSnapshot['status']>([
@@ -13,13 +17,21 @@ const ACTIONABLE_UPDATE_STATUSES = new Set<UpdateStateSnapshot['status']>([
   'error'
 ])
 
-export function UpdatePill({ snapshot, onOpen }: UpdatePillProps): React.JSX.Element | null {
+export function UpdatePill({
+  snapshot,
+  onOpen,
+  variant = 'corner'
+}: UpdatePillProps): React.JSX.Element | null {
   if (!snapshot || !ACTIONABLE_UPDATE_STATUSES.has(snapshot.status)) return null
 
   const label = labelForSnapshot(snapshot)
+  const className =
+    variant === 'sidebar'
+      ? `sidebar-update-pill sidebar-update-pill-${snapshot.status}`
+      : `chat-corner-btn chat-corner-update-pill chat-corner-update-pill-${snapshot.status}`
   return (
     <button
-      className={`chat-corner-btn chat-corner-update-pill chat-corner-update-pill-${snapshot.status}`}
+      className={className}
       type="button"
       onClick={onOpen}
       title={titleForSnapshot(snapshot)}

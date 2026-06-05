@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { MascotGhost } from './AppChromeSymbols'
 import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
+import { UpdatePill } from './UpdatePill'
+import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 import type {
   WorkspaceRecord,
   ChatRecord,
@@ -99,6 +101,11 @@ interface SidebarProps {
   ensembleModeEnabled?: boolean
   onSelectChat: (chat: ChatRecord) => void
   onOpenSettings: () => void
+  /** Live update snapshot + opener for the masthead update pill. The pill
+   * renders only when an update is actionable, so the sidebar stays clean at
+   * rest and becomes minorly prominent when an update is available. */
+  updateSnapshot?: UpdateStateSnapshot | null
+  onOpenChangelog?: () => void
   appearanceQuickSettings?: {
     composerStyle: ComposerStyle
     themeAccentStyle: ThemeAccentStyle
@@ -1125,6 +1132,8 @@ export function Sidebar({
   ensembleModeEnabled = true,
   onSelectChat,
   onOpenSettings,
+  updateSnapshot,
+  onOpenChangelog,
   appearanceQuickSettings,
   onAppearanceQuickChange,
   onOpenWorkspacePopout,
@@ -1953,6 +1962,13 @@ export function Sidebar({
                 {currentScopeTitle}
               </strong>
             )}
+            {onOpenChangelog ? (
+              <UpdatePill
+                snapshot={updateSnapshot ?? null}
+                onOpen={onOpenChangelog}
+                variant="sidebar"
+              />
+            ) : null}
           </div>
           <div className="sidebar-new-menu-wrap" ref={newMenuWrapRef}>
             <button

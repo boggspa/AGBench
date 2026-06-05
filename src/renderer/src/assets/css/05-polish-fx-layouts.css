@@ -1587,6 +1587,40 @@
   gap: 3px;
 }
 
+/* Update-available pill in the sidebar masthead. UpdatePill only renders it
+ * when an update is actionable, so it's absent at rest and minorly prominent
+ * when there's something to do. Accent-tinted; recolours for downloaded
+ * (ready to restart) + error. */
+.sidebar-update-pill {
+  justify-self: start;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--accent-color, #6f9dff) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-color, #6f9dff) 16%, transparent);
+  color: var(--accent-color, #6f9dff);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.sidebar-update-pill:hover {
+  background: color-mix(in srgb, var(--accent-color, #6f9dff) 28%, transparent);
+}
+.sidebar-update-pill-downloaded {
+  border-color: color-mix(in srgb, #6ddfa8 60%, transparent);
+  background: color-mix(in srgb, #6ddfa8 16%, transparent);
+  color: #6ddfa8;
+}
+.sidebar-update-pill-error {
+  border-color: color-mix(in srgb, #f0a35a 60%, transparent);
+  background: color-mix(in srgb, #f0a35a 16%, transparent);
+  color: #f0a35a;
+}
+
 /* 1.0.5-EW63 — Accent tint dialled from 86% to 60%. On the
  * now-transparent masthead the original tint over-popped
  * against the sidebar background; 60% reads as a secondary
