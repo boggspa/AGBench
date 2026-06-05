@@ -21,10 +21,38 @@
 /* ============== CODEX STYLE ============== */
 [data-composer-style="codex"] .composer-surface {
   border-radius: 22px;
-  padding: 14px 14px 10px;
+  padding: 0;
+  gap: 0;
   background: #252525;
   border: 1px solid color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+[data-composer-style="codex"] .composer-inner-module {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 14px 14px 8px;
+  background: inherit;
+  border-radius: 21px;
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.12),
+    inset 0 -1px 0 color-mix(in srgb, #ffffff 7%, transparent);
+}
+[data-composer-style="codex"] .composer-telemetry-row {
+  min-height: 40px;
+  margin: 0;
+  padding: 7px 16px 10px;
+  border-top: 0;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 58%, transparent);
+}
+[data-composer-style="codex"] .composer-telemetry-row .composer-workspace-button {
+  margin-left: 0;
+}
+[data-composer-style="codex"] .composer-telemetry-row .composer-thread-token-tally {
+  margin-left: auto;
 }
 [data-composer-style="codex"] .composer-surface:focus-within {
   border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
