@@ -132,7 +132,7 @@ export function SubThreadDelegationCard({
               <AgentIdentityIcon
                 name={agentIdentity.key}
                 color={agentIdentity.accent}
-                size={18}
+                size={36}
                 className="subthread-delegation-agent-icon"
                 title={agentIdentity.name}
               />

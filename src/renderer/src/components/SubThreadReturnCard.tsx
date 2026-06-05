@@ -49,7 +49,7 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
               <AgentIdentityIcon
                 name={agentIdentity.key}
                 color={agentIdentity.accent}
-                size={18}
+                size={36}
                 className="subthread-return-agent-icon"
                 title={agentIdentity.name}
               />

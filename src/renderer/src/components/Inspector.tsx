@@ -988,7 +988,7 @@ function DelegationTimelineTreeNode({
         <AgentIdentityIcon
           name={agentIdentity.key}
           color={agentIdentity.accent}
-          size={18}
+          size={36}
           className="delegation-timeline-identicon"
           title={agentIdentity.name}
         />
