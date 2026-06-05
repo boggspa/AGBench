@@ -1,9 +1,14 @@
 const DEFAULT_FILE_EDITOR_WIDTH = 390
 const MIN_RIGHT_PANEL_WIDTH = 300
 const MAX_RIGHT_PANEL_WIDTH = 720
-const DEFAULT_WORKSPACE_SIDEBAR_WIDTH = 260
-const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
-const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
+// 340 is the comfortable floor (the workspace/model-usage rows read cleanly at
+// this width). It's also the default, so a fresh launch — or one where the
+// stored width was lost (e.g. the rebrand moved userData/localStorage) — never
+// comes up cramped. getStoredWorkspaceSidebarWidth clamps any smaller stored
+// value UP to MIN on launch, so the sidebar can be made larger but never smaller.
+const DEFAULT_WORKSPACE_SIDEBAR_WIDTH = 340
+const MIN_WORKSPACE_SIDEBAR_WIDTH = 340
+const MAX_WORKSPACE_SIDEBAR_WIDTH = 560
 
 const clampPanelWidth = (value: number): number => {
   return Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(MAX_RIGHT_PANEL_WIDTH, Math.round(value)))
