@@ -197,13 +197,42 @@ export function resolveChangelogEntry(
   }
 }
 
+// GitHub's release feed (what electron-updater returns for an available update)
+// is HTML; the bundled CHANGELOG.md is Markdown. The sheet renders notes in a
+// <pre>, so raw HTML tags showed literally. Convert HTML to readable text
+// (headings → blank line, <li> → bullets, entities decoded); Markdown — which
+// has no tags — passes through untouched.
+function htmlNotesToText(input: string): string {
+  if (!/<\/?[a-z][\s\S]*>/i.test(input)) return input
+  return input
+    .replace(/\r/g, '')
+    .replace(/<\s*(?:h[1-6])[^>]*>/gi, '\n')
+    .replace(/<\s*\/\s*h[1-6]\s*>/gi, '\n')
+    .replace(/<\s*li[^>]*>/gi, '\n• ')
+    .replace(/<\s*\/\s*li\s*>/gi, '')
+    .replace(/<\s*\/\s*(?:p|ul|ol|div|tr|blockquote)\s*>/gi, '\n')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*hr\s*\/?\s*>/gi, '\n———\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function formatReleaseNotes(notes: ProductUpdateReleaseNotes | undefined): string {
-  if (typeof notes === 'string') return notes.trim()
+  if (typeof notes === 'string') return htmlNotesToText(notes.trim())
   if (!Array.isArray(notes)) return ''
   return notes
     .map((note) => {
       const body = note.note?.trim()
-      return body ? `## ${note.version}\n${body}` : ''
+      return body ? `## ${note.version}\n${htmlNotesToText(body)}` : ''
     })
     .filter(Boolean)
     .join('\n\n')
