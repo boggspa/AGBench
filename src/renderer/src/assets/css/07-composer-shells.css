@@ -1523,8 +1523,27 @@
  * native console stack; surfaces the CI checks GitService already parses
  * into GitPrSummary.checks but nothing rendered before. ──────────────── */
 .git-status-above-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  width: 100%;
+  max-width: min(100%, var(--composer-content-max-width));
+  align-self: center;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 6px 14px;
+  border-radius: calc(var(--radius-lg) * 1.6);
+  background: var(--composer-bg);
+  border: 1px solid var(--composer-border);
   font-size: var(--font-size-xs);
+  color: var(--text-primary);
+}
+/* Codex shell: above-bars are tucked tabs (margin-bottom:-10px). The
+ * git-status row decouples from `.composer-above-bar` so it isn't a second
+ * tab — give it top clearance so the preceding branch tab's negative
+ * bottom margin doesn't overlap it. */
+[data-composer-style="codex"] .git-status-above-row {
+  margin-top: 12px;
 }
 .git-status-branch {
   display: inline-flex;

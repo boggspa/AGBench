@@ -108,7 +108,7 @@ export function GitStatusAboveRow({ workspacePath, refreshKey }: GitStatusAboveR
   const ciCount = ci.fail > 0 ? ci.fail : ci.pending > 0 ? ci.pending : ci.pass
 
   return (
-    <div className="composer-above-bar git-status-above-row" role="group" aria-label="Git status">
+    <div className="git-status-above-row" role="group" aria-label="Git status">
       <span className={`git-status-branch git-tone-${tone}`} title={`Branch: ${branchLabel}`}>
         <ToolFamilyIcon family="git" size={13} />
         <span className="git-status-branch-name">{branchLabel}</span>
