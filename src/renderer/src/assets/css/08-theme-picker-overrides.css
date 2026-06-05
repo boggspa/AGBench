@@ -5225,7 +5225,7 @@
  * "feel" of the style is then a single-line edit.
  *
  * 1.0.5-EW56 tuning notes:
- *   - --obsidian-composer-fill: solid dark gray (#0e0e10) not
+ *   - --obsidian-composer-fill: solid dark gray (#181818) not
  *     pure black. The boss-brief reads as "dark gray with the
  *     rim doing the work"; #000 lost too much of the volume.
  *     This is the same value used by the above-rows below so
@@ -5238,7 +5238,7 @@
  *     "satellite cards" while the composer surface itself
  *     keeps the soft 14px wrap. */
 [data-composer-style="obsidian"] {
-  --obsidian-composer-fill: #0e0e10;
+  --obsidian-composer-fill: #181818;
   --obsidian-composer-rim: rgba(255, 255, 255, 0.28);
   --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.42);
   --obsidian-composer-border: rgba(255, 255, 255, 0.10);

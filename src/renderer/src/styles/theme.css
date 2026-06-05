@@ -534,7 +534,7 @@
  * halo gradient leaking in at the top + bottom. Distinct from
  * `graphite` (which trends colder, flatter, and old-aqua-tinged).
  *
- *   --app-bg: deeper than dark, slight warmth (#080709)
+ *   --app-bg: deeper than dark, slight warmth (#181818)
  *   --app-bg-elevated: a touch lifted (#0e0c11)
  *   composer / panels: very dark fills with low translucency so
  *     the glassmorphic blur reads as depth, not haze
@@ -549,7 +549,7 @@
  * the same variable so the look pairs naturally with — but isn't
  * limited to — this theme. */
 [data-theme="obsidian"] {
-  --app-bg: #08070a;
+  --app-bg: #181818;
   --app-bg-elevated: #0e0c11;
   /* 1.0.5-EW55 — Transcript fully opaque on Obsidian. The
    * brief: the *transcript* surface should be a solid black
@@ -561,7 +561,7 @@
    * matching `data-appearance="native_glass"` override below
    * ensures we beat the macOS-vibrancy default that
    * otherwise dials this back to a translucent value. */
-  --content-bg: #08070a;
+  --content-bg: #181818;
   /* Sidebar — INVERSE move: more transparent than the other
    * themes (default ~0.55 → 0.18) so the dusk halo behind it
    * reads through, framing the opaque transcript on the right
@@ -662,7 +662,7 @@
 [data-theme="obsidian"] .app-transcript,
 [data-theme="obsidian"][data-appearance] .app-settings-pane,
 [data-theme="obsidian"] .app-settings-pane {
-  background-color: #08070a !important;
+  background-color: var(--content-bg) !important;
   background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
