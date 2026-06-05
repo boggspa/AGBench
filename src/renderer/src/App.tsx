@@ -1052,13 +1052,41 @@ function App(): React.JSX.Element {
   // tool-derived diff counts. Null until the menu opens (lazy fetch) or
   // the repo read fails.
   const [primaryGitSnapshot, setPrimaryGitSnapshot] = useState<GitRepositorySnapshot | null>(null)
-  // Drop the lifted snapshot whenever the workspace changes so a stale
-  // repo's branch/counts never bleed into a freshly-switched workspace
-  // before its menu is reopened.
   const currentWorkspacePath = currentWorkspace?.path
+  // Eagerly fetch the live git snapshot for the current workspace so the
+  // above-bar shows real repo state (changed-file count, +/- lines, clean)
+  // WITHOUT waiting for the diff-action menu to open. Refetches on workspace
+  // change, on run-finish (runCompleteNotice.timestamp) so a just-finished
+  // edit shows immediately, and on window focus so an external commit that
+  // cleans the tree drops the count to 0 — the Codex/Claude-style git
+  // grounding. GitCommitControls' onSnapshot writes the SAME state, so
+  // opening/using the menu (incl. committing) just refreshes it.
   useEffect(() => {
-    setPrimaryGitSnapshot(null)
-  }, [currentWorkspacePath])
+    if (!currentWorkspacePath) {
+      setPrimaryGitSnapshot(null)
+      return
+    }
+    let cancelled = false
+    const fetchSnapshot = async (): Promise<void> => {
+      try {
+        const res = await window.api.gitSnapshot({ workspacePath: currentWorkspacePath })
+        if (!cancelled) setPrimaryGitSnapshot(res?.ok ? res.data : null)
+      } catch {
+        /* keep the last good snapshot on a transient read failure */
+      }
+    }
+    void fetchSnapshot()
+    const onFocus = (): void => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+        void fetchSnapshot()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [currentWorkspacePath, runCompleteNotice?.timestamp])
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
   type AttachedWindowSnapshot = {
     handleID: string
@@ -10435,83 +10463,20 @@ function App(): React.JSX.Element {
   const threadTokenTallyTooltip = ensembleTallyBreakdown
     ? `${contextLabel}\n\n${ensembleTallyBreakdown}`
     : contextLabel
-  const latestRunDiffStats = useMemo(() => {
-    // Prefer a live aggregate from tool activities so the above-composer
-    // bar updates mid-task rather than only after runDiff lands.
-    //
-    // Ensemble path: delegate to `getLiveToolFileDiffSummaries` — the
-    // same helper that drives the Task Complete card's File changes
-    // list. It extracts real line counts from tool parameters / patch
-    // previews / `changes` arrays via `extractToolFileContributions`,
-    // which is the path my orchestrator's minimal diffSummary doesn't
-    // reach on its own. Without this, the +XX/-XX pill stayed at 0
-    // even though the Task Complete card showed real numbers (the maintainer's
-    // "diff doesn't show anything in the Review Changes / Create PR
-    // row" feedback from the 1.0.3 smoke pass).
-    if (isCurrentEnsembleChat && currentChat) {
-      const ensembleSummaries = getLiveToolFileDiffSummaries(
-        currentChat.messages || [],
-        currentWorkspace?.path
-      )
-      const renderableSummaries = ensembleSummaries.filter((entry) => !entry.isNoise)
-      if (renderableSummaries.length > 0) {
-        let liveAdditions = 0
-        let liveDeletions = 0
-        for (const entry of renderableSummaries) {
-          if (typeof entry.additions === 'number') liveAdditions += entry.additions
-          if (typeof entry.deletions === 'number') liveDeletions += entry.deletions
-        }
-        return {
-          additions: liveAdditions,
-          deletions: liveDeletions,
-          filesChanged: renderableSummaries.length
-        }
-      }
-    }
-    // Solo path: filter to the single current run (the original logic).
-    const runId = currentRun?.runId
-    if (currentChat && runId) {
-      let liveAdditions = 0
-      let liveDeletions = 0
-      const liveFiles = new Set<string>()
-      let hasAnyDiff = false
-      for (const message of currentChat.messages || []) {
-        if (message.runId && message.runId !== runId) continue
-        for (const activity of message.toolActivities || []) {
-          // A denied/errored edit (e.g. a read-only seat auto-denying a
-          // write) did not change the file — keep it out of the
-          // "N files changed +A −B" pill and the Review-changes / Create-PR
-          // gate, even though its diffSummary still carries the attempted
-          // line counts.
-          if (isErroredToolStatus(activity.status)) continue
-          const diff = activity.diffSummary
-          if (!diff) continue
-          if (typeof diff.additions === 'number') liveAdditions += diff.additions
-          if (typeof diff.deletions === 'number') liveDeletions += diff.deletions
-          for (const file of diff.files || []) {
-            if (file?.path) liveFiles.add(file.path)
-          }
-          hasAnyDiff = true
-        }
-      }
-      if (hasAnyDiff) {
-        return { additions: liveAdditions, deletions: liveDeletions, filesChanged: liveFiles.size }
-      }
-    }
-    // Fallback: completed-run snapshot from main-process diff state
-    const files: DiffFileSummary[] = Array.isArray(runDiff) ? runDiff : []
-    let additions = 0
-    let deletions = 0
-    for (const file of files) {
-      additions += Number(file?.additions || 0)
-      deletions += Number(file?.deletions || 0)
-    }
-    return {
-      additions,
-      deletions,
-      filesChanged: files.length
-    }
-  }, [currentChat, currentRun?.runId, runDiff, isCurrentEnsembleChat, currentWorkspace?.path])
+  // Git-grounded workspace diff stats for the above-bar "N files changed +A −B"
+  // pill. Sourced from the live primaryGitSnapshot (counts.changed + numstat
+  // lineStats) rather than accumulating tool-activity diffSummary across the
+  // whole transcript — so it reflects the CURRENT working tree and drops to 0
+  // the moment the user commits (Codex/Claude-style), instead of growing
+  // run-over-run. Zeros before the snapshot lands or for a non-repo workspace.
+  const workspaceDiffStats = useMemo(
+    () => ({
+      filesChanged: primaryGitSnapshot?.counts.changed ?? 0,
+      additions: primaryGitSnapshot?.lineStats.additions ?? 0,
+      deletions: primaryGitSnapshot?.lineStats.deletions ?? 0
+    }),
+    [primaryGitSnapshot]
+  )
   // Slice 6 of the external-path-redesign arc: partition diff stats
   // by which grant's repoRoot each tool activity's file path falls
   // under. Secondary above-rows read their entry to display per-repo
@@ -12839,21 +12804,21 @@ function App(): React.JSX.Element {
                         <span
                           className="composer-above-bar-files"
                           title={
-                            latestRunDiffStats.filesChanged > 0
-                              ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
-                              : 'No file changes from the most recent run'
+                            workspaceDiffStats.filesChanged > 0
+                              ? `${workspaceDiffStats.filesChanged} uncommitted ${workspaceDiffStats.filesChanged === 1 ? 'file' : 'files'} in the working tree`
+                              : 'Working tree clean — nothing to commit'
                           }
                         >
-                          <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
-                          {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
+                          <strong>{workspaceDiffStats.filesChanged}</strong>{' '}
+                          {workspaceDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
                         </span>
-                        {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                        {(workspaceDiffStats.additions > 0 || workspaceDiffStats.deletions > 0) && (
                           <span className="composer-above-bar-stats">
                             <span className="composer-diff-add">
-                              +{latestRunDiffStats.additions}
+                              +{workspaceDiffStats.additions}
                             </span>
                             <span className="composer-diff-del">
-                              -{latestRunDiffStats.deletions}
+                              -{workspaceDiffStats.deletions}
                             </span>
                           </span>
                         )}
@@ -12936,7 +12901,7 @@ function App(): React.JSX.Element {
                         worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
                       />
                       {(() => {
-                        const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
+                        const hasReviewableDiff = workspaceDiffStats.filesChanged > 0
                         // 1.0.6-EW66-1d — primary workspace's PR state is now
                         // read from the per-path map keyed by its own path.
                         const primaryPrState = getCreatePrState(currentWorkspace?.path)
