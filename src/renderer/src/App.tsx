@@ -12873,7 +12873,26 @@ function App(): React.JSX.Element {
                               : primaryPrState.status === 'error'
                                 ? 'Retry PR'
                                 : 'Create PR'
-                        const primaryLabel = hasReviewableDiff ? 'Review changes' : createPrLabel
+                        // Phase Git-U5 — context-aware primary action: Review
+                        // (working-tree changes) → Push (clean but unpushed) →
+                        // Create PR (pushed). Mirrors the menu's
+                        // Review → Commit → Push → PR flow so the headline names
+                        // the real next git step (Codex/Claude-desktop style).
+                        const needsPush = Boolean(
+                          primaryGitSnapshot &&
+                            !primaryGitSnapshot.detached &&
+                            primaryGitSnapshot.branch &&
+                            primaryGitSnapshot.remoteUrl &&
+                            (!primaryGitSnapshot.upstream ||
+                              (primaryGitSnapshot.ahead ?? 0) > 0)
+                        )
+                        const primaryLabel = hasReviewableDiff
+                          ? 'Review changes'
+                          : needsPush
+                            ? primaryGitSnapshot && !primaryGitSnapshot.upstream
+                              ? 'Publish branch'
+                              : 'Push'
+                            : createPrLabel
                         const actionClassName = `composer-above-bar-action ${primaryPrState.status === 'pending' ? 'is-pending' : ''} ${primaryPrState.status === 'error' ? 'is-error' : ''} ${primaryPrState.status === 'success' ? 'is-success' : ''}`
                         return (
                           <span className="composer-diff-action-menu-wrap">
@@ -12886,7 +12905,7 @@ function App(): React.JSX.Element {
                               aria-expanded={diffActionMenuOpen}
                               title={
                                 primaryPrState.message ||
-                                'Review, commit, or open a PR for the current workspace'
+                                'Review, commit, push, or open a PR for the current workspace'
                               }
                             >
                               {primaryLabel}

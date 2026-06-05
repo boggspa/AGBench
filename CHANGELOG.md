@@ -21,6 +21,10 @@ history, and workspace state stay on your machine throughout.
   whole folder in a click.
 
 ### Added
+- **Push from the composer.** The Review changes menu now has a Push step
+  between commit and Create PR — publish a new branch (sets its upstream) or push
+  ahead commits in a click — and the primary action button names the real next
+  step (Review changes → Push → Create PR) from live Git state.
 - **Branch state at a glance.** The composer branch chip shows a
   merge / rebase / cherry-pick badge and a conflict count when the tree is
   mid-operation, and the CI check rollup is now clickable (opens the PR or the

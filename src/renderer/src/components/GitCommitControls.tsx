@@ -113,6 +113,7 @@ export function GitCommitControls({
   const [serverReadiness, setServerReadiness] = useState<GitPrReadiness | null>(null)
   const [loadState, setLoadState] = useState<ActionState>({ status: 'idle' })
   const [commitState, setCommitState] = useState<ActionState>({ status: 'idle' })
+  const [pushState, setPushState] = useState<ActionState>({ status: 'idle' })
   const [message, setMessage] = useState('')
   // Guards against setState-after-unmount when the menu closes mid-IPC.
   const mountedRef = useRef(true)
@@ -248,6 +249,43 @@ export function GitCommitControls({
     }
   }, [message, workspacePath, refreshSnapshot, refreshReadiness])
 
+  // Phase Git-U5 — push the committed branch so a PR can open. First push (no
+  // upstream yet) sets the upstream; later pushes are a plain `git push`.
+  // GitService.push re-validates branch/remote, so a race fails safely.
+  const handlePush = useCallback(async () => {
+    if (!workspacePath) {
+      setPushState({ status: 'error', message: 'Open a workspace to push.' })
+      return
+    }
+    if (typeof window.api?.gitPush !== 'function') {
+      setPushState({ status: 'error', message: 'Git is unavailable in this build.' })
+      return
+    }
+    setPushState({ status: 'working', message: 'Pushing…' })
+    try {
+      const pushed = await window.api.gitPush({
+        workspacePath,
+        setUpstream: !snapshot?.upstream
+      })
+      if (!mountedRef.current) return
+      if (!pushed.ok) {
+        setPushState({ status: 'error', message: pushed.error || 'Failed to push.' })
+        return
+      }
+      setSnapshot(pushed.data)
+      onSnapshotRef.current?.(pushed.data)
+      // Pushing clears the "push first" gate — refresh the canonical PR readiness.
+      void refreshReadiness()
+      setPushState({ status: 'success', message: 'Pushed.' })
+    } catch (error) {
+      if (!mountedRef.current) return
+      setPushState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to push.'
+      })
+    }
+  }, [workspacePath, snapshot?.upstream, refreshReadiness])
+
   // Prefer the canonical backend readiness (gh-aware: detached, remote,
   // push-first, AND existing-PR detection); fall back to the local mirror
   // while it loads or if the API / `gh` is unavailable.
@@ -274,6 +312,29 @@ export function GitCommitControls({
     snapshot != null &&
     commitState.status !== 'working' &&
     (changedCount > 0 || hasStaged)
+  // Push gating mirrors GitService.push's guards (branch + remote) plus a
+  // "there's something to push" check: no upstream yet, or local commits ahead.
+  const pushReason = !snapshot
+    ? 'Not a Git repository.'
+    : snapshot.detached || !snapshot.branch
+      ? 'Detached HEAD — switch to a branch to push.'
+      : !snapshot.remoteUrl
+        ? 'No git remote configured — add one to push.'
+        : snapshot.upstream && (snapshot.ahead ?? 0) === 0
+          ? 'Nothing to push — branch is up to date.'
+          : ''
+  const canPush =
+    Boolean(workspacePath) && snapshot != null && pushState.status !== 'working' && pushReason === ''
+  const pushLabel =
+    pushState.status === 'working'
+      ? 'Pushing…'
+      : pushState.status === 'success'
+        ? 'Pushed'
+        : pushState.status === 'error'
+          ? 'Retry push'
+          : !snapshot?.upstream
+            ? 'Publish branch'
+            : 'Push'
 
   return (
     <div className="composer-git-controls" role="group" aria-label="Git controls">
@@ -392,7 +453,29 @@ export function GitCommitControls({
         </span>
       )}
 
-      {/* 3. Create PR — gated on validity + branch suitability. */}
+      {/* 3. Push — publish the branch / push ahead commits so a PR can open. */}
+      <button
+        type="button"
+        className={`composer-git-menu-item ${
+          pushState.status === 'working' ? 'is-pending' : ''
+        } ${pushState.status === 'error' ? 'is-error' : ''} ${
+          pushState.status === 'success' ? 'is-success' : ''
+        }`}
+        onClick={() => void handlePush()}
+        disabled={!canPush}
+        title={
+          pushState.message ||
+          (canPush
+            ? !snapshot?.upstream
+              ? 'Publish this branch to its remote (sets upstream)'
+              : `Push ${snapshot?.ahead ?? 0} local commit${(snapshot?.ahead ?? 0) === 1 ? '' : 's'}`
+            : pushReason)
+        }
+      >
+        {pushLabel}
+      </button>
+
+      {/* 4. Create PR — gated on validity + branch suitability. */}
       <button
         type="button"
         className={`composer-git-menu-item composer-git-pr ${
