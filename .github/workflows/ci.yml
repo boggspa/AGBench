@@ -7,14 +7,18 @@ on:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: macOS Apple Silicon
+            os: macos-15
+          - name: macOS Intel
+            os: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,7 +30,7 @@ jobs:
 
   notarized-macos-release:
     name: Notarized macOS Release
-    runs-on: macos-latest
+    runs-on: macos-15
     if: startsWith(github.ref, 'refs/tags/v') && vars.ENABLE_MACOS_NOTARIZED_RELEASE == 'true'
     env:
       CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
@@ -46,3 +50,14 @@ jobs:
       - run: npm ci
       - run: npm run security:deps
       - run: npm run build:mac:notarized
+      - name: Verify notarized macOS artifacts
+        run: |
+          set -euo pipefail
+          test -d "dist/mac-universal/AGBench.app"
+          codesign --verify --deep --strict --verbose=2 "dist/mac-universal/AGBench.app"
+          spctl --assess --type execute --verbose=4 "dist/mac-universal/AGBench.app"
+          xcrun stapler validate "dist/mac-universal/AGBench.app"
+          for artifact in dist/*.dmg; do
+            test -f "$artifact"
+            xcrun stapler validate "$artifact"
+          done
