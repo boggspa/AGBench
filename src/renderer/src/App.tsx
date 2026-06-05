@@ -165,8 +165,8 @@ import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata
 import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { GitCommitControls } from './components/GitCommitControls'
-import { GitStatusAboveRow } from './components/GitStatusAboveRow'
-import type { GitRepositorySnapshot } from '../../main/services/GitService'
+import { branchTone, GitCiChip, GitMergeBadge, GitSyncChip } from './components/GitStatusChips'
+import type { GitPrSummary, GitRepositorySnapshot } from '../../main/services/GitService'
 import { ProviderBadgeIcon, Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel'
@@ -1051,6 +1051,9 @@ function App(): React.JSX.Element {
   // tool-derived diff counts. Null until the menu opens (lazy fetch) or
   // the repo read fails.
   const [primaryGitSnapshot, setPrimaryGitSnapshot] = useState<GitRepositorySnapshot | null>(null)
+  // PR check rollup for the current workspace, lifted alongside the snapshot so
+  // the unified workspace line shows CI without a separate git-status row.
+  const [primaryPr, setPrimaryPr] = useState<GitPrSummary | null>(null)
   // P4 — live git snapshot per unique external-workspace path, so each collapsed
   // additional-workspace row shows git-grounded "N files changed +A −B" that
   // resets on commit (same as the primary). Keyed by path.
@@ -1069,13 +1072,27 @@ function App(): React.JSX.Element {
   useEffect(() => {
     if (!currentWorkspacePath) {
       setPrimaryGitSnapshot(null)
+      setPrimaryPr(null)
       return
     }
     let cancelled = false
     const fetchSnapshot = async (): Promise<void> => {
       try {
         const res = await window.api.gitSnapshot({ workspacePath: currentWorkspacePath })
-        if (!cancelled) setPrimaryGitSnapshot(res?.ok ? res.data : null)
+        const snap = res?.ok ? res.data : null
+        if (cancelled) return
+        setPrimaryGitSnapshot(snap)
+        // CI is best-effort + slower (gh CLI) — only when the repo has a remote.
+        if (!snap?.remoteUrl) {
+          setPrimaryPr(null)
+          return
+        }
+        try {
+          const prRes = await window.api.githubPrStatus({ workspacePath: currentWorkspacePath })
+          if (!cancelled) setPrimaryPr(prRes?.ok ? prRes.data : null)
+        } catch {
+          if (!cancelled) setPrimaryPr(null)
+        }
       } catch {
         /* keep the last good snapshot on a transient read failure */
       }
@@ -12743,7 +12760,14 @@ function App(): React.JSX.Element {
                             has been opened); fall back to the workspace
                             record's cached branch before the first read. A
                             detached snapshot reads "detached HEAD". */}
-                          <em className="composer-above-bar-secondary-branch">
+                          <em
+                            className={`composer-above-bar-secondary-branch git-tone-${branchTone(
+                              primaryGitSnapshot?.detached
+                                ? undefined
+                                : (primaryGitSnapshot?.branch ?? currentWorkspace?.branch),
+                              primaryGitSnapshot?.detached ?? false
+                            )}`}
+                          >
                             {primaryGitSnapshot
                               ? primaryGitSnapshot.detached
                                 ? 'detached HEAD'
@@ -12752,6 +12776,7 @@ function App(): React.JSX.Element {
                           </em>
                         </span>
                       </span>
+                      {primaryGitSnapshot && <GitMergeBadge snapshot={primaryGitSnapshot} />}
                       {/*
                   Phase K-followup — files-changed pill is now
                   always rendered (with "0 files changed" when no
@@ -12807,57 +12832,8 @@ function App(): React.JSX.Element {
                         see what the Review/Commit/Create-PR menu will act on
                         without opening it. Rendered only once a snapshot is
                         in hand so the header stays stable pre-read. */}
-                      {primaryGitSnapshot &&
-                        (() => {
-                          const c = primaryGitSnapshot.counts
-                          const stagedTitle = primaryGitSnapshot.clean
-                            ? 'Working tree clean'
-                            : `${c.changed} changed · ${c.staged} staged · ${c.unstaged} unstaged${
-                                c.untracked > 0 ? ` · ${c.untracked} new` : ''
-                              }`
-                          const needsPush =
-                            !primaryGitSnapshot.detached &&
-                            !!primaryGitSnapshot.branch &&
-                            (!primaryGitSnapshot.upstream || primaryGitSnapshot.ahead > 0)
-                          const prReady =
-                            !primaryGitSnapshot.detached &&
-                            !!primaryGitSnapshot.branch &&
-                            !!primaryGitSnapshot.remoteUrl
-                          return (
-                            <span
-                              className="composer-git-state-pill"
-                              title={stagedTitle}
-                              data-git-clean={primaryGitSnapshot.clean ? 'true' : 'false'}
-                            >
-                              {primaryGitSnapshot.clean ? (
-                                <span className="composer-git-state-clean">clean</span>
-                              ) : c.staged > 0 ? (
-                                <span className="composer-git-state-staged">{c.staged} staged</span>
-                              ) : (
-                                <span className="composer-git-state-unstaged">unstaged</span>
-                              )}
-                              {needsPush ? (
-                                <span
-                                  className="composer-git-state-flag is-push"
-                                  title={
-                                    primaryGitSnapshot.upstream
-                                      ? `${primaryGitSnapshot.ahead} commit(s) to push`
-                                      : 'No upstream — push to set one'
-                                  }
-                                >
-                                  push
-                                </span>
-                              ) : prReady ? (
-                                <span
-                                  className="composer-git-state-flag is-pr"
-                                  title="Branch is pushed and ready for a PR"
-                                >
-                                  PR ready
-                                </span>
-                              ) : null}
-                            </span>
-                          )
-                        })()}
+                      {primaryGitSnapshot && <GitSyncChip snapshot={primaryGitSnapshot} />}
+                      <GitCiChip pr={primaryPr} />
                       {/*
                     Composer-unification (Phase J1): once the chat has
                     activity, External Path + Worktree migrate from the
@@ -12967,10 +12943,6 @@ function App(): React.JSX.Element {
                         onCreatePr={() => handleCreateGithubPr(group.path)}
                       />
                     ))}
-                    <GitStatusAboveRow
-                      workspacePath={currentWorkspacePath}
-                      refreshKey={runCompleteNotice?.timestamp}
-                    />
                   </>
                 )}
                 {/*
@@ -13088,9 +13060,6 @@ function App(): React.JSX.Element {
             >
               {showComposerChips && (
                 <div className="composer-chips">
-                  {showComposerBranchChip && (
-                    <span className="composer-chip">Branch: {currentWorkspace?.branch}</span>
-                  )}
                   {currentProvider === 'gemini' && currentWorktreeDiffUnavailable && (
                     <span className="composer-chip warning">Worktree diff disabled</span>
                   )}

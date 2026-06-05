@@ -6,11 +6,9 @@ import type { GitPrSummary, GitRepositorySnapshot } from '../../../main/services
  * consistent shape + styling everywhere, so branch / merge / sync / CI never
  * drift between row instances — the unification the above-rows needed.
  *
- * Every chip here is READ-ONLY (informative). The single interactive control
- * (Review / Commit / Push / Create-PR) lives in the row's action button, so the
- * line keeps a clean visual split between "status you read" and "the one thing
- * you click". (CI is the one exception — it opens the run — and carries the
- * `git-chip-clickable` affordance to signal that.)
+ * They deliberately reuse the existing `.git-status-*` chip styles so there's a
+ * single visual language (no parallel class system, no dead CSS). Every chip is
+ * READ-ONLY except CI, which opens the run and carries the clickable affordance.
  */
 
 /** Branch-name → tone bucket for Claude-app-style colour coding. */
@@ -72,12 +70,10 @@ export function GitMergeBadge({
     .join(' · ')
   return (
     <span
-      className={`git-chip git-chip-merge ${
-        hasConflicts ? 'git-merge-conflict' : 'git-merge-progress'
-      }`}
+      className={`git-status-merge ${hasConflicts ? 'git-merge-conflict' : 'git-merge-progress'}`}
       title={title}
     >
-      <span className="git-chip-glyph" aria-hidden>
+      <span className="git-status-merge-glyph" aria-hidden>
         {hasConflicts ? '⚠' : '⟳'}
       </span>
       {hasConflicts ? `${conflicts} conflict${conflicts === 1 ? '' : 's'}` : stateLabel}
@@ -86,9 +82,9 @@ export function GitMergeBadge({
 }
 
 /**
- * Ahead/behind vs upstream — consolidates the old state-pill "push" flag and
- * the separate git-status ↑↓ into one sync chip. Renders nothing when in sync
- * (clean), so a tidy repo stays quiet.
+ * Ahead/behind vs upstream — consolidates the old state-pill "push" flag and the
+ * separate ↑↓ row into one sync chip. Renders nothing when in sync, so a tidy
+ * repo stays quiet.
  */
 export function GitSyncChip({
   snapshot
@@ -99,7 +95,7 @@ export function GitSyncChip({
   if (!snapshot.upstream) {
     return (
       <span
-        className="git-chip git-chip-sync is-unpublished"
+        className="git-status-push git-status-unpublished"
         title="No upstream — push to publish this branch"
       >
         no upstream
@@ -110,9 +106,9 @@ export function GitSyncChip({
   const behind = snapshot.behind ?? 0
   if (ahead === 0 && behind === 0) return null
   return (
-    <span className="git-chip git-chip-sync" title={`${ahead} ahead · ${behind} behind`}>
-      {ahead > 0 && <span className="git-sync-ahead">↑{ahead}</span>}
-      {behind > 0 && <span className="git-sync-behind">↓{behind}</span>}
+    <span className="git-status-push" title={`${ahead} ahead · ${behind} behind`}>
+      {ahead > 0 && <span className="git-status-ahead">↑{ahead}</span>}
+      {behind > 0 && <span className="git-status-behind">↓{behind}</span>}
     </span>
   )
 }
@@ -138,7 +134,7 @@ export function GitCiChip({ pr }: { pr: GitPrSummary | null }): React.JSX.Elemen
   }
   return (
     <span
-      className={`git-chip git-chip-ci git-ci-${tone}${clickable ? ' git-chip-clickable' : ''}`}
+      className={`git-status-ci git-ci-${tone}${clickable ? ' git-status-ci-clickable' : ''}`}
       title={`CI: ${ci.pass} passed · ${ci.fail} failed · ${ci.pending} pending${
         clickable ? ' — open' : ''
       }`}
@@ -156,9 +152,9 @@ export function GitCiChip({ pr }: { pr: GitPrSummary | null }): React.JSX.Elemen
           : undefined
       }
     >
-      <span className="git-chip-glyph">{glyph}</span>
+      <span className="git-status-ci-glyph">{glyph}</span>
       {count}
-      <span className="git-chip-ci-label">CI</span>
+      <span className="git-status-ci-label">CI</span>
     </span>
   )
 }
