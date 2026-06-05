@@ -25,6 +25,10 @@ import type {
 export const GEMINI_MCP_SERVER_NAME = 'TaskWraith' as const
 export const GEMINI_MCP_SERVER_NAME_LOWER = GEMINI_MCP_SERVER_NAME.toLowerCase()
 export const GEMINI_MCP_BRIDGE_ARG = '--taskwraith-gemini-mcp-bridge'
+// Mirrors geminiMcpConstants.GEMINI_MCP_BRIDGE_ENV — the second bridge-child
+// signal (set on self-test spawns) so a lost argv flag can't trigger a full-app
+// boot + recursive self-spawn. Keep the literal identical across both files.
+export const GEMINI_MCP_BRIDGE_ENV = 'TASKWRAITH_GEMINI_MCP_BRIDGE'
 export const GEMINI_MCP_SOCKET_ARG = '--socket'
 export const GEMINI_MCP_TOKEN_ARG = '--token'
 // Fail-closed read-only scope flag. Carried in the bridge ARGV (not env) so it
@@ -881,7 +885,10 @@ export class McpBridgeRuntime {
       try {
         proc = spawn(this.processExecPath(), this.taskwraithMcpBridgeArgs(socketPath), {
           shell: false,
-          env: this.deps.createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, this.processExecPath())
+          env: this.deps.createCliEnv(
+            { FORCE_COLOR: '0', NO_COLOR: '1', [GEMINI_MCP_BRIDGE_ENV]: '1' },
+            this.processExecPath()
+          )
         })
       } catch (error) {
         clearTimeout(timeout)

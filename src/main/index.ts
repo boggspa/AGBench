@@ -87,6 +87,7 @@ import { ensembleWakeupsEnabled } from './featureGates'
 import {
   GEMINI_MCP_SERVER_NAME,
   GEMINI_MCP_BRIDGE_ARG,
+  GEMINI_MCP_BRIDGE_ENV,
   GEMINI_MCP_ALLOWED_TOOL_NAMES,
   GEMINI_MCP_READ_ONLY_TOOL_NAMES
 } from './geminiMcpConstants'
@@ -655,7 +656,12 @@ const FILE_ICON_CACHE = new Map<string, string | null>()
 // `TaskWraith__delegate_to_subthread`, `mcp__TaskWraith__git_status`, etc.
 // Mixed-case to match the product display name. The CLI flag, socket
 // file, persisted-state sentinels, and env var (`TASKWRAITH_PARENT_PROVIDER`)
-const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
+// Bridge-child detection uses TWO independent signals — the argv flag AND an env
+// var set on our own self-test spawns — so a single lost/mangled flag can never
+// let a spawned bridge boot the full app (which would self-spawn exponentially,
+// past the per-process self-test cap). See geminiMcpConstants.GEMINI_MCP_BRIDGE_ENV.
+const isGeminiMcpBridgeProcess =
+  process.argv.includes(GEMINI_MCP_BRIDGE_ARG) || process.env[GEMINI_MCP_BRIDGE_ENV] === '1'
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 
