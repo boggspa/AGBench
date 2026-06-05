@@ -313,8 +313,8 @@ const formatHourLabel = (dayKey: string, hour: number): string => {
 
 /**
  * 1.0.5-EW44 — Compact human-readable duration formatter for the
- * welcome dashboard stats. The existing `formatDuration` in
- * `TurnReceiptCard.tsx` caps at minutes ("12m 34s"); for
+ * welcome dashboard stats. An earlier per-turn duration formatter
+ * capped at minutes ("12m 34s"); for
  * dashboard metrics that can span hours/days (Longest thread,
  * Cumulative wall time across a user's whole history) we need a
  * fuller scale that drops down to days when the value is large.
