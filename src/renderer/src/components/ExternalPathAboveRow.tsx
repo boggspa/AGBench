@@ -21,6 +21,8 @@ import type { ExternalPathGrant } from '../../../main/store/types'
 import type { ExternalPathGitMetadata } from '../lib/ExternalPathRepoDetect'
 import { describeExternalPath } from '../lib/ExternalPathRepoDetect'
 import { getProviderName } from './Sidebar'
+import { branchTone, GitMergeBadge, GitSyncChip } from './GitStatusChips'
+import type { GitRepositorySnapshot } from '../../../main/services/GitService'
 
 /**
  * 1.0.5-EW42b — Derive a human-readable "where did this grant
@@ -93,6 +95,8 @@ interface ExternalPathAboveRowProps {
    */
   access?: 'read' | 'write'
   providers?: ExternalPathGrant['provider'][]
+  /** Live per-path git snapshot — drives the branch tone, merge badge + sync chip. */
+  snapshot?: GitRepositorySnapshot | null
   repoMetadata: ExternalPathGitMetadata | null
   /**
    * Per-repo diff stats from `externalPathDiffStatsByGrant` (slice 6).
@@ -176,6 +180,7 @@ export function ExternalPathAboveRow({
   grant,
   access,
   providers,
+  snapshot,
   repoMetadata,
   diffStats,
   onRevoke,
@@ -234,14 +239,22 @@ export function ExternalPathAboveRow({
         {descriptor.isRepo ? <BranchGlyph /> : <FileGlyph />}
         <span>
           {descriptor.basename}
-          {descriptor.isRepo && descriptor.branch ? (
+          {descriptor.isRepo && (snapshot?.branch || descriptor.branch) ? (
             <>
               {' · '}
-              <em className="composer-above-bar-secondary-branch">{descriptor.branch}</em>
+              <em
+                className={`composer-above-bar-secondary-branch git-tone-${branchTone(
+                  snapshot?.detached ? undefined : (snapshot?.branch ?? descriptor.branch),
+                  snapshot?.detached ?? false
+                )}`}
+              >
+                {snapshot?.detached ? 'detached HEAD' : snapshot?.branch || descriptor.branch}
+              </em>
             </>
           ) : null}
         </span>
       </span>
+      {snapshot && <GitMergeBadge snapshot={snapshot} />}
       {hasDiff && (
         <>
           <span
@@ -261,6 +274,7 @@ export function ExternalPathAboveRow({
           )}
         </>
       )}
+      {snapshot && <GitSyncChip snapshot={snapshot} />}
       <span className="composer-above-bar-secondary-access" title={originTooltip}>
         {isWrite ? 'edit access' : 'read access'}
       </span>

@@ -12928,6 +12928,7 @@ function App(): React.JSX.Element {
                         access={group.access}
                         providers={group.providers}
                         repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
+                        snapshot={externalGitSnapshots[group.path] ?? null}
                         diffStats={(() => {
                           const snap = externalGitSnapshots[group.path]
                           return snap
