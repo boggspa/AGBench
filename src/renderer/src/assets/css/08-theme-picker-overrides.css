@@ -8556,6 +8556,24 @@
   > *:not(:first-child) {
   border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
 }
+/* The git-status row is a `.composer-above-bar`, so inside the merged Codex
+ * container it inherits the SOLO tucked-tab geometry from the CX1 rule:
+ * `display: grid` (1fr auto 1fr) spreads its status chips across 3 columns
+ * (the lone branch chip lands left with two empty cells → reads as a stray
+ * "top row"), and the 6/14 tuck padding leaks a 14px bottom gap. In the
+ * merge the tuck lives on the STACK, not the rows. The shared flush-reset
+ * above zeroes border/radius/bg/margin/width but NOT display or padding, so
+ * re-flatten JUST this row here: flex-pack the chips left + symmetric flush
+ * padding. Specificity (0,4,0) ties the flush-reset block and wins on source
+ * order; beats the solo `.composer-above-bar` (0,2,0). Row 1 (style-unified)
+ * keeps its 3-col grid untouched. */
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row)
+  > .git-status-above-row {
+  display: flex;
+  align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
 /*
  * Without an ensemble (no chip strip), the legacy stacked-rounded-
  * corners pattern still applies — branch row pill alone keeps its

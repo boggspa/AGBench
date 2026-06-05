@@ -1526,6 +1526,8 @@
  * above-bar shape automatically (native merge segment, codex tuck/merge,
  * claude/grok/etc. pill). Only the chip gap + size are row-specific. */
 .git-status-above-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
   font-size: var(--font-size-xs);
 }
