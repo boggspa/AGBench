@@ -8505,7 +8505,7 @@
  *
  * Falls back to per-row pills on other shells (where the parent
  * keeps its 4px gap + each row keeps its own chrome). */
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) {
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row) {
   /* Tuck-under geometry mirrored from the solo CX1/CX6 rule on
    * `.composer-above-bar`: 80px narrower than the composer-surface
    * below, centred, flat bottom edge, negative bottom margin to
@@ -8535,11 +8535,11 @@
  * solo `width: calc(100% - 80px)` on `.composer-above-bar` doesn't
  * leak through and double-shrink the row inside the already-
  * shrunk parent. */
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row)
   > .composer-above-bar,
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row)
   > .ensemble-above-row,
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row)
   > .queued-messages-above-row {
   border: 0;
   border-radius: 0;
@@ -8552,7 +8552,7 @@
   max-width: 100%;
   align-self: stretch;
 }
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row, .git-status-above-row)
   > *:not(:first-child) {
   border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
 }
