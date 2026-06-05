@@ -22,7 +22,7 @@
 [data-composer-style="codex"] .composer-surface {
   border-radius: 22px;
   padding: 14px 14px 10px;
-  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  background: #252525;
   border: 1px solid color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
