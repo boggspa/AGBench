@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { ChatMessage, ChatRecord } from '../../../main/store/types'
 import {
   agentInvocationSourceClassName,
@@ -32,7 +33,10 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
   const body = subThreadReturnBody(message.content)
 
   return (
-    <article className="subthread-return-card">
+    <article
+      className="subthread-return-card"
+      style={agentIdentity ? ({ ['--agent-rim']: agentIdentity.accent } as CSSProperties) : undefined}
+    >
       <header className="subthread-return-header">
         <div className="subthread-return-heading">
           <span aria-hidden="true" className="subthread-return-glyph">

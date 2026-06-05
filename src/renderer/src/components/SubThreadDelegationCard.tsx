@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/types'
 import {
   agentInvocationRouteLabel,
@@ -107,6 +108,7 @@ export function SubThreadDelegationCard({
   return (
     <article
       className={`subthread-delegation-card status-${status.kind} provider-${targetProvider || 'unknown'} ${isClickable ? 'clickable' : ''}`}
+      style={agentIdentity ? ({ ['--agent-rim']: agentIdentity.accent } as CSSProperties) : undefined}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
       onClick={isClickable ? handleOpen : undefined}

@@ -4108,6 +4108,13 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
+  /* Agent-tinted delegation rim — matches .subthread-return-card /
+   * .subthread-delegation-card. --agent-rim is set inline on the parent
+   * .delegation-timeline-node from this row's agentIdentity.accent and
+   * cascades here; 3px left-edge inset so each timeline row reads as its
+   * agent's colour. Neutral hairline fallback when unset. */
+  box-shadow: inset 3px 0 0 0
+    color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.14)) 70%, transparent);
 }
 
 .delegation-timeline-row:hover {
@@ -4121,7 +4128,9 @@ input:disabled, select:disabled, textarea:disabled {
 
 .delegation-timeline-row.is-current {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow:
+    inset 3px 0 0 0 color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.14)) 70%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .delegation-timeline-dot {

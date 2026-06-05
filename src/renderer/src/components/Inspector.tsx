@@ -1,4 +1,11 @@
-import { Component, useEffect, useState, type ReactNode, type RefObject } from 'react'
+import {
+  Component,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject
+} from 'react'
 import { DiffViewer } from './DiffViewer'
 import { TerminalPanel } from './TerminalPanel'
 import { BackgroundTasksPanel } from './BackgroundTasksPanel'
@@ -976,7 +983,12 @@ function DelegationTimelineTreeNode({
   return (
     <div
       className="delegation-timeline-node"
-      style={{ paddingLeft: depth === 0 ? 0 : `${depth * 18}px` }}
+      style={
+        {
+          paddingLeft: depth === 0 ? 0 : `${depth * 18}px`,
+          ['--agent-rim']: agentIdentity.accent
+        } as CSSProperties
+      }
     >
       <button
         type="button"
