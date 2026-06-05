@@ -139,8 +139,7 @@ import {
   pairToolResult,
   isToolUseEvent,
   isToolResultEvent,
-  estimateLineChanges,
-  isErroredToolStatus
+  estimateLineChanges
 } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -1052,6 +1051,12 @@ function App(): React.JSX.Element {
   // tool-derived diff counts. Null until the menu opens (lazy fetch) or
   // the repo read fails.
   const [primaryGitSnapshot, setPrimaryGitSnapshot] = useState<GitRepositorySnapshot | null>(null)
+  // P4 — live git snapshot per unique external-workspace path, so each collapsed
+  // additional-workspace row shows git-grounded "N files changed +A −B" that
+  // resets on commit (same as the primary). Keyed by path.
+  const [externalGitSnapshots, setExternalGitSnapshots] = useState<
+    Record<string, GitRepositorySnapshot | null>
+  >({})
   const currentWorkspacePath = currentWorkspace?.path
   // Eagerly fetch the live git snapshot for the current workspace so the
   // above-bar shows real repo state (changed-file count, +/- lines, clean)
@@ -10477,110 +10482,13 @@ function App(): React.JSX.Element {
     }),
     [primaryGitSnapshot]
   )
-  // Slice 6 of the external-path-redesign arc: partition diff stats
-  // by which grant's repoRoot each tool activity's file path falls
-  // under. Secondary above-rows read their entry to display per-repo
-  // file counts + +/- additions, just like the primary row does for
-  // the workspace.
-  //
-  // Bucketing is by the activity's primary file path (`activity.filePath`
-  // for single-file ops, else `diffSummary.files[0].path`). Multi-file
-  // activities are attributed to whichever bucket holds their first
-  // file — approximate but pragmatic for v1; per-file partitioning
-  // can land in a follow-up if it shows up as a real concern. Today
-  // (before slice 5 lands the runtime detector) no tool activity
-  // references external paths, so this aggregate stays empty.
-  const externalPathDiffStatsByGrant = useMemo(() => {
-    const result: Record<string, { additions: number; deletions: number; filesChanged: number }> =
-      {}
-    if (!currentChat) return result
-    // Build the list of (grantId, repoRoot) pairs to bucket against.
-    const grantBuckets: Array<{ id: string; root: string }> = []
-    for (const grant of externalPathGrants) {
-      const meta = externalPathRepoMetadata[grant.id]
-      const root = meta?.isRepo ? meta.repoRoot : grant.path
-      if (!root) continue
-      grantBuckets.push({ id: grant.id, root })
-    }
-    if (grantBuckets.length === 0) return result
-    // Sort longest-first so nested repoRoots (e.g. /a/b inside /a)
-    // bucket to the more specific path.
-    grantBuckets.sort((a, b) => b.root.length - a.root.length)
-
-    const fileBuckets: Record<string, Set<string>> = {}
-    const totals: Record<string, { additions: number; deletions: number }> = {}
-    for (const { id } of grantBuckets) {
-      fileBuckets[id] = new Set()
-      totals[id] = { additions: 0, deletions: 0 }
-    }
-
-    const bucketForPath = (filePath: string | undefined): string | null => {
-      if (!filePath) return null
-      for (const { id, root } of grantBuckets) {
-        if (filePath === root || filePath.startsWith(root + '/')) return id
-      }
-      return null
-    }
-
-    const runId = currentRun?.runId
-    for (const message of currentChat.messages || []) {
-      if (runId && message.runId && message.runId !== runId) continue
-      for (const activity of message.toolActivities || []) {
-        // Skip denied/errored edits — a refused write changed nothing, so it
-        // must not inflate any external-path bucket's file/line totals.
-        if (isErroredToolStatus(activity.status)) continue
-        const diff = activity.diffSummary
-        if (!diff) continue
-        const primaryPath = activity.filePath || diff.files?.[0]?.path
-        const grantId = bucketForPath(primaryPath)
-        if (!grantId) continue
-        if (typeof diff.additions === 'number') totals[grantId].additions += diff.additions
-        if (typeof diff.deletions === 'number') totals[grantId].deletions += diff.deletions
-        for (const file of diff.files || []) {
-          if (file?.path) fileBuckets[grantId].add(file.path)
-        }
-      }
-    }
-    for (const { id } of grantBuckets) {
-      result[id] = {
-        additions: totals[id].additions,
-        deletions: totals[id].deletions,
-        filesChanged: fileBuckets[id].size
-      }
-    }
-    return result
-  }, [currentChat, currentRun?.runId, externalPathGrants, externalPathRepoMetadata])
-  // 1.0.6-EW74 — robust per-PATH diff stats for the additional-workspace
-  // above-rows, computed the SAME way the primary row does:
-  // `getLiveToolFileDiffSummaries(messages, <workspacePath>)`. This is far
-  // more reliable than the first-file repoRoot bucketing above — it reuses
-  // the exact primitive that powers the primary's "N files changed +A −B"
-  // pill + the Task Complete card, just scoped to each WRITE workspace's
-  // path. Lets users track per-workspace changes across the whole session.
-  // Keyed by PATH (an ensemble stores one grant per provider per path).
-  const externalPathLiveDiffByPath = useMemo(() => {
-    const result: Record<string, { additions: number; deletions: number; filesChanged: number }> =
-      {}
-    if (!currentChat) return result
-    const messages = currentChat.messages || []
-    const seen = new Set<string>()
-    for (const grant of externalPathGrants) {
-      if (seen.has(grant.path)) continue
-      seen.add(grant.path)
-      const summaries = getLiveToolFileDiffSummaries(messages, grant.path).filter(
-        (entry) => !entry.isNoise
-      )
-      if (summaries.length === 0) continue
-      let additions = 0
-      let deletions = 0
-      for (const entry of summaries) {
-        if (typeof entry.additions === 'number') additions += entry.additions
-        if (typeof entry.deletions === 'number') deletions += entry.deletions
-      }
-      result[grant.path] = { additions, deletions, filesChanged: summaries.length }
-    }
-    return result
-  }, [currentChat, externalPathGrants])
+  // P4 — the per-grant and per-path TRANSCRIPT diff accumulators that used to
+  // live here (externalPathDiffStatsByGrant / externalPathLiveDiffByPath) were
+  // removed: the additional-workspace rows now read git-grounded diff from
+  // `externalGitSnapshots` (the per-path snapshot fetch below), so each row's
+  // "N files changed +A -B" reflects the working tree and resets on commit —
+  // the same git grounding as the primary row, instead of summing tool activity
+  // across the whole transcript.
   // P1 — collapse the per-provider grants (an ensemble mints one grant per
   // participant-provider for the same folder) into ONE group per unique path,
   // so the composer shows one native row per workspace instead of N duplicates.
@@ -10613,6 +10521,43 @@ function App(): React.JSX.Element {
     }
     return Array.from(byPath.values())
   }, [externalPathGrants])
+  // Fetch a live git snapshot per unique external path on the same triggers as
+  // the primary (paths change, run-finish, window focus). gitSnapshot accepts an
+  // arbitrary repoPath; non-repos resolve to null and simply show no diff.
+  const externalWorkspacePathsKey = useMemo(
+    () => externalWorkspaceGroups.map((group) => group.path).join('\n'),
+    [externalWorkspaceGroups]
+  )
+  useEffect(() => {
+    const paths = externalWorkspacePathsKey ? externalWorkspacePathsKey.split('\n') : []
+    if (paths.length === 0) {
+      setExternalGitSnapshots({})
+      return
+    }
+    let cancelled = false
+    const fetchAll = async (): Promise<void> => {
+      const entries = await Promise.all(
+        paths.map(async (path) => {
+          try {
+            const res = await window.api.gitSnapshot({ repoPath: path })
+            return [path, res?.ok ? res.data : null] as const
+          } catch {
+            return [path, null] as const
+          }
+        })
+      )
+      if (!cancelled) setExternalGitSnapshots(Object.fromEntries(entries))
+    }
+    void fetchAll()
+    const onFocus = (): void => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void fetchAll()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [externalWorkspacePathsKey, runCompleteNotice?.timestamp])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -13007,10 +12952,16 @@ function App(): React.JSX.Element {
                         access={group.access}
                         providers={group.providers}
                         repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
-                        diffStats={
-                          externalPathLiveDiffByPath[group.path] ||
-                          externalPathDiffStatsByGrant[group.representative.id]
-                        }
+                        diffStats={(() => {
+                          const snap = externalGitSnapshots[group.path]
+                          return snap
+                            ? {
+                                filesChanged: snap.counts.changed,
+                                additions: snap.lineStats.additions,
+                                deletions: snap.lineStats.deletions
+                              }
+                            : undefined
+                        })()}
                         onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
                         createPrState={getCreatePrState(group.path)}
                         onCreatePr={() => handleCreateGithubPr(group.path)}
