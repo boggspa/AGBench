@@ -1487,6 +1487,89 @@
   color: rgba(29, 29, 31, 0.82);
 }
 
+/* ── Git-status above-row (Claude-app style) — branch (colour-coded) +
+ * push (ahead/behind) + CI check rollup. A live, always-on segment in the
+ * native console stack; surfaces the CI checks GitService already parses
+ * into GitPrSummary.checks but nothing rendered before. ──────────────── */
+.git-status-above-row {
+  gap: 8px;
+  font-size: var(--font-size-xs);
+}
+.git-status-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-weight: 650;
+  color: var(--git-branch-tone, color-mix(in srgb, var(--text-primary) 84%, transparent));
+}
+.git-status-branch svg {
+  flex: 0 0 auto;
+  color: inherit;
+}
+.git-status-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+.git-status-branch.git-tone-main {
+  --git-branch-tone: #6f9dff;
+}
+.git-status-branch.git-tone-feature {
+  --git-branch-tone: #a78bfa;
+}
+.git-status-branch.git-tone-fix {
+  --git-branch-tone: #f0a35a;
+}
+.git-status-branch.git-tone-release {
+  --git-branch-tone: #6ddfa8;
+}
+.git-status-branch.git-tone-other {
+  --git-branch-tone: color-mix(in srgb, var(--text-primary) 80%, transparent);
+}
+.git-status-branch.git-tone-detached {
+  --git-branch-tone: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+}
+.git-status-push {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.git-status-ahead {
+  color: #f0c674;
+}
+.git-status-behind {
+  color: #6f9dff;
+}
+.git-status-ci {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.git-status-ci-glyph {
+  font-size: 0.95em;
+}
+.git-status-ci-label {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-size: 0.82em;
+  opacity: 0.66;
+}
+.git-status-ci.git-ci-pass {
+  color: #6ddfa8;
+}
+.git-status-ci.git-ci-fail {
+  color: #ff6b7a;
+}
+.git-status-ci.git-ci-pending {
+  color: #f0c674;
+}
+
 /* Respect reduce-motion — drop the control transitions entirely. */
 [data-reduce-motion="true"] .composer-git-menu-item,
 [data-reduce-motion="true"] .composer-git-commit-input,
@@ -2589,15 +2672,23 @@
 [data-interface-style="claude"] .app-sidebar {
   --provider-shell-sidebar-line: color-mix(in srgb, #ffffff 9%, transparent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, #202020 88%, transparent), color-mix(in srgb, #151515 92%, transparent)),
-    var(--sidebar-bg);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, color-mix(in srgb, #202020 88%, transparent) var(--sidebar-opacity-100), transparent),
+      color-mix(in srgb, color-mix(in srgb, #151515 92%, transparent) var(--sidebar-opacity-100), transparent)
+    ),
+    color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-100), transparent);
   border-right-color: var(--provider-shell-sidebar-line);
 }
 
 [data-interface-style="claude"] .app-sidebar {
   background:
-    linear-gradient(180deg, color-mix(in srgb, #1b211f 84%, transparent), color-mix(in srgb, #171717 94%, transparent)),
-    var(--sidebar-bg);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, color-mix(in srgb, #1b211f 84%, transparent) var(--sidebar-opacity-100), transparent),
+      color-mix(in srgb, color-mix(in srgb, #171717 94%, transparent) var(--sidebar-opacity-100), transparent)
+    ),
+    color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-100), transparent);
 }
 
 [data-interface-style="codex"] .app-sidebar .sidebar-header-card,
@@ -2672,8 +2763,12 @@
 [data-interface-style="codex"] .app-transcript,
 [data-interface-style="claude"] .app-transcript {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 68%, transparent), color-mix(in srgb, #0d0d0d 72%, transparent)),
-    color-mix(in srgb, var(--content-bg) 60%, transparent);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, color-mix(in srgb, var(--content-bg) 68%, transparent) var(--main-pane-opacity-100), transparent),
+      color-mix(in srgb, color-mix(in srgb, #0d0d0d 72%, transparent) var(--main-pane-opacity-100), transparent)
+    ),
+    color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-60), transparent);
 }
 
 /* Parity: transcript inherits the composer's max-width across themed shells
@@ -3021,7 +3116,7 @@
  * with Gemini's signature blue identity.
  * ============================================================ */
 [data-interface-style="gemini"] .app-sidebar {
-  background: color-mix(in srgb, #0a1020 92%, transparent);
+  background: color-mix(in srgb, color-mix(in srgb, #0a1020 92%, transparent) var(--sidebar-opacity-100), transparent);
   border-right: 1px solid color-mix(in srgb, #5a8cff 8%, transparent);
 }
 [data-interface-style="gemini"] .app-sidebar .sidebar-header-card {
@@ -3052,7 +3147,7 @@
 }
 
 [data-interface-style="gemini"] .app-transcript {
-  background: color-mix(in srgb, #0a1020 88%, transparent);
+  background: color-mix(in srgb, color-mix(in srgb, #0a1020 88%, transparent) var(--main-pane-opacity-100), transparent);
 }
 [data-interface-style="gemini"] .message-bubble.user {
   background: color-mix(in srgb, #2a3344 88%, transparent);
@@ -3100,7 +3195,7 @@
  * hero, green-yellow accent highlights.
  * ============================================================ */
 [data-interface-style="kimi"] .app-sidebar {
-  background: color-mix(in srgb, #080808 96%, transparent);
+  background: color-mix(in srgb, color-mix(in srgb, #080808 96%, transparent) var(--sidebar-opacity-100), transparent);
   border-right: 1px solid color-mix(in srgb, #ffffff 6%, transparent);
 }
 [data-interface-style="kimi"] .app-sidebar .sidebar-header-card {
@@ -3131,7 +3226,7 @@
 }
 
 [data-interface-style="kimi"] .app-transcript {
-  background: color-mix(in srgb, #080808 92%, transparent);
+  background: color-mix(in srgb, color-mix(in srgb, #080808 92%, transparent) var(--main-pane-opacity-100), transparent);
 }
 [data-interface-style="kimi"] .message-bubble.user {
   background: color-mix(in srgb, #1c1c1e 90%, transparent);
@@ -3330,4 +3425,3 @@
   .composer-inner-module::after {
   transition: none;
 }
-
