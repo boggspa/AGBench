@@ -678,6 +678,16 @@ export class McpBridgeRuntime {
   private geminiMcpBroker: NetServer | null = null
   private geminiMcpBrokerStartPromise: Promise<void> | null = null
   private geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
+  // Self-test concurrency guard + short result cache. Without these, a burst of
+  // status checks while the bridge reads as disconnected each spawn a fresh
+  // Electron self-test process → hundreds of procs. In-flight callers share the
+  // one running test, and a recent result is reused so rapid sequential calls
+  // don't re-spawn either.
+  private geminiMcpSelfTestPromise: Promise<{ ok: boolean; error?: string }> | null = null
+  private geminiMcpSelfTestCache: {
+    at: number
+    result: { ok: boolean; error?: string }
+  } | null = null
   private geminiMcpBridgeInstalledForCurrentToken = false
   private kimiMcpBridgeInstalledForCurrentToken = false
   private kimiMcpBridgeRepairPromise: Promise<void> | null = null
@@ -819,6 +829,26 @@ export class McpBridgeRuntime {
   }
 
   async selfTestGeminiMcpBridgeProcess(
+    socketPath: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    // Coalesce concurrent self-tests and reuse a recent result, so a flood of
+    // status checks (e.g. autoRepair on every IPC query while the bridge reads
+    // disconnected) can never spawn a flood of Electron self-test processes.
+    if (this.geminiMcpSelfTestPromise) return this.geminiMcpSelfTestPromise
+    const cached = this.geminiMcpSelfTestCache
+    if (cached && Date.now() - cached.at < 3000) return cached.result
+    this.geminiMcpSelfTestPromise = this.runSelfTestGeminiMcpBridgeProcess(socketPath)
+      .then((result) => {
+        this.geminiMcpSelfTestCache = { at: Date.now(), result }
+        return result
+      })
+      .finally(() => {
+        this.geminiMcpSelfTestPromise = null
+      })
+    return this.geminiMcpSelfTestPromise
+  }
+
+  private async runSelfTestGeminiMcpBridgeProcess(
     socketPath: string
   ): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolveSelfTest) => {
