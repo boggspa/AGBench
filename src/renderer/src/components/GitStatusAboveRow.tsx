@@ -113,6 +113,41 @@ export function GitStatusAboveRow({ workspacePath, refreshKey }: GitStatusAboveR
         <ToolFamilyIcon family="git" size={13} />
         <span className="git-status-branch-name">{branchLabel}</span>
       </span>
+      {(snapshot.mergeState || snapshot.conflicts > 0) &&
+        (() => {
+          const hasConflicts = snapshot.conflicts > 0
+          const stateLabel =
+            snapshot.mergeState === 'merge'
+              ? 'merging'
+              : snapshot.mergeState === 'rebase'
+                ? 'rebasing'
+                : snapshot.mergeState === 'cherry-pick'
+                  ? 'cherry-pick'
+                  : null
+          const title = [
+            stateLabel ? `${stateLabel} in progress` : null,
+            hasConflicts
+              ? `${snapshot.conflicts} conflicted file${snapshot.conflicts === 1 ? '' : 's'}`
+              : null
+          ]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <span
+              className={`git-status-merge ${
+                hasConflicts ? 'git-merge-conflict' : 'git-merge-progress'
+              }`}
+              title={title}
+            >
+              <span className="git-status-merge-glyph" aria-hidden>
+                {hasConflicts ? '⚠' : '⟳'}
+              </span>
+              {hasConflicts
+                ? `${snapshot.conflicts} conflict${snapshot.conflicts === 1 ? '' : 's'}`
+                : stateLabel}
+            </span>
+          )
+        })()}
       {(snapshot.ahead > 0 || snapshot.behind > 0) && (
         <span
           className="git-status-push"

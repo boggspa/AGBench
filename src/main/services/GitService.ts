@@ -31,6 +31,9 @@ export interface GitFileStatus {
   unstaged: boolean
 }
 
+/** An in-progress multi-step git operation that leaves the worktree mid-state. */
+export type GitMergeState = 'merge' | 'rebase' | 'cherry-pick' | null
+
 export interface GitRepositorySnapshot {
   requestedPath: string
   repoRoot: string
@@ -50,6 +53,10 @@ export interface GitRepositorySnapshot {
     untracked: number
   }
   clean: boolean
+  /** In-progress merge/rebase/cherry-pick, or null for a normal tree. */
+  mergeState: GitMergeState
+  /** Number of unmerged (conflicted) files in the worktree. */
+  conflicts: number
 }
 
 export interface GitPrSummary {
@@ -356,7 +363,7 @@ export class GitService {
 
   private async buildSnapshot(inputPath: string): Promise<GitRepositorySnapshot> {
     const repo = await this.resolveRepository(inputPath)
-    const [branchResult, commitResult, upstreamResult, remoteResult, statusResult] =
+    const [branchResult, commitResult, upstreamResult, remoteResult, statusResult, mergeState] =
       await Promise.all([
         this.run('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
           cwd: repo.repoRoot,
@@ -377,7 +384,8 @@ export class GitService {
         this.run('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
           cwd: repo.repoRoot,
           timeoutMs: this.timeoutMs
-        })
+        }),
+        this.readMergeState(repo.repoRoot)
       ])
 
     const branch = branchResult.code === 0 ? branchResult.stdout.trim() : undefined
@@ -405,8 +413,43 @@ export class GitService {
         unstaged: files.filter((file) => file.unstaged).length,
         untracked: files.filter((file) => file.kind === 'untracked').length
       },
-      clean: files.length === 0
+      clean: files.length === 0,
+      mergeState,
+      conflicts: files.filter((file) => file.kind === 'conflicted').length
     }
+  }
+
+  /**
+   * Detect an in-progress merge / rebase / cherry-pick by probing the
+   * per-worktree git-dir for its marker files. `git rev-parse --git-dir`
+   * resolves the correct dir for linked worktrees too. Returns null for a
+   * normal tree (or when git can't be reached).
+   */
+  private async readMergeState(repoRoot: string): Promise<GitMergeState> {
+    const gitDirResult = await this.run('git', ['rev-parse', '--git-dir'], {
+      cwd: repoRoot,
+      timeoutMs: this.timeoutMs
+    })
+    if (gitDirResult.code !== 0) return null
+    const gitDir = resolve(repoRoot, gitDirResult.stdout.trim())
+    const marker = async (name: string): Promise<boolean> => {
+      try {
+        await fs.access(join(gitDir, name))
+        return true
+      } catch {
+        return false
+      }
+    }
+    const [merge, rebaseMerge, rebaseApply, cherryPick] = await Promise.all([
+      marker('MERGE_HEAD'),
+      marker('rebase-merge'),
+      marker('rebase-apply'),
+      marker('CHERRY_PICK_HEAD')
+    ])
+    if (rebaseMerge || rebaseApply) return 'rebase'
+    if (merge) return 'merge'
+    if (cherryPick) return 'cherry-pick'
+    return null
   }
 
   private async readAheadBehind(repoRoot: string): Promise<{ ahead: number; behind: number }> {

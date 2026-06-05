@@ -1619,6 +1619,44 @@
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* Merge/rebase/cherry-pick + conflict badge on the branch chip. A full-rim
+ * pill (never a left-edge sliver): amber while an operation is in progress,
+ * red when there are unmerged files. */
+.git-status-merge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.82em;
+  font-weight: 650;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.git-status-merge-glyph {
+  font-size: 0.95em;
+  line-height: 1;
+}
+.git-status-merge.git-merge-progress {
+  color: #f0c674;
+  border-color: color-mix(in srgb, #f0c674 42%, transparent);
+  background: color-mix(in srgb, #f0c674 13%, transparent);
+}
+.git-status-merge.git-merge-conflict {
+  color: #ff6b7a;
+  border-color: color-mix(in srgb, #ff6b7a 48%, transparent);
+  background: color-mix(in srgb, #ff6b7a 15%, transparent);
+}
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"]) .git-status-merge.git-merge-progress {
+  color: #b8860b;
+  border-color: color-mix(in srgb, #b8860b 45%, transparent);
+  background: color-mix(in srgb, #b8860b 12%, transparent);
+}
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"]) .git-status-merge.git-merge-conflict {
+  color: #d23b4e;
+  border-color: color-mix(in srgb, #d23b4e 48%, transparent);
+  background: color-mix(in srgb, #d23b4e 12%, transparent);
+}
 
 /* Light-theme git-status colours — the tones above are dark-optimised;
  * deepen them for contrast on light backgrounds. (The pill bg/border are
