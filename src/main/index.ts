@@ -86,7 +86,7 @@ import {
 import { ensembleWakeupsEnabled } from './featureGates'
 import {
   GEMINI_MCP_SERVER_NAME,
-  GEMINI_MCP_BRIDGE_ARG,
+  GEMINI_MCP_BRIDGE_ARG_SUFFIX,
   GEMINI_MCP_BRIDGE_ENV,
   GEMINI_MCP_ALLOWED_TOOL_NAMES,
   GEMINI_MCP_READ_ONLY_TOOL_NAMES
@@ -656,12 +656,16 @@ const FILE_ICON_CACHE = new Map<string, string | null>()
 // `TaskWraith__delegate_to_subthread`, `mcp__TaskWraith__git_status`, etc.
 // Mixed-case to match the product display name. The CLI flag, socket
 // file, persisted-state sentinels, and env var (`TASKWRAITH_PARENT_PROVIDER`)
-// Bridge-child detection uses TWO independent signals — the argv flag AND an env
-// var set on our own self-test spawns — so a single lost/mangled flag can never
-// let a spawned bridge boot the full app (which would self-spawn exponentially,
-// past the per-process self-test cap). See geminiMcpConstants.GEMINI_MCP_BRIDGE_ENV.
+// Bridge-child detection. Matches ANY arg ending in `-gemini-mcp-bridge` (NOT
+// just the current flag) PLUS an env var set on our own self-test spawns. This
+// is rename-proof: a STALE gemini registration from before a rebrand spawns this
+// binary with an OLD flag (e.g. --agentbench-gemini-mcp-bridge); matching the
+// suffix sends it to bridge-mode (where it fails to connect + exits) instead of
+// booting the FULL app, which would re-probe the bridge and self-spawn
+// exponentially — the root cause of the 1.0.74 "100s of dev apps" loop.
 const isGeminiMcpBridgeProcess =
-  process.argv.includes(GEMINI_MCP_BRIDGE_ARG) || process.env[GEMINI_MCP_BRIDGE_ENV] === '1'
+  process.argv.some((arg) => arg.endsWith(GEMINI_MCP_BRIDGE_ARG_SUFFIX)) ||
+  process.env[GEMINI_MCP_BRIDGE_ENV] === '1'
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 

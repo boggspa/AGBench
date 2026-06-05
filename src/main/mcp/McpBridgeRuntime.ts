@@ -29,6 +29,10 @@ export const GEMINI_MCP_BRIDGE_ARG = '--taskwraith-gemini-mcp-bridge'
 // signal (set on self-test spawns) so a lost argv flag can't trigger a full-app
 // boot + recursive self-spawn. Keep the literal identical across both files.
 export const GEMINI_MCP_BRIDGE_ENV = 'TASKWRAITH_GEMINI_MCP_BRIDGE'
+// Mirrors geminiMcpConstants.GEMINI_MCP_BRIDGE_ARG_SUFFIX — used to prune stale
+// pre-rebrand registrations (entries whose bridge flag ends with this suffix but
+// isn't the current GEMINI_MCP_BRIDGE_ARG). Keep identical across both files.
+export const GEMINI_MCP_BRIDGE_ARG_SUFFIX = '-gemini-mcp-bridge'
 export const GEMINI_MCP_SOCKET_ARG = '--socket'
 export const GEMINI_MCP_TOKEN_ARG = '--token'
 // Fail-closed read-only scope flag. Carried in the bridge ARGV (not env) so it
@@ -1159,6 +1163,10 @@ export class McpBridgeRuntime {
     socketPath: string,
     cwd?: string
   ): Promise<void> {
+    // Remove orphaned pre-rebrand registrations (old --*-gemini-mcp-bridge flag)
+    // before adding ours, so `gemini mcp list` probes don't keep spawning a stale
+    // binary on every status check. Best-effort; never blocks registration.
+    await this.pruneStaleGeminiMcpBridgeRegistrations(geminiBinaryPath, cwd)
     const addArgs = this.buildGeminiMcpBridgeAddArgs(scope, socketPath)
     const addResult = await this.deps.captureProcessOutput(geminiBinaryPath, addArgs, cwd, 15_000)
     if (addResult.code !== 0) {
@@ -1173,6 +1181,44 @@ export class McpBridgeRuntime {
         `Gemini MCP bridge ${scope} registration failed (exit ${addResult.code ?? 'unknown'}): gemini ${safeArgs.join(' ')}\n${output}`
       )
     }
+  }
+
+  /**
+   * Prune orphaned pre-rebrand bridge registrations from the gemini user
+   * settings. Across a rebrand the bridge CLI flag changes
+   * (--agentbench-gemini-mcp-bridge → --taskwraith-gemini-mcp-bridge); the old
+   * registration lingers pointing at THIS binary with the OLD flag. The gate now
+   * routes such a spawn to bridge-mode (it exits cleanly), but the entry still
+   * makes `gemini mcp list` spawn a doomed process on every probe, so remove any
+   * entry (other than ours) carrying a legacy bridge flag.
+   */
+  async pruneStaleGeminiMcpBridgeRegistrations(
+    geminiBinaryPath: string,
+    cwd?: string
+  ): Promise<string[]> {
+    let settings: unknown
+    try {
+      settings = JSON.parse(fsSync.readFileSync(this.deps.getGeminiUserSettingsPath(), 'utf-8'))
+    } catch {
+      return []
+    }
+    const servers = isRecord(settings) && isRecord(settings.mcpServers) ? settings.mcpServers : {}
+    const removed: string[] = []
+    for (const [name, server] of Object.entries(servers)) {
+      if (name === GEMINI_MCP_SERVER_NAME) continue
+      const args = isRecord(server) && Array.isArray(server.args) ? server.args.map(String) : []
+      const hasStaleBridgeArg = args.some(
+        (arg) => arg.endsWith(GEMINI_MCP_BRIDGE_ARG_SUFFIX) && arg !== GEMINI_MCP_BRIDGE_ARG
+      )
+      if (!hasStaleBridgeArg) continue
+      try {
+        await this.deps.captureProcessOutput(geminiBinaryPath, ['mcp', 'remove', name], cwd, 10_000)
+        removed.push(name)
+      } catch {
+        // best-effort — a failed prune must never block (re)registration
+      }
+    }
+    return removed
   }
 
   geminiMcpBridgeServerNeedsRepair(server: unknown, socketPath: string): boolean {
