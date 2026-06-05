@@ -35,6 +35,14 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
+  artifactName: AGBench-${version}-universal-mac.${ext}
   entitlementsInherit: build/entitlements.mac.plist
   sign: build/sign-with-identity-hash.cjs
   # extendInfo MUST be a flat dict, not a list-of-dicts. The list form
@@ -72,7 +80,7 @@ mac:
     - from: swift/AgbenchBridge/.build/release/AgbenchBridgeDaemon
       to: bridge/AgbenchBridgeDaemon
 dmg:
-  artifactName: AGBench-${version}.${ext}
+  artifactName: AGBench-${version}-universal-mac.${ext}
 linux:
   target:
     - AppImage

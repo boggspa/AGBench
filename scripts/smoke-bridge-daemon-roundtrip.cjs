@@ -16,19 +16,18 @@ const { join } = require('path')
 const { randomUUID } = require('crypto')
 
 const REPO_ROOT = join(__dirname, '..')
-const BIN_PATH = join(
-  REPO_ROOT,
-  'swift',
-  'AgbenchBridge',
-  '.build',
-  'debug',
-  'AgbenchBridgeDaemon'
-)
+const BRIDGE_BUILD_ROOT = join(REPO_ROOT, 'swift', 'AgbenchBridge', '.build')
+const BIN_PATH =
+  process.env.AGBENCH_BRIDGE_DAEMON_PATH ||
+  [
+    join(BRIDGE_BUILD_ROOT, 'release', 'AgbenchBridgeDaemon'),
+    join(BRIDGE_BUILD_ROOT, 'debug', 'AgbenchBridgeDaemon')
+  ].find((candidate) => existsSync(candidate))
 const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 8000)
 
-if (!existsSync(BIN_PATH)) {
-  console.error(`[smoke-bridge-daemon-roundtrip] daemon binary not found at ${BIN_PATH}`)
-  console.error('Run: (cd swift/AgbenchBridge && swift build) and try again.')
+if (!BIN_PATH || !existsSync(BIN_PATH)) {
+  console.error('[smoke-bridge-daemon-roundtrip] daemon binary not found.')
+  console.error('Run: npm run prebuild:bridge-daemon and try again.')
   process.exit(2)
 }
 

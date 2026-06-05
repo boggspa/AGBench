@@ -37,6 +37,8 @@ async function main() {
 
   const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked')
   assertDir(unpackedDir, 'app.asar.unpacked directory')
+  const expectedMacArchs =
+    packageTarget.platform === 'darwin' ? expectedMacArchitectures(packageTarget.arch) : []
 
   const nativeBindings = findFiles(unpackedDir, (filePath) => {
     const normalized = filePath.split(path.sep).join('/')
@@ -51,6 +53,11 @@ async function main() {
     fail(
       `Compatible node-pty native binding for ${packageTarget.platform}-${packageTarget.arch} was not found in ${unpackedDir}.`
     )
+  }
+
+  if (packageTarget.platform === 'darwin') {
+    validateMacPackageBinaries(packageRoot, resourcesDir, expectedMacArchs)
+    validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
   }
 
   validateZipArtifacts(searchRoots)
@@ -258,7 +265,17 @@ function inferPackageTarget(packageRoot) {
     normalized.includes('/mac') ||
     normalized.includes('darwin')
   ) {
-    return { platform: 'darwin', arch: normalized.includes('arm64') ? 'arm64' : process.arch }
+    return {
+      platform: 'darwin',
+      arch:
+        normalized.includes('universal') || normalized.includes('mac-universal')
+          ? 'universal'
+          : normalized.includes('arm64')
+            ? 'arm64'
+            : normalized.includes('x64') || normalized.includes('x86_64')
+              ? 'x64'
+              : process.arch
+    }
   }
   if (normalized.includes('win-unpacked') || normalized.includes('/win')) {
     return {
@@ -280,9 +297,90 @@ function inferPackageTarget(packageRoot) {
 }
 
 function isCompatibleNodePtyBinding(normalizedPath, platform, arch) {
+  if (platform === 'darwin' && arch === 'universal') {
+    return /\/node_modules\/node-pty\/prebuilds\/darwin-(?:arm64|x64)\/pty\.node$/.test(
+      normalizedPath
+    )
+  }
   const prebuildNeedle = `/node_modules/node-pty/prebuilds/${platform}-${arch}/pty.node`
   const rebuiltNeedle = '/node_modules/node-pty/build/Release/pty.node'
   return normalizedPath.endsWith(prebuildNeedle) || normalizedPath.endsWith(rebuiltNeedle)
+}
+
+function validateMacPackageBinaries(packageRoot, resourcesDir, expectedArchs) {
+  if (expectedArchs.length === 0 || process.platform !== 'darwin') return
+  verifyMachOArchitectures(resolveMacExecutablePath(packageRoot), expectedArchs, 'app executable')
+  const contentsDir = path.dirname(resourcesDir)
+  const frameworksDir = path.join(contentsDir, 'Frameworks')
+  const electronFramework = path.join(
+    frameworksDir,
+    'Electron Framework.framework',
+    'Electron Framework'
+  )
+  if (fs.existsSync(electronFramework)) {
+    verifyMachOArchitectures(electronFramework, expectedArchs, 'Electron Framework')
+  }
+  for (const helperApp of findDirectories(frameworksDir, (candidate) => candidate.endsWith('.app'), 5)) {
+    const macosDir = path.join(helperApp, 'Contents', 'MacOS')
+    for (const entry of safeReadDir(macosDir)) {
+      if (!entry.isFile()) continue
+      verifyMachOArchitectures(
+        path.join(macosDir, entry.name),
+        expectedArchs,
+        `Electron helper ${path.basename(helperApp)}`
+      )
+    }
+  }
+  const bridgeDaemon = path.join(resourcesDir, 'bridge', 'AgbenchBridgeDaemon')
+  assertFile(bridgeDaemon, 'AgbenchBridgeDaemon')
+  verifyMachOArchitectures(bridgeDaemon, expectedArchs, 'AgbenchBridgeDaemon')
+}
+
+function validateMacNodePtyBindings(unpackedDir, expectedArchs) {
+  if (expectedArchs.length === 0 || process.platform !== 'darwin') return
+  const nodePtyDir = findDirectories(
+    unpackedDir,
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules/node-pty'),
+    8
+  )[0]
+  if (!nodePtyDir) fail(`node-pty package was not unpacked under ${unpackedDir}.`)
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (fs.existsSync(buildBinding) && !expectedArchs.every((arch) => hasMachOArchitecture(buildBinding, arch))) {
+    fail(`Host-only node-pty build binding shadows universal prebuilds: ${buildBinding}`)
+  }
+  if (expectedArchs.length > 1) {
+    const requiredPrebuilds = [
+      { pathArch: 'darwin-arm64', machArch: 'arm64' },
+      { pathArch: 'darwin-x64', machArch: 'x86_64' }
+    ]
+    for (const prebuild of requiredPrebuilds) {
+      const prebuildPath = path.join(nodePtyDir, 'prebuilds', prebuild.pathArch, 'pty.node')
+      assertFile(prebuildPath, `node-pty ${prebuild.pathArch} prebuild`)
+      verifyMachOArchitectures(prebuildPath, [prebuild.machArch], `node-pty ${prebuild.pathArch}`)
+    }
+  }
+}
+
+function expectedMacArchitectures(arch) {
+  if (arch === 'universal') return ['arm64', 'x86_64']
+  if (arch === 'arm64') return ['arm64']
+  if (arch === 'x64') return ['x86_64']
+  return []
+}
+
+function verifyMachOArchitectures(filePath, archs, label) {
+  for (const arch of archs) {
+    if (hasMachOArchitecture(filePath, arch)) continue
+    fail(`${label} is missing ${arch} slice: ${path.relative(repoRoot, filePath) || filePath}`)
+  }
+}
+
+function hasMachOArchitecture(filePath, arch) {
+  const result = spawnSync('/usr/bin/lipo', [filePath, '-verify_arch', arch], {
+    stdio: 'pipe',
+    encoding: 'utf8'
+  })
+  return result.status === 0
 }
 
 function findDirectories(root, predicate, maxDepth, depth = 0) {

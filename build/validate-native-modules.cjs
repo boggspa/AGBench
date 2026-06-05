@@ -1,12 +1,19 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { spawnSync } = require('node:child_process')
 
 async function validateNativeModules(context) {
   const resourcesDir = resolveResourcesDir(context)
   validateAppAsarSize(resourcesDir)
   const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked')
   const platform = context.electronPlatformName || process.platform
-  const arch = context.arch || process.arch
+  const arch = normalizeArch(context.arch || process.arch)
+  const expectedMacArchs = platform === 'darwin' ? expectedMacArchitectures(context, arch) : []
+
+  if (platform === 'darwin' && expectedMacArchs.length > 1) {
+    removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedMacArchs)
+  }
+
   const nodePtyBindings = findFiles(unpackedDir, (filePath) => {
     const normalized = filePath.split(path.sep).join('/')
     return (
@@ -23,6 +30,10 @@ async function validateNativeModules(context) {
   }
 
   console.log(`Validated node-pty native binding: ${nodePtyBindings[0]}`)
+
+  if (platform === 'darwin' && expectedMacArchs.length > 0) {
+    validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
+  }
 
   // macOS-only: confirm the Swift AgbenchBridgeDaemon was embedded
   // as an extraResource. The mac build chains run
@@ -42,6 +53,8 @@ async function validateNativeModules(context) {
         `AgbenchBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`
       )
     }
+    verifyMachOArchitectures(daemonPath, expectedMacArchs, 'AgbenchBridgeDaemon')
+    validateMacAppBinaries(resourcesDir, context, expectedMacArchs)
     console.log(`Validated AgbenchBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
   }
 
@@ -114,9 +127,126 @@ function resolveElectronExecutable(context, resourcesDir) {
 }
 
 function isCompatibleNodePtyBinding(normalizedPath, platform, arch) {
+  if (platform === 'darwin' && arch === 'universal') {
+    return /\/node_modules\/node-pty\/prebuilds\/darwin-(?:arm64|x64)\/pty\.node$/.test(
+      normalizedPath
+    )
+  }
   const prebuildNeedle = `/node_modules/node-pty/prebuilds/${platform}-${arch}/pty.node`
   const rebuiltNeedle = '/node_modules/node-pty/build/Release/pty.node'
   return normalizedPath.endsWith(prebuildNeedle) || normalizedPath.endsWith(rebuiltNeedle)
+}
+
+function validateMacNodePtyBindings(unpackedDir, expectedArchs) {
+  const nodePtyDir = findNodePtyDir(unpackedDir)
+  if (!nodePtyDir) {
+    throw new Error(`node-pty package was not unpacked under ${unpackedDir}.`)
+  }
+  if (expectedArchs.length > 1) {
+    const requiredPrebuilds = [
+      { pathArch: 'darwin-arm64', machArch: 'arm64' },
+      { pathArch: 'darwin-x64', machArch: 'x86_64' }
+    ]
+    for (const prebuild of requiredPrebuilds) {
+      const prebuildPath = path.join(nodePtyDir, 'prebuilds', prebuild.pathArch, 'pty.node')
+      if (!fs.existsSync(prebuildPath)) {
+        throw new Error(`Required node-pty universal prebuild is missing: ${prebuildPath}`)
+      }
+      verifyMachOArchitectures(prebuildPath, [prebuild.machArch], `node-pty ${prebuild.pathArch}`)
+    }
+    console.log('Validated node-pty Darwin prebuilds for universal package.')
+    return
+  }
+
+  for (const binding of findFiles(nodePtyDir, (filePath) => path.basename(filePath) === 'pty.node')) {
+    verifyMachOArchitectures(binding, expectedArchs, `node-pty ${path.relative(nodePtyDir, binding)}`)
+  }
+}
+
+function removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedArchs) {
+  const nodePtyDir = findNodePtyDir(unpackedDir)
+  if (!nodePtyDir) return
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (!fs.existsSync(buildBinding)) return
+  const hasAllArchs = expectedArchs.every((arch) => hasMachOArchitecture(buildBinding, arch))
+  if (hasAllArchs) return
+  fs.rmSync(path.join(nodePtyDir, 'build'), { recursive: true, force: true })
+  console.log(
+    `Removed host-only node-pty build binding from universal package: ${buildBinding}`
+  )
+}
+
+function findNodePtyDir(unpackedDir) {
+  const candidates = findDirectories(
+    unpackedDir,
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules/node-pty'),
+    8
+  )
+  return candidates[0]
+}
+
+function validateMacAppBinaries(resourcesDir, context, expectedArchs) {
+  if (expectedArchs.length === 0) return
+  const executablePath = resolveElectronExecutable(context, resourcesDir)
+  verifyMachOArchitectures(executablePath, expectedArchs, 'app executable')
+
+  const contentsDir = path.dirname(resourcesDir)
+  const frameworksDir = path.join(contentsDir, 'Frameworks')
+  const electronFramework = path.join(
+    frameworksDir,
+    'Electron Framework.framework',
+    'Electron Framework'
+  )
+  if (fs.existsSync(electronFramework)) {
+    verifyMachOArchitectures(electronFramework, expectedArchs, 'Electron Framework')
+  }
+  for (const helperApp of findDirectories(frameworksDir, (candidate) => candidate.endsWith('.app'), 5)) {
+    const helperMacOSDir = path.join(helperApp, 'Contents', 'MacOS')
+    for (const entry of safeReadDir(helperMacOSDir)) {
+      if (!entry.isFile()) continue
+      verifyMachOArchitectures(
+        path.join(helperMacOSDir, entry.name),
+        expectedArchs,
+        `Electron helper ${path.basename(helperApp)}`
+      )
+    }
+  }
+}
+
+function expectedMacArchitectures(context, arch) {
+  const appOutDir = String(context.appOutDir || '').toLowerCase()
+  if (arch === 'universal' || appOutDir.includes('mac-universal')) return ['arm64', 'x86_64']
+  if (arch === 'arm64') return ['arm64']
+  if (arch === 'x64') return ['x86_64']
+  return []
+}
+
+function normalizeArch(value) {
+  if (typeof value === 'number') {
+    try {
+      const { Arch } = require('builder-util')
+      return Arch[value] || String(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value || process.arch)
+}
+
+function verifyMachOArchitectures(filePath, archs, label) {
+  if (process.platform !== 'darwin' || archs.length === 0) return
+  for (const arch of archs) {
+    if (hasMachOArchitecture(filePath, arch)) continue
+    throw new Error(`${label} is missing ${arch} slice: ${filePath}`)
+  }
+}
+
+function hasMachOArchitecture(filePath, arch) {
+  const result = spawnSync('/usr/bin/lipo', [filePath, '-verify_arch', arch], {
+    stdio: 'pipe',
+    encoding: 'utf8'
+  })
+  return result.status === 0
 }
 
 function resolveResourcesDir(context) {
