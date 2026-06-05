@@ -2929,11 +2929,28 @@
 }
 
 [data-interface-style="codex"] .composer-surface {
-  background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%) !important;
+  background: #212121 !important;
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
   border-radius: 22px !important;
-  padding: 14px 14px 10px !important;
+  padding: 0 !important;
   box-shadow: 0 18px 56px rgba(0, 0, 0, 0.36) !important;
+}
+
+[data-interface-style="codex"] .composer-inner-module {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 14px 8px;
+  background: #252525;
+  border-radius: 21px 21px 14px 14px;
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.12),
+    inset 0 -1px 0 color-mix(in srgb, #ffffff 7%, transparent);
 }
 
 [data-interface-style="codex"] .composer-control-footer {
