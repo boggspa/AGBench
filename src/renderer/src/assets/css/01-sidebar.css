@@ -48,7 +48,7 @@
 }
 
 [data-appearance="solid"] .app-sidebar {
-  background: color-mix(in srgb, var(--sidebar-bg) 88%, transparent);
+  background: color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-88), transparent);
 }
 
 [data-appearance="soft_glass"] .app-sidebar {
@@ -56,8 +56,8 @@
      Because the window now uses macOS sidebar vibrancy under this mode, this lets
      the system blur the desktop behind the sidebar — pure ultraThinMaterial feel. */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    color-mix(in srgb, var(--sidebar-bg) 28%, transparent);
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-006)), rgba(255, 255, 255, var(--sidebar-alpha-002))),
+    color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-28), transparent);
   /* GPU: halved from blur(44px) saturate(1.8) brightness(1.05) — Chromium
    * switches to a multi-pass filter above ~22px so 18px keeps the soft-glass
    * aesthetic at a fraction of the per-frame compositor cost. saturate/brightness
@@ -871,4 +871,3 @@ button.sidebar-item {
   display: flex;
   gap: var(--space-sm);
 }
-

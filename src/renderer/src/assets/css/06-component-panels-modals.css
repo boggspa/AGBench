@@ -592,7 +592,7 @@
  * the visual priority. Readability over aesthetic — the user
  * explicitly asked for "improve readability" on this surface. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
-  background-color: rgba(255, 255, 255, 0.86) !important;
+  background-color: rgba(255, 255, 255, var(--main-pane-alpha-086)) !important;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
   /* Lift the sidebar fill in light + native-glass to a brighter
@@ -603,7 +603,7 @@
    * frosted surface, with `backdrop-filter` off (the macOS
    * vibrancy already provides the blur). */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.22)) !important;
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-034)), rgba(255, 255, 255, var(--sidebar-alpha-022))) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border-right-color: rgba(0, 0, 0, 0.08) !important;
@@ -762,9 +762,9 @@
 
 /* Chat area: theme-colour solid backing at 60% opacity, behind weather/ghost/FX layers. */
 .app-transcript {
-  background: color-mix(in srgb, var(--content-bg) 60%, transparent);
+  background: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-60), transparent);
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
-  background: color-mix(in srgb, var(--content-bg) 60%, transparent);
+  background: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-60), transparent);
 }

@@ -1539,7 +1539,7 @@
 /* ---- App-wide chrome (`data-interface-style="grok"`) — flat
  * monochrome sidebar / transcript / bubbles / centred hero. ---- */
 [data-interface-style="grok"] .app-sidebar {
-  background: var(--grok-bg) !important;
+  background: color-mix(in srgb, var(--grok-bg) var(--sidebar-opacity-100), transparent) !important;
   background-image: none !important;
   border-right: 1px solid var(--grok-border) !important;
   backdrop-filter: none !important;
@@ -1570,7 +1570,7 @@
   color: var(--grok-fg) !important;
 }
 [data-interface-style="grok"] .app-transcript {
-  background: var(--grok-bg) !important;
+  background: color-mix(in srgb, var(--grok-bg) var(--main-pane-opacity-100), transparent) !important;
   background-image: none !important;
 }
 [data-interface-style="grok"] .app-transcript::after {
@@ -2141,7 +2141,7 @@
 /* ---- App-wide chrome (`data-interface-style="cursor"`) — flat neutral-gray
  * sidebar / transcript / bubbles / centred hero. ---- */
 [data-interface-style="cursor"] .app-sidebar {
-  background: var(--cursor-shell-bg) !important;
+  background: color-mix(in srgb, var(--cursor-shell-bg) var(--sidebar-opacity-100), transparent) !important;
   background-image: none !important;
   border-right: 1px solid var(--cursor-shell-border) !important;
   backdrop-filter: none !important;
@@ -2172,7 +2172,7 @@
   color: var(--cursor-shell-fg) !important;
 }
 [data-interface-style="cursor"] .app-transcript {
-  background: var(--cursor-shell-bg) !important;
+  background: color-mix(in srgb, var(--cursor-shell-bg) var(--main-pane-opacity-100), transparent) !important;
   background-image: none !important;
 }
 [data-interface-style="cursor"] .app-transcript::after {

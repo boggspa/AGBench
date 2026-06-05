@@ -3765,7 +3765,7 @@
  * chrome rather than the AGBench glass aesthetic. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar {
-  background: var(--surface-2) !important;
+  background: color-mix(in srgb, var(--surface-2) var(--sidebar-opacity-100), transparent) !important;
   border-right-color: var(--surface-border);
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -3823,7 +3823,7 @@
  * so we drop the dark blue and let a faint blue accent border
  * mark the shell identity. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar {
-  background: var(--sidebar-bg);
+  background: color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-100), transparent);
   border-right: 1px solid color-mix(in srgb, #5a8cff 22%, var(--panel-border));
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-section-header {
@@ -3842,7 +3842,7 @@
 /* Kimi sidebar — near-black in dark mode. In light mode use the
  * default light bg and a subtle warm-accent border for identity. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar {
-  background: var(--sidebar-bg);
+  background: color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-100), transparent);
   border-right: 1px solid color-mix(in srgb, #a9bd55 24%, var(--panel-border));
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-section-header {
@@ -3870,7 +3870,7 @@
    * pane reads as cleaner against the now-light sidebar. Real
    * Codex / Claude transcripts are essentially white in light
    * mode; this matches that read. */
-  background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%) var(--main-pane-opacity-100), transparent);
 }
 
 /* ============================================================
@@ -4199,7 +4199,7 @@
  * dark gradient hardcoded at line 12870. */
 [data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar {
   background:
-    linear-gradient(180deg, rgba(255, 255, 248, 0.28), rgba(240, 240, 240, 0.14) 42%, rgba(255, 255, 255, 0.26)),
+    linear-gradient(180deg, rgba(255, 255, 248, var(--sidebar-alpha-028)), rgba(240, 240, 240, var(--sidebar-alpha-014)) 42%, rgba(255, 255, 255, var(--sidebar-alpha-026))),
     var(--sidebar-glass-fill) !important;
   border-right-color: var(--sidebar-glass-border);
   box-shadow: var(--sidebar-glass-inner-shadow), var(--sidebar-glass-shadow);
@@ -4302,7 +4302,7 @@
  * a light frost. The provider tint (.app-transcript::after) still
  * paints its accent gradient on top, just over a light base. */
 [data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript {
-  background: var(--content-bg);
+  background: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-100), transparent);
 }
 
 /* Tone down the provider tint overlay in light glass so it reads as

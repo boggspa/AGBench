@@ -47,14 +47,19 @@ export interface AppearanceState {
   showInspector: boolean
   inspectorWidth: number
   sidebarWidth: number
+  sidebarOpacity: number
+  mainPaneOpacity: number
 }
 
 const DEFAULT_INSPECTOR_WIDTH = 380
 const DEFAULT_SIDEBAR_WIDTH = 260
+const DEFAULT_PANE_OPACITY = 100
 const MIN_INSPECTOR_WIDTH = 300
 const MAX_INSPECTOR_WIDTH = 720
 const MIN_SIDEBAR_WIDTH = 220
 const MAX_SIDEBAR_WIDTH = 440
+const MIN_PANE_OPACITY = 0
+const MAX_PANE_OPACITY = 100
 
 const clampNumber = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, Math.round(value)))
@@ -73,6 +78,9 @@ const normalizeAppearanceDimension = (
         : fallback
   return Number.isFinite(parsed) ? clampNumber(parsed, min, max) : fallback
 }
+
+const normalizePaneOpacity = (value: unknown, fallback = DEFAULT_PANE_OPACITY): number =>
+  normalizeAppearanceDimension(value, fallback, MIN_PANE_OPACITY, MAX_PANE_OPACITY)
 
 function getInitialState(): AppearanceState {
   const reduceMotion =
@@ -104,7 +112,9 @@ function getInitialState(): AppearanceState {
     compactDensity: false,
     showInspector: true,
     inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
-    sidebarWidth: DEFAULT_SIDEBAR_WIDTH
+    sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+    sidebarOpacity: DEFAULT_PANE_OPACITY,
+    mainPaneOpacity: DEFAULT_PANE_OPACITY
   }
 }
 
@@ -179,7 +189,9 @@ export function useAppearance() {
             DEFAULT_SIDEBAR_WIDTH,
             MIN_SIDEBAR_WIDTH,
             MAX_SIDEBAR_WIDTH
-          )
+          ),
+          sidebarOpacity: normalizePaneOpacity(settings.sidebarOpacity),
+          mainPaneOpacity: normalizePaneOpacity(settings.mainPaneOpacity)
         })
         setLoaded(true)
       })
@@ -219,6 +231,30 @@ export function useAppearance() {
     root.setAttribute('data-reduce-motion', String(next.reduceMotion))
     root.setAttribute('data-fx-enabled', String(next.funFxEnabled))
     root.setAttribute('data-fx-mode', next.funFxMode)
+    const sidebarOpacityFactor = next.sidebarOpacity / 100
+    const mainPaneOpacityFactor = next.mainPaneOpacity / 100
+    root.style.setProperty('--sidebar-opacity-100', `${100 * sidebarOpacityFactor}%`)
+    root.style.setProperty('--sidebar-opacity-88', `${88 * sidebarOpacityFactor}%`)
+    root.style.setProperty('--sidebar-opacity-42', `${42 * sidebarOpacityFactor}%`)
+    root.style.setProperty('--sidebar-opacity-36', `${36 * sidebarOpacityFactor}%`)
+    root.style.setProperty('--sidebar-opacity-28', `${28 * sidebarOpacityFactor}%`)
+    root.style.setProperty('--sidebar-alpha-048', String(0.48 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-042', String(0.42 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-036', String(0.36 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-034', String(0.34 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-028', String(0.28 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-026', String(0.26 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-024', String(0.24 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-022', String(0.22 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-020', String(0.2 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-018', String(0.18 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-014', String(0.14 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-010', String(0.1 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-006', String(0.06 * sidebarOpacityFactor))
+    root.style.setProperty('--sidebar-alpha-002', String(0.02 * sidebarOpacityFactor))
+    root.style.setProperty('--main-pane-opacity-100', `${100 * mainPaneOpacityFactor}%`)
+    root.style.setProperty('--main-pane-opacity-60', `${60 * mainPaneOpacityFactor}%`)
+    root.style.setProperty('--main-pane-alpha-086', String(0.86 * mainPaneOpacityFactor))
     root.setAttribute(
       'data-advanced-fx-agent-aura',
       String(next.funFxEnabled && !next.reduceMotion && next.advancedFx.agentAura)
@@ -272,6 +308,8 @@ export function useAppearance() {
           MIN_SIDEBAR_WIDTH,
           MAX_SIDEBAR_WIDTH
         )
+        next.sidebarOpacity = normalizePaneOpacity(next.sidebarOpacity)
+        next.mainPaneOpacity = normalizePaneOpacity(next.mainPaneOpacity)
         // Persist to store
         window.api
           .updateSettings({
@@ -294,7 +332,9 @@ export function useAppearance() {
             compactDensity: next.compactDensity,
             showInspector: next.showInspector,
             inspectorWidth: next.inspectorWidth,
-            sidebarWidth: next.sidebarWidth
+            sidebarWidth: next.sidebarWidth,
+            sidebarOpacity: next.sidebarOpacity,
+            mainPaneOpacity: next.mainPaneOpacity
           })
           .catch(() => {})
         // Notify main process for native vibrancy / reduced transparency

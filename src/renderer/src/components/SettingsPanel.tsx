@@ -99,6 +99,8 @@ interface SettingsPanelProps {
   reduceTransparency: boolean
   reduceMotion: boolean
   compactDensity: boolean
+  sidebarOpacity: number
+  mainPaneOpacity: number
   geminiCheckpointingEnabled: boolean
   /** Phase M1 — Gemini API vs CLI runtime selection. `'auto'` is the
    * default (use API when an API key is configured, else CLI). See
@@ -217,6 +219,8 @@ interface SettingsPanelProps {
     reduceTransparency?: boolean
     reduceMotion?: boolean
     compactDensity?: boolean
+    sidebarOpacity?: number
+    mainPaneOpacity?: number
     geminiCheckpointingEnabled?: boolean
     geminiApiRuntime?: GeminiApiRuntimeMode
     chatContextTurns?: number
@@ -293,6 +297,10 @@ interface SettingsPanelProps {
 type FxRateSnapshot = Awaited<ReturnType<typeof window.api.getFxRates>>
 
 const CONTEXT_TURN_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 16, 20]
+const clampPaneOpacity = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, Math.round(parsed))) : 100
+}
 const VISUAL_EFFECT_OPTIONS: Array<{ value: VisualEffectStyle; label: string }> = [
   { value: 'auto', label: 'Auto' },
   { value: 'liquid_glass', label: 'LiquidGlass' },
@@ -1233,6 +1241,8 @@ export function SettingsPanel({
   reduceTransparency,
   reduceMotion,
   compactDensity,
+  sidebarOpacity,
+  mainPaneOpacity,
   geminiCheckpointingEnabled,
   geminiApiRuntime,
   chatContextTurns,
@@ -1380,6 +1390,8 @@ export function SettingsPanel({
   const geminiBridgeTesting =
     geminiBridgeTestStartedAt !== null &&
     geminiBridgeTestStartedAt === (geminiMcpBridgeStatus?.checkedAt ?? '')
+  const sidebarOpacityValue = clampPaneOpacity(sidebarOpacity)
+  const mainPaneOpacityValue = clampPaneOpacity(mainPaneOpacity)
 
   const updateKimiClassifierEnabled = (enabled: boolean): void => {
     setKimiClassifierEnabled(enabled)
@@ -2182,6 +2194,44 @@ export function SettingsPanel({
                         </button>
                       ))}
                     </div>
+                  </section>
+
+                  <section className="settings-effects-card">
+                    <span className="settings-field-label">Pane opacity</span>
+                    <label className="settings-effects-field">
+                      <span className="settings-field-label">
+                        Sidebar
+                        <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
+                          {sidebarOpacityValue}%
+                        </span>
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={sidebarOpacityValue}
+                        onChange={(e) => onChange({ sidebarOpacity: clampPaneOpacity(e.target.value) })}
+                        style={{ width: '100%' }}
+                      />
+                    </label>
+                    <label className="settings-effects-field">
+                      <span className="settings-field-label">
+                        Main pane
+                        <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
+                          {mainPaneOpacityValue}%
+                        </span>
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={mainPaneOpacityValue}
+                        onChange={(e) => onChange({ mainPaneOpacity: clampPaneOpacity(e.target.value) })}
+                        style={{ width: '100%' }}
+                      />
+                    </label>
                   </section>
 
                   <section className="settings-effects-card">

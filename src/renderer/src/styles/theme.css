@@ -7,6 +7,25 @@
   --app-bg-sunken: #0e0e0e;
 
   /* Sidebar */
+  --sidebar-opacity-100: 100%;
+  --sidebar-opacity-88: 88%;
+  --sidebar-opacity-42: 42%;
+  --sidebar-opacity-36: 36%;
+  --sidebar-opacity-28: 28%;
+  --sidebar-alpha-048: 0.48;
+  --sidebar-alpha-042: 0.42;
+  --sidebar-alpha-036: 0.36;
+  --sidebar-alpha-034: 0.34;
+  --sidebar-alpha-028: 0.28;
+  --sidebar-alpha-026: 0.26;
+  --sidebar-alpha-024: 0.24;
+  --sidebar-alpha-022: 0.22;
+  --sidebar-alpha-020: 0.20;
+  --sidebar-alpha-018: 0.18;
+  --sidebar-alpha-014: 0.14;
+  --sidebar-alpha-010: 0.10;
+  --sidebar-alpha-006: 0.06;
+  --sidebar-alpha-002: 0.02;
   --sidebar-bg: rgba(30, 30, 34, 0.72);
   --sidebar-bg-solid: #1e1e22;
   --sidebar-border: rgba(255, 255, 255, 0.06);
@@ -34,6 +53,9 @@
   --surface-elevated: var(--surface-2);
 
   /* Content / Transcript */
+  --main-pane-opacity-100: 100%;
+  --main-pane-opacity-60: 60%;
+  --main-pane-alpha-086: 0.86;
   --content-bg: transparent;
   --bg-primary: var(--app-bg);
   --bg-secondary: var(--app-bg-elevated);
@@ -662,7 +684,7 @@
 [data-theme="obsidian"] .app-transcript,
 [data-theme="obsidian"][data-appearance] .app-settings-pane,
 [data-theme="obsidian"] .app-settings-pane {
-  background-color: var(--content-bg) !important;
+  background-color: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-100), transparent) !important;
   background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -731,12 +753,12 @@
  * is unmistakable even when sitting on top of macOS sidebar
  * vibrancy (which trends dark on dark-mode systems). */
 [data-theme="obsidian"][data-appearance="solid"] .app-sidebar {
-  background: rgba(238, 242, 247, 0.42) !important;
+  background: rgba(238, 242, 247, var(--sidebar-alpha-042)) !important;
 }
 [data-theme="obsidian"][data-appearance="soft_glass"] .app-sidebar {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.10)),
-    rgba(238, 242, 247, 0.18) !important;
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-028)), rgba(255, 255, 255, var(--sidebar-alpha-010))),
+    rgba(238, 242, 247, var(--sidebar-alpha-018)) !important;
   backdrop-filter: blur(22px) !important;
   -webkit-backdrop-filter: blur(22px) !important;
 }
@@ -747,7 +769,7 @@
    * top to flip the read to light. The previous 0.10 / 0.02
    * gradient was too faint to overcome the vibrancy. */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.20)) !important;
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-036)), rgba(255, 255, 255, var(--sidebar-alpha-020))) !important;
 }
 
 /* ============================================================
@@ -905,7 +927,7 @@
 [data-theme="alabaster"] .app-transcript,
 [data-theme="alabaster"][data-appearance] .app-settings-pane,
 [data-theme="alabaster"] .app-settings-pane {
-  background-color: #f4f3ef !important;
+  background-color: color-mix(in srgb, #f4f3ef var(--main-pane-opacity-100), transparent) !important;
   background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -948,12 +970,12 @@
  * substantial dark wash so the inverse-bizarre read survives
  * macOS vibrancy (which trends light on light-mode systems). */
 [data-theme="alabaster"][data-appearance="solid"] .app-sidebar {
-  background: rgba(18, 21, 27, 0.38) !important;
+  background: color-mix(in srgb, rgba(18, 21, 27, 0.38) var(--sidebar-opacity-100), transparent) !important;
 }
 [data-theme="alabaster"][data-appearance="soft_glass"] .app-sidebar {
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.06)),
-    rgba(20, 22, 28, 0.22) !important;
+    linear-gradient(180deg, rgba(0, 0, 0, var(--sidebar-alpha-018)), rgba(0, 0, 0, var(--sidebar-alpha-006))),
+    rgba(20, 22, 28, var(--sidebar-alpha-022)) !important;
   backdrop-filter: blur(22px) !important;
   -webkit-backdrop-filter: blur(22px) !important;
 }
@@ -963,7 +985,7 @@
    * dark wash on top to flip the read to dark. Mirror of
    * obsidian's light wash on native_glass. */
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.18)) !important;
+    linear-gradient(180deg, rgba(0, 0, 0, var(--sidebar-alpha-034)), rgba(0, 0, 0, var(--sidebar-alpha-018))) !important;
 }
 
 /* ============================================================

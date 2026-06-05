@@ -41,6 +41,8 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     showInspector: true,
     inspectorWidth: 360,
     sidebarWidth: 260,
+    sidebarOpacity: 100,
+    mainPaneOpacity: 100,
     agenticServices: {
       shellCommands: 'workspace',
       fileChanges: 'ask',

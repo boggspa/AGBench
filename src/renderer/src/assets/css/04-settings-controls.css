@@ -111,7 +111,7 @@
   /* Theme-aware: `--content-bg` is what `.app-transcript` uses so
    * the takeover inherits the same surface tone as the chat pane it
    * replaces. Flips to a light surface in light themes automatically. */
-  background: var(--content-bg, var(--panel-bg, transparent));
+  background: color-mix(in srgb, var(--content-bg, var(--panel-bg, transparent)) var(--main-pane-opacity-100), transparent);
 }
 
 /* Reset SettingsPanel chrome when rendered in takeover mode so the

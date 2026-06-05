@@ -1627,35 +1627,35 @@
 }
 
 .app-sidebar {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 88%, transparent);
+  background-color: color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-88), transparent);
   background-image: var(--theme-gradient-sidebar);
   border-right-color: color-mix(in srgb, var(--theme-border-accent) 72%, transparent);
 }
 
 [data-appearance="solid"] .app-sidebar,
 [data-reduce-transparency="true"] .app-sidebar {
-  background-color: var(--sidebar-bg-solid);
+  background-color: color-mix(in srgb, var(--sidebar-bg-solid) var(--sidebar-opacity-100), transparent);
   background-image: var(--theme-gradient-sidebar);
 }
 
 [data-appearance="soft_glass"] .app-sidebar {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  background-color: color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-36), transparent);
   background-image:
     var(--theme-gradient-sidebar),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-006)), rgba(255, 255, 255, var(--sidebar-alpha-002)));
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
   background:
     var(--theme-gradient-sidebar),
-    color-mix(in srgb, var(--sidebar-bg) 42%, transparent) !important;
+    color-mix(in srgb, var(--sidebar-bg) var(--sidebar-opacity-42), transparent) !important;
   border-right-color: color-mix(in srgb, var(--theme-border-accent) 58%, transparent) !important;
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
   background:
     var(--theme-gradient-sidebar),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.26)) !important;
+    linear-gradient(180deg, rgba(255, 255, 255, var(--sidebar-alpha-042)), rgba(255, 255, 255, var(--sidebar-alpha-026))) !important;
   border-right-color: color-mix(in srgb, var(--theme-border-accent) 46%, rgba(0, 0, 0, 0.08)) !important;
 }
 
@@ -2156,4 +2156,3 @@
 [data-reduce-motion="true"] .ensemble-escalation-chip {
   transition: none;
 }
-

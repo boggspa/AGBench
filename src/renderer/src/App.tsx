@@ -2755,6 +2755,14 @@ function App(): React.JSX.Element {
       settingsPatch.compactDensity = next.compactDensity
       appearance.update({ compactDensity: next.compactDensity })
     }
+    if (next.sidebarOpacity !== undefined) {
+      settingsPatch.sidebarOpacity = next.sidebarOpacity
+      appearance.update({ sidebarOpacity: next.sidebarOpacity })
+    }
+    if (next.mainPaneOpacity !== undefined) {
+      settingsPatch.mainPaneOpacity = next.mainPaneOpacity
+      appearance.update({ mainPaneOpacity: next.mainPaneOpacity })
+    }
     if (next.geminiCheckpointingEnabled !== undefined) {
       setGeminiCheckpointingEnabled(next.geminiCheckpointingEnabled)
       settingsPatch.geminiCheckpointingEnabled = next.geminiCheckpointingEnabled
@@ -11895,6 +11903,8 @@ function App(): React.JSX.Element {
               reduceTransparency={appearance.reduceTransparency}
               reduceMotion={appearance.reduceMotion}
               compactDensity={appearance.compactDensity}
+              sidebarOpacity={appearance.sidebarOpacity}
+              mainPaneOpacity={appearance.mainPaneOpacity}
               geminiCheckpointingEnabled={geminiCheckpointingEnabled}
               geminiApiRuntime={geminiApiRuntime}
               chatContextTurns={chatContextTurns}

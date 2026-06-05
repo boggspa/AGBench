@@ -1461,6 +1461,8 @@ export interface AppSettings {
   showInspector: boolean
   inspectorWidth: number
   sidebarWidth: number
+  sidebarOpacity: number
+  mainPaneOpacity: number
   agenticServices: AgenticServicesSettings
   agenticWorkspaceGrants: AgenticWorkspaceGrant[]
   /** User preference for provider-native sub-agent tools (`Task`,

@@ -46,6 +46,8 @@ const baseSettings: AppSettings = {
   showInspector: true,
   inspectorWidth: 380,
   sidebarWidth: 260,
+  sidebarOpacity: 100,
+  mainPaneOpacity: 100,
   agenticServices: {
     shellCommands: 'workspace',
     fileChanges: 'ask',

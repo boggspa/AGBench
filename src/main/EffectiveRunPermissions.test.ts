@@ -36,6 +36,8 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     showInspector: true,
     inspectorWidth: 320,
     sidebarWidth: 300,
+    sidebarOpacity: 100,
+    mainPaneOpacity: 100,
     agenticServices: {
       shellCommands: 'ask',
       fileChanges: 'ask',
