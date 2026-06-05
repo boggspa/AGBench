@@ -140,8 +140,12 @@ export class UpdateService {
         : args.channel === 'nightly'
           ? 'beta'
           : 'latest'
-    autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = false
+    // Auto-update like a standard desktop app: download in the background the
+    // moment an update is found, and install it on the next normal quit — so the
+    // user never has to manually download or restart. The update pill still
+    // offers an immediate "Restart to update" for anyone who wants it now.
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
     this.status = 'idle'
     this.downloadProgress = undefined
     this.errorMessage = undefined
