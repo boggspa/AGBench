@@ -10476,9 +10476,9 @@ function App(): React.JSX.Element {
   // run-over-run. Zeros before the snapshot lands or for a non-repo workspace.
   const workspaceDiffStats = useMemo(
     () => ({
-      filesChanged: primaryGitSnapshot?.counts.changed ?? 0,
-      additions: primaryGitSnapshot?.lineStats.additions ?? 0,
-      deletions: primaryGitSnapshot?.lineStats.deletions ?? 0
+      filesChanged: primaryGitSnapshot?.counts?.changed ?? 0,
+      additions: primaryGitSnapshot?.lineStats?.additions ?? 0,
+      deletions: primaryGitSnapshot?.lineStats?.deletions ?? 0
     }),
     [primaryGitSnapshot]
   )
@@ -12956,9 +12956,9 @@ function App(): React.JSX.Element {
                           const snap = externalGitSnapshots[group.path]
                           return snap
                             ? {
-                                filesChanged: snap.counts.changed,
-                                additions: snap.lineStats.additions,
-                                deletions: snap.lineStats.deletions
+                                filesChanged: snap.counts?.changed ?? 0,
+                                additions: snap.lineStats?.additions ?? 0,
+                                deletions: snap.lineStats?.deletions ?? 0
                               }
                             : undefined
                         })()}
