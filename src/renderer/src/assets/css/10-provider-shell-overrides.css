@@ -950,6 +950,31 @@
   border-color: rgba(18, 21, 27, 0.12) !important;
 }
 
+[data-theme="dark"][data-composer-style="codex"]
+  .app-transcript
+  :is(
+    .composer-above-bar-stack:has(.ensemble-above-row),
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row
+  ) {
+  background: #212121 !important;
+  background-image: none !important;
+}
+
+[data-theme="dark"][data-composer-style="codex"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before,
+[data-theme="dark"][data-composer-style="codex"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::after {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
 [data-composer-style="kimi"]
   .app-transcript.chat-kind-ensemble
   :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
