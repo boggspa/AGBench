@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { dirname, join } from 'node:path'
 import {
   appendBugReport,
   renderBugReportMarkdown,
@@ -142,12 +143,14 @@ describe('BugReportService.appendBugReport', () => {
         writes.push({ file, data })
       })
     }
-    const result = await appendBugReport('/tmp/test-userdata', baseSubmission, ops)
+    const userDataDir = '/tmp/test-userdata'
+    const expectedPath = join(userDataDir, 'TaskWraith', 'bug-reports.md')
+    const result = await appendBugReport(userDataDir, baseSubmission, ops)
     expect(result.ok).toBe(true)
-    expect(result.path).toBe('/tmp/test-userdata/TaskWraith/bug-reports.md')
-    expect(ops.mkdir).toHaveBeenCalledWith('/tmp/test-userdata/TaskWraith', { recursive: true })
+    expect(result.path).toBe(expectedPath)
+    expect(ops.mkdir).toHaveBeenCalledWith(dirname(expectedPath), { recursive: true })
     expect(writes).toHaveLength(1)
-    expect(writes[0].file).toBe('/tmp/test-userdata/TaskWraith/bug-reports.md')
+    expect(writes[0].file).toBe(expectedPath)
     expect(writes[0].data).toContain('title: "Composer freezes after Cmd+K"')
     // First write — no leading separator.
     expect(writes[0].data.startsWith('---\n')).toBe(true)
@@ -194,8 +197,9 @@ describe('BugReportService.appendBugReport', () => {
   })
 
   it('resolveBugReportPath builds <userData>/TaskWraith/bug-reports.md', () => {
-    expect(resolveBugReportPath('/Users/dev/Library/Application Support/taskwraith')).toBe(
-      '/Users/dev/Library/Application Support/taskwraith/TaskWraith/bug-reports.md'
+    const userDataDir = '/Users/dev/Library/Application Support/taskwraith'
+    expect(resolveBugReportPath(userDataDir)).toBe(
+      join(userDataDir, 'TaskWraith', 'bug-reports.md')
     )
   })
 })

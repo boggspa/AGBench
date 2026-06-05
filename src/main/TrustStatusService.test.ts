@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TrustStatusService } from './TrustStatusService'
 import fs from 'fs'
 import os from 'os'
+import { join } from 'path'
 
 vi.mock('fs')
 vi.mock('os')
@@ -144,9 +145,9 @@ describe('TrustStatusService', () => {
       expect(result.status).toBe('trusted')
       expect(result.path).toBe(mockWorkspace)
       // Creates ~/.gemini before writing.
-      expect(fs.mkdirSync).toHaveBeenCalledWith('/mock/home/.gemini', { recursive: true })
+      expect(fs.mkdirSync).toHaveBeenCalledWith(join(mockHome, '.gemini'), { recursive: true })
       const { path, content } = lastWrite()
-      expect(path).toBe('/mock/home/.gemini/trustedFolders.json')
+      expect(path).toBe(join(mockHome, '.gemini', 'trustedFolders.json'))
       expect(content).toEqual({ [mockWorkspace]: 'TRUST_FOLDER' })
     })
 

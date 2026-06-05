@@ -17,7 +17,7 @@ function createRepo(): string {
   writeFileSync(join(repo, 'README.md'), 'initial\n')
   runGit(repo, ['add', 'README.md'])
   runGit(repo, ['commit', '-m', 'Initial commit'])
-  return repo
+  return runGit(repo, ['rev-parse', '--show-toplevel']).trim()
 }
 
 describe('GitService', () => {

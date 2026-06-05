@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { fileURLToPath } from 'url'
 import { classifyShellOpenTarget } from './ShellOpenPolicy'
 
 describe('ShellOpenPolicy', () => {
@@ -14,9 +15,11 @@ describe('ShellOpenPolicy', () => {
   })
 
   it('routes file URLs and scheme-less strings to openPath', () => {
-    expect(classifyShellOpenTarget('file:///tmp/report.txt')).toEqual({
+    const fileUrl =
+      process.platform === 'win32' ? 'file:///C:/tmp/report.txt' : 'file:///tmp/report.txt'
+    expect(classifyShellOpenTarget(fileUrl)).toEqual({
       action: 'path',
-      path: '/tmp/report.txt'
+      path: fileURLToPath(fileUrl)
     })
     expect(classifyShellOpenTarget('/tmp/report.txt')).toEqual({
       action: 'path',

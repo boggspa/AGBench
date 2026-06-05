@@ -310,7 +310,7 @@ async function readCodexSqliteActivity(
 
 async function readKimiActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
   const root = join(homeDir, '.kimi', 'sessions')
-  const files = await collectFiles(root, (path) => path.endsWith('/wire.jsonl'), sinceMs)
+  const files = await collectFiles(root, isKimiWireActivityPath, sinceMs)
   const events: ExternalUsageEvent[] = []
   for (const filePath of files) {
     const text = await readTextTail(filePath)
@@ -520,7 +520,15 @@ function parseGeminiSessionEntries(text: string): Array<{ json: any; sourceIndex
 }
 
 function isGeminiSessionActivityPath(path: string): boolean {
-  return /\/chats\/.+\.jsonl?$/.test(path)
+  return /\/chats\/.+\.jsonl?$/.test(toPortablePath(path))
+}
+
+function isKimiWireActivityPath(path: string): boolean {
+  return toPortablePath(path).endsWith('/wire.jsonl')
+}
+
+function toPortablePath(path: string): string {
+  return path.replace(/\\/g, '/')
 }
 
 function parseTimestamp(value: unknown): number | null {

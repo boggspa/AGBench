@@ -57,7 +57,8 @@ export async function probeExternalPath(
   absolutePath: string,
   fs: FsLike = fsPromises as unknown as FsLike
 ): Promise<ExternalPathProbeResult | null> {
-  if (!absolutePath || !path.isAbsolute(absolutePath)) {
+  const pathApi = pathApiFor(absolutePath)
+  if (!absolutePath || !pathApi.isAbsolute(absolutePath)) {
     return null
   }
 
@@ -70,18 +71,34 @@ export async function probeExternalPath(
     return null
   }
 
-  const repoRoot = await findRepoRoot(absolutePath, fs)
+  const repoRoot = await findRepoRoot(absolutePath, fs, pathApi)
   if (!repoRoot) return null
 
-  const branch = await readCurrentBranch(repoRoot, fs)
+  const branch = await readCurrentBranch(repoRoot, fs, pathApi)
   return { isRepo: true, repoRoot, branch }
+}
+
+type PathApi = Pick<typeof path.posix, 'dirname' | 'isAbsolute' | 'join' | 'parse' | 'resolve'>
+
+function pathApiFor(absolutePath: string): PathApi {
+  if (/^[a-zA-Z]:[\\/]/.test(absolutePath) || absolutePath.startsWith('\\\\')) {
+    return path.win32
+  }
+  if (absolutePath.startsWith('/')) {
+    return path.posix
+  }
+  return path
 }
 
 /**
  * Walk up looking for `.git`. Returns the directory CONTAINING `.git`,
  * which is the repo root.
  */
-async function findRepoRoot(startPath: string, fs: FsLike): Promise<string | null> {
+async function findRepoRoot(
+  startPath: string,
+  fs: FsLike,
+  pathApi: PathApi
+): Promise<string | null> {
   let current = startPath
 
   // If startPath is a file, its containing directory is the search
@@ -90,15 +107,15 @@ async function findRepoRoot(startPath: string, fs: FsLike): Promise<string | nul
   try {
     const stat = await fs.stat(current)
     if (stat.isFile()) {
-      current = path.dirname(current)
+      current = pathApi.dirname(current)
     }
   } catch {
     return null
   }
 
-  const root = path.parse(current).root
+  const root = pathApi.parse(current).root
   while (current && current !== root) {
-    const dotGit = path.join(current, '.git')
+    const dotGit = pathApi.join(current, '.git')
     try {
       const stat = await fs.stat(dotGit)
       if (stat.isDirectory() || stat.isFile()) {
@@ -107,7 +124,7 @@ async function findRepoRoot(startPath: string, fs: FsLike): Promise<string | nul
     } catch {
       // No .git at this level; walk up.
     }
-    const parent = path.dirname(current)
+    const parent = pathApi.dirname(current)
     if (parent === current) break
     current = parent
   }
@@ -122,8 +139,12 @@ async function findRepoRoot(startPath: string, fs: FsLike): Promise<string | nul
  *     follow the pointer and read the HEAD inside that pointed dir.
  *   - Detached HEAD: HEAD content is a raw 40-char SHA. Returns undefined.
  */
-async function readCurrentBranch(repoRoot: string, fs: FsLike): Promise<string | undefined> {
-  const dotGitPath = path.join(repoRoot, '.git')
+async function readCurrentBranch(
+  repoRoot: string,
+  fs: FsLike,
+  pathApi: PathApi
+): Promise<string | undefined> {
+  const dotGitPath = pathApi.join(repoRoot, '.git')
   let headPath: string
 
   try {
@@ -133,10 +154,12 @@ async function readCurrentBranch(repoRoot: string, fs: FsLike): Promise<string |
       const pointer = (await fs.readFile(dotGitPath, 'utf8')).trim()
       const match = pointer.match(/^gitdir:\s*(.+)$/m)
       if (!match) return undefined
-      const gitDirAbs = path.isAbsolute(match[1]) ? match[1] : path.resolve(repoRoot, match[1])
-      headPath = path.join(gitDirAbs, 'HEAD')
+      const gitDirAbs = pathApi.isAbsolute(match[1])
+        ? match[1]
+        : pathApi.resolve(repoRoot, match[1])
+      headPath = pathApi.join(gitDirAbs, 'HEAD')
     } else {
-      headPath = path.join(dotGitPath, 'HEAD')
+      headPath = pathApi.join(dotGitPath, 'HEAD')
     }
   } catch {
     return undefined

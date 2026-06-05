@@ -62,7 +62,7 @@ describe('UpdateService', () => {
   })
 
   it('moves to idle when configured with a real channel + enabled', () => {
-    const svc = new UpdateService()
+    const svc = new UpdateService({ platform: 'darwin', arch: 'arm64' })
     svc.configure({ channel: 'stable', enabled: true })
     expect(svc.snapshot().status).toBe('idle')
     expect(svc.snapshot().enabled).toBe(true)
@@ -70,7 +70,7 @@ describe('UpdateService', () => {
   })
 
   it('maps nightly channel to electron-updater beta', () => {
-    const svc = new UpdateService()
+    const svc = new UpdateService({ platform: 'darwin', arch: 'arm64' })
     svc.configure({ channel: 'nightly', enabled: true })
     expect(mockAutoUpdater.channel).toBe('beta')
   })
@@ -259,7 +259,7 @@ describe('UpdateService', () => {
   })
 
   it('preserves full changelog arrays when an update is downloaded', () => {
-    const svc = new UpdateService()
+    const svc = new UpdateService({ platform: 'darwin', arch: 'arm64' })
     svc.configure({ channel: 'stable', enabled: true })
     emitUpdaterEvent('update-downloaded', {
       version: '1.0.74',
