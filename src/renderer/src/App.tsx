@@ -165,6 +165,7 @@ import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata
 import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { GitCommitControls } from './components/GitCommitControls'
+import { GitStatusAboveRow } from './components/GitStatusAboveRow'
 import type { GitRepositorySnapshot } from '../../main/services/GitService'
 import { ProviderBadgeIcon, Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
@@ -12991,6 +12992,10 @@ function App(): React.JSX.Element {
                         onCreatePr={(g) => handleCreateGithubPr(g.path)}
                       />
                     ))}
+                    <GitStatusAboveRow
+                      workspacePath={currentWorkspacePath}
+                      refreshKey={runCompleteNotice?.timestamp}
+                    />
                   </>
                 )}
                 {/*
