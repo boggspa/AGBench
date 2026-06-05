@@ -124,16 +124,51 @@ export function GitStatusAboveRow({ workspacePath, refreshKey }: GitStatusAboveR
           {snapshot.behind > 0 && <span className="git-status-behind">↓{snapshot.behind}</span>}
         </span>
       )}
-      {ci.total > 0 && (
-        <span
-          className={`git-status-ci git-ci-${ciTone}`}
-          title={`CI: ${ci.pass} passed · ${ci.fail} failed · ${ci.pending} pending`}
-        >
-          <span className="git-status-ci-glyph">{ciGlyph}</span>
-          {ciCount}
-          <span className="git-status-ci-label">CI</span>
-        </span>
-      )}
+      {ci.total > 0 &&
+        (() => {
+          // Prefer the PR page; fall back to the first failing check's own URL
+          // (same failure set summarizeChecks counts). Stays non-clickable when
+          // there's no PR and nothing has failed (all pass/pending).
+          const ciUrl =
+            pr?.url ||
+            pr?.checks?.find((c) => {
+              const conclusion = (c.conclusion || '').toLowerCase()
+              return conclusion && !['success', 'neutral', 'skipped'].includes(conclusion)
+            })?.url
+          const ciClickable = Boolean(ciUrl)
+          const openCi = () => {
+            if (ciUrl && typeof window.api.openExternalOrPath === 'function') {
+              void window.api.openExternalOrPath(ciUrl)
+            }
+          }
+          return (
+            <span
+              className={`git-status-ci git-ci-${ciTone}${
+                ciClickable ? ' git-status-ci-clickable' : ''
+              }`}
+              title={`CI: ${ci.pass} passed · ${ci.fail} failed · ${ci.pending} pending${
+                ciClickable ? ' — open' : ''
+              }`}
+              role={ciClickable ? 'button' : undefined}
+              tabIndex={ciClickable ? 0 : undefined}
+              onClick={ciClickable ? openCi : undefined}
+              onKeyDown={
+                ciClickable
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openCi()
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <span className="git-status-ci-glyph">{ciGlyph}</span>
+              {ciCount}
+              <span className="git-status-ci-label">CI</span>
+            </span>
+          )
+        })()}
     </div>
   )
 }

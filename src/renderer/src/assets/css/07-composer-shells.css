@@ -1605,6 +1605,20 @@
 .git-status-ci.git-ci-pending {
   color: #f0c674;
 }
+/* Clickable CI chip — opens the PR page (or a failing check's URL). Only gets
+ * the affordance when GitStatusAboveRow resolved a URL (.git-status-ci-clickable). */
+.git-status-ci.git-status-ci-clickable {
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.git-status-ci.git-status-ci-clickable:hover {
+  opacity: 0.82;
+}
+.git-status-ci.git-status-ci-clickable:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* Light-theme git-status colours — the tones above are dark-optimised;
  * deepen them for contrast on light backgrounds. (The pill bg/border are
