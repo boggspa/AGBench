@@ -57,6 +57,8 @@ export interface GitRepositorySnapshot {
   mergeState: GitMergeState
   /** Number of unmerged (conflicted) files in the worktree. */
   conflicts: number
+  /** Added/deleted lines vs HEAD (tracked changes; untracked-file lines excluded). */
+  lineStats: { additions: number; deletions: number }
 }
 
 export interface GitPrSummary {
@@ -363,7 +365,15 @@ export class GitService {
 
   private async buildSnapshot(inputPath: string): Promise<GitRepositorySnapshot> {
     const repo = await this.resolveRepository(inputPath)
-    const [branchResult, commitResult, upstreamResult, remoteResult, statusResult, mergeState] =
+    const [
+      branchResult,
+      commitResult,
+      upstreamResult,
+      remoteResult,
+      statusResult,
+      mergeState,
+      lineStats
+    ] =
       await Promise.all([
         this.run('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
           cwd: repo.repoRoot,
@@ -385,7 +395,8 @@ export class GitService {
           cwd: repo.repoRoot,
           timeoutMs: this.timeoutMs
         }),
-        this.readMergeState(repo.repoRoot)
+        this.readMergeState(repo.repoRoot),
+        this.readLineStats(repo.repoRoot)
       ])
 
     const branch = branchResult.code === 0 ? branchResult.stdout.trim() : undefined
@@ -415,7 +426,8 @@ export class GitService {
       },
       clean: files.length === 0,
       mergeState,
-      conflicts: files.filter((file) => file.kind === 'conflicted').length
+      conflicts: files.filter((file) => file.kind === 'conflicted').length,
+      lineStats
     }
   }
 
@@ -450,6 +462,31 @@ export class GitService {
     if (merge) return 'merge'
     if (cherryPick) return 'cherry-pick'
     return null
+  }
+
+  /**
+   * Total added/deleted lines vs HEAD via `git diff --numstat HEAD` (covers
+   * staged + unstaged tracked changes). Untracked-file lines are excluded —
+   * they have no HEAD baseline — but counts.changed still includes the files
+   * themselves. Returns zeros when there is no HEAD yet (fresh repo) or git is
+   * unreachable. Binary files emit "-\t-" rows, which coerce to 0.
+   */
+  private async readLineStats(repoRoot: string): Promise<{ additions: number; deletions: number }> {
+    const result = await this.run('git', ['diff', '--numstat', 'HEAD'], {
+      cwd: repoRoot,
+      timeoutMs: this.timeoutMs
+    })
+    if (result.code !== 0) return { additions: 0, deletions: 0 }
+    let additions = 0
+    let deletions = 0
+    for (const line of result.stdout.split('\n')) {
+      const row = line.trim()
+      if (!row) continue
+      const [addRaw, delRaw] = row.split('\t')
+      additions += Number(addRaw) || 0
+      deletions += Number(delRaw) || 0
+    }
+    return { additions, deletions }
   }
 
   private async readAheadBehind(repoRoot: string): Promise<{ ahead: number; behind: number }> {
