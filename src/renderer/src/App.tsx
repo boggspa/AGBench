@@ -2756,13 +2756,33 @@ function App(): React.JSX.Element {
       settingsPatch.compactDensity = next.compactDensity
       appearance.update({ compactDensity: next.compactDensity })
     }
-    if (next.sidebarOpacity !== undefined) {
-      settingsPatch.sidebarOpacity = next.sidebarOpacity
-      appearance.update({ sidebarOpacity: next.sidebarOpacity })
+    if (next.sidebarOpacity !== undefined || next.sidebarOpacityOverride !== undefined) {
+      if (next.sidebarOpacity !== undefined) {
+        settingsPatch.sidebarOpacity = next.sidebarOpacity
+      }
+      if (next.sidebarOpacityOverride !== undefined) {
+        settingsPatch.sidebarOpacityOverride = next.sidebarOpacityOverride
+      }
+      appearance.update({
+        ...(next.sidebarOpacity !== undefined ? { sidebarOpacity: next.sidebarOpacity } : {}),
+        ...(next.sidebarOpacityOverride !== undefined
+          ? { sidebarOpacityOverride: next.sidebarOpacityOverride }
+          : {})
+      })
     }
-    if (next.mainPaneOpacity !== undefined) {
-      settingsPatch.mainPaneOpacity = next.mainPaneOpacity
-      appearance.update({ mainPaneOpacity: next.mainPaneOpacity })
+    if (next.mainPaneOpacity !== undefined || next.mainPaneOpacityOverride !== undefined) {
+      if (next.mainPaneOpacity !== undefined) {
+        settingsPatch.mainPaneOpacity = next.mainPaneOpacity
+      }
+      if (next.mainPaneOpacityOverride !== undefined) {
+        settingsPatch.mainPaneOpacityOverride = next.mainPaneOpacityOverride
+      }
+      appearance.update({
+        ...(next.mainPaneOpacity !== undefined ? { mainPaneOpacity: next.mainPaneOpacity } : {}),
+        ...(next.mainPaneOpacityOverride !== undefined
+          ? { mainPaneOpacityOverride: next.mainPaneOpacityOverride }
+          : {})
+      })
     }
     if (next.geminiCheckpointingEnabled !== undefined) {
       setGeminiCheckpointingEnabled(next.geminiCheckpointingEnabled)

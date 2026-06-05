@@ -52,6 +52,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'sidebarWidth',
   'sidebarOpacity',
   'mainPaneOpacity',
+  'sidebarOpacityOverride',
+  'mainPaneOpacityOverride',
   'funFxEnabled',
   'funFxMode',
   'advancedFx',
@@ -753,6 +755,14 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     if ('bridgeDaemonEnabled' in sanitized) {
       const value = sanitized.bridgeDaemonEnabled
       sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
+    }
+    if ('sidebarOpacityOverride' in sanitized) {
+      const value = sanitized.sidebarOpacityOverride
+      sanitized.sidebarOpacityOverride = typeof value === 'boolean' ? value : Boolean(value)
+    }
+    if ('mainPaneOpacityOverride' in sanitized) {
+      const value = sanitized.mainPaneOpacityOverride
+      sanitized.mainPaneOpacityOverride = typeof value === 'boolean' ? value : Boolean(value)
     }
     if ('ensembleModeEnabled' in sanitized) {
       const value = sanitized.ensembleModeEnabled

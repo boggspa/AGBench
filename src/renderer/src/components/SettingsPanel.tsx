@@ -221,6 +221,8 @@ interface SettingsPanelProps {
     compactDensity?: boolean
     sidebarOpacity?: number
     mainPaneOpacity?: number
+    sidebarOpacityOverride?: boolean
+    mainPaneOpacityOverride?: boolean
     geminiCheckpointingEnabled?: boolean
     geminiApiRuntime?: GeminiApiRuntimeMode
     chatContextTurns?: number
@@ -2211,7 +2213,12 @@ export function SettingsPanel({
                         max={100}
                         step={1}
                         value={sidebarOpacityValue}
-                        onChange={(e) => onChange({ sidebarOpacity: clampPaneOpacity(e.target.value) })}
+                        onChange={(e) =>
+                          onChange({
+                            sidebarOpacity: clampPaneOpacity(e.target.value),
+                            sidebarOpacityOverride: true
+                          })
+                        }
                         style={{ width: '100%' }}
                       />
                     </label>
@@ -2228,7 +2235,12 @@ export function SettingsPanel({
                         max={100}
                         step={1}
                         value={mainPaneOpacityValue}
-                        onChange={(e) => onChange({ mainPaneOpacity: clampPaneOpacity(e.target.value) })}
+                        onChange={(e) =>
+                          onChange({
+                            mainPaneOpacity: clampPaneOpacity(e.target.value),
+                            mainPaneOpacityOverride: true
+                          })
+                        }
                         style={{ width: '100%' }}
                       />
                     </label>

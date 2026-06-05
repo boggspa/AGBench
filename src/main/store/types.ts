@@ -1463,6 +1463,8 @@ export interface AppSettings {
   sidebarWidth: number
   sidebarOpacity: number
   mainPaneOpacity: number
+  sidebarOpacityOverride?: boolean
+  mainPaneOpacityOverride?: boolean
   agenticServices: AgenticServicesSettings
   agenticWorkspaceGrants: AgenticWorkspaceGrant[]
   /** User preference for provider-native sub-agent tools (`Task`,

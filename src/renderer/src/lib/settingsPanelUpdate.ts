@@ -28,6 +28,8 @@ export type SettingsPanelUpdate = {
   compactDensity?: boolean
   sidebarOpacity?: AppSettings['sidebarOpacity']
   mainPaneOpacity?: AppSettings['mainPaneOpacity']
+  sidebarOpacityOverride?: AppSettings['sidebarOpacityOverride']
+  mainPaneOpacityOverride?: AppSettings['mainPaneOpacityOverride']
   geminiCheckpointingEnabled?: boolean
   // Phase M1 Step 6 — Gemini API vs CLI runtime selection. See
   // GeminiApiRuntimeMode in main/store/types.ts. Defaults to 'auto'.

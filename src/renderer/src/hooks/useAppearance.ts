@@ -49,6 +49,8 @@ export interface AppearanceState {
   sidebarWidth: number
   sidebarOpacity: number
   mainPaneOpacity: number
+  sidebarOpacityOverride: boolean
+  mainPaneOpacityOverride: boolean
 }
 
 const DEFAULT_INSPECTOR_WIDTH = 380
@@ -114,7 +116,9 @@ function getInitialState(): AppearanceState {
     inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     sidebarOpacity: DEFAULT_PANE_OPACITY,
-    mainPaneOpacity: DEFAULT_PANE_OPACITY
+    mainPaneOpacity: DEFAULT_PANE_OPACITY,
+    sidebarOpacityOverride: false,
+    mainPaneOpacityOverride: false
   }
 }
 
@@ -191,7 +195,9 @@ export function useAppearance() {
             MAX_SIDEBAR_WIDTH
           ),
           sidebarOpacity: normalizePaneOpacity(settings.sidebarOpacity),
-          mainPaneOpacity: normalizePaneOpacity(settings.mainPaneOpacity)
+          mainPaneOpacity: normalizePaneOpacity(settings.mainPaneOpacity),
+          sidebarOpacityOverride: Boolean(settings.sidebarOpacityOverride),
+          mainPaneOpacityOverride: Boolean(settings.mainPaneOpacityOverride)
         })
         setLoaded(true)
       })
@@ -235,11 +241,11 @@ export function useAppearance() {
     const mainPaneOpacityFactor = next.mainPaneOpacity / 100
     root.setAttribute(
       'data-sidebar-opacity-override',
-      String(next.sidebarOpacity !== DEFAULT_PANE_OPACITY)
+      String(next.sidebarOpacityOverride || next.sidebarOpacity !== DEFAULT_PANE_OPACITY)
     )
     root.setAttribute(
       'data-main-pane-opacity-override',
-      String(next.mainPaneOpacity !== DEFAULT_PANE_OPACITY)
+      String(next.mainPaneOpacityOverride || next.mainPaneOpacity !== DEFAULT_PANE_OPACITY)
     )
     root.style.setProperty('--sidebar-opacity-factor', String(sidebarOpacityFactor))
     root.style.setProperty('--main-pane-opacity-factor', String(mainPaneOpacityFactor))
@@ -344,7 +350,9 @@ export function useAppearance() {
             inspectorWidth: next.inspectorWidth,
             sidebarWidth: next.sidebarWidth,
             sidebarOpacity: next.sidebarOpacity,
-            mainPaneOpacity: next.mainPaneOpacity
+            mainPaneOpacity: next.mainPaneOpacity,
+            sidebarOpacityOverride: next.sidebarOpacityOverride,
+            mainPaneOpacityOverride: next.mainPaneOpacityOverride
           })
           .catch(() => {})
         // Notify main process for native vibrancy / reduced transparency

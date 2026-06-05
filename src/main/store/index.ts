@@ -163,6 +163,8 @@ const defaultSettings: AppSettings = {
   sidebarWidth: 260,
   sidebarOpacity: 100,
   mainPaneOpacity: 100,
+  sidebarOpacityOverride: false,
+  mainPaneOpacityOverride: false,
   funFxEnabled: true,
   funFxMode: 'cinematic',
   advancedFx: {
