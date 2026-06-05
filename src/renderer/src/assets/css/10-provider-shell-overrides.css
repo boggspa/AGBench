@@ -2282,6 +2282,15 @@
   --main-pane-opacity-override-bg: var(--cursor-shell-bg);
 }
 
+:is([data-theme="system"], [data-theme="dark"]) {
+  --main-pane-opacity-override-bg: #161616;
+}
+
+:is([data-theme="system"], [data-theme="dark"]) .app-transcript {
+  background: color-mix(in srgb, #161616 var(--main-pane-opacity-100), transparent) !important;
+  background-image: none !important;
+}
+
 [data-sidebar-opacity-override="true"] .app-sidebar {
   background: color-mix(in srgb, var(--sidebar-opacity-override-bg) var(--sidebar-opacity-100), transparent) !important;
   background-image: none !important;
