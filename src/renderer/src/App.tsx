@@ -10581,6 +10581,38 @@ function App(): React.JSX.Element {
     }
     return result
   }, [currentChat, externalPathGrants])
+  // P1 — collapse the per-provider grants (an ensemble mints one grant per
+  // participant-provider for the same folder) into ONE group per unique path,
+  // so the composer shows one native row per workspace instead of N duplicates.
+  // Map insertion order follows externalPathGrants (already sorted by
+  // order/path), so first-seen path order is preserved. access = union (any
+  // write -> write); providers = the distinct list for the merged tooltip.
+  const externalWorkspaceGroups = useMemo(() => {
+    const byPath = new Map<
+      string,
+      {
+        path: string
+        representative: ExternalPathGrant
+        access: 'read' | 'write'
+        providers: ExternalPathGrant['provider'][]
+      }
+    >()
+    for (const grant of externalPathGrants) {
+      const existing = byPath.get(grant.path)
+      if (existing) {
+        if (grant.access === 'write') existing.access = 'write'
+        if (!existing.providers.includes(grant.provider)) existing.providers.push(grant.provider)
+      } else {
+        byPath.set(grant.path, {
+          path: grant.path,
+          representative: grant,
+          access: grant.access,
+          providers: [grant.provider]
+        })
+      }
+    }
+    return Array.from(byPath.values())
+  }, [externalPathGrants])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -12968,18 +13000,20 @@ function App(): React.JSX.Element {
                   PR state is keyed by `grant.path`, so an ensemble's
                   several same-path write grants share one repo's PR
                   progress. READ grants keep the reference-only banner. */}
-                    {externalPathGrants.map((grant) => (
+                    {externalWorkspaceGroups.map((group) => (
                       <ExternalPathAboveRow
-                        key={grant.id}
-                        grant={grant}
-                        repoMetadata={externalPathRepoMetadata[grant.id] || null}
+                        key={group.path}
+                        grant={group.representative}
+                        access={group.access}
+                        providers={group.providers}
+                        repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
                         diffStats={
-                          externalPathLiveDiffByPath[grant.path] ||
-                          externalPathDiffStatsByGrant[grant.id]
+                          externalPathLiveDiffByPath[group.path] ||
+                          externalPathDiffStatsByGrant[group.representative.id]
                         }
-                        onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
-                        createPrState={getCreatePrState(grant.path)}
-                        onCreatePr={(g) => handleCreateGithubPr(g.path)}
+                        onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
+                        createPrState={getCreatePrState(group.path)}
+                        onCreatePr={() => handleCreateGithubPr(group.path)}
                       />
                     ))}
                     <GitStatusAboveRow

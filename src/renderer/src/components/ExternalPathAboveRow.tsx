@@ -50,9 +50,12 @@ import { getProviderName } from './Sidebar'
  * question — historically the banner appeared mysteriously, and
  * EW42b makes the trigger visible via hover.
  */
-export function buildExternalPathOriginTooltip(grant: ExternalPathGrant): string {
-  const providerName = getProviderName(grant.provider)
-  const accessLabel = grant.access === 'write' ? 'edit access' : 'read access'
+export function buildExternalPathOriginTooltip(
+  grant: ExternalPathGrant,
+  overrides?: { providerLabel?: string; access?: 'read' | 'write' }
+): string {
+  const providerName = overrides?.providerLabel ?? getProviderName(grant.provider)
+  const accessLabel = (overrides?.access ?? grant.access) === 'write' ? 'edit access' : 'read access'
   const origin = (() => {
     if (grant.id.startsWith('proactive-')) {
       return 'You granted this via the composer workspace switcher.'
@@ -82,6 +85,14 @@ interface ExternalPathDiffStats {
 
 interface ExternalPathAboveRowProps {
   grant: ExternalPathGrant
+  /**
+   * This row represents ALL provider-grants for one path (an ensemble mints
+   * one grant per participant-provider for the same folder). `access` is the
+   * union (write if ANY provider can write) and `providers` is the full list
+   * for the tooltip — so one folder reads as one native row, not N duplicates.
+   */
+  access?: 'read' | 'write'
+  providers?: ExternalPathGrant['provider'][]
   repoMetadata: ExternalPathGitMetadata | null
   /**
    * Per-repo diff stats from `externalPathDiffStatsByGrant` (slice 6).
@@ -163,6 +174,8 @@ function RevokeGlyph(): React.JSX.Element {
 
 export function ExternalPathAboveRow({
   grant,
+  access,
+  providers,
   repoMetadata,
   diffStats,
   onRevoke,
@@ -170,7 +183,10 @@ export function ExternalPathAboveRow({
   onCreatePr
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
-  const isWrite = grant.access === 'write'
+  // Union access (write if ANY provider for this path can write) drives the
+  // single pill; falls back to the representative grant's own access.
+  const effectiveAccess = access ?? grant.access
+  const isWrite = effectiveAccess === 'write'
   // 1.0.6-EW66-1d — WRITE grants pointing at a git repo get a
   // Create-PR action matching the primary workspace row, scoped to
   // this grant's path. Mirror the primary's label/state machine.
@@ -198,7 +214,14 @@ export function ExternalPathAboveRow({
   // origin block; hover on the access pill shows the same block
   // narrowed to the access label so the most relevant signal sits
   // where the user's eye lands.
-  const originTooltip = buildExternalPathOriginTooltip(grant)
+  const providerLabel =
+    providers && providers.length > 0
+      ? providers.map((provider) => getProviderName(provider)).join(', ')
+      : getProviderName(grant.provider)
+  const originTooltip = buildExternalPathOriginTooltip(grant, {
+    providerLabel,
+    access: effectiveAccess
+  })
 
   return (
     <div
