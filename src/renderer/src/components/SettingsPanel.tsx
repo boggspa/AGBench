@@ -64,6 +64,7 @@ import {
   sanitizeKeyCommandOverrides,
   type KeyCommandId
 } from '../lib/keyCommands'
+import { IOS_REMOTE_ENABLED } from '../lib/featureFlags'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -1018,6 +1019,20 @@ export const SETTINGS_TABS: Array<{
   { id: 'pairing', label: 'Devices', group: 'settings' }
 ]
 
+const IOS_REMOTE_SETTINGS_TABS = new Set<SettingsTab>(['pairing'])
+
+export function isSettingsTabVisible(tab: SettingsTab): boolean {
+  return IOS_REMOTE_ENABLED || !IOS_REMOTE_SETTINGS_TABS.has(tab)
+}
+
+export function getVisibleSettingsTabs(): typeof SETTINGS_TABS {
+  return SETTINGS_TABS.filter((tab) => isSettingsTabVisible(tab.id))
+}
+
+export function resolveVisibleSettingsTab(tab: SettingsTab): SettingsTab {
+  return isSettingsTabVisible(tab) ? tab : 'behavior'
+}
+
 type LocalFontData = {
   family?: string
   fullName?: string
@@ -1326,8 +1341,11 @@ export function SettingsPanel({
   // pass `activeTab`/`onTabChange` — i.e. when SettingsPanel is mounted
   // without the surrounding sidebar takeover (legacy / future tests).
   const [internalActiveTab, setInternalActiveTab] = useState<SettingsTab>('appearance')
-  const activeTab = activeTabProp ?? internalActiveTab
+  const requestedActiveTab = activeTabProp ?? internalActiveTab
+  const activeTab = resolveVisibleSettingsTab(requestedActiveTab)
+  const visibleSettingsTabs = getVisibleSettingsTabs()
   const setActiveTab = (next: SettingsTab): void => {
+    if (!isSettingsTabVisible(next)) return
     if (onTabChange) onTabChange(next)
     else setInternalActiveTab(next)
   }
@@ -1749,7 +1767,7 @@ export function SettingsPanel({
       {layout === 'sheet' && (
         <div className="settings-panel-header">
           <div className="settings-tab-bar">
-            {SETTINGS_TABS.map((tab) => (
+            {visibleSettingsTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
@@ -1779,7 +1797,7 @@ export function SettingsPanel({
         */}
         {layout === 'takeover' && (
           <h1 className="settings-takeover-title">
-            {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Settings'}
+            {visibleSettingsTabs.find((tab) => tab.id === activeTab)?.label ?? 'Settings'}
           </h1>
         )}
         {/* ── Appearance ─────────────────────────────────── */}

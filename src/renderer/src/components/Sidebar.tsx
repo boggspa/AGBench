@@ -19,6 +19,7 @@ import type {
   ToolIconAccent
 } from '../../../main/store/types'
 import { selectRecentChats } from '../lib/recentChatsList'
+import { IOS_REMOTE_ENABLED } from '../lib/featureFlags'
 import { ActiveRunsSection } from './ActiveRunsSection'
 import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
@@ -2862,17 +2863,19 @@ export function Sidebar({
               />
             )}
           </div>
-          <button
-            type="button"
-            className="sidebar-footer-remote"
-            onClick={onShowPairingSheet ?? onOpenSettings}
-            title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
-            aria-label={
-              onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'
-            }
-          >
-            <RemoteConnectionSymbolIcon />
-          </button>
+          {IOS_REMOTE_ENABLED && (
+            <button
+              type="button"
+              className="sidebar-footer-remote"
+              onClick={onShowPairingSheet ?? onOpenSettings}
+              title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
+              aria-label={
+                onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'
+              }
+            >
+              <RemoteConnectionSymbolIcon />
+            </button>
+          )}
         </div>
         <AppShellStatsToolbar />
       </div>

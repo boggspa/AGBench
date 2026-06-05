@@ -15,7 +15,11 @@
  * list so the two render sites can't drift when tabs are added or
  * renamed in the future.
  */
-import { SETTINGS_TABS, type SettingsTab } from './SettingsPanel'
+import {
+  getVisibleSettingsTabs,
+  resolveVisibleSettingsTab,
+  type SettingsTab
+} from './SettingsPanel'
 
 interface SettingsSidebarProps {
   activeTab: SettingsTab
@@ -49,6 +53,8 @@ export function SettingsSidebar({
   appVersion
 }: SettingsSidebarProps) {
   const visibleVersion = appVersion && appVersion !== 'unknown' ? appVersion : null
+  const visibleSettingsTabs = getVisibleSettingsTabs()
+  const resolvedActiveTab = resolveVisibleSettingsTab(activeTab)
 
   return (
     <aside className="app-sidebar settings-sidebar" aria-label="Settings navigation">
@@ -63,13 +69,13 @@ export function SettingsSidebar({
           <span>Back to app</span>
         </button>
         <nav className="settings-sidebar-tabs" role="tablist" aria-label="Settings sections">
-          {SETTINGS_TABS.map((tab, index) => {
+          {visibleSettingsTabs.map((tab, index) => {
             // Insert a thin divider whenever the group changes from the
             // previous tab so app-config and device-management read as
             // visually distinct sections (mirrors the maintainer's "settings |
             // pairing" framing — settings tabs on top, pairing pinned
             // to the bottom under a small gap).
-            const previousGroup = index > 0 ? SETTINGS_TABS[index - 1].group : tab.group
+            const previousGroup = index > 0 ? visibleSettingsTabs[index - 1].group : tab.group
             const showDividerAbove = index > 0 && previousGroup !== tab.group
             return (
               <span key={tab.id} className="settings-sidebar-tab-slot">
@@ -79,8 +85,8 @@ export function SettingsSidebar({
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={activeTab === tab.id}
-                  className={`settings-sidebar-tab ${activeTab === tab.id ? 'active' : ''}`}
+                  aria-selected={resolvedActiveTab === tab.id}
+                  className={`settings-sidebar-tab ${resolvedActiveTab === tab.id ? 'active' : ''}`}
                   onClick={() => onTabChange(tab.id)}
                 >
                   <span className="settings-sidebar-tab-label">{tab.label}</span>

@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   // never lives in source. Fresh clones with no `.env` build cleanly (empty
   // string) — only the Gemini Google-login refresh is then disabled.
   const env = loadEnv(mode, process.cwd(), '')
+  const iosRemoteEnabled = process.env.IOS_REMOTE_TRUE === '1' || env.IOS_REMOTE_TRUE === '1'
   return {
     main: {
       define: {
@@ -20,6 +21,9 @@ export default defineConfig(({ mode }) => {
     },
     preload: {},
     renderer: {
+      define: {
+        __IOS_REMOTE_TRUE__: JSON.stringify(iosRemoteEnabled)
+      },
       resolve: {
         alias: {
           '@renderer': resolve('src/renderer/src')

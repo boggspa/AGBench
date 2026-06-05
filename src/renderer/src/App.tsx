@@ -77,6 +77,7 @@ import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeForm
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
+import { IOS_REMOTE_ENABLED } from './lib/featureFlags'
 import {
   getKeyCommandForEvent,
   resolveKeyCommandBindings,
@@ -11872,10 +11873,14 @@ function App(): React.JSX.Element {
                   }
                   setInspectingRunId(runId)
                 }}
-                onShowPairingSheet={() => {
-                  setSettingsActiveTab('pairing')
-                  setShowSettings(true)
-                }}
+                onShowPairingSheet={
+                  IOS_REMOTE_ENABLED
+                    ? () => {
+                        setSettingsActiveTab('pairing')
+                        setShowSettings(true)
+                      }
+                    : undefined
+                }
               />
             )}
             <div
@@ -15360,11 +15365,10 @@ function App(): React.JSX.Element {
         mount that lived here was removed; "← Back to app" + Escape
         return the user to the chat surface.
       */}
-      <IncomingPairingPrompt />
+      {IOS_REMOTE_ENABLED && <IncomingPairingPrompt />}
       {/* PairingSheet modal mount retired — Pairing now renders as a
-          Settings tab (`activeTab === 'pairing'`). `IncomingPairingPrompt`
-          above continues to handle the 6-digit verification overlay
-          regardless of which screen the user is on. */}
+          Settings tab (`activeTab === 'pairing'`) when the iOS remote
+          feature flag is enabled. */}
       {/* FirstLaunchSheet — auto-shows on fresh installs and stays
         re-openable from the `?` corner control. Mounted at app root
         so it overlays all surfaces; its own z-index (9100) sits
