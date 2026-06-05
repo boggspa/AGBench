@@ -56,7 +56,7 @@ function looksWriteLike(toolName: string): boolean {
   const normalised = (toolName || '').toLowerCase()
   if (!normalised) return false
   if (WRITE_LIKE_TOOLS.has(normalised)) return true
-  // MCP-prefixed names like `AGBench__write_file` or `mcp__server__replace`.
+  // MCP-prefixed names like `TaskWraith__write_file` or `mcp__server__replace`.
   if (normalised.endsWith('__write_file')) return true
   if (normalised.endsWith('__replace')) return true
   if (normalised.endsWith('__create_file')) return true

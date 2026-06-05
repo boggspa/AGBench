@@ -39,7 +39,7 @@ interface BootstrapState {
   qrSvg: string
 }
 
-const DISPLAY_NAME_STORAGE_KEY = 'agbench-pairing-display-name'
+const DISPLAY_NAME_STORAGE_KEY = 'taskwraith-pairing-display-name'
 
 export function PairingPage(): JSX.Element {
   const [displayName, setDisplayName] = useState<string>(() => {
@@ -149,7 +149,7 @@ export function PairingPage(): JSX.Element {
         <div className="pairing-page__header-titles">
           <h2 className="pairing-page__title">Pair with iPhone / iPad</h2>
           <p className="pairing-page__subtitle">
-            Open AGBench on iPhone or iPad, then scan the QR or copy the manual setup payload. The
+            Open TaskWraith on iPhone or iPad, then scan the QR or copy the manual setup payload. The
             6-digit code appears after the device sends its response.
           </p>
         </div>

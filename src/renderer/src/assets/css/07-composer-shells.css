@@ -5,12 +5,12 @@
  * Variants restructure layout to match Codex / Claude UIs.
  * ============================================================ */
 
-/* ============== SHARED: hide AGBench-specific controls ============== */
+/* ============== SHARED: hide TaskWraith-specific controls ============== */
 [data-composer-style="codex"] .composer-top-toggles,
 [data-composer-style="claude"] .composer-top-toggles,
 [data-composer-style="codex"] .composer-chips,
 /* Codex + Claude both keep the provider picker inline now (control parity).
- * Anything else AGBench-specific in the left bar (model-aware reasoning
+ * Anything else TaskWraith-specific in the left bar (model-aware reasoning
  * pills, extra workspace chips, etc.) still gets hidden by these :not()
  * allowlists. */
 [data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]),
@@ -97,7 +97,7 @@
 [data-composer-style="codex"] .composer-inline-pickers {
   margin-top: 0;
 }
-/* AGBench native (default) shell — adopt the standard control order the
+/* TaskWraith native (default) shell — adopt the standard control order the
  * other shells use: the permission / tool-grants picker sits right after
  * the + attach button instead of trailing at the very end. The default
  * shell was the only one without an order block, so it fell back to DOM
@@ -2736,7 +2736,7 @@
 /* ============================================================
  * Provider shell parity
  * Functional shell variants for Codex and Claude. These rules
- * style the full workbench shell while keeping AGBench controls.
+ * style the full workbench shell while keeping TaskWraith controls.
  * ============================================================ */
 
 .provider-shell-status-row {
@@ -2965,7 +2965,7 @@
 
 [data-interface-style="codex"] .composer-area,
 [data-interface-style="claude"] .composer-area {
-  /* Parity: themed shells inherit AGBench native width — color/border/typography
+  /* Parity: themed shells inherit TaskWraith native width — color/border/typography
    * differences still convey the codex / claude feel, but the composer footprint
    * matches the rest of the app so users don't see the bar reflow when they
    * switch themes. */
@@ -3412,7 +3412,7 @@
  * tells the user the agent currently has workspace-write power.
  * The shell-agnostic default (shard 08, lines ~7138-7145 dark /
  * ~8030-8035 light) paints `auto_edit` alarm-RED (#ef4444 dark /
- * #b91c1c light). For the AGBench *native* shell we recolour it to
+ * #b91c1c light). For the TaskWraith *native* shell we recolour it to
  * a calmer AMBER posture pill — amber rim + faint amber tint +
  * readable amber text — matching the `has-failures` / attention
  * rim the maintainer uses elsewhere (`#f0a93f` amber). The codex

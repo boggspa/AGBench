@@ -124,7 +124,7 @@ describe('AuditService', () => {
       grantedScope: 'request',
       expiration: {
         mode: 'none',
-        description: 'Allowed automatically by the current AGBench policy for this request.'
+        description: 'Allowed automatically by the current TaskWraith policy for this request.'
       },
       runId: 'run-1',
       chatId: 'chat-1',
@@ -161,7 +161,7 @@ describe('AuditService', () => {
       workspacePath: '/workspace',
       expiration: {
         mode: 'on_decision',
-        description: 'Denied automatically by the current AGBench policy.',
+        description: 'Denied automatically by the current TaskWraith policy.',
         expiresAt: fixedNow.toISOString(),
         expiredAt: fixedNow.toISOString(),
         expiredReason: 'policy_denied'

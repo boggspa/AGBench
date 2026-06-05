@@ -343,8 +343,8 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     return JSON.stringify({
       aps: {
         alert: {
-          title: 'AGBench needs attention',
-          body: 'Open AGBench to respond.'
+          title: 'TaskWraith needs attention',
+          body: 'Open TaskWraith to respond.'
         },
         sound: 'default',
         'mutable-content': 1
@@ -381,8 +381,8 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
       stripNullish({
         aps: {
           alert: {
-            title: 'AGBench needs attention',
-            body: 'Open AGBench to review the latest task state.'
+            title: 'TaskWraith needs attention',
+            body: 'Open TaskWraith to review the latest task state.'
           },
           sound: 'default',
           'mutable-content': 1

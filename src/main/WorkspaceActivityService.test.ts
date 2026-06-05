@@ -12,7 +12,7 @@ const NOW = Date.parse('2026-05-31T12:00:00.000Z')
 
 const tempDirs: string[] = []
 
-async function makeTempWorkspace(prefix = 'agbench-workspace-activity-'): Promise<string> {
+async function makeTempWorkspace(prefix = 'taskwraith-workspace-activity-'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), prefix))
   tempDirs.push(dir)
   return dir
@@ -27,10 +27,10 @@ function git(cwd: string, args: string[], env: Record<string, string> = {}): voi
 }
 
 async function initGitWorkspace(): Promise<string> {
-  const dir = await makeTempWorkspace('agbench-workspace-activity-git-')
+  const dir = await makeTempWorkspace('taskwraith-workspace-activity-git-')
   git(dir, ['init'])
   git(dir, ['config', 'user.email', 'test@example.com'])
-  git(dir, ['config', 'user.name', 'AGBench Test'])
+  git(dir, ['config', 'user.name', 'TaskWraith Test'])
   return dir
 }
 
@@ -86,7 +86,7 @@ describe('getWorkspaceActivitySnapshot', () => {
   })
 
   it('falls back to bounded filesystem mtimes for non-git workspaces', async () => {
-    const dir = await makeTempWorkspace('agbench-workspace-activity-fs-')
+    const dir = await makeTempWorkspace('taskwraith-workspace-activity-fs-')
     const sourceFile = join(dir, 'source.ts')
     await writeFile(sourceFile, 'export const value = 1\n')
     const sourceTime = new Date('2026-05-29T14:00:00.000Z')
@@ -112,7 +112,7 @@ describe('getWorkspaceActivitySnapshot', () => {
   })
 
   it('marks filesystem snapshots truncated when the scan cap is reached', async () => {
-    const dir = await makeTempWorkspace('agbench-workspace-activity-cap-')
+    const dir = await makeTempWorkspace('taskwraith-workspace-activity-cap-')
     for (let index = 0; index < 4; index += 1) {
       await writeFile(join(dir, `file-${index}.txt`), `${index}\n`)
     }

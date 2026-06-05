@@ -82,7 +82,7 @@ import { GrokTelemetryCard } from './GrokTelemetryCard'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { ProviderInstallCommands } from './ProviderInstallCommands'
 import type { ModelUsageAggregate } from '../App'
-import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../../../main/AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../../../main/TaskWraithMcpTools'
 
 interface SettingsPanelProps {
   mode: AppearanceMode
@@ -135,7 +135,7 @@ interface SettingsPanelProps {
   kimiBinaryPath: string
   agenticServices: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
-  /** When true (default), AGBench auto-dispatches a continuation run
+  /** When true (default), TaskWraith auto-dispatches a continuation run
    * on the parent chat once a sub-thread the parent delegated to (with
    * `returnResultToParent: true`) finishes. See AutoResumeParent.ts. */
   autoResumeParentOnSubThreadCompletion: boolean
@@ -408,8 +408,8 @@ const PROMPT_SURFACE_OPTIONS: Array<{ value: PromptSurfaceStyle; label: string }
 const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helper: string }> = [
   {
     value: 'default',
-    label: 'AGBench native',
-    helper: 'Provider chrome off; keep the existing AGBench shell.'
+    label: 'TaskWraith native',
+    helper: 'Provider chrome off; keep the existing TaskWraith shell.'
   },
   {
     value: 'codex',
@@ -562,7 +562,7 @@ function getComposerPreviewMeta(style: ComposerStyle): {
       // the surface itself, and the preview surface paints the
       // white rim + chase from the live CSS.
       return {
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Premium',
         placeholder: 'Compose…'
@@ -571,14 +571,14 @@ function getComposerPreviewMeta(style: ComposerStyle): {
       // 1.0.5-EW61 — Alabaster preview copy. Same restraint as
       // obsidian — the rim + cream surface carry the identity.
       return {
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Premium',
         placeholder: 'Compose…'
       }
     default:
       return {
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Default Approval',
         placeholder: 'Ask anything...'
@@ -611,9 +611,9 @@ const NATIVE_SUB_AGENT_REQUEST_OPTIONS: Array<{
     helper: 'Allow provider-native Task / invoke_agent style sub-agents.'
   },
   {
-    value: 'agbench',
-    label: 'AGBench',
-    helper: 'Redirect native sub-agent requests to durable AGBench sub-threads.'
+    value: 'taskwraith',
+    label: 'TaskWraith',
+    helper: 'Redirect native sub-agent requests to durable TaskWraith sub-threads.'
   }
 ]
 const CODEX_SANDBOX_FALLBACK_OPTIONS: Array<{ value: CodexSandboxFallbackMode; label: string }> = [
@@ -736,7 +736,7 @@ const MCP_TOOL_GROUP_ORDER: McpToolGroup[] = [
 
 const MCP_TOOL_OVERRIDES: Partial<
   Record<
-    AGBenchMcpToolName,
+    TaskWraithMcpToolName,
     {
       label: string
       transcript: string
@@ -850,7 +850,7 @@ function pluralizeCount(count: number, singular: string, plural = `${singular}s`
   return `${count} ${count === 1 ? singular : plural}`
 }
 
-function inferMcpToolGroup(tool: AGBenchMcpToolName): McpToolGroup {
+function inferMcpToolGroup(tool: TaskWraithMcpToolName): McpToolGroup {
   if (tool.startsWith('git_')) return 'git'
   if (
     tool.includes('file') ||
@@ -880,7 +880,7 @@ function inferMcpToolGroup(tool: AGBenchMcpToolName): McpToolGroup {
   return 'workspace'
 }
 
-function inferMcpPolicyKey(tool: AGBenchMcpToolName): McpToolPolicyKey {
+function inferMcpPolicyKey(tool: TaskWraithMcpToolName): McpToolPolicyKey {
   if (tool === 'run_shell_command' || tool === 'run_task') return 'shellCommands'
   if (tool.startsWith('creative_')) return 'mcpTools'
   if (
@@ -896,7 +896,7 @@ function inferMcpPolicyKey(tool: AGBenchMcpToolName): McpToolPolicyKey {
   return 'mcpTools'
 }
 
-function getMcpToolMeta(tool: AGBenchMcpToolName): {
+function getMcpToolMeta(tool: TaskWraithMcpToolName): {
   label: string
   transcript: string
   group: McpToolGroup
@@ -913,13 +913,13 @@ function getMcpToolMeta(tool: AGBenchMcpToolName): {
     group,
     iconRef: `tool:${group}`,
     policyKey: inferMcpPolicyKey(tool),
-    description: `${MCP_TOOL_GROUP_LABELS[group]} tool exposed through the AGBench MCP bridge.`
+    description: `${MCP_TOOL_GROUP_LABELS[group]} tool exposed through the TaskWraith MCP bridge.`
   }
 }
 
-function formatMcpInvocation(provider: ProviderId, tool: AGBenchMcpToolName): string {
-  if (provider === 'claude') return `mcp__AGBench__${tool}`
-  return `AGBench__${tool}`
+function formatMcpInvocation(provider: ProviderId, tool: TaskWraithMcpToolName): string {
+  if (provider === 'claude') return `mcp__TaskWraith__${tool}`
+  return `TaskWraith__${tool}`
 }
 
 function getMcpPolicyLabel(
@@ -948,7 +948,7 @@ function countMcpStatusTools(status: any): number {
   return 0
 }
 
-const MCP_TOOL_CATALOG = AGENTBENCH_MCP_TOOLS.map((name) => ({
+const MCP_TOOL_CATALOG = TASKWRAITH_MCP_TOOLS.map((name) => ({
   name,
   ...getMcpToolMeta(name)
 })).sort((a, b) => {
@@ -1007,7 +1007,7 @@ export const SETTINGS_TABS: Array<{
   { id: 'providers', label: 'Providers', group: 'settings' },
   { id: 'mcp', label: 'MCP', group: 'settings' },
   // "Workspaces" — Codex Environments-style page listing every workspace loaded
-  // into AGBench; a row opens it in a fresh chat surface.
+  // into TaskWraith; a row opens it in a fresh chat surface.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   // "Model usage" — richer cross-provider usage page (quota meters + context
   // tiles). Not in the maintainer's explicit order list, kept at the tail of the settings
@@ -1454,7 +1454,7 @@ export function SettingsPanel({
   const composerFontOptions = [...COMPOSER_FONT_OPTIONS, ...installedFontOptions]
   const transcriptFontSelectValue = getFontSelectValue(
     transcriptFontOptions,
-    transcriptFontFamily || FONT_STACKS.agbench
+    transcriptFontFamily || FONT_STACKS.taskwraith
   )
   const composerFontSelectValue = getFontSelectValue(
     composerFontOptions,
@@ -1524,21 +1524,21 @@ export function SettingsPanel({
             message: geminiMcpBridgeStatus?.message || geminiMcpBridgeStatus?.error
           }
         : null
-    // 1.0.6-CRUX41 — Cursor's MCP surface is the AGBench web bridge (web_fetch +
+    // 1.0.6-CRUX41 — Cursor's MCP surface is the TaskWraith web bridge (web_fetch +
     // web_search), opt-in per workspace; it has no provider-reported MCP status,
     // so describe it honestly instead of letting it read "not available yet".
     const cursorWebBridge =
       provider === 'cursor'
         ? {
-            source: 'agbench web bridge',
-            serverName: 'agbench',
+            source: 'taskwraith web bridge',
+            serverName: 'taskwraith',
             toolCount: 2,
             message:
-              'AGBench web bridge — web_fetch + web_search for write-mode runs. Register it once in Cursor → Tools & MCPs → Add Custom MCP to enable.'
+              'TaskWraith web bridge — web_fetch + web_search for write-mode runs. Register it once in Cursor → Tools & MCPs → Add Custom MCP to enable.'
           }
         : null
     // 1.0.6 — Grok is a first-class provider whose tools are provider-managed
-    // (resolved by the Grok agent CLI), not surfaced through an AGBench MCP
+    // (resolved by the Grok agent CLI), not surfaced through an TaskWraith MCP
     // server. Describe that plainly rather than letting it fall through to the
     // generic "MCP status is not available yet" + a `gated` pill, which read as
     // second-class. No bridge to install — its tools come with the CLI.
@@ -1548,7 +1548,7 @@ export function SettingsPanel({
             source: 'provider-managed',
             serverName: 'Grok CLI',
             message:
-              'Grok resolves its own tools through the Grok agent CLI — no AGBench MCP server to install. First-class provider; tools ship with the CLI.'
+              'Grok resolves its own tools through the Grok agent CLI — no TaskWraith MCP server to install. First-class provider; tools ship with the CLI.'
           }
         : null
     const mcp = contract?.mcp
@@ -1557,7 +1557,7 @@ export function SettingsPanel({
     const installed = Boolean(mcp?.installed ?? bridge?.installed ?? available)
     // First-class state mapping. Cursor's web bridge IS its connected surface →
     // `available`. Grok is provider-managed → `available` too (it's connected via
-    // the CLI; the tools just aren't AGBench-hosted). Neither should read `gated`.
+    // the CLI; the tools just aren't TaskWraith-hosted). Neither should read `gated`.
     const state =
       mcp?.state ??
       (cursorWebBridge || grokProviderManaged
@@ -1571,7 +1571,7 @@ export function SettingsPanel({
     const toolCount = Math.max(
       rawToolCount,
       Array.isArray(mcp?.tools) ? mcp.tools.length : 0,
-      provider === 'gemini' && available ? AGENTBENCH_MCP_TOOLS.length : 0,
+      provider === 'gemini' && available ? TASKWRAITH_MCP_TOOLS.length : 0,
       cursorWebBridge?.toolCount ?? 0
     )
     return {
@@ -1585,13 +1585,13 @@ export function SettingsPanel({
         mcp?.source ||
         cursorWebBridge?.source ||
         grokProviderManaged?.source ||
-        (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'agentbench'),
+        (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'taskwraith'),
       serverName:
         mcp?.serverName ||
         bridge?.serverName ||
         cursorWebBridge?.serverName ||
         grokProviderManaged?.serverName ||
-        (available ? 'AGBench' : 'not connected'),
+        (available ? 'TaskWraith' : 'not connected'),
       toolCount,
       message:
         mcp?.message ||
@@ -2026,7 +2026,7 @@ export function SettingsPanel({
                 >
                   <div
                     className="settings-composer-preview-transcript"
-                    style={{ fontFamily: transcriptFontFamily || FONT_STACKS.agbench }}
+                    style={{ fontFamily: transcriptFontFamily || FONT_STACKS.taskwraith }}
                   >
                     <span className="settings-composer-preview-speaker">
                       {composerPreviewMeta.providerLabel}
@@ -2641,9 +2641,9 @@ export function SettingsPanel({
                       description: 'Git and filesystem activity for the selected workspace.'
                     },
                     {
-                      key: 'agbenchActivityEnabled' as const,
-                      label: 'AGBench Activity',
-                      description: 'Usage recorded inside AGBench chats.'
+                      key: 'taskwraithActivityEnabled' as const,
+                      label: 'TaskWraith Activity',
+                      description: 'Usage recorded inside TaskWraith chats.'
                     },
                     {
                       key: 'externalActivityEnabled' as const,
@@ -3241,7 +3241,7 @@ export function SettingsPanel({
                     </h4>
                     <p className="settings-hint">
                       Same provider checklist as first launch. Runtime auth stays with each
-                      provider; AGBench stores only explicit API keys or usage sessions you add
+                      provider; TaskWraith stores only explicit API keys or usage sessions you add
                       here.
                     </p>
                   </div>
@@ -3476,7 +3476,7 @@ export function SettingsPanel({
                     <p className="settings-provider-auth-footnote">
                       Write-mode runs are contained by a workspace-local deny-list and surfaced
                       through Review changes. Enabled by default; set
-                      <code> AGBENCH_DISABLE_CURSOR=1</code> to hide.
+                      <code> TASKWRAITH_DISABLE_CURSOR=1</code> to hide.
                     </p>
                   </SettingsProviderAuthCard>
                   <SettingsProviderAuthCard
@@ -3509,7 +3509,7 @@ export function SettingsPanel({
                       Open Terminal to sign out
                     </button>
                     <p className="settings-provider-auth-footnote">
-                      Enabled by default; set <code>AGBENCH_DISABLE_GROK=1</code> to hide.
+                      Enabled by default; set <code>TASKWRAITH_DISABLE_GROK=1</code> to hide.
                     </p>
                   </SettingsProviderAuthCard>
                 </div>
@@ -3658,9 +3658,9 @@ export function SettingsPanel({
                         providerCapabilities.tools.mcpTools,
                         providerCapabilities.tools.creativeApps,
                         providerCapabilities.tools.networkAccess
-                      ].filter((tool) => tool.enforcedByAgentBench).length
+                      ].filter((tool) => tool.enforcedByTaskWraith).length
                     }
-                    /5 controls are AGBench-enforced.
+                    /5 controls are TaskWraith-enforced.
                   </div>
                 )}
                 {!providerCapabilities && (
@@ -3687,7 +3687,7 @@ export function SettingsPanel({
                   </select>
                 </label>
                 <p className="settings-hint">
-                  When Codex hits a Swift/Xcode sandbox/tooling collision, AGBench can ask to rerun
+                  When Codex hits a Swift/Xcode sandbox/tooling collision, TaskWraith can ask to rerun
                   that exact command once from the host process.
                 </p>
 
@@ -3887,7 +3887,7 @@ export function SettingsPanel({
                       </button>
                     )}
                     <p className="settings-hint" style={{ margin: 0 }}>
-                      Google login profiles use isolated Gemini CLI homes under AGBench, so browser
+                      Google login profiles use isolated Gemini CLI homes under TaskWraith, so browser
                       OAuth persists across app restarts without using your host ~/.gemini account.
                     </p>
                   </div>
@@ -4059,7 +4059,7 @@ export function SettingsPanel({
                   </div>
                 )}
                 <p className="settings-hint">
-                  Claude runs inside AGBench use Agent SDK / <code>claude -p</code> programmatic
+                  Claude runs inside TaskWraith use Agent SDK / <code>claude -p</code> programmatic
                   paths. From 2026-06-15 Anthropic says these use separate Agent SDK credit, not
                   normal interactive Claude Code subscription limits. Use Claude in an interactive
                   terminal when you specifically need native Claude Code subscription-limit
@@ -4204,14 +4204,14 @@ export function SettingsPanel({
                 <div>
                   <div className="settings-section-title-row">
                     <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-                      MCP servers and AGBench tools
+                      MCP servers and TaskWraith tools
                     </h4>
                     <span className="settings-readonly-pill">Read-only audit</span>
                   </div>
                   <p className="settings-hint">
                     Audit the tool surface agents can see, the transcript labels users see, and the
                     policy gate attached to each capability. Custom server editing stays provider
-                    owned until AGBench has safe config-writing plumbing.
+                    owned until TaskWraith has safe config-writing plumbing.
                   </p>
                 </div>
                 <div className="settings-mcp-header-actions">
@@ -4241,8 +4241,8 @@ export function SettingsPanel({
               <div className="settings-mcp-summary-grid">
                 <article className="settings-mcp-summary-card">
                   <span>Built-in tools</span>
-                  <strong>{AGENTBENCH_MCP_TOOLS.length}</strong>
-                  <small>AGBench MCP bridge catalog</small>
+                  <strong>{TASKWRAITH_MCP_TOOLS.length}</strong>
+                  <small>TaskWraith MCP bridge catalog</small>
                 </article>
                 <article className="settings-mcp-summary-card">
                   <span>Providers</span>
@@ -4273,7 +4273,7 @@ export function SettingsPanel({
                 </h4>
                 <p className="settings-hint">
                   Choose whether provider-native Task / invoke_agent calls continue natively or are
-                  redirected to AGBench sub-threads for durable sidebar, iOS, recall, and audit
+                  redirected to TaskWraith sub-threads for durable sidebar, iOS, recall, and audit
                   visibility.
                 </p>
               </div>
@@ -4311,7 +4311,7 @@ export function SettingsPanel({
                 </h4>
                 <p className="settings-hint">
                   Provider status comes from existing runtime discovery. Gemini also has an
-                  installable AGBench MCP bridge for CLI/OAuth runs.
+                  installable TaskWraith MCP bridge for CLI/OAuth runs.
                 </p>
               </div>
               <div className="settings-mcp-server-grid">
@@ -4357,9 +4357,9 @@ export function SettingsPanel({
                     onChange={(e) => onChange({ geminiMcpBridgeEnabled: e.target.checked })}
                   />
                   <span>
-                    Gemini AGBench MCP bridge
+                    Gemini TaskWraith MCP bridge
                     <small>
-                      Enables the bundled AGBench MCP server for Gemini CLI profiles. API-key Gemini
+                      Enables the bundled TaskWraith MCP server for Gemini CLI profiles. API-key Gemini
                       runs call the same host tools directly.
                     </small>
                   </span>
@@ -4382,7 +4382,7 @@ export function SettingsPanel({
             <div className="settings-group span-all">
               <div className="settings-mcp-section-title">
                 <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-                  AGBench environment tools
+                  TaskWraith environment tools
                 </h4>
                 <p className="settings-hint">
                   Each row shows the transcript-facing label, icon reference, provider invocation
@@ -4485,7 +4485,7 @@ export function SettingsPanel({
                 </h4>
                 <p className="settings-hint">
                   These surfaces are intentionally audit-first here. Add/remove needs a separate
-                  config-writing slice so AGBench never mutates provider MCP files by accident.
+                  config-writing slice so TaskWraith never mutates provider MCP files by accident.
                 </p>
               </div>
               <div className="settings-mcp-management-grid">
@@ -4533,7 +4533,7 @@ export function SettingsPanel({
                     <span className="settings-editable-pill">Editable</span>
                   </div>
                   <p className="settings-hint">
-                    User-editable bindings for the app commands AGBench currently dispatches.
+                    User-editable bindings for the app commands TaskWraith currently dispatches.
                     Conflicting shortcuts are blocked while recording.
                   </p>
                 </div>
@@ -4798,7 +4798,7 @@ export function SettingsPanel({
               <div className="settings-workspaces-header-copy">
                 <h3 className="settings-workspaces-subtitle">Loaded workspaces</h3>
                 <p className="settings-workspaces-description">
-                  Every project folder you&apos;ve pointed AGBench at. Click a row to switch the
+                  Every project folder you&apos;ve pointed TaskWraith at. Click a row to switch the
                   chat surface to that workspace; pin to keep it at the top of the sidebar; remove
                   to drop it from the list (chats inside the workspace stay on disk).
                 </p>
@@ -4819,7 +4819,7 @@ export function SettingsPanel({
                 <MascotGhost size={30} />
                 <strong>No workspaces yet.</strong>
                 <span>
-                  Use <em>Add workspace</em> above to point AGBench at your first project folder.
+                  Use <em>Add workspace</em> above to point TaskWraith at your first project folder.
                 </span>
               </div>
             ) : (
@@ -4983,7 +4983,7 @@ export function SettingsPanel({
                 <p className="settings-model-usage-description">
                   Cross-provider token + quota dashboard. Pulled from the same aggregate the welcome
                   screen + sidebar consume. To view invoices or change payment methods, visit each
-                  provider&apos;s billing surface directly — AGBench never proxies credentials.
+                  provider&apos;s billing surface directly — TaskWraith never proxies credentials.
                 </p>
 
                 {/* Headline tiles — at-a-glance numbers above the meters. */}
@@ -5155,7 +5155,7 @@ export function SettingsPanel({
                   <div className="settings-model-usage-empty" role="note">
                     <strong>No usage data yet.</strong>
                     <span>
-                      Start a chat with any provider to populate the meters — AGBench begins
+                      Start a chat with any provider to populate the meters — TaskWraith begins
                       tracking on the first completed run.
                     </span>
                   </div>

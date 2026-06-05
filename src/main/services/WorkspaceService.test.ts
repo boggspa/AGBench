@@ -111,7 +111,7 @@ describe('WorkspaceService', () => {
     const { deps } = makeDeps({ appStore: store })
     const service = new WorkspaceService(deps)
     expect(() => service.addOrUpdateWorkspace('/input')).toThrow(
-      'Workspace must be selected through AGBench before it can be used.'
+      'Workspace must be selected through TaskWraith before it can be used.'
     )
     expect(store.addOrUpdateWorkspace).not.toHaveBeenCalled()
   })

@@ -19,10 +19,10 @@ describe('AppShellStatsToolbar', () => {
       />
     )
 
-    expect(html).toContain('AGBench app stats')
-    expect(html).toContain('AGBench Electron CPU --')
-    expect(html).toContain('AGBench Electron RAM --')
-    expect(html).toContain('Running AGBench threads 0')
+    expect(html).toContain('TaskWraith app stats')
+    expect(html).toContain('TaskWraith Electron CPU --')
+    expect(html).toContain('TaskWraith Electron RAM --')
+    expect(html).toContain('Running TaskWraith threads 0')
     expect(html).toContain('>CPU</span>')
     expect(html).toContain('>Memory</span>')
     expect(html).toContain('>Threads</span>')
@@ -46,7 +46,7 @@ describe('AppShellStatsToolbar', () => {
     )
 
     expect(html).toContain('3.8%')
-    expect(html).toContain('AGBench Electron RAM 12.4% 2.0GB')
-    expect(html).toContain('Running AGBench threads 2')
+    expect(html).toContain('TaskWraith Electron RAM 12.4% 2.0GB')
+    expect(html).toContain('Running TaskWraith threads 2')
   })
 })

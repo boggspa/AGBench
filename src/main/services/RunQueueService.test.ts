@@ -237,7 +237,7 @@ describe('RunQueueService', () => {
           externalPathGrants: [{ id: 'grant-1' }]
         }
       })
-    ).toThrow('Queued external path grants must be issued by AGBench in this app session.')
+    ).toThrow('Queued external path grants must be issued by TaskWraith in this app session.')
     expect(repository.saveRunQueueJob).not.toHaveBeenCalled()
   })
 
@@ -247,14 +247,14 @@ describe('RunQueueService', () => {
     expect(service.leaseJob({ provider: 'gemini' })).toEqual(
       makeJob({
         status: 'starting',
-        statusReason: 'Leased by AGBench main scheduler.'
+        statusReason: 'Leased by TaskWraith main scheduler.'
       })
     )
     expect(store.getRunQueueJobs).toHaveBeenCalledWith({ provider: 'gemini', statuses: ['queued'] })
     expect(repository.leaseQueuedRun).toHaveBeenCalledWith({
       runId: 'run-1',
       provider: 'gemini',
-      statusReason: 'Leased by AGBench main scheduler.'
+      statusReason: 'Leased by TaskWraith main scheduler.'
     })
   })
 
@@ -283,7 +283,7 @@ describe('RunQueueService', () => {
         runId: 'run-idle',
         provider: 'codex',
         status: 'starting',
-        statusReason: 'Leased by AGBench main scheduler.'
+        statusReason: 'Leased by TaskWraith main scheduler.'
       })
     )
     expect(canLeaseJob).toHaveBeenCalledWith(busyJob)
@@ -291,7 +291,7 @@ describe('RunQueueService', () => {
     expect(repository.leaseQueuedRun).toHaveBeenCalledWith({
       runId: 'run-idle',
       provider: 'codex',
-      statusReason: 'Leased by AGBench main scheduler.'
+      statusReason: 'Leased by TaskWraith main scheduler.'
     })
   })
 

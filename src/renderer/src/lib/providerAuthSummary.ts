@@ -95,11 +95,11 @@ export function summariseGeminiStatus(status: GeminiAuthStatus | null): Provider
 
 /**
  * Cursor / Grok summary. Both authenticate through their OWN CLI (no API
- * key, no in-app OAuth) — `cursor-agent login` / the Grok CLI — so AGBench
+ * key, no in-app OAuth) — `cursor-agent login` / the Grok CLI — so TaskWraith
  * only knows whether the provider is *enabled* (adapter registered), not
  * whether the CLI is signed in. Surface an honest "available · finish
  * sign-in" state that deep-links to Settings, or "disabled" when the
- * provider was force-disabled (e.g. `AGBENCH_DISABLE_CURSOR/GROK=1`).
+ * provider was force-disabled (e.g. `TASKWRAITH_DISABLE_CURSOR/GROK=1`).
  */
 export function summariseCliProviderEnabled(
   enabled: boolean,

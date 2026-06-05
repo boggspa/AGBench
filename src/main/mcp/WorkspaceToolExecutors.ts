@@ -295,7 +295,7 @@ export async function executeApplyPatch(
   const dryRun = args.dryRun === true || args.check === true || args.preview === true
   const patchPath = join(
     deps.host.getTempDir(),
-    `agbench-mcp-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
+    `taskwraith-mcp-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
   )
   await fs.writeFile(patchPath, patch, 'utf8')
   try {
@@ -386,7 +386,7 @@ export async function executeGitStage(
     const patchPaths = assertPatchPathsInScope(context, cwd, patch)
     const patchPath = join(
       deps.host.getTempDir(),
-      `agbench-mcp-stage-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
+      `taskwraith-mcp-stage-${Date.now()}-${randomBytes(4).toString('hex')}.patch`
     )
     await fs.writeFile(patchPath, patch, 'utf8')
     try {

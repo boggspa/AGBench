@@ -231,7 +231,7 @@
  *
  * A1 (1.0.3 — same ship-night): match the per-shell `.composer-above-bar`
  * visual family so the strip reads as part of the active shell's
- * above-bar stack. Default / Codex / AGBench shells use the boxed
+ * above-bar stack. Default / Codex / TaskWraith shells use the boxed
  * container (`--composer-bg` + `--composer-border` + `--composer-shadow`
  * + extra-rounded radius). The Claude shell's transparent / hairline
  * override further down makes the strip read as "flat satellite chips"
@@ -1367,7 +1367,7 @@
 }
 
 /* A1 (1.0.3) — per-shell visual treatment for the ensemble strip.
- * Default / Codex / AGBench shells inherit the boxed `.composer-above-bar`
+ * Default / Codex / TaskWraith shells inherit the boxed `.composer-above-bar`
  * look already declared on `.ensemble-above-row` above (the shared
  * `--composer-bg` / `--composer-border` / `--composer-shadow` family).
  * The Claude shell's matching-container treatment is declared further
@@ -1933,7 +1933,7 @@
 }
 
 /* Ensemble chats keep `provider-*` on the transcript for legacy runtime
- * plumbing, but the welcome title and AGBench-native composer chrome are
+ * plumbing, but the welcome title and TaskWraith-native composer chrome are
  * multi-provider surfaces. Reuse the existing welcome-shell blend variables
  * without retinting provider-specific composer shells. */
 .app-transcript.chat-kind-ensemble {

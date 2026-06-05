@@ -121,7 +121,7 @@ export type ComposerStyle =
   | 'terminal'
   /** Ticket stub: paper-textured composer with a perforated
    * separator between the controls strip and the textarea bubble.
-   * Mirrors AGBench's tool-call ticket grouping aesthetic. */
+   * Mirrors TaskWraith's tool-call ticket grouping aesthetic. */
   | 'stub'
   /** Satellite: everything floats; all containers, borders, and
    * fills go invisible. Layout intact, chrome stripped. */
@@ -150,7 +150,7 @@ export type ComposerStyle =
    */
   | 'alabaster'
 // 'grok' is now first-class (gate lifted). 'cursor' (Composer 2.5) is gated
-// behind AGBENCH_EXPERIMENTAL_CURSOR (default OFF) — a real ProviderId at the
+// behind TASKWRAITH_EXPERIMENTAL_CURSOR (default OFF) — a real ProviderId at the
 // type level (so adapters/records compile), but kept OUT of every user-visible
 // array + validation Set unless the gate is on, so the gate-off state is
 // structurally inert (the same discipline Grok used at G2).
@@ -185,7 +185,7 @@ export interface ProductChangelogSnapshot {
   pendingUpdateChangelog?: ProductUpdateChangelog
   latestUpdateChangelog?: ProductUpdateChangelog
 }
-/** Phase M1 — picks which runtime path AGBench uses for Gemini runs.
+/** Phase M1 — picks which runtime path TaskWraith uses for Gemini runs.
  *
  *   - `'auto'` (default): use the API runtime when an API key /
  *     `GeminiAuthProfile` is configured, otherwise fall back to the CLI
@@ -207,7 +207,7 @@ export type GeminiApiRuntimeMode = 'auto' | 'always' | 'never'
 export type ProductOperationStatus = 'ok' | 'warning' | 'error' | 'unknown'
 export type ExternalPathGrantAccess = 'read' | 'write'
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace'
-export type NativeSubAgentRequestPolicy = 'ask' | 'provider' | 'agbench'
+export type NativeSubAgentRequestPolicy = 'ask' | 'provider' | 'taskwraith'
 export type KeyCommandModifier = 'primary' | 'shift' | 'alt'
 export interface KeyCommandBinding {
   key: string
@@ -220,7 +220,7 @@ export type AgentApprovalAction =
   | 'decline'
   | 'cancel'
   | 'useProviderNative'
-  | 'useAGBenchSubthread'
+  | 'useTaskWraithSubthread'
   // Slice 4 of the external-path-redesign arc. When the runtime
   // detector (slice 5) spots a tool call referencing a path outside
   // the workspace, the approval payload uses these actions in place
@@ -530,7 +530,7 @@ export type ConcurrentLaneIntent = 'none' | 'read' | 'write'
  * paths NEVER populate this — they keep using
  * `activeParticipantId` + `participants[].status` as the source
  * of truth. Concurrent dispatch (gated behind
- * `AGBENCH_CONCURRENT_LANES`) populates a lane per dispatched
+ * `TASKWRAITH_CONCURRENT_LANES`) populates a lane per dispatched
  * participant.
  */
 export interface ConcurrentLane {
@@ -572,7 +572,7 @@ export interface EnsembleRoundState {
    * 1.0.5-C1 — Concurrent-mode lane records, keyed by `laneId`.
    * Only populated when the round dispatched in concurrent mode
    * (`concurrentMode === true` AND the
-   * `AGBENCH_CONCURRENT_LANES` env flag is on). Serial dispatch
+   * `TASKWRAITH_CONCURRENT_LANES` env flag is on). Serial dispatch
    * leaves this undefined; readers should treat
    * `participants[].status` as authoritative when `lanes` is
    * absent or empty.
@@ -796,7 +796,7 @@ export interface EnsembleConfig {
   /**
    * 1.0.4-AF — opt-in "self-reflective" mode. When true, the ensemble
    * prompt's deictic-resolution rule (1.0.4-Q) is inverted so
-   * "this app / this repo" refers to AGBench itself rather than the
+   * "this app / this repo" refers to TaskWraith itself rather than the
    * active workspace. Used by the `/discuss` slash command for
    * meta-conversations about the harness.
    */
@@ -953,7 +953,7 @@ export interface WorkSessionConfig {
  *     API transport ramps) so MCP consumers don't need a schema
  *     bump when they land.
  *   - `approvalSupport`: capability — does this provider's adapter
- *     route approvals through AGBench's main-authority gate?
+ *     route approvals through TaskWraith's main-authority gate?
  *   - `mcpStatusSupport`: capability — can the adapter answer
  *     MCP status probes (Codex via app-server, the others not yet).
  *   - `authState`: actionable state, not the previous vague
@@ -1002,7 +1002,7 @@ export interface GeminiMcpBridgeStatus {
   enabled: boolean
   installed: boolean
   available: boolean
-  serverName: 'AGBench'
+  serverName: 'TaskWraith'
   command?: string[]
   socketPath?: string
   message?: string
@@ -1035,9 +1035,9 @@ export interface ProviderToolingCapability {
   id: ProviderToolingCapabilityId
   label: string
   state: ProviderCapabilityState
-  source: 'agentbench' | 'provider' | 'bridge' | 'settings'
-  enforcedByAgentBench?: boolean
-  enforcement?: 'agentbench' | 'provider' | 'bridge' | 'settings' | 'best_effort' | 'none'
+  source: 'taskwraith' | 'provider' | 'bridge' | 'settings'
+  enforcedByTaskWraith?: boolean
+  enforcement?: 'taskwraith' | 'provider' | 'bridge' | 'settings' | 'best_effort' | 'none'
   policy?: AgenticServicePolicy | AgenticNetworkPolicy
   requiresApproval: boolean
   tools: string[]
@@ -1055,7 +1055,7 @@ export interface ProviderApprovalCapability {
 
 export interface ProviderMcpCapability {
   state: ProviderCapabilityState
-  source: 'agentbench' | 'provider' | 'bridge' | 'unsupported'
+  source: 'taskwraith' | 'provider' | 'bridge' | 'unsupported'
   available: boolean
   enabled?: boolean
   installed?: boolean
@@ -1110,7 +1110,7 @@ export interface ProviderAdapterFeatureFlags {
 /** Static per-provider capability declarations.
  *
  * `features` (above) describes INFRASTRUCTURE characteristics —
- * whether the adapter uses AGBench's MCP bridge, has persistent
+ * whether the adapter uses TaskWraith's MCP bridge, has persistent
  * sessions, etc. `ProviderAdapterCapabilities` describes USER-FACING
  * UX capabilities — what the iOS composer / desktop renderer should
  * render for this provider.
@@ -1161,7 +1161,7 @@ export interface ProviderAdapterDescriptor {
   label: string
   transport: ProviderAdapterTransport
   runChannel: ProviderAdapterRunChannel
-  capabilitySource: 'agentbench' | 'provider' | 'bridge' | 'mixed'
+  capabilitySource: 'taskwraith' | 'provider' | 'bridge' | 'mixed'
   features: ProviderAdapterFeatureFlags
   capabilities: ProviderAdapterCapabilities
 }
@@ -1422,7 +1422,7 @@ export interface AppSettings {
    */
   welcomeHeatmapPrefs?: {
     workspaceActivityEnabled?: boolean
-    agbenchActivityEnabled?: boolean
+    taskwraithActivityEnabled?: boolean
     externalActivityEnabled?: boolean
     /**
      * 1.0.72 — Layout for the welcome standalone heatmaps:
@@ -1468,7 +1468,7 @@ export interface AppSettings {
   agenticServices: AgenticServicesSettings
   agenticWorkspaceGrants: AgenticWorkspaceGrant[]
   /** User preference for provider-native sub-agent tools (`Task`,
-   * `invoke_agent`, etc.) versus AGBench durable sub-threads. When
+   * `invoke_agent`, etc.) versus TaskWraith durable sub-threads. When
    * unset, the runtime asks on the first observable native request. */
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), an agent's parent chat is automatically
@@ -1493,7 +1493,7 @@ export interface AppSettings {
    * When an approval enters the pending registry, a timer fires after
    * the matching ms value and auto-denies the request. `enabled: false`
    * disables the entire scheduler (same effect as
-   * `AGBENCH_APPROVAL_TIMEOUT_OFF=1`). */
+   * `TASKWRAITH_APPROVAL_TIMEOUT_OFF=1`). */
   approvalTimeouts: {
     enabled: boolean
     perProviderMs: {
@@ -1610,7 +1610,8 @@ export interface ProductInstallRepairStatus {
   checks: ProductHealthCheck[]
 }
 
-export type ProductMacUpdateArtifactArch = 'universal' | 'arm64' | 'x64' | 'unknown'
+export type ProductUpdateArtifactArch = 'universal' | 'arm64' | 'x64' | 'unknown'
+export type ProductMacUpdateArtifactArch = ProductUpdateArtifactArch
 
 export interface ProductArchitectureCompatibilityStatus {
   checkedAt: string
@@ -1618,7 +1619,7 @@ export interface ProductArchitectureCompatibilityStatus {
   hostPlatform: string
   hostArch: string
   updateArtifactName?: string
-  updateArtifactArch: ProductMacUpdateArtifactArch
+  updateArtifactArch: ProductUpdateArtifactArch
   updateCompatible: boolean
   reason?: string
   message: string
@@ -1640,9 +1641,15 @@ export interface ProductReleaseAutomationStatus {
     buildMacNotarized?: string
     buildDebugMac?: string
     buildDebugMacNotarized?: string
+    buildWin?: string
+    buildWinUnpack?: string
+    buildWinSigned?: string
+    buildDebugWin?: string
     smokeNodePty?: string
     smokePackage?: string
     validateRelease?: string
+    validateMacUpdateFeed?: string
+    validateWinUpdateFeed?: string
   }
   nativeModules: {
     configured: boolean

@@ -6,10 +6,10 @@ import {
 } from './cursorGate'
 
 const CURSOR_ENV_KEYS = [
-  'AGBENCH_DISABLE_CURSOR',
-  'AGBENCH_EXPERIMENTAL_CURSOR',
-  'AGBENCH_CURSOR_DEBUG',
-  'AGBENCH_CURSOR_WEB'
+  'TASKWRAITH_DISABLE_CURSOR',
+  'TASKWRAITH_EXPERIMENTAL_CURSOR',
+  'TASKWRAITH_CURSOR_DEBUG',
+  'TASKWRAITH_CURSOR_WEB'
 ] as const
 
 type CursorEnvKey = (typeof CURSOR_ENV_KEYS)[number]
@@ -51,34 +51,34 @@ describe('experimentalCursorProviderEnabled', () => {
 
   it('turns off for documented emergency kill-switch values', () => {
     for (const value of ['1', 'true', 'yes']) {
-      resetCursorEnv({ AGBENCH_DISABLE_CURSOR: value })
+      resetCursorEnv({ TASKWRAITH_DISABLE_CURSOR: value })
       expect(experimentalCursorProviderEnabled()).toBe(false)
     }
   })
 
   it('does not treat other kill-switch spellings as opt-out', () => {
     for (const value of ['', '0', 'false', 'no', 'TRUE', 'YES', ' yes ', 'random']) {
-      resetCursorEnv({ AGBENCH_DISABLE_CURSOR: value })
+      resetCursorEnv({ TASKWRAITH_DISABLE_CURSOR: value })
       expect(experimentalCursorProviderEnabled()).toBe(true)
     }
   })
 
   it('turns off for legacy explicit opt-out values', () => {
     for (const value of ['0', 'false', 'no']) {
-      resetCursorEnv({ AGBENCH_EXPERIMENTAL_CURSOR: value })
+      resetCursorEnv({ TASKWRAITH_EXPERIMENTAL_CURSOR: value })
       expect(experimentalCursorProviderEnabled()).toBe(false)
     }
   })
 
   it('does not require the legacy experimental var to opt in', () => {
     for (const value of ['', '1', 'true', 'yes', 'FALSE', 'NO', ' no ', 'random']) {
-      resetCursorEnv({ AGBENCH_EXPERIMENTAL_CURSOR: value })
+      resetCursorEnv({ TASKWRAITH_EXPERIMENTAL_CURSOR: value })
       expect(experimentalCursorProviderEnabled()).toBe(true)
     }
   })
 
   it('lets the emergency kill-switch override a legacy enabled-looking value', () => {
-    resetCursorEnv({ AGBENCH_DISABLE_CURSOR: '1', AGBENCH_EXPERIMENTAL_CURSOR: 'true' })
+    resetCursorEnv({ TASKWRAITH_DISABLE_CURSOR: '1', TASKWRAITH_EXPERIMENTAL_CURSOR: 'true' })
     expect(experimentalCursorProviderEnabled()).toBe(false)
   })
 })
@@ -106,14 +106,14 @@ describe('cursorDebugEnabled', () => {
 
   it('turns on for documented opt-in values', () => {
     for (const value of ['1', 'true', 'yes']) {
-      resetCursorEnv({ AGBENCH_CURSOR_DEBUG: value })
+      resetCursorEnv({ TASKWRAITH_CURSOR_DEBUG: value })
       expect(cursorDebugEnabled()).toBe(true)
     }
   })
 
   it('stays off for false-ish, malformed, uppercase, or padded values', () => {
     for (const value of ['', '0', 'false', 'no', 'TRUE', 'YES', ' yes ', 'random']) {
-      resetCursorEnv({ AGBENCH_CURSOR_DEBUG: value })
+      resetCursorEnv({ TASKWRAITH_CURSOR_DEBUG: value })
       expect(cursorDebugEnabled()).toBe(false)
     }
   })
@@ -142,14 +142,14 @@ describe('cursorWebBridgeEnabled', () => {
 
   it('turns off for documented opt-out values', () => {
     for (const value of ['0', 'false', 'no']) {
-      resetCursorEnv({ AGBENCH_CURSOR_WEB: value })
+      resetCursorEnv({ TASKWRAITH_CURSOR_WEB: value })
       expect(cursorWebBridgeEnabled()).toBe(false)
     }
   })
 
   it('stays on for opt-in-looking, malformed, uppercase, or padded values', () => {
     for (const value of ['', '1', 'true', 'yes', 'FALSE', 'NO', ' no ', 'random']) {
-      resetCursorEnv({ AGBENCH_CURSOR_WEB: value })
+      resetCursorEnv({ TASKWRAITH_CURSOR_WEB: value })
       expect(cursorWebBridgeEnabled()).toBe(true)
     }
   })

@@ -599,7 +599,7 @@
 
 /* Gemini/Kimi provider shells should keep their own provider chrome in
  * both extreme app themes. Late light/glass rules otherwise make the
- * two upper rows look like AGBench native rows while the textarea keeps
+ * two upper rows look like TaskWraith native rows while the textarea keeps
  * the provider shell. */
 :is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-area,
 :is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface,

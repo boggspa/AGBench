@@ -24,7 +24,7 @@ export function isCodexAppServerThreadId(value: string | null | undefined): bool
  * Detect the specific failure where the codex CLI refuses to start because
  * it cannot deserialize `~/.codex/config.toml`. This happens when the user's
  * Codex.app (a newer CLI) writes a config value that the older homebrew CLI
- * AGBench spawns does not understand — the real error we hit in production was:
+ * TaskWraith spawns does not understand — the real error we hit in production was:
  *
  *   Error loading config.toml: unknown variant `priority`, expected `fast`
  *   or `flex` in `service_tier`
@@ -170,25 +170,25 @@ export interface CodexApprovalResponse {
 }
 
 /**
- * Phase I2: Codex's app-server is spawned once per AGBench session
+ * Phase I2: Codex's app-server is spawned once per TaskWraith session
  * (long-lived JSON-RPC daemon). To give Codex agents the same MCP
  * tool surface that Gemini gets — including the new
  * `delegate_to_subthread` tool — we register an inline MCP server via
  * the CLI's `-c mcp_servers.<name>.*` config-override syntax at spawn
- * time. The bridge subprocess inherits AGENTBENCH_PARENT_PROVIDER
+ * time. The bridge subprocess inherits TASKWRAITH_PARENT_PROVIDER
  * from the Codex CLI's env (via either process env inheritance OR
- * the explicit `mcp_servers.AGBench.env` config) so it can stamp
- * every broker request with `parentProvider='codex'`. AGBench main
+ * the explicit `mcp_servers.TaskWraith.env` config) so it can stamp
+ * every broker request with `parentProvider='codex'`. TaskWraith main
  * then routes the approval modal + audit event to Codex specifically
  * — Gemini's workspace grants don't auto-allow Codex delegation.
  *
  * Callers populate this via `setMcpConfig` before `ensureStarted`.
  * Leaving it null (or `enabled=false`) preserves the pre-I2
- * behaviour: Codex spawns without the AGBench MCP server, so the
+ * behaviour: Codex spawns without the TaskWraith MCP server, so the
  * Codex agent can't call `delegate_to_subthread` — useful when the
- * user has the AGBench MCP bridge toggle disabled.
+ * user has the TaskWraith MCP bridge toggle disabled.
  */
-export interface CodexMcpAgentbenchConfig {
+export interface CodexMcpTaskWraithConfig {
   enabled: boolean
   bridgeBinaryPath: string
   bridgeArgs: string[]
@@ -237,28 +237,28 @@ function tomlEscapeString(value: string): string {
 }
 
 /**
- * Build the `-c mcp_servers.AGBench.*` CLI argument list for Codex
+ * Build the `-c mcp_servers.TaskWraith.*` CLI argument list for Codex
  * CLI. Exported so the I2 tests can pin the exact shape of the
  * inline MCP config (TOML escaping + arg order matter). The
- * mixed-case `AGBench` server key matches the registration name
- * the agent sees in its tool list (`AGBench__delegate_to_subthread`);
+ * mixed-case `TaskWraith` server key matches the registration name
+ * the agent sees in its tool list (`TaskWraith__delegate_to_subthread`);
  * TOML keys are case-sensitive so the casing here must match the
  * `GEMINI_MCP_SERVER_NAME` constant in `index.ts`. The env var stays
- * `AGENTBENCH_PARENT_PROVIDER` to avoid changing the IPC contract
+ * `TASKWRAITH_PARENT_PROVIDER` to avoid changing the IPC contract
  * between the spawned bridge subprocess and main.
  */
-export function buildCodexAgentbenchMcpArgs(config: CodexMcpAgentbenchConfig): string[] {
+export function buildCodexTaskWraithMcpArgs(config: CodexMcpTaskWraithConfig): string[] {
   if (!config.enabled) return []
   const command = tomlEscapeString(config.bridgeBinaryPath)
   const args = config.bridgeArgs.map((arg) => `"${tomlEscapeString(arg)}"`).join(', ')
   const parentProvider = tomlEscapeString(config.parentProvider)
   return [
     '-c',
-    `mcp_servers.AGBench.command="${command}"`,
+    `mcp_servers.TaskWraith.command="${command}"`,
     '-c',
-    `mcp_servers.AGBench.args=[${args}]`,
+    `mcp_servers.TaskWraith.args=[${args}]`,
     '-c',
-    `mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
+    `mcp_servers.TaskWraith.env={ TASKWRAITH_PARENT_PROVIDER = "${parentProvider}" }`
   ]
 }
 
@@ -271,7 +271,7 @@ export class CodexAppServerClient {
   private notificationHandler: ((message: any) => void) | null = null
   private requestHandler: ((message: any) => void) | null = null
   private stderrHandler: ((chunk: string) => void) | null = null
-  private mcpConfig: CodexMcpAgentbenchConfig | null = null
+  private mcpConfig: CodexMcpTaskWraithConfig | null = null
   // Ring buffer of the most recent stderr the codex CLI emitted. When the
   // app-server refuses to start because of a bad ~/.codex/config.toml, the
   // CLI writes the parse error here and exits — and `ensureStarted` otherwise
@@ -302,14 +302,14 @@ export class CodexAppServerClient {
   }
 
   /**
-   * Phase I2: configure the AGBench MCP server that Codex CLI
+   * Phase I2: configure the TaskWraith MCP server that Codex CLI
    * registers at spawn. Must be called BEFORE `ensureStarted` —
    * once Codex's app-server is running we don't restart it just to
    * pick up new MCP config (Codex would lose its in-flight threads).
    * Pass `null` to clear; the next start spawns without any MCP
    * config overrides. Safe to call multiple times before start.
    */
-  setMcpConfig(config: CodexMcpAgentbenchConfig | null): void {
+  setMcpConfig(config: CodexMcpTaskWraithConfig | null): void {
     this.mcpConfig = config
   }
 
@@ -377,14 +377,14 @@ export class CodexAppServerClient {
   }
 
   private async start(appVersion: string): Promise<void> {
-    // Phase I2: prepend `-c mcp_servers.AGBench.*` config flags so
-    // the Codex CLI registers the AGBench MCP bridge as an MCP server
+    // Phase I2: prepend `-c mcp_servers.TaskWraith.*` config flags so
+    // the Codex CLI registers the TaskWraith MCP bridge as an MCP server
     // for the whole app-server lifetime. The bridge subprocess
-    // inherits AGENTBENCH_PARENT_PROVIDER='codex' from the env map AND
-    // from the inline `mcp_servers.AGBench.env` override (belt &
+    // inherits TASKWRAITH_PARENT_PROVIDER='codex' from the env map AND
+    // from the inline `mcp_servers.TaskWraith.env` override (belt &
     // braces — Codex CLI strips inherited env from MCP subprocesses
     // on some platforms, so we set it both ways).
-    const mcpArgs = buildCodexAgentbenchMcpArgs(
+    const mcpArgs = buildCodexTaskWraithMcpArgs(
       this.mcpConfig ?? {
         enabled: false,
         bridgeBinaryPath: '',
@@ -398,7 +398,7 @@ export class CodexAppServerClient {
       NO_COLOR: '1'
     }
     if (this.mcpConfig?.enabled) {
-      codexEnv.AGENTBENCH_PARENT_PROVIDER = this.mcpConfig.parentProvider
+      codexEnv.TASKWRAITH_PARENT_PROVIDER = this.mcpConfig.parentProvider
     }
     // Reset the stderr ring buffer for this start attempt so a stale error
     // from a prior failed start can't be misattributed to this one.
@@ -440,8 +440,8 @@ export class CodexAppServerClient {
         'initialize',
         {
           clientInfo: {
-            name: 'agbench',
-            title: 'AGBench',
+            name: 'taskwraith',
+            title: 'TaskWraith',
             version: appVersion
           },
           capabilities: {

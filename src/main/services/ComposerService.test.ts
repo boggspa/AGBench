@@ -157,7 +157,7 @@ describe('ComposerService', () => {
     const payload = compose({ provider: 'gemini' }, {})
     expect(payload.provider).toBe('gemini')
     expect(payload.prompt).toContain(
-      'AGBench runtime note: this Gemini workspace run is write-capable.'
+      'TaskWraith runtime note: this Gemini workspace run is write-capable.'
     )
     expect(payload.prompt).toContain('Conversation context (last 1 turn(s)):')
     expect(payload.prompt).toContain('User: Previous question')
@@ -171,7 +171,7 @@ describe('ComposerService', () => {
     // built-in invoke_agent when the user asks for "delegate to Kimi".
     const payload = compose({ provider: 'gemini' }, {})
     expect(payload.prompt).toContain('delegate_to_subthread')
-    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'kimi'")
     expect(payload.prompt).toContain('NEVER use your built-in invoke_agent')
@@ -203,7 +203,7 @@ describe('ComposerService', () => {
     )
     expect(payload.providerSessionId).toBe('gemini-session-1')
     expect(payload.prompt).not.toContain('Conversation context')
-    expect(payload.prompt).not.toContain('AGBench runtime note')
+    expect(payload.prompt).not.toContain('TaskWraith runtime note')
     expect(payload.approvalMode).toBe('plan')
   })
 
@@ -252,12 +252,12 @@ describe('ComposerService', () => {
   })
 
   it('teaches Kimi about cross-provider delegate_to_subthread (Phase I4)', () => {
-    // The runtime note must point Kimi at AGBench__delegate_to_subthread
+    // The runtime note must point Kimi at TaskWraith__delegate_to_subthread
     // so it doesn't reach for a built-in generalist agent when asked to
     // delegate to Gemini / Codex / Claude.
     const payload = compose({ provider: 'kimi' }, {})
-    expect(payload.prompt).toContain('AGBench MCP server')
-    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).toContain('TaskWraith MCP server')
+    expect(payload.prompt).toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'claude'")
     expect(payload.prompt).toContain('NEVER use any built-in generalist-agent path')
@@ -267,8 +267,8 @@ describe('ComposerService', () => {
 
   it('omits the Kimi delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'kimi' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -277,8 +277,8 @@ describe('ComposerService', () => {
       { provider: 'kimi', scope: 'global', workspacePath: undefined, workspaceId: undefined },
       {}
     )
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -299,7 +299,7 @@ describe('ComposerService', () => {
   it('1.0.4-AF: strips a leading /discuss token and flags selfReflectiveRequested', () => {
     // /discuss is the prefix-shaped sibling of the ```plan``` fenced
     // block: a composer-level slash signal that the user wants the
-    // ensemble's deictic rule to flip toward AGBench itself for the
+    // ensemble's deictic rule to flip toward TaskWraith itself for the
     // round. The token never reaches the provider — it's a marker
     // for the orchestrator (or future self-reflective UI) to read.
     const payload = compose(
@@ -361,8 +361,8 @@ describe('ComposerService', () => {
   })
 
   it('teaches Codex about cross-provider delegate_to_subthread (Phase I2 prompt-level fix)', () => {
-    // Empirical bug: Codex CLI registered the AGBench MCP server
-    // correctly (~/Library/Logs/AGBench/bridge-subprocess.log shows
+    // Empirical bug: Codex CLI registered the TaskWraith MCP server
+    // correctly (~/Library/Logs/TaskWraith/bridge-subprocess.log shows
     // 100+ codex-parented bridge spawns) but the Codex agent itself
     // never invoked a single tool — zero tools/call entries from any
     // codex-parented bridge. Gemini/Claude/Kimi each got a delegation
@@ -370,8 +370,8 @@ describe('ComposerService', () => {
     // calling delegate_to_subthread; Codex was the only provider
     // missing the preamble.
     const payload = compose({ provider: 'codex' }, {})
-    expect(payload.prompt).toContain('AGBench MCP server')
-    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).toContain('TaskWraith MCP server')
+    expect(payload.prompt).toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Codex's built-in invoke")
@@ -384,8 +384,8 @@ describe('ComposerService', () => {
 
   it('omits the Codex delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'codex' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -394,8 +394,8 @@ describe('ComposerService', () => {
       { provider: 'codex', scope: 'global', workspacePath: undefined, workspaceId: undefined },
       {}
     )
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -495,7 +495,7 @@ describe('ComposerService', () => {
       }
     )
     // Phase I3 (Claude initiator): workspace Claude runs outside plan
-    // mode get a delegation preamble pointing at the AGBench MCP
+    // mode get a delegation preamble pointing at the TaskWraith MCP
     // server. The user request is preserved verbatim after it.
     //
     // Tier 1 (turn-1 only): when a Claude session is being resumed via
@@ -504,8 +504,8 @@ describe('ComposerService', () => {
     // per turn. The user prompt is still preserved; the preamble text
     // must NOT be present on resume turns.
     expect(payload.prompt).toContain('Do the thing')
-    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
-    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('mcp__TaskWraith__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
     expect(payload.providerSessionId).toBe('claude-thread-1')
     expect(payload.claudeReasoningEffort).toBe('medium')
     expect(payload.claudeFastMode).toBe(true)
@@ -521,12 +521,12 @@ describe('ComposerService', () => {
   })
 
   it('teaches Claude about cross-provider delegate_to_subthread (Phase I3)', () => {
-    // The runtime note must point Claude at mcp__AGBench__delegate_to_subthread
+    // The runtime note must point Claude at mcp__TaskWraith__delegate_to_subthread
     // so it doesn't reach for its built-in Task tool when asked to
     // delegate to Gemini / Codex / Kimi.
     const payload = compose({ provider: 'claude' }, {})
-    expect(payload.prompt).toContain('AGBench MCP server')
-    expect(payload.prompt).toContain('mcp__AGBench__delegate_to_subthread')
+    expect(payload.prompt).toContain('TaskWraith MCP server')
+    expect(payload.prompt).toContain('mcp__TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Claude's built-in Task tool")
@@ -536,8 +536,8 @@ describe('ComposerService', () => {
 
   it('omits the Claude delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'claude' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('mcp__TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -546,8 +546,8 @@ describe('ComposerService', () => {
       { provider: 'claude', scope: 'global', workspacePath: undefined, workspaceId: undefined },
       {}
     )
-    expect(payload.prompt).not.toContain('AGBench MCP server')
-    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('TaskWraith MCP server')
+    expect(payload.prompt).not.toContain('mcp__TaskWraith__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 

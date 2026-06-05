@@ -88,7 +88,7 @@ describe('FirstLaunchSheet', () => {
         geminiAuthStatus={null}
       />
     )
-    expect(html).toContain('Welcome to AGBench')
+    expect(html).toContain('Welcome to TaskWraith')
     expect(html).toContain('1. Sign in to your providers')
     expect(html).toContain('2. Add your first workspace')
     expect(html).toContain('3. Choose your starting look')

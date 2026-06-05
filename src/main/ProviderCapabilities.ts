@@ -13,10 +13,10 @@ import type {
   ProviderToolingCapability,
   ProviderToolingCapabilityId
 } from './store/types'
-import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 import { providerLabel } from './ProviderAdapters'
 
-export const AGENTBENCH_GEMINI_MCP_TOOLS = AGENTBENCH_MCP_TOOLS
+export const TASKWRAITH_GEMINI_MCP_TOOLS = TASKWRAITH_MCP_TOOLS
 
 const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   shellCommands: 'Shell commands',
@@ -28,7 +28,7 @@ const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   delegate: 'Delegate to sub-thread'
 }
 
-/** The original five "functional control" rows whose AGBench-enforcement is
+/** The original five "functional control" rows whose TaskWraith-enforcement is
  * tallied across the renderer (ToolingContractCard `enforcedCount`,
  * SettingsPanel contract hint) and main (ProviderPreflightService delegated
  * chip, DelegationAudit policy label). The `elicit` / `delegate` rows are
@@ -100,7 +100,7 @@ function serviceCapability(
     label: TOOLING_LABELS[id],
     state: serviceState(policy),
     source,
-    enforcedByAgentBench: source === 'agentbench' || source === 'bridge' || source === 'settings',
+    enforcedByTaskWraith: source === 'taskwraith' || source === 'bridge' || source === 'settings',
     enforcement: source,
     policy,
     requiresApproval: serviceRequiresApproval(policy),
@@ -119,7 +119,7 @@ function unavailableCapability(
     label: TOOLING_LABELS[id],
     state: 'unavailable',
     source,
-    enforcedByAgentBench: false,
+    enforcedByTaskWraith: false,
     enforcement: 'none',
     requiresApproval: false,
     tools: [],
@@ -138,7 +138,7 @@ function delegatedCapability(
     label: TOOLING_LABELS[id],
     state: policy === 'deny' ? 'blocked' : 'delegated',
     source: policy === 'deny' ? 'settings' : 'provider',
-    enforcedByAgentBench: false,
+    enforcedByTaskWraith: false,
     enforcement: policy === 'deny' ? 'best_effort' : 'provider',
     policy,
     requiresApproval: policy !== 'allow' && policy !== 'deny',
@@ -149,8 +149,8 @@ function delegatedCapability(
 
 /** `ask_user_question` (the `ui_elicitation` tool class) lets a participant
  * ask the user a clarifying question mid-run. It is a universally
- * auto-allowed AGBench MCP tool (see AgentbenchMcpTools `ask_user_question`),
- * so it carries no service-policy gate — it is reachable whenever the AGBench
+ * auto-allowed TaskWraith MCP tool (see TaskWraithMcpTools `ask_user_question`),
+ * so it carries no service-policy gate — it is reachable whenever the TaskWraith
  * MCP bridge is advertised to the provider, and provider-managed otherwise.
  * DISPLAY-only row: excluded from the enforced/delegated tallies. */
 function elicitCapability(
@@ -159,7 +159,7 @@ function elicitCapability(
   details: string,
   unavailableDetails?: string
 ): ProviderToolingCapability {
-  const bridgeBacked = source === 'bridge' || source === 'agentbench'
+  const bridgeBacked = source === 'bridge' || source === 'taskwraith'
   if (bridgeBacked && !mcpAvailable) {
     return unavailableCapability('elicit', source, unavailableDetails || details)
   }
@@ -168,7 +168,7 @@ function elicitCapability(
     label: TOOLING_LABELS.elicit,
     state: bridgeBacked ? 'available' : 'delegated',
     source,
-    enforcedByAgentBench: bridgeBacked,
+    enforcedByTaskWraith: bridgeBacked,
     enforcement: bridgeBacked ? source : 'provider',
     requiresApproval: false,
     tools: ['ask_user_question'],
@@ -191,7 +191,7 @@ function delegateCapability(
   details: string,
   unavailableDetails?: string
 ): ProviderToolingCapability {
-  const bridgeBacked = source === 'bridge' || source === 'agentbench'
+  const bridgeBacked = source === 'bridge' || source === 'taskwraith'
   if (bridgeBacked && !mcpAvailable) {
     return unavailableCapability('delegate', source, unavailableDetails || details)
   }
@@ -201,7 +201,7 @@ function delegateCapability(
       label: TOOLING_LABELS.delegate,
       state: policy === 'deny' ? 'blocked' : 'delegated',
       source,
-      enforcedByAgentBench: false,
+      enforcedByTaskWraith: false,
       enforcement: policy === 'deny' ? 'best_effort' : 'provider',
       policy,
       requiresApproval: policy !== 'allow' && policy !== 'deny',
@@ -214,7 +214,7 @@ function delegateCapability(
     label: TOOLING_LABELS.delegate,
     state: serviceState(policy),
     source,
-    enforcedByAgentBench: true,
+    enforcedByTaskWraith: true,
     enforcement: source,
     policy,
     requiresApproval: serviceRequiresApproval(policy),
@@ -229,15 +229,15 @@ function networkCapability(policy?: AgenticNetworkPolicy): ProviderToolingCapabi
     label: TOOLING_LABELS.networkAccess,
     state: networkState(policy),
     source: 'settings',
-    enforcedByAgentBench: false,
+    enforcedByTaskWraith: false,
     enforcement: policy === 'deny' ? 'best_effort' : 'none',
     policy,
     requiresApproval: false,
     tools: [],
     details:
       policy === 'deny'
-        ? 'AGBench settings request network blocking where provider transport supports it.'
-        : 'Network access is allowed by AGBench settings.'
+        ? 'TaskWraith settings request network blocking where provider transport supports it.'
+        : 'Network access is allowed by TaskWraith settings.'
   }
 }
 
@@ -247,7 +247,7 @@ function creativeAppsCapability(policy?: AgenticServicePolicy): ProviderToolingC
     label: TOOLING_LABELS.creativeApps,
     state: serviceState(policy),
     source: 'bridge',
-    enforcedByAgentBench: true,
+    enforcedByTaskWraith: true,
     enforcement: 'bridge',
     policy,
     requiresApproval: serviceRequiresApproval(policy),
@@ -260,7 +260,7 @@ function creativeAppsCapability(policy?: AgenticServicePolicy): ProviderToolingC
       'creative_timeline_diff'
     ],
     details:
-      'AGBench exposes read-only creative app discovery, snapshots, and validation; future apply/control tools will route through the same approval model.'
+      'TaskWraith exposes read-only creative app discovery, snapshots, and validation; future apply/control tools will route through the same approval model.'
   }
 }
 
@@ -315,13 +315,13 @@ function geminiMcpCapability(
     available,
     enabled,
     installed,
-    serverName: status?.serverName || 'AGBench',
-    tools: available ? [...AGENTBENCH_GEMINI_MCP_TOOLS] : [],
+    serverName: status?.serverName || 'TaskWraith',
+    tools: available ? [...TASKWRAITH_GEMINI_MCP_TOOLS] : [],
     message:
       status?.message ||
       (enabled
-        ? 'AGBench Gemini MCP bridge is not available.'
-        : 'AGBench Gemini MCP bridge is disabled.')
+        ? 'TaskWraith Gemini MCP bridge is not available.'
+        : 'TaskWraith Gemini MCP bridge is disabled.')
   }
 }
 
@@ -338,11 +338,11 @@ function unsupportedMcpCapability(provider: ProviderId): ProviderMcpCapability {
     source: 'unsupported',
     available: false,
     tools: [],
-    message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured AGBench API yet.`
+    message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured TaskWraith API yet.`
   }
 }
 
-function cliAgentbenchMcpCapability(
+function cliTaskWraithMcpCapability(
   provider: ProviderId,
   mcpStatus: unknown
 ): ProviderMcpCapability {
@@ -358,14 +358,14 @@ function cliAgentbenchMcpCapability(
     available,
     enabled,
     installed: available,
-    serverName: typeof record.serverName === 'string' ? record.serverName : 'AGBench',
+    serverName: typeof record.serverName === 'string' ? record.serverName : 'TaskWraith',
     tools: available ? tools : [],
     message:
       typeof record.message === 'string'
         ? record.message
         : available
-          ? `AGBench registers the AGBench MCP bridge for ${providerLabel(provider)} runs.`
-          : `AGBench MCP bridge is not available for ${providerLabel(provider)}.`
+          ? `TaskWraith registers the TaskWraith MCP bridge for ${providerLabel(provider)} runs.`
+          : `TaskWraith MCP bridge is not available for ${providerLabel(provider)}.`
   }
 }
 
@@ -386,7 +386,7 @@ function approvalContract(
             : 'workspace-write / on-request',
       inAppApprovals: true,
       supportsWorkspaceGrants: true,
-      notes: ['Codex app-server permission requests are routed through AGBench approval cards.']
+      notes: ['Codex app-server permission requests are routed through TaskWraith approval cards.']
     }
   }
   if (provider === 'gemini') {
@@ -397,7 +397,7 @@ function approvalContract(
       inAppApprovals: true,
       supportsWorkspaceGrants: true,
       notes: [
-        'AGBench-managed Gemini MCP tools use AGBench approval cards when the bridge is available.'
+        'TaskWraith-managed Gemini MCP tools use TaskWraith approval cards when the bridge is available.'
       ]
     }
   }
@@ -409,7 +409,7 @@ function approvalContract(
       inAppApprovals: true,
       supportsWorkspaceGrants: false,
       notes: [
-        'Kimi Wire approval requests are routed through AGBench, but provider-native tool coverage depends on Kimi CLI events.'
+        'Kimi Wire approval requests are routed through TaskWraith, but provider-native tool coverage depends on Kimi CLI events.'
       ]
     }
   }
@@ -489,59 +489,59 @@ export function buildProviderCapabilityContract({
         services.shellCommands,
         'bridge',
         ['run_shell_command'],
-        'Gemini uses the AGBench MCP bridge for host shell commands.'
+        'Gemini uses the TaskWraith MCP bridge for host shell commands.'
       )
       fileChanges = serviceCapability(
         'fileChanges',
         services.fileChanges,
         'bridge',
         ['write_file', 'replace'],
-        'Gemini uses the AGBench MCP bridge for workspace file writes and replacements.'
+        'Gemini uses the TaskWraith MCP bridge for workspace file writes and replacements.'
       )
       mcpTools = serviceCapability(
         'mcpTools',
         services.mcpTools,
         'bridge',
         ['read_file', 'list_directory'],
-        'Gemini uses the AGBench MCP bridge for workspace read/list tools.'
+        'Gemini uses the TaskWraith MCP bridge for workspace read/list tools.'
       )
       elicit = elicitCapability(
         'bridge',
         true,
-        'Gemini can ask the user a clarifying question through the AGBench MCP bridge (auto-allowed).'
+        'Gemini can ask the user a clarifying question through the TaskWraith MCP bridge (auto-allowed).'
       )
       delegate = delegateCapability(
         'bridge',
         services.subThreadDelegation,
         true,
-        'Gemini can spawn cross-provider sub-threads through the AGBench MCP bridge, gated by the sub-thread delegation setting.'
+        'Gemini can spawn cross-provider sub-threads through the TaskWraith MCP bridge, gated by the sub-thread delegation setting.'
       )
     } else {
       shellCommands = unavailableCapability(
         'shellCommands',
         'bridge',
-        'AGBench shell tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
+        'TaskWraith shell tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
       )
       fileChanges = unavailableCapability(
         'fileChanges',
         'bridge',
-        'AGBench file editing tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
+        'TaskWraith file editing tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
       )
       mcpTools = unavailableCapability(
         'mcpTools',
         'bridge',
-        'AGBench MCP tools are not advertised to Gemini until the bridge is enabled, installed, and available.'
+        'TaskWraith MCP tools are not advertised to Gemini until the bridge is enabled, installed, and available.'
       )
       elicit = elicitCapability(
         'bridge',
         false,
-        'Gemini cannot ask the user through AGBench until the MCP bridge is enabled, installed, and available.'
+        'Gemini cannot ask the user through TaskWraith until the MCP bridge is enabled, installed, and available.'
       )
       delegate = delegateCapability(
         'bridge',
         services.subThreadDelegation,
         false,
-        'Gemini cannot delegate to sub-threads through AGBench until the MCP bridge is enabled, installed, and available.'
+        'Gemini cannot delegate to sub-threads through TaskWraith until the MCP bridge is enabled, installed, and available.'
       )
       warnings.push(
         warning(
@@ -558,7 +558,7 @@ export function buildProviderCapabilityContract({
           'gemini-approval-mode-downgraded',
           'warning',
           'Gemini approval mode adjusted',
-          `Requested ${requestedMode}, but AGBench service settings block write-capable Gemini modes, so this run will use ${effectiveMode}.`
+          `Requested ${requestedMode}, but TaskWraith service settings block write-capable Gemini modes, so this run will use ${effectiveMode}.`
         )
       )
     }
@@ -567,28 +567,28 @@ export function buildProviderCapabilityContract({
     shellCommands = serviceCapability(
       'shellCommands',
       services.shellCommands,
-      'agentbench',
+      'taskwraith',
       ['run_shell_command'],
-      'Codex command approvals are routed through AGBench.'
+      'Codex command approvals are routed through TaskWraith.'
     )
     fileChanges = serviceCapability(
       'fileChanges',
       services.fileChanges,
-      'agentbench',
+      'taskwraith',
       ['edit_file', 'create_file', 'delete_file'],
-      'Codex file approvals and diffs are routed through AGBench.'
+      'Codex file approvals and diffs are routed through TaskWraith.'
     )
     mcpTools = serviceCapability('mcpTools', services.mcpTools, 'provider', mcp.tools, mcp.message)
     elicit = elicitCapability(
-      'agentbench',
+      'taskwraith',
       true,
-      'Codex can ask the user a clarifying question through the AGBench MCP tool surface (auto-allowed).'
+      'Codex can ask the user a clarifying question through the TaskWraith MCP tool surface (auto-allowed).'
     )
     delegate = delegateCapability(
-      'agentbench',
+      'taskwraith',
       services.subThreadDelegation,
       true,
-      'Codex can spawn cross-provider sub-threads through AGBench, gated by the sub-thread delegation setting.'
+      'Codex can spawn cross-provider sub-threads through TaskWraith, gated by the sub-thread delegation setting.'
     )
     if (settings.codexSandboxFallback === 'ask_rerun') {
       warnings.push(
@@ -603,7 +603,7 @@ export function buildProviderCapabilityContract({
   } else {
     mcp =
       provider === 'claude' || provider === 'kimi'
-        ? cliAgentbenchMcpCapability(provider, mcpStatus)
+        ? cliTaskWraithMcpCapability(provider, mcpStatus)
         : unsupportedMcpCapability(provider)
     shellCommands = delegatedCapability(
       'shellCommands',
@@ -630,27 +630,27 @@ export function buildProviderCapabilityContract({
       elicit = elicitCapability(
         'bridge',
         mcp.available,
-        `${label} can ask the user a clarifying question through the AGBench MCP bridge (auto-allowed).`,
-        `AGBench cannot route ${label} user questions until the AGBench MCP bridge is available.`
+        `${label} can ask the user a clarifying question through the TaskWraith MCP bridge (auto-allowed).`,
+        `TaskWraith cannot route ${label} user questions until the TaskWraith MCP bridge is available.`
       )
       delegate = delegateCapability(
         'bridge',
         services.subThreadDelegation,
         mcp.available,
-        `${label} can spawn cross-provider sub-threads through the AGBench MCP bridge, gated by the sub-thread delegation setting.`,
-        `AGBench cannot route ${label} sub-thread delegation until the AGBench MCP bridge is available.`
+        `${label} can spawn cross-provider sub-threads through the TaskWraith MCP bridge, gated by the sub-thread delegation setting.`,
+        `TaskWraith cannot route ${label} sub-thread delegation until the TaskWraith MCP bridge is available.`
       )
     } else {
       elicit = elicitCapability(
         'provider',
         false,
-        `${label} user-question handling is delegated to the provider CLI; AGBench does not advertise its elicitation tool here yet.`
+        `${label} user-question handling is delegated to the provider CLI; TaskWraith does not advertise its elicitation tool here yet.`
       )
       delegate = delegateCapability(
         'provider',
         services.subThreadDelegation,
         false,
-        `${label} sub-thread delegation is delegated to the provider CLI; AGBench does not advertise its delegation tool here yet.`
+        `${label} sub-thread delegation is delegated to the provider CLI; TaskWraith does not advertise its delegation tool here yet.`
       )
     }
     warnings.push(
@@ -658,7 +658,7 @@ export function buildProviderCapabilityContract({
         `${provider}-provider-managed-tools`,
         'info',
         `${label} tools are provider-managed`,
-        `${label} can run with AGBench routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
+        `${label} can run with TaskWraith routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
       )
     )
   }
@@ -671,7 +671,7 @@ export function buildProviderCapabilityContract({
         `${provider}-network-blocked`,
         'warning',
         'Network access blocked',
-        `${label} will be launched with AGBench network policy set to block where that provider transport supports it.`
+        `${label} will be launched with TaskWraith network policy set to block where that provider transport supports it.`
       )
     )
   }
@@ -683,7 +683,7 @@ export function buildProviderCapabilityContract({
           `${provider}-${tool.id}-blocked`,
           'warning',
           `${tool.label} blocked`,
-          `${tool.label} are blocked by AGBench settings for ${label}.`
+          `${tool.label} are blocked by TaskWraith settings for ${label}.`
         )
       )
     }

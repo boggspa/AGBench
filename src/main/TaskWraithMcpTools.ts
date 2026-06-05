@@ -1,4 +1,4 @@
-export const AGENTBENCH_MCP_TOOLS = [
+export const TASKWRAITH_MCP_TOOLS = [
   'run_shell_command',
   'write_file',
   'replace',
@@ -58,7 +58,7 @@ export const AGENTBENCH_MCP_TOOLS = [
   // class-cache pattern as K4.
   'creative_blender_python',
   // Phase K6 — send a single MIDI event through the daemon's virtual
-  // "AGBench" Core MIDI source. Logic Pro (or any MIDI receiver) can
+  // "TaskWraith" Core MIDI source. Logic Pro (or any MIDI receiver) can
   // route this source as an input. MIDI events to a virtual port have
   // no destructive surface, so the tool is gated by an
   // approval-once-per-event-type cache rather than a per-call modal.
@@ -104,6 +104,6 @@ export const AGENTBENCH_MCP_TOOLS = [
   'scout_brief'
 ] as const
 
-export type AGBenchMcpToolName = (typeof AGENTBENCH_MCP_TOOLS)[number]
+export type TaskWraithMcpToolName = (typeof TASKWRAITH_MCP_TOOLS)[number]
 
-export const AGENTBENCH_MCP_TOOL_LIST = AGENTBENCH_MCP_TOOLS.join(', ')
+export const TASKWRAITH_MCP_TOOL_LIST = TASKWRAITH_MCP_TOOLS.join(', ')

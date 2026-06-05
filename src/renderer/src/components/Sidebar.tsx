@@ -8,7 +8,7 @@ import {
   type ReactNode
 } from 'react'
 import { MascotGhost } from './AppChromeSymbols'
-import agbenchGhostMark from '../assets/agbench-ghost-mark.png'
+import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
 import type {
   WorkspaceRecord,
   ChatRecord,
@@ -149,8 +149,8 @@ interface SidebarProps {
   onShowPairingSheet?: () => void
 }
 
-const EXPANDED_WORKSPACES_STORAGE_KEY = 'agbench-sidebar-expanded-workspace-ids'
-const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-thread-parent-ids'
+const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sub-thread-parent-ids'
 /**
  * Collapsed-section memory for the top-level sidebar lists
  * (Pinned / Recents / Ensembles / Workspaces / Chats). Set semantics: an id
@@ -161,9 +161,9 @@ const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-
  * per-workspace chat-list expansion within the Workspaces section;
  * this one tracks the section header itself.
  */
-const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sections'
 const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION_KEY =
-  'agbench-sidebar-collapsed-sections-default-version'
+  'taskwraith-sidebar-collapsed-sections-default-version'
 const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION = 'all-collapsed-v1'
 type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
 const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
@@ -181,7 +181,7 @@ function defaultCollapsedSidebarSections(): Set<SidebarSectionId> {
 type SidebarSettingsMenuPane = 'root' | 'themes' | 'composer' | 'accent' | 'system' | 'tool'
 
 const SIDEBAR_COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string }> = [
-  { value: 'default', label: 'AGBench native' },
+  { value: 'default', label: 'TaskWraith native' },
   { value: 'codex', label: 'Codex shell' },
   { value: 'claude', label: 'Claude shell' },
   { value: 'cursor', label: 'Cursor shell' },
@@ -1154,7 +1154,7 @@ export function Sidebar({
    *
    * The custom MIME type prevents accidental triggers from
    * external drags (image files into the sidebar etc.) — only
-   * payloads carrying `application/x-agbench-chat-id` count as
+   * payloads carrying `application/x-taskwraith-chat-id` count as
    * a sidebar drag.
    */
   const [draggedChatId, setDraggedChatId] = useState<string | null>(null)
@@ -1345,7 +1345,7 @@ export function Sidebar({
    * wired — protects the rename input from accidentally
    * starting a drag, and skips DnD entirely on read-only views.
    *
-   * Sets the custom MIME type `application/x-agbench-chat-id`
+   * Sets the custom MIME type `application/x-taskwraith-chat-id`
    * with the chat's appChatId so the drop handler can read it
    * back. Also sets `text/plain` to the chat title as a
    * courtesy for external drag-receivers (e.g. dragging into a
@@ -1371,7 +1371,7 @@ export function Sidebar({
       draggable: true,
       onDragStart: (event) => {
         event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData('application/x-agbench-chat-id', chat.appChatId)
+        event.dataTransfer.setData('application/x-taskwraith-chat-id', chat.appChatId)
         event.dataTransfer.setData('text/plain', chat.title)
         setDraggedChatId(chat.appChatId)
       },
@@ -1400,14 +1400,14 @@ export function Sidebar({
       // external drags. `types` is the API for sniffing
       // dataTransfer at dragOver time (you can't read `getData`
       // mid-drag for security reasons).
-      if (!event.dataTransfer.types.includes('application/x-agbench-chat-id')) return
+      if (!event.dataTransfer.types.includes('application/x-taskwraith-chat-id')) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
       if (!pinDropActive) setPinDropActive(true)
     },
     onDragEnter: (event: React.DragEvent<HTMLElement>) => {
       if (!onTogglePinChat) return
-      if (!event.dataTransfer.types.includes('application/x-agbench-chat-id')) return
+      if (!event.dataTransfer.types.includes('application/x-taskwraith-chat-id')) return
       setPinDropActive(true)
     },
     onDragLeave: (event: React.DragEvent<HTMLElement>) => {
@@ -1428,7 +1428,7 @@ export function Sidebar({
     },
     onDrop: (event: React.DragEvent<HTMLElement>) => {
       if (!onTogglePinChat) return
-      const chatId = event.dataTransfer.getData('application/x-agbench-chat-id')
+      const chatId = event.dataTransfer.getData('application/x-taskwraith-chat-id')
       if (!chatId) return
       event.preventDefault()
       const chat = chats.find((c) => c.appChatId === chatId)
@@ -1495,7 +1495,7 @@ export function Sidebar({
     return grouped
   }, [chats])
   const currentScopeTitle =
-    currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'AGBench')
+    currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'TaskWraith')
   const runningCount = runningChatIdSet.size
   const primaryNewTitle = currentWorkspace
     ? `New chat in ${currentWorkspace.displayName}`
@@ -1937,18 +1937,18 @@ export function Sidebar({
           <div className="sidebar-masthead-copy">
             <span className="sidebar-product-label">
               <img
-                src={agbenchGhostMark}
+                src={taskwraithGhostMark}
                 className="sidebar-product-ghost"
                 alt=""
                 aria-hidden
               />
-              AGBench
+              TaskWraith
             </span>
             {/* On the first-launch zero-state `currentScopeTitle` falls
-                back to "AGBench" (no workspace, no global chat), which
-                would render "AGBench" twice stacked. Suppress the
+                back to "TaskWraith" (no workspace, no global chat), which
+                would render "TaskWraith" twice stacked. Suppress the
                 redundant scope title in that single case. */}
-            {currentScopeTitle !== 'AGBench' && (
+            {currentScopeTitle !== 'TaskWraith' && (
               <strong title={currentWorkspace?.path || currentScopeTitle}>
                 {currentScopeTitle}
               </strong>
@@ -2414,7 +2414,7 @@ export function Sidebar({
                   <strong>Add your first workspace</strong>
                   <span>
                     Click the <span className="sidebar-onboarding-plus">+</span> above to point
-                    AGBench at a project folder. Workspaces hold your chats and let the agent read /
+                    TaskWraith at a project folder. Workspaces hold your chats and let the agent read /
                     edit files inside their trust boundary.
                   </span>
                 </div>

@@ -24,7 +24,7 @@ export interface ResolveGeminiRuntimeStatusInput {
   mode: GeminiApiRuntimeMode | undefined
   profiles: GeminiAuthProfileSummary[] | undefined
   /** The id of the currently-selected active profile (or null/undefined
-   * if the user hasn't picked one — in that case AGBench falls back to
+   * if the user hasn't picked one — in that case TaskWraith falls back to
    * inherited CLI auth env). */
   activeProfileId?: string | null
 }

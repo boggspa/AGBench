@@ -11,7 +11,7 @@
  * reads naturally in a chat transcript.
  *
  * Coverage rules:
- *  - Keys are the unqualified name (mcp__/agbench__/agentbench__ prefix
+ *  - Keys are the unqualified name (mcp__/taskwraith__ prefix
  *    stripped, lower-case). Mixed-case keys never match.
  *  - Values are the FULL label as it should appear in the transcript.
  *    They DO NOT include a "Used " prefix — the parser composes that

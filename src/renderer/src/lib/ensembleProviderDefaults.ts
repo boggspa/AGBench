@@ -107,7 +107,7 @@ const GROK_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'grok-build', label: 'Grok Build 0.1' }
 ]
 
-// Cursor — the only ids AGBench exposes (mirrors CursorCliProbe). "Fast" is a
+// Cursor — the only ids TaskWraith exposes (mirrors CursorCliProbe). "Fast" is a
 // distinct model id (composer-2.5-fast), not a service tier, so both are listed
 // as model options rather than a fast-tier toggle (no reasoning axis).
 const CURSOR_MODELS: CombinedModelPickerModelOption[] = [
@@ -184,7 +184,7 @@ export function getDefaultEnsembleParticipantConfig(
       }
     case 'grok':
       // Grok stays read-only as an ensemble member until G5 (tool mediation
-      // via AGBench MCP + approval ledger) lands write-capable runs. 'cli-default'
+      // via TaskWraith MCP + approval ledger) lands write-capable runs. 'cli-default'
       // resolves to grok-build at dispatch (buildGrokCliArgs only forwards a
       // genuine grok* id, so cli-default → Grok's own default).
       return {

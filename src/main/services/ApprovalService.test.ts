@@ -362,7 +362,7 @@ describe('ApprovalService — resolve dispatch', () => {
     expect(resolveFn).toHaveBeenCalledWith(true)
   })
 
-  it('Main: AGBench sub-thread action resolves false so provider-native tool is denied', async () => {
+  it('Main: TaskWraith sub-thread action resolves false so provider-native tool is denied', async () => {
     const { deps } = makeDeps()
     const svc = new ApprovalService(deps)
     const resolveFn = vi.fn()
@@ -372,7 +372,7 @@ describe('ApprovalService — resolve dispatch', () => {
       resolve: resolveFn
     })
 
-    await svc.resolve('native-2', 'useAGBenchSubthread')
+    await svc.resolve('native-2', 'useTaskWraithSubthread')
 
     expect(resolveFn).toHaveBeenCalledWith(false)
   })

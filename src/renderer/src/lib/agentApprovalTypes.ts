@@ -7,7 +7,7 @@ type AgentApprovalAction =
   | 'decline'
   | 'cancel'
   | 'useProviderNative'
-  | 'useAGBenchSubthread'
+  | 'useTaskWraithSubthread'
   // Slice 4 of the external-path-redesign arc. See the same union
   // in src/main/store/types.ts:84 — mirrored here because App.tsx
   // declares its own copy rather than importing the canonical
@@ -31,7 +31,7 @@ interface AgentApprovalRequest {
 const isNativeSubAgentPreferenceApproval = (request: AgentApprovalRequest | null): boolean =>
   Boolean(
     request?.actions?.includes('useProviderNative') ||
-    request?.actions?.includes('useAGBenchSubthread')
+    request?.actions?.includes('useTaskWraithSubthread')
   )
 
 export type { AgentApprovalAction, AgentApprovalRequest }

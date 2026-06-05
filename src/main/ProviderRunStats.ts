@@ -67,7 +67,7 @@ export function normalizeProviderUsage(
     'input_cache_read'
   ])
   const audioInput = sumProviderUsageNumbers(usage, ['input_audio_tokens'])
-  const inputAlreadyIncludesCache = usage._agentbench_input_includes_cache === true
+  const inputAlreadyIncludesCache = usage._taskwraith_input_includes_cache === true
   const outputBase = firstProviderUsageNumber(usage, [
     'output_tokens',
     'outputTokens',
@@ -120,7 +120,7 @@ export function normalizeProviderUsage(
     ...(limits.inputTokenLimit ? { inputTokenLimit: limits.inputTokenLimit } : {}),
     ...(limits.outputTokenLimit ? { outputTokenLimit: limits.outputTokenLimit } : {}),
     ...(limits.totalTokenLimit ? { totalTokenLimit: limits.totalTokenLimit } : {}),
-    _agentbench_input_includes_cache:
+    _taskwraith_input_includes_cache:
       inputAlreadyIncludesCache || cacheInput > 0 || audioInput > 0 || provider === 'kimi'
   }
 }
@@ -210,7 +210,7 @@ export function geminiUsageMetadataToStats(
       canonicalUsageCount(raw, 'promptTokenCount') +
         canonicalUsageCount(raw, 'candidatesTokenCount'),
     duration_ms: durationMs,
-    ...(options.alreadyRecorded ? { _agentbench_usage_recorded: true } : {})
+    ...(options.alreadyRecorded ? { _taskwraith_usage_recorded: true } : {})
   })
 }
 

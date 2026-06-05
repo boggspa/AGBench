@@ -163,7 +163,7 @@ describe('displayPathRelativeToWorkspace', () => {
 
 describe('tildifyHomePath', () => {
   it('collapses a macOS home prefix to ~/ (strips the OS username)', () => {
-    expect(tildifyHomePath('/Users/bob/Documents/AGBench')).toBe('~/Documents/AGBench')
+    expect(tildifyHomePath('/Users/bob/Documents/TaskWraith')).toBe('~/Documents/TaskWraith')
   })
 
   it('keeps the project folder + intermediate segments', () => {

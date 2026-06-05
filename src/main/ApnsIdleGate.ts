@@ -19,7 +19,7 @@
  *      better signal than focus.
  *   4. Otherwise return true.
  *
- * Threshold default: 60 seconds. Override via `AGBENCH_APNS_IDLE_THRESHOLD_S`.
+ * Threshold default: 60 seconds. Override via `TASKWRAITH_APNS_IDLE_THRESHOLD_S`.
  *
  * Fail-open philosophy: the caller in `index.ts` wraps the live
  * version in a try/catch and returns false on throw, so a flaky
@@ -30,11 +30,11 @@
 export const DEFAULT_APNS_IDLE_THRESHOLD_S = 60
 
 export interface ApnsIdleGateInputs {
-  /** `process.env.AGBENCH_APNS_IDLE_GATE` value, or undefined. */
+  /** `process.env.TASKWRAITH_APNS_IDLE_GATE` value, or undefined. */
   idleGateEnv?: string
-  /** `process.env.AGBENCH_APNS_IDLE_THRESHOLD_S` value, or undefined. */
+  /** `process.env.TASKWRAITH_APNS_IDLE_THRESHOLD_S` value, or undefined. */
   idleThresholdEnv?: string
-  /** Whether the AGBench main window currently has OS focus. */
+  /** Whether the TaskWraith main window currently has OS focus. */
   windowFocused: boolean
   /** Seconds since last user input, from Electron's powerMonitor. */
   idleSec: number

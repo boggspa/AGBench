@@ -258,7 +258,7 @@ export interface WelcomeUsageDashboardData {
   /**
    * Per-provider token totals across the selected range. Drives the
    * provider color rails on stat chips and the multi-provider mix
-   * ribbon under the tabs — AGBench's structural differentiator from
+   * ribbon under the tabs — TaskWraith's structural differentiator from
    * Claude's single-provider dashboard. Always carries all six
    * provider keys (zero-filled when a provider has no activity).
    */
@@ -962,13 +962,13 @@ export const buildWelcomeUsageDashboardData = (
       // sentinel workspace id (used by `GeminiApiProvider` +
       // `AppStore.recordUsage` for global-scope runs that have
       // no real workspace attribution). Renderer-side App.tsx
-      // exports `GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global
+      // exports `GLOBAL_USAGE_WORKSPACE_ID = '__taskwraith_global
       // _chats__'`; we inline the literal here so the lib stays
       // free of renderer imports (the lib runs in tests too,
       // where App.tsx isn't loadable). The constant only ever
       // changes if the persistence layer renames the sentinel,
       // and the test suite would catch the divergence.
-      const GLOBAL_CHATS_WORKSPACE_KEY = '__agentbench_global_chats__'
+      const GLOBAL_CHATS_WORKSPACE_KEY = '__taskwraith_global_chats__'
       const displayName =
         key === NO_WORKSPACE_KEY
           ? 'No workspace'

@@ -7,18 +7,18 @@ import AppKit
 // strict-mode complaints to warnings without papering over real races.
 @preconcurrency import ScreenCaptureKit
 
-/// AgbenchBridgeDaemon — self-contained stdio JSON-RPC helper.
+/// TaskWraithBridgeDaemon — self-contained stdio JSON-RPC helper.
 ///
 /// The daemon now owns only the local macOS surfaces that do not require the
 /// removed remote-iOS transport layer: Screen Watch / Appwatch, creative-app
 /// dispatch, editor opening, Finder reveal, and process status/ping.
 
-// MARK: - AGBench product preset
+// MARK: - TaskWraith product preset
 
-private let daemonDisplayName = "AGBench"
-private let bonjourServiceType = "_agbench._tcp"
-private let bonjourQUICServiceType = "_agbench-quic._udp"
-private let quicALPN = "agbench-live-v1"
+private let daemonDisplayName = "TaskWraith"
+private let bonjourServiceType = "_taskwraith._tcp"
+private let bonjourQUICServiceType = "_taskwraith-quic._udp"
+private let quicALPN = "taskwraith-live-v1"
 
 // MARK: - Lifetime + helpers
 
@@ -51,7 +51,7 @@ struct DaemonHello: Encodable {
 
 let hello = DaemonHello(
     kind: "daemon-hello",
-    daemon: "AgbenchBridgeDaemon",
+    daemon: "TaskWraithBridgeDaemon",
     protocolVersion: protocolVersion,
     displayName: daemonDisplayName,
     bonjourServiceType: bonjourServiceType,
@@ -152,7 +152,7 @@ dispatcher.register("bridge.ping") { _ in
 dispatcher.register("bridge.status") { _ in
     let uptimeSeconds = Int(Date().timeIntervalSince(startupTime))
     return [
-        "daemon": "AgbenchBridgeDaemon",
+        "daemon": "TaskWraithBridgeDaemon",
         "protocolVersion": protocolVersion,
         "pid": Int(ProcessInfo.processInfo.processIdentifier),
         "uptimeSeconds": uptimeSeconds,
@@ -867,7 +867,7 @@ dispatcher.register("creative.runBlenderPython") { params in
 }
 
 // `creative.dispatchMIDI` — send a single MIDI event through the
-// daemon's virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI
+// daemon's virtual "TaskWraith" Core MIDI source. Logic Pro (or any MIDI
 // listener) can route this source as an input. Phase K6.
 //
 // Params: `{ eventType: string, ...event-specific params }`. See
@@ -947,10 +947,10 @@ dispatcher.register("workspace.revealInFinder") { params in
 // On stdin EOF the reader thread terminates NSApplication, which returns
 // from `NSApp.run()` and runs the post-loop shutdown.
 let handlerQueue = DispatchQueue(
-    label: "com.chrisizatt.agbench.daemon.handler",
+    label: "com.chrisizatt.taskwraith.daemon.handler",
     attributes: .concurrent
 )
-let stdinReaderQueue = DispatchQueue(label: "com.chrisizatt.agbench.daemon.stdin-reader")
+let stdinReaderQueue = DispatchQueue(label: "com.chrisizatt.taskwraith.daemon.stdin-reader")
 
 stdinReaderQueue.async {
     while let line = readLine(strippingNewline: false) {

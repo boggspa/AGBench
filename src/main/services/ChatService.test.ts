@@ -112,7 +112,7 @@ describe('ChatService', () => {
     })
     const service = new ChatService(deps)
     expect(() => service.createChat('workspace-1', '/missing')).toThrow(
-      'Chat workspace must be a registered AGBench workspace.'
+      'Chat workspace must be a registered TaskWraith workspace.'
     )
     expect(store.createChat).not.toHaveBeenCalled()
   })

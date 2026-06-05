@@ -3,11 +3,11 @@ import { buildGitHubIssueUrl } from '../lib/githubIssueUrl'
 import { tildifyHomePath } from '../lib/ActivityPathDisplay'
 
 /**
- * BugReportSheet — inline bug-report capture for AGBench testers.
+ * BugReportSheet — inline bug-report capture for TaskWraith testers.
  *
  * Built for early external tester passes: when a tester hits something
  * weird, they type a one-liner + description, pick a severity, and the
- * report appends to a single Markdown file under `<userData>/AGBench/`
+ * report appends to a single Markdown file under `<userData>/TaskWraith/`
  * for review at the end of the session. No context switch
  * to Slack / email / a separate notes app.
  *
@@ -319,7 +319,7 @@ export function BugReportSheet({
   )
 
   // Open the same report as a pre-filled GitHub issue (the public bug channel
-  // now that AGBench is open-source). Reuses the captured context; the local
+  // now that TaskWraith is open-source). Reuses the captured context; the local
   // Save report stays as an offline fallback.
   const handleOpenGitHubIssue = useCallback(() => {
     setTitleTouched(true)
@@ -618,7 +618,7 @@ export function BugReportSheet({
               </span>
             ) : (
               <span className="bug-report-sheet-footer-helper">
-                Saved to <code>~/Library/Application Support/agbench/bug-reports.md</code>
+                Saved to <code>~/Library/Application Support/taskwraith/bug-reports.md</code>
               </span>
             )}
             <div className="bug-report-sheet-footer-actions">

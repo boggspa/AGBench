@@ -171,7 +171,7 @@ export function WelcomeUsageDashboard({
   // Each stat chip carries a thin top rail in this colour. The mix
   // is computed from this dashboard's per-provider token totals so
   // the rail visually communicates "this data spans these providers
-  // in roughly this proportion" — AGBench's distinct identity vs
+  // in roughly this proportion" — TaskWraith's distinct identity vs
   // Claude's single-accent dashboard.
   const PROVIDER_PALETTE = {
     gemini: '#8eb1ff',
@@ -347,7 +347,7 @@ export function WelcomeUsageDashboard({
 
       {/* Phase K-followup — Provider mix ribbon. Four-segment
           horizontal bar where each segment's width is proportional to
-          that provider's token share in the 30-day window. AGBench's
+          that provider's token share in the 30-day window. TaskWraith's
           multi-provider identity made literal — Claude structurally
           cannot have this. Hidden when nothing has run yet. */}
       {totalProviderTokens > 0 && (

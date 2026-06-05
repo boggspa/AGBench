@@ -68,8 +68,8 @@ function samplePayload(): Record<string, unknown> {
       }
     ],
     sidecar: {
-      schema: 'agbench-fcpxml-diff-plan-v1',
-      recommendedPath: 'draft.fcpxml.agbench-timeline-diff.json'
+      schema: 'taskwraith-fcpxml-diff-plan-v1',
+      recommendedPath: 'draft.fcpxml.taskwraith-timeline-diff.json'
     },
     warnings: []
   }
@@ -78,7 +78,7 @@ function samplePayload(): Record<string, unknown> {
 function activity(overrides: Partial<ToolActivity> = {}): ToolActivity {
   return {
     id: 'tool-1',
-    toolName: 'mcp__AGBench__creative_timeline_diff',
+    toolName: 'mcp__TaskWraith__creative_timeline_diff',
     displayName: 'Timeline diff original.fcpxml -> draft.fcpxml',
     category: 'unknown',
     status: 'success',
@@ -108,7 +108,7 @@ describe('CreativeTimelineDiffCardModel', () => {
 
     expect(model?.beforePath).toBe('original.fcpxml')
     expect(model?.afterPath).toBe('draft.fcpxml')
-    expect(model?.sidecarPath).toBe('draft.fcpxml.agbench-timeline-diff.json')
+    expect(model?.sidecarPath).toBe('draft.fcpxml.taskwraith-timeline-diff.json')
     expect(model?.summary.addedItemCount).toBe(1)
     expect(model?.summary.changedItemCount).toBe(2)
     expect(model?.affectedAssets.map((asset) => asset.name)).toEqual(['B-roll', 'Interview'])

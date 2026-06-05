@@ -134,7 +134,7 @@ export class WorkspaceService {
     const normalized = this.deps.canonicalPath(requireNonEmptyString(workspacePath, label))
     this.assertSafeWorkspaceRoot(normalized)
     if (!this.findRegisteredWorkspace(normalized)) {
-      throw new Error(`${label} must be selected through AGBench before it can be used.`)
+      throw new Error(`${label} must be selected through TaskWraith before it can be used.`)
     }
     return normalized
   }

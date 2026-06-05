@@ -36,9 +36,9 @@ function makeCapabilityContract(provider: ProviderId): ProviderCapabilityContrac
     id,
     label: toolLabel,
     state: 'available' as const,
-    source: 'agentbench' as const,
-    enforcedByAgentBench: true,
-    enforcement: 'agentbench' as const,
+    source: 'taskwraith' as const,
+    enforcedByTaskWraith: true,
+    enforcement: 'taskwraith' as const,
     requiresApproval: true,
     tools: [],
     details: `${toolLabel} available`
@@ -68,7 +68,7 @@ function makeCapabilityContract(provider: ProviderId): ProviderCapabilityContrac
     },
     mcp: {
       state: 'available',
-      source: 'agentbench',
+      source: 'taskwraith',
       available: true,
       tools: []
     },

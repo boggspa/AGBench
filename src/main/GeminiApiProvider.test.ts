@@ -11,7 +11,7 @@ import type {
   UsageRecord
 } from './store/types'
 
-const userDataPath = vi.hoisted(() => `/tmp/agentbench-gemini-api-provider-test-${process.pid}`)
+const userDataPath = vi.hoisted(() => `/tmp/taskwraith-gemini-api-provider-test-${process.pid}`)
 
 vi.mock('electron', () => ({
   app: {
@@ -560,7 +560,7 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
 })
 
 /**
- * Phase M1 Step 3 — function calling against the AGBench MCP tool
+ * Phase M1 Step 3 — function calling against the TaskWraith MCP tool
  * surface. These tests mock the SDK + executor; they don't reach the
  * real `executeGeminiMcpTool` (covered separately by integration tests
  * in `index.ts`). The point is to pin the LOOP: model emits function
@@ -798,12 +798,12 @@ describe('GeminiApiProvider (Phase M1 Step 3 — function calling)', () => {
       defaultProfileId: 'profile-1',
       loadSdk: loader,
       mcpTools: [makeMcpTool('write_file')],
-      executeMcpTool: async () => ({ text: 'denied by AGBench', isError: true })
+      executeMcpTool: async () => ({ text: 'denied by TaskWraith', isError: true })
     })
     await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
     const round1Contents = callsRef[1].contents
     expect(round1Contents[2].parts[0].functionResponse.response).toEqual({
-      error: 'denied by AGBench'
+      error: 'denied by TaskWraith'
     })
   })
 
@@ -1453,7 +1453,7 @@ describe('GeminiApiProvider (Phase M1 Step 8 — usage tracking)', () => {
     })
     await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
     expect(usageRecords).toHaveLength(1)
-    expect(usageRecords[0].workspaceId).toBe('__agentbench_global_chats__')
+    expect(usageRecords[0].workspaceId).toBe('__taskwraith_global_chats__')
   })
 
   it('does NOT call recordUsage on a failed-stream run', async () => {

@@ -88,10 +88,10 @@ describe('IpcValidation', () => {
   })
 
   it('rejects Grok at the IPC trust boundary when the kill-switch is set', () => {
-    // 1.0.6 — AGBENCH_DISABLE_GROK=1 is the emergency opt-OUT; it forces grok
+    // 1.0.6 — TASKWRAITH_DISABLE_GROK=1 is the emergency opt-OUT; it forces grok
     // back out of the accept-set at the boundary before any dispatch.
-    const previous = process.env.AGBENCH_DISABLE_GROK
-    process.env.AGBENCH_DISABLE_GROK = '1'
+    const previous = process.env.TASKWRAITH_DISABLE_GROK
+    process.env.TASKWRAITH_DISABLE_GROK = '1'
     try {
       expect(() =>
         validateIpcArgs('run-agent', [
@@ -99,8 +99,8 @@ describe('IpcValidation', () => {
         ])
       ).toThrow(/known provider/)
     } finally {
-      if (previous === undefined) delete process.env.AGBENCH_DISABLE_GROK
-      else process.env.AGBENCH_DISABLE_GROK = previous
+      if (previous === undefined) delete process.env.TASKWRAITH_DISABLE_GROK
+      else process.env.TASKWRAITH_DISABLE_GROK = previous
     }
   })
 
@@ -115,10 +115,10 @@ describe('IpcValidation', () => {
   })
 
   it('rejects Cursor at the IPC trust boundary when the kill-switch is set', () => {
-    // AGBENCH_DISABLE_CURSOR=1 is the emergency opt-OUT; it forces cursor back
+    // TASKWRAITH_DISABLE_CURSOR=1 is the emergency opt-OUT; it forces cursor back
     // out of the accept-set at the boundary before any dispatch.
-    const previous = process.env.AGBENCH_DISABLE_CURSOR
-    process.env.AGBENCH_DISABLE_CURSOR = '1'
+    const previous = process.env.TASKWRAITH_DISABLE_CURSOR
+    process.env.TASKWRAITH_DISABLE_CURSOR = '1'
     try {
       expect(() =>
         validateIpcArgs('run-agent', [
@@ -126,8 +126,8 @@ describe('IpcValidation', () => {
         ])
       ).toThrow(/known provider/)
     } finally {
-      if (previous === undefined) delete process.env.AGBENCH_DISABLE_CURSOR
-      else process.env.AGBENCH_DISABLE_CURSOR = previous
+      if (previous === undefined) delete process.env.TASKWRAITH_DISABLE_CURSOR
+      else process.env.TASKWRAITH_DISABLE_CURSOR = previous
     }
   })
 
@@ -234,7 +234,7 @@ describe('IpcValidation', () => {
         {
           welcomeHeatmapPrefs: {
             workspaceActivityEnabled: true,
-            agbenchActivityEnabled: false,
+            taskwraithActivityEnabled: false,
             externalActivityEnabled: true
           }
         }
@@ -366,7 +366,7 @@ describe('IpcValidation', () => {
             timestamp: '2026-05-24T19:10:00.000Z',
             version: '1.0.1',
             provider: 'codex',
-            workspace: '/Users/dev/projects/agbench',
+            workspace: '/Users/dev/projects/taskwraith',
             shell: 'default',
             surface: 'Ensemble',
             chatKind: 'ensemble',

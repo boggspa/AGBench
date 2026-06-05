@@ -1,5 +1,5 @@
 import XCTest
-@testable import AgbenchBridgeDaemon
+@testable import TaskWraithBridgeDaemon
 
 /// Pure-logic tests for the Appwatch ring buffer + memory-budget math.
 ///

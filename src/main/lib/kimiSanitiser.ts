@@ -51,7 +51,7 @@
  *
  * What this is NOT:
  *
- *   - **Not a policy statement.** AGBench is not asserting that
+ *   - **Not a policy statement.** TaskWraith is not asserting that
  *     these topics are off-limits. We're describing what we
  *     observe Moonshot's API to refuse, and offering a tool to
  *     keep Kimi productive on workflows where those topics come
@@ -200,9 +200,9 @@ export type KimiContentFilterRetryFailureReason =
 
 const SENTENCE_BOUNDARY_REGEX = /(?<=[.!?。！？])\s+/g
 const PLACEHOLDER =
-  '[sentence redacted: AGBench Kimi compatibility filter detected content Moonshot rejects]'
+  '[sentence redacted: TaskWraith Kimi compatibility filter detected content Moonshot rejects]'
 const CLASSIFIER_PLACEHOLDER =
-  '[sentence redacted: AGBench Kimi classifier flagged content Moonshot may reject]'
+  '[sentence redacted: TaskWraith Kimi classifier flagged content Moonshot may reject]'
 const KIMI_CONTENT_FILTER_REJECTION_PATTERN =
   /Error code:\s*400[\s\S]*content_filter|["']?type["']?\s*:\s*["']content_filter["']?|content[_ -]?filter|considered high risk/i
 const KIMI_CLASSIFIER_PATTERNS: ReadonlyArray<{ trigger: string; pattern: RegExp }> = [
@@ -427,7 +427,7 @@ export function formatKimiRetryDiagnostic(
 ): string {
   const passLabel = pass === 'keyword' ? 'keyword compatibility filter' : 'classifier redaction'
   const lines = [
-    `Kimi rejected this prompt with Moonshot's content filter. AGBench is retrying once with ${passLabel}.`
+    `Kimi rejected this prompt with Moonshot's content filter. TaskWraith is retrying once with ${passLabel}.`
   ]
   const sanitiserDiagnostic = formatKimiSanitiserDiagnostic(result)
   if (sanitiserDiagnostic) lines.push(sanitiserDiagnostic)
@@ -450,7 +450,7 @@ export function formatKimiRetryFailureDiagnostic(input: {
           ? 'both retry passes were already attempted'
           : 'the keyword sanitiser could not produce a changed prompt'
   return [
-    "Kimi (Moonshot) rejected this turn with a content-filter response after AGBench's retry envelope ran.",
+    "Kimi (Moonshot) rejected this turn with a content-filter response after TaskWraith's retry envelope ran.",
     `Retry passes attempted: ${attempted}.`,
     `Final reason: ${reasonText}.`,
     'No user transcript content was changed; only Kimi retry prompts are sanitised.'

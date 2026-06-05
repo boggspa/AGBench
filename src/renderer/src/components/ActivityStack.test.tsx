@@ -6,7 +6,7 @@ import type { ChatRecord, EnsembleParticipant, ToolActivity } from '../../../mai
 function makeEnsembleYieldActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
   return {
     id: 'tool-yield-1',
-    toolName: 'mcp_AGBench_ensemble_yield',
+    toolName: 'mcp_TaskWraith_ensemble_yield',
     displayName: 'Captain K yielding to Gems',
     category: 'task',
     status: 'success',
@@ -70,23 +70,23 @@ function makeParticipant(overrides: Partial<EnsembleParticipant>): EnsembleParti
 }
 
 describe('ActivityStack ensemble_yield rendering', () => {
-  it('humanizes the Codex-style mcp_AGBench_ensemble_yield tool name', () => {
+  it('humanizes the Codex-style mcp_TaskWraith_ensemble_yield tool name', () => {
     const html = renderToStaticMarkup(
       <ActivityStack activities={[makeEnsembleYieldActivity()]} provider="codex" />
     )
 
     expect(html).toContain('yielding to')
     expect(html).toContain('@Gems')
-    expect(html).not.toContain('mcp_AGBench_ensemble_yield')
+    expect(html).not.toContain('mcp_TaskWraith_ensemble_yield')
   })
 
-  it('humanizes the Claude-style mcp__AGBench__ensemble_yield tool name', () => {
+  it('humanizes the Claude-style mcp__TaskWraith__ensemble_yield tool name', () => {
     const html = renderToStaticMarkup(
       <ActivityStack
         activities={[
           makeEnsembleYieldActivity({
             id: 'tool-yield-2',
-            toolName: 'mcp__AGBench__ensemble_yield'
+            toolName: 'mcp__TaskWraith__ensemble_yield'
           })
         ]}
         provider="claude"
@@ -95,7 +95,7 @@ describe('ActivityStack ensemble_yield rendering', () => {
 
     expect(html).toContain('yielding to')
     expect(html).toContain('@Gems')
-    expect(html).not.toContain('mcp__AGBench__ensemble_yield')
+    expect(html).not.toContain('mcp__TaskWraith__ensemble_yield')
   })
 
   it('humanizes the bare ensemble_yield tool name', () => {
@@ -141,8 +141,8 @@ describe('ActivityStack ensemble_yield rendering', () => {
         activities={[
           makeEnsembleYieldActivity({
             id: 'tool-yield-raw',
-            toolName: 'mcp_AGBench_ensemble_yield',
-            displayName: 'mcp_AGBench_ensemble_yield'
+            toolName: 'mcp_TaskWraith_ensemble_yield',
+            displayName: 'mcp_TaskWraith_ensemble_yield'
           })
         ]}
         provider="codex"
@@ -151,7 +151,7 @@ describe('ActivityStack ensemble_yield rendering', () => {
 
     expect(html).toContain('Yielding to')
     expect(html).toContain('@Gems')
-    expect(html).not.toContain('mcp_AGBench_ensemble_yield')
+    expect(html).not.toContain('mcp_TaskWraith_ensemble_yield')
   })
 
   it('does not surface a raw tool name when filePath candidate fields (target) resolve to the yield target', () => {
@@ -177,7 +177,7 @@ describe('ActivityStack ensemble_yield rendering', () => {
     expect(html).toContain('Yielding to')
     expect(html).toContain('@Captain K')
     expect(html).not.toMatch(/<strong[^>]*>Captain K<\/strong>/)
-    expect(html).not.toContain('mcp_AGBench_ensemble_yield')
+    expect(html).not.toContain('mcp_TaskWraith_ensemble_yield')
   })
 })
 
@@ -379,7 +379,7 @@ describe('ActivityStack controlled expansion (1.0.6-TV2)', () => {
 
 describe('ActivityStack denied / errored edit rendering', () => {
   // Repro: a read-only ("Plan / Read-only") Grok seat asks to edit the
-  // README; Grok calls native `search_replace`; AGBench's gate auto-denies
+  // README; Grok calls native `search_replace`; TaskWraith's gate auto-denies
   // it (tool_result `{ status: 'error', output: 'User rejected …' }`). The
   // file on disk is unchanged, so the card must NOT read as an applied
   // "Wrote README.md +6 −4" change — it carries the attempted diff but the

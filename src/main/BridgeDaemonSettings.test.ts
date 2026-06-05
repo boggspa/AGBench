@@ -26,7 +26,7 @@ describe('resolveDaemonShouldRun', () => {
     })
   })
 
-  it('forces on when AGBENCH_BRIDGE_DAEMON is 1 or true', () => {
+  it('forces on when TASKWRAITH_BRIDGE_DAEMON is 1 or true', () => {
     expect(resolveDaemonShouldRun(false, '1')).toMatchObject({
       shouldRun: true,
       settingEnabled: false,
@@ -41,7 +41,7 @@ describe('resolveDaemonShouldRun', () => {
     })
   })
 
-  it('forces off when AGBENCH_BRIDGE_DAEMON is 0 or false', () => {
+  it('forces off when TASKWRAITH_BRIDGE_DAEMON is 0 or false', () => {
     expect(resolveDaemonShouldRun(true, '0')).toMatchObject({
       shouldRun: false,
       settingEnabled: true,

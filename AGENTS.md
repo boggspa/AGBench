@@ -1,6 +1,6 @@
-# AGENTS.md — environment notes for coding agents working inside AGBench
+# AGENTS.md — environment notes for coding agents working inside TaskWraith
 
-This file documents the AGBench runtime environment for any agent operating
+This file documents the TaskWraith runtime environment for any agent operating
 inside a chat thread. It's meant to be read by the LLM at the start of a session
 (via a system-prompt injection or MCP context exchange) so the agent understands
 what affordances it has and how to use them.
@@ -26,7 +26,7 @@ part of the task.
 
 ## Environment summary
 
-AGBench is an Electron desktop app that runs coding agents in isolated
+TaskWraith is an Electron desktop app that runs coding agents in isolated
 chat threads against workspaces. Each thread:
 
 - Is bound to a configured provider runtime.
@@ -42,7 +42,7 @@ inside the user's workspace environment.
 
 ## Sub-Threads (Phase F1) — multi-provider delegation
 
-AGBench supports **sub-threads**: a thread can spawn child threads
+TaskWraith supports **sub-threads**: a thread can spawn child threads
 that run on a *different* provider while remaining topologically linked
 under the parent in the workspace tree.
 
@@ -62,7 +62,7 @@ The intent is cross-provider orchestration. Common patterns:
    in the sidebar.
 2. A modal asks: provider, delegation prompt, "return result on
    completion?" toggle.
-3. On confirm, AGBench creates a new sub-thread:
+3. On confirm, TaskWraith creates a new sub-thread:
    - Inherits the parent's workspace.
    - Records `parentChatId` + `delegationContext` (parent provider,
      delegation prompt, return-result flag, timestamps).
@@ -140,7 +140,7 @@ in its response, e.g.:
 > this chat to spawn it."
 
 In Phase F2 the parent agent will be able to invoke delegation via an
-MCP tool call: `agbench__delegate_to_subthread({ provider, prompt,
+MCP tool call: `taskwraith__delegate_to_subthread({ provider, prompt,
 returnResult })`. When that ships, this section will document the tool
 contract; for now, it's UI-only.
 
@@ -195,7 +195,7 @@ ordering. `reason` is included in the audit trail.
 
 If your assistant message contains `@Role` / `@provider` /
 `@ModelName` (matching the same alias resolver as `ensemble_yield`),
-AGBench's orchestrator promotes that participant to speak next OR
+TaskWraith's orchestrator promotes that participant to speak next OR
 appends them an extra turn if they've already spoken this round.
 First match wins; subsequent `@-mentions` in the same message are
 ignored. Self-mentions are filtered (you can narrate "I, Codex,
@@ -246,7 +246,7 @@ it as "skip" and continue rather than retrying.
 
 ## Approval flow
 
-When an agent attempts a tool call that AGBench's permission policy
+When an agent attempts a tool call that TaskWraith's permission policy
 flags as needing approval (e.g. `run_shell_command`, file edits
 outside the workspace, MCP elicitations):
 
@@ -267,10 +267,10 @@ the situation gracefully and offer to retry once the user is back.
 
 ## MCP
 
-AGBench exposes a bundled MCP server (`AGBench`) that gives every
+TaskWraith exposes a bundled MCP server (`TaskWraith`) that gives every
 provider's agent (Gemini / Codex / Claude / Kimi as of 1.0.3) access
 to the same tool surface. The canonical list lives in
-`src/main/AgentbenchMcpTools.ts` (`AGENTBENCH_MCP_TOOLS`); the most
+`src/main/TaskWraithMcpTools.ts` (`TASKWRAITH_MCP_TOOLS`); the most
 relevant tools an agent reaches for during day-to-day work:
 
 **Workspace I/O (workspace-scoped, approval-gated when policy
@@ -305,12 +305,12 @@ demands):**
   Recall validates strictly: the id must belong to a sub-thread of
   THIS parent AND match the requested `provider` AND not be archived.
   Mismatches return a structured error tool_result and dispatch
-  nothing. When recall succeeds, AGBench injects the sub-thread's
+  nothing. When recall succeeds, TaskWraith injects the sub-thread's
   linked provider session id into the dispatched run so the target
   provider's native session resumes (Codex `thread/resume`, Claude
   SDK `resume:` / CLI `--resume`, Kimi `--resume`, Gemini `--resume`).
   If the recalled sub-thread hasn't completed its first turn yet, the
-  transcript still continues at the AGBench chat level but the
+  transcript still continues at the TaskWraith chat level but the
   provider runtime starts a fresh session — the tool_result includes
   a `Note:` line so you know.
 
@@ -319,7 +319,7 @@ demands):**
   completion (Phase F2 back-propagation) — works for both spawn and
   recall paths.
 
-  **Approval gate (Phase I1):** every call routes through AGBench's
+  **Approval gate (Phase I1):** every call routes through TaskWraith's
   `subThreadDelegation` agentic-service policy before any sub-thread
   is created. The user's workspace policy decides:
 
@@ -361,7 +361,7 @@ demands):**
       conversation with this same sub-agent."
 
       → if declined: "Sub-thread delegation to Codex was declined by
-      AGBench policy. Gemini continues without delegating; the user
+      TaskWraith policy. Gemini continues without delegating; the user
       can change the policy in Settings → Behavior → Agentic Services
       → Sub-thread delegation."
 
@@ -401,11 +401,11 @@ demands):**
       `model: 'cli-default'`. Future revs may expose the full
       composer surface as additional tool args.
     - **Phase I2-I4 (landed by 1.0.3): all four providers have the
-      same MCP tool surface.** AGBench registers the `AGBench` MCP
+      same MCP tool surface.** TaskWraith registers the `TaskWraith` MCP
       server with each provider's runtime at spawn time:
-        - **Gemini** — via the AGBench MCP bridge (CLI) or function
+        - **Gemini** — via the TaskWraith MCP bridge (CLI) or function
           calling (API path).
-        - **Codex** — via `-c mcp_servers.AGBench.*` overrides on
+        - **Codex** — via `-c mcp_servers.TaskWraith.*` overrides on
           the `app-server` invocation.
         - **Claude** — via the Claude Agent SDK's `mcpServers`
           option (SDK path) or `--mcp-config <path>` (CLI fallback).
@@ -413,7 +413,7 @@ demands):**
           SDK doesn't gate tools behind a `ToolSearch` round-trip
           on first use (critical for plan-mode latency).
         - **Kimi** — via Kimi Wire's MCP bridge subprocess.
-      Each bridge subprocess stamps `AGENTBENCH_PARENT_PROVIDER` on
+      Each bridge subprocess stamps `TASKWRAITH_PARENT_PROVIDER` on
       its env so the approval modal reads "Claude wants to delegate
       to Codex" and workspace grants apply per-provider — Gemini's
       grant doesn't auto-allow Codex delegation in the same workspace.
@@ -489,7 +489,7 @@ documented (as of **1.0.3**):
 - Approval flow + timeout policy (Phase E1)
 - Approval ledger UX (Phase E2)
 - **MCP tool surface** — full canonical list in
-  `src/main/AgentbenchMcpTools.ts`; key tools documented above
+  `src/main/TaskWraithMcpTools.ts`; key tools documented above
   (including the 1.0.3 additions `ensemble_yield` +
   `ask_user_question`).
 - All four providers (Gemini / Codex / Claude / Kimi) now share the

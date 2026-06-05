@@ -561,7 +561,7 @@ describe('buildWelcomeUsageDashboardData favoriteProject (Welcome L9 hero chip)'
   const workspaces = [
     { id: 'ws-a', displayName: 'Chill-Q' },
     { id: 'ws-b', displayName: 'Guitar Cabs' },
-    { id: 'ws-c', displayName: 'AGBench' }
+    { id: 'ws-c', displayName: 'TaskWraith' }
   ]
 
   it('picks the workspace with the most tokens in-window and resolves its displayName', () => {
@@ -1042,7 +1042,7 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
     expect(none?.displayName).toBe('No workspace')
   })
 
-  it('humanises the __agentbench_global_chats__ sentinel as "Global Chat"', () => {
+  it('humanises the __taskwraith_global_chats__ sentinel as "Global Chat"', () => {
     // 1.0.5-EW51 follow-up. The internal sentinel workspaceId
     // for global-scope runs (used by GeminiApiProvider +
     // AppStore.recordUsage) shouldn't leak through to the
@@ -1051,13 +1051,13 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
     const records: UsageRecord[] = [
       baseRecord({
         id: 'global-1',
-        workspaceId: '__agentbench_global_chats__',
+        workspaceId: '__taskwraith_global_chats__',
         totalTokens: 5_000
       })
     ]
     const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
     const row = data.workspaceCostBreakdown.find(
-      (ws) => ws.workspaceId === '__agentbench_global_chats__'
+      (ws) => ws.workspaceId === '__taskwraith_global_chats__'
     )
     expect(row?.displayName).toBe('Global Chat')
   })

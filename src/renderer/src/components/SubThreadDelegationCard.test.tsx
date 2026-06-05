@@ -136,7 +136,7 @@ describe('resolveDelegationStatus', () => {
 })
 
 describe('SubThreadDelegationCard', () => {
-  it('renders AGBench sub-threads as agent invocations with an explicit route', () => {
+  it('renders TaskWraith sub-threads as agent invocations with an explicit route', () => {
     const msg: ChatMessage = {
       id: 'm',
       role: 'system',
@@ -156,7 +156,7 @@ describe('SubThreadDelegationCard', () => {
     )
 
     expect(html).toContain('Agent Invocation')
-    expect(html).toContain('AGBench Sub-thread')
+    expect(html).toContain('TaskWraith Sub-thread')
     expect(html).toContain('Durable sub-thread')
     expect(html).toContain('opens as linked chat')
     expect(html).toContain('Review helper')

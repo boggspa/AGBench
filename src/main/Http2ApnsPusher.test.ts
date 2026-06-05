@@ -500,8 +500,8 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         const body = JSON.parse(bodyWrites[0])
         const serialized = JSON.stringify(body)
         expect(body.aps.alert).toEqual({
-          title: 'AGBench needs attention',
-          body: 'Open AGBench to respond.'
+          title: 'TaskWraith needs attention',
+          body: 'Open TaskWraith to respond.'
         })
         expect(body).toMatchObject({
           pairID: 'p',
@@ -566,8 +566,8 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         const body = JSON.parse(bodyWrites[0])
         const serialized = JSON.stringify(body)
         expect(body.aps.alert).toEqual({
-          title: 'AGBench needs attention',
-          body: 'Open AGBench to review the latest task state.'
+          title: 'TaskWraith needs attention',
+          body: 'Open TaskWraith to review the latest task state.'
         })
         expect(body).toMatchObject({
           pairID: 'p',

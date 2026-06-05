@@ -13,22 +13,22 @@ import {
 } from './CursorMcpBridge'
 
 // 1.0.6-CRUX34 (OQ#2) — the Cursor web bridge. The live spike proved that an
-// AGBench MCP server registered via workspace `.cursor/mcp.json` + `allow:
-// ["Mcp(agbench:*)"]` + `--approve-mcps` IS invoked by Cursor in headless
+// TaskWraith MCP server registered via workspace `.cursor/mcp.json` + `allow:
+// ["Mcp(taskwraith:*)"]` + `--approve-mcps` IS invoked by Cursor in headless
 // default/write mode (plan mode rejects all tools). These tests pin the pure
 // config helpers + prove the embedded server source is valid JS (the template
 // string escaping is easy to get wrong).
 
 describe('CURSOR_MCP_ALLOW_RULES', () => {
-  it('is exactly the agbench MCP wildcard (matches the server name)', () => {
+  it('is exactly the taskwraith MCP wildcard (matches the server name)', () => {
     expect(CURSOR_MCP_ALLOW_RULES).toEqual([`Mcp(${CURSOR_MCP_SERVER_NAME}:*)`])
   })
 })
 
 describe('buildCursorMcpServerEntry', () => {
-  it('builds the agbench entry keyed by the server name', () => {
+  it('builds the taskwraith entry keyed by the server name', () => {
     const entry = buildCursorMcpServerEntry({ command: '/x/electron', args: ['/tmp/s.cjs'] })
-    expect(entry).toEqual({ agbench: { command: '/x/electron', args: ['/tmp/s.cjs'] } })
+    expect(entry).toEqual({ taskwraith: { command: '/x/electron', args: ['/tmp/s.cjs'] } })
   })
 
   it('includes env when provided (electron-as-node)', () => {
@@ -38,25 +38,25 @@ describe('buildCursorMcpServerEntry', () => {
       env: { ELECTRON_RUN_AS_NODE: '1' }
     })
     expect(entry).toEqual({
-      agbench: { command: '/x/electron', args: ['/tmp/s.cjs'], env: { ELECTRON_RUN_AS_NODE: '1' } }
+      taskwraith: { command: '/x/electron', args: ['/tmp/s.cjs'], env: { ELECTRON_RUN_AS_NODE: '1' } }
     })
   })
 
   it('copies the args array (no aliasing the caller’s array)', () => {
     const args = ['/tmp/s.cjs']
     const entry = buildCursorMcpServerEntry({ command: 'node', args }) as {
-      agbench: { args: string[] }
+      taskwraith: { args: string[] }
     }
     args.push('mutated')
-    expect(entry.agbench.args).toEqual(['/tmp/s.cjs'])
+    expect(entry.taskwraith.args).toEqual(['/tmp/s.cjs'])
   })
 })
 
 describe('mergeCursorMcpConfig', () => {
-  it('adds the agbench server into an empty/absent config', () => {
+  it('adds the taskwraith server into an empty/absent config', () => {
     const entry = buildCursorMcpServerEntry({ command: 'node', args: ['/tmp/s.cjs'] })
     expect(mergeCursorMcpConfig(null, entry)).toEqual({
-      mcpServers: { agbench: { command: 'node', args: ['/tmp/s.cjs'] } }
+      mcpServers: { taskwraith: { command: 'node', args: ['/tmp/s.cjs'] } }
     })
   })
 
@@ -70,33 +70,33 @@ describe('mergeCursorMcpConfig', () => {
     expect(merged).toEqual({
       mcpServers: {
         other: { command: 'foo', args: [] },
-        agbench: { command: 'node', args: ['/tmp/s.cjs'] }
+        taskwraith: { command: 'node', args: ['/tmp/s.cjs'] }
       },
       someUnknownTopLevel: { keep: true }
     })
   })
 
-  it('overwrites a pre-existing agbench server entry (latest wins)', () => {
-    const existing = { mcpServers: { agbench: { command: 'stale', args: ['old'] } } }
+  it('overwrites a pre-existing taskwraith server entry (latest wins)', () => {
+    const existing = { mcpServers: { taskwraith: { command: 'stale', args: ['old'] } } }
     const entry = buildCursorMcpServerEntry({ command: 'node', args: ['/tmp/new.cjs'] })
     const merged = mergeCursorMcpConfig(existing, entry) as {
-      mcpServers: { agbench: { command: string } }
+      mcpServers: { taskwraith: { command: string } }
     }
-    expect(merged.mcpServers.agbench.command).toBe('node')
+    expect(merged.mcpServers.taskwraith.command).toBe('node')
   })
 })
 
 describe('mergeCursorAllowRules', () => {
   it('adds the allow rule into an empty config (with an empty deny)', () => {
     expect(mergeCursorAllowRules(null, CURSOR_MCP_ALLOW_RULES)).toEqual({
-      permissions: { allow: ['Mcp(agbench:*)'], deny: [] }
+      permissions: { allow: ['Mcp(taskwraith:*)'], deny: [] }
     })
   })
 
   it('preserves existing deny rules (e.g. the write-mode Shell deny) + dedups allow', () => {
-    const existing = { permissions: { allow: ['Mcp(agbench:*)'], deny: ['Shell(**)'] } }
+    const existing = { permissions: { allow: ['Mcp(taskwraith:*)'], deny: ['Shell(**)'] } }
     const merged = mergeCursorAllowRules(existing, CURSOR_MCP_ALLOW_RULES)
-    expect(merged.permissions.allow).toEqual(['Mcp(agbench:*)'])
+    expect(merged.permissions.allow).toEqual(['Mcp(taskwraith:*)'])
     expect(merged.permissions.deny).toEqual(['Shell(**)'])
   })
 
@@ -119,8 +119,8 @@ describe('CURSOR_WEB_FETCH_MCP_SERVER_SOURCE', () => {
   })
 
   it('is syntactically valid JS (node --check) — proves the template escaping', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'agbench-mcp-src-'))
-    const file = join(dir, 'agbench-mcp-server.cjs')
+    const dir = mkdtempSync(join(tmpdir(), 'taskwraith-mcp-src-'))
+    const file = join(dir, 'taskwraith-mcp-server.cjs')
     try {
       writeFileSync(file, CURSOR_WEB_FETCH_MCP_SERVER_SOURCE)
       // Throws (non-zero exit) if the source has a syntax error.

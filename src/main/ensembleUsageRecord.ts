@@ -5,7 +5,7 @@
  * provider 'result' event → finalizeRun), NOT through the renderer's
  * `handleProviderExit` path that records solo-run usage. So ensemble runs were
  * missing from usage.json entirely — and therefore from the welcome wall-clock,
- * the AGBench/Workspace/External activity heatmaps, and the Providers-tab token
+ * the TaskWraith/Workspace/External activity heatmaps, and the Providers-tab token
  * totals. This pure helper turns a finished participant run's `stats` into the
  * `recordUsage` payload the orchestrator persists once per run.
  *
@@ -40,7 +40,7 @@ export interface EnsembleUsageInput {
 /**
  * Build the `recordUsage` payload for a finished ensemble participant run, or
  * `null` when it should NOT be recorded:
- *   - stats already recorded upstream (`_agentbench_usage_recorded`) — avoids
+ *   - stats already recorded upstream (`_taskwraith_usage_recorded`) — avoids
  *     double-counting if a provider (e.g. Gemini) recorded main-side, and
  *   - a run with no tokens AND no duration (nothing meaningful to log — a
  *     skipped/unreachable participant).
@@ -49,7 +49,7 @@ export function buildEnsembleUsageRecord(
   input: EnsembleUsageInput
 ): Omit<UsageRecord, 'id' | 'timestamp'> | null {
   const stats = input.stats
-  if (stats && stats['_agentbench_usage_recorded'] === true) return null
+  if (stats && stats['_taskwraith_usage_recorded'] === true) return null
 
   const inputTokens = readCount(stats, ['input_tokens', 'inputTokens'])
   const outputTokens = readCount(stats, ['output_tokens', 'outputTokens'])

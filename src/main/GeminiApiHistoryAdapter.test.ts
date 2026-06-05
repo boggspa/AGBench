@@ -144,7 +144,7 @@ describe('chatMessagesToGeminiContents', () => {
 
     expect(out).toHaveLength(3)
     expect(out[1].role).toBe('user')
-    expect(textOf(out[1])).toContain('AGBench sub-thread result "Build check"')
+    expect(textOf(out[1])).toContain('TaskWraith sub-thread result "Build check"')
     expect(textOf(out[1])).toContain('untrusted child-agent output')
     expect(textOf(out[1])).toContain('<subthread_result id="sub-1" encoding="markdown-fence">')
     expect(textOf(out[1])).toContain('Sub-thread says tests passed.')

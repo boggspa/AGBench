@@ -114,7 +114,7 @@ export class RunQueueService {
     return this.deps.getRunRepository().leaseQueuedRun({
       runId: candidate.runId,
       provider: candidate.provider,
-      statusReason: optionalString(request?.statusReason) || 'Leased by AGBench main scheduler.'
+      statusReason: optionalString(request?.statusReason) || 'Leased by TaskWraith main scheduler.'
     })
   }
 
@@ -199,7 +199,7 @@ export class RunQueueService {
       rawExternalPathGrants.length &&
       externalPathGrants.length !== rawExternalPathGrants.length
     ) {
-      throw new Error('Queued external path grants must be issued by AGBench in this app session.')
+      throw new Error('Queued external path grants must be issued by TaskWraith in this app session.')
     }
     return {
       scope: value.scope === 'global' ? 'global' : 'workspace',

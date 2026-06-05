@@ -6,7 +6,7 @@ import {
   TOOL_CLASS_LABELS,
   TOOL_CLASS_ORDER
 } from './ToolClassTaxonomy'
-import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 import { READ_ONLY_TOOL_PRESET } from './PermissionEnvelope'
 import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 
@@ -62,7 +62,7 @@ describe('groupToolsByClass', () => {
 
 describe('workspace_write is exactly the read-only deny set', () => {
   it('classifies precisely the mutating / side-effecting tools as workspace_write', () => {
-    const writeTools = AGENTBENCH_MCP_TOOLS.filter((t) => classifyTool(t) === 'workspace_write')
+    const writeTools = TASKWRAITH_MCP_TOOLS.filter((t) => classifyTool(t) === 'workspace_write')
     expect([...writeTools].sort()).toEqual(
       [
         'apply_patch',

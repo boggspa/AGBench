@@ -1,4 +1,4 @@
-// Phase I4 (Kimi initiator): wire the agentbench MCP bridge into the
+// Phase I4 (Kimi initiator): wire the taskwraith MCP bridge into the
 // Kimi CLI run paths so a Kimi agent can call delegate_to_subthread on
 // other providers. Gemini, Codex, and Claude already register the bridge
 // — this module mirrors that wiring for Kimi.
@@ -13,32 +13,32 @@
 // rather than being eaten by Kimi.
 //
 // Config file: `~/.kimi/mcp.json`. The broker subprocess inherits the
-// `AGENTBENCH_PARENT_PROVIDER=kimi` stamp from the per-server env block
+// `TASKWRAITH_PARENT_PROVIDER=kimi` stamp from the per-server env block
 // and the bridge subprocess uses it to route broker requests with the
 // right provider key.
 //
 // Kept free of Electron / fs / IPC imports so it can be unit-tested
 // directly against fixed inputs.
 
-import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 
 /**
- * AGBench MCP tool name list. Re-exported under the Kimi-specific name
+ * TaskWraith MCP tool name list. Re-exported under the Kimi-specific name
  * for tests and prompt/runtime checks.
  */
-export const KIMI_AGENTBENCH_TOOL_NAMES = AGENTBENCH_MCP_TOOLS
+export const KIMI_TASKWRAITH_TOOL_NAMES = TASKWRAITH_MCP_TOOLS
 
 /**
  * Server name used as the registration key in `~/.kimi/mcp.json`.
  * Matches the Gemini / Codex / Claude bridge name so the broker's
  * server-side identity is consistent across providers. Mixed-case
- * `AGBench` matches the product display name and is what Kimi shows
- * in its tool list as the namespace prefix (`AGBench__<tool>`).
+ * `TaskWraith` matches the product display name and is what Kimi shows
+ * in its tool list as the namespace prefix (`TaskWraith__<tool>`).
  */
-export const KIMI_AGENTBENCH_SERVER_NAME = 'AGBench'
+export const KIMI_TASKWRAITH_SERVER_NAME = 'TaskWraith'
 
 export interface KimiMcpBridgeAddArgsInput {
-  /** Absolute path of the AGBench binary that hosts the MCP bridge. */
+  /** Absolute path of the TaskWraith binary that hosts the MCP bridge. */
   bridgeBinaryPath: string
   /** argv passed to the bridge subprocess (already includes flag literals). */
   bridgeArgs: string[]
@@ -52,11 +52,11 @@ export interface KimiWirePromptRequestInput {
 
 /**
  * Build the argv passed to `kimi mcp add` for registering the
- * agentbench bridge as a stdio MCP server. The exact shape is:
+ * taskwraith bridge as a stdio MCP server. The exact shape is:
  *
- *   mcp add agentbench
+ *   mcp add taskwraith
  *     --transport stdio
- *     --env AGENTBENCH_PARENT_PROVIDER=kimi
+ *     --env TASKWRAITH_PARENT_PROVIDER=kimi
  *     --
  *     <bridgeBinaryPath>
  *     <...bridgeArgs>
@@ -72,11 +72,11 @@ export function buildKimiMcpBridgeAddArgs(input: KimiMcpBridgeAddArgsInput): str
   return [
     'mcp',
     'add',
-    KIMI_AGENTBENCH_SERVER_NAME,
+    KIMI_TASKWRAITH_SERVER_NAME,
     '--transport',
     'stdio',
     '--env',
-    'AGENTBENCH_PARENT_PROVIDER=kimi',
+    'TASKWRAITH_PARENT_PROVIDER=kimi',
     '--',
     input.bridgeBinaryPath,
     ...input.bridgeArgs

@@ -1,6 +1,6 @@
 # Security Development Baseline
 
-AGBench is a local Electron app that can run coding agents and CLIs against
+TaskWraith is a local Electron app that can run coding agents and CLIs against
 user workspaces. Treat dependency updates, IPC bridges, shell execution, and
 release signing as security-sensitive changes.
 

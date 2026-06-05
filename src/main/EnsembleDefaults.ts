@@ -51,7 +51,7 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
   },
   {
     // Grok is now a first-class provider, so it seeds into the default panel
-    // like the others. Read-only until G5 (tool mediation via AGBench MCP +
+    // like the others. Read-only until G5 (tool mediation via TaskWraith MCP +
     // approval ledger) lands write-capable runs; `getDefaultEnsembleParticipantConfig`
     // in ensembleProviderDefaults.ts mirrors this preset.
     provider: 'grok',

@@ -1448,7 +1448,7 @@
   flex: 1;
   min-width: 0;
 }
-/* Branded AGBench ghost mark next to the welcome heading. The
+/* Branded TaskWraith ghost mark next to the welcome heading. The
  * SVG itself ships gradients + rim treatment, so the wrapper is
  * just sizing — no tinted-circle background. Slightly larger
  * than the earlier inline-glyph variant (32 → 40px) so the
@@ -3656,7 +3656,7 @@
  * Per the request — "a generic light gray with black text might
  * get us out of jail" — we override each shell's dark surface
  * with a light surface in `:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])`, and let the
- * sidebars inherit AGBench's default light styling by neutering
+ * sidebars inherit TaskWraith's default light styling by neutering
  * the forced-dark gradient/background.
  *
  * Only contrast-affecting rules are overridden; accent borders,
@@ -3747,7 +3747,7 @@
 /* --- Sidebar (forced-dark override neutralisation) ------------- *
  * Codex + Claude shells composite a dark gradient over
  * var(--sidebar-bg). In light mode we drop the gradient so the
- * native light --sidebar-bg shines through, matching the AGBench
+ * native light --sidebar-bg shines through, matching the TaskWraith
  * shell's behaviour. Item-text colors were keyed off the dark
  * bg (white at 60–70% mix) so re-key them to dark on light. */
 
@@ -3762,7 +3762,7 @@
  * peel back the soft/native-glass overlays in this scope via
  * `!important` — the goal is a flat, near-white sidebar with a
  * subtle 1px right border, matching the real apps' light-mode
- * chrome rather than the AGBench glass aesthetic. */
+ * chrome rather than the TaskWraith glass aesthetic. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar {
   background: color-mix(in srgb, var(--surface-2) var(--sidebar-opacity-100), transparent) !important;
@@ -3901,7 +3901,7 @@
  *
  * That patchwork read as "everything is a slightly different
  * gray." Per the request, unify around ONE soft-surface color
- * (`--unified-soft-surface-bg`) and lighten the AGBench-native
+ * (`--unified-soft-surface-bg`) and lighten the TaskWraith-native
  * composer to a near-white so the composer reads as the
  * lightest, freshest surface in the UI.
  * ============================================================ */
@@ -3910,7 +3910,7 @@
   --unified-soft-surface-bg: var(--surface-2);
   --unified-soft-surface-border: var(--surface-border);
 
-  /* AGBench-native composer reads as a fresh white sheet in
+  /* TaskWraith-native composer reads as a fresh white sheet in
    * light mode (the themed shells get their own override below
    * so the composer hierarchy stays consistent across shells). */
   --composer-bg: var(--surface-1);
@@ -3989,7 +3989,7 @@
  * 1.0.5-EW8 — Pre-EW8 these light-mode overrides were scoped to
  * `[data-interface-style="codex"]` and `[..="claude"]` only,
  * because the original Codex/Claude shells (line 19439) force the
- * card dark via a hardcoded `#151515` background. The AGBench
+ * card dark via a hardcoded `#151515` background. The TaskWraith
  * native shell (`data-interface-style="default"`) doesn't carry
  * that dark-forcing rule, BUT something else in its rendering
  * chain still ends up dark in light mode — the maintainer reproed live:
@@ -4057,7 +4057,7 @@
   border-color: rgba(0, 0, 0, 0.1);
 }
 
-/* Scheduler / runtime-profile pills (AGBench-native composer
+/* Scheduler / runtime-profile pills (TaskWraith-native composer
  * accessory row). Same unified light-gray treatment so they
  * stop reading as a noticeably darker chip pair against the
  * #ffffff composer surface. The inner `<input>` and `<select>`
@@ -4087,7 +4087,7 @@
 
 /* Themed-shell composer surfaces (codex / claude / kimi / gemini)
  * — previously hardcoded to #f5f5f7 in light mode. Re-key them to
- * the same unified card surface so all four shells + AGBench-native
+ * the same unified card surface so all four shells + TaskWraith-native
  * share the same light-mode palette family. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface,
@@ -4471,7 +4471,7 @@
 /* ============================================================
  * FOUR NEW COMPOSER SHELLS (Phase J7 — creative variants)
  * --------------------------------------------------------------
- * These four shells use the AGBench-native composer as the
+ * These four shells use the TaskWraith-native composer as the
  * structural reference — all the elements stay (datetime
  * scheduler, runtime profile picker, attach button, model
  * picker, permission picker, send button, above-bar) — only
@@ -4498,7 +4498,7 @@
  *    Container disappears; every chip is its own micro-card with
  *    soft shadow + hairline border. Textarea floats as its own
  *    distinct pill above the controls strip. Spacing matches the
- *    AGBench native composer so the rhythm is familiar.
+ *    TaskWraith native composer so the rhythm is familiar.
  * ---------------------------------------------------------------- */
 
 [data-composer-style="modular"] .composer-surface {
@@ -6697,7 +6697,7 @@
 }
 
 /* ============================================================
- * SIDEBAR MASTHEAD (AGBench / workspace / + New card)
+ * SIDEBAR MASTHEAD (TaskWraith / workspace / + New card)
  * --------------------------------------------------------------
  * The card at the top of the sidebar uses a `color-mix(text-primary
  * 7%, transparent)` gradient over `color-mix(panel-elevated-bg
@@ -6959,7 +6959,7 @@
  *
  * CSS-only changes. JSX structure untouched. Scoped strictly
  * under `[data-composer-style="claude"]` / `="codex"` so the
- * other shells (AGBench native, Gemini, Kimi, Modular, Terminal,
+ * other shells (TaskWraith native, Gemini, Kimi, Modular, Terminal,
  * Stub, Satellite) are unaffected.
  * ============================================================ */
 
@@ -7168,7 +7168,7 @@
   display: none;
 }
 
-/* Other shells (AGBench / Claude / Gemini / Kimi) get the
+/* Other shells (TaskWraith / Claude / Gemini / Kimi) get the
  * new wrapper as `display: contents` so files + stats still
  * participate directly in the parent's flex layout — no
  * regression in any non-Codex composer. */
@@ -7209,7 +7209,7 @@
   color: rgba(29, 29, 31, 0.84) !important;
 }
 
-/* AGBench / default shell — same fix for the same reason. The
+/* TaskWraith / default shell — same fix for the same reason. The
  * default shell's `.composer-above-bar` in light mode was picking
  * up the base-rule navy gradient `::before` overlay which read as
  * a gray-white tint. Match the chip strip's `surface-2` pill so
@@ -7245,7 +7245,7 @@
  *   - "Full access" — orange (elevated; agent acts without
  *     asking).
  *   - "Custom (config.toml)" — muted gray.
- * AGBench's permission enum is `plan` / `default` / `auto_edit`
+ * TaskWraith's permission enum is `plan` / `default` / `auto_edit`
  * so the mapping is semantic, not literal:
  *   - `plan` (read-only — safest) → cool blue, matches real
  *     Codex's "Auto-review" tone.
@@ -7256,7 +7256,7 @@
  * Targets both the chip trigger (closed state) and the popover
  * rows (open state) via the `data-permission-value` attribute
  * threaded through CombinedPermissionsPicker. Scoped to the
- * Codex composer shell so the AGBench / Claude / Gemini / Kimi
+ * Codex composer shell so the TaskWraith / Claude / Gemini / Kimi
  * shells keep their neutral palette.
  * ---------------------------------------------------------- */
 
@@ -7274,7 +7274,7 @@
  * Permission colour-coding (CX4 → app-wide default).
  *
  * Originally Codex-shell-only with the auto_edit chip in orange.
- * Lifted to a SHELL-AGNOSTIC default so AGBench native / Claude /
+ * Lifted to a SHELL-AGNOSTIC default so TaskWraith native / Claude /
  * Gemini / Kimi shells all read with the same affordance:
  *
  *   Plan / Read-only       → blue  (#6fb6ff dark / #1976d2 light)
@@ -7600,7 +7600,7 @@
  *         `.is-highlighted` (keyboard focus) and `.is-selected`
  *         (current value) variants.
  *
- * The popover uses the AGBench panel palette by default; per-shell
+ * The popover uses the TaskWraith panel palette by default; per-shell
  * overrides further down tune it for Codex / Claude / Kimi / Gemini.
  * ============================================================ */
 
@@ -8182,7 +8182,7 @@
  * saturated blue (#1976d2). Full Workspace Access → deep red
  * (#b91c1c) — dark enough to contrast on the light surface
  * while still reading as a red-warning rather than just
- * accent. Codex shell + AGBench native + Claude + Gemini +
+ * accent. Codex shell + TaskWraith native + Claude + Gemini +
  * Kimi all pick this up consistently.
  */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])

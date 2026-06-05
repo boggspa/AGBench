@@ -1,8 +1,16 @@
 extends: electron-builder.yml
-appId: com.chrisizatt.agbench
-productName: AGBench Debug
+appId: com.chrisizatt.taskwraith
+productName: TaskWraith Debug
 directories:
   output: dist-debug
+win:
+  executableName: TaskWraith Debug
+  target:
+    - target: dir
+      arch:
+        - x64
+nsis:
+  artifactName: TaskWraith-Debug-${version}-win-${arch}-setup.${ext}
 mac:
   category: public.app-category.developer-tools
   notarize: false
@@ -11,11 +19,11 @@ mac:
   # overrides the whole `mac.extendInfo` block from the parent rather
   # than merging it field-by-field.
   extendInfo:
-    NSCameraUsageDescription: AGBench Debug requests access to the device's camera.
-    NSMicrophoneUsageDescription: AGBench Debug requests access to the device's microphone.
-    NSDocumentsFolderUsageDescription: AGBench Debug requests access to the user's Documents folder.
-    NSDownloadsFolderUsageDescription: AGBench Debug requests access to the user's Downloads folder.
-    NSLocalNetworkUsageDescription: AGBench Debug discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
+    NSCameraUsageDescription: TaskWraith Debug requests access to the device's camera.
+    NSMicrophoneUsageDescription: TaskWraith Debug requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: TaskWraith Debug requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: TaskWraith Debug requests access to the user's Downloads folder.
+    NSLocalNetworkUsageDescription: TaskWraith Debug discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
     NSBonjourServices:
-      - _agbench._tcp
-      - _agbench-quic._udp
+      - _taskwraith._tcp
+      - _taskwraith-quic._udp

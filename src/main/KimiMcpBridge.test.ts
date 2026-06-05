@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  KIMI_AGENTBENCH_SERVER_NAME,
-  KIMI_AGENTBENCH_TOOL_NAMES,
+  KIMI_TASKWRAITH_SERVER_NAME,
+  KIMI_TASKWRAITH_TOOL_NAMES,
   buildKimiWirePromptRequest,
   buildKimiMcpBridgeAddArgs,
   redactKimiMcpBridgeAddArgs
 } from './KimiMcpBridge'
 
-// Phase I4 (Kimi initiator): the Kimi CLI gains the same AGBench
+// Phase I4 (Kimi initiator): the Kimi CLI gains the same TaskWraith
 // MCP server that Gemini / Codex / Claude already have. Pin the exact
 // argv shape passed to `kimi mcp add` so a regression in the broker /
 // parent-provider routing trips immediately.
@@ -21,11 +21,11 @@ import {
 // survive intact to the subprocess.
 describe('buildKimiMcpBridgeAddArgs', () => {
   const fixture = {
-    bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
+    bridgeBinaryPath: '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
     bridgeArgs: [
-      '--agentbench-gemini-mcp-bridge',
+      '--taskwraith-gemini-mcp-bridge',
       '--socket',
-      '/tmp/agentbench.sock',
+      '/tmp/taskwraith.sock',
       '--token',
       'deadbeef'
     ]
@@ -36,28 +36,28 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     expect(args).toEqual([
       'mcp',
       'add',
-      'AGBench',
+      'TaskWraith',
       '--transport',
       'stdio',
       '--env',
-      'AGENTBENCH_PARENT_PROVIDER=kimi',
+      'TASKWRAITH_PARENT_PROVIDER=kimi',
       '--',
-      '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-      '--agentbench-gemini-mcp-bridge',
+      '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
+      '--taskwraith-gemini-mcp-bridge',
       '--socket',
-      '/tmp/agentbench.sock',
+      '/tmp/taskwraith.sock',
       '--token',
       'deadbeef'
     ])
   })
 
-  it("uses 'AGBench' as the server name (matches Gemini / Codex / Claude registrations)", () => {
+  it("uses 'TaskWraith' as the server name (matches Gemini / Codex / Claude registrations)", () => {
     const args = buildKimiMcpBridgeAddArgs(fixture)
     // Name is the third positional after `mcp add`.
     expect(args[0]).toBe('mcp')
     expect(args[1]).toBe('add')
-    expect(args[2]).toBe(KIMI_AGENTBENCH_SERVER_NAME)
-    expect(KIMI_AGENTBENCH_SERVER_NAME).toBe('AGBench')
+    expect(args[2]).toBe(KIMI_TASKWRAITH_SERVER_NAME)
+    expect(KIMI_TASKWRAITH_SERVER_NAME).toBe('TaskWraith')
   })
 
   it('declares stdio transport explicitly via `--transport stdio`', () => {
@@ -67,11 +67,11 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     expect(args[transportIndex + 1]).toBe('stdio')
   })
 
-  it('stamps AGENTBENCH_PARENT_PROVIDER=kimi via the --env flag so the bridge inherits the routing key', () => {
+  it('stamps TASKWRAITH_PARENT_PROVIDER=kimi via the --env flag so the bridge inherits the routing key', () => {
     const args = buildKimiMcpBridgeAddArgs(fixture)
     const envIndex = args.indexOf('--env')
     expect(envIndex).toBeGreaterThan(-1)
-    expect(args[envIndex + 1]).toBe('AGENTBENCH_PARENT_PROVIDER=kimi')
+    expect(args[envIndex + 1]).toBe('TASKWRAITH_PARENT_PROVIDER=kimi')
   })
 
   it('places the `--` separator BEFORE the bridge command (so Kimi stops flag-parsing)', () => {
@@ -92,17 +92,17 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     expect(args.slice(binaryIndex + 1)).toEqual(fixture.bridgeArgs)
   })
 
-  it('always includes delegate_to_subthread in the AGBench MCP tool list (headline Phase I tool)', () => {
-    expect(KIMI_AGENTBENCH_TOOL_NAMES).toContain('delegate_to_subthread')
+  it('always includes delegate_to_subthread in the TaskWraith MCP tool list (headline Phase I tool)', () => {
+    expect(KIMI_TASKWRAITH_TOOL_NAMES).toContain('delegate_to_subthread')
   })
 
   it('handles bridges with no extra args (degenerate but valid input shape)', () => {
     const args = buildKimiMcpBridgeAddArgs({
-      bridgeBinaryPath: '/usr/local/bin/agentbench',
+      bridgeBinaryPath: '/usr/local/bin/taskwraith',
       bridgeArgs: []
     })
     const sepIndex = args.indexOf('--')
-    expect(args[sepIndex + 1]).toBe('/usr/local/bin/agentbench')
+    expect(args[sepIndex + 1]).toBe('/usr/local/bin/taskwraith')
     expect(args).toHaveLength(sepIndex + 2)
   })
 
@@ -116,11 +116,11 @@ describe('buildKimiMcpBridgeAddArgs', () => {
 describe('redactKimiMcpBridgeAddArgs', () => {
   it('redacts the argument immediately following --token so logs do not leak the broker secret', () => {
     const args = buildKimiMcpBridgeAddArgs({
-      bridgeBinaryPath: '/opt/agentbench/bin/AgentBench',
+      bridgeBinaryPath: '/opt/taskwraith/bin/TaskWraith',
       bridgeArgs: [
-        '--agentbench-gemini-mcp-bridge',
+        '--taskwraith-gemini-mcp-bridge',
         '--socket',
-        '/run/agentbench.sock',
+        '/run/taskwraith.sock',
         '--token',
         'cafebabe-secret-token'
       ]
@@ -133,20 +133,20 @@ describe('redactKimiMcpBridgeAddArgs', () => {
 
   it('does not redact any other argument', () => {
     const args = buildKimiMcpBridgeAddArgs({
-      bridgeBinaryPath: '/opt/agentbench/bin/AgentBench',
+      bridgeBinaryPath: '/opt/taskwraith/bin/TaskWraith',
       bridgeArgs: [
-        '--agentbench-gemini-mcp-bridge',
+        '--taskwraith-gemini-mcp-bridge',
         '--socket',
-        '/run/agentbench.sock',
+        '/run/taskwraith.sock',
         '--token',
         'cafebabe'
       ]
     })
     const redacted = redactKimiMcpBridgeAddArgs(args)
-    expect(redacted).toContain('/opt/agentbench/bin/AgentBench')
+    expect(redacted).toContain('/opt/taskwraith/bin/TaskWraith')
     expect(redacted).toContain('--socket')
-    expect(redacted).toContain('/run/agentbench.sock')
-    expect(redacted).toContain('AGENTBENCH_PARENT_PROVIDER=kimi')
+    expect(redacted).toContain('/run/taskwraith.sock')
+    expect(redacted).toContain('TASKWRAITH_PARENT_PROVIDER=kimi')
   })
 })
 

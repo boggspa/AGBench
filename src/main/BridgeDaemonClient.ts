@@ -6,20 +6,20 @@ import { createInterface, type Interface as ReadlineInterface } from 'readline'
 
 /**
  * BridgeDaemonClient — Electron-side bridge to the
- * `AgbenchBridgeDaemon` Swift binary.
+ * `TaskWraithBridgeDaemon` Swift binary.
  *
  * At this stage the client only verifies the spawn pipeline:
- *   1. Locate the daemon binary (`swift/AgbenchBridge/.build/debug/...`).
+ *   1. Locate the daemon binary (`swift/TaskWraithBridge/.build/debug/...`).
  *   2. Spawn it with piped stdio (mirrors `CodexAppServerClient.start()`).
  *   3. Read the first stdout line — a single `daemon-hello` JSON announcement
- *      that confirms the self-contained AGBench daemon started.
+ *      that confirms the self-contained TaskWraith daemon started.
  *   4. Surface the announcement to a caller-provided handler for telemetry.
  *
  * The daemon is now local-only: Screen Watch, creative-app helpers, editor
  * opening, Finder reveal, and stdio JSON-RPC diagnostics.
  *
  * The client is gated externally — `main/index.ts` only constructs it when
- * `AGBENCH_BRIDGE_DAEMON=1` is set in the environment. Production builds
+ * `TASKWRAITH_BRIDGE_DAEMON=1` is set in the environment. Production builds
  * leave the daemon dormant until the feature is generally available.
  */
 
@@ -107,11 +107,11 @@ export class BridgeDaemonClient {
    * Resolution order:
    *   1. Explicit `options.binaryPath` (tests / smokes override this).
    *   2. Packaged Electron build: `process.resourcesPath/bridge/
-   *      AgbenchBridgeDaemon`. `electron-builder.yml`'s mac
+   *      TaskWraithBridgeDaemon`. `electron-builder.yml`'s mac
    *      `extraResources` block places the release binary there, and
    *      `scripts/build-bridge-daemon.cjs` builds it just before
    *      electron-builder packs.
-   *   3. Dev tree: `swift/AgbenchBridge/.build/debug/...` (after
+   *   3. Dev tree: `swift/TaskWraithBridge/.build/debug/...` (after
    *      `swift build`) or `.../release/...` (after `swift build -c
    *      release`).
    *
@@ -123,11 +123,11 @@ export class BridgeDaemonClient {
 
     // Packaged build: check the embedded resource path. process.resourcesPath
     // is set in any Electron main process; in a packaged .app it points
-    // inside the bundle (e.g. .../AGBench.app/Contents/Resources). In
+    // inside the bundle (e.g. .../TaskWraith.app/Contents/Resources). In
     // dev (electron-vite), it points at electron's vendored resources
     // and our daemon won't be there — fall through to the dev path.
     if (process.resourcesPath) {
-      const bundled = join(process.resourcesPath, 'bridge', 'AgbenchBridgeDaemon')
+      const bundled = join(process.resourcesPath, 'bridge', 'TaskWraithBridgeDaemon')
       if (existsSync(bundled)) return bundled
     }
 
@@ -138,10 +138,10 @@ export class BridgeDaemonClient {
       '..',
       '..',
       'swift',
-      'AgbenchBridge',
+      'TaskWraithBridge',
       '.build',
       'debug',
-      'AgbenchBridgeDaemon'
+      'TaskWraithBridgeDaemon'
     )
     if (existsSync(devDebug)) return devDebug
     return join(
@@ -149,10 +149,10 @@ export class BridgeDaemonClient {
       '..',
       '..',
       'swift',
-      'AgbenchBridge',
+      'TaskWraithBridge',
       '.build',
       'release',
-      'AgbenchBridgeDaemon'
+      'TaskWraithBridgeDaemon'
     )
   }
 
@@ -165,7 +165,7 @@ export class BridgeDaemonClient {
     const binaryPath = this.resolveBinaryPath()
     if (!existsSync(binaryPath)) {
       throw new Error(
-        `BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/AgbenchBridge first.`
+        `BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/TaskWraithBridge first.`
       )
     }
 

@@ -1,4 +1,4 @@
-export const GHOST_COMPANION_STORAGE_KEY = 'agbench.ghostCompanionEnabled'
+export const GHOST_COMPANION_STORAGE_KEY = 'taskwraith.ghostCompanionEnabled'
 /**
  * Set to `'true'` after the user explicitly dismisses the
  * first-launch onboarding hint (the faint "Click + above to add
@@ -7,7 +7,7 @@ export const GHOST_COMPANION_STORAGE_KEY = 'agbench.ghostCompanionEnabled'
  * the `?` button in the chat-corner-controls-left still manually
  * re-opens it.
  */
-export const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'agbench.onboardingHintDismissed'
+export const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'taskwraith.onboardingHintDismissed'
 /**
  * Set to `'true'` after the user explicitly dismisses the
  * full-modal FirstLaunchSheet (provider sign-in checklist,
@@ -18,9 +18,9 @@ export const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'agbench.onboardingHintDism
  * had only dismissed the inline T1b sidebar hint still get the
  * richer sheet shown to them once after upgrading.
  */
-export const FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY = 'agbench.firstLaunchSheetDismissed'
+export const FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY = 'taskwraith.firstLaunchSheetDismissed'
 
-export const SKY_VISUAL_FX_STORAGE_KEY = 'agbench.skyVisualFxEnabled'
+export const SKY_VISUAL_FX_STORAGE_KEY = 'taskwraith.skyVisualFxEnabled'
 
 export const getStoredGhostCompanionEnabled = (): boolean => {
   try {

@@ -64,7 +64,7 @@ export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
  * tally the solo path uses. Hard-coded (not imported) because the renderer
  * const isn't reachable from the main process.
  */
-const ENSEMBLE_GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
+const ENSEMBLE_GLOBAL_USAGE_WORKSPACE_ID = '__taskwraith_global_chats__'
 
 const DEFAULT_CONTINUATION_HOP_LIMIT = 6
 const MAX_CONTINUATION_HOP_LIMIT = 12
@@ -323,15 +323,13 @@ function stripToolNamespace(toolName: string): string {
     return idx > 5 ? name.slice(idx + 2) : name
   }
   if (name.startsWith('mcp_') && !name.startsWith('mcp__')) {
-    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    const knownServerPrefixes = ['mcp_taskwraith_']
     for (const prefix of knownServerPrefixes) {
       if (name.startsWith(prefix)) return name.slice(prefix.length)
     }
   }
-  if (name.startsWith('agbench__')) return name.slice('agbench__'.length)
-  if (name.startsWith('agentbench__')) return name.slice('agentbench__'.length)
-  if (name.startsWith('agbench_')) return name.slice('agbench_'.length)
-  if (name.startsWith('agentbench_')) return name.slice('agentbench_'.length)
+  if (name.startsWith('taskwraith__')) return name.slice('taskwraith__'.length)
+  if (name.startsWith('taskwraith_')) return name.slice('taskwraith_'.length)
   return name
 }
 
@@ -599,7 +597,7 @@ interface ActiveRoundRuntime {
    * 1.0.4-AF — round-scoped self-reflective flag. Set when the user
    * opened the round with `/discuss` (alias `/meta`). Threaded into
    * the per-participant config passed to `buildEnsembleParticipantPrompt`
-   * so the deictic rule inverts (`this app` → AGBench) for the whole
+   * so the deictic rule inverts (`this app` → TaskWraith) for the whole
    * round, then dies with the runtime. Persistent toggling of the
    * EnsembleConfig flag is a separate UI surface (item 4 of the
    * earlier panel feedback); this only handles the slash-triggered
@@ -1222,7 +1220,7 @@ export class EnsembleOrchestrator {
       this.appendRoundStatus(
         wakeup.chatId,
         wakeup.roundId,
-        `${participant.role || providerLabel(participant.provider)} is resuming from AGBench transcript context; no native provider session id was available.`
+        `${participant.role || providerLabel(participant.provider)} is resuming from TaskWraith transcript context; no native provider session id was available.`
       )
     }
     void this.runRound(runtime, [participant])
@@ -1831,11 +1829,11 @@ export class EnsembleOrchestrator {
       if (resumeWakeup) runtime.resumeWakeup = undefined
       // 1.0.5-N6 — A wakeup-resume run with no linked provider
       // session is re-establishing the agent's working memory from
-      // the AGBench transcript only. Surface that on the new run so
+      // the TaskWraith transcript only. Surface that on the new run so
       // the RunCard renders a small "transcript resumed" chip.
       const sleepResumeWarning =
         resumeWakeup && !participant.linkedProviderSessionId
-          ? 'Resumed from AGBench transcript context; no native provider session id was available.'
+          ? 'Resumed from TaskWraith transcript context; no native provider session id was available.'
           : undefined
 
       const run = this.seedParticipantRun(chat, runtime, participant, { sleepResumeWarning })
@@ -2193,7 +2191,7 @@ export class EnsembleOrchestrator {
             this.appendRoundStatus(
               runtime.chatId,
               runtime.roundId,
-              `${participant.role || providerLabel(participant.provider)} is resuming from AGBench transcript context; no native provider session id was available.`
+              `${participant.role || providerLabel(participant.provider)} is resuming from TaskWraith transcript context; no native provider session id was available.`
             )
           }
           await this.runRound(runtime, [participant])

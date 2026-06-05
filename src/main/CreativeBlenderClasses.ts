@@ -64,7 +64,7 @@ export const BLENDER_CLASSES: BlenderClassEntry[] = [
     id: 'render-still',
     label: 'Render a single frame from a Blender file',
     description:
-      'Open the given .blend file and render the current frame to PNG. The output lands inside the AGBench sandbox tempdir for the invocation.',
+      'Open the given .blend file and render the current frame to PNG. The output lands inside the TaskWraith sandbox tempdir for the invocation.',
     targetBundleId: 'org.blenderfoundation.blender',
     params: [
       {

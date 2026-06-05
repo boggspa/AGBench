@@ -8,7 +8,7 @@ function makeGrant(overrides: Partial<AgenticWorkspaceGrant> = {}): AgenticWorks
     id: 'grant-1',
     provider: 'codex',
     service: 'fileChanges',
-    workspacePath: '/Users/example/Documents/AGBench',
+    workspacePath: '/Users/example/Documents/TaskWraith',
     createdAt: '2026-05-24T12:00:00.000Z',
     updatedAt: '2026-05-24T12:00:00.000Z',
     expiresOn: 'workspace_revocation',
@@ -27,7 +27,7 @@ describe('ApprovalLedgerPanel', () => {
 
     expect(html).toContain('Workspace grants')
     expect(html).toContain('Codex · File changes')
-    expect(html).toContain('AGBench')
+    expect(html).toContain('TaskWraith')
     expect(html).toContain('Revoke')
   })
 
@@ -57,7 +57,7 @@ describe('ApprovalLedgerPanel', () => {
     const html = renderToStaticMarkup(
       <ApprovalLedgerPanel
         workspaceGrants={grants}
-        currentWorkspacePath="/Users/example/Documents/AGBench"
+        currentWorkspacePath="/Users/example/Documents/TaskWraith"
         onRevokeWorkspaceGrant={() => undefined}
       />
     )
@@ -69,7 +69,7 @@ describe('ApprovalLedgerPanel', () => {
     const html = renderToStaticMarkup(
       <ApprovalLedgerPanel
         workspaceGrants={[makeGrant({ service: 'fileChanges' })]}
-        currentWorkspacePath="/Users/example/Documents/AGBench"
+        currentWorkspacePath="/Users/example/Documents/TaskWraith"
         onRevokeWorkspaceGrant={() => undefined}
       />
     )

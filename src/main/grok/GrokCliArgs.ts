@@ -8,11 +8,11 @@
 //   - approvalMode === 'plan' (or unset) → READ-ONLY: `--permission-mode plan`
 //     + deny Bash/Edit/Write. Nothing is written.
 //   - any other approval mode → FILE-WRITE: `--permission-mode acceptEdits`
-//     so native Edit/Write are applied (then surfaced + gated by AGBench's
-//     diff / Create-PR review, the same workspace-authority model AGBench uses
-//     for Codex/Claude). Native **Bash stays denied** — AGBench can't mediate
+//     so native Edit/Write are applied (then surfaced + gated by TaskWraith's
+//     diff / Create-PR review, the same workspace-authority model TaskWraith uses
+//     for Codex/Claude). Native **Bash stays denied** — TaskWraith can't mediate
 //     Grok's native shell without an MCP server, and Grok 0.2.8 has no per-run
-//     `--mcp-config` flag (G5c-ACP routes shell through AGBench's MCP + the
+//     `--mcp-config` flag (G5c-ACP routes shell through TaskWraith's MCP + the
 //     approval ledger instead).
 // In NO mode is `--always-approve` ever emitted.
 
@@ -33,9 +33,9 @@ export const GROK_READ_ONLY_DENY_RULES = ['Bash(*)', 'Edit(*)', 'Write(*)'] as c
 
 /**
  * Deny rules for FILE-WRITE mode: Edit/Write are allowed (diff-reviewed via
- * AGBench), but native shell stays denied — AGBench can't mediate Grok's Bash
+ * TaskWraith), but native shell stays denied — TaskWraith can't mediate Grok's Bash
  * without an MCP server, and 0.2.8 has no per-run `--mcp-config`. Shell
- * mediation is the ACP path (G5c-ACP: AGBench MCP + approval ledger).
+ * mediation is the ACP path (G5c-ACP: TaskWraith MCP + approval ledger).
  */
 export const GROK_WRITE_MODE_DENY_RULES = ['Bash(*)'] as const
 
@@ -112,7 +112,7 @@ export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
     'streaming-json',
     '--permission-mode',
     // acceptEdits applies file edits without an interactive prompt (they're
-    // reviewed via AGBench's diff/Create-PR surface); plan writes nothing.
+    // reviewed via TaskWraith's diff/Create-PR surface); plan writes nothing.
     writeCapable ? 'acceptEdits' : 'plan',
     '--disable-web-search'
   ]

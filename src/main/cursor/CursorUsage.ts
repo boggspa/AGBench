@@ -5,7 +5,7 @@
  * standalone "Limit Counter" reference app does — we read the Cursor
  * *editor's* access token out of its local SQLite state DB and POST the
  * undocumented Connect-RPC dashboard endpoint to get the current billing
- * period's usage. This mirrors how AGBench already surfaces Kimi/Claude
+ * period's usage. This mirrors how TaskWraith already surfaces Kimi/Claude
  * usage windows (a `{ windows, balances, source, fetchedAt }` snapshot that
  * the renderer's `refreshUsageSummary` normalizes into the sidebar +
  * Settings "Model Usage" meters).

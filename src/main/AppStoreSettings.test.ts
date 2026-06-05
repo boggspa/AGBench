@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import { AppStore } from './store'
 
-const userDataPath = vi.hoisted(() => `/tmp/agbench-settings-test-${process.pid}`)
+const userDataPath = vi.hoisted(() => `/tmp/taskwraith-settings-test-${process.pid}`)
 
 vi.mock('electron', () => ({
   app: {
@@ -25,7 +25,7 @@ describe('AppStore settings defaults', () => {
       lastSeenChangelogVersion: ' 1.0.72 ',
       pendingUpdateChangelog: {
         version: ' 1.0.73 ',
-        releaseName: ' AGBench 1.0.73 ',
+        releaseName: ' TaskWraith 1.0.73 ',
         releaseDate: ' 2026-06-04T12:00:00.000Z ',
         releaseNotes: [{ version: ' 1.0.73 ', note: 'Updater UI.' }, { version: '', note: '' }]
       }
@@ -35,7 +35,7 @@ describe('AppStore settings defaults', () => {
       lastSeenChangelogVersion: '1.0.72',
       pendingUpdateChangelog: {
         version: '1.0.73',
-        releaseName: 'AGBench 1.0.73',
+        releaseName: 'TaskWraith 1.0.73',
         releaseDate: '2026-06-04T12:00:00.000Z',
         releaseNotes: [{ version: '1.0.73', note: 'Updater UI.' }]
       }

@@ -20,7 +20,7 @@ import { RemoteAttentionApnsFanout } from '../RemoteAttentionApnsFanout'
  *
  * Owns the five pending-approval registries that connect agent
  * runtime side-channels (Codex JSON-RPC, Kimi wire protocol,
- * Gemini tool prompts, AGBench main-authority approvals, host-
+ * Gemini tool prompts, TaskWraith main-authority approvals, host-
  * command rerun prompts) to the unified decision-resolution flow.
  *
  * Before B3 these registries were scattered across `index.ts` at
@@ -473,8 +473,8 @@ export class ApprovalService {
   scheduleTimeout(args: ScheduleTimeoutArgs): void {
     if (!this.scheduler) return
     if (
-      process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === '1' ||
-      process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === 'true'
+      process.env.TASKWRAITH_APPROVAL_TIMEOUT_OFF === '1' ||
+      process.env.TASKWRAITH_APPROVAL_TIMEOUT_OFF === 'true'
     ) {
       return
     }
@@ -594,7 +594,7 @@ export class ApprovalService {
       const allowed =
         action === 'useProviderNative'
           ? true
-          : action === 'useAGBenchSubthread'
+          : action === 'useTaskWraithSubthread'
             ? false
             : this.deps.permissionService.isApprovedAction(action)
       pendingMain.resolve(allowed)
@@ -805,7 +805,7 @@ export class ApprovalService {
     // Symptom seen in the wild: Codex agents invoking
     // `delegate_to_subthread` always got auto-rejected after the new
     // prompt-level fix made them actually try the tool. See
-    // ~/Library/Logs/AGBench/bridge-subprocess.log + the codex run's
+    // ~/Library/Logs/TaskWraith/bridge-subprocess.log + the codex run's
     // raw events stream for `mcpServer/elicitation/request`.
     if (
       pending.method === 'mcp/elicitation/request' ||

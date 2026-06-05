@@ -41,7 +41,7 @@ describe('classifyDispatchError', () => {
   })
 
   it('classifies ECONNREFUSED via the Node ErrnoException `.code` field', () => {
-    const err = new Error('connect ECONNREFUSED /tmp/agbench-gemini-mcp.sock') as Error & {
+    const err = new Error('connect ECONNREFUSED /tmp/taskwraith-gemini-mcp.sock') as Error & {
       code?: string
     }
     err.code = 'ECONNREFUSED'
@@ -245,8 +245,8 @@ describe('ParticipantUnreachableError', () => {
       'ensemble-gemini',
       'gemini',
       'ECONNREFUSED',
-      'MCP socket /tmp/agbench-gemini.sock is down'
+      'MCP socket /tmp/taskwraith-gemini.sock is down'
     )
-    expect(err.message).toBe('MCP socket /tmp/agbench-gemini.sock is down')
+    expect(err.message).toBe('MCP socket /tmp/taskwraith-gemini.sock is down')
   })
 })

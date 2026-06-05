@@ -6,7 +6,7 @@ import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 
 describe('loadExternalProviderUsageRecords', () => {
   it('normalizes external provider logs into UsageRecord rows', async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-activity-'))
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-activity-'))
     try {
       await mkdir(join(homeDir, '.codex', 'sessions', '2026', '05', '31'), { recursive: true })
       await mkdir(join(homeDir, '.claude', 'projects', 'sample'), { recursive: true })
@@ -103,7 +103,7 @@ describe('loadExternalProviderUsageRecords', () => {
   })
 
   it('keeps Codex history beyond the old narrow session cap', async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-codex-history-'))
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-codex-history-'))
     try {
       const sessionDir = join(homeDir, '.codex', 'sessions', '2026', '05', '31')
       await mkdir(sessionDir, { recursive: true })
@@ -142,7 +142,7 @@ describe('loadExternalProviderUsageRecords', () => {
   })
 
   it('reads Codex archived sessions and session-index activity markers', async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-codex-archive-'))
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-codex-archive-'))
     try {
       await mkdir(join(homeDir, '.codex', 'archived_sessions'), { recursive: true })
 
@@ -186,7 +186,7 @@ describe('loadExternalProviderUsageRecords', () => {
   })
 
   it('reads Gemini legacy JSON and nested session JSONL activity', async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), 'agbench-external-gemini-sessions-'))
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-gemini-sessions-'))
     try {
       const chatsDir = join(homeDir, '.gemini', 'tmp', 'sample', 'chats')
       const nestedDir = join(chatsDir, 'subagent-session')

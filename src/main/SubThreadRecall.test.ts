@@ -145,7 +145,7 @@ describe('resolveSubThreadRecall', () => {
     )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
-      expect(result.message).toMatch(/does not match any AGBench chat record/i)
+      expect(result.message).toMatch(/does not match any TaskWraith chat record/i)
     }
   })
 

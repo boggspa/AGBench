@@ -3,7 +3,7 @@
  * contract).
  *
  * The Mac must project *bounded* transcript windows to a paired
- * iPhone/iPad, never a full chat dump (a long AGBench thread is many MB
+ * iPhone/iPad, never a full chat dump (a long TaskWraith thread is many MB
  * of Ensemble rounds, tool traces, screenshots, diff cards). This pure,
  * renderer-free module is the seam the Remote Task Console (Codex's
  * R0–R12, task #198) builds against: given a thread's persisted

@@ -5,7 +5,7 @@ import { visibleHeatmapSlots, type HeatmapLayout } from '../lib/welcomeHeatmapLa
 const HEATMAP_SWIPE_MS = 320
 
 export interface WelcomeHeatmapSlot {
-  /** Stable identity for the heatmap (e.g. 'workspace' | 'agbench' | 'external'). */
+  /** Stable identity for the heatmap (e.g. 'workspace' | 'taskwraith' | 'external'). */
   key: string
   node: ReactNode
 }

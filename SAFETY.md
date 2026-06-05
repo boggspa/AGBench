@@ -1,6 +1,6 @@
 # Safety Guidelines
 
-AGBench runs AI coding agents and provider CLIs against local developer
+TaskWraith runs AI coding agents and provider CLIs against local developer
 workspaces. Treat every feature that can read files, write files, execute shell
 commands, automate apps, or answer approvals as security-sensitive.
 
@@ -32,7 +32,7 @@ false`, and a narrow preload bridge.
 
 ## Branding and Assets
 
-AGBench uses original app artwork and custom provider hint glyphs. It should not
+TaskWraith uses original app artwork and custom provider hint glyphs. It should not
 bundle provider logos, proprietary provider fonts, or copied provider UI. Product
 and provider names may be used nominatively to describe compatibility.
 

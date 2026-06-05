@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // THROWAWAY spike harness for `grok agent stdio` — probing the ACP-style
-// JSON-RPC wire protocol so we can decide whether ACP can preserve AGBench's
+// JSON-RPC wire protocol so we can decide whether ACP can preserve TaskWraith's
 // permission/tool authority for a write-capable Grok adapter (1.0.6-G1).
 //
 // NOT production code. It spawns `grok --no-auto-update agent stdio`, sends a
@@ -80,7 +80,7 @@ const rpc = (method, params) => send({ jsonrpc: '2.0', id: nextId++, method, par
 rpc('initialize', {
   protocolVersion: 1,
   clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
-  clientInfo: { name: 'agbench-spike', version: '0.0.0' }
+  clientInfo: { name: 'taskwraith-spike', version: '0.0.0' }
 })
 
 if (STAGE === 'session' || STAGE === 'prompt') {

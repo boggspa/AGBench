@@ -1757,7 +1757,7 @@
 
 /* Phase L6 slice 4 — provider glyph tile. Tinted rounded-rect
  * container with the provider's accent at low opacity behind the
- * original AGBench mnemonic glyph. */
+ * original TaskWraith mnemonic glyph. */
 .provider-logo-tile {
   display: inline-flex;
   align-items: center;
@@ -2210,7 +2210,7 @@
 
 /* Subtle accent line on the card's top edge — picks up whichever
  * provider colour is "loudest" in the sidebar context. Without a
- * runtime cue we default to the AGBench accent; future work could
+ * runtime cue we default to the TaskWraith accent; future work could
  * tint this based on the provider with the highest current
  * utilisation. */
 .model-usage-summary::before {
@@ -3447,7 +3447,7 @@
 }
 
 /* Phase I3.2 — inline delegation card rendered in the parent transcript
- * when a sub-thread is spawned via AGBench__delegate_to_subthread. */
+ * when a sub-thread is spawned via TaskWraith__delegate_to_subthread. */
 .subthread-delegation-card {
   width: min(100%, 860px);
   display: flex;
@@ -3547,7 +3547,7 @@
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.agent-invocation-source-chip.source-agbench-subthread {
+.agent-invocation-source-chip.source-taskwraith-subthread {
   color: var(--success);
   border-color: color-mix(in srgb, var(--success) 28%, transparent);
   background: color-mix(in srgb, var(--success) 10%, transparent);

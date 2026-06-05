@@ -455,7 +455,7 @@ export function normalizeClaudeUsageSnapshot(
   if (sevenDay) windows.push(sevenDay)
   /*
    * 1.0.3 hotfix — the Sonnet + Opus per-family weekly meters were
-   * sometimes missing from AGBench's Claude usage panel even when
+   * sometimes missing from TaskWraith's Claude usage panel even when
    * Limit Counter (the maintainer's reference app) was clearly showing them.
    * The previous probe only knew the top-level snake/camel pair
    * (`seven_day_sonnet` / `sevenDaySonnet`). Anthropic's OAuth usage
@@ -566,7 +566,7 @@ function pickClaudeModelWindow(payload: any, family: 'sonnet' | 'opus'): any {
  *
  * Use case (1.0.3): Kimi's CLI auth expires ~1h after activity, after
  * which the live `/coding/v1/usages` endpoint stops returning data and
- * AGBench falls back to the persisted on-disk snapshot. If the user
+ * TaskWraith falls back to the persisted on-disk snapshot. If the user
  * hasn't run Kimi for a few hours (or days), every window's `resetAt`
  * is in the past — the meter renders "9% used, reset 6am yesterday"
  * which is misleading. Same issue applies to any provider whose

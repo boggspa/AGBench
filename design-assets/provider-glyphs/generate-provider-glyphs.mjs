@@ -181,7 +181,7 @@ ${provider.body}
     .join('\n')
 
   return stripTrailingWhitespace(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <title>AGBench provider mnemonic glyph catalog</title>
+  <title>TaskWraith provider mnemonic glyph catalog</title>
   <desc>Original monoline provider mnemonics. These are deliberately simplified and are not official provider logos.</desc>
   <rect width="${width}" height="${height}" rx="18" fill="#111820" />
   <style>

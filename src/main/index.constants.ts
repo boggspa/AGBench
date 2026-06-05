@@ -24,7 +24,7 @@ export const GROK_PROJECTED_INPUT_USD_PER_MILLION = 1.0
 
 export const GROK_PROJECTED_OUTPUT_USD_PER_MILLION = 2.0
 
-export const GROK_SCOPED_MCP_SERVER_NAME = 'agbench-grok'
+export const GROK_SCOPED_MCP_SERVER_NAME = 'taskwraith-grok'
 
 export const KIMI_WIRE_PROTOCOL_FALLBACK = '1.9'
 

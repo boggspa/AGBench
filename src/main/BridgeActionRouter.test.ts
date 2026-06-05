@@ -1541,48 +1541,48 @@ describe('BridgeActionRouter', () => {
   })
 
   describe('fromEnvironment factory', () => {
-    it('honors AGBENCH_BRIDGE_PERMISSIVE=1', async () => {
-      const original = process.env.AGBENCH_BRIDGE_PERMISSIVE
-      process.env.AGBENCH_BRIDGE_PERMISSIVE = '1'
+    it('honors TASKWRAITH_BRIDGE_PERMISSIVE=1', async () => {
+      const original = process.env.TASKWRAITH_BRIDGE_PERMISSIVE
+      process.env.TASKWRAITH_BRIDGE_PERMISSIVE = '1'
       try {
         const router = BridgeActionRouter.fromEnvironment()
         const result = (await router.route('bridge.requestActionAck', {})) as { accepted: boolean }
         expect(result.accepted).toBe(true)
       } finally {
         if (original === undefined) {
-          delete process.env.AGBENCH_BRIDGE_PERMISSIVE
+          delete process.env.TASKWRAITH_BRIDGE_PERMISSIVE
         } else {
-          process.env.AGBENCH_BRIDGE_PERMISSIVE = original
+          process.env.TASKWRAITH_BRIDGE_PERMISSIVE = original
         }
       }
     })
 
-    it('honors AGBENCH_BRIDGE_PERMISSIVE=true (string form)', async () => {
-      const original = process.env.AGBENCH_BRIDGE_PERMISSIVE
-      process.env.AGBENCH_BRIDGE_PERMISSIVE = 'true'
+    it('honors TASKWRAITH_BRIDGE_PERMISSIVE=true (string form)', async () => {
+      const original = process.env.TASKWRAITH_BRIDGE_PERMISSIVE
+      process.env.TASKWRAITH_BRIDGE_PERMISSIVE = 'true'
       try {
         const router = BridgeActionRouter.fromEnvironment()
         const result = (await router.route('bridge.requestActionAck', {})) as { accepted: boolean }
         expect(result.accepted).toBe(true)
       } finally {
         if (original === undefined) {
-          delete process.env.AGBENCH_BRIDGE_PERMISSIVE
+          delete process.env.TASKWRAITH_BRIDGE_PERMISSIVE
         } else {
-          process.env.AGBENCH_BRIDGE_PERMISSIVE = original
+          process.env.TASKWRAITH_BRIDGE_PERMISSIVE = original
         }
       }
     })
 
     it('defaults to deny when env var is absent', async () => {
-      const original = process.env.AGBENCH_BRIDGE_PERMISSIVE
-      delete process.env.AGBENCH_BRIDGE_PERMISSIVE
+      const original = process.env.TASKWRAITH_BRIDGE_PERMISSIVE
+      delete process.env.TASKWRAITH_BRIDGE_PERMISSIVE
       try {
         const router = BridgeActionRouter.fromEnvironment()
         const result = (await router.route('bridge.requestActionAck', {})) as { accepted: boolean }
         expect(result.accepted).toBe(false)
       } finally {
         if (original !== undefined) {
-          process.env.AGBENCH_BRIDGE_PERMISSIVE = original
+          process.env.TASKWRAITH_BRIDGE_PERMISSIVE = original
         }
       }
     })

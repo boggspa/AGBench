@@ -77,8 +77,8 @@ function activity(): ToolActivity {
                 }
               ],
               sidecar: {
-                schema: 'agbench-fcpxml-diff-plan-v1',
-                recommendedPath: 'draft.fcpxml.agbench-timeline-diff.json'
+                schema: 'taskwraith-fcpxml-diff-plan-v1',
+                recommendedPath: 'draft.fcpxml.taskwraith-timeline-diff.json'
               },
               warnings: []
             })
@@ -103,6 +103,6 @@ describe('CreativeTimelineDiffCard', () => {
     expect(html).toContain('Basic Title')
     expect(html).toContain('Source unchanged')
     expect(html).toContain('Apply to copy')
-    expect(html).toContain('draft.fcpxml.agbench-timeline-diff.json')
+    expect(html).toContain('draft.fcpxml.taskwraith-timeline-diff.json')
   })
 })

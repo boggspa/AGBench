@@ -19,7 +19,7 @@ import Foundation
 ///   path operations (image output, etc.) land there.
 ///
 /// Sandbox properties:
-/// - Per-invocation tempdir at `NSTemporaryDirectory()/agbench-blender-<uuid>/`.
+/// - Per-invocation tempdir at `NSTemporaryDirectory()/taskwraith-blender-<uuid>/`.
 /// - Blender's working directory is set to the tempdir.
 /// - The agent's script lives at `<tempdir>/script.py`.
 /// - Optional `inputBlendPath` is opened via Blender's positional arg
@@ -64,7 +64,7 @@ enum CreativeBlenderPythonRunner {
 
         // Per-invocation sandbox tempdir. UUID name to avoid collisions
         // when the agent dispatches multiple scripts in parallel.
-        let tempDirName = "agbench-blender-\(UUID().uuidString)"
+        let tempDirName = "taskwraith-blender-\(UUID().uuidString)"
         let tempDirURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(tempDirName, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirURL, withIntermediateDirectories: true)
 
@@ -103,8 +103,8 @@ enum CreativeBlenderPythonRunner {
         // fill the pipe and block Blender mid-script.
         var stdoutData = Data()
         var stderrData = Data()
-        let stdoutQueue = DispatchQueue(label: "agbench.blender.stdout")
-        let stderrQueue = DispatchQueue(label: "agbench.blender.stderr")
+        let stdoutQueue = DispatchQueue(label: "taskwraith.blender.stdout")
+        let stderrQueue = DispatchQueue(label: "taskwraith.blender.stderr")
         stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
             let chunk = handle.availableData
             if !chunk.isEmpty {

@@ -289,7 +289,7 @@ describe('TranscriptScroll', () => {
       // name independently; locking the literal here means a typo on
       // either side trips a test rather than silently breaking
       // re-pin.
-      expect(CODE_BLOCK_RESIZE_EVENT).toBe('agbench:code-block-resized')
+      expect(CODE_BLOCK_RESIZE_EVENT).toBe('taskwraith:code-block-resized')
     })
 
     it('produces a bubbling, composed CustomEventInit with the entry size', () => {

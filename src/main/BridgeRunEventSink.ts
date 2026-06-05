@@ -53,7 +53,7 @@ export interface BridgeRunEventSinkOptions {
    * `BridgeDaemonClient`. Tests wire a vi.fn(). */
   notifier: BridgeRunEventNotifier
   /** When set, the sink's published events are also forwarded here.
-   * Useful when running with `AGBENCH_DEBUG_BUS=1` so the forwarded
+   * Useful when running with `TASKWRAITH_DEBUG_BUS=1` so the forwarded
    * notifications show up in the dev terminal. */
   log?: (line: string) => void
   /** Optional filter to drop events before forwarding. Defaults to

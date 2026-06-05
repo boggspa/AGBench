@@ -18,7 +18,7 @@ const clampWorkspaceSidebarWidth = (value: number): number => {
 
 const getStoredFileEditorWidth = (): number => {
   try {
-    const stored = window.localStorage.getItem('agbench.fileEditorWidth')
+    const stored = window.localStorage.getItem('taskwraith.fileEditorWidth')
     const parsed = stored ? Number(stored) : DEFAULT_FILE_EDITOR_WIDTH
     return Number.isFinite(parsed) ? clampPanelWidth(parsed) : DEFAULT_FILE_EDITOR_WIDTH
   } catch {
@@ -28,7 +28,7 @@ const getStoredFileEditorWidth = (): number => {
 
 const getStoredWorkspaceSidebarWidth = (): number => {
   try {
-    const stored = window.localStorage.getItem('agbench.workspaceSidebarWidth')
+    const stored = window.localStorage.getItem('taskwraith.workspaceSidebarWidth')
     const parsed = stored ? Number(stored) : DEFAULT_WORKSPACE_SIDEBAR_WIDTH
     return Number.isFinite(parsed)
       ? clampWorkspaceSidebarWidth(parsed)

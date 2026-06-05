@@ -7,7 +7,7 @@
 //     to refuse edits), and write runs are contained by a workspace-local
 //     `.cursor/cli.json` deny-list (written by CursorWorkspaceConfig, NOT here).
 //   * We NEVER pass `--force` / `--yolo` (they auto-allow everything).
-//   * Only Composer 2.5 model ids are forwarded — AGBench exposes no other
+//   * Only Composer 2.5 model ids are forwarded — TaskWraith exposes no other
 //     Cursor-proxied model.
 
 import { CURSOR_COMPOSER_MODEL_IDS } from './CursorCliProbe'
@@ -30,9 +30,9 @@ export interface BuildCursorCliArgsInput {
   /** Composer approval mode: 'plan'/unset = read-only; else write-capable. */
   approvalMode?: string | null
   /**
-   * OQ#2 — true when the AGBench web bridge is active for this run (a per-run
-   * `.cursor/mcp.json` registering the `agbench` MCP server was written, with an
-   * `allow: ["Mcp(agbench:*)"]` rule). Adds `--approve-mcps` so the bridge's
+   * OQ#2 — true when the TaskWraith web bridge is active for this run (a per-run
+   * `.cursor/mcp.json` registering the `taskwraith` MCP server was written, with an
+   * `allow: ["Mcp(taskwraith:*)"]` rule). Adds `--approve-mcps` so the bridge's
    * tools don't block on the interactive MCP-approval prompt. Only ever set for
    * write-capable runs (default mode); plan mode executes no MCP tools.
    * `--approve-mcps` auto-approves MCP servers ONLY — never shell/write — so it
@@ -67,7 +67,7 @@ export function buildCursorCliArgs(input: BuildCursorCliArgsInput): string[] {
   if (!writeCapable) {
     args.push('--mode', 'plan')
   }
-  // OQ#2 web bridge: pre-approve the AGBench MCP server's tools (write mode
+  // OQ#2 web bridge: pre-approve the TaskWraith MCP server's tools (write mode
   // only — guarded by the caller, which sets this only when it wrote the
   // mcp.json + allow rule). Auto-approves MCP servers ONLY, not shell/write.
   if (writeCapable && input.webBridgeActive) {

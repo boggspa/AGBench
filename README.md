@@ -1,6 +1,6 @@
-# AGBench
+# TaskWraith
 
-AGBench is a local-first desktop workbench for running and reviewing AI coding
+TaskWraith is a local-first desktop workbench for running and reviewing AI coding
 agents against developer workspaces. It provides a macOS-focused Electron UI for
 provider CLIs and SDK-backed workflows while keeping execution, history, and
 workspace state on the user's machine.
@@ -28,18 +28,18 @@ workspace state on the user's machine.
 
 ## Public Source Boundary
 
-AGBench source code is licensed under Apache-2.0. Provider product names are
+TaskWraith source code is licensed under Apache-2.0. Provider product names are
 used nominatively to describe interoperability with user-installed tools and
 accounts. The repository does not intentionally bundle provider logos,
 trademarks, API credentials, signing material, or proprietary provider fonts.
 
 Users are responsible for installing and authenticating the provider CLIs, SDKs,
-or accounts they choose to use. AGBench does not bypass provider authentication,
+or accounts they choose to use. TaskWraith does not bypass provider authentication,
 quotas, rate limits, approval flows, or terms of service.
 
 ## Built with AI Agents
 
-AGBench is developed the way it is meant to be used — with AI coding agents in
+TaskWraith is developed the way it is meant to be used — with AI coding agents in
 the loop. Day-to-day work pairs **OpenAI Codex** and **Anthropic Claude**:
 planning, implementation, multi-agent review passes, and large refactors run
 through the agents and are reviewed and merged by a human. Commits carry

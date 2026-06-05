@@ -10,7 +10,7 @@
 // All Grok-specific shape knowledge lives in `grokEventToRunEvents` (the single
 // function to adjust if a future CLI version changes the wire shape).
 //
-// G5d/G5e CAPTURE (grok 0.2.8, AGBENCH_GROK_DEBUG live runs): the headless
+// G5d/G5e CAPTURE (grok 0.2.8, TASKWRAITH_GROK_DEBUG live runs): the headless
 // streaming-json stream carries ONLY `thought` / `text` / `end`. Grok's actual
 // tool calls — read/list_dir/grep, the denied `find`, and file writes — run
 // INVISIBLY: not a single tool event reaches stdout. So inline tool-call
@@ -117,7 +117,7 @@ function coerceToolOutput(...vals: unknown[]): string {
  *
  * G5d NOTE: Grok's headless tool-event wire shape is still undocumented — the
  * tool_use / tool_result cases below read the *most likely* flattened field
- * names (Grok is Claude-Code-modelled). Set AGBENCH_GROK_DEBUG=1 to capture the
+ * names (Grok is Claude-Code-modelled). Set TASKWRAITH_GROK_DEBUG=1 to capture the
  * real shape from a live run; if it differs, extend the field lookups here (the
  * single place that owns Grok's wire shape). Claude-style *nested* tool events
  * (`message.content[].tool_use`) are handled separately by the shared

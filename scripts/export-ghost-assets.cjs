@@ -99,12 +99,12 @@ const exportSvgAssets = (sizes) => {
   const variants = [
     {
       name: 'ghost-guy-mark',
-      title: 'AGBench ghost mark',
+      title: 'TaskWraith ghost mark',
       shadow: false
     },
     {
       name: 'ghost-guy-sticker',
-      title: 'AGBench ghost sticker',
+      title: 'TaskWraith ghost sticker',
       shadow: true
     }
   ]

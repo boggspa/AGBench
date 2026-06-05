@@ -7,14 +7,14 @@ export const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
 }
 
 export function agenticServiceBlockedMessage(service: AgenticServiceId): string {
-  return `${AGENTIC_SERVICE_LABELS[service]} blocked by AGBench settings.`
+  return `${AGENTIC_SERVICE_LABELS[service]} blocked by TaskWraith settings.`
 }
 
 export function agenticServiceDisabledMessage(service: AgenticServiceId): string {
   if (service === 'subThreadDelegation') {
-    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in AGBench settings.`
+    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in TaskWraith settings.`
   }
-  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in AGBench settings.`
+  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in TaskWraith settings.`
 }
 
 export const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([

@@ -85,7 +85,7 @@ export function shouldAutoResumeParent(args: AutoResumeParentGateArgs): boolean 
  *
  * The wording includes the sub-thread's final text as an explicitly
  * untrusted data payload. We cannot rely on every provider runtime to
- * replay local AGBench metadata-tagged messages into its native resumed
+ * replay local TaskWraith metadata-tagged messages into its native resumed
  * session, and we should not smuggle child-agent output in as system
  * authority. This prompt is user-role by construction, so the wrapper
  * tells the parent agent how to interpret the data without elevating it.

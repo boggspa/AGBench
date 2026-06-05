@@ -2,7 +2,7 @@
 
 const pty = require('node-pty')
 
-const marker = `agentbench-node-pty-smoke-${Date.now()}`
+const marker = `taskwraith-node-pty-smoke-${Date.now()}`
 const timeoutMs = Number(process.env.PTY_SMOKE_TIMEOUT_MS || 8000)
 const isWindows = process.platform === 'win32'
 const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/sh'

@@ -13,7 +13,7 @@ import {
  *
  * The "sanity check" at the bottom mirrors `mcpToolDefinitions()` from
  * `src/main/index.ts` (a snapshot — see comment on that block). If you
- * touch the AGBench MCP tool list, refresh the snapshot below so we
+ * touch the TaskWraith MCP tool list, refresh the snapshot below so we
  * keep verifying that every tool round-trips cleanly. Re-importing
  * `mcpToolDefinitions` directly from `index.ts` is impractical in unit
  * tests because the module boots Electron at import time.
@@ -237,7 +237,7 @@ describe('buildGeminiFunctionDeclarations', () => {
     })
   })
 
-  it('round-trips every tool in the AGBench MCP surface', () => {
+  it('round-trips every tool in the TaskWraith MCP surface', () => {
     // Snapshot copy of `mcpToolDefinitions()` from src/main/index.ts —
     // a pure literal. Kept here (rather than imported) so the test
     // doesn't have to boot Electron via index.ts. If you add or change
@@ -277,7 +277,7 @@ describe('buildGeminiFunctionDeclarations', () => {
  * function is a pure literal, but importing `src/main/index.ts` in
  * tests pulls in Electron + node-pty + the rest of the main-process
  * world — too heavy for a unit test. The shape below mirrors the
- * literal so the round-trip test exercises every AGBench MCP tool.
+ * literal so the round-trip test exercises every TaskWraith MCP tool.
  *
  * The list is intentionally exhaustive (43 entries). Each entry is the
  * minimal subset of fields the converter touches: `name`, optional

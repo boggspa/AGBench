@@ -679,7 +679,7 @@ const api = {
   // sheet show the same version string that `submit-bug-report` stamps
   // into the file. `submitBugReport` ships the form contents + an
   // auto-captured context block; main appends a Markdown entry to
-  // `<userData>/AGBench/bug-reports.md`.
+  // `<userData>/TaskWraith/bug-reports.md`.
   getAppVersion: () => ipcRenderer.invoke('get-app-version') as Promise<string>,
   submitBugReport: (payload: {
     title: string

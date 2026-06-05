@@ -142,7 +142,7 @@ describe('SessionCheckpoint', () => {
   })
 
   it('persists idempotent checkpoints and makes a re-run a no-op update', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'agbench-checkpoints-'))
+    const tmp = mkdtempSync(join(tmpdir(), 'taskwraith-checkpoints-'))
     try {
       const storagePath = join(tmp, 'session-checkpoints.json')
       const store = new SessionCheckpointStore({

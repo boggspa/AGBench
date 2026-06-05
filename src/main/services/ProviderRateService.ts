@@ -115,12 +115,12 @@ export interface ProviderRateTable {
  * comparable capability.
  */
 export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
-  // Grok (gated). IMPORTANT: AGBench drives Grok through the SuperGrok CLI
+  // Grok (gated). IMPORTANT: TaskWraith drives Grok through the SuperGrok CLI
   // subscription (a credit pool — see GrokUsage's "Subscription credits"
   // meter), NOT the xAI per-token API. These rates are therefore a PROJECTED
   // API-equivalent ("what this run would have cost on the xAI API"), not actual
   // billing. Captured from console.x.ai 2026-05-29. The grok probe is still
-  // gated off when AGBENCH_EXPERIMENTAL_GROK is unset (see probeAllProviderRates).
+  // gated off when TASKWRAITH_EXPERIMENTAL_GROK is unset (see probeAllProviderRates).
   grok: {
     provider: 'grok',
     pricingUrl: 'https://docs.x.ai/docs/models',
@@ -145,7 +145,7 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
       }
     ]
   },
-  // Cursor / Composer 2.5 (gated, CR). AGBench drives Cursor through the
+  // Cursor / Composer 2.5 (gated, CR). TaskWraith drives Cursor through the
   // cursor-agent CLI on the user's Cursor subscription (token-based, billed by
   // Cursor), and the stream-json `result.usage` reports real tokens. Public
   // per-token pricing for composer-2.5 isn't published as a clean rate, so we
@@ -697,7 +697,7 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
       signal: controller.signal,
       headers: {
         'User-Agent':
-          'AGBench/1.0.5 (provider-rate-probe; respects robots.txt; contact: noreply@anthropic.com)'
+          'TaskWraith/1.0.5 (provider-rate-probe; respects robots.txt; contact: noreply@anthropic.com)'
       }
     })
     clearTimeout(timer)

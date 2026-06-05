@@ -11,7 +11,7 @@
  *     mapping handled by `composerChipFormat`.
  *
  * Chip text comes from `formatComposerModelChip(ctx)` — per-shell
- * native format when the shell + provider align, AGBench default
+ * native format when the shell + provider align, TaskWraith default
  * otherwise.
  *
  * Popover positioning + keyboard nav cloned from AgentMentionMenu:

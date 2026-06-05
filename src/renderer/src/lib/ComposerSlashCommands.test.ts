@@ -137,7 +137,7 @@ describe('ComposerSlashCommands', () => {
       approvals: {
         currentMode: 'default' as const,
         allowedModes: ['default' as const],
-        source: 'agentbench' as const,
+        source: 'taskwraith' as const,
         message: ''
       },
       mcp: {
@@ -146,7 +146,7 @@ describe('ComposerSlashCommands', () => {
         available: overrides.mcpAvailable ?? true,
         delegated: false,
         serverName: 'codex-mcp',
-        source: 'agentbench' as const,
+        source: 'taskwraith' as const,
         message: ''
       },
       warnings: []

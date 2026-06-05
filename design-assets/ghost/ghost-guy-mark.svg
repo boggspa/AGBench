@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img" aria-labelledby="ghost-guy-mark-title">
-  <title id="ghost-guy-mark-title">AGBench ghost mark</title>
+  <title id="ghost-guy-mark-title">TaskWraith ghost mark</title>
   <defs>
     <linearGradient id="ghost-guy-mark-fill" x1="38" y1="30" x2="98" y2="96" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.98"/>

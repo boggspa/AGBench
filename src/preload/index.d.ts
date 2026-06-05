@@ -118,7 +118,7 @@ type AgentApprovalAction =
   | 'decline'
   | 'cancel'
   | 'useProviderNative'
-  | 'useAGBenchSubthread'
+  | 'useTaskWraithSubthread'
   | 'grantExternalPathRead'
   | 'grantExternalPathEdit'
   | 'declineExternalPath'

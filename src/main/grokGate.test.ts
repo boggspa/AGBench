@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
 
 const GROK_ENV_KEYS = [
-  'AGBENCH_DISABLE_GROK',
-  'AGBENCH_EXPERIMENTAL_GROK',
-  'AGBENCH_GROK_ACP'
+  'TASKWRAITH_DISABLE_GROK',
+  'TASKWRAITH_EXPERIMENTAL_GROK',
+  'TASKWRAITH_GROK_ACP'
 ] as const
 
 type GrokEnvKey = (typeof GROK_ENV_KEYS)[number]
@@ -46,34 +46,34 @@ describe('experimentalGrokProviderEnabled', () => {
 
   it('turns off for documented emergency kill-switch values', () => {
     for (const value of ['1', 'true', 'yes']) {
-      resetGrokEnv({ AGBENCH_DISABLE_GROK: value })
+      resetGrokEnv({ TASKWRAITH_DISABLE_GROK: value })
       expect(experimentalGrokProviderEnabled()).toBe(false)
     }
   })
 
   it('does not treat other kill-switch spellings as opt-out', () => {
     for (const value of ['', '0', 'false', 'no', 'TRUE', 'YES', ' yes ', 'random']) {
-      resetGrokEnv({ AGBENCH_DISABLE_GROK: value })
+      resetGrokEnv({ TASKWRAITH_DISABLE_GROK: value })
       expect(experimentalGrokProviderEnabled()).toBe(true)
     }
   })
 
   it('turns off for legacy explicit opt-out values', () => {
     for (const value of ['0', 'false', 'no']) {
-      resetGrokEnv({ AGBENCH_EXPERIMENTAL_GROK: value })
+      resetGrokEnv({ TASKWRAITH_EXPERIMENTAL_GROK: value })
       expect(experimentalGrokProviderEnabled()).toBe(false)
     }
   })
 
   it('does not require the legacy experimental var to opt in', () => {
     for (const value of ['', '1', 'true', 'yes', 'FALSE', 'NO', ' no ', 'random']) {
-      resetGrokEnv({ AGBENCH_EXPERIMENTAL_GROK: value })
+      resetGrokEnv({ TASKWRAITH_EXPERIMENTAL_GROK: value })
       expect(experimentalGrokProviderEnabled()).toBe(true)
     }
   })
 
   it('lets the emergency kill-switch override a legacy enabled-looking value', () => {
-    resetGrokEnv({ AGBENCH_DISABLE_GROK: '1', AGBENCH_EXPERIMENTAL_GROK: 'true' })
+    resetGrokEnv({ TASKWRAITH_DISABLE_GROK: '1', TASKWRAITH_EXPERIMENTAL_GROK: 'true' })
     expect(experimentalGrokProviderEnabled()).toBe(false)
   })
 })
@@ -101,14 +101,14 @@ describe('grokAcpEnabled', () => {
 
   it('turns on for documented opt-in values', () => {
     for (const value of ['1', 'true', 'yes']) {
-      resetGrokEnv({ AGBENCH_GROK_ACP: value })
+      resetGrokEnv({ TASKWRAITH_GROK_ACP: value })
       expect(grokAcpEnabled()).toBe(true)
     }
   })
 
   it('stays off for false-ish, malformed, uppercase, or padded values', () => {
     for (const value of ['', '0', 'false', 'no', 'TRUE', 'YES', ' yes ', 'random']) {
-      resetGrokEnv({ AGBENCH_GROK_ACP: value })
+      resetGrokEnv({ TASKWRAITH_GROK_ACP: value })
       expect(grokAcpEnabled()).toBe(false)
     }
   })

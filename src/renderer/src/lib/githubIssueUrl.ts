@@ -1,11 +1,11 @@
 /**
  * Build a pre-filled GitHub "new issue" URL from a bug report. Lets a public
- * user file the report (with AGBench's auto-captured context) straight to the
+ * user file the report (with TaskWraith's auto-captured context) straight to the
  * repo's issue tracker — no gh CLI or auth dance, just opens the browser to the
  * new-issue form with title + body populated. Pure + unit-tested so the body
  * format and encoding stay pinned.
  */
-const GITHUB_NEW_ISSUE_BASE = 'https://github.com/boggspa/AGBench/issues/new'
+const GITHUB_NEW_ISSUE_BASE = 'https://github.com/boggspa/TaskWraith/issues/new'
 
 export interface GitHubIssueDraft {
   title: string
@@ -28,7 +28,7 @@ export function buildGitHubIssueBody(draft: GitHubIssueDraft): string {
   for (const [label, value] of draft.context) {
     if (value && value.trim()) lines.push(`- **${label}:** ${value.trim()}`)
   }
-  lines.push('', '_Filed from AGBench → Report a bug._')
+  lines.push('', '_Filed from TaskWraith → Report a bug._')
   return lines.join('\n')
 }
 

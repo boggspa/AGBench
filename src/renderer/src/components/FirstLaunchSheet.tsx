@@ -14,7 +14,7 @@ import {
   summariseProviderApiKeyStatus,
   type ProviderAuthVariant
 } from '../lib/providerAuthSummary'
-import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
+import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.svg'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 // 1.0.7-EW — onboarding "out of usage" card state. ModelUsageAggregate is the
 // same per-provider quota shape the sidebar Model Usage card consumes; type-only
@@ -27,7 +27,7 @@ import { ProviderInstallCommands } from './ProviderInstallCommands'
 type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 'grok'
 
 /**
- * FirstLaunchSheet — onboarding overlay for fresh AGBench testers.
+ * FirstLaunchSheet — onboarding overlay for fresh TaskWraith testers.
  *
  * Auto-shows on first launch (gated by a localStorage flag in App.tsx)
  * and can be re-opened anytime via the `?` button in the chat-corner
@@ -92,7 +92,7 @@ export interface FirstLaunchSheetProps {
   /** Gemini auth status. Carries profile info; we only need the
    * top-level "is there an active profile" check. */
   geminiAuthStatus: GeminiAuthStatus | null
-  /** Cursor / Grok are CLI-login providers (1.0.6). AGBench only knows
+  /** Cursor / Grok are CLI-login providers (1.0.6). TaskWraith only knows
    * whether each adapter is registered (enabled) — auth lives in their own
    * CLI — so the cards surface availability + deep-link to Settings.
    * Optional so older hosts / static tests can omit them. */
@@ -227,7 +227,7 @@ const ONBOARDING_THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }>
 ]
 
 const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }> = [
-  { value: 'default', label: 'AGBench native' },
+  { value: 'default', label: 'TaskWraith native' },
   { value: 'codex', label: 'Codex shell' },
   { value: 'claude', label: 'Claude shell' },
   { value: 'cursor', label: 'Cursor shell' },
@@ -329,7 +329,7 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
       // solid charcoal fill carry the identity in the preview.
       return {
         provider: 'codex',
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Premium',
         placeholder: 'Compose…'
@@ -340,7 +340,7 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
       // carry the identity.
       return {
         provider: 'codex',
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Premium',
         placeholder: 'Compose…'
@@ -348,7 +348,7 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
     default:
       return {
         provider: 'codex',
-        providerLabel: 'AGBench',
+        providerLabel: 'TaskWraith',
         modelLabel: 'Auto',
         permissionLabel: 'Default Approval',
         placeholder: 'Ask anything...'
@@ -534,17 +534,17 @@ export function FirstLaunchSheet({
         <header className="first-launch-sheet-header">
           <div className="first-launch-sheet-header-text">
             {/*
-              AGBench's branded ghost mark. Lives at
-              `src/renderer/src/assets/agbench-ghost-mark.svg`, copied
+              TaskWraith's branded ghost mark. Lives at
+              `src/renderer/src/assets/taskwraith-ghost-mark.svg`, copied
               from `design-assets/ghost/ghost-guy-mark.svg` so the
               renderer can `import` it (Vite asset import). The SVG
               ships its own gradients + rim, so the wrapper here is
               just sizing — no tinted-circle background like the
               earlier inline-glyph variant carried.
             */}
-            <img src={agbenchGhostMark} alt="" className="first-launch-sheet-ghost" aria-hidden />
+            <img src={taskwraithGhostMark} alt="" className="first-launch-sheet-ghost" aria-hidden />
             <div>
-              <h2 id={SHEET_TITLE_ID}>Welcome to AGBench</h2>
+              <h2 id={SHEET_TITLE_ID}>Welcome to TaskWraith</h2>
               <p className="first-launch-sheet-subtitle">
                 First-launch checklist — providers, workspace, look, and Ensemble basics.
               </p>
@@ -563,7 +563,7 @@ export function FirstLaunchSheet({
 
         <section className="first-launch-sheet-section">
           <p className="first-launch-sheet-prose">
-            AGBench is a multi-provider AI CLI manager. It wraps <strong>Codex</strong>,{' '}
+            TaskWraith is a multi-provider AI CLI manager. It wraps <strong>Codex</strong>,{' '}
             <strong>Claude</strong>, <strong>Gemini</strong>, <strong>Kimi</strong>,{' '}
             <strong>Cursor</strong>, and <strong>Grok</strong> inside one consistent chrome so you
             can run and compare them side-by-side in the same UI. Each provider keeps its own auth —
@@ -574,7 +574,7 @@ export function FirstLaunchSheet({
         <section className="first-launch-sheet-section">
           <h3 className="first-launch-sheet-section-title">1. Sign in to your providers</h3>
           <p className="first-launch-sheet-section-helper">
-            Status reflects what AGBench can see right now. A red dot can mean two different things
+            Status reflects what TaskWraith can see right now. A red dot can mean two different things
             — read the label. Open Settings for inline sign-in flows (OAuth, API keys, CLI paths).
           </p>
           <ul className="first-launch-sheet-status-legend" aria-label="What the status dots mean">
@@ -618,7 +618,7 @@ export function FirstLaunchSheet({
             Providers sign in three ways: <strong>Codex</strong>, <strong>Cursor</strong>, and{' '}
             <strong>Grok</strong> log in through their own CLI in a Terminal;{' '}
             <strong>Claude</strong> and <strong>Gemini</strong> use in-app OAuth or an API key;{' '}
-            <strong>Kimi</strong> takes an API key. AGBench can&apos;t see Cursor&apos;s or
+            <strong>Kimi</strong> takes an API key. TaskWraith can&apos;t see Cursor&apos;s or
             Grok&apos;s CLI login, so those two dots stay amber even after you sign in — that&apos;s
             expected.
           </p>
@@ -648,7 +648,7 @@ export function FirstLaunchSheet({
         <section className="first-launch-sheet-section">
           <h3 className="first-launch-sheet-section-title">2. Add your first workspace</h3>
           <p className="first-launch-sheet-prose">
-            A <strong>workspace</strong> is a project folder AGBench has read / edit permission
+            A <strong>workspace</strong> is a project folder TaskWraith has read / edit permission
             inside. Every chat is rooted in a workspace, and the agent can only touch files within
             its trust boundary. Find the <span className="first-launch-sheet-plus">+</span> button
             in the sidebar header (next to &quot;Workspaces&quot;) and pick a folder. You can add

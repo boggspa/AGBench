@@ -32,7 +32,7 @@ export interface CursorProbeFindings {
   subcommands: string[]
   /** Full `cursor-agent models` list (empty when logged out). */
   models: CursorModel[]
-  /** The only ids AGBench exposes: composer-2.5 + composer-2.5-fast. */
+  /** The only ids TaskWraith exposes: composer-2.5 + composer-2.5-fast. */
   composerModelIds: string[]
   errors: string[]
 }
@@ -60,9 +60,9 @@ export interface CursorProbeDeps {
 }
 
 /**
- * The canonical Composer 2.5 model ids AGBench ships (confirmed live via
+ * The canonical Composer 2.5 model ids TaskWraith ships (confirmed live via
  * `cursor-agent models`). Cursor proxies ~27 other models (GPT/Claude/Codex/…);
- * AGBench deliberately exposes ONLY Composer 2.5 — the others belong to their
+ * TaskWraith deliberately exposes ONLY Composer 2.5 — the others belong to their
  * own native providers.
  */
 export const CURSOR_COMPOSER_MODELS: readonly CursorModel[] = [

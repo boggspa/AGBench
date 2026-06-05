@@ -2,7 +2,7 @@
  * Phase M1 Step 3 — JSONSchema → Gemini Schema converter for the
  * function-calling path of `GeminiApiProvider`.
  *
- * The AGBench MCP tool surface (29+ tools in `AgentbenchMcpTools.ts`)
+ * The TaskWraith MCP tool surface (29+ tools in `TaskWraithMcpTools.ts`)
  * advertises its inputs in OpenAPI-flavoured JSONSchema. Gemini's
  * `@google/genai` SDK accepts a similar but narrower shape — uppercase
  * `type` enum, no `additionalProperties`, no unions in
@@ -30,7 +30,7 @@
  *   - `oneOf` / `anyOf` / `allOf`: Gemini's `FunctionDeclaration` doesn't
  *     accept unions, so we coerce to the first variant's shape and warn.
  *     This is intentionally lossy: model gets one branch instead of
- *     erroring out at request time. AGBench's MCP tools currently don't
+ *     erroring out at request time. TaskWraith's MCP tools currently don't
  *     use unions, so the warning is mostly a tripwire for future schemas.
  *   - `type: ['string', 'null']` → `{ type: 'STRING', nullable: true }`.
  *     Multi-type arrays coerce to the first non-null entry.
@@ -243,7 +243,7 @@ export function jsonSchemaToGeminiSchema(input: unknown): GeminiSchema | undefin
 }
 
 /**
- * Convert AGBench's MCP tool list into Gemini's `FunctionDeclaration[]`.
+ * Convert TaskWraith's MCP tool list into Gemini's `FunctionDeclaration[]`.
  *
  * Tools missing a `name` (or whose name isn't a string) are dropped with
  * a warning — silently losing one tool is better than rejecting all of

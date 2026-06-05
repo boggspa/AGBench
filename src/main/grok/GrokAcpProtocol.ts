@@ -76,7 +76,7 @@ function safeStringify(value: unknown): string {
  * ACP content is a `ContentBlock[]`; the common shapes are a text block
  * (`{type:'content', content:{type:'text', text}}` or `{text}`) and a diff
  * block (`{type:'diff', path, ...}`). Defensive — the exact live shape is
- * confirmed via AGBENCH_GROK_DEBUG and the lookups extended if needed.
+ * confirmed via TASKWRAITH_GROK_DEBUG and the lookups extended if needed.
  */
 function acpToolContentToText(value: unknown): string {
   if (typeof value === 'string') return value
@@ -209,7 +209,7 @@ export function acpMessageToRunEvents(message: Record<string, unknown>): Normali
 //                            params:{sessionId,toolCall:{...},options:[{optionId,name,kind}]}}
 //   client→agent response: {jsonrpc,id,result:{outcome:{outcome:'selected',optionId}}}
 //                       or: {jsonrpc,id,result:{outcome:{outcome:'cancelled'}}}
-// This is the seam where AGBench OWNS every Grok side effect: the request is
+// This is the seam where TaskWraith OWNS every Grok side effect: the request is
 // surfaced as an approval card (the ledger), and the chosen option is sent back.
 // Pure + fixture-tested here; the transport wiring + ledger routing live in
 // GrokAcpClient / runGrokAcpProvider (gated behind grokAcpEnabled()).
@@ -284,7 +284,7 @@ export function parseAcpPermissionRequest(
 }
 
 /**
- * Map an ACP tool kind to the AGBench approval-ledger service category so a
+ * Map an ACP tool kind to the TaskWraith approval-ledger service category so a
  * Grok tool request lands in the right policy bucket + card. Defaults to
  * `shellCommands` (the strictest 'ask' bucket) for unknown/unrecognised kinds —
  * an unfamiliar effect should get the most cautious gate, never a free pass.

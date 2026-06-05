@@ -4,7 +4,7 @@ import type {
   ProviderId
 } from '../../../main/store/types'
 
-export type AgentInvocationSource = 'provider-native' | 'agbench-subthread'
+export type AgentInvocationSource = 'provider-native' | 'taskwraith-subthread'
 
 export function providerDisplayName(provider?: ProviderId | string): string {
   if (provider === 'codex') return 'Codex'
@@ -17,15 +17,15 @@ export function providerDisplayName(provider?: ProviderId | string): string {
 }
 
 export function agentInvocationSourceLabel(source: AgentInvocationSource): string {
-  return source === 'agbench-subthread' ? 'AGBench Sub-thread' : 'Provider Native'
+  return source === 'taskwraith-subthread' ? 'TaskWraith Sub-thread' : 'Provider Native'
 }
 
 export function agentInvocationSourceClassName(source: AgentInvocationSource): string {
-  return source === 'agbench-subthread' ? 'source-agbench-subthread' : 'source-provider-native'
+  return source === 'taskwraith-subthread' ? 'source-taskwraith-subthread' : 'source-provider-native'
 }
 
 export function agentInvocationRouteLabel(source: AgentInvocationSource): string {
-  return source === 'agbench-subthread'
+  return source === 'taskwraith-subthread'
     ? 'Durable sub-thread'
     : 'Provider tool call in this transcript'
 }

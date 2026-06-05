@@ -10,10 +10,10 @@ function runGit(cwd: string, args: string[]): string {
 }
 
 function createRepo(): string {
-  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'agbench-git-service-')))
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'taskwraith-git-service-')))
   runGit(repo, ['init', '-b', 'main'])
-  runGit(repo, ['config', 'user.name', 'AGBench Test'])
-  runGit(repo, ['config', 'user.email', 'agbench@example.test'])
+  runGit(repo, ['config', 'user.name', 'TaskWraith Test'])
+  runGit(repo, ['config', 'user.email', 'taskwraith@example.test'])
   writeFileSync(join(repo, 'README.md'), 'initial\n')
   runGit(repo, ['add', 'README.md'])
   runGit(repo, ['commit', '-m', 'Initial commit'])
@@ -37,7 +37,7 @@ describe('GitService', () => {
   })
 
   function addBareRemote(): string {
-    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'agbench-git-remote-')))
+    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'taskwraith-git-remote-')))
     extraTempPaths.push(remote)
     runGit(remote, ['init', '--bare'])
     runGit(repo, ['remote', 'add', 'origin', remote])
@@ -193,7 +193,7 @@ describe('GitService', () => {
           }
         }
         return {
-          stdout: 'https://github.com/boggspa/AGBench/pull/42\n',
+          stdout: 'https://github.com/boggspa/TaskWraith/pull/42\n',
           stderr: '',
           code: 0
         }
@@ -217,7 +217,7 @@ describe('GitService', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data.url).toBe('https://github.com/boggspa/AGBench/pull/42')
+    expect(result.data.url).toBe('https://github.com/boggspa/TaskWraith/pull/42')
     expect(calls.find((call) => call.command === 'gh' && call.args.includes('create'))).toEqual({
       command: 'gh',
       args: ['pr', 'create', '--fill', '--draft'],
@@ -269,7 +269,7 @@ describe('GitService', () => {
           return {
             stdout: JSON.stringify({
               number: 42,
-              url: 'https://github.com/boggspa/AGBench/pull/42',
+              url: 'https://github.com/boggspa/TaskWraith/pull/42',
               state: 'OPEN',
               isDraft: false,
               headRefName: 'main',
@@ -296,7 +296,7 @@ describe('GitService', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.data.canCreatePullRequest).toBe(false)
-    expect(result.data.existingPullRequest?.url).toBe('https://github.com/boggspa/AGBench/pull/42')
+    expect(result.data.existingPullRequest?.url).toBe('https://github.com/boggspa/TaskWraith/pull/42')
     expect(result.data.reason).toBe('This branch already has a pull request.')
   })
 

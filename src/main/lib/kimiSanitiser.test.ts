@@ -29,7 +29,7 @@ describe('kimiSanitiser', () => {
     expect(result.matches[0].trigger).toBe('Tiananmen')
     expect(result.text).toContain('Codex summarised global supply chains.')
     expect(result.text).toContain(
-      '[sentence redacted: AGBench Kimi compatibility filter detected content Moonshot rejects]'
+      '[sentence redacted: TaskWraith Kimi compatibility filter detected content Moonshot rejects]'
     )
     expect(result.text).toContain('Discussion continued on shipping.')
   })
@@ -171,7 +171,7 @@ describe('kimiSanitiser', () => {
     expect(enabled.redacted).toBe(true)
     expect(enabled.matches[0].trigger).toBe('1989 Beijing events')
     expect(enabled.text).toContain('A routine build note appeared.')
-    expect(enabled.text).toContain('AGBench Kimi classifier flagged content')
+    expect(enabled.text).toContain('TaskWraith Kimi classifier flagged content')
   })
 
   it('supports deterministic mocked classifiers', () => {
@@ -191,7 +191,7 @@ describe('kimiSanitiser', () => {
       }
     ])
     expect(result.text).toBe(
-      'First sentence. [sentence redacted: AGBench Kimi classifier flagged content Moonshot may reject]'
+      'First sentence. [sentence redacted: TaskWraith Kimi classifier flagged content Moonshot may reject]'
     )
   })
 

@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to AGBench, the local-first macOS desktop workbench for running
+Notable changes to TaskWraith, the local-first macOS desktop workbench for running
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
@@ -19,7 +19,7 @@ history, and workspace state stay on your machine throughout.
   deny an agent action; it's recorded in the approval ledger.
 
 ### Changed
-- **Refined native composer** — the AGBench shell is now a cohesive console: the
+- **Refined native composer** — the TaskWraith shell is now a cohesive console: the
   input sits in a framed module (solid black/white outer frame, theme-tone inner
   panel + provider rim, full-bleed and squared), the Ensemble / Create-PR / Steer
   rows match the same solid frame, and the permission picker sits up front beside

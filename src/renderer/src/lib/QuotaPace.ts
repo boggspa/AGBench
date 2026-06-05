@@ -38,7 +38,7 @@ export function paceShouldSurface(pace: QuotaPace): boolean {
 }
 
 /** Marker colour by state. Hex values match the Swift reference
- * so the AGBench card reads as a sibling of another-project. */
+ * so the TaskWraith card reads as a sibling of another-project. */
 export function paceColorHex(pace: QuotaPace): string {
   switch (pace.state) {
     case 'ahead':

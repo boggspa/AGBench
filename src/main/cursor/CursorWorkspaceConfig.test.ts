@@ -103,7 +103,7 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
     mcpConfigPath: MCP,
     serverEntry: buildCursorMcpServerEntry({
       command: '/x/electron',
-      args: ['/tmp/agbench-mcp-server.cjs'],
+      args: ['/tmp/taskwraith-mcp-server.cjs'],
       env: { ELECTRON_RUN_AS_NODE: '1' }
     }),
     allowRules: CURSOR_MCP_ALLOW_RULES
@@ -115,12 +115,12 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
 
     const cli = JSON.parse(files.get(CONFIG)!)
     expect(cli.permissions.deny).toContain('Shell(**)')
-    expect(cli.permissions.allow).toContain('Mcp(agbench:*)')
+    expect(cli.permissions.allow).toContain('Mcp(taskwraith:*)')
 
     const mcp = JSON.parse(files.get(MCP)!)
-    expect(mcp.mcpServers.agbench.command).toBe('/x/electron')
-    expect(mcp.mcpServers.agbench.args).toEqual(['/tmp/agbench-mcp-server.cjs'])
-    expect(mcp.mcpServers.agbench.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+    expect(mcp.mcpServers.taskwraith.command).toBe('/x/electron')
+    expect(mcp.mcpServers.taskwraith.args).toEqual(['/tmp/taskwraith-mcp-server.cjs'])
+    expect(mcp.mcpServers.taskwraith.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
 
     restore()
     expect(files.has(CONFIG)).toBe(false)
@@ -138,12 +138,12 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
 
     const cli = JSON.parse(files.get(CONFIG)!)
     expect(cli.permissions.deny).toEqual(['Write(.env)', 'Shell(**)'])
-    expect(cli.permissions.allow).toEqual(['Mcp(agbench:*)'])
+    expect(cli.permissions.allow).toEqual(['Mcp(taskwraith:*)'])
 
     const mcp = JSON.parse(files.get(MCP)!)
-    // Other registered servers survive; agbench is added.
+    // Other registered servers survive; taskwraith is added.
     expect(mcp.mcpServers.other).toEqual({ command: 'x', args: [] })
-    expect(mcp.mcpServers.agbench.command).toBe('/x/electron')
+    expect(mcp.mcpServers.taskwraith.command).toBe('/x/electron')
 
     restore()
     expect(files.get(CONFIG)).toBe(cliBytes)
@@ -161,7 +161,7 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
 
     const cli = JSON.parse(files.get(CONFIG)!)
     expect(cli.permissions.deny).toContain('Shell(**)')
-    expect(cli.permissions.allow).toContain('Mcp(agbench:*)')
+    expect(cli.permissions.allow).toContain('Mcp(taskwraith:*)')
     // The per-run workspace mcp.json must NOT be written in B mode.
     expect(files.has(MCP)).toBe(false)
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="540" viewBox="0 0 360 216" role="img" aria-labelledby="tool-call-icons-title tool-call-icons-desc">
   <title id="tool-call-icons-title">Tool-call icon catalog</title>
-  <desc id="tool-call-icons-desc">Fifteen sketchy monoline SVG icons for AGBench tool-call families.</desc>
+  <desc id="tool-call-icons-desc">Fifteen sketchy monoline SVG icons for TaskWraith tool-call families.</desc>
 
   <g fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
     <g id="tool-icon-file" transform="translate(24 11)">

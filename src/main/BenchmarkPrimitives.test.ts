@@ -16,7 +16,7 @@ import {
 import type { BenchmarkTaskManifest } from './store/types'
 
 function createTempWorkspace(): string {
-  const workspace = mkdtempSync(path.join(tmpdir(), 'agentbench-benchmark-'))
+  const workspace = mkdtempSync(path.join(tmpdir(), 'taskwraith-benchmark-'))
   writeFileSync(path.join(workspace, 'input.txt'), 'hello benchmark\n')
   mkdirSync(path.join(workspace, 'nested'))
   writeFileSync(path.join(workspace, 'nested', 'result.json'), '{"ok":true}\n')
@@ -42,7 +42,7 @@ describe('BenchmarkPrimitives', () => {
         sha256: sha256Bytes('hello benchmark\n')
       })
       await expect(pinWorkspaceFiles(workspace, ['../outside.txt'])).rejects.toThrow(/escapes/)
-      const outside = mkdtempSync(path.join(tmpdir(), 'agentbench-benchmark-outside-'))
+      const outside = mkdtempSync(path.join(tmpdir(), 'taskwraith-benchmark-outside-'))
       try {
         symlinkSync(outside, path.join(workspace, 'linked-outside'), 'dir')
         await expect(pinWorkspaceFiles(workspace, ['linked-outside/secret.txt'])).rejects.toThrow(
@@ -106,7 +106,7 @@ describe('BenchmarkPrimitives', () => {
   })
 
   it('stores artifacts by content hash', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'agentbench-artifacts-'))
+    const root = mkdtempSync(path.join(tmpdir(), 'taskwraith-artifacts-'))
     try {
       const store = new BenchmarkArtifactStore(root)
       const artifact = await store.putBytes({
@@ -127,7 +127,7 @@ describe('BenchmarkPrimitives', () => {
 
   it('runs benchmark scorers and emits reproducible run manifests', async () => {
     const workspace = createTempWorkspace()
-    const artifactRoot = mkdtempSync(path.join(tmpdir(), 'agentbench-artifacts-'))
+    const artifactRoot = mkdtempSync(path.join(tmpdir(), 'taskwraith-artifacts-'))
     try {
       const store = new BenchmarkArtifactStore(artifactRoot)
       const artifact = await store.putBytes({

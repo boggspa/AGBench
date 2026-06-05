@@ -23,9 +23,9 @@ describe('validate-mac-update-feed script', () => {
       `
 version: 1.0.73
 files:
-  - url: AGBench-1.0.73-universal-mac.zip
-  - url: AGBench-1.0.73-universal-mac.dmg
-path: AGBench-1.0.73-universal-mac.zip
+  - url: TaskWraith-1.0.73-universal-mac.zip
+  - url: TaskWraith-1.0.73-universal-mac.dmg
+path: TaskWraith-1.0.73-universal-mac.zip
 sha512: example
 `,
       { fileName: 'latest-mac.yml' }
@@ -44,9 +44,9 @@ sha512: example
       `
 version: 1.0.73
 files:
-  - url: AGBench-1.0.73-arm64-mac.zip
-  - url: AGBench-1.0.73.dmg
-path: AGBench-1.0.73-arm64-mac.zip
+  - url: TaskWraith-1.0.73-arm64-mac.zip
+  - url: TaskWraith-1.0.73.dmg
+path: TaskWraith-1.0.73-arm64-mac.zip
 sha512: example
 `,
       { fileName: 'latest-mac.yml' }
@@ -54,14 +54,14 @@ sha512: example
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      'latest-mac.yml: AGBench-1.0.73-arm64-mac.zip is arm64; shared mac feeds must publish universal artifacts.'
+      'latest-mac.yml: TaskWraith-1.0.73-arm64-mac.zip is arm64; shared mac feeds must publish universal artifacts.'
     )
     expect(result.errors).toContain(
-      'latest-mac.yml: AGBench-1.0.73.dmg is unknown; shared mac feeds must publish universal artifacts.'
+      'latest-mac.yml: TaskWraith-1.0.73.dmg is unknown; shared mac feeds must publish universal artifacts.'
     )
   })
 
   it('classifies conventional shared mac zip names as universal', () => {
-    expect(classifyMacArtifact('AGBench-1.0.73-mac.zip')).toBe('universal')
+    expect(classifyMacArtifact('TaskWraith-1.0.73-mac.zip')).toBe('universal')
   })
 })

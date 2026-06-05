@@ -334,7 +334,7 @@ describe('canStartConcurrentRound', () => {
       enabledParticipantCount: 3
     })
     expect(result.ok).toBe(false)
-    expect(result.reason).toMatch(/AGBENCH_CONCURRENT_LANES/)
+    expect(result.reason).toMatch(/TASKWRAITH_CONCURRENT_LANES/)
   })
 
   it('rejects concurrent mode on non-ensemble chats', () => {

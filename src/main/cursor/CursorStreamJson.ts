@@ -255,7 +255,7 @@ function extractToolCall(
   const inner = asRecord(tc[key])
   let base = key.replace(/ToolCall$/i, '')
   // CRUX40 — MCP tools surface as `mcpToolCall` with the REAL tool under
-  // `toolName` (e.g. "web_fetch") + a `providerIdentifier` (e.g. "agbench"). Use
+  // `toolName` (e.g. "web_fetch") + a `providerIdentifier` (e.g. "taskwraith"). Use
   // the nested tool name so the card reads "Fetched a web page" / "Searched web
   // for …" (via ToolDisplayNames) instead of the generic "Used mcp". Falls back
   // to `name` (provider-prefixed) then the literal `mcp` base.

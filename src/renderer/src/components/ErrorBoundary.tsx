@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
         }}
       >
         <h1 style={{ fontSize: '1.5rem', margin: '0 0 0.75rem', fontWeight: 600 }}>
-          AGBench hit a render error
+          TaskWraith hit a render error
         </h1>
         <p
           style={{

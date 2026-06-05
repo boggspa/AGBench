@@ -4,7 +4,7 @@ import {
   COMPOSER_FONT_OPTIONS,
   CUSTOM_FONT_SELECT_VALUE,
   FONT_STACKS,
-  LEGACY_AGBENCH_FONT_STACK,
+  LEGACY_TASKWRAITH_FONT_STACK,
   TRANSCRIPT_FONT_OPTIONS,
   getFontSelectValue,
   normalizeComposerFontFamily,
@@ -16,7 +16,7 @@ import {
 describe('typeface option lists', () => {
   it('keeps transcript options focused on concrete font stacks', () => {
     expect(TRANSCRIPT_FONT_OPTIONS.map((option) => option.label)).toEqual([
-      'AGBench default',
+      'TaskWraith default',
       'Compact Sans',
       'Humanist Sans',
       'Editorial Serif',
@@ -26,7 +26,7 @@ describe('typeface option lists', () => {
     expect(TRANSCRIPT_FONT_OPTIONS).not.toContainEqual(
       expect.objectContaining({ value: COMPOSER_FONT_MATCH_TRANSCRIPT })
     )
-    expect(FONT_STACKS.agbench).toContain('"Avenir Next", Avenir')
+    expect(FONT_STACKS.taskwraith).toContain('"Avenir Next", Avenir')
   })
 
   it('puts match-transcript first for composer options', () => {
@@ -47,8 +47,8 @@ describe('normalizeFontFamily', () => {
     expect(normalizeFontFamily('   ', FONT_STACKS.compact)).toBe(FONT_STACKS.compact)
   })
 
-  it('normalizes the old SF Pro AGBench default to the current default stack', () => {
-    expect(normalizeFontFamily(LEGACY_AGBENCH_FONT_STACK)).toBe(FONT_STACKS.agbench)
+  it('normalizes the old SF Pro TaskWraith default to the current default stack', () => {
+    expect(normalizeFontFamily(LEGACY_TASKWRAITH_FONT_STACK)).toBe(FONT_STACKS.taskwraith)
   })
 })
 
@@ -72,14 +72,14 @@ describe('composer font resolution', () => {
 
 describe('getFontSelectValue', () => {
   it('returns known option values unchanged', () => {
-    expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, FONT_STACKS.agbench)).toBe(
-      FONT_STACKS.agbench
+    expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, FONT_STACKS.taskwraith)).toBe(
+      FONT_STACKS.taskwraith
     )
   })
 
-  it('maps the old SF Pro AGBench default to the current default option', () => {
-    expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, LEGACY_AGBENCH_FONT_STACK)).toBe(
-      FONT_STACKS.agbench
+  it('maps the old SF Pro TaskWraith default to the current default option', () => {
+    expect(getFontSelectValue(TRANSCRIPT_FONT_OPTIONS, LEGACY_TASKWRAITH_FONT_STACK)).toBe(
+      FONT_STACKS.taskwraith
     )
   })
 

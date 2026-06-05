@@ -50,7 +50,7 @@ import {
  *     stale/replayed actionIds, then evaluate the payload's required
  *     capability against the workspace allowlist before execution.
  *
- * Dev-mode opt-in: setting `AGBENCH_BRIDGE_PERMISSIVE=1` (or `true`) flips
+ * Dev-mode opt-in: setting `TASKWRAITH_BRIDGE_PERMISSIVE=1` (or `true`) flips
  * the policy to accept-all. This bypasses the allowlist entirely — useful
  * for testing the round-trip with a real iOS device before any allowlist
  * entries are configured. **Never** enable in production. The console
@@ -234,8 +234,8 @@ export class BridgeActionRouter {
     auditLedger?: RemoteDeviceAuditLedgerWriter | null
   ): BridgeActionRouter {
     const permissiveDev =
-      process.env.AGBENCH_BRIDGE_PERMISSIVE === '1' ||
-      process.env.AGBENCH_BRIDGE_PERMISSIVE === 'true'
+      process.env.TASKWRAITH_BRIDGE_PERMISSIVE === '1' ||
+      process.env.TASKWRAITH_BRIDGE_PERMISSIVE === 'true'
     return new BridgeActionRouter({
       permissiveDev,
       log,

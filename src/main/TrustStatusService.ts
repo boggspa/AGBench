@@ -92,7 +92,7 @@ export class TrustStatusService {
    * the canonical Gemini map shape, so the CLI picks it up on its next
    * run with no further action.
    *
-   * Casing-duplicate fix: Gemini (and earlier AGBench session-trust
+   * Casing-duplicate fix: Gemini (and earlier TaskWraith session-trust
    * paths) could leave mixed-case duplicate keys for the same folder.
    * We rebuild the file as a map keyed by the normalized (realpath,
    * lower-cased on darwin) path so casing variants collapse into one

@@ -1,11 +1,11 @@
-// CR6 — workspace-local Cursor permission config for AGBench-owned WRITE mode.
+// CR6 — workspace-local Cursor permission config for TaskWraith-owned WRITE mode.
 //
 // The CR3 spike proved a bare `cursor-agent -p` runs native write+shell
 // UNMEDIATED, and that a `.cursor/cli.json` deny-list hard-blocks them. Cursor
 // has no `--deny` argv flag (unlike Grok) — permissions are file-based — so
 // write-capable runs write a transient workspace-local `.cursor/cli.json` that
 // **denies native shell** (`Shell(**)`) while leaving file edits allowed. Edits
-// then land in the workspace and are surfaced through AGBench's run-diff /
+// then land in the workspace and are surfaced through TaskWraith's run-diff /
 // "Review changes" authority surface (the same net Grok's headless write mode
 // uses); native shell is simply impossible. Restored after the run.
 //
@@ -16,10 +16,10 @@
 // to read-only (`--mode plan`) if this config can't be applied.
 //
 // 1.0.6-CRUX34 (OQ#2): write mode optionally ALSO sets up the web bridge — a
-// per-run `.cursor/mcp.json` registering the AGBench `web_fetch` MCP server plus
-// an `allow: ["Mcp(agbench:*)"]` rule merged into the SAME cli.json write (one
+// per-run `.cursor/mcp.json` registering the TaskWraith `web_fetch` MCP server plus
+// an `allow: ["Mcp(taskwraith:*)"]` rule merged into the SAME cli.json write (one
 // write, one restore for both files). Default mode is the only mode where Cursor
-// executes MCP tools (plan mode rejects them), and AGBench write mode == default
+// executes MCP tools (plan mode rejects them), and TaskWraith write mode == default
 // cursor mode, so the bridge rides exactly the write-mode trigger.
 
 import { mergeCursorAllowRules, mergeCursorMcpConfig } from './CursorMcpBridge'
@@ -150,7 +150,7 @@ export function applyCursorWriteModeConfig(
   let cliMerged = mergeCursorDenyRules(cli.parsed, CURSOR_WRITE_MODE_DENY_RULES)
   if (bridge) cliMerged = mergeCursorAllowRules(cliMerged, bridge.allowRules)
 
-  // mcp.json: register the AGBench server — only when the bridge supplies BOTH a
+  // mcp.json: register the TaskWraith server — only when the bridge supplies BOTH a
   // path and an entry. "B" mode omits them (it relies on the user's approved
   // global server), so only the cli.json allow rule above is written.
   const mcpConfigPath = bridge?.mcpConfigPath

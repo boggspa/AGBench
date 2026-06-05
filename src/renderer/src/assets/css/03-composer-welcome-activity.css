@@ -640,7 +640,7 @@
   font-family: var(--font-mono);
 }
 
-/* AGBench 1.0.3 polish — provider-theme-aware ensemble welcome shell.
+/* TaskWraith 1.0.3 polish — provider-theme-aware ensemble welcome shell.
  *
  * The ensemble welcome screen receives a subtle hue gradient built
  * from up to four participant colours (codex indigo, claude rust,
@@ -1401,7 +1401,7 @@
  * activity yet, falls through to a subtle accent default.
  *
  * Visually: a 2px coloured line hugging the top edge of each chip.
- * Subtle but communicates AGBench's distinct multi-provider identity
+ * Subtle but communicates TaskWraith's distinct multi-provider identity
  * without any text. Claude can't have this — they have one
  * provider, so a "provider mix rail" wouldn't mean anything there. */
 .welcome-usage-stat::before {
@@ -2465,7 +2465,7 @@
 /* ============================================================
  * NATIVE-SHELL COMPOSER CONSOLE RIM (CSS-only)
  * --------------------------------------------------------------
- * Gives the AGBench *native* composer (`data-composer-style=
+ * Gives the TaskWraith *native* composer (`data-composer-style=
  * "default"`) the maintainer's "rim highlight" identity — the
  * same idiom committed in a9d5482 for `.participant-health-card`
  * / `.agent-question-card` / `.compact-tool-trace`: a whole-
@@ -3383,7 +3383,7 @@
   flex-shrink: 0;
 }
 
-/* 1.0.5-EW9 — When a task is active in the AGBench native shell, the
+/* 1.0.5-EW9 — When a task is active in the TaskWraith native shell, the
  * Queue + Steer + Stop buttons sit alongside the pickers row
  * (Plan/Read-only badge, model picker, etc.) and crowd it enough
  * that the Plan badge truncates. Bump the three-button cluster to
@@ -4966,7 +4966,7 @@
  *
  * Per-shell overrides in the [data-composer-style="..."] sections
  * below restyle the chrome to match each shell's aesthetic; this base
- * rule is the AGBench-native / modular / terminal / stub / satellite
+ * rule is the TaskWraith-native / modular / terminal / stub / satellite
  * default. */
 .composer-workspace-button {
   appearance: none;
@@ -6446,7 +6446,7 @@ button.diff-file-row {
 
 /* Phase L3 — theme-aware skeuomorphic skin (slice 3).
  *
- * The 23 AGBench themes (see `ThemeAppearance` in `store/types.ts`)
+ * The 23 TaskWraith themes (see `ThemeAppearance` in `store/types.ts`)
  * collapse to 5 skin archetypes that flow from the active `data-theme`
  * attribute (set on `<html>` by `useAppearance`). Each skin is a
  * lightweight visual layer on top of the base `.activity-row-inline .activity-detail`

@@ -44,9 +44,9 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
           </span>
           <span className="subthread-return-label">Invocation result from</span>
           <span
-            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('agbench-subthread')}`}
+            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('taskwraith-subthread')}`}
           >
-            {agentInvocationSourceLabel('agbench-subthread')}
+            {agentInvocationSourceLabel('taskwraith-subthread')}
           </span>
           {agentIdentity && (
             <span className="subthread-return-agent" title={agentIdentity.name}>

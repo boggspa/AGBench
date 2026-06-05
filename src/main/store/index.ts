@@ -85,7 +85,7 @@ const productCrashesPath = path.join(userDataPath, 'product-crashes.json')
 const runtimeProfilesPath = path.join(userDataPath, 'runtime-profiles.json')
 const handoffCardsPath = path.join(userDataPath, 'handoff-cards.json')
 const legacySettingsMigrationPath = path.join(userDataPath, 'legacy-settings-migration.json')
-const legacyUserDataDirs = ['AgentBench'].map((dirName) =>
+const legacyUserDataDirs = ['TaskWraith'].map((dirName) =>
   path.join(path.dirname(userDataPath), dirName)
 )
 const chatsDir = path.join(userDataPath, 'chats')
@@ -98,9 +98,9 @@ const runEventHashCache = new Map<string, string>()
 // so their global chats have a usable runtime out of the box. Unconditional:
 // unused default profiles for a force-disabled provider are harmless data.
 const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
-const LEGACY_AGBENCH_FONT_STACK =
+const LEGACY_TASKWRAITH_FONT_STACK =
   '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
-const AGBENCH_DEFAULT_FONT_STACK =
+const TASKWRAITH_DEFAULT_FONT_STACK =
   '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif'
 
 const defaultSettings: AppSettings = {
@@ -125,7 +125,7 @@ const defaultSettings: AppSettings = {
   userBubbleColor: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
-  transcriptFontFamily: AGBENCH_DEFAULT_FONT_STACK,
+  transcriptFontFamily: TASKWRAITH_DEFAULT_FONT_STACK,
   composerFontFamily: 'match-transcript',
   keyCommandBindings: {},
   // 1.0.5-EW25 — Display currency for cost / token-spend chips.
@@ -143,7 +143,7 @@ const defaultSettings: AppSettings = {
   welcomeHeatmapPrefs: {
     layout: 'single',
     workspaceActivityEnabled: true,
-    agbenchActivityEnabled: true,
+    taskwraithActivityEnabled: true,
     externalActivityEnabled: true
   },
   // 1.0.5-EW26 — Kimi compatibility filter defaults. On by
@@ -296,7 +296,7 @@ function normalizeSettingsFontFamily(value: unknown, fallback: string): string {
   if (typeof value !== 'string') return fallback
   const trimmed = value.trim()
   if (!trimmed) return fallback
-  return trimmed === LEGACY_AGBENCH_FONT_STACK ? AGBENCH_DEFAULT_FONT_STACK : trimmed
+  return trimmed === LEGACY_TASKWRAITH_FONT_STACK ? TASKWRAITH_DEFAULT_FONT_STACK : trimmed
 }
 
 function writeJson<T>(filePath: string, data: T) {
@@ -500,7 +500,7 @@ export class AppStore {
       geminiAuthProfiles: Array.isArray(stored.geminiAuthProfiles) ? stored.geminiAuthProfiles : [],
       transcriptFontFamily: normalizeSettingsFontFamily(
         stored.transcriptFontFamily,
-        defaultSettings.transcriptFontFamily || AGBENCH_DEFAULT_FONT_STACK
+        defaultSettings.transcriptFontFamily || TASKWRAITH_DEFAULT_FONT_STACK
       ),
       composerFontFamily: normalizeSettingsFontFamily(
         stored.composerFontFamily,
@@ -532,7 +532,7 @@ export class AppStore {
         ? stored.agenticWorkspaceGrants
         : [],
       nativeSubAgentRequests:
-        stored.nativeSubAgentRequests === 'provider' || stored.nativeSubAgentRequests === 'agbench'
+        stored.nativeSubAgentRequests === 'provider' || stored.nativeSubAgentRequests === 'taskwraith'
           ? stored.nativeSubAgentRequests
           : 'ask',
       lastSeenChangelogVersion:
@@ -568,7 +568,7 @@ export class AppStore {
     const now = new Date(0).toISOString()
     // Two built-in profiles per provider: `{provider} local` (workspace-scoped,
     // the historical default) and `{provider} global` (scope=global) so a
-    // freshly-installed AGBench can run a Global chat without the user having
+    // freshly-installed TaskWraith can run a Global chat without the user having
     // to create a custom profile first. The guard in
     // `resolveRuntimeProfileForPayload` rejected workspace-scoped profiles in
     // global chats, leaving global chats with no usable runtime out of the box.

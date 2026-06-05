@@ -11,6 +11,7 @@ import type {
 } from './store/types'
 import {
   evaluateUpdateArchitectureCompatibility,
+  windowsUpdateChannelForHost,
   type UpdateArchitectureCompatibility
 } from './UpdateArchitecture'
 
@@ -25,8 +26,8 @@ import {
  * with a non-null channel. The IPC handler in `index.ts` only enables
  * it when:
  *   - The app is packaged (`app.isPackaged`)
- *   - `AGBENCH_AUTO_UPDATE` env is unset OR set to `'on'`
- *     (the negative path: `AGBENCH_AUTO_UPDATE=off` forces it
+ *   - `TASKWRAITH_AUTO_UPDATE` env is unset OR set to `'on'`
+ *     (the negative path: `TASKWRAITH_AUTO_UPDATE=off` forces it
  *     disabled even in production builds — useful for staging)
  *
  * This lets dev runs (`npm run dev` → not packaged) and tests skip
@@ -130,10 +131,15 @@ export class UpdateService {
       this.wireAutoUpdater()
       this.wired = true
     }
-    // electron-updater channels: 'latest' (stable), 'beta' (nightly),
-    // 'alpha' (unused here). The yml manifest is written per-channel
-    // by electron-builder's generateUpdatesFilesForAllChannels.
-    autoUpdater.channel = args.channel === 'nightly' ? 'beta' : 'latest'
+    // electron-updater channels: macOS keeps the standard latest/beta
+    // manifests. Windows uses arch-specific feeds because separate x64
+    // and arm64 NSIS installers cannot safely share one latest.yml.
+    autoUpdater.channel =
+      this.hostPlatform === 'win32'
+        ? windowsUpdateChannelForHost(args.channel, this.hostArch)
+        : args.channel === 'nightly'
+          ? 'beta'
+          : 'latest'
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
     this.status = 'idle'
@@ -270,7 +276,7 @@ export class UpdateService {
     this.releaseDate = info.releaseDate || undefined
     this.releaseNotes = normalizeReleaseNotes(info.releaseNotes)
     this.releasePageUrl = info.version
-      ? `https://github.com/boggspa/AGBench/releases/tag/v${info.version}`
+      ? `https://github.com/boggspa/TaskWraith/releases/tag/v${info.version}`
       : undefined
     this.updateArchitecture = evaluateUpdateArchitectureCompatibility(info, {
       platform: this.hostPlatform,

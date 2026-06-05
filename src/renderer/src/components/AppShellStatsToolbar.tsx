@@ -83,11 +83,11 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
   const threadLabel = formatCount(snapshot?.activeThreadCount)
 
   return (
-    <div className="app-shell-stats-toolbar" role="group" aria-label="AGBench app stats">
+    <div className="app-shell-stats-toolbar" role="group" aria-label="TaskWraith app stats">
       <span
         className="app-shell-stat app-shell-stat--cpu"
-        title="AGBench Electron CPU"
-        aria-label={`AGBench Electron CPU ${cpuLabel}`}
+        title="TaskWraith Electron CPU"
+        aria-label={`TaskWraith Electron CPU ${cpuLabel}`}
       >
         <CpuIcon />
         <span className="app-shell-stat-label">CPU</span>
@@ -95,8 +95,8 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
       </span>
       <span
         className="app-shell-stat app-shell-stat--ram"
-        title="AGBench Electron RAM"
-        aria-label={`AGBench Electron RAM ${fullRamLabel}`}
+        title="TaskWraith Electron RAM"
+        aria-label={`TaskWraith Electron RAM ${fullRamLabel}`}
       >
         <RamIcon />
         <span className="app-shell-stat-label">Memory</span>
@@ -105,8 +105,8 @@ export function AppShellStatsToolbar({ initialSnapshot = null }: AppShellStatsTo
       </span>
       <span
         className="app-shell-stat app-shell-stat--threads"
-        title="Running AGBench threads"
-        aria-label={`Running AGBench threads ${threadLabel}`}
+        title="Running TaskWraith threads"
+        aria-label={`Running TaskWraith threads ${threadLabel}`}
       >
         <ThreadIcon />
         <span className="app-shell-stat-label">Threads</span>

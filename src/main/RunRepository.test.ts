@@ -4,7 +4,7 @@ import { AppStore } from './store'
 
 vi.mock('electron', () => ({
   app: {
-    getPath: () => '/tmp/agentbench-test'
+    getPath: () => '/tmp/taskwraith-test'
   }
 }))
 

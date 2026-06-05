@@ -102,7 +102,7 @@ export class ProviderPreflightService {
     // elicit/delegate rows are intentionally excluded so promoting
     // subThreadDelegation to a row never inflates this count.
     const controlRows = toolingControlRows(contract.tools)
-    const delegatedTools = controlRows.filter((tool) => !tool.enforcedByAgentBench)
+    const delegatedTools = controlRows.filter((tool) => !tool.enforcedByTaskWraith)
     if (delegatedTools.length > 0) {
       chips.unshift(
         warning(

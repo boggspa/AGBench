@@ -452,7 +452,7 @@ describe('LiveFileDiffSummary', () => {
 
   describe('rejected / errored edits do not count as file changes', () => {
     // Repro: a read-only ("Plan / Read-only") Grok seat asks to edit the
-    // README, Grok calls native `search_replace`, and AGBench's gate
+    // README, Grok calls native `search_replace`, and TaskWraith's gate
     // auto-denies it — the tool_result is `{ status: 'error', output: 'User
     // rejected the execution for tool search_replace' }`. The file on disk
     // is unchanged, so the attempted +6/−4 must NOT surface as an applied

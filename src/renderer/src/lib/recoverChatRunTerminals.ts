@@ -12,7 +12,7 @@ import type {
  *
  * Root cause this guards against:
  *
- * AGBench was force-quit while a Kimi (or other-provider) Wire-mode
+ * TaskWraith was force-quit while a Kimi (or other-provider) Wire-mode
  * child was streaming. The runtime in the main process never fires
  * its terminal handler, so the renderer never receives
  * `run_finished` and never writes `endedAt`/`status` to the persisted

@@ -38,7 +38,7 @@ function CockpitPanel({
       <div className="cockpit-panel">
         <div className="cockpit-header">
           <div>
-            <span className="cockpit-kicker">AGBench cockpit</span>
+            <span className="cockpit-kicker">TaskWraith cockpit</span>
             <h2>Run lanes</h2>
             <p>Global queue, profile, handoff, and workspace collision supervision.</p>
           </div>

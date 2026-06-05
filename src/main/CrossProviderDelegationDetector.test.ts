@@ -61,7 +61,7 @@ describe('detectCrossProviderDelegationMisuse', () => {
 
   it('exposes a canonical warning message containing the redirect hint', () => {
     const text = crossProviderDelegationWarningMessage()
-    expect(text).toContain('AGBench__delegate_to_subthread')
+    expect(text).toContain('TaskWraith__delegate_to_subthread')
     expect(text).toContain('Gemini')
   })
 })

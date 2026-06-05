@@ -1,10 +1,10 @@
-// 1.0.6-CRUX34 — AGBench Cursor MCP web bridge (OQ#2).
+// 1.0.6-CRUX34 — TaskWraith Cursor MCP web bridge (OQ#2).
 //
 // The CR-net probes proved native Cursor web tools (webSearch/webFetch) are
 // hard-rejected ("User Rejected") in headless `-p`, and that the
 // `permissions.allow` token matcher does NOT govern them. The OQ#2 spike then
 // proved the constructive path WORKS: a workspace-local `.cursor/mcp.json`
-// registering an AGBench MCP server + `allow: ["Mcp(agbench:*)"]` +
+// registering an TaskWraith MCP server + `allow: ["Mcp(taskwraith:*)"]` +
 // `--approve-mcps` IS invoked by Cursor in headless DEFAULT/write mode (the
 // agent called our `web_fetch` and used the result). Plan mode executes no
 // tools, so this bridge is write/default-mode only (see the blueprint verdict).
@@ -18,13 +18,13 @@
 
 import type { CursorCliConfig } from './CursorWorkspaceConfig'
 
-/** Allow rule that pre-approves every tool from the `agbench` MCP server. This
+/** Allow rule that pre-approves every tool from the `taskwraith` MCP server. This
  *  is what lifts the headless approval gate for the bridge's tools (paired with
  *  `--approve-mcps`); it does NOT touch the Shell/Write deny rules. */
-export const CURSOR_MCP_ALLOW_RULES: readonly string[] = ['Mcp(agbench:*)']
+export const CURSOR_MCP_ALLOW_RULES: readonly string[] = ['Mcp(taskwraith:*)']
 
-/** The MCP server name (the `agbench` in `Mcp(agbench:*)` + the mcp.json key). */
-export const CURSOR_MCP_SERVER_NAME = 'agbench'
+/** The MCP server name (the `taskwraith` in `Mcp(taskwraith:*)` + the mcp.json key). */
+export const CURSOR_MCP_SERVER_NAME = 'taskwraith'
 
 /**
  * The web_fetch MCP server, embedded as source so the caller can drop it to a
@@ -36,7 +36,7 @@ export const CURSOR_MCP_SERVER_NAME = 'agbench'
  * template literals + `${}` so it embeds cleanly in this TS template string
  * (newlines in emitted strings are written as the escaped `\n` sequence).
  */
-export const CURSOR_WEB_FETCH_MCP_SERVER_SOURCE = `// AGBench Cursor web_fetch MCP server (generated; do not edit).
+export const CURSOR_WEB_FETCH_MCP_SERVER_SOURCE = `// TaskWraith Cursor web_fetch MCP server (generated; do not edit).
 'use strict'
 const readline = require('readline')
 function send(m) { try { process.stdout.write(JSON.stringify(m) + '\\n') } catch (e) {} }
@@ -59,7 +59,7 @@ async function doFetch(url) {
     const res = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
-      headers: { 'user-agent': 'AGBench-Cursor-web_fetch/1.0' }
+      headers: { 'user-agent': 'TaskWraith-Cursor-web_fetch/1.0' }
     })
     const raw = await res.text()
     const body = raw.length > 20000 ? raw.slice(0, 20000) + '\\n...[truncated]' : raw
@@ -84,7 +84,7 @@ async function doSearch(query) {
   try {
     const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query), {
       signal: controller.signal,
-      headers: { 'user-agent': 'AGBench-Cursor-web_search/1.0' }
+      headers: { 'user-agent': 'TaskWraith-Cursor-web_search/1.0' }
     })
     const html = await res.text()
     const results = []
@@ -117,7 +117,7 @@ readline.createInterface({ input: process.stdin }).on('line', async function (li
     send({ jsonrpc: '2.0', id: id, result: {
       protocolVersion: params.protocolVersion || '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'agbench', version: '1.0.0' }
+      serverInfo: { name: 'taskwraith', version: '1.0.0' }
     } })
   } else if (method === 'notifications/initialized') {
     // notification, no response
@@ -171,7 +171,7 @@ export interface CursorMcpServerInvocation {
 }
 
 /**
- * Build the `mcpServers` entry for the `agbench` server. Pure — the caller
+ * Build the `mcpServers` entry for the `taskwraith` server. Pure — the caller
  * merges it into the workspace `.cursor/mcp.json` via {@link mergeCursorMcpConfig}.
  */
 export function buildCursorMcpServerEntry(
@@ -187,7 +187,7 @@ export function buildCursorMcpServerEntry(
 }
 
 /**
- * Merge the AGBench server entry into an existing `.cursor/mcp.json` shape (or
+ * Merge the TaskWraith server entry into an existing `.cursor/mcp.json` shape (or
  * {}), preserving any other registered MCP servers + unknown top-level keys.
  * Pure.
  */

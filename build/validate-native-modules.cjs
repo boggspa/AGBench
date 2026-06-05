@@ -13,6 +13,9 @@ async function validateNativeModules(context) {
   if (platform === 'darwin' && expectedMacArchs.length > 1) {
     removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedMacArchs)
   }
+  if (platform === 'win32') {
+    removeWindowsNodePtyBuildBinding(unpackedDir, arch)
+  }
 
   const nodePtyBindings = findFiles(unpackedDir, (filePath) => {
     const normalized = filePath.split(path.sep).join('/')
@@ -35,36 +38,40 @@ async function validateNativeModules(context) {
     validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
     validateMacClaudeAgentSdkBinaries(unpackedDir, expectedMacArchs)
   }
+  if (platform === 'win32') {
+    validateWindowsNodePtyBindings(unpackedDir, arch)
+    validateWindowsClaudeAgentSdkBinaries(unpackedDir, arch)
+  }
 
-  // macOS-only: confirm the Swift AgbenchBridgeDaemon was embedded
+  // macOS-only: confirm the Swift TaskWraithBridgeDaemon was embedded
   // as an extraResource. The mac build chains run
   // `prebuild:bridge-daemon` before electron-builder; this is the safety
   // net that surfaces a clear error if the binary failed to land in the
   // bundle for any reason (broken swift toolchain, missing config, etc.).
   if (platform === 'darwin') {
-    const daemonPath = path.join(resourcesDir, 'bridge', 'AgbenchBridgeDaemon')
+    const daemonPath = path.join(resourcesDir, 'bridge', 'TaskWraithBridgeDaemon')
     if (!fs.existsSync(daemonPath)) {
       throw new Error(
-        `AgbenchBridgeDaemon was not packaged at ${daemonPath}. Did \`npm run prebuild:bridge-daemon\` run before electron-builder?`
+        `TaskWraithBridgeDaemon was not packaged at ${daemonPath}. Did \`npm run prebuild:bridge-daemon\` run before electron-builder?`
       )
     }
     const stat = fs.statSync(daemonPath)
     if (!stat.isFile() || stat.size === 0) {
       throw new Error(
-        `AgbenchBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`
+        `TaskWraithBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`
       )
     }
-    verifyMachOArchitectures(daemonPath, expectedMacArchs, 'AgbenchBridgeDaemon')
+    verifyMachOArchitectures(daemonPath, expectedMacArchs, 'TaskWraithBridgeDaemon')
     validateMacAppBinaries(resourcesDir, context, expectedMacArchs)
-    console.log(`Validated AgbenchBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
+    console.log(`Validated TaskWraithBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
   }
 
   await hardenElectronFuses(context, resourcesDir)
 }
 
 function validateAppAsarSize(resourcesDir) {
-  if (process.env.AGBENCH_DISABLE_BUNDLE_SIZE_GUARD === '1') {
-    console.log('Skipped app.asar size guard via AGBENCH_DISABLE_BUNDLE_SIZE_GUARD=1')
+  if (process.env.TASKWRAITH_DISABLE_BUNDLE_SIZE_GUARD === '1') {
+    console.log('Skipped app.asar size guard via TASKWRAITH_DISABLE_BUNDLE_SIZE_GUARD=1')
     return
   }
 
@@ -73,7 +80,7 @@ function validateAppAsarSize(resourcesDir) {
     throw new Error(`app.asar was not packaged at ${appAsarPath}.`)
   }
 
-  const maxBytes = readMegabyteLimit('AGBENCH_MAX_ASAR_MB', 500)
+  const maxBytes = readMegabyteLimit('TASKWRAITH_MAX_ASAR_MB', 500)
   const stat = fs.statSync(appAsarPath)
   if (!stat.isFile()) {
     throw new Error(`app.asar path is not a file: ${appAsarPath}`)
@@ -104,7 +111,7 @@ function resolveElectronExecutable(context, resourcesDir) {
   const appInfo = context.packager && context.packager.appInfo
   const productFilename = appInfo && (appInfo.productFilename || appInfo.productName)
   const productName = appInfo && appInfo.productName
-  const names = Array.from(new Set([productFilename, productName, 'AGBench'].filter(Boolean)))
+  const names = Array.from(new Set([productFilename, productName, 'TaskWraith'].filter(Boolean)))
 
   const candidates = []
   if (platform === 'darwin') {
@@ -213,6 +220,43 @@ function validateMacClaudeAgentSdkBinaries(unpackedDir, expectedArchs) {
   }
 }
 
+function validateWindowsNodePtyBindings(unpackedDir, arch) {
+  const nodePtyDir = findNodePtyDir(unpackedDir)
+  if (!nodePtyDir) {
+    throw new Error(`node-pty package was not unpacked under ${unpackedDir}.`)
+  }
+  const prebuildPath = path.join(nodePtyDir, 'prebuilds', `win32-${arch}`, 'pty.node')
+  if (!fs.existsSync(prebuildPath)) {
+    throw new Error(`Required node-pty Windows prebuild is missing: ${prebuildPath}`)
+  }
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (fs.existsSync(buildBinding)) {
+    throw new Error(`Host-only node-pty build binding shadows Windows prebuilds: ${buildBinding}`)
+  }
+  console.log(`Validated node-pty Windows prebuild: ${prebuildPath}`)
+}
+
+function validateWindowsClaudeAgentSdkBinaries(unpackedDir, arch) {
+  const nodeModulesDir = findNodeModulesDir(unpackedDir)
+  if (!nodeModulesDir) return
+
+  const packageName = `@anthropic-ai/claude-agent-sdk-win32-${arch}`
+  const packageDir = path.join(nodeModulesDir, ...packageName.split('/'))
+  if (!fs.existsSync(packageDir)) {
+    console.log(`Claude Agent SDK Windows helper not packaged for ${arch}; skipping helper check.`)
+    return
+  }
+  const binaryPath = path.join(packageDir, 'claude.exe')
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Claude Agent SDK Windows helper is missing: ${binaryPath}`)
+  }
+  const stat = fs.statSync(binaryPath)
+  if (!stat.isFile() || stat.size === 0) {
+    throw new Error(`Claude Agent SDK Windows helper is not a non-empty file: ${binaryPath}`)
+  }
+  console.log(`Validated Claude Agent SDK Windows helper: ${binaryPath}`)
+}
+
 function removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedArchs) {
   const nodePtyDir = findNodePtyDir(unpackedDir)
   if (!nodePtyDir) return
@@ -224,6 +268,16 @@ function removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedArchs) {
   console.log(
     `Removed host-only node-pty build binding from universal package: ${buildBinding}`
   )
+}
+
+function removeWindowsNodePtyBuildBinding(unpackedDir, arch) {
+  const nodePtyDir = findNodePtyDir(unpackedDir)
+  if (!nodePtyDir) return
+  const prebuildPath = path.join(nodePtyDir, 'prebuilds', `win32-${arch}`, 'pty.node')
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (!fs.existsSync(prebuildPath) || !fs.existsSync(buildBinding)) return
+  fs.rmSync(path.join(nodePtyDir, 'build'), { recursive: true, force: true })
+  console.log(`Removed host-only node-pty build binding from Windows package: ${buildBinding}`)
 }
 
 function findNodePtyDir(unpackedDir) {

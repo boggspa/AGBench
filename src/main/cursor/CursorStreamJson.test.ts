@@ -95,7 +95,7 @@ describe('CursorStreamJson', () => {
 
     it('maps an MCP tool_call to its nested tool name + kind (not the generic "mcp")', () => {
       // CRUX40 real shape: { mcpToolCall: { toolName:'web_fetch',
-      // providerIdentifier:'agbench', name:'agbench-web_fetch', args:{…} } }. The
+      // providerIdentifier:'taskwraith', name:'taskwraith-web_fetch', args:{…} } }. The
       // card must read the nested toolName so it renders "Fetched a web page"
       // (web_fetch → fetch) / "Searched web for …" (web_search → search), not "mcp".
       const fetched = cursorEventToRunEvents(
@@ -105,9 +105,9 @@ describe('CursorStreamJson', () => {
           call_id: 'tool_a',
           tool_call: {
             mcpToolCall: {
-              providerIdentifier: 'agbench',
+              providerIdentifier: 'taskwraith',
               toolName: 'web_fetch',
-              name: 'agbench-web_fetch',
+              name: 'taskwraith-web_fetch',
               args: { url: 'https://example.com' }
             }
           }

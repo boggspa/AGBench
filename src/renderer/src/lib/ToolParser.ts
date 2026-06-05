@@ -83,7 +83,7 @@ export function extractToolKind(event: any): string {
 /**
  * MCP tool results come back wrapped in the standard
  * `{ content: [{ type: 'text', text: string }, ...] }` envelope.
- * The agent itself unwraps this before reasoning — but the AGBench
+ * The agent itself unwraps this before reasoning — but the TaskWraith
  * renderer was dumping the raw JSON straight into `<pre>` blocks,
  * showing `{"content":[{"type":"text","text":"Exit code: 0\n..."}]}`
  * where it should have shown plain command output.
@@ -452,7 +452,7 @@ export function getToolCategory(toolName: string): ToolCategory {
 }
 
 /**
- * Map a canonical ACP-style tool *kind* to an AGBench activity category, so the
+ * Map a canonical ACP-style tool *kind* to an TaskWraith activity category, so the
  * card gets the right icon even when the human tool label isn't a recognised
  * tool name. Returns `undefined` for absent / 'other' / unrecognised kinds so
  * the caller falls back to name-based resolution (`getToolCategory`).
@@ -488,15 +488,13 @@ function stripToolNamespace(toolName: string): string {
     return index > 5 ? toolName.slice(index + 2) : toolName
   }
   if (toolName.startsWith('mcp_') && !toolName.startsWith('mcp__')) {
-    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    const knownServerPrefixes = ['mcp_taskwraith_']
     for (const prefix of knownServerPrefixes) {
       if (toolName.startsWith(prefix)) return toolName.slice(prefix.length)
     }
   }
-  if (toolName.startsWith('agbench__')) return toolName.slice('agbench__'.length)
-  if (toolName.startsWith('agentbench__')) return toolName.slice('agentbench__'.length)
-  if (toolName.startsWith('agbench_')) return toolName.slice('agbench_'.length)
-  if (toolName.startsWith('agentbench_')) return toolName.slice('agentbench_'.length)
+  if (toolName.startsWith('taskwraith__')) return toolName.slice('taskwraith__'.length)
+  if (toolName.startsWith('taskwraith_')) return toolName.slice('taskwraith_'.length)
   return toolName
 }
 

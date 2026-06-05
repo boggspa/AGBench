@@ -163,7 +163,7 @@ export function CreativeActionApprovalModal({
             // allow class for session" preference from the K-phase
             // kickoff — subsequent identical-class invocations skip
             // this modal until app restart.
-            title={`Approve this and future ${active.className} actions until you quit AGBench.`}
+            title={`Approve this and future ${active.className} actions until you quit TaskWraith.`}
           >
             Approve &amp; remember for session
           </button>

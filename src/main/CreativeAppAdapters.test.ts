@@ -259,9 +259,9 @@ describe('CreativeAppAdapters', () => {
       'Interview'
     ])
     expect(result.affectedResources.effects[0].name).toBe('Basic Title')
-    expect(result.sidecar.recommendedPath).toBe('draft.fcpxml.agbench-timeline-diff.json')
+    expect(result.sidecar.recommendedPath).toBe('draft.fcpxml.taskwraith-timeline-diff.json')
     expect(result.sidecar.document).toMatchObject({
-      schema: 'agbench-fcpxml-diff-plan-v1',
+      schema: 'taskwraith-fcpxml-diff-plan-v1',
       beforePath: 'original.fcpxml',
       afterPath: 'draft.fcpxml'
     })
@@ -569,7 +569,7 @@ describe('CreativeAppAdapters', () => {
       const writer = serializeFcpxmlTimelineIr({
         ir: { resources: { assets: [{ id: 'r1', name: 'Pending shoot' }] } }
       })
-      expect(writer.text).toMatch(/<media-rep[^>]+src="file:\/\/\/agbench-placeholder\//)
+      expect(writer.text).toMatch(/<media-rep[^>]+src="file:\/\/\/taskwraith-placeholder\//)
       expect(writer.warnings.some((w) => /no src/.test(w))).toBe(true)
     })
 
@@ -657,7 +657,7 @@ describe('CreativeAppAdapters', () => {
         ir: { projects: [{ name: 'untagged', eventName: undefined, sequence: undefined }] }
       })
       // The fallback name lives between the <event name="..."> attribute quotes.
-      expect(writer.text).toMatch(/<event name="AGBench Drafts">/)
+      expect(writer.text).toMatch(/<event name="TaskWraith Drafts">/)
     })
   })
 

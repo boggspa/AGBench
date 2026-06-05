@@ -72,17 +72,17 @@ export function providerDelegationChips(
   } else if (provider === 'kimi') {
     chips.push('Provider-native Agent tool', 'Wire SubagentEvent', 'Provider MCP')
   } else {
-    chips.push('Provider-native invocations', 'AGBench MCP bridge', 'Best-effort JSONL audit')
+    chips.push('Provider-native invocations', 'TaskWraith MCP bridge', 'Best-effort JSONL audit')
   }
 
   if (contract?.approvals.inAppApprovals) {
-    chips.push('AGBench approvals')
+    chips.push('TaskWraith approvals')
   } else {
     chips.push('Provider-managed approvals')
   }
 
-  if (contract?.tools.mcpTools.enforcedByAgentBench) {
-    chips.push('AGBench MCP enforcement')
+  if (contract?.tools.mcpTools.enforcedByTaskWraith) {
+    chips.push('TaskWraith MCP enforcement')
   } else if (contract?.mcp.state) {
     chips.push(`MCP ${contract.mcp.state}`)
   }
@@ -324,15 +324,15 @@ const TOOLING_CONTROL_KEYS = [
 function toolPolicyLabel(contract?: ProviderCapabilityContract | null): string | undefined {
   if (!contract) return undefined
   const controlRows = TOOLING_CONTROL_KEYS.map((key) => contract.tools[key])
-  const controlled = controlRows.filter((tool) => tool.enforcedByAgentBench).length
+  const controlled = controlRows.filter((tool) => tool.enforcedByTaskWraith).length
   return controlled > 0
-    ? `AGBench-enforced (${controlled}/${controlRows.length})`
+    ? `TaskWraith-enforced (${controlled}/${controlRows.length})`
     : 'provider-managed'
 }
 
 function mcpPolicyLabel(contract?: ProviderCapabilityContract | null): string | undefined {
   if (!contract) return undefined
-  if (contract.tools.mcpTools.enforcedByAgentBench) return 'AGBench MCP bridge'
+  if (contract.tools.mcpTools.enforcedByTaskWraith) return 'TaskWraith MCP bridge'
   return contract.mcp.state ? `provider MCP: ${contract.mcp.state}` : undefined
 }
 

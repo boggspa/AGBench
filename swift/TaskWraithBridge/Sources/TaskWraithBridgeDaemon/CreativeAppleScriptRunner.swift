@@ -14,7 +14,7 @@ import OSAKit
 ///   inherits the daemon's TCC grants — important because every
 ///   AppleScript invocation against another app triggers a TCC
 ///   prompt the FIRST time, and we want that prompt attributed to
-///   AGBench, not to `osascript`.
+///   TaskWraith, not to `osascript`.
 /// - We get typed error objects (compile vs runtime vs permission).
 /// - We can run with a timeout — the CLI doesn't have an in-process
 ///   stop mechanism, only an external `kill`.

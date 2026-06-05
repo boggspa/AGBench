@@ -4,7 +4,7 @@ import { join } from 'path'
 import { AppStore } from './store'
 import type { ChatRecord, ChatRun } from './store/types'
 
-const userDataPath = vi.hoisted(() => `/tmp/agentbench-delete-chat-test-${process.pid}`)
+const userDataPath = vi.hoisted(() => `/tmp/taskwraith-delete-chat-test-${process.pid}`)
 
 vi.mock('electron', () => ({
   app: {

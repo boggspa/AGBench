@@ -50,7 +50,7 @@ function makeFakeAdapter(provider: ProviderId): ProviderAdapter {
       reasoningEffort: [],
       speedTiers: [],
       imageAttachments: false,
-      contextInjection: 'agentbench',
+      contextInjection: 'taskwraith',
       sessionResumption: 'none',
       perThreadMcp: false
     } as never,

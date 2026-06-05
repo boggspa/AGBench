@@ -350,7 +350,7 @@
 }
 
 /* ── DEFAULT preview — mirror the console redesign ───────────────────
- * The AGBench-native ("default") composer was reskinned to the console
+ * The TaskWraith-native ("default") composer was reskinned to the console
  * look in shards 03 + 07: a SOLID black/white OUTER frame (vignette
  * killed) with a theme-tone INNER module sitting inside it. Those real
  * rules are scoped to `.app-transcript`, so they never reach these
@@ -3200,7 +3200,7 @@ input:disabled, select:disabled, textarea:disabled {
 .run-card-resume-warning {
   /* 1.0.5-N6 — small chip beside the status badge for runs that
    * resumed from a wakeup with no native provider session id, i.e.
-   * the agent's working memory came from the AGBench transcript
+   * the agent's working memory came from the TaskWraith transcript
    * only. Sits in the same row as status + id; warning tone but
    * dimmer than tone-warning so it doesn't outshout the real
    * status badge. */

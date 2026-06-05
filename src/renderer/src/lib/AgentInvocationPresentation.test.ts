@@ -9,18 +9,18 @@ import {
 } from './AgentInvocationPresentation'
 
 describe('AgentInvocationPresentation', () => {
-  it('uses one source vocabulary for provider-native and AGBench invocations', () => {
+  it('uses one source vocabulary for provider-native and TaskWraith invocations', () => {
     expect(agentInvocationSourceLabel('provider-native')).toBe('Provider Native')
-    expect(agentInvocationSourceLabel('agbench-subthread')).toBe('AGBench Sub-thread')
+    expect(agentInvocationSourceLabel('taskwraith-subthread')).toBe('TaskWraith Sub-thread')
     expect(agentInvocationSourceClassName('provider-native')).toBe('source-provider-native')
-    expect(agentInvocationSourceClassName('agbench-subthread')).toBe('source-agbench-subthread')
+    expect(agentInvocationSourceClassName('taskwraith-subthread')).toBe('source-taskwraith-subthread')
   })
 
   it('keeps the route distinction explicit', () => {
     expect(agentInvocationRouteLabel('provider-native')).toBe(
       'Provider tool call in this transcript'
     )
-    expect(agentInvocationRouteLabel('agbench-subthread')).toBe('Durable sub-thread')
+    expect(agentInvocationRouteLabel('taskwraith-subthread')).toBe('Durable sub-thread')
   })
 
   it('formats provider, status, and interactivity labels', () => {

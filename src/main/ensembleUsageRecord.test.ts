@@ -59,7 +59,7 @@ describe('buildEnsembleUsageRecord', () => {
 
   it('returns null when usage was already recorded upstream (dedup)', () => {
     expect(
-      buildEnsembleUsageRecord(base({ total_tokens: 100, duration_ms: 5000, _agentbench_usage_recorded: true }))
+      buildEnsembleUsageRecord(base({ total_tokens: 100, duration_ms: 5000, _taskwraith_usage_recorded: true }))
     ).toBeNull()
   })
 

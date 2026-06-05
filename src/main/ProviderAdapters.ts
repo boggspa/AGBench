@@ -182,7 +182,7 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
     // G5c landed file-write mode (`acceptEdits` + Edit/Write, diff/PR-reviewed —
     // `approvalModes: ['plan','default']`). Still NO app-managed per-tool
     // approval cards + no MCP bridge: native shell stays denied and shell
-    // mediation (the AGBench MCP + approval ledger) is the gated ACP path
+    // mediation (the TaskWraith MCP + approval ledger) is the gated ACP path
     // (G5c-ACP). Without this branch grok would inherit the Claude default
     // below, advertising providerManagedMcp it does not have.
     return {

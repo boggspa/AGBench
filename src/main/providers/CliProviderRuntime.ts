@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { delimiter, dirname, join } from 'path'
 import { promises as fs } from 'fs'
 import os from 'os'
-import { AGENTBENCH_MCP_TOOLS } from '../AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS } from '../TaskWraithMcpTools'
 import { buildProviderCapabilityContract } from '../ProviderCapabilities'
 import { providerLabel } from '../ProviderAdapters'
 import { AppStore } from '../store'
@@ -16,7 +16,7 @@ import type {
   RuntimeProfile
 } from '../store/types'
 
-export const GEMINI_MCP_SERVER_NAME = 'AGBench' as const
+export const GEMINI_MCP_SERVER_NAME = 'TaskWraith' as const
 
 export interface ResolvedProviderBinary {
   provider: ProviderId
@@ -120,7 +120,7 @@ export function activeRuntimeProfileEnv(
   extra: Record<string, string>,
   deps?: CliProviderRuntimeDependencies
 ): Record<string, string> | null {
-  const rawProfileId = extra.AGENTBENCH_RUNTIME_PROFILE_ID
+  const rawProfileId = extra.TASKWRAITH_RUNTIME_PROFILE_ID
   if (!rawProfileId) return null
   const profile = runtimeProfilesFromDeps(deps).find((item) => item.id === rawProfileId)
   return profile?.env || null
@@ -415,11 +415,11 @@ export function getCliProviderMcpStatus(
     available: enabled,
     enabled,
     serverName: GEMINI_MCP_SERVER_NAME,
-    tools: enabled ? [...AGENTBENCH_MCP_TOOLS] : [],
+    tools: enabled ? [...TASKWRAITH_MCP_TOOLS] : [],
     sections: [],
     message: enabled
-      ? `AGBench registers the ${GEMINI_MCP_SERVER_NAME} MCP bridge for ${providerDisplayName(provider)} runs at launch. Live provider-side MCP listing is provider-managed and not exposed through a safe structured API.`
-      : `AGBench MCP bridge is disabled for ${providerDisplayName(provider)} runs.`
+      ? `TaskWraith registers the ${GEMINI_MCP_SERVER_NAME} MCP bridge for ${providerDisplayName(provider)} runs at launch. Live provider-side MCP listing is provider-managed and not exposed through a safe structured API.`
+      : `TaskWraith MCP bridge is disabled for ${providerDisplayName(provider)} runs.`
   }
 }
 

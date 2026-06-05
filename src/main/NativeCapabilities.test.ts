@@ -9,7 +9,7 @@ describe('NativeCapabilities', () => {
         arch: 'x64',
         osRelease: '24.5.0',
         macosVersion: '15.5',
-        binaryPath: '/tmp/AgbenchBridgeDaemon',
+        binaryPath: '/tmp/TaskWraithBridgeDaemon',
         binaryExists: true,
         binaryArchs: ['arm64', 'x86_64']
       }).bridge
@@ -26,7 +26,7 @@ describe('NativeCapabilities', () => {
         arch: 'arm64',
         osRelease: '22.6.0',
         macosVersion: '13.6',
-        binaryPath: '/tmp/AgbenchBridgeDaemon',
+        binaryPath: '/tmp/TaskWraithBridgeDaemon',
         binaryExists: true,
         binaryArchs: ['arm64']
       }).bridge
@@ -43,14 +43,33 @@ describe('NativeCapabilities', () => {
         arch: 'x64',
         osRelease: '24.5.0',
         macosVersion: '15.5',
-        binaryPath: '/tmp/AgbenchBridgeDaemon',
+        binaryPath: '/tmp/TaskWraithBridgeDaemon',
         binaryExists: true,
         binaryArchs: ['arm64']
       }).bridge
     ).toMatchObject({
       available: false,
       requiredArch: 'x86_64',
-      reason: 'AgbenchBridgeDaemon does not contain the current CPU architecture (x86_64).'
+      reason: 'TaskWraithBridgeDaemon does not contain the current CPU architecture (x86_64).'
     })
+  })
+
+  it('gates Appwatch/AppDrive/Appshots on Windows v1', () => {
+    const snapshot = getNativeCapabilitySnapshot({
+      platform: 'win32',
+      arch: 'x64',
+      osRelease: '10.0.26100'
+    })
+
+    expect(snapshot.bridge).toMatchObject({
+      available: false,
+      reason: 'Native bridge features are available on macOS only.'
+    })
+    expect(snapshot.appwatch).toMatchObject({
+      available: false,
+      reason: 'Appwatch, AppDrive, and Appshots are not available on Windows in v1.'
+    })
+    expect(snapshot.screenWatch).toMatchObject(snapshot.appwatch)
+    expect(snapshot.ocr).toMatchObject(snapshot.appwatch)
   })
 })

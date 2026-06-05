@@ -19,7 +19,7 @@ const BUCKET_HOURS = 24 / HEATMAP_ROWS
 const MAX_HEATMAP_COLUMNS = 180
 
 /** Per-provider hex used for colouring heatmap cells. Mirrors the
- * Limit Counter palette + the AGBench `--provider-{id}-color`
+ * Limit Counter palette + the TaskWraith `--provider-{id}-color`
  * theme tokens so the heatmap reads as a sibling of the bars
  * above it. */
 export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {

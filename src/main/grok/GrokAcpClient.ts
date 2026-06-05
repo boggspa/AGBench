@@ -5,7 +5,7 @@
 // process / model call in tests). Protocol shapes proven by the G1 spike.
 //
 // G4 is read-only: clientCapabilities advertise no fs write, mcpServers is
-// empty, and we never send the `always-approve` command. AGBench-owned tools +
+// empty, and we never send the `always-approve` command. TaskWraith-owned tools +
 // session/request_permission mediation come in G5.
 
 import {
@@ -39,8 +39,8 @@ export interface GrokAcpRunOptions {
   spawnProcess: () => AcpChildProcess
   /**
    * G5b — MCP servers advertised to the session (session/new `mcpServers`). For
-   * a read-only Grok seat this is the single AGBench scoped bridge entry (safe
-   * subset only, launched with --safe-subset). Omitted/empty = no AGBench tools
+   * a read-only Grok seat this is the single TaskWraith scoped bridge entry (safe
+   * subset only, launched with --safe-subset). Omitted/empty = no TaskWraith tools
    * (the read-only G4 default). Each entry is an ACP stdio server descriptor;
    * shape stays `unknown` here because the live ACP wire shape is confirmed by
    * the gated trace, not assumed by the client.
@@ -56,7 +56,7 @@ export interface GrokAcpRunOptions {
    * back. The default (when omitted) is DENY: the request is answered with a
    * 'cancelled'/reject outcome so the agent never hangs and never gets a silent
    * allow. runGrokAcpProvider supplies a real handler that routes the request
-   * to the AGBench approval ledger (G5c, the live-verified follow-up).
+   * to the TaskWraith approval ledger (G5c, the live-verified follow-up).
    */
   onPermissionRequest?: (
     request: AcpPermissionRequest
@@ -70,7 +70,7 @@ export interface GrokAcpRunOptions {
   onClose?: (code: number | null, turnComplete: boolean) => void
   /**
    * G4d — opt-in raw JSON-RPC frame tap (both directions). Used by the gated
-   * AGBENCH_GROK_DEBUG capture so the live ACP wire shape can be confirmed from
+   * TASKWRAITH_GROK_DEBUG capture so the live ACP wire shape can be confirmed from
    * a single in-app run — in particular whether Grok actually emits `tool_call`
    * session/updates and `session/request_permission` requests (the safety
    * precondition for trusting write-over-ACP). Never affects behavior.
@@ -145,7 +145,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
     if (!options.onPermissionRequest) {
       options.onEvent({
         type: 'provider_warning',
-        text: `Grok requested a tool (${request.toolName}) — declined (AGBench tool mediation is gated until G5c).`
+        text: `Grok requested a tool (${request.toolName}) — declined (TaskWraith tool mediation is gated until G5c).`
       })
     }
   }
@@ -154,7 +154,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
   writeRpc(ACP_ID.initialize, 'initialize', {
     protocolVersion: 1,
     clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
-    clientInfo: { name: 'agbench', version: '1.0.6' }
+    clientInfo: { name: 'taskwraith', version: '1.0.6' }
   })
 
   child.stdout?.on('data', (chunk) => {
@@ -198,7 +198,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
       // Lifecycle correlation by request id (single sequential flow).
       if (message.id === ACP_ID.initialize && message.result) {
         // Step 2 — create a session in the workspace. mcpServers carries the
-        // AGBench scoped bridge for a read-only seat (G5b); empty otherwise (G4).
+        // TaskWraith scoped bridge for a read-only seat (G5b); empty otherwise (G4).
         writeRpc(ACP_ID.sessionNew, 'session/new', {
           cwd: options.cwd,
           mcpServers: options.mcpServers ?? []

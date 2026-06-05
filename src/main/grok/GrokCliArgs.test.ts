@@ -139,7 +139,7 @@ describe('buildGrokCliArgs', () => {
     // Edit/Write are NO LONGER denied (they're applied + diff-reviewed).
     expect(args).not.toContain('Edit(*)')
     expect(args).not.toContain('Write(*)')
-    // Native shell stays denied — AGBench can't mediate Grok's Bash headless.
+    // Native shell stays denied — TaskWraith can't mediate Grok's Bash headless.
     const denied = args
       .map((value, index) => (value === '--deny' ? args[index + 1] : null))
       .filter((value): value is string => value !== null)

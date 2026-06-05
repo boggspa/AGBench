@@ -24,7 +24,7 @@ const {
 
 describe('approval-title-backfill script', () => {
   it('dry-runs against a copied ledger without mutating the source file', () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'agbench-approval-title-backfill-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'taskwraith-approval-title-backfill-'))
     try {
       const ledgerPath = path.join(dir, 'approval-ledger.copy.json')
       const originalRows = [
@@ -72,7 +72,7 @@ describe('approval-title-backfill script', () => {
   })
 
   it('writes a backup on wet-run and is idempotent on rerun', () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'agbench-approval-title-backfill-'))
+    const dir = mkdtempSync(path.join(tmpdir(), 'taskwraith-approval-title-backfill-'))
     try {
       const ledgerPath = path.join(dir, 'approval-ledger.copy.json')
       writeFileSync(

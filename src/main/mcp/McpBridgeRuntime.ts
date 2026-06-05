@@ -7,7 +7,7 @@ import { createConnection, createServer, type Server as NetServer, type Socket }
 import os from 'os'
 import { dirname, join, resolve } from 'path'
 import type { WebContents } from 'electron'
-import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 import { isReadOnlyAdvertisedTool } from './McpAutoAllowedTools'
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from '../KimiMcpBridge'
 import type {
@@ -22,21 +22,21 @@ import type {
   RuntimeProfile
 } from '../store/types'
 
-export const GEMINI_MCP_SERVER_NAME = 'AGBench' as const
+export const GEMINI_MCP_SERVER_NAME = 'TaskWraith' as const
 export const GEMINI_MCP_SERVER_NAME_LOWER = GEMINI_MCP_SERVER_NAME.toLowerCase()
-export const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
+export const GEMINI_MCP_BRIDGE_ARG = '--taskwraith-gemini-mcp-bridge'
 export const GEMINI_MCP_SOCKET_ARG = '--socket'
 export const GEMINI_MCP_TOKEN_ARG = '--token'
 // Fail-closed read-only scope flag. Carried in the bridge ARGV (not env) so it
 // is atomic with the spawn: a bridge launched with these args is scoped, full
-// stop. The bootstrap translates it to AGENTBENCH_MCP_SAFE_SUBSET=1 (the env the
+// stop. The bootstrap translates it to TASKWRAITH_MCP_SAFE_SUBSET=1 (the env the
 // tools/list + tools/call guard reads). Used by the Grok read-only seat, which
 // auto-runs MCP tools with NO host gate — so the advertised list + the call
 // reject ARE the entire safety boundary, and the scope must travel with the spawn.
 export const GEMINI_MCP_SAFE_SUBSET_ARG = '--safe-subset'
 export const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
-  ...AGENTBENCH_MCP_TOOLS,
-  ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
+  ...TASKWRAITH_MCP_TOOLS,
+  ...TASKWRAITH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
 ]
 
 export type GeminiMcpRegistrationScope = 'user' | 'project'
@@ -176,7 +176,7 @@ export interface McpBridgeRuntimeDeps {
   createCliEnv: (extra: Record<string, string>, binaryPath?: string | null) => Record<string, string>
   appendLimitedOutput?: (current: string, chunk: Buffer) => { value: string; truncated: boolean }
   executeGeminiMcpTool: (
-    toolName: AGBenchMcpToolName,
+    toolName: TaskWraithMcpToolName,
     args: unknown,
     route: McpBridgeAgentRunRoute,
     parentProvider: ProviderId
@@ -249,8 +249,8 @@ function defaultAppendLimitedOutput(
   }
 }
 
-export function isAGBenchMcpToolName(value: unknown): value is AGBenchMcpToolName {
-  return AGENTBENCH_MCP_TOOLS.includes(value as AGBenchMcpToolName)
+export function isTaskWraithMcpToolName(value: unknown): value is TaskWraithMcpToolName {
+  return TASKWRAITH_MCP_TOOLS.includes(value as TaskWraithMcpToolName)
 }
 
 export function normalizeBrokerParentProvider(value: unknown): ProviderId {
@@ -329,7 +329,7 @@ export function brokerRequest(socketPath: string, request: unknown): Promise<unk
       resolveRequest(result)
     }
     const timeout = setTimeout(
-      () => finish({ ok: false, error: 'AGBench MCP broker timed out.' }),
+      () => finish({ ok: false, error: 'TaskWraith MCP broker timed out.' }),
       130_000
     )
     socket.setEncoding('utf8')
@@ -354,7 +354,7 @@ export function brokerRequest(socketPath: string, request: unknown): Promise<unk
     })
     socket.on('close', () => {
       clearTimeout(timeout)
-      if (!settled) finish({ ok: false, error: 'AGBench MCP broker closed before responding.' })
+      if (!settled) finish({ ok: false, error: 'TaskWraith MCP broker closed before responding.' })
     })
   })
 }
@@ -415,7 +415,7 @@ export function resolveBridgeLogPath(): string | null {
   if (bridgeLogResolved) return bridgeLogPath
   bridgeLogResolved = true
   try {
-    const logsDir = join(os.homedir(), 'Library', 'Logs', 'AGBench')
+    const logsDir = join(os.homedir(), 'Library', 'Logs', 'TaskWraith')
     fsSync.mkdirSync(logsDir, { recursive: true })
     bridgeLogPath = join(logsDir, 'bridge-subprocess.log')
     try {
@@ -469,7 +469,7 @@ export function handleMcpJsonRpcMessage(
           ? request.params.protocolVersion || '2024-11-05'
           : '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'AGBench Gemini Bridge', version: deps.getAppVersion() || '1.0.0' }
+        serverInfo: { name: 'TaskWraith Gemini Bridge', version: deps.getAppVersion() || '1.0.0' }
       },
       transport,
       stdout
@@ -481,11 +481,11 @@ export function handleMcpJsonRpcMessage(
     return
   }
   if (method === 'tools/list') {
-    // Read-only scoped bridge (AGENTBENCH_MCP_SAFE_SUBSET=1): advertise ONLY the
+    // Read-only scoped bridge (TASKWRAITH_MCP_SAFE_SUBSET=1): advertise ONLY the
     // non-mutating safe subset to a read-only seat (e.g. read-only Grok). The
     // tools/call gate below is the matching enforcement.
     const safeSubsetOnly =
-      (deps.env?.AGENTBENCH_MCP_SAFE_SUBSET ?? process.env.AGENTBENCH_MCP_SAFE_SUBSET) === '1'
+      (deps.env?.TASKWRAITH_MCP_SAFE_SUBSET ?? process.env.TASKWRAITH_MCP_SAFE_SUBSET) === '1'
     const allTools = deps.getMcpToolDefinitions()
     const tools = safeSubsetOnly
       ? allTools.filter((tool) => isReadOnlyAdvertisedTool(tool.name))
@@ -497,18 +497,18 @@ export function handleMcpJsonRpcMessage(
     const params = isRecord(request.params) ? request.params : {}
     const name = params.name
     const args = params.arguments || {}
-    // Read-only scoped bridge (AGENTBENCH_MCP_SAFE_SUBSET=1): refuse any tool
+    // Read-only scoped bridge (TASKWRAITH_MCP_SAFE_SUBSET=1): refuse any tool
     // outside the non-mutating safe subset rather than routing it to the broker.
     // This is the ENFORCEMENT — a read-only Grok seat auto-runs MCP tools with no
     // host gate, so a non-advertised (mutating) tool must be rejected right here.
     const safeSubsetOnly =
-      (deps.env?.AGENTBENCH_MCP_SAFE_SUBSET ?? process.env.AGENTBENCH_MCP_SAFE_SUBSET) === '1'
+      (deps.env?.TASKWRAITH_MCP_SAFE_SUBSET ?? process.env.TASKWRAITH_MCP_SAFE_SUBSET) === '1'
     if (safeSubsetOnly && !isReadOnlyAdvertisedTool(String(name))) {
       bridgeLog(`tools/call REJECTED (read-only scope) name=${String(name)} id=${String(id)}`)
       writeMcpError(
         id,
         -32601,
-        `Tool '${String(name)}' is not available to a read-only AGBench seat.`,
+        `Tool '${String(name)}' is not available to a read-only TaskWraith seat.`,
         transport,
         stdout
       )
@@ -521,10 +521,10 @@ export function handleMcpJsonRpcMessage(
       token: brokerToken,
       tool: name,
       arguments: args,
-      appRunId: deps.env?.AGENTBENCH_RUN_ID ?? process.env.AGENTBENCH_RUN_ID,
-      appChatId: deps.env?.AGENTBENCH_CHAT_ID ?? process.env.AGENTBENCH_CHAT_ID,
+      appRunId: deps.env?.TASKWRAITH_RUN_ID ?? process.env.TASKWRAITH_RUN_ID,
+      appChatId: deps.env?.TASKWRAITH_CHAT_ID ?? process.env.TASKWRAITH_CHAT_ID,
       parentProvider:
-        deps.env?.AGENTBENCH_PARENT_PROVIDER || process.env.AGENTBENCH_PARENT_PROVIDER || 'gemini'
+        deps.env?.TASKWRAITH_PARENT_PROVIDER || process.env.TASKWRAITH_PARENT_PROVIDER || 'gemini'
     })
       .then((result) => {
         const responseFromResult =
@@ -548,7 +548,7 @@ export function handleMcpJsonRpcMessage(
           writeMcpResponse(
             id,
             {
-              content: [{ type: 'text', text: `AGBench bridge internal error: ${reasonText}` }],
+              content: [{ type: 'text', text: `TaskWraith bridge internal error: ${reasonText}` }],
               isError: true
             },
             transport,
@@ -572,7 +572,7 @@ export function startGeminiMcpBridgeProcess(deps: GeminiMcpBridgeProcessDeps): v
   const socketPath = parseBridgeSocketArg(argv, deps.getDefaultSocketPath())
   const brokerToken = parseBridgeTokenArg(argv)
   bridgeLog(
-    `spawn argv=${JSON.stringify(argv.slice(1))} cwd=${deps.cwd?.() || process.cwd()} env.AGENTBENCH_RUN_ID=${env.AGENTBENCH_RUN_ID || ''} env.AGENTBENCH_PARENT_PROVIDER=${env.AGENTBENCH_PARENT_PROVIDER || ''}`,
+    `spawn argv=${JSON.stringify(argv.slice(1))} cwd=${deps.cwd?.() || process.cwd()} env.TASKWRAITH_RUN_ID=${env.TASKWRAITH_RUN_ID || ''} env.TASKWRAITH_PARENT_PROVIDER=${env.TASKWRAITH_PARENT_PROVIDER || ''}`,
     deps.pid?.() || process.pid
   )
 
@@ -688,7 +688,7 @@ export class McpBridgeRuntime {
     return this.deps.getProcessExecPath?.() || process.execPath
   }
 
-  agentbenchMcpBridgeArgs(
+  taskwraithMcpBridgeArgs(
     socketPath: string = this.deps.getGeminiMcpSocketPath(),
     safeSubset = false
   ): string[] {
@@ -707,7 +707,7 @@ export class McpBridgeRuntime {
   }
 
   bridgeArgsMatchCurrentLaunch(args: string[], socketPath: string): boolean {
-    const expected = this.agentbenchMcpBridgeArgs(socketPath)
+    const expected = this.taskwraithMcpBridgeArgs(socketPath)
     return expected.length === args.length && expected.every((arg, index) => args[index] === arg)
   }
 
@@ -721,11 +721,11 @@ export class McpBridgeRuntime {
   async handleGeminiMcpBrokerRequest(request: unknown): Promise<unknown> {
     const brokerRequestRecord = isRecord(request) ? request : {}
     if (!this.isValidGeminiMcpBrokerToken(brokerRequestRecord.token)) {
-      return { ok: false, error: 'AGBench MCP broker authentication failed.' }
+      return { ok: false, error: 'TaskWraith MCP broker authentication failed.' }
     }
     const toolName = brokerRequestRecord.tool || brokerRequestRecord.name
-    if (!isAGBenchMcpToolName(toolName)) {
-      return { ok: false, error: `Unknown AGBench MCP tool: ${String(toolName || 'unknown')}` }
+    if (!isTaskWraithMcpToolName(toolName)) {
+      return { ok: false, error: `Unknown TaskWraith MCP tool: ${String(toolName || 'unknown')}` }
     }
     const parentProvider = normalizeBrokerParentProvider(brokerRequestRecord.parentProvider)
     const result = await this.deps.executeGeminiMcpTool(
@@ -845,11 +845,11 @@ export class McpBridgeRuntime {
       }
 
       const timeout = setTimeout(() => {
-        finish({ ok: false, error: 'Timed out waiting for AGBench Gemini MCP bridge self-test.' })
+        finish({ ok: false, error: 'Timed out waiting for TaskWraith Gemini MCP bridge self-test.' })
       }, 5_000)
 
       try {
-        proc = spawn(this.processExecPath(), this.agentbenchMcpBridgeArgs(socketPath), {
+        proc = spawn(this.processExecPath(), this.taskwraithMcpBridgeArgs(socketPath), {
           shell: false,
           env: this.deps.createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, this.processExecPath())
         })
@@ -928,11 +928,11 @@ export class McpBridgeRuntime {
                 .map((tool) => (isRecord(tool) ? String(tool.name || '') : ''))
                 .filter(Boolean)
             )
-            const missing = AGENTBENCH_MCP_TOOLS.filter((name) => !names.has(name))
+            const missing = TASKWRAITH_MCP_TOOLS.filter((name) => !names.has(name))
             if (missing.length > 0) {
               finish({
                 ok: false,
-                error: `AGBench Gemini MCP bridge is connected but missing tools: ${missing.join(', ')}.`
+                error: `TaskWraith Gemini MCP bridge is connected but missing tools: ${missing.join(', ')}.`
               })
               return
             }
@@ -949,7 +949,7 @@ export class McpBridgeRuntime {
             ok: false,
             error:
               stderr.trim() ||
-              `AGBench Gemini MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
+              `TaskWraith Gemini MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
           })
         }
       })
@@ -962,7 +962,7 @@ export class McpBridgeRuntime {
           params: {
             protocolVersion: '2024-11-05',
             capabilities: {},
-            clientInfo: { name: 'AGBench-self-test', version: this.deps.getAppVersion() || '1.0.0' }
+            clientInfo: { name: 'TaskWraith-self-test', version: this.deps.getAppVersion() || '1.0.0' }
           }
         })}\n`
       )
@@ -1061,19 +1061,19 @@ export class McpBridgeRuntime {
         : {}),
       message: available
         ? bridgeSelfTest?.ok
-          ? 'AGBench Gemini MCP bridge is installed; direct bridge self-test passed.'
-          : 'AGBench Gemini MCP bridge is installed and enabled.'
+          ? 'TaskWraith Gemini MCP bridge is installed; direct bridge self-test passed.'
+          : 'TaskWraith Gemini MCP bridge is installed and enabled.'
         : installed && staleRegistration
-          ? 'AGBench Gemini MCP bridge registration points at an old app bundle or socket and needs repair.'
+          ? 'TaskWraith Gemini MCP bridge registration points at an old app bundle or socket and needs repair.'
           : installed && disabled
-            ? 'AGBench Gemini MCP bridge is installed but disabled.'
+            ? 'TaskWraith Gemini MCP bridge is installed but disabled.'
             : installed && disconnected
               ? bridgeSelfTest?.error
-                ? `AGBench Gemini MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
-                : 'AGBench Gemini MCP bridge is installed but disconnected.'
+                ? `TaskWraith Gemini MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
+                : 'TaskWraith Gemini MCP bridge is installed but disconnected.'
               : installed
-                ? 'AGBench Gemini MCP bridge is installed but did not report as available.'
-                : 'AGBench Gemini MCP bridge is not installed.'
+                ? 'TaskWraith Gemini MCP bridge is installed but did not report as available.'
+                : 'TaskWraith Gemini MCP bridge is not installed.'
     }
     if (options.autoRepairIfEnabled && settings.geminiMcpBridgeEnabled && !status.available) {
       try {
@@ -1086,7 +1086,7 @@ export class McpBridgeRuntime {
           enabled: true,
           available: false,
           error: repairMessage,
-          message: `AGBench Gemini MCP bridge auto-repair failed: ${repairMessage}`
+          message: `TaskWraith Gemini MCP bridge auto-repair failed: ${repairMessage}`
         }
         this.deps.updateSettings({ geminiMcpBridgeLastStatus: repairedStatus })
         return repairedStatus
@@ -1102,11 +1102,11 @@ export class McpBridgeRuntime {
       'add',
       GEMINI_MCP_SERVER_NAME,
       this.processExecPath(),
-      ...this.agentbenchMcpBridgeArgs(socketPath),
+      ...this.taskwraithMcpBridgeArgs(socketPath),
       '--scope',
       scope,
       '--trust',
-      ...AGENTBENCH_MCP_TOOLS.map((tool) => `--include-tools=${tool}`)
+      ...TASKWRAITH_MCP_TOOLS.map((tool) => `--include-tools=${tool}`)
     ]
   }
 
@@ -1148,7 +1148,7 @@ export class McpBridgeRuntime {
       server.command !== this.processExecPath() ||
       server.trust !== true ||
       !this.bridgeArgsMatchCurrentLaunch(args, socketPath) ||
-      !AGENTBENCH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
+      !TASKWRAITH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
     )
   }
 
@@ -1187,12 +1187,12 @@ export class McpBridgeRuntime {
     if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME_LOWER)) {
       return false
     }
-    if (/\/Applications\/AgentBench\.app\//i.test(raw)) {
+    if (/\/Applications\/TaskWraith\.app\//i.test(raw)) {
       return true
     }
     if (
-      /Application Support\/agentbench\//i.test(raw) &&
-      !socketPath.includes('/Application Support/agentbench/')
+      /Application Support\/taskwraith\//i.test(raw) &&
+      !socketPath.includes('/Application Support/taskwraith/')
     ) {
       return true
     }
@@ -1317,7 +1317,7 @@ export class McpBridgeRuntime {
             severity: 'warning',
             title: 'Gemini MCP bridge auto-repair',
             message:
-              'Write-capable Gemini runs require the AGBench MCP bridge. AGBench is enabling and repairing it before launch.'
+              'Write-capable Gemini runs require the TaskWraith MCP bridge. TaskWraith is enabling and repairing it before launch.'
           },
           routed
         )
@@ -1334,7 +1334,7 @@ export class McpBridgeRuntime {
       })
       if (!status.available) {
         throw new Error(
-          `AGBench Gemini MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+          `TaskWraith Gemini MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
         )
       }
       if (requireWriteTools) {
@@ -1343,7 +1343,7 @@ export class McpBridgeRuntime {
         )
         if (!toolSelfTest.ok) {
           throw new Error(
-            `AGBench Gemini MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+            `TaskWraith Gemini MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
           )
         }
       }
@@ -1362,7 +1362,7 @@ export class McpBridgeRuntime {
   async addKimiMcpBridgeRegistration(kimiBinaryPath: string, socketPath: string): Promise<void> {
     const addArgs = buildKimiMcpBridgeAddArgs({
       bridgeBinaryPath: this.processExecPath(),
-      bridgeArgs: this.agentbenchMcpBridgeArgs(socketPath)
+      bridgeArgs: this.taskwraithMcpBridgeArgs(socketPath)
     })
     const addResult = await this.deps.captureProcessOutput(kimiBinaryPath, addArgs, undefined, 15_000)
     if (addResult.code !== 0) {
@@ -1416,7 +1416,7 @@ export class McpBridgeRuntime {
         provider: 'kimi',
         severity: 'warning',
         title: 'Kimi MCP bridge registration failed',
-        message: `AGBench could not register the AGBench MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
+        message: `TaskWraith could not register the TaskWraith MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
       })
     }
   }

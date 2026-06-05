@@ -203,7 +203,7 @@ export function ApprovalLedgerPanel({
     const link = document.createElement('a')
     link.href = url
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    link.download = `agbench-approval-ledger-${stamp}.json`
+    link.download = `taskwraith-approval-ledger-${stamp}.json`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

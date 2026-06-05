@@ -49,7 +49,7 @@ const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   codex: true,
   claude: false,
   kimi: false,
-  // No AGBench MCP for Grok until G5.
+  // No TaskWraith MCP for Grok until G5.
   grok: false,
   // Cursor MCP is workspace-config-based (CR6), not a live status surface.
   cursor: false

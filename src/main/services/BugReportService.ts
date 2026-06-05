@@ -6,7 +6,7 @@
  * types a title + description + severity, and the form submits
  * through `submit-bug-report` IPC. This module is the main-side
  * receiver — it renders the payload to a Markdown entry and appends
- * to a single file under `<userData>/AGBench/bug-reports.md`.
+ * to a single file under `<userData>/TaskWraith/bug-reports.md`.
  *
  * Why one file with `---` separators (not one file per report):
  *   1. Easier to triage by hand at the end of the session: open one
@@ -226,11 +226,11 @@ const realFsOps: BugReportFsOps = {
 }
 
 /**
- * Resolve the on-disk file path. `<userData>/AGBench/bug-reports.md`.
+ * Resolve the on-disk file path. `<userData>/TaskWraith/bug-reports.md`.
  * Separated so the test can call it with a tmpdir as the userData root.
  */
 export function resolveBugReportPath(userDataDir: string): string {
-  return path.join(userDataDir, 'AGBench', 'bug-reports.md')
+  return path.join(userDataDir, 'TaskWraith', 'bug-reports.md')
 }
 
 /** Append a rendered bug-report entry to the on-disk file. Public

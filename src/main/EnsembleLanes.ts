@@ -232,7 +232,7 @@ export function canStartConcurrentRound(input: {
   if (!input.concurrentLanesEnabled) {
     return {
       ok: false,
-      reason: 'Concurrent Ensemble dispatch is behind the AGBENCH_CONCURRENT_LANES safety flag.'
+      reason: 'Concurrent Ensemble dispatch is behind the TASKWRAITH_CONCURRENT_LANES safety flag.'
     }
   }
   if (!input.chatIsEnsemble) {

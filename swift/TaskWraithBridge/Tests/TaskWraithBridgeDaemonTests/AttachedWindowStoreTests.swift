@@ -1,6 +1,6 @@
 import XCTest
 import CoreGraphics
-@testable import AgbenchBridgeDaemon
+@testable import TaskWraithBridgeDaemon
 
 /// Metadata-shape tests for the attached-window store. The store's full
 /// attach/detach/current behavior is exercised end-to-end during manual

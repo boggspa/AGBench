@@ -22,7 +22,7 @@ import {
  *   3. appendBugReport — full orchestrator: mkdir + read + write +
  *      success result, including the ENOENT-as-empty branch and
  *      the size-warning threshold.
- *   4. resolveBugReportPath — userData/AGBench/bug-reports.md layout.
+ *   4. resolveBugReportPath — userData/TaskWraith/bug-reports.md layout.
  */
 
 const baseSubmission: BugReportSubmission = {
@@ -35,7 +35,7 @@ const baseSubmission: BugReportSubmission = {
     timestamp: '2026-05-24T19:10:00.000Z',
     version: '1.0.1',
     provider: 'codex',
-    workspace: '/Users/dev/projects/agbench',
+    workspace: '/Users/dev/projects/taskwraith',
     shell: 'default',
     surface: 'Ensemble',
     chatKind: 'ensemble',
@@ -57,7 +57,7 @@ describe('BugReportService.renderBugReportMarkdown', () => {
     expect(md).toContain('timestamp: 2026-05-24T19:10:00.000Z')
     expect(md).toContain('version: 1.0.1')
     expect(md).toContain('provider: codex')
-    expect(md).toContain('workspace: /Users/dev/projects/agbench')
+    expect(md).toContain('workspace: /Users/dev/projects/taskwraith')
     expect(md).toContain('shell: default')
     expect(md).toContain('surface: "Ensemble"')
     expect(md).toContain('chat_kind: "ensemble"')
@@ -144,10 +144,10 @@ describe('BugReportService.appendBugReport', () => {
     }
     const result = await appendBugReport('/tmp/test-userdata', baseSubmission, ops)
     expect(result.ok).toBe(true)
-    expect(result.path).toBe('/tmp/test-userdata/AGBench/bug-reports.md')
-    expect(ops.mkdir).toHaveBeenCalledWith('/tmp/test-userdata/AGBench', { recursive: true })
+    expect(result.path).toBe('/tmp/test-userdata/TaskWraith/bug-reports.md')
+    expect(ops.mkdir).toHaveBeenCalledWith('/tmp/test-userdata/TaskWraith', { recursive: true })
     expect(writes).toHaveLength(1)
-    expect(writes[0].file).toBe('/tmp/test-userdata/AGBench/bug-reports.md')
+    expect(writes[0].file).toBe('/tmp/test-userdata/TaskWraith/bug-reports.md')
     expect(writes[0].data).toContain('title: "Composer freezes after Cmd+K"')
     // First write — no leading separator.
     expect(writes[0].data.startsWith('---\n')).toBe(true)
@@ -193,9 +193,9 @@ describe('BugReportService.appendBugReport', () => {
     expect(result.totalBytes).toBeGreaterThan(5 * 1024 * 1024)
   })
 
-  it('resolveBugReportPath builds <userData>/AGBench/bug-reports.md', () => {
-    expect(resolveBugReportPath('/Users/dev/Library/Application Support/agbench')).toBe(
-      '/Users/dev/Library/Application Support/agbench/AGBench/bug-reports.md'
+  it('resolveBugReportPath builds <userData>/TaskWraith/bug-reports.md', () => {
+    expect(resolveBugReportPath('/Users/dev/Library/Application Support/taskwraith')).toBe(
+      '/Users/dev/Library/Application Support/taskwraith/TaskWraith/bug-reports.md'
     )
   })
 })

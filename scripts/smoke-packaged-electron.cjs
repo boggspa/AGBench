@@ -9,10 +9,10 @@ const searchArg = process.argv[2]
 const searchRoots = searchArg
   ? [path.resolve(repoRoot, searchArg)]
   : ['dist', 'dist-debug'].map((dir) => path.join(repoRoot, dir))
-const bundleSizeGuardDisabled = process.env.AGBENCH_DISABLE_BUNDLE_SIZE_GUARD === '1'
-const maxAsarBytes = readMegabyteLimit('AGBENCH_MAX_ASAR_MB', 500)
-const maxZipBytes = readMegabyteLimit('AGBENCH_MAX_ZIP_MB', 700)
-const launchSmokeTimeoutMs = readIntegerEnv('AGBENCH_PACKAGE_SMOKE_TIMEOUT_MS', 8000)
+const bundleSizeGuardDisabled = process.env.TASKWRAITH_DISABLE_BUNDLE_SIZE_GUARD === '1'
+const maxAsarBytes = readMegabyteLimit('TASKWRAITH_MAX_ASAR_MB', 500)
+const maxZipBytes = readMegabyteLimit('TASKWRAITH_MAX_ZIP_MB', 700)
+const launchSmokeTimeoutMs = readIntegerEnv('TASKWRAITH_PACKAGE_SMOKE_TIMEOUT_MS', 8000)
 
 main().catch((error) => {
   fail(error instanceof Error ? error.stack || error.message : String(error))
@@ -60,6 +60,11 @@ async function main() {
     validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
     validateMacClaudeAgentSdkBinaries(unpackedDir, expectedMacArchs)
   }
+  if (packageTarget.platform === 'win32') {
+    validateWindowsPackageBinaries(packageRoot)
+    validateWindowsNodePtyBindings(unpackedDir, packageTarget.arch)
+    validateWindowsClaudeAgentSdkBinaries(unpackedDir, packageTarget.arch)
+  }
 
   validateZipArtifacts(searchRoots)
   console.log(
@@ -93,7 +98,7 @@ function assertMaxFileSize(filePath, label, maxBytes) {
 
 function validateZipArtifacts(roots) {
   if (bundleSizeGuardDisabled) {
-    console.log('bundle size guard skipped via AGBENCH_DISABLE_BUNDLE_SIZE_GUARD=1')
+    console.log('bundle size guard skipped via TASKWRAITH_DISABLE_BUNDLE_SIZE_GUARD=1')
     return
   }
   const zipArtifacts = findFilesInRoots(
@@ -109,11 +114,15 @@ function validateZipArtifacts(roots) {
 }
 
 async function runLaunchSmoke(packageRoot) {
-  if (process.env.AGBENCH_SKIP_LAUNCH_SMOKE === '1') {
-    console.log('packaged app launch smoke skipped via AGBENCH_SKIP_LAUNCH_SMOKE=1')
+  if (process.env.TASKWRAITH_SKIP_LAUNCH_SMOKE === '1') {
+    console.log('packaged app launch smoke skipped via TASKWRAITH_SKIP_LAUNCH_SMOKE=1')
     return
   }
   if (process.platform !== 'darwin' || !packageRoot.endsWith('.app')) {
+    if (process.platform === 'win32' && inferPackageTarget(packageRoot).platform === 'win32') {
+      await runWindowsLaunchSmoke(packageRoot)
+      return
+    }
     console.log(`packaged app launch smoke skipped for ${process.platform}`)
     return
   }
@@ -153,6 +162,40 @@ async function runLaunchSmoke(packageRoot) {
   }
 
   console.log(`packaged app launch smoke ok: ${appName} (${launchResult.pidCount} process id(s))`)
+}
+
+async function runWindowsLaunchSmoke(packageRoot) {
+  const executablePath = resolveWindowsExecutablePath(packageRoot)
+  const child = spawn(executablePath, [], {
+    cwd: packageRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      TASKWRAITH_AUTO_UPDATE: 'off'
+    }
+  })
+  let output = ''
+  let launchError = null
+  child.stdout?.on('data', (chunk) => {
+    output += chunk.toString()
+  })
+  child.stderr?.on('data', (chunk) => {
+    output += chunk.toString()
+  })
+  child.on('error', (error) => {
+    launchError = error
+  })
+
+  await sleep(Math.min(launchSmokeTimeoutMs, 2500))
+  if (launchError) {
+    fail(`Failed to launch packaged Windows app: ${launchError.message}`)
+  }
+  if (child.exitCode !== null) {
+    const detail = output.trim() ? `\noutput:\n${output.trim()}` : ''
+    fail(`Packaged Windows app exited during launch smoke with code ${child.exitCode}.${detail}`)
+  }
+  child.kill()
+  console.log(`packaged app launch smoke ok: ${path.basename(executablePath)}`)
 }
 
 function resolveMacExecutablePath(packageRoot) {
@@ -332,9 +375,9 @@ function validateMacPackageBinaries(packageRoot, resourcesDir, expectedArchs) {
       )
     }
   }
-  const bridgeDaemon = path.join(resourcesDir, 'bridge', 'AgbenchBridgeDaemon')
-  assertFile(bridgeDaemon, 'AgbenchBridgeDaemon')
-  verifyMachOArchitectures(bridgeDaemon, expectedArchs, 'AgbenchBridgeDaemon')
+  const bridgeDaemon = path.join(resourcesDir, 'bridge', 'TaskWraithBridgeDaemon')
+  assertFile(bridgeDaemon, 'TaskWraithBridgeDaemon')
+  verifyMachOArchitectures(bridgeDaemon, expectedArchs, 'TaskWraithBridgeDaemon')
 }
 
 function validateMacNodePtyBindings(unpackedDir, expectedArchs) {
@@ -398,6 +441,57 @@ function validateMacClaudeAgentSdkBinaries(unpackedDir, expectedArchs) {
       requiredPackage.packageName
     )
   }
+}
+
+function validateWindowsPackageBinaries(packageRoot) {
+  assertFile(resolveWindowsExecutablePath(packageRoot), 'Windows app executable')
+}
+
+function resolveWindowsExecutablePath(packageRoot) {
+  const candidates = [
+    path.join(packageRoot, 'TaskWraith.exe'),
+    path.join(packageRoot, 'TaskWraith Debug.exe')
+  ]
+  for (const entry of safeReadDir(packageRoot)) {
+    if (entry.isFile() && /\.exe$/i.test(entry.name)) {
+      candidates.push(path.join(packageRoot, entry.name))
+    }
+  }
+  const found = candidates.find((candidate) => fs.existsSync(candidate))
+  if (found) return found
+  fail(`Packaged Windows executable was not found under ${packageRoot}.`)
+}
+
+function validateWindowsNodePtyBindings(unpackedDir, arch) {
+  const nodePtyDir = findDirectories(
+    unpackedDir,
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules/node-pty'),
+    8
+  )[0]
+  if (!nodePtyDir) fail(`node-pty package was not unpacked under ${unpackedDir}.`)
+  const prebuildPath = path.join(nodePtyDir, 'prebuilds', `win32-${arch}`, 'pty.node')
+  assertFile(prebuildPath, `node-pty win32-${arch} prebuild`)
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (fs.existsSync(buildBinding)) {
+    fail(`Host-only node-pty build binding shadows Windows prebuilds: ${buildBinding}`)
+  }
+}
+
+function validateWindowsClaudeAgentSdkBinaries(unpackedDir, arch) {
+  const nodeModulesDir = findDirectories(
+    unpackedDir,
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules'),
+    6
+  )[0]
+  if (!nodeModulesDir) return
+  const packageName = `@anthropic-ai/claude-agent-sdk-win32-${arch}`
+  const packageDir = path.join(nodeModulesDir, ...packageName.split('/'))
+  if (!fs.existsSync(packageDir)) {
+    console.log(`Claude Agent SDK Windows helper not packaged for ${arch}; skipping helper check.`)
+    return
+  }
+  const binaryPath = path.join(packageDir, 'claude.exe')
+  assertFile(binaryPath, `${packageName} helper`)
 }
 
 function expectedMacArchitectures(arch) {

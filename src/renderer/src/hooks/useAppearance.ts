@@ -104,7 +104,7 @@ function getInitialState(): AppearanceState {
     userBubbleColor: 'system',
     promptSurfaceStyle: 'liquid_glass',
     composerStyle: 'default',
-    transcriptFontFamily: FONT_STACKS.agbench,
+    transcriptFontFamily: FONT_STACKS.taskwraith,
     composerFontFamily: COMPOSER_FONT_MATCH_TRANSCRIPT,
     funFxEnabled: true,
     funFxMode: 'cinematic',
@@ -166,7 +166,7 @@ export function useAppearance() {
           composerStyle: settings.composerStyle || 'default',
           transcriptFontFamily: normalizeFontFamily(
             settings.transcriptFontFamily,
-            FONT_STACKS.agbench
+            FONT_STACKS.taskwraith
           ),
           composerFontFamily: normalizeComposerFontFamily(settings.composerFontFamily),
           funFxEnabled:
@@ -285,7 +285,7 @@ export function useAppearance() {
     )
     root.setAttribute('data-advanced-fx-intensity', next.advancedFx.intensity)
     root.setAttribute('data-compact', String(next.compactDensity))
-    const transcriptFontFamily = normalizeFontFamily(next.transcriptFontFamily, FONT_STACKS.agbench)
+    const transcriptFontFamily = normalizeFontFamily(next.transcriptFontFamily, FONT_STACKS.taskwraith)
     const composerFontFamily = resolveComposerFontFamily(
       next.composerFontFamily,
       transcriptFontFamily

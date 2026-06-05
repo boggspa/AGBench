@@ -3,7 +3,7 @@ import { toolNameToFamily } from './ToolFamilyIcon'
 
 /*
  * Pins the tool-name → icon-family mapping so a future tool addition
- * doesn't silently fall back to the legacy category icon. Each AGBench
+ * doesn't silently fall back to the legacy category icon. Each TaskWraith
  * MCP tool (and Codex-internal synthetic tool name) should resolve to
  * a recognisable family; unknown/empty names return null so the caller
  * can render its own fallback.
@@ -146,21 +146,21 @@ describe('toolNameToFamily', () => {
   })
 
   it('strips MCP namespace prefixes before matching', () => {
-    expect(toolNameToFamily('mcp__AGBench__delegate_to_subthread')).toBe('delegate')
-    expect(toolNameToFamily('mcp_AGBench_ensemble_yield')).toBe('yield')
-    expect(toolNameToFamily('mcp__AGBench__creative_app_status')).toBe('diagnostic')
-    expect(toolNameToFamily('mcp__AGBench__creative_timeline_validate')).toBe('diagnostic')
-    expect(toolNameToFamily('mcp__AGBench__creative_timeline_ir')).toBe('diagnostic')
-    expect(toolNameToFamily('mcp__AGBench__creative_timeline_diff')).toBe('diagnostic')
+    expect(toolNameToFamily('mcp__TaskWraith__delegate_to_subthread')).toBe('delegate')
+    expect(toolNameToFamily('mcp_TaskWraith_ensemble_yield')).toBe('yield')
+    expect(toolNameToFamily('mcp__TaskWraith__creative_app_status')).toBe('diagnostic')
+    expect(toolNameToFamily('mcp__TaskWraith__creative_timeline_validate')).toBe('diagnostic')
+    expect(toolNameToFamily('mcp__TaskWraith__creative_timeline_ir')).toBe('diagnostic')
+    expect(toolNameToFamily('mcp__TaskWraith__creative_timeline_diff')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__server__write_file')).toBe('edit')
-    expect(toolNameToFamily('AGBench__git_status')).toBe('git')
-    expect(toolNameToFamily('agentbench__read_file')).toBe('file')
+    expect(toolNameToFamily('TaskWraith__git_status')).toBe('git')
+    expect(toolNameToFamily('taskwraith__read_file')).toBe('file')
   })
 
   it('is case-insensitive', () => {
     expect(toolNameToFamily('READ_FILE')).toBe('file')
     expect(toolNameToFamily('Git_Status')).toBe('git')
-    expect(toolNameToFamily('MCP__AGBench__delegate_to_subthread')).toBe('delegate')
+    expect(toolNameToFamily('MCP__TaskWraith__delegate_to_subthread')).toBe('delegate')
   })
 
   it('returns null for unknown tool names', () => {

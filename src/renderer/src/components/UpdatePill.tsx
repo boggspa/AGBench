@@ -51,15 +51,15 @@ function titleForSnapshot(snapshot: UpdateStateSnapshot): string {
   switch (snapshot.status) {
     case 'available':
       return snapshot.latestVersion
-        ? `AGBench ${snapshot.latestVersion} is available`
-        : 'An AGBench update is available'
+        ? `TaskWraith ${snapshot.latestVersion} is available`
+        : 'An TaskWraith update is available'
     case 'downloading':
-      return 'AGBench update is downloading'
+      return 'TaskWraith update is downloading'
     case 'downloaded':
-      return 'Restart AGBench to install the downloaded update'
+      return 'Restart TaskWraith to install the downloaded update'
     case 'error':
-      return snapshot.errorMessage || 'AGBench update check failed'
+      return snapshot.errorMessage || 'TaskWraith update check failed'
     default:
-      return 'AGBench update'
+      return 'TaskWraith update'
   }
 }

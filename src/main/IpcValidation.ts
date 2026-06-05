@@ -279,7 +279,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   // Tester-feedback intake (1.0.1). The renderer collects a short
   // title + optional description / expected / severity from
   // BugReportSheet.tsx and ships the auto-captured context block
-  // alongside; main appends to `<userData>/AGBench/bug-reports.md`.
+  // alongside; main appends to `<userData>/TaskWraith/bug-reports.md`.
   // Also exposes a tiny `get-app-version` so the sheet's read-only
   // context row can display the canonical version without hard-coding.
   'get-app-version': [],

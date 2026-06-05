@@ -216,7 +216,7 @@ describe('Ensemble prompt composition', () => {
       roundId: 'round-1',
       chatContextTurns: 4
     })
-    expect(prompt).toContain('AGBench Ensemble Mode')
+    expect(prompt).toContain('TaskWraith Ensemble Mode')
     expect(prompt).toContain('Codex / Worker')
     expect(prompt).toContain('Implement changes.')
     expect(prompt).toContain('[User]')
@@ -351,7 +351,7 @@ describe('Ensemble prompt composition', () => {
 
   it('emits a Round subject stanza naming the active workspace', () => {
     // 1.0.4 — Claude/Explorer's introspective feedback after picking
-    // up AGBench-meta context instead of the bound workspace. The
+    // up TaskWraith-meta context instead of the bound workspace. The
     // stanza gives every participant a grounded antecedent for
     // "this app / this repo / this project" so the lazy resolution
     // path becomes the correct one.
@@ -366,7 +366,7 @@ describe('Ensemble prompt composition', () => {
     // The deictic rule should be in the Rules section too.
     expect(prompt).toContain('Deictic references')
     expect(prompt).toContain('"this app"')
-    expect(prompt).toContain('NOT to AGBench')
+    expect(prompt).toContain('NOT to TaskWraith')
   })
 
   it('marks the first speaker with "(you — first speaker)" and emits the scoping rule', () => {
@@ -570,7 +570,7 @@ describe('Ensemble prompt composition', () => {
   // AND the workspace-anchored deictic rule are BOTH omitted. In a
   // genuine conversational global chat there's no project anchor to
   // enforce, so injecting "ask which project they mean" friction was
-  // counterproductive. The self-reflective AGBench-harness branch
+  // counterproductive. The self-reflective TaskWraith-harness branch
   // remains unchanged (separate test below).
   it('1.0.4-AR8: suspends the Round-subject stanza for non-workspace non-self-reflective chats', () => {
     const globalChat = { ...chat(), workspacePath: undefined, scope: 'global' as const }
@@ -611,18 +611,18 @@ describe('Ensemble prompt composition', () => {
       chat: chat(),
       config: reflectiveEnsemble,
       participant: reflectiveEnsemble.participants[1],
-      currentPrompt: 'What is AGBench getting right?',
+      currentPrompt: 'What is TaskWraith getting right?',
       roundId: 'round-discuss'
     })
     // Workspace stanza calls out self-reflective mode and the bound
     // workspace appears as incidental context, not the topic.
-    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
+    expect(prompt).toContain('Round subject: TaskWraith harness (self-reflective mode')
     expect(prompt).toContain('Bound workspace (incidental context): repo (/repo)')
     // Deictic rule is now the inverted variant.
-    expect(prompt).toContain('refer to AGBench / the harness / this ensemble')
-    expect(prompt).not.toContain('NOT to AGBench')
+    expect(prompt).toContain('refer to TaskWraith / the harness / this ensemble')
+    expect(prompt).not.toContain('NOT to TaskWraith')
     expect(prompt).not.toContain(
-      'Discuss AGBench only when the user explicitly references it by name'
+      'Discuss TaskWraith only when the user explicitly references it by name'
     )
   })
 
@@ -636,7 +636,7 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'Reflect.',
       roundId: 'round-discuss-global'
     })
-    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
+    expect(prompt).toContain('Round subject: TaskWraith harness (self-reflective mode')
     expect(prompt).toContain('No external workspace is bound')
     expect(prompt).not.toContain('Bound workspace (incidental context)')
   })
@@ -653,7 +653,7 @@ describe('Ensemble prompt composition', () => {
       roundId: 'round-default'
     })
     expect(prompt).toContain(
-      'refer to the active workspace named in `Round subject:` above, NOT to AGBench'
+      'refer to the active workspace named in `Round subject:` above, NOT to TaskWraith'
     )
     expect(prompt).not.toContain('self-reflective mode')
   })

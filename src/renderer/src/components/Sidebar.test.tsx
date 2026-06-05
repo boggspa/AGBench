@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types'
 import { Sidebar } from './Sidebar'
 
-const EXPANDED_WORKSPACES_STORAGE_KEY = 'agbench-sidebar-expanded-workspace-ids'
-const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'agbench-sidebar-collapsed-sub-thread-parent-ids'
-const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'agbench-sidebar-collapsed-sections'
+const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sub-thread-parent-ids'
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sections'
 
 // Mirrors SIDEBAR_SECTION_IDS in Sidebar.tsx. The sidebar defaults every section
 // to collapsed for new users (ec5bcad, "all-collapsed-v1"), so tests that assert

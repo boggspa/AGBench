@@ -56,7 +56,7 @@ describe('ProviderRunStats', () => {
       input_tokens: 17,
       output_tokens: 2,
       total_tokens: 19,
-      _agentbench_input_includes_cache: true
+      _taskwraith_input_includes_cache: true
     })
   })
 
@@ -68,14 +68,14 @@ describe('ProviderRunStats', () => {
           cache_creation_input_tokens: 4,
           cache_read_input_tokens: 3,
           output_tokens: 2,
-          _agentbench_input_includes_cache: true
+          _taskwraith_input_includes_cache: true
         }
       })
     ).toMatchObject({
       input_tokens: 17,
       output_tokens: 2,
       total_tokens: 19,
-      _agentbench_input_includes_cache: true
+      _taskwraith_input_includes_cache: true
     })
   })
 
@@ -93,7 +93,7 @@ describe('ProviderRunStats', () => {
       input_tokens: 31,
       output_tokens: 11,
       total_tokens: 42,
-      _agentbench_input_includes_cache: true
+      _taskwraith_input_includes_cache: true
     })
   })
 
@@ -137,7 +137,7 @@ describe('ProviderRunStats', () => {
       output_tokens: 13,
       total_tokens: 34,
       duration_ms: 2200,
-      _agentbench_usage_recorded: true
+      _taskwraith_usage_recorded: true
     })
   })
 })

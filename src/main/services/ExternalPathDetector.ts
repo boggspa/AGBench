@@ -43,8 +43,8 @@ const FILE_IO_TOOL_CATEGORY: Record<string, 'read' | 'write'> = {
 }
 
 /**
- * Strip `mcp__<server>__` / `agbench__` / `agentbench__` namespace
- * prefixes so the bare tool name can be category-looked up.
+ * Strip `mcp__<server>__` / `taskwraith__` namespace prefixes so the
+ * bare tool name can be category-looked up.
  */
 function stripToolNamespace(toolName: string): string {
   const lower = (toolName || '').toLowerCase()
@@ -52,8 +52,7 @@ function stripToolNamespace(toolName: string): string {
     const idx = lower.indexOf('__', 5)
     return idx > 5 ? lower.slice(idx + 2) : lower
   }
-  if (lower.startsWith('agbench__')) return lower.slice('agbench__'.length)
-  if (lower.startsWith('agentbench__')) return lower.slice('agentbench__'.length)
+  if (lower.startsWith('taskwraith__')) return lower.slice('taskwraith__'.length)
   return lower
 }
 
@@ -61,7 +60,7 @@ function stripToolNamespace(toolName: string): string {
  * Inspect a params object for the conventional path-bearing fields.
  * Returns the first non-empty absolute path found, or undefined.
  *
- * Covers three param-shape families AGBench's detectors see in the wild:
+ * Covers three param-shape families TaskWraith's detectors see in the wild:
  *  1. Flat path fields used by most tool-call params (path, filePath,
  *     file_path, target, target_file, target_file_path).
  *  2. Codex's `item/fileChange/requestApproval` shape, which carries a

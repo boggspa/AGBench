@@ -84,7 +84,7 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
     : (lan?.settingEnabled ?? true)
   const daemonHelper =
     lan?.envOverride === 'force-on'
-      ? 'Enabled by AGBENCH_BRIDGE_DAEMON.'
+      ? 'Enabled by TASKWRAITH_BRIDGE_DAEMON.'
       : lan?.envOverride === 'force-off'
         ? 'Disabled by environment override.'
         : nativeBridgeUnavailable

@@ -29,7 +29,7 @@ function makeRecord(
     previousStatus: 'active',
     recoveredStatus: 'failed',
     action: 'marked_failed',
-    reason: 'Run was active when AGBench last exited.',
+    reason: 'Run was active when TaskWraith last exited.',
     recoveredAt: '2026-05-16T12:00:00.000Z',
     resumeAvailable: false,
     resumeHint: '',

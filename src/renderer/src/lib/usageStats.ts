@@ -336,7 +336,7 @@ export const extractUsageCountsFromCandidate = (
     ['tokenCounts', 'input'],
     ['token_counts', 'input']
   ])
-  const cacheInputTokens = stats?._agentbench_input_includes_cache
+  const cacheInputTokens = stats?._taskwraith_input_includes_cache
     ? 0
     : sumUsageCounts(stats, [
         ['cache_creation_input_tokens'],
@@ -345,7 +345,7 @@ export const extractUsageCountsFromCandidate = (
         ['input_cache_creation'],
         ['input_cache_read']
       ])
-  const inputAudioTokens = stats?._agentbench_input_includes_cache
+  const inputAudioTokens = stats?._taskwraith_input_includes_cache
     ? 0
     : sumUsageCounts(stats, [['input_audio_tokens']])
   const inputTokens = inputBaseTokens + cacheInputTokens + inputAudioTokens

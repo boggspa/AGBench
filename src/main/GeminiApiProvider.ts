@@ -617,7 +617,7 @@ export function shouldAttemptGeminiApi(
  * Current scope (Steps 2–9):
  *   - Multi-turn continuity via history replay (Step 5).
  *   - Text + tool-call rounds streamed out (Steps 2 + 3).
- *   - Function calling via AGBench MCP tools (Step 3).
+ *   - Function calling via TaskWraith MCP tools (Step 3).
  *   - Approval gates inherited from `executeGeminiMcpTool` (Step 4).
  *   - Synthetic `api://<chatId>` session id pinned on success (Step 5).
  *   - Image input attached as inlineData / fileData parts (Step 7).
@@ -750,7 +750,7 @@ export async function tryRunGeminiApi(
   }
 
   // Phase M1 Step 3: function-calling tool declarations.
-  // Translate the AGBench MCP tool surface into Gemini's FunctionDeclaration
+  // Translate the TaskWraith MCP tool surface into Gemini's FunctionDeclaration
   // shape ONCE per run (the tool list is stable across rounds, and the
   // converter is pure so the cost is trivial anyway). Empty array
   // disables function calling — model can only emit text.
@@ -960,7 +960,7 @@ export async function tryRunGeminiApi(
       const totalTokens = lastUsage?.totalTokenCount ?? inputTokens + outputTokens
       const workspaceId =
         priorChat?.workspaceId ||
-        (priorChat?.scope === 'global' ? '__agentbench_global_chats__' : '') ||
+        (priorChat?.scope === 'global' ? '__taskwraith_global_chats__' : '') ||
         ''
       recordUsage({
         provider: 'gemini',

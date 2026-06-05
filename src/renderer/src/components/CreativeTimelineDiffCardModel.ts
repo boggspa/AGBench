@@ -54,8 +54,7 @@ function stripToolNamespace(toolName: string): string {
     const index = normalized.indexOf('__', 5)
     return index > 5 ? normalized.slice(index + 2) : normalized
   }
-  if (normalized.startsWith('agbench__')) return normalized.slice('agbench__'.length)
-  if (normalized.startsWith('agentbench__')) return normalized.slice('agentbench__'.length)
+  if (normalized.startsWith('taskwraith__')) return normalized.slice('taskwraith__'.length)
   return normalized
 }
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildCodexAgentbenchMcpArgs,
+  buildCodexTaskWraithMcpArgs,
   codexConfigParseUserMessage,
   compareCodexVersions,
   isCodexAppServerThreadId,
   isCodexConfigParseError,
   parseCodexVersion,
-  type CodexMcpAgentbenchConfig
+  type CodexMcpTaskWraithConfig
 } from './CodexAppServerClient'
 
 describe('isCodexAppServerThreadId', () => {
@@ -32,19 +32,19 @@ describe('isCodexAppServerThreadId', () => {
   })
 })
 
-// Phase I2: the Codex CLI gets the AGBench MCP server registered
-// at spawn time via `-c mcp_servers.AGBench.*` config overrides.
+// Phase I2: the Codex CLI gets the TaskWraith MCP server registered
+// at spawn time via `-c mcp_servers.TaskWraith.*` config overrides.
 // Pin the exact `-c` arg list (order + TOML escaping) so we don't
-// regress the Codex → AGBench MCP bridge wiring on accident.
-describe('buildCodexAgentbenchMcpArgs', () => {
-  function makeConfig(overrides: Partial<CodexMcpAgentbenchConfig> = {}): CodexMcpAgentbenchConfig {
+// regress the Codex → TaskWraith MCP bridge wiring on accident.
+describe('buildCodexTaskWraithMcpArgs', () => {
+  function makeConfig(overrides: Partial<CodexMcpTaskWraithConfig> = {}): CodexMcpTaskWraithConfig {
     return {
       enabled: true,
-      bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
+      bridgeBinaryPath: '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
       bridgeArgs: [
-        '--agentbench-gemini-mcp-bridge',
+        '--taskwraith-gemini-mcp-bridge',
         '--socket',
-        '/tmp/agentbench.sock',
+        '/tmp/taskwraith.sock',
         '--token',
         'deadbeef'
       ],
@@ -55,24 +55,24 @@ describe('buildCodexAgentbenchMcpArgs', () => {
 
   it('returns empty arg list when MCP integration is disabled', () => {
     // Disabled: Codex spawns without any -c overrides, so its agents
-    // can't reach the AGBench MCP server (matches the existing
+    // can't reach the TaskWraith MCP server (matches the existing
     // user-controlled `geminiMcpBridgeEnabled` toggle behaviour).
-    expect(buildCodexAgentbenchMcpArgs({ ...makeConfig(), enabled: false })).toEqual([])
+    expect(buildCodexTaskWraithMcpArgs({ ...makeConfig(), enabled: false })).toEqual([])
   })
 
   it('emits three -c flag pairs in command/args/env order when enabled', () => {
-    const args = buildCodexAgentbenchMcpArgs(makeConfig())
+    const args = buildCodexTaskWraithMcpArgs(makeConfig())
     expect(args).toHaveLength(6)
     expect(args[0]).toBe('-c')
     expect(args[1]).toBe(
-      'mcp_servers.AGBench.command="/Applications/AgentBench.app/Contents/MacOS/AgentBench"'
+      'mcp_servers.TaskWraith.command="/Applications/TaskWraith.app/Contents/MacOS/TaskWraith"'
     )
     expect(args[2]).toBe('-c')
     expect(args[3]).toBe(
-      'mcp_servers.AGBench.args=["--agentbench-gemini-mcp-bridge", "--socket", "/tmp/agentbench.sock", "--token", "deadbeef"]'
+      'mcp_servers.TaskWraith.args=["--taskwraith-gemini-mcp-bridge", "--socket", "/tmp/taskwraith.sock", "--token", "deadbeef"]'
     )
     expect(args[4]).toBe('-c')
-    expect(args[5]).toBe('mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "codex" }')
+    expect(args[5]).toBe('mcp_servers.TaskWraith.env={ TASKWRAITH_PARENT_PROVIDER = "codex" }')
   })
 
   it('TOML-escapes embedded backslashes and double quotes', () => {
@@ -80,14 +80,14 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     // ship Windows builds yet but the escape codepath should be
     // resilient if process.execPath ever returns one. Quotes must be
     // backslash-escaped or the TOML basic-string parser blows up.
-    const args = buildCodexAgentbenchMcpArgs(
+    const args = buildCodexTaskWraithMcpArgs(
       makeConfig({
-        bridgeBinaryPath: 'C:\\AgentBench\\bench"executable"',
+        bridgeBinaryPath: 'C:\\TaskWraith\\bench"executable"',
         bridgeArgs: ['weird\\path', 'has "quote"']
       })
     )
-    expect(args[1]).toBe('mcp_servers.AGBench.command="C:\\\\AgentBench\\\\bench\\"executable\\""')
-    expect(args[3]).toBe('mcp_servers.AGBench.args=["weird\\\\path", "has \\"quote\\""]')
+    expect(args[1]).toBe('mcp_servers.TaskWraith.command="C:\\\\TaskWraith\\\\bench\\"executable\\""')
+    expect(args[3]).toBe('mcp_servers.TaskWraith.args=["weird\\\\path", "has \\"quote\\""]')
   })
 
   it('preserves the parentProvider stamp in the env override', () => {
@@ -95,12 +95,12 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     // spawn mechanism and stamps env directly). Pin the contract so
     // if a future provider rides on CodexAppServerClient it has to
     // update the test too.
-    const args = buildCodexAgentbenchMcpArgs(makeConfig())
-    expect(args[5]).toContain('AGENTBENCH_PARENT_PROVIDER = "codex"')
+    const args = buildCodexTaskWraithMcpArgs(makeConfig())
+    expect(args[5]).toContain('TASKWRAITH_PARENT_PROVIDER = "codex"')
   })
 })
 
-// Dogfood hardening (a): when the homebrew codex CLI AGBench spawns is older
+// Dogfood hardening (a): when the homebrew codex CLI TaskWraith spawns is older
 // than the one the user's Codex.app uses, the app can write a config.toml value
 // the older CLI rejects. The CLI prints a deserialize error on stderr and
 // exits, so the app-server/probe/exec all fail generically. We classify that
@@ -164,7 +164,7 @@ describe('codexConfigParseUserMessage', () => {
 })
 
 // Dogfood hardening (b): prefer/notify-about the newest codex binary. We DETECT
-// a newer codex than AGBench would use and warn — we do not auto-switch. These
+// a newer codex than TaskWraith would use and warn — we do not auto-switch. These
 // pin the version parser + comparator the detection relies on.
 describe('parseCodexVersion', () => {
   it('parses a stable `codex-cli x.y.z` line', () => {

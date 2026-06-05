@@ -111,7 +111,7 @@ export function shouldRepinAfterFrame(input: {
  * not change the code block's own bounding rect, so dispatching this
  * event and re-pinning the scroller from its handler cannot feed back.
  */
-export const CODE_BLOCK_RESIZE_EVENT = 'agbench:code-block-resized'
+export const CODE_BLOCK_RESIZE_EVENT = 'taskwraith:code-block-resized'
 
 /**
  * Payload shape carried on a `CODE_BLOCK_RESIZE_EVENT`. The receiver

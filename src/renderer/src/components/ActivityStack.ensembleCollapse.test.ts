@@ -132,8 +132,8 @@ describe('buildTimelineItems — same-tool grouping (unified single + ensemble)'
   it('keeps ensemble_yield activities inline (social-glue exception, all alias forms)', () => {
     const yields: ToolActivity[] = [
       activity({ id: 'y1', toolName: 'ensemble_yield', category: 'task' }),
-      activity({ id: 'y2', toolName: 'mcp_AGBench_ensemble_yield', category: 'task' }),
-      activity({ id: 'y3', toolName: 'mcp__AGBench__ensemble_yield', category: 'task' })
+      activity({ id: 'y2', toolName: 'mcp_TaskWraith_ensemble_yield', category: 'task' }),
+      activity({ id: 'y3', toolName: 'mcp__TaskWraith__ensemble_yield', category: 'task' })
     ]
     const items = buildTimelineItems(yields)
     expect(items.length).toBe(3)

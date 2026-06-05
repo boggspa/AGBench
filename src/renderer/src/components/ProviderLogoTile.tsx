@@ -1,7 +1,7 @@
 /*
  * ProviderLogoTile — Phase L6 slice 4 (+ follow-up).
  *
- * Renders an original AGBench provider mnemonic glyph inside a tinted
+ * Renders an original TaskWraith provider mnemonic glyph inside a tinted
  * rounded-rect container. Provider labels still name the real products;
  * the glyphs are deliberately simplified visual hints, not official logos.
  */

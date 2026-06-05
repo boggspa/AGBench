@@ -1,5 +1,5 @@
-appId: com.chrisizatt.agbench
-productName: AGBench
+appId: com.chrisizatt.taskwraith
+productName: TaskWraith
 directories:
   buildResources: build
 files:
@@ -17,7 +17,7 @@ files:
   # Local agent/session state from the development loop.
   - '!.claude/**'
   # Native/mobile source trees are development inputs only. The mac app
-  # receives the release AgbenchBridgeDaemon via `mac.extraResources`
+  # receives the release TaskWraithBridgeDaemon via `mac.extraResources`
   # below; packaging the full Swift/iOS `.build` trees into app.asar
   # bloated debug builds by hundreds of megabytes.
   - '!swift/**'
@@ -28,9 +28,14 @@ asarUnpack:
   - node_modules/node-pty/**
 afterPack: build/validate-native-modules.cjs
 win:
-  executableName: AGBench
+  executableName: TaskWraith
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
 nsis:
-  artifactName: AGBench-${version}-setup.${ext}
+  artifactName: TaskWraith-${version}-win-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -42,7 +47,7 @@ mac:
     - target: zip
       arch:
         - universal
-  artifactName: AGBench-${version}-universal-mac.${ext}
+  artifactName: TaskWraith-${version}-universal-mac.${ext}
   # These packages ship separate darwin-arm64 and darwin-x64 helper
   # resources. Each helper binary is intentionally single-arch and
   # identical in the x64/arm64 temp apps, so @electron/universal must
@@ -56,36 +61,36 @@ mac:
   # which means macOS never sees any of the usage-description keys at
   # the root path where it actually checks them. That's why prior
   # builds quietly failed to prompt for permissions and why the
-  # _agbench-quic._udp carrier was being dropped before reaching
+  # _taskwraith-quic._udp carrier was being dropped before reaching
   # the daemon: NSBonjourServices was sitting under "5", not at root.
   extendInfo:
     NSCameraUsageDescription: Application requests access to the device's camera.
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    NSLocalNetworkUsageDescription: AGBench discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
-    NSScreenCaptureDescription: AGBench captures the window you pick with the macOS screen-sharing picker so the attached AI provider can see it as visual context. Captures are one frame at a time and only run while a window is attached.
+    NSLocalNetworkUsageDescription: TaskWraith discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
+    NSScreenCaptureDescription: TaskWraith captures the window you pick with the macOS screen-sharing picker so the attached AI provider can see it as visual context. Captures are one frame at a time and only run while a window is attached.
     # Phase K4 — AppleScript dispatch into creative apps (Final Cut Pro,
-    # Logic Pro) sends AppleEvents from the AGBench process. Hardened-
+    # Logic Pro) sends AppleEvents from the TaskWraith process. Hardened-
     # runtime apps need this Info.plist string before the OS will route
     # cross-app automation; missing it means the OS silently rejects
     # every AppleScript call with errAEEventNotPermitted (-1743).
-    NSAppleEventsUsageDescription: AGBench sends AppleScript automation commands to Final Cut Pro and Logic Pro on your behalf — only after you approve each action in the in-app modal. Every dispatch is auditable in the approval log.
+    NSAppleEventsUsageDescription: TaskWraith sends AppleScript automation commands to Final Cut Pro and Logic Pro on your behalf — only after you approve each action in the in-app modal. Every dispatch is auditable in the approval log.
     NSBonjourServices:
-      - _agbench._tcp
-      - _agbench-quic._udp
+      - _taskwraith._tcp
+      - _taskwraith-quic._udp
   notarize: false
-  # Bundle the Swift AgbenchBridgeDaemon as an extraResource so the
+  # Bundle the Swift TaskWraithBridgeDaemon as an extraResource so the
   # main process can spawn it from the packaged .app. The binary is
   # compiled by `scripts/build-bridge-daemon.cjs` (run via the
   # `prebuild:bridge-daemon` npm script in all mac build targets).
   # macOS-only: the daemon uses Apple Network framework + Bonjour +
   # CryptoKit and is not built on other platforms.
   extraResources:
-    - from: swift/AgbenchBridge/.build/release/AgbenchBridgeDaemon
-      to: bridge/AgbenchBridgeDaemon
+    - from: swift/TaskWraithBridge/.build/release/TaskWraithBridgeDaemon
+      to: bridge/TaskWraithBridgeDaemon
 dmg:
-  artifactName: AGBench-${version}-universal-mac.${ext}
+  artifactName: TaskWraith-${version}-universal-mac.${ext}
 linux:
   target:
     - AppImage
@@ -94,12 +99,12 @@ linux:
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: AGBench-${version}.${ext}
+  artifactName: TaskWraith-${version}.${ext}
 npmRebuild: true
 detectUpdateChannel: true
 generateUpdatesFilesForAllChannels: true
 publish:
   provider: github
   owner: boggspa
-  repo: AGBench
+  repo: TaskWraith
   releaseType: release

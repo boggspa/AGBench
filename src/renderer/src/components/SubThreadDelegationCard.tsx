@@ -125,9 +125,9 @@ export function SubThreadDelegationCard({
         <div className="subthread-delegation-heading">
           <span className="agent-invocation-label">Agent Invocation</span>
           <span
-            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('agbench-subthread')}`}
+            className={`agent-invocation-source-chip ${agentInvocationSourceClassName('taskwraith-subthread')}`}
           >
-            {agentInvocationSourceLabel('agbench-subthread')}
+            {agentInvocationSourceLabel('taskwraith-subthread')}
           </span>
           {agentIdentity && (
             <span className="subthread-delegation-agent" title={agentIdentity.name}>
@@ -172,7 +172,7 @@ export function SubThreadDelegationCard({
           </div>
         )}
         <div className="agent-invocation-route-note">
-          {agentInvocationRouteLabel('agbench-subthread')}
+          {agentInvocationRouteLabel('taskwraith-subthread')}
           {isClickable ? ' · opens as linked chat' : ''}
         </div>
       </div>

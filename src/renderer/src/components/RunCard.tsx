@@ -201,7 +201,7 @@ function getProviderLabel(provider: ProviderId): string {
 
 function shortRunId(runId: string): string {
   if (runId.length <= 8) return runId
-  // 1.0.4 — AGBench's standard runId is
+  // 1.0.4 — TaskWraith's standard runId is
   // `<provider>-<Date.now()>-<base36-random>` from
   // `createFallbackRunId` in main/index.ts. The previous
   // `slice(0, 8)` produced confusing display collisions when two

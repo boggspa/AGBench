@@ -133,8 +133,8 @@ function checkLockIntegrity(lock) {
 }
 
 function checkDenylist(lock) {
-  if (process.env.AGBENCH_SECURITY_ALLOW_DENYLIST === '1') {
-    warn('AGBENCH_SECURITY_ALLOW_DENYLIST=1 set; dependency incident denylist bypassed.')
+  if (process.env.TASKWRAITH_SECURITY_ALLOW_DENYLIST === '1') {
+    warn('TASKWRAITH_SECURITY_ALLOW_DENYLIST=1 set; dependency incident denylist bypassed.')
     return
   }
   for (const lockPath of Object.keys(lock.packages || {})) {

@@ -2,7 +2,7 @@ import Foundation
 import CoreMIDI
 
 /// Phase K6 — Core MIDI transport. Creates a virtual MIDI source port
-/// named "AGBench" that Logic Pro (and any other MIDI receiver) can
+/// named "TaskWraith" that Logic Pro (and any other MIDI receiver) can
 /// auto-discover and route as an input. Sends typed events
 /// (transport, CC, Note On, Program Change) via `MIDIReceived` so
 /// every connected receiver sees them.
@@ -10,9 +10,9 @@ import CoreMIDI
 /// Why a virtual source (not an output sent to a hardware port):
 /// - Logic Pro's "Control Surfaces" pane lets the user map any MIDI
 ///   input to its global controls (transport, mixer, parameters).
-///   Creating a virtual source named "AGBench" gives the user a
+///   Creating a virtual source named "TaskWraith" gives the user a
 ///   clearly-labeled target to route on the Logic side, without
-///   AGBench needing to know which hardware ports are present.
+///   TaskWraith needing to know which hardware ports are present.
 /// - No driver, no permission prompts — Core MIDI's virtual-source
 ///   API is unrestricted on macOS for any app already running.
 ///
@@ -30,14 +30,14 @@ enum CreativeMIDITransport {
 
     private static func ensureInitialized() throws {
         if initialized { return }
-        let clientStatus = MIDIClientCreate("AGBench" as CFString, nil, nil, &clientRef)
+        let clientStatus = MIDIClientCreate("TaskWraith" as CFString, nil, nil, &clientRef)
         guard clientStatus == noErr else {
             throw JSONRPCError(
                 code: JSONRPCErrorCode.internalError,
                 message: "creative.dispatchMIDI: MIDIClientCreate failed (\(clientStatus))"
             )
         }
-        let sourceStatus = MIDISourceCreate(clientRef, "AGBench" as CFString, &sourceRef)
+        let sourceStatus = MIDISourceCreate(clientRef, "TaskWraith" as CFString, &sourceRef)
         guard sourceStatus == noErr else {
             throw JSONRPCError(
                 code: JSONRPCErrorCode.internalError,
@@ -78,7 +78,7 @@ enum CreativeMIDITransport {
             "ok": true,
             "eventType": eventType,
             "byteCount": bytes.count,
-            "sourceName": "AGBench"
+            "sourceName": "TaskWraith"
         ]
     }
 

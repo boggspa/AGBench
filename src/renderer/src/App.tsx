@@ -584,7 +584,7 @@ function App(): React.JSX.Element {
   // 1.0.6 — Grok is now first-class (the experimental gate was lifted in GLIFT).
   // We still learn its availability from the get-provider-adapters descriptor
   // list on init: the main process registers the Grok adapter by default, so
-  // this resolves true unless Grok is force-disabled (AGBENCH_DISABLE_GROK=1),
+  // this resolves true unless Grok is force-disabled (TASKWRAITH_DISABLE_GROK=1),
   // in which case the adapter is absent → this stays false → grok never shows.
   const [grokProviderAvailable, setGrokProviderAvailable] = useState(false)
   const [cursorProviderAvailable, setCursorProviderAvailable] = useState(false)
@@ -848,7 +848,7 @@ function App(): React.JSX.Element {
    * Inline bug-report sheet. The tester opens this from the
    * "!" button next to the onboarding `?` button, describes whatever
    * he just hit, and the main process appends a markdown record to
-   * `<userData>/AGBench/bug-reports.md` for later triage. No persisted draft
+   * `<userData>/TaskWraith/bug-reports.md` for later triage. No persisted draft
    * state — the sheet
    * resets every open. */
   const [showBugReportSheet, setShowBugReportSheet] = useState(false)
@@ -2649,7 +2649,7 @@ function App(): React.JSX.Element {
           await handleNewGlobalChat()
         } catch (error) {
           console.warn(
-            '[AGBench] Failed to create initial global chat for workspace-less first launch:',
+            '[TaskWraith] Failed to create initial global chat for workspace-less first launch:',
             error
           )
         }
@@ -3988,7 +3988,7 @@ function App(): React.JSX.Element {
     e.stopPropagation()
     const ok =
       typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm('Remove this workspace from AGBench?')
+        ? window.confirm('Remove this workspace from TaskWraith?')
         : true
     if (!ok) return
     await window.api.removeWorkspace(id)
@@ -6609,11 +6609,11 @@ function App(): React.JSX.Element {
   const recoveryMessageContent = (record: RunRecoveryRecord): string => {
     const providerLabel = getProviderLabel(record.provider)
     const processText = record.process?.alive
-      ? ` A process with PID ${record.process.pid}${record.process.command ? ` (${record.process.command})` : ''} may still be running outside AGBench.`
+      ? ` A process with PID ${record.process.pid}${record.process.command ? ` (${record.process.command})` : ''} may still be running outside TaskWraith.`
       : record.process
         ? ` No live process was found for the recorded PID ${record.process.pid}.`
         : ''
-    return `Recovered interrupted ${providerLabel} run after app restart. ${record.reason} AGBench marked the run as ${record.recoveredStatus}.${processText} ${record.resumeHint}`
+    return `Recovered interrupted ${providerLabel} run after app restart. ${record.reason} TaskWraith marked the run as ${record.recoveredStatus}.${processText} ${record.resumeHint}`
   }
 
   const applyRecoveryRecordsToChats = async (
@@ -6963,7 +6963,7 @@ function App(): React.JSX.Element {
       if (isChatBusy(runChat.appChatId)) {
         queueRunRequest(
           request,
-          `This ${getProviderLabel(runProvider)} chat already has an in-flight run; AGBench will dispatch this turn when the chat's previous turn finishes.`
+          `This ${getProviderLabel(runProvider)} chat already has an in-flight run; TaskWraith will dispatch this turn when the chat's previous turn finishes.`
         )
         return
       }
@@ -7565,7 +7565,7 @@ function App(): React.JSX.Element {
               extractUsageCount(event.stats, [['duration_ms'], ['durationMs']])
             )
 
-            const usageAlreadyRecorded = Boolean(event.stats?._agentbench_usage_recorded)
+            const usageAlreadyRecorded = Boolean(event.stats?._taskwraith_usage_recorded)
             const usageRecordPromises = usageAlreadyRecorded
               ? []
               : runUsageEntries.map((usageEntry) => {
@@ -8999,7 +8999,7 @@ function App(): React.JSX.Element {
 
   const handleRestoreCheckpoint = async () => {
     const confirmed = window.confirm(
-      'Open Gemini /restore in the persistent session? This only opens Gemini CLI restore selection; restore is not executed by AGBench.'
+      'Open Gemini /restore in the persistent session? This only opens Gemini CLI restore selection; restore is not executed by TaskWraith.'
     )
     if (!confirmed) {
       return
@@ -9477,7 +9477,7 @@ function App(): React.JSX.Element {
       .leaseRunQueueJob({
         runId: nextRun.appRunId,
         provider: nextRun.provider,
-        statusReason: 'Dequeued by AGBench scheduler.'
+        statusReason: 'Dequeued by TaskWraith scheduler.'
       })
       .then((leased) => {
         if (!leased) {
@@ -9494,7 +9494,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('agbench.fileEditorWidth', String(fileEditorWidth))
+      window.localStorage.setItem('taskwraith.fileEditorWidth', String(fileEditorWidth))
     } catch {
       // Local persistence is best-effort only.
     }
@@ -9502,7 +9502,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('agbench.workspaceSidebarWidth', String(workspaceSidebarWidth))
+      window.localStorage.setItem('taskwraith.workspaceSidebarWidth', String(workspaceSidebarWidth))
     } catch {
       // Local persistence is best-effort only.
     }
@@ -11135,8 +11135,8 @@ function App(): React.JSX.Element {
     isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
   const welcomeWorkspaceHeatmapEnabled =
     settings?.welcomeHeatmapPrefs?.workspaceActivityEnabled !== false
-  const welcomeAgbenchHeatmapEnabled =
-    settings?.welcomeHeatmapPrefs?.agbenchActivityEnabled !== false
+  const welcomeTaskWraithHeatmapEnabled =
+    settings?.welcomeHeatmapPrefs?.taskwraithActivityEnabled !== false
   const welcomeExternalHeatmapEnabled =
     settings?.welcomeHeatmapPrefs?.externalActivityEnabled !== false
   const welcomeWorkspaceActivityPath =
@@ -11146,7 +11146,7 @@ function App(): React.JSX.Element {
   const shouldShowWelcomeStandaloneHeatmaps =
     Boolean(welcomeWorkspaceActivityPath) ||
     (shouldShowWelcomeUsageDashboard &&
-      (welcomeAgbenchHeatmapEnabled || welcomeExternalHeatmapEnabled))
+      (welcomeTaskWraithHeatmapEnabled || welcomeExternalHeatmapEnabled))
   // 1.0.72 — welcome heatmap layout (stacked = all stacked; single = one at a
   // time auto-cycling every 90s) + whole-dashboard show/hide. The slots below
   // are the renderable heatmaps in display order; WelcomeHeatmaps handles the
@@ -11170,14 +11170,14 @@ function App(): React.JSX.Element {
       )
     })
   }
-  if (shouldShowWelcomeUsageDashboard && welcomeAgbenchHeatmapEnabled) {
+  if (shouldShowWelcomeUsageDashboard && welcomeTaskWraithHeatmapEnabled) {
     welcomeHeatmapSlots.push({
-      key: 'agbench',
+      key: 'taskwraith',
       node: (
         <UsageHeatmap
           dayCount={90}
           refreshKey={welcomeHeatmapRefreshKey}
-          title="AGBench Activity"
+          title="TaskWraith Activity"
           showProviderFilter
           className="usage-heatmap--welcome-standalone"
         />
@@ -11228,7 +11228,7 @@ function App(): React.JSX.Element {
           (task) => task.status === 'pending' || task.status === 'due' || task.status === 'running'
         )
   const welcomeCopy = buildWelcomeCopy({
-    workspaceName: isCurrentGlobalChat ? 'Chats' : currentWorkspace?.displayName || 'AGBench',
+    workspaceName: isCurrentGlobalChat ? 'Chats' : currentWorkspace?.displayName || 'TaskWraith',
     providerLabel: currentProviderLabel,
     permissionModeLabel,
     isGlobalChat: isCurrentGlobalChat,
@@ -11556,7 +11556,7 @@ function App(): React.JSX.Element {
         ? CLI_PROVIDER_COMMAND_PALETTE_CORE
         : [...geminiQuickToggleItems, ...mergeCommandPaletteItems(discoveredCommands)]
   /**
-   * Cross-provider AGBench actions promoted to first-class slash entries.
+   * Cross-provider TaskWraith actions promoted to first-class slash entries.
    * These don't have a CommandPaletteItem analog because they fire
    * renderer-side handlers directly — the slash picker is their only
    * surface today. Listed in the Custom group below the per-provider
@@ -11565,7 +11565,7 @@ function App(): React.JSX.Element {
   const composerSlashExtraCommands: ComposerSlashCommand[] = [
     {
       kind: 'action',
-      id: 'agbench-clear',
+      id: 'taskwraith-clear',
       command: '/clear',
       label: 'Clear conversation',
       description: 'Wipe this chat’s transcript + draft. Keeps the provider session id.',
@@ -11602,7 +11602,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'action',
-      id: 'agbench-attach',
+      id: 'taskwraith-attach',
       command: '/attach',
       label: 'Attach an app window',
       description: 'Open the macOS picker so the AI can see what’s on screen.',
@@ -11613,7 +11613,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'action',
-      id: 'agbench-help',
+      id: 'taskwraith-help',
       command: '/help',
       label: 'Open Help',
       description: 'Open the Settings panel — docs, shortcuts, and policy info.',
@@ -11624,7 +11624,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'action',
-      id: 'agbench-feedback',
+      id: 'taskwraith-feedback',
       command: '/feedback',
       label: 'Send feedback',
       description: 'Open the Settings panel and jump to the feedback section.',
@@ -11635,7 +11635,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'action',
-      id: 'agbench-compact',
+      id: 'taskwraith-compact',
       command: '/compact',
       label: 'Compact context',
       description: 'Summarise the current chat to shrink prompt size on the next turn.',
@@ -11651,7 +11651,7 @@ function App(): React.JSX.Element {
           {
             type: 'info',
             content:
-              'Slash /compact: AGBench already runs compact-context per turn (see PromptComposition.ts). A manual on-demand recompact entry will land in a follow-up slice.'
+              'Slash /compact: TaskWraith already runs compact-context per turn (see PromptComposition.ts). A manual on-demand recompact entry will land in a follow-up slice.'
           }
         ])
       }
@@ -11665,7 +11665,7 @@ function App(): React.JSX.Element {
      * provider-native palette. */
     {
       kind: 'prompt-template',
-      id: 'agbench-template-explain',
+      id: 'taskwraith-template-explain',
       command: '/explain',
       label: 'Explain',
       description: 'Insert an explain-this-code template.',
@@ -11675,7 +11675,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'prompt-template',
-      id: 'agbench-template-test',
+      id: 'taskwraith-template-test',
       command: '/test',
       label: 'Test',
       description: 'Insert a write-tests template.',
@@ -11685,7 +11685,7 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'prompt-template',
-      id: 'agbench-template-review-diff',
+      id: 'taskwraith-template-review-diff',
       command: '/review-diff',
       label: 'Review diff',
       description: 'Insert a review-the-current-diff template.',
@@ -11697,7 +11697,7 @@ function App(): React.JSX.Element {
 
   // Slash-picker registry: per-provider palette items wrapped as
   // palette-passthrough ComposerSlashCommands, plus the cross-provider
-  // AGBench actions and prompt templates. `capabilities` gates entries
+  // TaskWraith actions and prompt templates. `capabilities` gates entries
   // the provider can't service (e.g. `/mcp` hides when MCP is offline).
   const composerSlashCommands: ComposerSlashCommand[] = buildComposerSlashCommandRegistry({
     provider: currentProvider,
@@ -12054,7 +12054,7 @@ function App(): React.JSX.Element {
               a bug" without being alarming red. Lets a tester type a
               one-liner + description inline as he hits issues during
               the 1.0.1 test session — the main process appends the
-              report to `<userData>/AGBench/bug-reports.md` for review.
+              report to `<userData>/TaskWraith/bug-reports.md` for review.
             */}
             <button
               className={`chat-corner-btn chat-corner-btn-bug-report ${showBugReportSheet ? 'active' : ''}`}
@@ -12471,7 +12471,7 @@ function App(): React.JSX.Element {
             {/*
               Phase K-followup — Removed `provider-shell-status-row`.
               The row presented Native-session / Workspace-write /
-              AGBench-approvals / AGBench-audit / Usage-metered as
+              TaskWraith-approvals / TaskWraith-audit / Usage-metered as
               pill-shaped chips, but none were interactive. The visual
               language read like clickable buttons; in practice the
               row was pure decoration that crowded the composer. The
@@ -12553,7 +12553,7 @@ function App(): React.JSX.Element {
                         <>
                           <span>New Ensemble chat in </span>
                           <strong className={workspaceNameClass}>
-                            {currentWorkspace?.displayName || 'AGBench'}
+                            {currentWorkspace?.displayName || 'TaskWraith'}
                           </strong>
                           <span> Workspace.</span>
                         </>
@@ -12766,7 +12766,7 @@ function App(): React.JSX.Element {
                   `display: contents` on the wrapper (declared in
                   main.css) so files + stats still behave as direct
                   flex children of `.composer-above-bar` — no
-                  layout regression in the AGBench / Claude /
+                  layout regression in the TaskWraith / Claude /
                   Gemini / Kimi shells.
                 */}
                       <span className="composer-above-bar-files-cluster">
@@ -13108,7 +13108,7 @@ function App(): React.JSX.Element {
                   {queuedRunQueueCount > 0 && (
                     <span
                       className="composer-chip"
-                      title="Durable queued tasks are persisted by AGBench."
+                      title="Durable queued tasks are persisted by TaskWraith."
                     >
                       {queuedRunQueueCount} queued
                     </span>
@@ -13683,18 +13683,18 @@ function App(): React.JSX.Element {
                               Use Provider Native
                             </button>
                           )}
-                          {(pendingAgentApproval.actions || []).includes('useAGBenchSubthread') && (
+                          {(pendingAgentApproval.actions || []).includes('useTaskWraithSubthread') && (
                             <button
                               className="btn btn-sm btn-ghost"
                               type="button"
                               onClick={() =>
                                 void handleAgentApprovalAction(
                                   pendingAgentApproval.id,
-                                  'useAGBenchSubthread'
+                                  'useTaskWraithSubthread'
                                 )
                               }
                             >
-                              Use AGBench Sub-thread
+                              Use TaskWraith Sub-thread
                             </button>
                           )}
                           {(pendingAgentApproval.actions || []).includes('acceptForWorkspace') && (

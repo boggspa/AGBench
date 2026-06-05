@@ -45,7 +45,7 @@ interface ToolFamilyIconProps {
 
 /**
  * Map an MCP / Codex / Gemini tool name to its visual family. Covers
- * the AGBench MCP tool surface (see `AgentbenchMcpTools.ts`) plus
+ * the TaskWraith MCP tool surface (see `TaskWraithMcpTools.ts`) plus
  * Codex-internal item types (`commandExecution`, `fileChange`,
  * `mcpToolCall`, `codex_reasoning`, `codex_plan`, `collabToolCall`).
  *
@@ -53,7 +53,7 @@ interface ToolFamilyIconProps {
  * category-icon (legacy) treatment instead of rendering a wrong icon.
  *
  * The matching is case-insensitive and strips common MCP namespace
- * prefixes (`AGBench__`, `mcp__AGBench__`, `mcp__<server>__`) so the
+ * prefixes (`TaskWraith__`, `mcp__TaskWraith__`, `mcp__<server>__`) so the
  * function works regardless of which provider stamped the call.
  */
 export function toolNameToFamily(name: string | undefined | null): ToolFamily | null {
@@ -61,26 +61,22 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
   let normalised = name.toLowerCase().trim()
   if (!normalised) return null
 
-  // Strip MCP-namespacing — `mcp__AGBench__delegate_to_subthread` etc.
+  // Strip MCP-namespacing — `mcp__TaskWraith__delegate_to_subthread` etc.
   if (normalised.startsWith('mcp__')) {
     const idx = normalised.indexOf('__', 5)
     if (idx > 5) normalised = normalised.slice(idx + 2)
   } else if (normalised.startsWith('mcp_')) {
-    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    const knownServerPrefixes = ['mcp_taskwraith_']
     for (const prefix of knownServerPrefixes) {
       if (normalised.startsWith(prefix)) {
         normalised = normalised.slice(prefix.length)
         break
       }
     }
-  } else if (normalised.startsWith('agbench__')) {
-    normalised = normalised.slice('agbench__'.length)
-  } else if (normalised.startsWith('agentbench__')) {
-    normalised = normalised.slice('agentbench__'.length)
-  } else if (normalised.startsWith('agbench_')) {
-    normalised = normalised.slice('agbench_'.length)
-  } else if (normalised.startsWith('agentbench_')) {
-    normalised = normalised.slice('agentbench_'.length)
+  } else if (normalised.startsWith('taskwraith__')) {
+    normalised = normalised.slice('taskwraith__'.length)
+  } else if (normalised.startsWith('taskwraith_')) {
+    normalised = normalised.slice('taskwraith_'.length)
   }
 
   // Exact-name buckets (most specific first).

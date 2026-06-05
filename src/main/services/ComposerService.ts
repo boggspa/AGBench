@@ -396,7 +396,7 @@ function externalPathGrantPromptAppendix(grants: ExternalPathGrant[] = []): stri
 /**
  * Parses composer-level slash signals out of the user's raw prompt.
  *
- *   - ` ```plan ` (or ` ```agbench-plan `) fenced block → planMode=true
+ *   - ` ```plan ` (or ` ```taskwraith-plan `) fenced block → planMode=true
  *     and the block is stripped. Pre-existing behaviour (1.0.3); the
  *     composer then forces approvalMode='plan' for the run.
  *   - `/discuss` (alias `/meta`) leading token → selfReflective=true
@@ -420,7 +420,7 @@ function parsePlanModeInput(input: string): {
 } {
   let planMode = false
   let selfReflective = false
-  let working = input.replace(/```(?:agbench-)?plan[^\n]*\n[\s\S]*?```/gi, () => {
+  let working = input.replace(/```(?:taskwraith-)?plan[^\n]*\n[\s\S]*?```/gi, () => {
     planMode = true
     return ''
   })

@@ -31,7 +31,7 @@ import {
 
 /**
  * Module-level per-source cache of the last successfully fetched usage
- * records, keyed by `usageSource` ('agbench' | 'external' | …).
+ * records, keyed by `usageSource` ('taskwraith' | 'external' | …).
  *
  * Why: in the welcome "single (cycle)" layout the heatmap REMOUNTS every
  * time the cycle swaps slots, which would otherwise reset `records` to []
@@ -41,7 +41,7 @@ import {
  * paints the previously-rendered grid instantly and then silently
  * refreshes in the background (RETAIN).
  *
- * Keyed by source so external/agbench/workspace data never bleed into one
+ * Keyed by source so external/taskwraith/workspace data never bleed into one
  * another. Lives at module scope (survives unmount) but resets on full
  * page reload, which is the desired lifetime.
  */
@@ -100,8 +100,8 @@ interface UsageHeatmapProps {
   /** Number of day columns to render. Defaults to the sidebar's 30-day window. */
   dayCount?: number
   /** Data source for the rendered grid. */
-  usageSource?: 'agbench' | 'external'
-  /** Header title. Defaults to the original AGBench "Activity" label. */
+  usageSource?: 'taskwraith' | 'external'
+  /** Header title. Defaults to the original TaskWraith "Activity" label. */
   title?: string
   /** Optional accessible label override. */
   ariaLabel?: string
@@ -116,7 +116,7 @@ export function UsageHeatmap({
   refreshKey = 0,
   showHeader = true,
   dayCount = HEATMAP_COLUMNS,
-  usageSource = 'agbench',
+  usageSource = 'taskwraith',
   title = 'Activity',
   ariaLabel,
   showProviderFilter = false,
@@ -154,7 +154,7 @@ export function UsageHeatmap({
         .then((latest) => {
           // RETAIN: persist the freshest grid for this source BEFORE
           // committing it, so the next remount/cycle pre-warms instantly.
-          // Keyed by source to keep external/agbench/workspace isolated.
+          // Keyed by source to keep external/taskwraith/workspace isolated.
           usageHeatmapCache.set(usageSource, latest)
           if (!cancelled) setRecords(latest)
         })

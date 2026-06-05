@@ -71,14 +71,14 @@ export function getNativeCapabilitySnapshot(
       reason: `Native bridge features require macOS ${MIN_BRIDGE_MACOS} or newer.`
     }
   } else if (!binaryPath || !binaryExists) {
-    bridge = { available: false, reason: 'AgbenchBridgeDaemon binary was not found.' }
+    bridge = { available: false, reason: 'TaskWraithBridgeDaemon binary was not found.' }
   } else if (requiredArch && binaryArchs && !binaryArchs.includes(requiredArch)) {
     bridge = {
       available: false,
       binaryPath,
       binaryArchs,
       requiredArch,
-      reason: `AgbenchBridgeDaemon does not contain the current CPU architecture (${requiredArch}).`
+      reason: `TaskWraithBridgeDaemon does not contain the current CPU architecture (${requiredArch}).`
     }
   } else {
     bridge = {
@@ -89,7 +89,17 @@ export function getNativeCapabilitySnapshot(
     }
   }
 
-  const nativeBridgeFeature = featureFromBridge(bridge)
+  const nativeBridgeFeature =
+    platform === 'win32'
+      ? {
+          available: false,
+          reason: 'Appwatch, AppDrive, and Appshots are not available on Windows in v1.'
+        }
+      : featureFromBridge(bridge)
+  const appleEventsFeature =
+    platform === 'win32'
+      ? { available: false, reason: 'AppleEvents automation is available on macOS only.' }
+      : nativeBridgeFeature
   return {
     platform,
     arch,
@@ -101,7 +111,7 @@ export function getNativeCapabilitySnapshot(
     ocr: bridge.available
       ? { available: true, reason: 'Vision OCR is optional and capture remains available if OCR fails.' }
       : nativeBridgeFeature,
-    appleEvents: nativeBridgeFeature
+    appleEvents: appleEventsFeature
   }
 }
 
@@ -111,7 +121,7 @@ export function resolveBridgeDaemonBinaryPath(input: {
 } = {}): string {
   const resourcesPath = input.resourcesPath || process.resourcesPath
   if (resourcesPath) {
-    const bundled = join(resourcesPath, 'bridge', 'AgbenchBridgeDaemon')
+    const bundled = join(resourcesPath, 'bridge', 'TaskWraithBridgeDaemon')
     if (existsSync(bundled)) return bundled
   }
   const dirname = input.dirname || __dirname
@@ -120,10 +130,10 @@ export function resolveBridgeDaemonBinaryPath(input: {
     '..',
     '..',
     'swift',
-    'AgbenchBridge',
+    'TaskWraithBridge',
     '.build',
     'debug',
-    'AgbenchBridgeDaemon'
+    'TaskWraithBridgeDaemon'
   )
   if (existsSync(devDebug)) return devDebug
   return join(
@@ -131,10 +141,10 @@ export function resolveBridgeDaemonBinaryPath(input: {
     '..',
     '..',
     'swift',
-    'AgbenchBridge',
+    'TaskWraithBridge',
     '.build',
     'release',
-    'AgbenchBridgeDaemon'
+    'TaskWraithBridgeDaemon'
   )
 }
 

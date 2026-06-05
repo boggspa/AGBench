@@ -1,0 +1,190 @@
+import { describe, expect, it } from 'vitest'
+import {
+  CLAUDE_TASKWRAITH_TOOL_NAMES,
+  CLAUDE_TASKWRAITH_SERVER_NAME,
+  buildClaudeTaskWraithAllowedToolNames,
+  buildClaudeTaskWraithMcpConfigJson,
+  buildClaudeTaskWraithMcpServers,
+  extendClaudeCliArgsWithTaskWraithMcp
+} from './ClaudeTaskWraithMcp'
+
+// Phase I3 (Claude initiator): the Claude SDK + CLI fallback gain the
+// same TaskWraith MCP server that Gemini/Codex already use. Pin the
+// exact `mcpServers` shape (SDK path) and CLI argv extension so a
+// regression in the broker / parent-provider routing trips immediately.
+describe('buildClaudeTaskWraithMcpServers', () => {
+  const fixture = {
+    enabled: true,
+    bridgeBinaryPath: '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
+    bridgeArgs: [
+      '--taskwraith-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/taskwraith.sock',
+      '--token',
+      'deadbeef'
+    ]
+  }
+
+  it('returns null when disabled so the caller can omit the SDK option entirely', () => {
+    expect(buildClaudeTaskWraithMcpServers({ ...fixture, enabled: false })).toBeNull()
+  })
+
+  it('emits a single TaskWraith stdio entry with the parentProvider env stamp', () => {
+    const servers = buildClaudeTaskWraithMcpServers(fixture)
+    expect(servers).toEqual({
+      TaskWraith: {
+        type: 'stdio',
+        command: '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
+        args: [
+          '--taskwraith-gemini-mcp-bridge',
+          '--socket',
+          '/tmp/taskwraith.sock',
+          '--token',
+          'deadbeef'
+        ],
+        env: { TASKWRAITH_PARENT_PROVIDER: 'claude' },
+        // QMOD/1.0.3: alwaysLoad disables Claude SDK's tool-search
+        // deferral so MCP tools are visible turn-1 without a ToolSearch
+        // round-trip. See ClaudeTaskWraithMcp.ts doc for the why.
+        alwaysLoad: true
+      }
+    })
+  })
+
+  it('adds run and chat route stamps when provided', () => {
+    const servers = buildClaudeTaskWraithMcpServers({
+      ...fixture,
+      appRunId: 'run-1',
+      appChatId: 'chat-1'
+    })
+    expect(servers?.TaskWraith.env).toEqual({
+      TASKWRAITH_PARENT_PROVIDER: 'claude',
+      TASKWRAITH_RUN_ID: 'run-1',
+      TASKWRAITH_CHAT_ID: 'chat-1'
+    })
+  })
+
+  it('uses the TaskWraith server name (matches Gemini/Codex bridge registrations)', () => {
+    const servers = buildClaudeTaskWraithMcpServers(fixture)!
+    expect(Object.keys(servers)).toEqual([CLAUDE_TASKWRAITH_SERVER_NAME])
+    expect(CLAUDE_TASKWRAITH_SERVER_NAME).toBe('TaskWraith')
+  })
+
+  it('copies bridgeArgs by value so caller mutations cannot drift the SDK config', () => {
+    const args = [...fixture.bridgeArgs]
+    const servers = buildClaudeTaskWraithMcpServers({ ...fixture, bridgeArgs: args })!
+    args.push('--mutated-after-build')
+    expect(servers.TaskWraith.args).not.toContain('--mutated-after-build')
+  })
+})
+
+describe('buildClaudeTaskWraithMcpConfigJson', () => {
+  it('mirrors the SDK shape under a top-level mcpServers key (CLI path)', () => {
+    const config = buildClaudeTaskWraithMcpConfigJson({
+      enabled: true,
+      bridgeBinaryPath: '/opt/taskwraith/bin/TaskWraith',
+      bridgeArgs: [
+        '--taskwraith-gemini-mcp-bridge',
+        '--socket',
+        '/run/taskwraith.sock',
+        '--token',
+        'cafebabe'
+      ]
+    })
+    expect(config).toEqual({
+      mcpServers: {
+        TaskWraith: {
+          type: 'stdio',
+          command: '/opt/taskwraith/bin/TaskWraith',
+          args: [
+            '--taskwraith-gemini-mcp-bridge',
+            '--socket',
+            '/run/taskwraith.sock',
+            '--token',
+            'cafebabe'
+          ],
+          env: { TASKWRAITH_PARENT_PROVIDER: 'claude' },
+          alwaysLoad: true
+        }
+      }
+    })
+  })
+
+  it('returns null when disabled so the caller can skip the temp-file write', () => {
+    expect(
+      buildClaudeTaskWraithMcpConfigJson({ enabled: false, bridgeBinaryPath: '/x', bridgeArgs: [] })
+    ).toBeNull()
+  })
+})
+
+describe('buildClaudeTaskWraithAllowedToolNames', () => {
+  it('emits both mcp__TaskWraith__<tool> and bare <tool> names for every TaskWraith MCP tool', () => {
+    const names = buildClaudeTaskWraithAllowedToolNames()
+    for (const tool of CLAUDE_TASKWRAITH_TOOL_NAMES) {
+      expect(names).toContain(`mcp__TaskWraith__${tool}`)
+      expect(names).toContain(tool)
+    }
+    // Each tool is emitted in both namespaced and bare form.
+    expect(names).toHaveLength(CLAUDE_TASKWRAITH_TOOL_NAMES.length * 2)
+  })
+
+  it('lists the namespaced form before the bare form (Claude CLI namespacing comes first)', () => {
+    const names = buildClaudeTaskWraithAllowedToolNames()
+    const firstBareIndex = names.findIndex((name) => !name.startsWith('mcp__'))
+    const lastNamespacedIndex = names
+      .map((name, index) => (name.startsWith('mcp__') ? index : -1))
+      .filter((index) => index >= 0)
+      .pop()!
+    expect(firstBareIndex).toBeGreaterThan(lastNamespacedIndex)
+  })
+
+  it('always includes delegate_to_subthread (the headline Phase I tool)', () => {
+    expect(buildClaudeTaskWraithAllowedToolNames()).toContain('mcp__TaskWraith__delegate_to_subthread')
+    expect(buildClaudeTaskWraithAllowedToolNames()).toContain('delegate_to_subthread')
+  })
+})
+
+describe('extendClaudeCliArgsWithTaskWraithMcp', () => {
+  const baseArgs = ['-p', 'hello', '--output-format', 'stream-json']
+  const fixture = {
+    enabled: true,
+    bridgeBinaryPath: '/Applications/TaskWraith.app/Contents/MacOS/TaskWraith',
+    bridgeArgs: [
+      '--taskwraith-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/taskwraith.sock',
+      '--token',
+      'deadbeef'
+    ],
+    configFilePath: '/tmp/taskwraith-claude-mcp-run-123.json'
+  }
+
+  it('returns a copy of base args unchanged when disabled', () => {
+    const out = extendClaudeCliArgsWithTaskWraithMcp(baseArgs, { ...fixture, enabled: false })
+    expect(out).toEqual(baseArgs)
+    expect(out).not.toBe(baseArgs)
+    expect(out).not.toContain('--mcp-config')
+    expect(out).not.toContain('--allowedTools')
+  })
+
+  it('appends --mcp-config <path> and --allowedTools <comma-joined-names> after the base args', () => {
+    const out = extendClaudeCliArgsWithTaskWraithMcp(baseArgs, fixture)
+    // The base args stay in order at the front.
+    expect(out.slice(0, baseArgs.length)).toEqual(baseArgs)
+    // --mcp-config followed by the temp file path.
+    const mcpIndex = out.indexOf('--mcp-config')
+    expect(mcpIndex).toBeGreaterThan(-1)
+    expect(out[mcpIndex + 1]).toBe('/tmp/taskwraith-claude-mcp-run-123.json')
+    // --allowedTools followed by the comma-joined list.
+    const allowedIndex = out.indexOf('--allowedTools')
+    expect(allowedIndex).toBeGreaterThan(-1)
+    const allowedValue = out[allowedIndex + 1]
+    expect(allowedValue.split(',')).toEqual(buildClaudeTaskWraithAllowedToolNames())
+  })
+
+  it('does not mutate the supplied base args array (pure function contract)', () => {
+    const args = [...baseArgs]
+    extendClaudeCliArgsWithTaskWraithMcp(args, fixture)
+    expect(args).toEqual(baseArgs)
+  })
+})

@@ -8,7 +8,7 @@
  * with:
  *   - Step-by-step progress (so it's obvious where it stalls).
  *   - Optional notarization preflight (skipped unless
- *     AGBENCH_VALIDATE_NOTARIZE=1).
+ *     TASKWRAITH_VALIDATE_NOTARIZE=1).
  *   - A final pass/fail summary table the user can paste into a
  *     release checklist.
  *
@@ -18,11 +18,11 @@
  *
  *   # Skip the build-unpack step (much faster — useful for iterating
  *   # on the validation script itself):
- *   AGBENCH_VALIDATE_SKIP_BUILD=1 node scripts/validate-release.cjs
+ *   TASKWRAITH_VALIDATE_SKIP_BUILD=1 node scripts/validate-release.cjs
  *
  *   # Include the notarization preflight (requires CSC_NAME +
  *   # APPLE_KEYCHAIN_PROFILE to be set):
- *   AGBENCH_VALIDATE_NOTARIZE=1 node scripts/validate-release.cjs
+ *   TASKWRAITH_VALIDATE_NOTARIZE=1 node scripts/validate-release.cjs
  *
  * Exit codes:
  *   0  — all required steps passed
@@ -36,8 +36,8 @@ const { join } = require('path')
 
 const REPO_ROOT = join(__dirname, '..')
 
-const SKIP_BUILD = process.env.AGBENCH_VALIDATE_SKIP_BUILD === '1'
-const DO_NOTARIZE = process.env.AGBENCH_VALIDATE_NOTARIZE === '1'
+const SKIP_BUILD = process.env.TASKWRAITH_VALIDATE_SKIP_BUILD === '1'
+const DO_NOTARIZE = process.env.TASKWRAITH_VALIDATE_NOTARIZE === '1'
 
 const steps = []
 
@@ -95,11 +95,17 @@ if (!SKIP_BUILD) {
     required: true,
     skipOn: process.platform !== 'darwin'
   })
+  step('build-win-unpack', {
+    cmd: 'npm',
+    args: ['run', 'build:win:unpack'],
+    required: true,
+    skipOn: process.platform !== 'win32'
+  })
   step('smoke:package', {
     cmd: 'node',
     args: ['scripts/smoke-packaged-electron.cjs', 'dist'],
     required: true,
-    skipOn: process.platform !== 'darwin'
+    skipOn: process.platform !== 'darwin' && process.platform !== 'win32'
   })
 }
 if (DO_NOTARIZE) {
@@ -192,6 +198,9 @@ if (!SKIP_BUILD && process.platform === 'darwin' && buildArtifactExists) {
   console.log(
     `  CSC_NAME=$CSC_NAME APPLE_KEYCHAIN_PROFILE=$APPLE_KEYCHAIN_PROFILE npm run build:mac:notarized`
   )
+} else if (!SKIP_BUILD && process.platform === 'win32' && buildArtifactExists) {
+  console.log('[validate-release] build artifacts present in dist/. Next step:')
+  console.log('  CSC_LINK=$CSC_LINK CSC_KEY_PASSWORD=$CSC_KEY_PASSWORD npm run build:win:signed')
 }
 
 process.exit(0)

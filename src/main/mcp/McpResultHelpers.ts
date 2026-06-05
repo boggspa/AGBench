@@ -1,4 +1,4 @@
-import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 export const MAX_MCP_TEXT_CHARS = 200_000
 
 export function mcpJson(value: unknown): string {
@@ -37,6 +37,6 @@ export function normalizeMcpToolArguments(value: unknown): Record<string, any> {
   return { value }
 }
 
-export function isAGBenchMcpToolName(value: unknown): value is AGBenchMcpToolName {
-  return AGENTBENCH_MCP_TOOLS.includes(value as AGBenchMcpToolName)
+export function isTaskWraithMcpToolName(value: unknown): value is TaskWraithMcpToolName {
+  return TASKWRAITH_MCP_TOOLS.includes(value as TaskWraithMcpToolName)
 }

@@ -516,9 +516,9 @@ function getReadableActivityDisplayName(activity: ToolActivity): string {
   const displayLooksRaw =
     !displayName ||
     displayName === rawToolName ||
-    lowerDisplay.startsWith('mcp_agbench_') ||
-    lowerDisplay.startsWith('mcp__agbench__') ||
-    lowerDisplay.startsWith('agbench__') ||
+    lowerDisplay.startsWith('mcp_taskwraith_') ||
+    lowerDisplay.startsWith('mcp__taskwraith__') ||
+    lowerDisplay.startsWith('taskwraith__') ||
     lowerDisplay.includes('_')
   return displayLooksRaw ? fallback || displayName || rawToolName : displayName
 }
@@ -528,7 +528,7 @@ function getProgressNote(activity: ToolActivity): { title: string; body?: string
   // ensemble_yield is a `task`-category tool but has its own structured
   // render (actor + provider-tinted target chip) in `renderEnsembleYieldTitle`.
   // The generic progress-note path renders `activity.displayName` verbatim,
-  // which surfaces the raw tool name (`mcp_AGBench_ensemble_yield`) on any
+  // which surfaces the raw tool name (`mcp_TaskWraith_ensemble_yield`) on any
   // upstream that didn't pre-humanize it. Defer those rows to the inline
   // title path so the chip render runs.
   if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) return null
@@ -837,7 +837,7 @@ function isGroupableActivity(activity: ToolActivity): boolean {
   // chip + role name) carrying high-signal routing info, not the
   // every-turn noise that file reads / shell calls produce. Match
   // every aliased form: bare `ensemble_yield`,
-  // `mcp_AGBench_ensemble_yield` (Codex), `mcp__AGBench__ensemble_yield`
+  // `mcp_TaskWraith_ensemble_yield` (Codex), `mcp__TaskWraith__ensemble_yield`
   // (Claude), and any future namespaced variant.
   const tool = (activity.toolName || '').toLowerCase()
   if (tool.includes('ensemble_yield')) return false

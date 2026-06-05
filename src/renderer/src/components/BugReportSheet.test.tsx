@@ -30,7 +30,7 @@ import { BugReportSheet, type BugReportSubmission } from './BugReportSheet'
 const baseProps = {
   appVersion: '1.0.1',
   currentProvider: 'codex',
-  currentWorkspacePath: '/Users/dev/projects/agbench',
+  currentWorkspacePath: '/Users/dev/projects/taskwraith',
   composerShell: 'default',
   initialSurface: 'Ensemble',
   chatKind: 'ensemble',
@@ -158,8 +158,8 @@ describe('BugReportSheet', () => {
     expect(html).toContain('codex')
     // Workspace path is home-abbreviated (~/) so a reporter's OS username
     // never appears in the preview or the pre-filled (public) GitHub issue.
-    expect(html).toContain('~/projects/agbench')
-    expect(html).not.toContain('/Users/dev/projects/agbench')
+    expect(html).toContain('~/projects/taskwraith')
+    expect(html).not.toContain('/Users/dev/projects/taskwraith')
     expect(html).toContain('default')
     expect(html).toContain('4 participants')
   })

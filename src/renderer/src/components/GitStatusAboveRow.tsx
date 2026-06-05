@@ -55,7 +55,7 @@ function summarizeChecks(checks: GitPrSummary['checks']): CiSummary {
 
 /**
  * Composer above-row showing live git status — branch (colour-coded), ahead/
- * behind push state, and CI check rollup — in the AGBench-native console
+ * behind push state, and CI check rollup — in the TaskWraith-native console
  * stack, Claude-app style. Renders the CI checks that GitService already
  * parses into `GitPrSummary.checks` but nothing surfaced before.
  */

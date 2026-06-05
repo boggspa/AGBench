@@ -18,7 +18,7 @@ import type { ProviderId } from './store/types'
  *
  * The first subscriber is the Electron IPC sink — it preserves today's
  * behavior of forwarding events to the renderer via `WebContents.send`.
- * A second subscriber (debug logger, gated by `AGBENCH_DEBUG_BUS=1`) is
+ * A second subscriber (debug logger, gated by `TASKWRAITH_DEBUG_BUS=1`) is
  * registered during Phase B kickoff to prove fan-out works.
  *
  * Future remote-bridge work (Phase C) will register additional sinks
@@ -150,7 +150,7 @@ export function makeElectronIpcSink(): RunEventSink {
 /**
  * Debug subscriber. Logs a compact one-line summary per event so we can
  * verify the bus is actually fanning out. Gated externally — register only
- * when `AGBENCH_DEBUG_BUS=1` (or similar) is set, so production traffic stays
+ * when `TASKWRAITH_DEBUG_BUS=1` (or similar) is set, so production traffic stays
  * quiet.
  */
 export function makeDebugLoggerSink(): RunEventSink {

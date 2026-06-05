@@ -69,26 +69,26 @@ describe('NoopApnsPusher', () => {
 
 describe('createBridgeApnsPusher factory', () => {
   const envBackup = {
-    apns: process.env.AGBENCH_BRIDGE_APNS,
-    dry: process.env.AGBENCH_BRIDGE_APNS_DRY_RUN
+    apns: process.env.TASKWRAITH_BRIDGE_APNS,
+    dry: process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN
   }
 
   afterEach(() => {
-    if (envBackup.apns === undefined) delete process.env.AGBENCH_BRIDGE_APNS
-    else process.env.AGBENCH_BRIDGE_APNS = envBackup.apns
-    if (envBackup.dry === undefined) delete process.env.AGBENCH_BRIDGE_APNS_DRY_RUN
-    else process.env.AGBENCH_BRIDGE_APNS_DRY_RUN = envBackup.dry
+    if (envBackup.apns === undefined) delete process.env.TASKWRAITH_BRIDGE_APNS
+    else process.env.TASKWRAITH_BRIDGE_APNS = envBackup.apns
+    if (envBackup.dry === undefined) delete process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN
+    else process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN = envBackup.dry
   })
 
   it('returns a NoopApnsPusher by default', async () => {
-    delete process.env.AGBENCH_BRIDGE_APNS
+    delete process.env.TASKWRAITH_BRIDGE_APNS
     const pusher = createBridgeApnsPusher()
     expect(pusher).toBeInstanceOf(NoopApnsPusher)
   })
 
   it('logs the chosen env at construction', () => {
     const log = vi.fn()
-    process.env.AGBENCH_BRIDGE_APNS = 'sandbox'
+    process.env.TASKWRAITH_BRIDGE_APNS = 'sandbox'
     createBridgeApnsPusher({ log })
     const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
     expect(allLogs).toContain('env=sandbox')
@@ -96,17 +96,17 @@ describe('createBridgeApnsPusher factory', () => {
 
   it('respects explicit options over env vars', () => {
     const log = vi.fn()
-    process.env.AGBENCH_BRIDGE_APNS = 'sandbox'
+    process.env.TASKWRAITH_BRIDGE_APNS = 'sandbox'
     createBridgeApnsPusher({ log, env: 'production' })
     const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
     expect(allLogs).toContain('env=production')
   })
 
   it('returns NoopApnsPusher when no credentials are configured', () => {
-    delete process.env.AGBENCH_APNS_KEY_PATH
-    delete process.env.AGBENCH_APNS_KEY_ID
-    delete process.env.AGBENCH_APNS_TEAM_ID
-    delete process.env.AGBENCH_APNS_BUNDLE_ID
+    delete process.env.TASKWRAITH_APNS_KEY_PATH
+    delete process.env.TASKWRAITH_APNS_KEY_ID
+    delete process.env.TASKWRAITH_APNS_TEAM_ID
+    delete process.env.TASKWRAITH_APNS_BUNDLE_ID
     const log = vi.fn()
     const pusher = createBridgeApnsPusher({ log })
     expect(pusher).toBeInstanceOf(NoopApnsPusher)
@@ -196,25 +196,25 @@ describe('createBridgeApnsPusher factory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'apns-envvar-test-'))
     const path = join(dir, 'AuthKey_K.p8')
     writeFileSync(path, privateKey, 'utf-8')
-    process.env.AGBENCH_APNS_KEY_PATH = path
-    process.env.AGBENCH_APNS_KEY_ID = 'KEYIDABC00'
-    process.env.AGBENCH_APNS_TEAM_ID = 'TEAMABCD00'
-    process.env.AGBENCH_APNS_BUNDLE_ID = 'com.example.fromenv'
+    process.env.TASKWRAITH_APNS_KEY_PATH = path
+    process.env.TASKWRAITH_APNS_KEY_ID = 'KEYIDABC00'
+    process.env.TASKWRAITH_APNS_TEAM_ID = 'TEAMABCD00'
+    process.env.TASKWRAITH_APNS_BUNDLE_ID = 'com.example.fromenv'
     try {
       const pusher = createBridgeApnsPusher()
       expect(pusher).not.toBeInstanceOf(NoopApnsPusher)
     } finally {
-      delete process.env.AGBENCH_APNS_KEY_PATH
-      delete process.env.AGBENCH_APNS_KEY_ID
-      delete process.env.AGBENCH_APNS_TEAM_ID
-      delete process.env.AGBENCH_APNS_BUNDLE_ID
+      delete process.env.TASKWRAITH_APNS_KEY_PATH
+      delete process.env.TASKWRAITH_APNS_KEY_ID
+      delete process.env.TASKWRAITH_APNS_TEAM_ID
+      delete process.env.TASKWRAITH_APNS_BUNDLE_ID
       rmSync(dir, { recursive: true, force: true })
     }
   })
 
   it('reports dryRun=true when env flag is set', () => {
     const log = vi.fn()
-    process.env.AGBENCH_BRIDGE_APNS_DRY_RUN = '1'
+    process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN = '1'
     createBridgeApnsPusher({ log })
     const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
     expect(allLogs).toContain('dryRun=true')
@@ -306,10 +306,10 @@ describe('createBridgeApnsPusher factory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'apns-precedence-test-'))
     const envPath = join(dir, 'AuthKey_Env.p8')
     writeFileSync(envPath, envKey, 'utf-8')
-    process.env.AGBENCH_APNS_KEY_PATH = envPath
-    process.env.AGBENCH_APNS_KEY_ID = 'ENVKEY0000'
-    process.env.AGBENCH_APNS_TEAM_ID = 'ENVTEAM000'
-    process.env.AGBENCH_APNS_BUNDLE_ID = 'com.env.test'
+    process.env.TASKWRAITH_APNS_KEY_PATH = envPath
+    process.env.TASKWRAITH_APNS_KEY_ID = 'ENVKEY0000'
+    process.env.TASKWRAITH_APNS_TEAM_ID = 'ENVTEAM000'
+    process.env.TASKWRAITH_APNS_BUNDLE_ID = 'com.env.test'
     try {
       const log = vi.fn()
       const pusher = createBridgeApnsPusher({
@@ -327,10 +327,10 @@ describe('createBridgeApnsPusher factory', () => {
       expect(allLogs).toContain('keyId=OPTKEY0000')
       expect(allLogs).not.toContain('keyId=ENVKEY0000')
     } finally {
-      delete process.env.AGBENCH_APNS_KEY_PATH
-      delete process.env.AGBENCH_APNS_KEY_ID
-      delete process.env.AGBENCH_APNS_TEAM_ID
-      delete process.env.AGBENCH_APNS_BUNDLE_ID
+      delete process.env.TASKWRAITH_APNS_KEY_PATH
+      delete process.env.TASKWRAITH_APNS_KEY_ID
+      delete process.env.TASKWRAITH_APNS_TEAM_ID
+      delete process.env.TASKWRAITH_APNS_BUNDLE_ID
       rmSync(dir, { recursive: true, force: true })
     }
   })

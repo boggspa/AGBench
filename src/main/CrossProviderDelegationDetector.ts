@@ -1,16 +1,16 @@
 /**
  * Phase I3.x — Detect-and-redirect heuristic for cross-provider delegation.
  *
- * Background: AGBench exposes `AGBench__delegate_to_subthread` so a Gemini
+ * Background: TaskWraith exposes `TaskWraith__delegate_to_subthread` so a Gemini
  * (or Codex / Claude / Kimi) run can hand work off to a different provider.
  * Empirically Gemini still prefers its built-in `invoke_agent` even when the
  * user explicitly asked for "delegate to Kimi". Those built-in agents run
- * inside Gemini's own process and cannot reach AGBench providers — the
+ * inside Gemini's own process and cannot reach TaskWraith providers — the
  * delegation is silently dropped on the floor.
  *
  * This module owns the heuristic that watches Gemini's stdout for an
  * invoke_agent style tool call AND checks whether the original user prompt
- * mentioned another AGBench provider. When both are true we emit a single
+ * mentioned another TaskWraith provider. When both are true we emit a single
  * non-blocking `provider_warning` event back to the renderer.
  *
  * The detection is pure: it doesn't talk to electron, IPC, or the store —
@@ -132,8 +132,8 @@ export function detectCrossProviderDelegationMisuse(
  * this verbatim from the `provider_warning` event. */
 export function crossProviderDelegationWarningMessage(): string {
   return (
-    "This delegation used Gemini's internal agents (no AGBench sub-thread spawned). " +
+    "This delegation used Gemini's internal agents (no TaskWraith sub-thread spawned). " +
     'For cross-provider delegation to Kimi/Codex/Claude, the agent should call ' +
-    'AGBench__delegate_to_subthread instead.'
+    'TaskWraith__delegate_to_subthread instead.'
   )
 }

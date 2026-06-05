@@ -30,10 +30,10 @@ import { Http2ApnsPusher } from './Http2ApnsPusher'
  * sweep of call sites.
  *
  * Environment knobs:
- *   - `AGBENCH_BRIDGE_APNS=production` — use production APNs gateway when
+ *   - `TASKWRAITH_BRIDGE_APNS=production` — use production APNs gateway when
  *     a real pusher is configured (default if APNs is enabled).
- *   - `AGBENCH_BRIDGE_APNS=sandbox` — use sandbox APNs gateway.
- *   - `AGBENCH_BRIDGE_APNS_DRY_RUN=1` — even with a real pusher, log only;
+ *   - `TASKWRAITH_BRIDGE_APNS=sandbox` — use sandbox APNs gateway.
+ *   - `TASKWRAITH_BRIDGE_APNS_DRY_RUN=1` — even with a real pusher, log only;
  *     don't actually hit Apple's servers. Useful for staging tests.
  */
 
@@ -149,9 +149,9 @@ export class NoopApnsPusher implements BridgeApnsPusher {
 }
 
 export interface BridgeApnsPusherOptions {
-  /** Inject the env or read from `AGBENCH_BRIDGE_APNS`. */
+  /** Inject the env or read from `TASKWRAITH_BRIDGE_APNS`. */
   env?: BridgeApnsEnv
-  /** Set true (or env: `AGBENCH_BRIDGE_APNS_DRY_RUN=1`) to log only. */
+  /** Set true (or env: `TASKWRAITH_BRIDGE_APNS_DRY_RUN=1`) to log only. */
   dryRun?: boolean
   log?: (line: string) => void
   /** APNs credentials. When the required fields are present, the
@@ -164,8 +164,8 @@ export interface BridgeApnsPusherOptions {
    * to `authKeyPath` (the file-on-disk env-var fallback). Exactly
    * one of the two must be set.
    *
-   * Env-var fallback paths: AGBENCH_APNS_KEY_PATH, AGBENCH_APNS_KEY_ID,
-   * AGBENCH_APNS_TEAM_ID, AGBENCH_APNS_BUNDLE_ID. */
+   * Env-var fallback paths: TASKWRAITH_APNS_KEY_PATH, TASKWRAITH_APNS_KEY_ID,
+   * TASKWRAITH_APNS_TEAM_ID, TASKWRAITH_APNS_BUNDLE_ID. */
   credentials?: {
     authKeyPath?: string
     authKeyPem?: string
@@ -180,26 +180,26 @@ export interface BridgeApnsPusherOptions {
  * resolution: explicit `options.credentials` > env vars > none.
  *
  * Env-var convention:
- *   - AGBENCH_APNS_KEY_PATH   path to AuthKey_XXXXXXXXXX.p8
- *   - AGBENCH_APNS_KEY_ID     10-char Key ID from Apple Developer Keys
- *   - AGBENCH_APNS_TEAM_ID    10-char Team ID from membership page
- *   - AGBENCH_APNS_BUNDLE_ID  iOS app bundle id (e.g. com.example.AGBench.ios)
- *   - AGBENCH_BRIDGE_APNS     'sandbox' | 'production' (forced env; usually
+ *   - TASKWRAITH_APNS_KEY_PATH   path to AuthKey_XXXXXXXXXX.p8
+ *   - TASKWRAITH_APNS_KEY_ID     10-char Key ID from Apple Developer Keys
+ *   - TASKWRAITH_APNS_TEAM_ID    10-char Team ID from membership page
+ *   - TASKWRAITH_APNS_BUNDLE_ID  iOS app bundle id (e.g. com.example.TaskWraith.ios)
+ *   - TASKWRAITH_BRIDGE_APNS     'sandbox' | 'production' (forced env; usually
  *                             omitted so per-device env from the token
  *                             registration picks)
- *   - AGBENCH_BRIDGE_APNS_DRY_RUN  '1' or 'true' to log instead of send
+ *   - TASKWRAITH_BRIDGE_APNS_DRY_RUN  '1' or 'true' to log instead of send
  *     (production: applied via the Http2ApnsPusher's forceEnv? no —
  *     dryRun returns the NoopApnsPusher to avoid network entirely).
  */
 export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): BridgeApnsPusher {
   const log = options.log ?? (() => {})
   // Read env if not explicitly provided.
-  const envVar = process.env.AGBENCH_BRIDGE_APNS
+  const envVar = process.env.TASKWRAITH_BRIDGE_APNS
   const env: BridgeApnsEnv = options.env ?? (envVar === 'sandbox' ? 'sandbox' : 'production')
   const dryRun =
     options.dryRun ??
-    (process.env.AGBENCH_BRIDGE_APNS_DRY_RUN === '1' ||
-      process.env.AGBENCH_BRIDGE_APNS_DRY_RUN === 'true')
+    (process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN === '1' ||
+      process.env.TASKWRAITH_BRIDGE_APNS_DRY_RUN === 'true')
 
   if (dryRun) {
     log(`[BridgeApnsPusher] dryRun=true → using NoopApnsPusher (logged, never delivered)`)
@@ -209,7 +209,7 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
   const creds = resolveCredentials(options)
   if (!creds) {
     log(
-      `[BridgeApnsPusher] using NoopApnsPusher (env=${env}) — credentials missing. Set AGBENCH_APNS_KEY_PATH + AGBENCH_APNS_KEY_ID + AGBENCH_APNS_TEAM_ID + AGBENCH_APNS_BUNDLE_ID to enable real push delivery.`
+      `[BridgeApnsPusher] using NoopApnsPusher (env=${env}) — credentials missing. Set TASKWRAITH_APNS_KEY_PATH + TASKWRAITH_APNS_KEY_ID + TASKWRAITH_APNS_TEAM_ID + TASKWRAITH_APNS_BUNDLE_ID to enable real push delivery.`
     )
     return new NoopApnsPusher(log)
   }
@@ -254,10 +254,10 @@ function resolveCredentials(
   // injects credentials directly via `options.credentials` with a
   // decrypted PEM string; we never read sensitive material from env
   // when settings has populated values.
-  const authKeyPath = process.env.AGBENCH_APNS_KEY_PATH
-  const keyId = process.env.AGBENCH_APNS_KEY_ID
-  const teamId = process.env.AGBENCH_APNS_TEAM_ID
-  const bundleId = process.env.AGBENCH_APNS_BUNDLE_ID
+  const authKeyPath = process.env.TASKWRAITH_APNS_KEY_PATH
+  const keyId = process.env.TASKWRAITH_APNS_KEY_ID
+  const teamId = process.env.TASKWRAITH_APNS_TEAM_ID
+  const bundleId = process.env.TASKWRAITH_APNS_BUNDLE_ID
   if (authKeyPath && keyId && teamId && bundleId) {
     return { authKeyPath, keyId, teamId, bundleId }
   }

@@ -409,7 +409,7 @@ export interface FcpxmlTimelineDiffPlan {
   }
   projects: FcpxmlTimelineProjectDiffIr[]
   sidecar: {
-    schema: 'agbench-fcpxml-diff-plan-v1'
+    schema: 'taskwraith-fcpxml-diff-plan-v1'
     recommendedPath: string
     document: Record<string, unknown>
   }
@@ -615,7 +615,7 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         transports: ['cli', 'native-script'],
         readOnly: false,
         requiresApproval: true,
-        summary: 'Run bounded preview renders and return artifacts to AGBench.'
+        summary: 'Run bounded preview renders and return artifacts to TaskWraith.'
       },
       {
         id: 'blender-generated-python',
@@ -1337,7 +1337,7 @@ function coerceTitleFlatFields(item: FcpxmlTimelineItemIr): FcpxmlTimelineItemIr
   if (!hasFlat) return item
   // Single generated style def + run. The id is namespaced so it
   // doesn't collide with agent-authored ones.
-  const styleId = 'agbench-flat-title-style'
+  const styleId = 'taskwraith-flat-title-style'
   const promoted: FcpxmlTimelineItemIr = { ...item }
   if (item.text) {
     promoted.textRuns = [{ text: item.text, styleRef: styleId }]
@@ -1433,7 +1433,7 @@ export function serializeFcpxmlTimelineIr(
     const mediaRepSrc =
       asset.src && asset.src.length > 0
         ? asset.src
-        : `file:///agbench-placeholder/${encodeURIComponent(asset.id || 'asset')}.mov`
+        : `file:///taskwraith-placeholder/${encodeURIComponent(asset.id || 'asset')}.mov`
     if (!asset.src) {
       warnings.push(
         `Asset "${asset.id}" had no src; emitted a placeholder media-rep src so the document still validates. ` +
@@ -1483,14 +1483,14 @@ export function serializeFcpxmlTimelineIr(
   // Library wraps every event. The IR carries a per-project eventName
   // string, so projects sharing an event get folded back together;
   // projects with distinct eventNames each get their own <event>. A
-  // missing eventName falls into a synthesized "AGBench Drafts" event
+  // missing eventName falls into a synthesized "TaskWraith Drafts" event
   // so the output validates against importers that require non-empty
   // event names.
   if (projects.length > 0) {
     lines.push(`${indent}<library>`)
     const projectsByEvent = new Map<string, FcpxmlProjectIr[]>()
     for (const project of projects) {
-      const eventKey = project.eventName || 'AGBench Drafts'
+      const eventKey = project.eventName || 'TaskWraith Drafts'
       const bucket = projectsByEvent.get(eventKey) || []
       bucket.push(project)
       projectsByEvent.set(eventKey, bucket)
@@ -1515,7 +1515,7 @@ export function serializeFcpxmlTimelineIr(
         }
         // Determine the format ref — sequence.format wins, else the
         // first declared format in resources, else synthesise an
-        // emergency "AGBench fallback" format declared inline.
+        // emergency "TaskWraith fallback" format declared inline.
         let sequenceFormatRef = seq.format
         if (!sequenceFormatRef) {
           if (formats.length > 0) {
@@ -1783,7 +1783,7 @@ export function buildFcpxmlTimelineDiffPlan(
     afterTruncated: Boolean(input.afterTruncated)
   }
   const sidecarDocument = {
-    schema: 'agbench-fcpxml-diff-plan-v1',
+    schema: 'taskwraith-fcpxml-diff-plan-v1',
     generatedAt,
     appId: 'final-cut-pro',
     kind: 'fcpxml',
@@ -1808,7 +1808,7 @@ export function buildFcpxmlTimelineDiffPlan(
     affectedResources,
     projects,
     sidecar: {
-      schema: 'agbench-fcpxml-diff-plan-v1',
+      schema: 'taskwraith-fcpxml-diff-plan-v1',
       recommendedPath: recommendedTimelineSidecarPath(input.afterPath),
       document: sidecarDocument
     },
@@ -1967,11 +1967,11 @@ function buildProjectWarnings(
     warnings.push('Text content was not loaded, so XML element counts are unavailable.')
   }
   if (kind === 'final-cut-library') {
-    warnings.push('AGBench does not inspect or mutate .fcpbundle internals in this snapshot.')
+    warnings.push('TaskWraith does not inspect or mutate .fcpbundle internals in this snapshot.')
   }
   if (kind === 'logic-package') {
     warnings.push(
-      'AGBench does not inspect or mutate .logicx internals because they are not a public project API.'
+      'TaskWraith does not inspect or mutate .logicx internals because they are not a public project API.'
     )
   }
   if (kind === 'blender-binary') {
@@ -2485,7 +2485,7 @@ function affectedResourceList(
 }
 
 function recommendedTimelineSidecarPath(path: string): string {
-  return `${path}.agbench-timeline-diff.json`
+  return `${path}.taskwraith-timeline-diff.json`
 }
 
 function readUint16BE(bytes: Uint8Array, offset: number): number | undefined {

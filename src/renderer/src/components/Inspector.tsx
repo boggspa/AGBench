@@ -728,7 +728,7 @@ function DelegationTab(props: InspectorProps) {
       )
     : providerDelegationChips(props.provider, props.providerCapabilities)
   const openFloatingAudit = () => {
-    const auditWindow = window.open('', 'agbench-agent-audit', 'width=560,height=760')
+    const auditWindow = window.open('', 'taskwraith-agent-audit', 'width=560,height=760')
     if (!auditWindow) return
     const rows = activities.length
       ? activities
@@ -738,14 +738,14 @@ function DelegationTab(props: InspectorProps) {
           )
           .join('')
       : '<li>No delegated agent activity detected yet.</li>'
-    auditWindow.document.write(`<!doctype html><html><head><title>AGBench Agent Audit</title><style>
+    auditWindow.document.write(`<!doctype html><html><head><title>TaskWraith Agent Audit</title><style>
       body{margin:0;padding:20px;background:#111;color:#eee;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
       h1{font-size:18px;margin:0 0 12px}
       .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
       .chip{border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 8px;color:#b8d7ff;background:rgba(255,255,255,.06)}
       li{margin:0 0 14px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.05)}
       span{color:#bbb;line-height:1.45}
-    </style></head><body><h1>${isEnsemble ? 'AGBench Ensemble Agent Audit' : 'AGBench Agent Audit'}</h1><div class="chips">${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('')}</div><ol>${rows}</ol></body></html>`)
+    </style></head><body><h1>${isEnsemble ? 'TaskWraith Ensemble Agent Audit' : 'TaskWraith Agent Audit'}</h1><div class="chips">${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('')}</div><ol>${rows}</ol></body></html>`)
     auditWindow.document.close()
   }
 
@@ -781,7 +781,7 @@ function DelegationTab(props: InspectorProps) {
             }}
           >
             Agent invocation activity is audited across the enabled participant providers. Native
-            provider events remain provider-owned; AGBench displays them beside durable sub-thread
+            provider events remain provider-owned; TaskWraith displays them beside durable sub-thread
             activity in one inspector language.
           </p>
         )}
@@ -804,7 +804,7 @@ function DelegationTab(props: InspectorProps) {
               key={chip}
               style={{
                 fontSize: 'var(--font-size-xs)',
-                color: chip.includes('AGBench') ? 'var(--success)' : 'var(--text-secondary)',
+                color: chip.includes('TaskWraith') ? 'var(--success)' : 'var(--text-secondary)',
                 border: '1px solid var(--panel-border)',
                 borderRadius: 999,
                 padding: '3px 8px',
@@ -822,8 +822,8 @@ function DelegationTab(props: InspectorProps) {
           <h4>No agent invocations yet</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
             {isEnsemble
-              ? 'Ask any Ensemble participant to spawn or delegate an agent invocation. AGBench will render native provider events here when they appear in the stream.'
-              : `Ask ${providerLabel(props.provider)} to spawn or delegate an agent invocation. AGBench will render native provider events here when they appear in the stream.`}
+              ? 'Ask any Ensemble participant to spawn or delegate an agent invocation. TaskWraith will render native provider events here when they appear in the stream.'
+              : `Ask ${providerLabel(props.provider)} to spawn or delegate an agent invocation. TaskWraith will render native provider events here when they appear in the stream.`}
           </p>
         </div>
       ) : (
@@ -1149,7 +1149,7 @@ function toolingStateColor(state: ProviderToolingCapability['state']): string {
 }
 
 function toolingEnforcementLabel(tool: ProviderToolingCapability): string {
-  if (tool.enforcedByAgentBench) return 'AGBench-enforced'
+  if (tool.enforcedByTaskWraith) return 'TaskWraith-enforced'
   if (tool.enforcement === 'provider') return 'provider-managed'
   if (tool.enforcement === 'best_effort') return 'best-effort'
   if (tool.enforcement === 'none') return 'not enforced'
@@ -1157,7 +1157,7 @@ function toolingEnforcementLabel(tool: ProviderToolingCapability): string {
 }
 
 function toolingEnforcementColor(tool: ProviderToolingCapability): string {
-  if (tool.enforcedByAgentBench) return 'var(--success)'
+  if (tool.enforcedByTaskWraith) return 'var(--success)'
   if (tool.enforcement === 'best_effort') return 'var(--warning)'
   return 'var(--text-secondary)'
 }
@@ -1174,7 +1174,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
     )
   }
 
-  // The five functional-control rows drive the AGBench-enforcement tally. The
+  // The five functional-control rows drive the TaskWraith-enforcement tally. The
   // elicit/delegate rows are DISPLAY-only additions: they render in the strip
   // but are deliberately excluded from `enforcedCount` so promoting
   // subThreadDelegation to a row does not double-count against its existing
@@ -1187,7 +1187,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
     contract.tools.networkAccess
   ]
   const displayTools = [...controlTools, contract.tools.elicit, contract.tools.delegate]
-  const enforcedCount = controlTools.filter((tool) => tool.enforcedByAgentBench).length
+  const enforcedCount = controlTools.filter((tool) => tool.enforcedByTaskWraith).length
   return (
     <div className="safety-card">
       <h4>{safeText(contract.label, 'Provider')} tooling contract</h4>
@@ -1198,7 +1198,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
           margin: '0 0 var(--space-md) 0'
         }}
       >
-        Shared AGBench view of shell, file, MCP, creative app, approval, and unavailable-tool
+        Shared TaskWraith view of shell, file, MCP, creative app, approval, and unavailable-tool
         behavior for this provider.
       </p>
       <div className="safety-row">
@@ -1222,7 +1222,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
         <span>{contract.approvals.inAppApprovals ? 'yes' : 'provider-managed'}</span>
       </div>
       <div className="safety-row">
-        <span>AGBench enforcement</span>
+        <span>TaskWraith enforcement</span>
         <span style={{ color: enforcedCount > 0 ? 'var(--success)' : 'var(--warning)' }}>
           {enforcedCount}/{controlTools.length} controls
         </span>
@@ -1978,7 +1978,7 @@ function CapabilitiesTab(props: InspectorProps) {
             alignItems: 'center'
           }}
         >
-          <h4>AGBench MCP bridge</h4>
+          <h4>TaskWraith MCP bridge</h4>
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <button
               className="btn btn-sm btn-ghost"
@@ -2022,7 +2022,7 @@ function CapabilitiesTab(props: InspectorProps) {
           }}
         >
           {props.geminiMcpBridgeStatus?.message ||
-            'Use Install / repair only when you want AGBench to update your Gemini MCP configuration.'}
+            'Use Install / repair only when you want TaskWraith to update your Gemini MCP configuration.'}
         </p>
       </div>
 

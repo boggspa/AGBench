@@ -3,7 +3,7 @@
 /**
  * smoke-bridge-daemon-roundtrip
  *
- * Self-contained daemon smoke. Spawns AgbenchBridgeDaemon, waits for the
+ * Self-contained daemon smoke. Spawns TaskWraithBridgeDaemon, waits for the
  * daemon-hello line, then verifies the inbound stdio JSON-RPC request/response
  * path with bridge.ping and bridge.status. The removed remote-iOS transport
  * layer no longer emits daemon-originated requests or run-event broadcasts.
@@ -16,12 +16,12 @@ const { join } = require('path')
 const { randomUUID } = require('crypto')
 
 const REPO_ROOT = join(__dirname, '..')
-const BRIDGE_BUILD_ROOT = join(REPO_ROOT, 'swift', 'AgbenchBridge', '.build')
+const BRIDGE_BUILD_ROOT = join(REPO_ROOT, 'swift', 'TaskWraithBridge', '.build')
 const BIN_PATH =
-  process.env.AGBENCH_BRIDGE_DAEMON_PATH ||
+  process.env.TASKWRAITH_BRIDGE_DAEMON_PATH ||
   [
-    join(BRIDGE_BUILD_ROOT, 'release', 'AgbenchBridgeDaemon'),
-    join(BRIDGE_BUILD_ROOT, 'debug', 'AgbenchBridgeDaemon')
+    join(BRIDGE_BUILD_ROOT, 'release', 'TaskWraithBridgeDaemon'),
+    join(BRIDGE_BUILD_ROOT, 'debug', 'TaskWraithBridgeDaemon')
   ].find((candidate) => existsSync(candidate))
 const TIMEOUT_MS = Number(process.env.BRIDGE_SMOKE_TIMEOUT_MS || 8000)
 
@@ -113,7 +113,7 @@ stdoutReader.on('line', (line) => {
   if (!parsed || typeof parsed !== 'object') return
 
   if (parsed.kind === 'daemon-hello') {
-    if (parsed.daemon !== 'AgbenchBridgeDaemon') {
+    if (parsed.daemon !== 'TaskWraithBridgeDaemon') {
       fail(`hello had unexpected daemon field: ${JSON.stringify(parsed)}`)
       return
     }
@@ -139,7 +139,7 @@ stdoutReader.on('line', (line) => {
   if (String(parsed.id) === statusId) {
     if (
       parsed.error ||
-      parsed.result?.daemon !== 'AgbenchBridgeDaemon' ||
+      parsed.result?.daemon !== 'TaskWraithBridgeDaemon' ||
       parsed.result?.remoteTransportEnabled !== false ||
       parsed.result?.screenWatchEnabled !== true
     ) {

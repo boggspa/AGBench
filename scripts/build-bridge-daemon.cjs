@@ -3,7 +3,7 @@
 /**
  * build-bridge-daemon
  *
- * Pre-build step that compiles the Swift AgbenchBridgeDaemon as a
+ * Pre-build step that compiles the Swift TaskWraithBridgeDaemon as a
  * release binary so electron-builder can bundle it as an extraResource
  * in the packaged .app. macOS-only; no-op (with a friendly log) on
  * other platforms because the daemon uses Apple Network framework +
@@ -18,10 +18,10 @@ const { existsSync, mkdirSync } = require('fs')
 const { join } = require('path')
 
 const REPO_ROOT = join(__dirname, '..')
-const PACKAGE_PATH = join(REPO_ROOT, 'swift', 'AgbenchBridge')
-const RELEASE_BINARY_PATH = join(PACKAGE_PATH, '.build', 'release', 'AgbenchBridgeDaemon')
+const PACKAGE_PATH = join(REPO_ROOT, 'swift', 'TaskWraithBridge')
+const RELEASE_BINARY_PATH = join(PACKAGE_PATH, '.build', 'release', 'TaskWraithBridgeDaemon')
 const DEPLOYMENT_TARGET = process.env.MACOSX_DEPLOYMENT_TARGET || '14.0'
-const REQUESTED_ARCH = process.env.AGBENCH_BRIDGE_ARCH || 'host'
+const REQUESTED_ARCH = process.env.TASKWRAITH_BRIDGE_ARCH || 'host'
 
 if (process.platform !== 'darwin') {
   console.log(
@@ -88,7 +88,7 @@ function buildUniversal() {
       process.exit(result.status ?? 1)
     }
     const binPath = showBinPath(scratchPath, slice.triple)
-    const binaryPath = join(binPath, 'AgbenchBridgeDaemon')
+    const binaryPath = join(binPath, 'TaskWraithBridgeDaemon')
     assertBinary(binaryPath)
     verifyMachOArch(binaryPath, slice.arch)
     builtSlices.push(binaryPath)

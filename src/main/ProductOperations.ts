@@ -159,7 +159,7 @@ export function createBridgeHealthRecord(
   if (!status) {
     return {
       provider: 'gemini',
-      bridgeId: 'agentbench',
+      bridgeId: 'taskwraith',
       label: 'Gemini MCP bridge',
       status: 'unknown',
       checkedAt,
@@ -180,7 +180,7 @@ export function createBridgeHealthRecord(
 
   return {
     provider: 'gemini',
-    bridgeId: status.serverName || 'agentbench',
+    bridgeId: status.serverName || 'taskwraith',
     label: 'Gemini MCP bridge',
     status: health,
     checkedAt: status.checkedAt || checkedAt,
@@ -253,12 +253,18 @@ export function buildReleaseAutomationStatus(input: {
   const buildUnpackScript = scripts['build:unpack']
   const buildMacScript = scripts['build:mac']
   const buildMacNotarizedScript = scripts['build:mac:notarized']
+  const buildWinScript = scripts['build:win']
+  const buildWinUnpackScript = scripts['build:win:unpack']
+  const buildWinSignedScript = scripts['build:win:signed']
   const debugScript = scripts['build:debug:mac']
   const debugNotarizedScript = scripts['build:debug:mac:notarized']
+  const debugWinScript = scripts['build:debug:win']
   const notarizedScript = buildMacNotarizedScript || debugNotarizedScript
   const smokeNodePtyScript = scripts['smoke:node-pty']
   const smokePackageScript = scripts['smoke:package']
   const validateReleaseScript = scripts['validate:release']
+  const validateMacUpdateFeedScript = scripts['validate:mac-update-feed']
+  const validateWinUpdateFeedScript = scripts['validate:win-update-feed']
   const notarizedScriptName = buildMacNotarizedScript
     ? 'build:mac:notarized'
     : debugNotarizedScript
@@ -300,10 +306,18 @@ export function buildReleaseAutomationStatus(input: {
     env.APPLE_KEYCHAIN_PROFILE || parseScriptEnvDefault(notarizedScript, 'APPLE_KEYCHAIN_PROFILE')
   const signingIdentity =
     env.CSC_NAME || parseScriptEnvDefault(notarizedScript || debugScript, 'CSC_NAME')
+  const windowsSigningConfigured = Boolean(
+    buildWinSignedScript &&
+      ((env.CSC_LINK && env.CSC_KEY_PASSWORD) ||
+        (env.WINDOWS_CSC_LINK && env.WINDOWS_CSC_KEY_PASSWORD) ||
+        buildWinSignedScript.includes('require-windows-signing-env'))
+  )
   const hasNotarizeToggle = Boolean(notarizedScript?.includes('-c.mac.notarize=true'))
   const notarizationConfigured = Boolean(notarizedScript && hasNotarizeToggle && keychainProfile)
   const signingConfigured = Boolean(
-    (notarizedScript || debugScript)?.includes('CSC_NAME=') || signingIdentity
+    (notarizedScript || debugScript)?.includes('CSC_NAME=') ||
+      signingIdentity ||
+      windowsSigningConfigured
   )
   const nativeModulesConfigured = Boolean(
     smokeNodePtyScript &&
@@ -326,7 +340,9 @@ export function buildReleaseAutomationStatus(input: {
     'npm run ci',
     'npm run build:unpack',
     'npm run build:mac:notarized',
+    'npm run build:win:signed',
     'Verify packaged smoke/native module validation output',
+    'Verify mac and Windows update feed compatibility',
     `Publish ${input.updateChannel} update artifacts`
   ]
   const statuses: ProductOperationStatus[] = [
@@ -334,12 +350,14 @@ export function buildReleaseAutomationStatus(input: {
     testScript ? 'ok' : 'warning',
     ciScript ? 'ok' : 'warning',
     buildUnpackScript ? 'ok' : 'warning',
+    buildWinScript && buildWinUnpackScript && buildWinSignedScript ? 'ok' : 'warning',
     smokeNodePtyScript && smokePackageScript ? 'ok' : 'warning',
-    debugScript ? 'ok' : 'warning',
+    debugScript && debugWinScript ? 'ok' : 'warning',
     notarizationConfigured ? 'ok' : 'warning',
     signingConfigured ? 'ok' : 'warning',
     appId && productName ? 'ok' : 'warning',
     nativeModulesConfigured ? 'ok' : 'warning',
+    validateMacUpdateFeedScript && validateWinUpdateFeedScript ? 'ok' : 'warning',
     updateDistributionConfigured ? 'ok' : 'warning',
     architectureCompatibility?.status || 'ok'
   ]
@@ -360,9 +378,15 @@ export function buildReleaseAutomationStatus(input: {
       buildMacNotarized: buildMacNotarizedScript,
       buildDebugMac: debugScript,
       buildDebugMacNotarized: debugNotarizedScript,
+      buildWin: buildWinScript,
+      buildWinUnpack: buildWinUnpackScript,
+      buildWinSigned: buildWinSignedScript,
+      buildDebugWin: debugWinScript,
       smokeNodePty: smokeNodePtyScript,
       smokePackage: smokePackageScript,
-      validateRelease: validateReleaseScript
+      validateRelease: validateReleaseScript,
+      validateMacUpdateFeed: validateMacUpdateFeedScript,
+      validateWinUpdateFeed: validateWinUpdateFeedScript
     },
     nativeModules: {
       configured: nativeModulesConfigured,
@@ -395,7 +419,9 @@ export function buildReleaseAutomationStatus(input: {
       configured: signingConfigured,
       ...(signingIdentity ? { identity: signingIdentity } : {}),
       message: signingConfigured
-        ? 'Codesigning identity is configured through the debug build scripts or environment.'
+        ? windowsSigningConfigured
+          ? 'Windows signing is configured through build:win:signed and signing secrets/environment.'
+          : 'Codesigning identity is configured through the debug build scripts or environment.'
         : 'Codesigning identity was not detected in scripts or environment.'
     },
     ...(architectureCompatibility ? { architectureCompatibility } : {}),

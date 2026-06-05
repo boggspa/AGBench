@@ -1,8 +1,8 @@
-export const LEGACY_AGBENCH_FONT_STACK =
+export const LEGACY_TASKWRAITH_FONT_STACK =
   '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
 
 export const FONT_STACKS = {
-  agbench:
+  taskwraith:
     '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
   compact: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
   humanist:
@@ -24,7 +24,7 @@ export type TypefaceOption = {
 }
 
 export const TRANSCRIPT_FONT_OPTIONS: TypefaceOption[] = [
-  { value: FONT_STACKS.agbench, label: 'AGBench default' },
+  { value: FONT_STACKS.taskwraith, label: 'TaskWraith default' },
   { value: FONT_STACKS.compact, label: 'Compact Sans' },
   { value: FONT_STACKS.humanist, label: 'Humanist Sans' },
   { value: FONT_STACKS.editorial, label: 'Editorial Serif' },
@@ -34,7 +34,7 @@ export const TRANSCRIPT_FONT_OPTIONS: TypefaceOption[] = [
 
 export const COMPOSER_FONT_OPTIONS: TypefaceOption[] = [
   { value: COMPOSER_FONT_MATCH_TRANSCRIPT, label: 'Match transcript' },
-  { value: FONT_STACKS.agbench, label: 'AGBench default' },
+  { value: FONT_STACKS.taskwraith, label: 'TaskWraith default' },
   { value: FONT_STACKS.compact, label: 'Compact Sans' },
   { value: FONT_STACKS.humanist, label: 'Humanist Sans' },
   { value: FONT_STACKS.editorial, label: 'Editorial Serif' },
@@ -44,11 +44,11 @@ export const COMPOSER_FONT_OPTIONS: TypefaceOption[] = [
 
 export function normalizeFontFamily(
   value: unknown,
-  fallback: string = FONT_STACKS.agbench
+  fallback: string = FONT_STACKS.taskwraith
 ): string {
   if (typeof value !== 'string') return fallback
   const trimmed = value.trim()
-  if (trimmed === LEGACY_AGBENCH_FONT_STACK) return FONT_STACKS.agbench
+  if (trimmed === LEGACY_TASKWRAITH_FONT_STACK) return FONT_STACKS.taskwraith
   return trimmed.length > 0 ? trimmed : fallback
 }
 
@@ -61,7 +61,7 @@ export function resolveComposerFontFamily(
   composerFontFamily: unknown,
   transcriptFontFamily: unknown
 ): string {
-  const transcript = normalizeFontFamily(transcriptFontFamily, FONT_STACKS.agbench)
+  const transcript = normalizeFontFamily(transcriptFontFamily, FONT_STACKS.taskwraith)
   if (composerFontFamily === COMPOSER_FONT_MATCH_TRANSCRIPT) return transcript
   return normalizeFontFamily(composerFontFamily, transcript)
 }

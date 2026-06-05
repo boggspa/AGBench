@@ -22,7 +22,7 @@ export function UpdateStatusPane(): React.JSX.Element {
     useUpdateStatus()
 
   const handleInstall = useCallback(async () => {
-    if (!confirm('Install update and restart AGBench now?')) return
+    if (!confirm('Install update and restart TaskWraith now?')) return
     await installUpdateNow()
   }, [installUpdateNow])
 
@@ -104,7 +104,7 @@ export function UpdateStatusPane(): React.JSX.Element {
           Auto-updates are disabled. They activate automatically in packaged builds when the update
           channel is set to <strong>Stable</strong> or
           <strong> Nightly</strong> (currently <strong>{snap.channel}</strong>). Override with{' '}
-          <code>AGBENCH_AUTO_UPDATE=on</code> for testing against a local feed.
+          <code>TASKWRAITH_AUTO_UPDATE=on</code> for testing against a local feed.
         </p>
       )}
     </div>

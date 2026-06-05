@@ -169,7 +169,7 @@ export function normalizeCliProviderModel(provider: ProviderId, model?: string |
   if (provider === 'claude') {
     if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
     if (trimmed.startsWith('claude-')) {
-      // The `-1m` suffix is an AGBench-internal marker for the 1M-context
+      // The `-1m` suffix is an TaskWraith-internal marker for the 1M-context
       // variant — it drives the context-window meter (contextWindows.ts) and
       // the rate table, but it is NOT a real Claude CLI/SDK model name. The
       // CLI only accepts the base id (e.g. `claude-opus-4-8`), so `--model

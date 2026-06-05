@@ -267,7 +267,7 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     const grants = deps.normalizeExternalPathGrants(rawGrants)
     if (rawGrants.length && grants.length !== rawGrants.length) {
       throw new Error(
-        'Scheduled task external path grants must be issued by AGBench in this app session.'
+        'Scheduled task external path grants must be issued by TaskWraith in this app session.'
       )
     }
     return grants.length ? grants : undefined
@@ -633,10 +633,10 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
           typeof prefs.workspaceActivityEnabled === 'boolean'
             ? prefs.workspaceActivityEnabled
             : current.workspaceActivityEnabled,
-        agbenchActivityEnabled:
-          typeof prefs.agbenchActivityEnabled === 'boolean'
-            ? prefs.agbenchActivityEnabled
-            : current.agbenchActivityEnabled,
+        taskwraithActivityEnabled:
+          typeof prefs.taskwraithActivityEnabled === 'boolean'
+            ? prefs.taskwraithActivityEnabled
+            : current.taskwraithActivityEnabled,
         externalActivityEnabled:
           typeof prefs.externalActivityEnabled === 'boolean'
             ? prefs.externalActivityEnabled
@@ -703,7 +703,7 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     if ('nativeSubAgentRequests' in sanitized) {
       sanitized.nativeSubAgentRequests =
         sanitized.nativeSubAgentRequests === 'provider' ||
-        sanitized.nativeSubAgentRequests === 'agbench'
+        sanitized.nativeSubAgentRequests === 'taskwraith'
           ? sanitized.nativeSubAgentRequests
           : 'ask'
     }

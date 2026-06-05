@@ -64,7 +64,7 @@ export class ChatService {
   createChat(workspaceId: string, workspacePath: string): ChatRecord {
     const registered = this.deps.findRegisteredWorkspace(workspacePath)
     if (!registered || registered.id !== workspaceId) {
-      throw new Error('Chat workspace must be a registered AGBench workspace.')
+      throw new Error('Chat workspace must be a registered TaskWraith workspace.')
     }
     return this.deps.appStore.createChat(workspaceId, this.deps.canonicalPath(workspacePath))
   }
@@ -81,7 +81,7 @@ export class ChatService {
     const workspacePath = requireNonEmptyString(args.workspacePath, 'Workspace path')
     const registered = this.deps.findRegisteredWorkspace(workspacePath)
     if (!registered || registered.id !== workspaceId) {
-      throw new Error('Ensemble workspace must be a registered AGBench workspace.')
+      throw new Error('Ensemble workspace must be a registered TaskWraith workspace.')
     }
     return this.deps.appStore.createEnsembleChat({
       workspaceId,

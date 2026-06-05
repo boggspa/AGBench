@@ -80,7 +80,7 @@ describe('ChangelogSheet', () => {
       enabled: true,
       channel: 'stable',
       latestVersion: '1.0.73',
-      releaseName: 'AGBench 1.0.73',
+      releaseName: 'TaskWraith 1.0.73',
       releaseDate: '2026-06-04T12:00:00.000Z',
       releaseNotes: 'Updater pill and changelog sheet.'
     }
@@ -94,7 +94,7 @@ describe('ChangelogSheet', () => {
       />
     )
     expect(html).toContain('changelog-sheet-backdrop')
-    expect(html).toContain('AGBench 1.0.73')
+    expect(html).toContain('TaskWraith 1.0.73')
     expect(html).toContain('Updater pill and changelog sheet.')
     expect(html).toContain('Download update')
   })
@@ -128,7 +128,7 @@ describe('ChangelogSheet', () => {
       />
     )
     expect(html).toContain('Bundled changelog')
-    expect(html).toContain('AGBench')
+    expect(html).toContain('TaskWraith')
   })
 
   it('formats full changelog arrays from electron-updater metadata', () => {

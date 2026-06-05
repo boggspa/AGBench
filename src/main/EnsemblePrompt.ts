@@ -296,7 +296,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   )
 
   return [
-    'AGBench Ensemble Mode',
+    'TaskWraith Ensemble Mode',
     '',
     `You are ${participantLabel} in a serial moderated panel. One participant speaks at a time.`,
     `Round id: ${input.roundId}`,
@@ -347,7 +347,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // 1.0.4-AF / AR8 — deictic-resolution rule. Three branches:
     //
     //  - Self-reflective (`/discuss` / `/meta`): orientation flips
-    //    to AGBench itself; deictic phrases resolve to the harness.
+    //    to TaskWraith itself; deictic phrases resolve to the harness.
     //    Workspace files stay readable but the conversation is
     //    meta-level. Rule always emitted.
     //  - Workspace-bound non-self-reflective: deictic phrases anchor
@@ -360,11 +360,11 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     //    need it.
     ...(selfReflective
       ? [
-          '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to AGBench / the harness / this ensemble — the panel is in self-reflective mode (the user opened the round with `/discuss` or `/meta`). The bound workspace is incidental context; the conversation is about AGBench itself.'
+          '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to TaskWraith / the harness / this ensemble — the panel is in self-reflective mode (the user opened the round with `/discuss` or `/meta`). The bound workspace is incidental context; the conversation is about TaskWraith itself.'
         ]
       : hasWorkspaceStanza
         ? [
-            '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. Discuss AGBench only when the user explicitly references it by name.'
+            '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to TaskWraith / the harness / the ensemble itself. Discuss TaskWraith only when the user explicitly references it by name.'
           ]
         : // 1.0.5-EW20 — Conversational-mode rule for workspace-less
           // global ensembles. the maintainer reported: in a chill global chat
@@ -715,7 +715,7 @@ function messageTag(message: ChatMessage, participantTokens?: Map<string, string
  * in the participant system prompt. Gives every participant a
  * grounded deictic antecedent for "this app / this repo / this
  * project" — without it, Claude (and likely other models with
- * heavy AGBench tool-schema context loaded) tend to resolve "this"
+ * heavy TaskWraith tool-schema context loaded) tend to resolve "this"
  * to the surrounding harness rather than the user's actual
  * workspace.
  *
@@ -733,7 +733,7 @@ function messageTag(message: ChatMessage, participantTokens?: Map<string, string
  *     so the agent has the directory context.
  *
  * Origin: Claude/Explorer's introspective feedback after picking up
- * AGBench-meta context instead of the bound workspace in an
+ * TaskWraith-meta context instead of the bound workspace in an
  * ensemble round. The user asked Claude for prompting-surface
  * suggestions and got back a four-point list — this implements its
  * top "highest ROI" recommendation. Round subject as a single
@@ -753,25 +753,25 @@ function messageTag(message: ChatMessage, participantTokens?: Map<string, string
  *
  * Caller logic: when this returns null, skip both the stanza
  * itself AND the dependent deictic rule. Self-reflective mode
- * is unaffected (always emits an AGBench-harness stanza), and
+ * is unaffected (always emits an TaskWraith-harness stanza), and
  * any workspace-bound case is unaffected.
  */
 function formatWorkspaceStanza(chat: ChatRecord, selfReflective = false): string | null {
   if (selfReflective) {
     // 1.0.4-AF — self-reflective round. The panel is explicitly
-    // discussing AGBench itself, so the workspace stanza calls that
+    // discussing TaskWraith itself, so the workspace stanza calls that
     // out. The bound workspace (if any) is still mentioned for
     // context — agents may still cite paths from it — but the topic
-    // anchor flips from "the user's project" to "the AGBench harness
+    // anchor flips from "the user's project" to "the TaskWraith harness
     // / this ensemble surface".
     const path = (chat.workspacePath || '').trim()
     if (!path) {
-      return 'Round subject: AGBench harness (self-reflective mode — `/discuss`). The panel is discussing AGBench itself. No external workspace is bound.'
+      return 'Round subject: TaskWraith harness (self-reflective mode — `/discuss`). The panel is discussing TaskWraith itself. No external workspace is bound.'
     }
     const basename = path.replace(/\/+$/, '').split('/').pop() || path
     const home = process.env.HOME || ''
     const displayPath = home && path.startsWith(home) ? `~${path.slice(home.length)}` : path
-    return `Round subject: AGBench harness (self-reflective mode — \`/discuss\`). The panel is discussing AGBench itself. Bound workspace (incidental context): ${basename} (${displayPath}).`
+    return `Round subject: TaskWraith harness (self-reflective mode — \`/discuss\`). The panel is discussing TaskWraith itself. Bound workspace (incidental context): ${basename} (${displayPath}).`
   }
   const path = (chat.workspacePath || '').trim()
   if (!path) {

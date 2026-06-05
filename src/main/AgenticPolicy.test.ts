@@ -44,23 +44,23 @@ describe('resolveAgenticPermission', () => {
 
 describe('isPathInsideWorkspace', () => {
   it('accepts the workspace root and children', () => {
-    const workspace = makeTempDir('agentbench-policy-workspace-')
+    const workspace = makeTempDir('taskwraith-policy-workspace-')
 
     expect(isPathInsideWorkspace(workspace, workspace)).toBe(true)
     expect(isPathInsideWorkspace(workspace, path.join(workspace, 'src/file.ts'))).toBe(true)
   })
 
   it('rejects outside paths', () => {
-    const workspace = makeTempDir('agentbench-policy-workspace-')
-    const outside = makeTempDir('agentbench-policy-outside-')
+    const workspace = makeTempDir('taskwraith-policy-workspace-')
+    const outside = makeTempDir('taskwraith-policy-outside-')
 
     expect(isPathInsideWorkspace(workspace, path.join(outside, 'file.ts'))).toBe(false)
     expect(isPathInsideWorkspace(workspace, path.join(workspace, '../secret.txt'))).toBe(false)
   })
 
   it('rejects paths that escape through symlinks', () => {
-    const workspace = makeTempDir('agentbench-policy-workspace-')
-    const outside = makeTempDir('agentbench-policy-outside-')
+    const workspace = makeTempDir('taskwraith-policy-workspace-')
+    const outside = makeTempDir('taskwraith-policy-outside-')
     const linkPath = path.join(workspace, 'linked-outside')
     fs.symlinkSync(outside, linkPath, 'dir')
 

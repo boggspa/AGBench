@@ -6,7 +6,7 @@
  * SettingsPanel rendered in `layout="takeover"` mode.
  *
  * Visual reference: Codex CLI / Claude Code app — single column of
- * tab labels, no AGBench masthead, no workspace metadata, no search.
+ * tab labels, no TaskWraith masthead, no workspace metadata, no search.
  * "← Back to app" sits at the top to flip the user back to the
  * regular chat surface.
  *
@@ -98,9 +98,9 @@ export function SettingsSidebar({
         {visibleVersion && (
           <div
             className="settings-sidebar-version"
-            aria-label={`AGBench version ${visibleVersion}`}
+            aria-label={`TaskWraith version ${visibleVersion}`}
           >
-            AGBench v{visibleVersion}
+            TaskWraith v{visibleVersion}
           </div>
         )}
       </div>

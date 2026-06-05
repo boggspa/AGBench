@@ -132,7 +132,7 @@ describe('ProductOperations', () => {
       enabled: true,
       installed: true,
       available: false,
-      serverName: 'AGBench',
+      serverName: 'TaskWraith',
       message: 'Installed but disabled.'
     })
 
@@ -159,11 +159,18 @@ describe('ProductOperations', () => {
           'build:debug:mac':
             'npm run build && electron-builder --dir --config electron-builder.debug.yml',
           'build:debug:mac:notarized':
-            'npm run build && electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true'
+            'npm run build && electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true',
+          'build:debug:win':
+            'npm run build && electron-builder --win --x64 --dir --config electron-builder.debug.yml',
+          'build:win:unpack': 'npm run build && electron-builder --win --x64 --arm64 --dir',
+          'build:win': 'npm run build && electron-builder --win --x64 --arm64',
+          'build:win:signed': 'node scripts/require-windows-signing-env.cjs && npm run build:win',
+          'validate:mac-update-feed': 'node scripts/validate-mac-update-feed.cjs dist',
+          'validate:win-update-feed': 'node scripts/validate-win-update-feed.cjs dist'
         }
       },
       builderConfigText:
-        'appId: com.chrisizatt.agbench\nproductName: AGBench Debug\ndirectories:\n  output: dist-debug\nasarUnpack:\n  - resources/**\n  - node_modules/node-pty/**\nafterPack: build/validate-native-modules.cjs\nnpmRebuild: true\npublish:\n  provider: github\n  owner: boggspa\n  repo: AGBench\n',
+        'appId: com.chrisizatt.taskwraith\nproductName: TaskWraith Debug\ndirectories:\n  output: dist-debug\nasarUnpack:\n  - resources/**\n  - node_modules/node-pty/**\nafterPack: build/validate-native-modules.cjs\nnpmRebuild: true\npublish:\n  provider: github\n  owner: boggspa\n  repo: TaskWraith\n',
       env: {
         APPLE_KEYCHAIN_PROFILE: 'ExampleNotary',
         CSC_NAME: 'Developer ID Application: Example'
@@ -177,7 +184,9 @@ describe('ProductOperations', () => {
     expect(status.nativeModules.configured).toBe(true)
     expect(status.updateDistribution.configured).toBe(true)
     expect(status.updateDistribution.provider).toBe('github')
-    expect(status.appId).toBe('com.chrisizatt.agbench')
+    expect(status.appId).toBe('com.chrisizatt.taskwraith')
+    expect(status.scripts.buildWinSigned).toContain('require-windows-signing-env')
+    expect(status.scripts.validateWinUpdateFeed).toContain('validate-win-update-feed')
   })
 
   it('surfaces incompatible mac update artifacts in release automation diagnostics', () => {
@@ -198,7 +207,7 @@ describe('ProductOperations', () => {
       updateArchitecture: {
         platform: 'darwin',
         arch: 'x64',
-        artifactName: 'AGBench-1.0.73-arm64-mac.zip',
+        artifactName: 'TaskWraith-1.0.73-arm64-mac.zip',
         artifactArch: 'arm64',
         compatible: false,
         reason: 'Incompatible update artifact: host=darwin-x64 artifact=arm64'
@@ -210,7 +219,7 @@ describe('ProductOperations', () => {
       status: 'error',
       hostPlatform: 'darwin',
       hostArch: 'x64',
-      updateArtifactName: 'AGBench-1.0.73-arm64-mac.zip',
+      updateArtifactName: 'TaskWraith-1.0.73-arm64-mac.zip',
       updateArtifactArch: 'arm64',
       updateCompatible: false,
       reason: 'Incompatible update artifact: host=darwin-x64 artifact=arm64'
@@ -220,11 +229,11 @@ describe('ProductOperations', () => {
   it('builds a redacted diagnostics snapshot with product counts', () => {
     const status = buildProductOperationsStatus({
       updateChannel: 'debug',
-      appName: 'AGBench Debug',
+      appName: 'TaskWraith Debug',
       appVersion: '1.0.0',
       isPackaged: false,
       appPath: '/app',
-      userDataPath: '/tmp/agentbench',
+      userDataPath: '/tmp/taskwraith',
       platform: 'darwin',
       arch: 'arm64',
       osRelease: '25.0.0',
@@ -263,7 +272,7 @@ describe('ProductOperations', () => {
         enabled: false,
         installed: false,
         available: false,
-        serverName: 'AGBench'
+        serverName: 'TaskWraith'
       },
       packageJson: { scripts: {} },
       builderConfigText: '',

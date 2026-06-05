@@ -109,7 +109,7 @@ interface ClaudeOAuthCredential {
 let inMemoryCodexUsageCredential: CodexUsageCredential | null = null
 const geminiOAuthLoginRuns = new Map<string, GeminiOAuthLoginRun>()
 
-export const DEFAULT_GEMINI_MCP_SERVER_NAME = 'AGBench'
+export const DEFAULT_GEMINI_MCP_SERVER_NAME = 'TaskWraith'
 
 export function createProviderAuthUsageHelpers(
   deps: GeminiAuthUsageDeps
@@ -558,7 +558,7 @@ export async function startGeminiOAuthLogin(
         GEMINI_DEFAULT_AUTH_TYPE: 'oauth-personal',
         GOOGLE_APPLICATION_CREDENTIALS: '',
         GOOGLE_GENAI_USE_GCA: 'true',
-        AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id
+        TASKWRAITH_GEMINI_AUTH_PROFILE_ID: profile.id
       },
       resolved.binaryPath
     )
@@ -768,14 +768,14 @@ export function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<s
     const apiKey = decryptApiKey(profile.encryptedApiKey)
     return {
       ...GEMINI_AUTH_CLEAR_ENV,
-      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+      TASKWRAITH_GEMINI_AUTH_PROFILE_ID: profile.id,
       ...(apiKey ? { GEMINI_API_KEY: apiKey } : {})
     }
   }
   if (profile.kind === 'vertex-ai') {
     return {
       ...GEMINI_AUTH_CLEAR_ENV,
-      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+      TASKWRAITH_GEMINI_AUTH_PROFILE_ID: profile.id,
       GOOGLE_GENAI_USE_VERTEXAI: 'true',
       ...(profile.vertexProject ? { GOOGLE_CLOUD_PROJECT: profile.vertexProject } : {}),
       ...(profile.vertexLocation
@@ -788,14 +788,14 @@ export function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<s
   }
   return {
     ...GEMINI_AUTH_CLEAR_ENV,
-    AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+    TASKWRAITH_GEMINI_AUTH_PROFILE_ID: profile.id,
     GEMINI_CLI_HOME: geminiOAuthProfileHome(profile.id),
     GOOGLE_APPLICATION_CREDENTIALS: '',
     GOOGLE_GENAI_USE_GCA: 'true'
   }
 }
 
-export const DEFAULT_APNS_BUNDLE_ID = 'com.example.AGBench.ios'
+export const DEFAULT_APNS_BUNDLE_ID = 'com.example.TaskWraith.ios'
 
 export function decryptApnsAuthKey(): string | null {
   const config = AppStore.getSettings().apnsConfig

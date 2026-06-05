@@ -60,7 +60,7 @@ export function ChangelogSheet({
 
   const handleInstall = useCallback(() => {
     if (!onInstallUpdateNow) return
-    if (!confirm('Install update and restart AGBench now?')) return
+    if (!confirm('Install update and restart TaskWraith now?')) return
     void onInstallUpdateNow()
   }, [onInstallUpdateNow])
 
@@ -91,7 +91,7 @@ export function ChangelogSheet({
               i
             </span>
             <div>
-              <h2 id={SHEET_TITLE_ID}>{entry.releaseName || `AGBench ${entry.version}`}</h2>
+              <h2 id={SHEET_TITLE_ID}>{entry.releaseName || `TaskWraith ${entry.version}`}</h2>
               <p className="changelog-sheet-subtitle">
                 v{entry.version}
                 {entry.releaseDate ? ` - ${formatDate(entry.releaseDate)}` : ''} - {notesSource}

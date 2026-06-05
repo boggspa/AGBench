@@ -183,9 +183,9 @@ describe('UpdateService', () => {
     emitUpdaterEvent('update-available', {
       version: '1.0.73',
       files: [],
-      path: 'AGBench-1.0.73.dmg',
+      path: 'TaskWraith-1.0.73.dmg',
       sha512: 'abc',
-      releaseName: 'AGBench 1.0.73',
+      releaseName: 'TaskWraith 1.0.73',
       releaseDate: '2026-06-04T12:00:00.000Z',
       releaseNotes: 'New updater UI.'
     })
@@ -193,18 +193,18 @@ describe('UpdateService', () => {
     expect(svc.snapshot()).toMatchObject({
       status: 'available',
       latestVersion: '1.0.73',
-      releaseName: 'AGBench 1.0.73',
+      releaseName: 'TaskWraith 1.0.73',
       releaseDate: '2026-06-04T12:00:00.000Z',
       releaseNotes: 'New updater UI.',
       updateArchitecture: {
         platform: 'darwin',
         arch: 'arm64',
-        artifactName: 'AGBench-1.0.73.dmg',
+        artifactName: 'TaskWraith-1.0.73.dmg',
         artifactArch: 'unknown',
         compatible: true,
-        reason: 'Unknown mac update artifact architecture: AGBench-1.0.73.dmg'
+        reason: 'Unknown mac update artifact architecture: TaskWraith-1.0.73.dmg'
       },
-      releasePageUrl: 'https://github.com/boggspa/AGBench/releases/tag/v1.0.73'
+      releasePageUrl: 'https://github.com/boggspa/TaskWraith/releases/tag/v1.0.73'
     })
   })
 
@@ -214,8 +214,8 @@ describe('UpdateService', () => {
 
     emitUpdaterEvent('update-available', {
       version: '1.0.73',
-      files: [{ url: 'AGBench-1.0.73-arm64-mac.zip', sha512: 'abc', size: 1 }],
-      path: 'AGBench-1.0.73-arm64-mac.zip',
+      files: [{ url: 'TaskWraith-1.0.73-arm64-mac.zip', sha512: 'abc', size: 1 }],
+      path: 'TaskWraith-1.0.73-arm64-mac.zip',
       sha512: 'abc'
     })
 
@@ -225,7 +225,7 @@ describe('UpdateService', () => {
       updateArchitecture: {
         platform: 'darwin',
         arch: 'x64',
-        artifactName: 'AGBench-1.0.73-arm64-mac.zip',
+        artifactName: 'TaskWraith-1.0.73-arm64-mac.zip',
         artifactArch: 'arm64',
         compatible: false
       }
@@ -241,8 +241,8 @@ describe('UpdateService', () => {
 
     emitUpdaterEvent('update-available', {
       version: '1.0.73',
-      files: [{ url: 'AGBench-1.0.73-universal-mac.zip', sha512: 'abc', size: 1 }],
-      path: 'AGBench-1.0.73-universal-mac.zip',
+      files: [{ url: 'TaskWraith-1.0.73-universal-mac.zip', sha512: 'abc', size: 1 }],
+      path: 'TaskWraith-1.0.73-universal-mac.zip',
       sha512: 'abc'
     })
 
@@ -251,7 +251,7 @@ describe('UpdateService', () => {
       updateArchitecture: {
         platform: 'darwin',
         arch: 'x64',
-        artifactName: 'AGBench-1.0.73-universal-mac.zip',
+        artifactName: 'TaskWraith-1.0.73-universal-mac.zip',
         artifactArch: 'universal',
         compatible: true
       }
@@ -264,7 +264,7 @@ describe('UpdateService', () => {
     emitUpdaterEvent('update-downloaded', {
       version: '1.0.74',
       files: [],
-      path: 'AGBench-1.0.74.dmg',
+      path: 'TaskWraith-1.0.74.dmg',
       sha512: 'abc',
       releaseDate: '2026-06-04T13:00:00.000Z',
       releaseNotes: [
@@ -289,7 +289,7 @@ describe('UpdateService', () => {
     emitUpdaterEvent('update-available', {
       version: '1.0.73',
       files: [],
-      path: 'AGBench-1.0.73.dmg',
+      path: 'TaskWraith-1.0.73.dmg',
       sha512: 'abc',
       releaseDate: '2026-06-04T12:00:00.000Z',
       releaseNotes: 'New updater UI.'

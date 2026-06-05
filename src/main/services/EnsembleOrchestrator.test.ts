@@ -320,7 +320,7 @@ describe('EnsembleOrchestrator', () => {
       {
         type: 'result',
         status: 'success',
-        stats: { total_tokens: 50, duration_ms: 1000, _agentbench_usage_recorded: true }
+        stats: { total_tokens: 50, duration_ms: 1000, _taskwraith_usage_recorded: true }
       }
     )
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
@@ -1475,7 +1475,7 @@ Next action:
       dispatch: async () => {
         callCount += 1
         if (callCount === 1) {
-          const err = new Error('connect ECONNREFUSED /tmp/agbench-claude.sock') as Error & {
+          const err = new Error('connect ECONNREFUSED /tmp/taskwraith-claude.sock') as Error & {
             code?: string
           }
           err.code = 'ECONNREFUSED'
@@ -1563,7 +1563,7 @@ Next action:
     const harness = makeHarness({
       dispatch: async (payload) => {
         if (payload.provider === 'gemini') {
-          const err = new Error('connect ECONNREFUSED /tmp/agbench-gemini.sock') as Error & {
+          const err = new Error('connect ECONNREFUSED /tmp/taskwraith-gemini.sock') as Error & {
             code?: string
           }
           err.code = 'ECONNREFUSED'
@@ -2093,7 +2093,7 @@ Next action:
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'tool_use',
       tool_id: 'yield-1',
-      tool_name: 'mcp_AGBench_ensemble_yield',
+      tool_name: 'mcp_TaskWraith_ensemble_yield',
       parameters: { target: 'Worker' }
     })
     harness.orchestrator.handleProviderOutput('claude', route, {
@@ -2118,7 +2118,7 @@ Next action:
       (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
     )
     expect(toolMessages[0].toolActivities?.[0]).toMatchObject({
-      toolName: 'mcp_AGBench_ensemble_yield',
+      toolName: 'mcp_TaskWraith_ensemble_yield',
       displayName: 'Reviewer yielded to Worker',
       category: 'task',
       status: 'success'
@@ -2961,8 +2961,8 @@ Next action:
     expect(prompt).not.toMatch(/^\/discuss/)
     expect(prompt).not.toContain('Current user request:\n/discuss')
     // Self-reflective deictic rule is in force for this dispatch.
-    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
-    expect(prompt).toContain('refer to AGBench / the harness / this ensemble')
+    expect(prompt).toContain('Round subject: TaskWraith harness (self-reflective mode')
+    expect(prompt).toContain('refer to TaskWraith / the harness / this ensemble')
     // The user message persisted on the chat shows the cleaned prompt
     // too, not the raw `/discuss …` text.
     const userMessages = harness.chat.messages.filter((m) => m.role === 'user')
@@ -2980,7 +2980,7 @@ Next action:
     const prompt = harness.dispatched[0].prompt
     expect(prompt).toContain('Round subject: repo (/repo)')
     expect(prompt).not.toContain('self-reflective mode')
-    expect(prompt).toContain('NOT to AGBench')
+    expect(prompt).toContain('NOT to TaskWraith')
   })
 
   // 1.0.4-AK3 — Work Session hard-stops + permission enforcement.
@@ -3585,8 +3585,8 @@ Next action:
 
 describe('parseSelfReflectivePrefix', () => {
   it('strips a leading /discuss token and reports selfReflective=true', () => {
-    expect(parseSelfReflectivePrefix('/discuss talk about AGBench')).toEqual({
-      prompt: 'talk about AGBench',
+    expect(parseSelfReflectivePrefix('/discuss talk about TaskWraith')).toEqual({
+      prompt: 'talk about TaskWraith',
       selfReflective: true
     })
   })

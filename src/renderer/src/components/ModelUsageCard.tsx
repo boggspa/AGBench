@@ -1,7 +1,7 @@
 /*
  * ModelUsageCard — Phase L6 slice 1 extraction.
  *
- * The "Model Usage" card that lives in the AGBench sidebar
+ * The "Model Usage" card that lives in the TaskWraith sidebar
  * (provider stack with per-window progress bars and reset times).
  * Extracted from `Sidebar.tsx`'s inline JSX so the redesign work
  * (L6 slices 2-6) lands here without growing the already-large
@@ -44,7 +44,7 @@ interface ModelUsageCardProps {
 }
 
 const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
-const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'agbench-sidebar-model-usage-height'
+const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'taskwraith-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
 const SIDEBAR_USAGE_MIN_HEIGHT = 220
 // Six providers (gemini/codex/claude/kimi/cursor/grok) make the meter list

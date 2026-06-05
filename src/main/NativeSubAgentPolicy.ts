@@ -18,15 +18,14 @@ const NATIVE_SUB_AGENT_TOOL_NAMES = new Set([
 export function normalizeNativeSubAgentPolicy(
   value: unknown
 ): NativeSubAgentRequestPolicy {
-  return value === 'provider' || value === 'agbench' ? value : 'ask'
+  return value === 'provider' || value === 'taskwraith' ? value : 'ask'
 }
 
 export function normalizeNativeSubAgentToolName(toolName: string): string {
   return String(toolName || '')
     .trim()
     .replace(/^mcp__/i, '')
-    .replace(/^agbench__/i, '')
-    .replace(/^agentbench__/i, '')
+    .replace(/^taskwraith__/i, '')
     .split('__')
     .pop()!
     .replace(/[\s.-]+/g, '_')
@@ -71,15 +70,15 @@ export function nativeSubAgentRedirectMessage(args: {
   const sameProvider = args.provider
   const mcpName =
     args.provider === 'claude'
-      ? 'mcp__AGBench__delegate_to_subthread'
-      : 'AGBench__delegate_to_subthread'
+      ? 'mcp__TaskWraith__delegate_to_subthread'
+      : 'TaskWraith__delegate_to_subthread'
   return [
-    'Native sub-agent requests are configured to use AGBench sub-threads.',
+    'Native sub-agent requests are configured to use TaskWraith sub-threads.',
     `Do not use the provider-native ${args.toolName} tool for this request.`,
     `Call ${mcpName} with provider="${sameProvider}", prompt="${
       prompt || '<the delegated task>'
     }", returnResult=true.`,
-    'AGBench sub-threads are durable, visible in the sidebar/iOS, recallable, and audited.'
+    'TaskWraith sub-threads are durable, visible in the sidebar/iOS, recallable, and audited.'
   ].join('\n')
 }
 
@@ -90,13 +89,13 @@ export function nativeSubAgentPromptInstruction(
   const normalized = normalizeNativeSubAgentPolicy(policy)
   const mcpName =
     provider === 'claude'
-      ? 'mcp__AGBench__delegate_to_subthread'
-      : 'AGBench__delegate_to_subthread'
+      ? 'mcp__TaskWraith__delegate_to_subthread'
+      : 'TaskWraith__delegate_to_subthread'
   if (normalized === 'provider') {
-    return `Native sub-agent requests are set to Provider. You may use provider-native Task/invoke_agent/subagent tools for same-provider work; use ${mcpName} for durable AGBench sub-threads and any cross-provider delegation.`
+    return `Native sub-agent requests are set to Provider. You may use provider-native Task/invoke_agent/subagent tools for same-provider work; use ${mcpName} for durable TaskWraith sub-threads and any cross-provider delegation.`
   }
-  if (normalized === 'agbench') {
-    return `Native sub-agent requests are set to AGBench. Do not use provider-native Task/invoke_agent/subagent tools; call ${mcpName}({ provider, prompt, returnResult: true }) for delegated work so the task is durable, iOS-visible, recallable, and audited.`
+  if (normalized === 'taskwraith') {
+    return `Native sub-agent requests are set to TaskWraith. Do not use provider-native Task/invoke_agent/subagent tools; call ${mcpName}({ provider, prompt, returnResult: true }) for delegated work so the task is durable, iOS-visible, recallable, and audited.`
   }
-  return `Native sub-agent requests are set to Ask. If a provider-native Task/invoke_agent/subagent tool is available, AGBench may ask the user whether to continue natively or redirect to ${mcpName}; for durable/iOS-visible delegation, prefer ${mcpName}.`
+  return `Native sub-agent requests are set to Ask. If a provider-native Task/invoke_agent/subagent tool is available, TaskWraith may ask the user whether to continue natively or redirect to ${mcpName}; for durable/iOS-visible delegation, prefer ${mcpName}.`
 }

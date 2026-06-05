@@ -39,7 +39,7 @@ describe('buildGitHubIssueBody', () => {
 describe('buildGitHubIssueUrl', () => {
   it('targets the repo new-issue form with encoded title + body', () => {
     const url = buildGitHubIssueUrl(draft)
-    expect(url.startsWith('https://github.com/boggspa/AGBench/issues/new?')).toBe(true)
+    expect(url.startsWith('https://github.com/boggspa/TaskWraith/issues/new?')).toBe(true)
     const parsed = new URL(url)
     expect(parsed.searchParams.get('title')).toBe('Composer freezes after Cmd+K')
     expect(parsed.searchParams.get('body')).toContain('**Severity:** major')

@@ -149,7 +149,7 @@ describe('ToolParser', () => {
       expect(getToolCategory('Edit')).toBe('write')
       expect(getToolCategory('MultiEdit')).toBe('write')
       expect(getToolCategory('str_replace')).toBe('write')
-      expect(getToolCategory('AGBench__write_file')).toBe('write')
+      expect(getToolCategory('TaskWraith__write_file')).toBe('write')
     })
     it('maps create_file to write', () => {
       expect(getToolCategory('create_file')).toBe('write')
@@ -250,8 +250,8 @@ describe('ToolParser', () => {
   describe('isWriteLikeToolName', () => {
     it('recognizes unqualified and MCP-qualified write tools', () => {
       expect(isWriteLikeToolName('apply_patch')).toBe(true)
-      expect(isWriteLikeToolName('mcp__AGBench__replace')).toBe(true)
-      expect(isWriteLikeToolName('AGBench__write_file')).toBe(true)
+      expect(isWriteLikeToolName('mcp__TaskWraith__replace')).toBe(true)
+      expect(isWriteLikeToolName('TaskWraith__write_file')).toBe(true)
       expect(isWriteLikeToolName('run_shell_command')).toBe(false)
     })
   })
@@ -263,10 +263,10 @@ describe('ToolParser', () => {
       )
     })
     it('humanises ensemble yield tools through MCP namespace variants', () => {
-      expect(getToolDisplayName('mcp_AGBench_ensemble_yield', { target: 'Reviewer' })).toBe(
+      expect(getToolDisplayName('mcp_TaskWraith_ensemble_yield', { target: 'Reviewer' })).toBe(
         'Yielding to Reviewer'
       )
-      expect(getToolDisplayName('mcp__AGBench__ensemble_yield', {})).toBe('Yielding')
+      expect(getToolDisplayName('mcp__TaskWraith__ensemble_yield', {})).toBe('Yielding')
     })
     it('shows delegated task title', () => {
       expect(getToolDisplayName('invoke_agent', { title: 'Metal harness' })).toBe('Metal harness')
@@ -326,11 +326,11 @@ describe('ToolParser', () => {
     })
     it('shows creative tool names instead of raw identifiers', () => {
       expect(getToolDisplayName('creative_app_status', {})).toBe('Creative app status')
-      expect(getToolDisplayName('AGBench__creative_app_capabilities', {})).toBe(
+      expect(getToolDisplayName('TaskWraith__creative_app_capabilities', {})).toBe(
         'Creative app capabilities'
       )
       expect(
-        getToolDisplayName('mcp__AGBench__creative_project_snapshot', { path: 'edit.fcpxml' })
+        getToolDisplayName('mcp__TaskWraith__creative_project_snapshot', { path: 'edit.fcpxml' })
       ).toBe('Creative project snapshot edit.fcpxml')
       expect(getToolDisplayName('creative_timeline_validate', { path: 'edit.fcpxml' })).toBe(
         'Validate timeline edit.fcpxml'
@@ -355,10 +355,10 @@ describe('ToolParser', () => {
       expect(getToolDisplayName('delegate_to_subthread', {})).toBe('Delegated to sub-thread')
     })
     it('uses the dictionary through provider namespace prefixes', () => {
-      expect(getToolDisplayName('mcp__AGBench__delegate_to_subthread', {})).toBe(
+      expect(getToolDisplayName('mcp__TaskWraith__delegate_to_subthread', {})).toBe(
         'Delegated to sub-thread'
       )
-      expect(getToolDisplayName('agbench__attached_window_capture', {})).toBe(
+      expect(getToolDisplayName('taskwraith__attached_window_capture', {})).toBe(
         'Captured attached window'
       )
     })
@@ -370,7 +370,7 @@ describe('ToolParser', () => {
       expect(getToolDisplayName('appwatch_latest_frame', {})).toBe('Latest AppWatch frame')
       expect(getToolDisplayName('appwatch_frames', {})).toBe('AppWatch frames')
       expect(getToolDisplayName('browser_navigate', {})).toBe('Navigated browser')
-      expect(getToolDisplayName('mcp__AGBench__browser_snapshot', {})).toBe('Browser snapshot')
+      expect(getToolDisplayName('mcp__TaskWraith__browser_snapshot', {})).toBe('Browser snapshot')
     })
     it('uses the dictionary for handoff and collaboration fallbacks', () => {
       expect(getToolDisplayName('get_handoff_cards', {})).toBe('Handoff cards')

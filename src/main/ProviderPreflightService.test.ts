@@ -14,9 +14,9 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         id: 'shellCommands',
         label: 'Shell commands',
         state: 'available',
-        source: 'agentbench',
-        enforcedByAgentBench: true,
-        enforcement: 'agentbench',
+        source: 'taskwraith',
+        enforcedByTaskWraith: true,
+        enforcement: 'taskwraith',
         requiresApproval: true,
         tools: ['run_shell_command']
       },
@@ -24,9 +24,9 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         id: 'fileChanges',
         label: 'File changes',
         state: 'available',
-        source: 'agentbench',
-        enforcedByAgentBench: true,
-        enforcement: 'agentbench',
+        source: 'taskwraith',
+        enforcedByTaskWraith: true,
+        enforcement: 'taskwraith',
         requiresApproval: true,
         tools: ['edit_file']
       },
@@ -35,7 +35,7 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         label: 'MCP and tool calls',
         state: 'available',
         source: 'provider',
-        enforcedByAgentBench: false,
+        enforcedByTaskWraith: false,
         enforcement: 'provider',
         requiresApproval: true,
         tools: []
@@ -45,7 +45,7 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         label: 'Creative app tools',
         state: 'available',
         source: 'bridge',
-        enforcedByAgentBench: true,
+        enforcedByTaskWraith: true,
         enforcement: 'bridge',
         requiresApproval: true,
         tools: [
@@ -62,7 +62,7 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         label: 'Network access',
         state: 'available',
         source: 'settings',
-        enforcedByAgentBench: false,
+        enforcedByTaskWraith: false,
         enforcement: 'none',
         requiresApproval: false,
         tools: []
@@ -71,9 +71,9 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         id: 'elicit',
         label: 'Ask the user',
         state: 'available',
-        source: 'agentbench',
-        enforcedByAgentBench: true,
-        enforcement: 'agentbench',
+        source: 'taskwraith',
+        enforcedByTaskWraith: true,
+        enforcement: 'taskwraith',
         requiresApproval: false,
         tools: ['ask_user_question']
       },
@@ -81,9 +81,9 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         id: 'delegate',
         label: 'Delegate to sub-thread',
         state: 'gated',
-        source: 'agentbench',
-        enforcedByAgentBench: true,
-        enforcement: 'agentbench',
+        source: 'taskwraith',
+        enforcedByTaskWraith: true,
+        enforcement: 'taskwraith',
         requiresApproval: true,
         tools: ['delegate_to_subthread']
       }

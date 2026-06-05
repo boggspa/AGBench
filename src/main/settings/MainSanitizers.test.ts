@@ -32,7 +32,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     currencyOverestimatePercent: 0,
     welcomeHeatmapPrefs: {
       workspaceActivityEnabled: true,
-      agbenchActivityEnabled: true,
+      taskwraithActivityEnabled: true,
       externalActivityEnabled: true
     },
     kimiSanitiserEnabled: false,
@@ -94,7 +94,7 @@ describe('MainSanitizers settings patches', () => {
       welcomeHeatmapPrefs: {
         layout: 'stacked',
         workspaceActivityEnabled: true,
-        agbenchActivityEnabled: true,
+        taskwraithActivityEnabled: true,
         externalActivityEnabled: true
       }
     })
@@ -129,7 +129,7 @@ describe('MainSanitizers settings patches', () => {
     expect(sanitized.welcomeHeatmapPrefs).toMatchObject({
       layout: 'single',
       workspaceActivityEnabled: false,
-      agbenchActivityEnabled: true,
+      taskwraithActivityEnabled: true,
       externalActivityEnabled: true
     })
     expect(sanitized.approvalTimeouts).toMatchObject({
@@ -152,7 +152,7 @@ describe('MainSanitizers settings patches', () => {
       lastSeenChangelogVersion: ' 1.0.73 ',
       pendingUpdateChangelog: {
         version: ' 1.0.74 ',
-        releaseName: ' AGBench 1.0.74 ',
+        releaseName: ' TaskWraith 1.0.74 ',
         releaseDate: ' 2026-06-04T13:00:00.000Z ',
         releaseNotes: [
           { version: ' 1.0.74 ', note: 'Updater pill.' },
@@ -165,7 +165,7 @@ describe('MainSanitizers settings patches', () => {
       lastSeenChangelogVersion: '1.0.73',
       pendingUpdateChangelog: {
         version: '1.0.74',
-        releaseName: 'AGBench 1.0.74',
+        releaseName: 'TaskWraith 1.0.74',
         releaseDate: '2026-06-04T13:00:00.000Z',
         releaseNotes: [{ version: '1.0.74', note: 'Updater pill.' }]
       }

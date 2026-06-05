@@ -3,7 +3,7 @@ import fs from 'fs'
 import { join } from 'path'
 import { AppStore } from './store'
 
-const userDataPath = vi.hoisted(() => `/tmp/agentbench-run-events-test-${process.pid}`)
+const userDataPath = vi.hoisted(() => `/tmp/taskwraith-run-events-test-${process.pid}`)
 
 vi.mock('electron', () => ({
   app: {

@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import * as fsSync from 'fs'
 import os from 'os'
 import { extname, isAbsolute, relative, resolve, sep } from 'path'
-import type { AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import type { TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 import { isPathInsideWorkspace } from '../AgenticPolicy'
 import {
   buildCreativeAppCapabilitySnapshot,
@@ -63,7 +63,7 @@ import type {
 const MAX_MCP_TEXT_CHARS = 200_000
 const MAX_CREATIVE_PROJECT_SNAPSHOT_BYTES = 2_000_000
 const CREATIVE_RUNNING_PROBE_TTL_MS = 3_000
-const FCPXML_DTD_CACHE_DIR = `${os.tmpdir()}/agbench-fcpxml-dtds`
+const FCPXML_DTD_CACHE_DIR = `${os.tmpdir()}/taskwraith-fcpxml-dtds`
 
 const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
 const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
@@ -221,7 +221,7 @@ export const DESKTOP_MCP_TOOL_NAMES = [
   'list_running_ides',
   'create_handoff_card',
   'agent_delegation_role'
-] as const satisfies readonly AGBenchMcpToolName[]
+] as const satisfies readonly TaskWraithMcpToolName[]
 
 export type DesktopMcpToolName = (typeof DESKTOP_MCP_TOOL_NAMES)[number]
 
@@ -820,7 +820,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'attached_window_capture',
-        error: 'AGBench bridge daemon is not running. Enable it in Settings -> Bridge Networking.'
+        error: 'TaskWraith bridge daemon is not running. Enable it in Settings -> Bridge Networking.'
       })
     }
     const includeOcr = args.include_ocr !== false && args.includeOCR !== false
@@ -910,7 +910,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'appwatch_start',
-        error: 'AGBench bridge daemon is not running. Enable it in Settings -> Bridge Networking.'
+        error: 'TaskWraith bridge daemon is not running. Enable it in Settings -> Bridge Networking.'
       })
     }
     const fps = Number(args.fps) > 0 ? Math.trunc(Number(args.fps)) : 5
@@ -988,7 +988,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'appwatch_stop',
-        error: 'AGBench bridge daemon is not running.'
+        error: 'TaskWraith bridge daemon is not running.'
       })
     }
     try {
@@ -1032,7 +1032,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'appwatch_status',
-        error: 'AGBench bridge daemon is not running.'
+        error: 'TaskWraith bridge daemon is not running.'
       })
     }
     let result: AppwatchStatusDaemonResult
@@ -1094,7 +1094,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'appwatch_latest_frame',
-        error: 'AGBench bridge daemon is not running.'
+        error: 'TaskWraith bridge daemon is not running.'
       })
     }
     let result: AppwatchLatestFrameDaemonResult
@@ -1155,7 +1155,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       return mcpStructuredJsonResult({
         ok: false,
         tool: 'appwatch_frames',
-        error: 'AGBench bridge daemon is not running.'
+        error: 'TaskWraith bridge daemon is not running.'
       })
     }
     const includeOCR = args.include_ocr === true || args.includeOCR === true
@@ -1357,10 +1357,10 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       )
     }
     const writer = serializeFcpxmlTimelineIr({ ir: irArg as FcpxmlTimelineIr })
-    const outDir = resolveMcpScopedPath(context, '.agbench/creative-out')
+    const outDir = resolveMcpScopedPath(context, '.taskwraith/creative-out')
     await fs.mkdir(outDir, { recursive: true })
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `agbench-${timestamp}.fcpxml`
+    const filename = `taskwraith-${timestamp}.fcpxml`
     const filePath = `${outDir}/${filename}`
     await fs.writeFile(filePath, writer.text, 'utf8')
 
@@ -1394,7 +1394,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
     const decision = await gate.requestApproval('fcp.import-fcpxml', {
       title: 'Import draft into Final Cut Pro',
       description:
-        'AGBench wrote a fresh .fcpxml from your agent and will hand it to Final Cut Pro via NSWorkspace.open(). FCP will import the timeline as a new project under the chosen event.',
+        'TaskWraith wrote a fresh .fcpxml from your agent and will hand it to Final Cut Pro via NSWorkspace.open(). FCP will import the timeline as a new project under the chosen event.',
       filePath,
       targetBundleId: bundleId,
       payloadPreview: summaryLines.join('\n')
@@ -1481,7 +1481,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       modalDetails = {
         title: 'Run raw AppleScript',
         description:
-          'AGBench will execute the AppleScript source below in-process via OSAKit. Raw scripts are NEVER cached on approval - every invocation prompts.',
+          'TaskWraith will execute the AppleScript source below in-process via OSAKit. Raw scripts are NEVER cached on approval - every invocation prompts.',
         targetBundleId: undefined,
         payloadPreview: source
       }
@@ -1569,7 +1569,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
       modalDetails = {
         title: 'Run raw Blender Python',
         description:
-          'AGBench will execute the Python source below inside `Blender --background --python` in a sandbox tempdir. Raw scripts are NEVER cached on approval - every invocation prompts.',
+          'TaskWraith will execute the Python source below inside `Blender --background --python` in a sandbox tempdir. Raw scripts are NEVER cached on approval - every invocation prompts.',
         targetBundleId: 'org.blenderfoundation.blender',
         payloadPreview: inputBlendPath ? `# Blender input: ${inputBlendPath}\n${pythonSource}` : pythonSource
       }
@@ -1624,7 +1624,7 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
     const decision = await gate.requestApproval(className, {
       title: `Dispatch MIDI ${eventType}`,
       description:
-        'AGBench will send a MIDI event through its virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI listener) can route this source as an input. No destructive disk surface - but you should confirm the agent intends this dispatch.',
+        'TaskWraith will send a MIDI event through its virtual "TaskWraith" Core MIDI source. Logic Pro (or any MIDI listener) can route this source as an input. No destructive disk surface - but you should confirm the agent intends this dispatch.',
       targetBundleId: 'com.apple.logic10',
       payloadPreview: preview
     })

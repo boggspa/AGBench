@@ -170,8 +170,8 @@ export function reasoningDisplayLabel(ctx: ComposerChipContext): string {
  *   Codex shell + codex provider + xhigh   → `5.5 Extra High`
  *   Claude shell + claude provider + high  → `Opus 4.7 · Max`
  *   Kimi shell + kimi provider + on        → `K2.6 Thinking`
- *   AGBench shell + codex + high           → `GPT-5.5 · High`
- *   AGBench shell + kimi + on              → `K2.6 · Thinking`
+ *   TaskWraith shell + codex + high           → `GPT-5.5 · High`
+ *   TaskWraith shell + kimi + on              → `K2.6 · Thinking`
  */
 export function formatComposerModelChip(ctx: ComposerChipContext): string {
   const { provider, composerStyle, modelLabel, modelId } = ctx
@@ -183,7 +183,7 @@ export function formatComposerModelChip(ctx: ComposerChipContext): string {
     (composerStyle === 'gemini' && provider === 'gemini')
 
   // Per-shell native format — only when the shell is themed FOR the
-  // active provider. Mixed combinations fall back to the AGBench
+  // active provider. Mixed combinations fall back to the TaskWraith
   // default so the chip is always readable.
   if (shellMatchesProvider) {
     const short = shortModelName(provider, modelLabel, modelId)
@@ -201,7 +201,7 @@ export function formatComposerModelChip(ctx: ComposerChipContext): string {
     }
   }
 
-  // Default (AGBench native shell, mismatched shell/provider, or
+  // Default (TaskWraith native shell, mismatched shell/provider, or
   // creative shells: modular / terminal / stub / satellite).
   return reasoning ? `${modelLabel} · ${reasoning}` : modelLabel
 }

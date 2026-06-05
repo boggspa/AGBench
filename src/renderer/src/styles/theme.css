@@ -1,4 +1,4 @@
-/* AGBench theme system */
+/* TaskWraith theme system */
 
 :root {
   /* App surface */
@@ -130,7 +130,7 @@
    * threshold) to red (`90%` threshold) as utilisation rises.
    * Per-theme overrides (in the [data-theme="…"] blocks below) can
    * tune the exact hues, but the defaults match another-project
-   * so AGBench's card reads as a sibling. */
+   * so TaskWraith's card reads as a sibling. */
   --quota-warning-color: #F59E0B;
   --quota-danger-color: #DC2626;
 

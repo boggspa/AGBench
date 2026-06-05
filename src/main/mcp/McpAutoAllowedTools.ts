@@ -1,4 +1,4 @@
-import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 
 /**
  * MCP tools that skip the per-call approval modal (auto-allowed).
@@ -22,7 +22,7 @@ import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../AgentbenchMcpT
  * writes / shell / network stay gated), but worth knowing if global-scope
  * per-read prompting is ever wanted back.
  */
-export const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
+export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   'approval_status',
   'provider_auth_status',
   'browser_console',
@@ -66,7 +66,7 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
 ])
 
 /**
- * Tools advertised to a READ-ONLY / plan seat: AGENTBENCH_MCP_TOOLS ∩
+ * Tools advertised to a READ-ONLY / plan seat: TASKWRAITH_MCP_TOOLS ∩
  * MCP_AUTO_ALLOWED_TOOLS — the advertised universe narrowed to the gate-skip
  * safe set. Single source of truth (DERIVED, never hand-listed), so a mutating
  * tool can never appear here unless it is also wrongly added to
@@ -75,8 +75,8 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
  * safe-subset are both built from this set, so all three providers advertise an
  * identical, provably non-mutating surface in read-only.
  */
-export const READ_ONLY_MCP_ADVERTISE_TOOLS: ReadonlyArray<AGBenchMcpToolName> = Object.freeze(
-  AGENTBENCH_MCP_TOOLS.filter((tool) => MCP_AUTO_ALLOWED_TOOLS.has(tool))
+export const READ_ONLY_MCP_ADVERTISE_TOOLS: ReadonlyArray<TaskWraithMcpToolName> = Object.freeze(
+  TASKWRAITH_MCP_TOOLS.filter((tool) => MCP_AUTO_ALLOWED_TOOLS.has(tool))
 )
 
 /**

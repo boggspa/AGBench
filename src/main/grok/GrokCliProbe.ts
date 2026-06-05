@@ -65,7 +65,7 @@ export const GROK_OPEN_ACP_QUESTIONS: readonly string[] = [
   'Does ACP expose a stable, resumable session id?',
   'Are local shell/file operations client callbacks, MCP calls, or Grok-native execution?',
   'Can native write/shell tools be disabled while MCP stays available?',
-  'Can the AGBench MCP server be registered per-run without mutating global ~/.grok config?'
+  'Can the TaskWraith MCP server be registered per-run without mutating global ~/.grok config?'
 ]
 
 /** Flag every probe invocation carries to avoid a self-update side effect. */

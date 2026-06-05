@@ -146,19 +146,19 @@ function timestampForFile(date = new Date()) {
 }
 
 function defaultUserDataDir() {
-  if (process.env.AGBENCH_USER_DATA_DIR) return process.env.AGBENCH_USER_DATA_DIR
+  if (process.env.TASKWRAITH_USER_DATA_DIR) return process.env.TASKWRAITH_USER_DATA_DIR
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'AGBench')
+    return path.join(os.homedir(), 'Library', 'Application Support', 'TaskWraith')
   }
   if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'AGBench')
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'TaskWraith')
   }
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'AGBench')
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'TaskWraith')
 }
 
 function defaultLedgerPath() {
   return (
-    process.env.AGBENCH_APPROVAL_LEDGER_PATH ||
+    process.env.TASKWRAITH_APPROVAL_LEDGER_PATH ||
     path.join(defaultUserDataDir(), 'approval-ledger.json')
   )
 }
@@ -207,7 +207,7 @@ function usage() {
     '',
     'Defaults to dry-run. Use --write to update the ledger after a backup is written.',
     'Use --out-dir <dir> to place the migration diff and backup outside the ledger directory.',
-    'Environment overrides: AGBENCH_APPROVAL_LEDGER_PATH, AGBENCH_USER_DATA_DIR.'
+    'Environment overrides: TASKWRAITH_APPROVAL_LEDGER_PATH, TASKWRAITH_USER_DATA_DIR.'
   ].join('\n')
 }
 

@@ -21,7 +21,7 @@ function settings(
 }
 
 describe('ProviderCapabilities', () => {
-  it('does not advertise AgentBench Gemini tools when the MCP bridge is disabled', () => {
+  it('does not advertise TaskWraith Gemini tools when the MCP bridge is disabled', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'gemini',
       settings: settings(),
@@ -31,7 +31,7 @@ describe('ProviderCapabilities', () => {
         enabled: false,
         installed: false,
         available: false,
-        serverName: 'AGBench',
+        serverName: 'TaskWraith',
         message: 'Bridge disabled'
       }
     })
@@ -47,7 +47,7 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.delegate.tools).toEqual([])
   })
 
-  it('advertises Gemini bridge tools with AgentBench approval gates when available', () => {
+  it('advertises Gemini bridge tools with TaskWraith approval gates when available', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'gemini',
       settings: settings(),
@@ -57,7 +57,7 @@ describe('ProviderCapabilities', () => {
         enabled: true,
         installed: true,
         available: true,
-        serverName: 'AGBench'
+        serverName: 'TaskWraith'
       }
     })
 
@@ -100,12 +100,12 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.networkAccess.state).toBe('blocked')
     expect(contract.mcp.tools).toEqual(['read', 'search'])
     expect(contract.warnings.map((warning) => warning.id)).toContain('codex-shellCommands-blocked')
-    // Codex routes the AGBench elicitation/delegation tools regardless of the
+    // Codex routes the TaskWraith elicitation/delegation tools regardless of the
     // codex-native MCP server count; delegate tracks subThreadDelegation ('ask').
     expect(contract.tools.elicit.state).toBe('available')
-    expect(contract.tools.elicit.enforcedByAgentBench).toBe(true)
+    expect(contract.tools.elicit.enforcedByTaskWraith).toBe(true)
     expect(contract.tools.delegate.state).toBe('gated')
-    expect(contract.tools.delegate.enforcedByAgentBench).toBe(true)
+    expect(contract.tools.delegate.enforcedByTaskWraith).toBe(true)
   })
 
   it('keeps a provider runnable when optional metadata has an error', () => {
@@ -142,7 +142,7 @@ describe('ProviderCapabilities', () => {
     expect(kimi.tools.fileChanges.state).toBe('delegated')
     expect(kimi.approvals.inAppApprovals).toBe(true)
     expect(kimi.warnings.map((warning) => warning.id)).toContain('kimi-provider-managed-tools')
-    // Without an available AGBench MCP bridge (no mcpStatus), Claude/Kimi
+    // Without an available TaskWraith MCP bridge (no mcpStatus), Claude/Kimi
     // elicit/delegate are unavailable rather than delegated, mirroring how
     // their bridge-backed tooling falls closed.
     expect(claude.tools.elicit.state).toBe('unavailable')
@@ -151,7 +151,7 @@ describe('ProviderCapabilities', () => {
     expect(kimi.tools.delegate.state).toBe('unavailable')
   })
 
-  it('marks Claude/Kimi elicit/delegate available once the AGBench MCP bridge is up', () => {
+  it('marks Claude/Kimi elicit/delegate available once the TaskWraith MCP bridge is up', () => {
     const claude = buildProviderCapabilityContract({
       provider: 'claude',
       settings: settings(),
@@ -159,7 +159,7 @@ describe('ProviderCapabilities', () => {
       mcpStatus: {
         enabled: true,
         available: true,
-        serverName: 'AGBench',
+        serverName: 'TaskWraith',
         tools: ['ask_user_question']
       }
     })
@@ -178,9 +178,9 @@ describe('ProviderCapabilities', () => {
     })
 
     expect(grok.tools.elicit.state).toBe('delegated')
-    expect(grok.tools.elicit.enforcedByAgentBench).toBe(false)
+    expect(grok.tools.elicit.enforcedByTaskWraith).toBe(false)
     expect(grok.tools.delegate.state).toBe('delegated')
-    expect(grok.tools.delegate.enforcedByAgentBench).toBe(false)
+    expect(grok.tools.delegate.enforcedByTaskWraith).toBe(false)
   })
 
   it('reflects a denied subThreadDelegation policy as a blocked delegate row', () => {
@@ -214,15 +214,15 @@ describe('ProviderCapabilities', () => {
       'networkAccess'
     ] as const
     const controlRows = controlIds.map((id) => codex.tools[id])
-    const enforcedControls = controlRows.filter((tool) => tool.enforcedByAgentBench).length
+    const enforcedControls = controlRows.filter((tool) => tool.enforcedByTaskWraith).length
 
-    // Codex: shell+file+creative are AGBench-enforced, mcpTools(provider) and
+    // Codex: shell+file+creative are TaskWraith-enforced, mcpTools(provider) and
     // networkAccess(allow/none) are not -> 3/5, unchanged by the new rows.
     expect(controlRows.length).toBe(5)
     expect(enforcedControls).toBe(3)
     // delegate is allowed/enforced as a DISPLAY row but lives outside the tally.
     expect(codex.tools.delegate.state).toBe('available')
-    expect(codex.tools.delegate.enforcedByAgentBench).toBe(true)
+    expect(codex.tools.delegate.enforcedByTaskWraith).toBe(true)
     expect(controlIds).not.toContain('delegate')
     expect(controlIds).not.toContain('elicit')
   })

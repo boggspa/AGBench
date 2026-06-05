@@ -74,7 +74,7 @@ export function resolveSubThreadRecall(
     return {
       mode: 'error',
       message:
-        `delegate_to_subthread: subThreadId "${requestedId}" does not match any AGBench chat record. ` +
+        `delegate_to_subthread: subThreadId "${requestedId}" does not match any TaskWraith chat record. ` +
         `Recall requires the id returned by an earlier delegate_to_subthread tool_result; ` +
         `the id is stable for the lifetime of the sub-thread.`
     }
@@ -84,7 +84,7 @@ export function resolveSubThreadRecall(
       mode: 'error',
       message:
         `delegate_to_subthread: sub-thread "${requestedId}" is archived. ` +
-        `Spawn a new sub-thread (omit subThreadId) or unarchive the existing one in AGBench.`
+        `Spawn a new sub-thread (omit subThreadId) or unarchive the existing one in TaskWraith.`
     }
   }
   if (!chat.parentChatId || chat.parentChatId !== request.parentChatId) {

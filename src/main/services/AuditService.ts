@@ -144,7 +144,7 @@ function expirationForDecision(
   if (decision === 'autoDeny') {
     return {
       mode: 'on_decision',
-      description: 'Denied automatically by the current AGBench policy.',
+      description: 'Denied automatically by the current TaskWraith policy.',
       expiresAt: now,
       expiredAt: now,
       expiredReason: 'policy_denied'
@@ -164,6 +164,6 @@ function expirationForDecision(
   }
   return {
     mode: 'none',
-    description: 'Allowed automatically by the current AGBench policy for this request.'
+    description: 'Allowed automatically by the current TaskWraith policy for this request.'
   }
 }

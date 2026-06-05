@@ -68,7 +68,7 @@ import {
   mcpJson,
   clampInteger,
   normalizeMcpToolArguments,
-  isAGBenchMcpToolName
+  isTaskWraithMcpToolName
 } from './mcp/McpResultHelpers'
 import {
   AGENTIC_SERVICE_LABELS,
@@ -437,7 +437,7 @@ import {
   sanitiseForKimi
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
-import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
+import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from './TaskWraithMcpTools'
 import {
   MCP_AUTO_ALLOWED_TOOLS,
   isReadOnlyAdvertisedTool
@@ -463,12 +463,12 @@ import {
   shouldAutoResumeParent
 } from './AutoResumeParent'
 import {
-  buildClaudeAgentbenchAllowedToolNames,
-  buildClaudeAgentbenchMcpConfigJson,
-  buildClaudeAgentbenchMcpServers,
-  extendClaudeCliArgsWithAgentbenchMcp,
-  type ClaudeAgentbenchMcpInput
-} from './ClaudeAgentbenchMcp'
+  buildClaudeTaskWraithAllowedToolNames,
+  buildClaudeTaskWraithMcpConfigJson,
+  buildClaudeTaskWraithMcpServers,
+  extendClaudeCliArgsWithTaskWraithMcp,
+  type ClaudeTaskWraithMcpInput
+} from './ClaudeTaskWraithMcp'
 import {
   buildKimiWirePromptRequest
 } from './KimiMcpBridge'
@@ -652,12 +652,9 @@ let appliedNativeGlassState: string | null = null
 const FILE_ICON_CACHE = new Map<string, string | null>()
 // MCP server registration name advertised to every provider's MCP client.
 // This becomes the namespace prefix the agent sees in its tool list:
-// `AGBench__delegate_to_subthread`, `mcp__AGBench__git_status`, etc.
+// `TaskWraith__delegate_to_subthread`, `mcp__TaskWraith__git_status`, etc.
 // Mixed-case to match the product display name. The CLI flag, socket
-// file, persisted-state sentinels, and env var (`AGENTBENCH_PARENT_PROVIDER`)
-// intentionally retain their legacy `agentbench` form so installed
-// Codex / Gemini / Claude / Kimi configurations and existing usage
-// records continue to work without a migration step.
+// file, persisted-state sentinels, and env var (`TASKWRAITH_PARENT_PROVIDER`)
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
@@ -697,11 +694,11 @@ const {
   discoverGeminiMemory
 } = geminiDiscoveryHelpers
 
-function agentbenchMcpBridgeArgs(
+function taskwraithMcpBridgeArgs(
   socketPath: string = geminiMcpSocketPath(),
   safeSubset = false
 ): string[] {
-  return mcpBridgeRuntime.agentbenchMcpBridgeArgs(socketPath, safeSubset)
+  return mcpBridgeRuntime.taskwraithMcpBridgeArgs(socketPath, safeSubset)
 }
 
 // Late-bound APNs handles. Constructed inside `app.whenReady()` (because
@@ -749,14 +746,14 @@ let soloChatWakeupServiceRef: SoloChatWakeupService | null = null
  * until a developer opts in. Final ship enables them by default
  * once smoke-tested.
  *
- * - `AGBENCH_CONCURRENT_LANES` — gates the per-lane Ensemble state
+ * - `TASKWRAITH_CONCURRENT_LANES` — gates the per-lane Ensemble state
  *   model + the per-workspace write-intent registry (C1 + C2).
  *   Without this flag, Ensemble dispatches serially as before.
- * - `AGBENCH_PERMISSION_ENVELOPES` — gates child-agent permission
+ * - `TASKWRAITH_PERMISSION_ENVELOPES` — gates child-agent permission
  *   envelope derivation + enforcement on sub-thread delegations
  *   (C3 + C4). Without it, sub-threads inherit parent permissions
  *   as they did pre-C3.
- * - `AGBENCH_COMPOSER_CONTENTEDITABLE` — gates the contenteditable
+ * - `TASKWRAITH_COMPOSER_CONTENTEDITABLE` — gates the contenteditable
  *   composer surface (C5). Without it, the renderer keeps using
  *   the textarea + overlay pair. Renderer reads the gate from the
  *   capability snapshot exposed via IPC so the runtime can flip
@@ -899,8 +896,8 @@ function scheduleApprovalTimeout(args: {
 function userIsAtDesktop(): boolean {
   try {
     return pureIsUserAtDesktop({
-      idleGateEnv: process.env.AGBENCH_APNS_IDLE_GATE,
-      idleThresholdEnv: process.env.AGBENCH_APNS_IDLE_THRESHOLD_S,
+      idleGateEnv: process.env.TASKWRAITH_APNS_IDLE_GATE,
+      idleThresholdEnv: process.env.TASKWRAITH_APNS_IDLE_THRESHOLD_S,
       windowFocused: mainWindow?.isFocused?.() === true,
       idleSec:
         typeof powerMonitor?.getSystemIdleTime === 'function' ? powerMonitor.getSystemIdleTime() : 0
@@ -946,7 +943,7 @@ function notifyPairedDevicesOfApproval(args: {
   }
   approvalService?.notifyPairedDevices({
     ...args,
-    summary: 'Open AGBench to respond.'
+    summary: 'Open TaskWraith to respond.'
   })
 }
 
@@ -1049,7 +1046,7 @@ function globalRunCwd(): string {
 // CLIs (Codex, Claude SDK, Kimi) don't do a recursive workspace
 // scan on startup, so they're unaffected by `$HOME` cwd.
 //
-// Fix: give Gemini a dedicated tiny directory in the AGBench user
+// Fix: give Gemini a dedicated tiny directory in the TaskWraith user
 // data folder. The scan completes instantly because the dir
 // contains nothing the user cares about. File-system tool calls
 // for global-mode Gemini already require explicit external path
@@ -1064,11 +1061,11 @@ function globalGeminiCwd(): string {
     // Stamp a marker file so the directory isn't truly empty —
     // some CLI heuristics treat "0 files" as a misconfiguration
     // and emit warnings. The marker is harmless and stable.
-    const marker = join(dir, '.agbench-global-cwd')
+    const marker = join(dir, '.taskwraith-global-cwd')
     if (!fsSync.existsSync(marker)) {
       fsSync.writeFileSync(
         marker,
-        'AGBench-managed isolated cwd for global-mode Gemini CLI runs. ' +
+        'TaskWraith-managed isolated cwd for global-mode Gemini CLI runs. ' +
           'Do not delete or modify — recreated on demand if missing.\n'
       )
     }
@@ -1119,7 +1116,7 @@ function sanitizeChatForSave(chat: ChatRecord): ChatRecord {
   }
   const workspace = findRegisteredWorkspace(chat.workspacePath)
   if (!workspace || workspace.id !== chat.workspaceId) {
-    throw new Error('Chat workspace must be a registered AGBench workspace.')
+    throw new Error('Chat workspace must be a registered TaskWraith workspace.')
   }
   return {
     ...chat,
@@ -1146,7 +1143,7 @@ function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'):
   const normalized = canonicalPath(requireNonEmptyString(workspacePath, label))
   assertSafeWorkspaceRoot(normalized)
   if (!findRegisteredWorkspace(normalized)) {
-    throw new Error(`${label} must be selected through AGBench before it can be used.`)
+    throw new Error(`${label} must be selected through TaskWraith before it can be used.`)
   }
   return normalized
 }
@@ -1227,7 +1224,7 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     ? normalizeExternalPathGrants(rawExternalPathGrants)
     : []
   if (rawExternalPathGrants.length && externalPathGrants.length !== rawExternalPathGrants.length) {
-    throw new Error('External path grants must be issued by AGBench in this app session.')
+    throw new Error('External path grants must be issued by TaskWraith in this app session.')
   }
   const appChatId = optionalString(payload.appChatId) || optionalString(payload.chatId)
   let workspace: string | undefined
@@ -1348,7 +1345,7 @@ let runRepository: RunRepository | null = null
 let runQueueServiceRef: RunQueueService | null = null
 
 
-function getActiveAgbenchThreadCount(): number {
+function getActiveTaskWraithThreadCount(): number {
   const chatIds = new Set<string>()
   let anonymousRuns = 0
   for (const provider of RUN_MANAGER_PROVIDERS) {
@@ -1366,7 +1363,7 @@ function getActiveAgbenchThreadCount(): number {
 const appShellStatsService = new AppShellStatsService({
   getAppMetrics: () => app.getAppMetrics(),
   getTotalMemoryBytes: () => os.totalmem(),
-  getActiveThreadCount: getActiveAgbenchThreadCount
+  getActiveThreadCount: getActiveTaskWraithThreadCount
 })
 
 appShellStatsService.onChange((snapshot) => {
@@ -1405,7 +1402,7 @@ const workspaceToolExecutors = createWorkspaceToolExecutors({
 
 const WORKSPACE_MCP_TOOL_NAME_SET = new Set<string>(WORKSPACE_MCP_TOOL_NAMES)
 
-function isWorkspaceMcpToolName(toolName: AGBenchMcpToolName): toolName is WorkspaceMcpToolName {
+function isWorkspaceMcpToolName(toolName: TaskWraithMcpToolName): toolName is WorkspaceMcpToolName {
   return WORKSPACE_MCP_TOOL_NAME_SET.has(toolName)
 }
 
@@ -1832,7 +1829,7 @@ function surfaceSubThreadDispatchFailure(args: {
         severity: 'error',
         title: `${subThreadProviderLabel} sub-thread failed to start`,
         message:
-          `AGBench created the sub-thread "${subThread.title}" but the agent-driven run never dispatched. ` +
+          `TaskWraith created the sub-thread "${subThread.title}" but the agent-driven run never dispatched. ` +
           `Open the sub-thread from the sidebar and run a prompt manually to continue.`,
         details: reason
       },
@@ -2427,7 +2424,7 @@ const geminiCrossProviderWarningsFired = new Set<string>()
  * renderer surfaces a chip without blocking the run. */
 /** Strip the composer's runtime-note + conversation-context wrappers from
  * a payload.prompt so we get just the user-typed segment. The full composed
- * prompt prepends an AGBench runtime note that mentions Kimi / Codex / Claude
+ * prompt prepends an TaskWraith runtime note that mentions Kimi / Codex / Claude
  * / invoke_agent as delegation examples — feeding that into the
  * cross-provider intent detector false-positives on every run. */
 function extractUserPromptFromComposed(composedPrompt: string): string {
@@ -3070,8 +3067,8 @@ function formatScopedPath(context: GeminiToolContext, targetPath: string): strin
  * Build the approval prompt (title + body + service + preview) for an
  * MCP tool call. Originally Gemini-only — hence the name + hardcoded
  * "Approve Gemini …" titles — but the same MCP surface is reused by
- * Codex / Claude / Kimi when they call AGBench-hosted tools via the
- * shared `parentProvider` dispatch path (`callAgbenchMcpTool` →
+ * Codex / Claude / Kimi when they call TaskWraith-hosted tools via the
+ * shared `parentProvider` dispatch path (`callTaskWraithMcpTool` →
  * line 13857). Before the fix every cross-provider MCP approval read
  * "Approve Gemini tool call" regardless of which model emitted it,
  * which the panel-consensus review (1.0.4-AC) flagged.
@@ -3082,7 +3079,7 @@ function formatScopedPath(context: GeminiToolContext, targetPath: string): strin
  * git stage", "Capture attached window") are unchanged.
  */
 function previewForGeminiMcpTool(
-  toolName: AGBenchMcpToolName,
+  toolName: TaskWraithMcpToolName,
   args: Record<string, any>,
   cwd: string,
   context: GeminiToolContext,
@@ -3385,7 +3382,7 @@ function resolveGeminiApprovalModeForServices(approvalMode: string, settings: Ap
 // so it stays env-gated until runtime-write-verified that read-only Gemini still
 // refuses native writes. Env flag (dev/test), mirroring the grok/cursor gates.
 function geminiReadOnlyMcpAdvertiseEnabled(): boolean {
-  const v = process.env.AGBENCH_GEMINI_READONLY_MCP
+  const v = process.env.TASKWRAITH_GEMINI_READONLY_MCP
   return v === '1' || v === 'true' || v === 'yes'
 }
 
@@ -3623,8 +3620,8 @@ async function ensureGeminiAuthProfileMaterialized(
           mcp: {
             serverName: GEMINI_MCP_SERVER_NAME,
             command: process.execPath,
-            args: agentbenchMcpBridgeArgs(geminiMcpSocketPath()),
-            includeTools: [...AGENTBENCH_MCP_TOOLS]
+            args: taskwraithMcpBridgeArgs(geminiMcpSocketPath()),
+            includeTools: [...TASKWRAITH_MCP_TOOLS]
           }
         }
       : options
@@ -3694,7 +3691,7 @@ function claudeProgrammaticUsageWarning(runtime: 'sdk' | 'cli-print', usesApiKey
   const runtimeLabel =
     runtime === 'sdk' ? 'Claude Agent SDK' : 'Claude Code CLI print mode (`claude -p`)'
   if (usesApiKey) {
-    return `${runtimeLabel} is a programmatic Claude path. AGBench is using the saved Anthropic API key for this run, so usage is billed through API/PAYG rather than normal interactive Claude Code subscription limits.`
+    return `${runtimeLabel} is a programmatic Claude path. TaskWraith is using the saved Anthropic API key for this run, so usage is billed through API/PAYG rather than normal interactive Claude Code subscription limits.`
   }
   return `${runtimeLabel} is a programmatic Claude path. Anthropic says programmatic Claude usage uses separate Agent SDK credit from 2026-06-15, not the normal interactive Claude Code subscription limit. Use interactive Claude in a terminal when you need native Claude Code subscription-limit behavior.`
 }
@@ -3941,12 +3938,12 @@ function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRun
 }
 
 // 1.0.6-G5d — Opt-in raw-stream capture. Grok's headless tool-event wire shape
-// is still undocumented; set AGBENCH_GROK_DEBUG=1 to append every parsed Grok
-// streaming-json object to <tmpdir>/agbench-grok-stream.jsonl so the real shape
+// is still undocumented; set TASKWRAITH_GROK_DEBUG=1 to append every parsed Grok
+// streaming-json object to <tmpdir>/taskwraith-grok-stream.jsonl so the real shape
 // can be captured from a live in-app run. Off by default; never throws.
 let grokDebugLogPath: string | null = null
 function maybeLogGrokRawEvent(event: unknown): void {
-  const flag = process.env.AGBENCH_GROK_DEBUG
+  const flag = process.env.TASKWRAITH_GROK_DEBUG
   if (flag !== '1' && flag !== 'true' && flag !== 'yes') return
   let serialized = ''
   try {
@@ -3962,7 +3959,7 @@ function maybeLogGrokRawEvent(event: unknown): void {
     /* ignore */
   }
   try {
-    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'agbench-grok-stream.jsonl')
+    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'taskwraith-grok-stream.jsonl')
     fsSync.appendFileSync(grokDebugLogPath, `${serialized}\n`)
   } catch {
     // Diagnostics only — never disrupt the run.
@@ -3970,12 +3967,12 @@ function maybeLogGrokRawEvent(event: unknown): void {
 }
 
 // 1.0.6-G4d — opt-in raw ACP JSON-RPC frame capture (both directions). With
-// AGBENCH_GROK_DEBUG=1 each frame prints as `[grok-acp-raw] →/← {…}` in the dev
+// TASKWRAITH_GROK_DEBUG=1 each frame prints as `[grok-acp-raw] →/← {…}` in the dev
 // terminal (one-paste capture) so the live ACP wire shape can be confirmed —
 // crucially whether Grok emits `tool_call` session/updates AND
 // `session/request_permission` requests (the precondition for write-over-ACP).
 function maybeLogGrokRawAcp(direction: 'in' | 'out', message: unknown): void {
-  const flag = process.env.AGBENCH_GROK_DEBUG
+  const flag = process.env.TASKWRAITH_GROK_DEBUG
   if (flag !== '1' && flag !== 'true' && flag !== 'yes') return
   let serialized = ''
   try {
@@ -3989,7 +3986,7 @@ function maybeLogGrokRawAcp(direction: 'in' | 'out', message: unknown): void {
     /* ignore */
   }
   try {
-    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'agbench-grok-stream.jsonl')
+    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'taskwraith-grok-stream.jsonl')
     fsSync.appendFileSync(grokDebugLogPath, `${serialized}\n`)
   } catch {
     /* diagnostics only */
@@ -4076,7 +4073,7 @@ function applyCursorRunEvent(state: CliProviderStreamState, evt: NormalizedCurso
   }
 }
 
-// CR — opt-in raw stream capture (AGBENCH_CURSOR_DEBUG); mirrors the Grok tap.
+// CR — opt-in raw stream capture (TASKWRAITH_CURSOR_DEBUG); mirrors the Grok tap.
 let cursorDebugLogPath: string | null = null
 function maybeLogCursorRawEvent(event: unknown): void {
   if (!cursorDebugEnabled()) return
@@ -4088,7 +4085,7 @@ function maybeLogCursorRawEvent(event: unknown): void {
   }
   process.stderr.write(`[cursor-raw] ${serialized}\n`)
   try {
-    if (!cursorDebugLogPath) cursorDebugLogPath = join(os.tmpdir(), 'agbench-cursor-stream.jsonl')
+    if (!cursorDebugLogPath) cursorDebugLogPath = join(os.tmpdir(), 'taskwraith-cursor-stream.jsonl')
     fsSync.appendFileSync(cursorDebugLogPath, `${serialized}\n`)
   } catch {
     // Best-effort; never throws.
@@ -4312,10 +4309,10 @@ function runCliProviderProcess(
       {
         FORCE_COLOR: '0',
         NO_COLOR: '1',
-        AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
-        AGENTBENCH_PARENT_PROVIDER: provider,
-        AGENTBENCH_RUN_ID: route.appRunId || '',
-        AGENTBENCH_CHAT_ID: route.appChatId || '',
+        TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+        TASKWRAITH_PARENT_PROVIDER: provider,
+        TASKWRAITH_RUN_ID: route.appRunId || '',
+        TASKWRAITH_CHAT_ID: route.appChatId || '',
         ...(options.extraEnv || {})
       },
       command
@@ -4357,7 +4354,7 @@ function runCliProviderProcess(
   // raw stderr line ("Error code: 400 - {'error': {...}}") plus a
   // generic `type:result, status:failed` event, and the user just
   // saw "Kimi failed" on the chip with no idea it was an API-side
-  // safety filter rather than an AGBench bug. the maintainer hit this with
+  // safety filter rather than an TaskWraith bug. the maintainer hit this with
   // 3x Kimi participants in a global ensemble — first Kimi passed,
   // second Kimi's prompt (which now included the first Kimi's
   // response plus several other panelists' turns + URLs) tripped
@@ -4388,7 +4385,7 @@ function runCliProviderProcess(
           severity: 'warning',
           title: 'Kimi safety filter rejected this prompt',
           message:
-            "Kimi (Moonshot) rejected this turn upstream with a content-filter 400. The other participants saw the same prompt context fine — this is API-side, not an AGBench bug. Common triggers: politically-coded role names (e.g. 'Politician'), accumulated transcript content from many preceding turns, or external URLs / quoted material the filter reads as suspicious. Try rephrasing the user prompt, renaming sensitive roles, or starting a fresh round."
+            "Kimi (Moonshot) rejected this turn upstream with a content-filter 400. The other participants saw the same prompt context fine — this is API-side, not an TaskWraith bug. Common triggers: politically-coded role names (e.g. 'Politician'), accumulated transcript content from many preceding turns, or external URLs / quoted material the filter reads as suspicious. Try rephrasing the user prompt, renaming sensitive roles, or starting a fresh round."
         },
         state
       )
@@ -4458,7 +4455,7 @@ function runCliProviderProcess(
           provider: 'grok',
           severity: 'warning',
           title: `Grok ended this turn early (${state.grokStopReason})`,
-          message: `Grok stopped before finishing this turn (stopReason: ${state.grokStopReason}). It may not have produced an answer or written files — any reasoning above is partial. This is Grok's own turn outcome, not an AGBench error.`
+          message: `Grok stopped before finishing this turn (stopReason: ${state.grokStopReason}). It may not have produced an answer or written files — any reasoning above is partial. This is Grok's own turn outcome, not an TaskWraith error.`
         },
         state
       )
@@ -4500,18 +4497,18 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
 }
 
 /**
- * Phase I3 (Claude initiator): assemble the input the AGBench MCP
+ * Phase I3 (Claude initiator): assemble the input the TaskWraith MCP
  * helpers need — current `geminiMcpBridgeEnabled` toggle + the same
  * bridge argv Gemini/Codex use. Centralised so SDK and CLI paths build
  * identical config (the bridge binary path, socket path, and broker
  * token are all module-scoped already).
  */
-function claudeAgentbenchMcpInput(route?: AgentRunRoute | null): ClaudeAgentbenchMcpInput {
+function claudeTaskWraithMcpInput(route?: AgentRunRoute | null): ClaudeTaskWraithMcpInput {
   const enabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
   return {
     enabled,
     bridgeBinaryPath: process.execPath,
-    bridgeArgs: agentbenchMcpBridgeArgs(),
+    bridgeArgs: taskwraithMcpBridgeArgs(),
     ...(route?.appRunId ? { appRunId: route.appRunId } : {}),
     ...(route?.appChatId ? { appChatId: route.appChatId } : {})
   }
@@ -4563,8 +4560,8 @@ function claudeAgenticServiceForTool(toolName: string): AgenticServiceId | null 
  */
 function kimiAgenticServiceForTool(toolName: string): AgenticServiceId | null {
   // Kimi tools share the same naming conventions as the wider
-  // AGBench MCP surface (e.g. `agbench__ensemble_yield`,
-  // `agbench__create_handoff_card`) and the same generic
+  // TaskWraith MCP surface (e.g. `taskwraith__ensemble_yield`,
+  // `taskwraith__create_handoff_card`) and the same generic
   // shell/file-edit tool names as Claude.
   return claudeAgenticServiceForTool(toolName)
 }
@@ -4659,7 +4656,7 @@ async function resolveNativeSubAgentToolPreference(
     return { behavior: 'allow', updatedInput }
   }
   const denyMessage = nativeSubAgentRedirectMessage({ provider, toolName, input })
-  if (policy === 'agbench') {
+  if (policy === 'taskwraith') {
     return { behavior: 'deny', message: denyMessage }
   }
 
@@ -4669,10 +4666,10 @@ async function resolveNativeSubAgentToolPreference(
     title: 'Choose sub-agent routing',
     body:
       `${providerLabel(provider)} requested its native ${toolName} sub-agent tool.\n\n` +
-      'Use Provider Native to continue with the provider tool, or use AGBench Sub-thread to ask the model to call delegate_to_subthread instead.\n\n' +
+      'Use Provider Native to continue with the provider tool, or use TaskWraith Sub-thread to ask the model to call delegate_to_subthread instead.\n\n' +
       'Change this later in Settings -> MCP.',
     workspacePath: payload.scope === 'global' ? undefined : payload.workspace,
-    actions: ['useProviderNative', 'useAGBenchSubthread'],
+    actions: ['useProviderNative', 'useTaskWraithSubthread'],
     preview: {
       kind: 'native sub-agent',
       toolName,
@@ -4680,14 +4677,14 @@ async function resolveNativeSubAgentToolPreference(
       task: promptPreview,
       redirectTool:
         provider === 'claude'
-          ? 'mcp__AGBench__delegate_to_subthread'
-          : 'AGBench__delegate_to_subthread'
+          ? 'mcp__TaskWraith__delegate_to_subthread'
+          : 'TaskWraith__delegate_to_subthread'
     },
     resolveAction: (action) => {
       if (action === 'useProviderNative') {
         AppStore.updateSettings({ nativeSubAgentRequests: 'provider' })
-      } else if (action === 'useAGBenchSubthread') {
-        AppStore.updateSettings({ nativeSubAgentRequests: 'agbench' })
+      } else if (action === 'useTaskWraithSubthread') {
+        AppStore.updateSettings({ nativeSubAgentRequests: 'taskwraith' })
       }
     }
   })
@@ -4737,20 +4734,19 @@ async function canUseClaudeSdkTool(
     updatedInput
   )
   if (nativeSubAgentDecision) return nativeSubAgentDecision
-  // Auto-allow side-effect-free AGBench tools before the agentic-
+  // Auto-allow side-effect-free TaskWraith tools before the agentic-
   // service gate. The MCP dispatcher already skips approval for
   // these (line ~14078), but Claude's `canUseTool` callback fires
   // FIRST — without this, the user gets prompted to approve
   // harmless signals like `ensemble_yield`. Claude sees MCP tools
-  // with their full prefix (e.g. `mcp__agbench__ensemble_yield`),
+  // with their full prefix (e.g. `mcp__taskwraith__ensemble_yield`),
   // so strip any namespace before checking the allowlist.
   const unprefixedToolName = toolName
     .replace(/^mcp__/, '')
-    .replace(/^agbench__/, '')
-    .replace(/^agentbench__/, '')
+    .replace(/^taskwraith__/, '')
   if (
-    isAGBenchMcpToolName(unprefixedToolName) &&
-    MCP_AUTO_ALLOWED_TOOLS.has(unprefixedToolName as AGBenchMcpToolName)
+    isTaskWraithMcpToolName(unprefixedToolName) &&
+    MCP_AUTO_ALLOWED_TOOLS.has(unprefixedToolName as TaskWraithMcpToolName)
   ) {
     return { behavior: 'allow', updatedInput }
   }
@@ -4796,7 +4792,7 @@ async function canUseClaudeSdkTool(
   )
   return allowed
     ? { behavior: 'allow', updatedInput }
-    : { behavior: 'deny', message: `AGBench denied Claude tool ${toolName}.` }
+    : { behavior: 'deny', message: `TaskWraith denied Claude tool ${toolName}.` }
 }
 
 async function tryRunClaudeSdk(
@@ -4895,7 +4891,7 @@ async function tryRunClaudeSdk(
     payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
       ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
       : null
-  // Phase I3 (Claude initiator): register the AGBench MCP server so
+  // Phase I3 (Claude initiator): register the TaskWraith MCP server so
   // the Claude agent sees delegate_to_subthread etc. in its tool list.
   // Gated on the same `geminiMcpBridgeEnabled` toggle Gemini/Codex use
   // so the user can disable cross-provider MCP from one place.
@@ -4909,8 +4905,8 @@ async function tryRunClaudeSdk(
   // had ever logged a `tools/call` (vs. Gemini-parented bridges which
   // accounted for every tool call in the log). Mirroring the CLI's
   // pre-approval list closes the gap.
-  const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput(route))
-  const claudeSdkAllowedTools = claudeSdkMcpServers ? buildClaudeAgentbenchAllowedToolNames() : null
+  const claudeSdkMcpServers = buildClaudeTaskWraithMcpServers(claudeTaskWraithMcpInput(route))
+  const claudeSdkAllowedTools = claudeSdkMcpServers ? buildClaudeTaskWraithAllowedToolNames() : null
   const claudeSdkSettings =
     typeof payload.claudeFastMode === 'boolean' ? { fastMode: payload.claudeFastMode } : undefined
   // Belt-and-braces env stamp on the SDK process: in addition to the
@@ -4922,12 +4918,12 @@ async function tryRunClaudeSdk(
   // process.env first to preserve the user's PATH etc.
   const claudeSdkEnv: Record<string, string | undefined> = {
     ...(process.env as Record<string, string | undefined>),
-    AGENTBENCH_PARENT_PROVIDER: 'claude',
-    AGENTBENCH_RUN_ID: route.appRunId || '',
-    AGENTBENCH_CHAT_ID: route.appChatId || '',
+    TASKWRAITH_PARENT_PROVIDER: 'claude',
+    TASKWRAITH_RUN_ID: route.appRunId || '',
+    TASKWRAITH_CHAT_ID: route.appChatId || '',
     ...(claudeApiKey ? { ANTHROPIC_API_KEY: claudeApiKey } : {})
   }
-  // 1.0.71 dogfood fix: make sure the AGBench MCP broker socket is actually
+  // 1.0.71 dogfood fix: make sure the TaskWraith MCP broker socket is actually
   // listening before the SDK spawns Claude's bridge subprocess. Otherwise the
   // subprocess connects to a dead socket and Claude reports "MCP socket is
   // down", then silently degrades to its native read tools. startGeminiMcpBroker
@@ -5061,19 +5057,19 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   // <path>` pointing at a JSON file. Write a per-run config under the
   // OS temp dir, extend the argv with `--mcp-config` + `--allowedTools`,
   // and clean up the temp file when the run exits.
-  const mcpInput = claudeAgentbenchMcpInput(route)
+  const mcpInput = claudeTaskWraithMcpInput(route)
   let mcpConfigPath: string | null = null
   let args = baseArgs
   if (mcpInput.enabled) {
-    const configJson = buildClaudeAgentbenchMcpConfigJson(mcpInput)
+    const configJson = buildClaudeTaskWraithMcpConfigJson(mcpInput)
     if (configJson) {
-      mcpConfigPath = claudeAgentbenchMcpConfigPathForRun(route.appRunId || 'unknown')
+      mcpConfigPath = claudeTaskWraithMcpConfigPathForRun(route.appRunId || 'unknown')
       try {
         await fs.writeFile(mcpConfigPath, JSON.stringify(configJson), {
           encoding: 'utf8',
           mode: 0o600
         })
-        args = extendClaudeCliArgsWithAgentbenchMcp(baseArgs, {
+        args = extendClaudeCliArgsWithTaskWraithMcp(baseArgs, {
           ...mcpInput,
           configFilePath: mcpConfigPath
         })
@@ -5101,9 +5097,9 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   // The bridge subprocess, started by the CLI's MCP host, then inherits
   // it regardless of how the host propagates env.
   const claudeProcessExtraEnv: Record<string, string> = {
-    AGENTBENCH_PARENT_PROVIDER: 'claude',
-    AGENTBENCH_RUN_ID: route.appRunId || '',
-    AGENTBENCH_CHAT_ID: route.appChatId || '',
+    TASKWRAITH_PARENT_PROVIDER: 'claude',
+    TASKWRAITH_RUN_ID: route.appRunId || '',
+    TASKWRAITH_CHAT_ID: route.appChatId || '',
     ...(claudeKey ? { ANTHROPIC_API_KEY: claudeKey } : {})
   }
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
@@ -5182,14 +5178,14 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   runCliProviderProcess(event, 'grok', resolved.binaryPath, args, payload, {
     fallback: false,
     extraEnv: {
-      AGENTBENCH_PARENT_PROVIDER: 'grok',
-      AGENTBENCH_RUN_ID: route.appRunId || '',
-      AGENTBENCH_CHAT_ID: route.appChatId || ''
+      TASKWRAITH_PARENT_PROVIDER: 'grok',
+      TASKWRAITH_RUN_ID: route.appRunId || '',
+      TASKWRAITH_CHAT_ID: route.appChatId || ''
     }
   })
 }
 
-// 1.0.6-CRUX34 (OQ#2) — materialise the embedded AGBench web_fetch MCP server to
+// 1.0.6-CRUX34 (OQ#2) — materialise the embedded TaskWraith web_fetch MCP server to
 // a stable userData path so a per-run workspace `.cursor/mcp.json` can point
 // cursor-agent at it. Written from CursorMcpBridge's source string (idempotent:
 // rewrite only if missing/changed) → no extraResources packaging step. Returns
@@ -5199,7 +5195,7 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
 function ensureCursorMcpServerScript(): string {
   try {
     const dir = join(app.getPath('userData'), 'cursor-mcp')
-    const file = join(dir, 'agbench-web-fetch-server.cjs')
+    const file = join(dir, 'taskwraith-web-fetch-server.cjs')
     if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true })
     let current: string | null = null
     if (fsSync.existsSync(file)) {
@@ -5219,7 +5215,7 @@ function ensureCursorMcpServerScript(): string {
 }
 
 // 1.0.6-CRUX39 ("B") — the OQ#2 web bridge relies on a user-registered GLOBAL
-// agbench server in ~/.cursor/mcp.json (added once via Cursor's Tools & MCPs →
+// taskwraith server in ~/.cursor/mcp.json (added once via Cursor's Tools & MCPs →
 // Add Custom MCP, pointing at the script we materialise in userData). We READ
 // that file to confirm the prerequisite is present (reading global ~/.cursor is
 // fine; we never WRITE it). If it's absent the bridge stays inactive.
@@ -5241,7 +5237,7 @@ function cursorMcpServerRegisteredGlobally(): boolean {
 // (persistent "User rejected MCP … isReadonly:false"; proven 4/4 only once the
 // workspace is approved). So — per the maintainer's explicit "B" call — we approve our
 // OWN read-only web_fetch server for the run's workspace via
-// `cursor-agent mcp enable agbench`. This is the ONLY write AGBench makes under
+// `cursor-agent mcp enable taskwraith`. This is the ONLY write TaskWraith makes under
 // ~/.cursor, only ever approves our own server, and only when the bridge is
 // opted in. Idempotent ("already enabled") + cached in-process so it spawns at
 // most once per workspace per session. Best-effort: a failure just means this
@@ -5270,8 +5266,8 @@ async function ensureCursorMcpApproved(binaryPath: string, workspace: string): P
 // Read-only runs pass `--mode plan` (no edits, proven by CR3); write-capable runs
 // run in default mode contained by a transient workspace `.cursor/cli.json`
 // deny-list (CR6). When the OQ#2 web bridge is opted in (cursorWebBridgeEnabled)
-// AND the user's global agbench server is registered, the run also gets a cli.json
-// `Mcp(agbench:*)` allow rule + its workspace auto-approved (above) — NO per-run
+// AND the user's global taskwraith server is registered, the run also gets a cli.json
+// `Mcp(taskwraith:*)` allow rule + its workspace auto-approved (above) — NO per-run
 // mcp.json and NO --approve-mcps (the per-workspace approval is what works).
 // CursorCliArgs NEVER emits bare -p / --force / --yolo.
 async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
@@ -5301,10 +5297,10 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     sendAgentCompatExit(event.sender, 'cursor', 1, route)
     return
   }
-  // CR6 — AGBench-owned write mode. Cursor has no `--deny` argv flag, so a
+  // CR6 — TaskWraith-owned write mode. Cursor has no `--deny` argv flag, so a
   // write-capable run writes a transient workspace-local `.cursor/cli.json`
   // denying native shell (`Shell(**)`); file edits stay allowed and are surfaced
-  // through AGBench's run-diff / Review-changes authority surface (Grok-parity).
+  // through TaskWraith's run-diff / Review-changes authority surface (Grok-parity).
   // The config is restored on completion. If it can't be written (no workspace,
   // fs error), we FALL BACK to read-only (`--mode plan`) — write mode never runs
   // without native-shell containment. Never mutates global ~/.cursor.
@@ -5315,9 +5311,9 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       const cursorDir = join(payload.workspace, '.cursor')
       const cliPath = join(cursorDir, 'cli.json')
       // OQ#2 web bridge ("B", opt-in via cursorWebBridgeEnabled /
-      // AGBENCH_CURSOR_WEB=1). Reliable recipe (proven 4/4): the user registers
+      // TASKWRAITH_CURSOR_WEB=1). Reliable recipe (proven 4/4): the user registers
       // our read-only web_fetch server once in global ~/.cursor/mcp.json, and
-      // AGBench (a) keeps that script fresh, (b) auto-approves it for THIS
+      // TaskWraith (a) keeps that script fresh, (b) auto-approves it for THIS
       // workspace, and (c) allows the Mcp tool in cli.json. No per-run mcp.json
       // and no --approve-mcps — the per-workspace approval is what makes it work.
       // Plan mode rejects MCP tools, so read-only runs never reach here.
@@ -5325,7 +5321,7 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
         ensureCursorMcpServerScript() // keep the global config's target script fresh
         await ensureCursorMcpApproved(resolved.binaryPath, payload.workspace)
         restoreCursorConfig = applyCursorWriteModeConfig(fsSync, cliPath, cursorDir, {
-          allowRules: CURSOR_MCP_ALLOW_RULES // allow Mcp(agbench:*); no workspace mcp.json
+          allowRules: CURSOR_MCP_ALLOW_RULES // allow Mcp(taskwraith:*); no workspace mcp.json
         })
       } else {
         // No bridge: plain write-mode containment (deny native shell only).
@@ -5348,9 +5344,9 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   runCliProviderProcess(event, 'cursor', resolved.binaryPath, args, payload, {
     fallback: false,
     extraEnv: {
-      AGENTBENCH_PARENT_PROVIDER: 'cursor',
-      AGENTBENCH_RUN_ID: route.appRunId || '',
-      AGENTBENCH_CHAT_ID: route.appChatId || ''
+      TASKWRAITH_PARENT_PROVIDER: 'cursor',
+      TASKWRAITH_RUN_ID: route.appRunId || '',
+      TASKWRAITH_CHAT_ID: route.appChatId || ''
     },
     // Restore (or remove) the workspace .cursor/cli.json after the run.
     onComplete: () => restoreCursorConfig?.()
@@ -5363,13 +5359,13 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 // (applyGrokRunEvent). Gated behind grokAcpEnabled(); headless stays fallback.
 // No MCP / tool mediation yet (read-only) — that's G5.
 // Distinct MCP server name for Grok's read-only scoped bridge (kept off the
-// global 'agbench' name to avoid a registry collision with the cursor web-fetch
+// global 'taskwraith' name to avoid a registry collision with the cursor web-fetch
 // server). Single-sourced so the session/new entry and the permission-allow
 // check below agree.
 
 // Is this ACP permission request for one of OUR scoped-bridge tools? The
-// agbench-grok bridge advertises ONLY the non-mutating safe subset (--safe-subset
-// enforces it), so when Grok asks to use an `agbench-grok__<tool>` we allow it
+// taskwraith-grok bridge advertises ONLY the non-mutating safe subset (--safe-subset
+// enforces it), so when Grok asks to use an `taskwraith-grok__<tool>` we allow it
 // even on a read-only seat — that read/coordination surface is exactly what the
 // read-only Grok seat was given. Defense-in-depth: confirm the unprefixed tool is
 // actually in the advertised safe set (the bridge also rejects anything else at
@@ -5456,7 +5452,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     state
   )
 
-  // G5b — read-only Grok seat: advertise AGBench's non-mutating MCP tools via a
+  // G5b — read-only Grok seat: advertise TaskWraith's non-mutating MCP tools via a
   // scoped bridge (safe subset only). The ACP trace proved Grok auto-runs MCP
   // tools with NO session/request_permission, so the bridge's advertise list +
   // tools/call reject are the ENTIRE safety boundary — hence --safe-subset
@@ -5466,10 +5462,10 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
   const grokAdvertiseFlag = grokReadOnlyMcpAdvertiseEnabled()
   const grokBridgeEnabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
   const grokReadOnlySeat = !grokWriteCapable(payload.approvalMode)
-  const grokMcpDebug = process.env.AGBENCH_GROK_DEBUG
+  const grokMcpDebug = process.env.TASKWRAITH_GROK_DEBUG
   if (grokMcpDebug === '1' || grokMcpDebug === 'true' || grokMcpDebug === 'yes') {
     // Diagnostic: which gate condition gates the scoped read-only bridge. All
-    // three must be true for session/new to carry the agbench-grok server.
+    // three must be true for session/new to carry the taskwraith-grok server.
     process.stderr.write(
       `[grok-mcp] scoped-bridge gate advertiseFlag=${grokAdvertiseFlag} bridgeEnabled=${grokBridgeEnabled} readOnlySeat=${grokReadOnlySeat} approvalMode=${JSON.stringify(payload.approvalMode)} resume=${Boolean(payload.providerSessionId)}\n`
     )
@@ -5483,16 +5479,16 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           // {name, command, args, env} with NO `type` field and env REQUIRED. A
           // stray `type:'stdio'` makes it match no variant (-32602 Invalid
           // params, which also hangs the turn). Distinct name from the global
-          // 'agbench' server (cursor web-fetch) to avoid a registry collision.
+          // 'taskwraith' server (cursor web-fetch) to avoid a registry collision.
           // env carries the routing identity in the ACP EnvVariable shape
           // ({name,value}) so the bridge's broker calls map to THIS run.
           name: GROK_SCOPED_MCP_SERVER_NAME,
           command: process.execPath,
-          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath(), true),
+          args: taskwraithMcpBridgeArgs(geminiMcpSocketPath(), true),
           env: [
-            { name: 'AGENTBENCH_PARENT_PROVIDER', value: 'grok' },
-            { name: 'AGENTBENCH_RUN_ID', value: route.appRunId || '' },
-            { name: 'AGENTBENCH_CHAT_ID', value: route.appChatId || '' }
+            { name: 'TASKWRAITH_PARENT_PROVIDER', value: 'grok' },
+            { name: 'TASKWRAITH_RUN_ID', value: route.appRunId || '' },
+            { name: 'TASKWRAITH_CHAT_ID', value: route.appChatId || '' }
           ]
         }
       ]
@@ -5507,7 +5503,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           provider: 'grok',
           severity: 'warning',
           title: 'Grok MCP bridge unavailable',
-          message: `AGBench could not start the MCP broker; Grok is running without AGBench tools. ${
+          message: `TaskWraith could not start the MCP broker; Grok is running without TaskWraith tools. ${
             error instanceof Error ? error.message : String(error)
           }`
         },
@@ -5550,9 +5546,9 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           {
             FORCE_COLOR: '0',
             NO_COLOR: '1',
-            AGENTBENCH_PARENT_PROVIDER: 'grok',
-            AGENTBENCH_RUN_ID: route.appRunId || '',
-            AGENTBENCH_CHAT_ID: route.appChatId || ''
+            TASKWRAITH_PARENT_PROVIDER: 'grok',
+            TASKWRAITH_RUN_ID: route.appRunId || '',
+            TASKWRAITH_CHAT_ID: route.appChatId || ''
           },
           binaryPath
         )
@@ -5567,7 +5563,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     },
     // G5c-ACP — client-mediated tool approval. Grok asks before running a
     // permission-requiring tool (shell/edit/…) via session/request_permission;
-    // route it through AGBench's approval ledger (the same card + policy +
+    // route it through TaskWraith's approval ledger (the same card + policy +
     // audit path Claude/Codex use). Read-only (plan / unset) never allows a
     // tool. requestAgenticServiceApproval resolves the policy (auto-allow on a
     // prior session/workspace grant, else prompt) and returns the boolean.
@@ -5577,7 +5573,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
       // Allow OUR read-only scoped bridge's safe tools (the advertised
       // non-mutating subset) even on a read-only seat — that read/coordination
       // surface is exactly what this seat was given. Without this, Grok asks to
-      // use an agbench-grok__<tool> and the read-only deny below cancels the turn.
+      // use an taskwraith-grok__<tool> and the read-only deny below cancels the turn.
       if (grokScopedBridgeSafeToolRequested(request)) return 'allow'
       if (!grokWriteCapable(payload.approvalMode)) return 'deny'
       const service = grokToolKindToService(request.toolKind)
@@ -5633,7 +5629,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
  * (resolved via `app.getPath('temp')` when Electron is available so
  * macOS sandboxed builds get the right per-app temp dir).
  */
-function claudeAgentbenchMcpConfigPathForRun(runId: string): string {
+function claudeTaskWraithMcpConfigPathForRun(runId: string): string {
   const tempDir = (() => {
     try {
       return app.getPath('temp')
@@ -5644,7 +5640,7 @@ function claudeAgentbenchMcpConfigPathForRun(runId: string): string {
   const safeRunId = String(runId)
     .replace(/[^A-Za-z0-9._-]/g, '_')
     .slice(0, 80)
-  return join(tempDir, `agbench-claude-mcp-${safeRunId}.json`)
+  return join(tempDir, `taskwraith-claude-mcp-${safeRunId}.json`)
 }
 
 function respondToKimiWireRequest(child: ChildProcess, requestId: string | number, result: any) {
@@ -5826,7 +5822,7 @@ async function runKimiWireProvider(
   args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
-  // Phase I4 (Kimi initiator): register the AGBench MCP server with
+  // Phase I4 (Kimi initiator): register the TaskWraith MCP server with
   // Kimi before spawn (idempotent: only re-runs `kimi mcp add` if the
   // broker token rotated since the last registration). Failure is
   // surfaced as a non-fatal warning chip; the Kimi run still launches
@@ -5843,17 +5839,17 @@ async function runKimiWireProvider(
         {
           FORCE_COLOR: '0',
           NO_COLOR: '1',
-          AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
-          AGENTBENCH_RUN_ID: route.appRunId || '',
-          AGENTBENCH_CHAT_ID: route.appChatId || '',
+          TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+          TASKWRAITH_RUN_ID: route.appRunId || '',
+          TASKWRAITH_CHAT_ID: route.appChatId || '',
           // Phase I4 (Kimi initiator): belt-and-braces env stamp on the
           // Kimi CLI process itself. The per-server env block in
-          // ~/.kimi/mcp.json already stamps AGENTBENCH_PARENT_PROVIDER=
+          // ~/.kimi/mcp.json already stamps TASKWRAITH_PARENT_PROVIDER=
           // kimi on the bridge subprocess, but stamping on Kimi's own
           // process env means the bridge inherits the value even on
           // platforms / Kimi internals that strip env on grandchild
           // spawn. Matches the Gemini / Codex / Claude pattern.
-          AGENTBENCH_PARENT_PROVIDER: 'kimi',
+          TASKWRAITH_PARENT_PROVIDER: 'kimi',
           ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
         },
         binaryPath
@@ -6084,8 +6080,8 @@ async function runKimiWireProvider(
               // `MCP_AUTO_ALLOWED_TOOLS` set so the two layers stay in
               // sync as we expand or contract the allowlist.
               if (
-                isAGBenchMcpToolName(kimiToolName) &&
-                MCP_AUTO_ALLOWED_TOOLS.has(kimiToolName as AGBenchMcpToolName)
+                isTaskWraithMcpToolName(kimiToolName) &&
+                MCP_AUTO_ALLOWED_TOOLS.has(kimiToolName as TaskWraithMcpToolName)
               ) {
                 respondToKimiWireRequest(child, message.id, {
                   request_id: message.params?.payload?.id || message.id,
@@ -6275,7 +6271,7 @@ async function runKimiWireProvider(
         method: 'initialize',
         params: {
           protocol_version: wireProtocol.protocolVersion,
-          client: { name: 'AGBench', version: app.getVersion() },
+          client: { name: 'TaskWraith', version: app.getVersion() },
           capabilities: { supports_question: false, supports_plan_mode: true }
         }
       }) + '\n'
@@ -6382,7 +6378,7 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
   // Phase I4 (Kimi initiator): the print-mode fallback also gets the
-  // AGBench MCP registration so a plan-mode read-only Kimi run can
+  // TaskWraith MCP registration so a plan-mode read-only Kimi run can
   // still call delegate_to_subthread when the user explicitly asks
   // for cross-provider work. (Wire mode already ran prepare; if that
   // returned without setting the installed-flag — e.g. broker failure —
@@ -6397,9 +6393,9 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
     // Phase I4: belt-and-braces parent-provider env stamp on the
     // fallback CLI's spawn env. Matches the Wire-mode stamp.
     extraEnv: {
-      AGENTBENCH_PARENT_PROVIDER: 'kimi',
-      AGENTBENCH_RUN_ID: fallbackRoute.appRunId || '',
-      AGENTBENCH_CHAT_ID: fallbackRoute.appChatId || '',
+      TASKWRAITH_PARENT_PROVIDER: 'kimi',
+      TASKWRAITH_RUN_ID: fallbackRoute.appRunId || '',
+      TASKWRAITH_CHAT_ID: fallbackRoute.appChatId || '',
       ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
     }
   })
@@ -6413,7 +6409,7 @@ function getCodexClient(): CodexAppServerClient {
   // toggle in Settings → MCP Bridge takes effect on the NEXT Codex
   // app-server start. We don't restart the running app-server when
   // the toggle flips (that would tear down in-flight threads); the
-  // user reopens Codex (or relaunches AGBench) to pick up the new
+  // user reopens Codex (or relaunches TaskWraith) to pick up the new
   // setting. The Codex MCP integration mirrors the existing Gemini
   // gate (geminiMcpBridgeEnabled) — one user toggle, both providers.
   const settings = AppStore.getSettings()
@@ -6421,7 +6417,7 @@ function getCodexClient(): CodexAppServerClient {
     codexClient.setMcpConfig({
       enabled: true,
       bridgeBinaryPath: process.execPath,
-      bridgeArgs: agentbenchMcpBridgeArgs(),
+      bridgeArgs: taskwraithMcpBridgeArgs(),
       parentProvider: 'codex'
     })
   } else {
@@ -6617,11 +6613,11 @@ function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext |
 }
 
 /**
- * Phase I2: provider-aware MCP tool context resolver. The AGBench
+ * Phase I2: provider-aware MCP tool context resolver. The TaskWraith
  * MCP server is shared across Gemini / Codex / Claude / Kimi (each CLI
- * registers it via `-c mcp_servers.AGBench.*`), and the bridge
+ * registers it via `-c mcp_servers.TaskWraith.*`), and the bridge
  * subprocess stamps `parentProvider` on every broker request based on
- * the `AGENTBENCH_PARENT_PROVIDER` env var. This helper consumes that
+ * the `TASKWRAITH_PARENT_PROVIDER` env var. This helper consumes that
  * stamp and returns the right run-context for the parent provider:
  *
  *  - For Gemini we still go through `getGeminiToolContext` so the
@@ -7501,7 +7497,7 @@ function formatCodexApprovalRequest(method: string, params: any, state?: CodexRu
   ) {
     // Phase J3: route Codex's elicitation/preview for `delegate_to_subthread`
     // to the `subThreadDelegation` service so a user-granted "Allow for
-    // session" on the AGBench delegation modal silently absorbs the
+    // session" on the TaskWraith delegation modal silently absorbs the
     // Codex pre-flight too. Without this mapping the elicitation reads
     // out under the generic `mcpTools` policy and re-prompts every call
     // even after the user has clearly authorised cross-provider work.
@@ -7646,7 +7642,7 @@ function handleCodexServerRequest(message: any) {
   // Phase J3: Codex's MCP elicitation pre-flight (mcpServer/elicitation/request
   // and the older mcp/elicitation/request) also honors session + workspace
   // grants and the global `allow` policy. Without this branch a user who
-  // clicked "Allow for session" on the AGBench subThreadDelegation modal
+  // clicked "Allow for session" on the TaskWraith subThreadDelegation modal
   // would STILL be prompted by Codex's elicitation modal on every later
   // delegate_to_subthread call — leading to the "I have to manually
   // approve every single permission" frustration. The response shape is
@@ -7968,7 +7964,7 @@ async function continueCodexAfterHostRerun(
     continuationState
   )
   const prompt = [
-    'AGBench reran a previously failed shell command once from the app host process after explicit user approval.',
+    'TaskWraith reran a previously failed shell command once from the app host process after explicit user approval.',
     `Command: ${approval.commandText}`,
     `Cwd: ${approval.cwd}`,
     `Exit code: ${result.exitCode ?? (result.timedOut ? 'timeout' : 'unknown')}`,
@@ -8271,7 +8267,7 @@ function runCodexExecFallback(
     env: createCliEnv({
       FORCE_COLOR: '0',
       NO_COLOR: '1',
-      AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
+      TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
     })
   })
   codexExecProcess = child
@@ -8344,12 +8340,12 @@ function runCodexExecFallback(
 }
 
 /**
- * Other well-known codex install locations that are NOT on AGBench's PATH
+ * Other well-known codex install locations that are NOT on TaskWraith's PATH
  * search but that a user is likely to also have. Today this is the official
  * Codex.app bundle, whose CLI (e.g. 0.136.0-alpha.2) is frequently NEWER than
- * the homebrew `codex` (0.128.0) AGBench resolves — and writes config values
+ * the homebrew `codex` (0.128.0) TaskWraith resolves — and writes config values
  * the older CLI rejects. We compare versions and, if one of these is newer
- * than the binary AGBench would spawn, emit a single non-blocking hint.
+ * than the binary TaskWraith would spawn, emit a single non-blocking hint.
  *
  * Conservative by design: this DETECTS + WARNS only. We deliberately do NOT
  * auto-switch the binary — different codex versions ship different flags and
@@ -8369,7 +8365,7 @@ async function maybeWarnNewerCodexBinary(
 
     let newest: { path: string; version: string } | null = null
     for (const candidate of KNOWN_OFF_PATH_CODEX_BINARIES) {
-      // Skip the candidate if it IS the binary AGBench already uses (e.g. PATH
+      // Skip the candidate if it IS the binary TaskWraith already uses (e.g. PATH
       // happens to point at it) — no point warning about itself.
       if (candidate === resolved.binaryPath) continue
       let exists = false
@@ -8385,7 +8381,7 @@ async function maybeWarnNewerCodexBinary(
         binaryPath: candidate,
         source: 'common'
       })
-      // candidate strictly newer than the one AGBench uses?
+      // candidate strictly newer than the one TaskWraith uses?
       if (compareCodexVersions(candidateVersion, usedVersion) > 0) {
         // And the newest among multiple candidates.
         if (!newest || compareCodexVersions(candidateVersion, newest.version) > 0) {
@@ -8399,7 +8395,7 @@ async function maybeWarnNewerCodexBinary(
     sendAgentCompatError(
       sender,
       'codex',
-      `A newer codex CLI (${newest.version.trim()}) is installed at ${newest.path} than the one AGBench uses ` +
+      `A newer codex CLI (${newest.version.trim()}) is installed at ${newest.path} than the one TaskWraith uses ` +
         `(${usedVersion.trim()} at ${resolved.binaryPath}). The newer CLI can write ~/.codex/config.toml values the ` +
         'older one rejects (causing run failures). Consider `brew upgrade codex` to match versions.',
       route
@@ -8414,7 +8410,7 @@ async function runCodexProvider(
   payload: AgentRunPayload
 ): Promise<void> {
   // One-time, best-effort hint when a NEWER codex CLI is installed than the one
-  // AGBench will actually spawn (the exact mismatch that lets Codex.app write a
+  // TaskWraith will actually spawn (the exact mismatch that lets Codex.app write a
   // config the homebrew CLI rejects). Detection + warning only — never auto-switch.
   void maybeWarnNewerCodexBinary(event.sender, routeWithRunId('codex', payload))
   try {
@@ -8598,9 +8594,9 @@ function geminiApiProviderDeps() {
     decryptApiKey,
     getMcpToolDefinitions: mcpToolDefinitions,
     executeMcpTool: async (toolName: string, args: unknown, route: AgentRunRoute | null) => {
-      if (!isAGBenchMcpToolName(toolName)) {
+      if (!isTaskWraithMcpToolName(toolName)) {
         return {
-          text: `Unknown AGBench MCP tool: ${toolName}`,
+          text: `Unknown TaskWraith MCP tool: ${toolName}`,
           isError: true
         }
       }
@@ -8687,7 +8683,7 @@ async function runGeminiProvider(
     sendAgentCompatError(
       event.sender,
       'gemini',
-      `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because AGBench service settings block write-capable Gemini modes.`,
+      `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because TaskWraith service settings block write-capable Gemini modes.`,
       route
     )
   }
@@ -8811,28 +8807,28 @@ async function runGeminiProvider(
       FORCE_COLOR: '0',
       NO_COLOR: '1',
       ...resolveGeminiAuthProfileEnv(payload.geminiAuthProfileId),
-      // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
-      // connecting back to the broker. When write-capable AGBench MCP tools are
+      // Gemini's sandbox prevents the TaskWraith MCP bridge subprocess from
+      // connecting back to the broker. When write-capable TaskWraith MCP tools are
       // enabled, keep both the CLI --sandbox flag and GEMINI_SANDBOX env disabled.
       // The flagged read-only-advertise path drops it too (safe subset only).
       ...(requiresGeminiWriteTools || geminiReadOnlyAdvertise ? {} : { GEMINI_SANDBOX: 'true' }),
-      AGENTBENCH_RUN_ID: route.appRunId || '',
-      AGENTBENCH_CHAT_ID: route.appChatId || '',
-      AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+      TASKWRAITH_RUN_ID: route.appRunId || '',
+      TASKWRAITH_CHAT_ID: route.appChatId || '',
+      TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
       // Phase I2: every CLI spawn now carries the parent provider so
-      // the AGBench MCP bridge subprocess (inherited via env) stamps
+      // the TaskWraith MCP bridge subprocess (inherited via env) stamps
       // broker requests with the right routing key. Codex's persistent
-      // app-server sets this via `-c mcp_servers.AGBench.env` in
+      // app-server sets this via `-c mcp_servers.TaskWraith.env` in
       // CodexAppServerClient.
-      AGENTBENCH_PARENT_PROVIDER: 'gemini',
+      TASKWRAITH_PARENT_PROVIDER: 'gemini',
       // Recent Gemini CLI versions tightened the headless trust check:
       // even when the user has trusted the directory interactively, a
       // headless spawn fails with "Gemini CLI is not running in a
       // trusted directory" unless --skip-trust is passed OR this env
-      // var is set. AGBench has already validated workspace trust
+      // var is set. TaskWraith has already validated workspace trust
       // upstream (prepareGeminiMcpBridgeForRun + the run dispatcher's
       // approval gate), so passing this through is safe — we're only
-      // bypassing Gemini's redundant second-layer check, not AGBench's
+      // bypassing Gemini's redundant second-layer check, not TaskWraith's
       // own trust enforcement. Docs:
       // https://geminicli.com/docs/cli/trusted-folders/#headless-and-automated-environments
       GEMINI_CLI_TRUST_WORKSPACE: 'true'
@@ -8845,7 +8841,7 @@ async function runGeminiProvider(
   // `$HOME` (what `globalRunCwd()` set on payload.workspace) to a
   // dedicated isolated dir. Gemini CLI scans its cwd recursively
   // at startup (ripgrep → GrepTool fallback). Scanning `$HOME`
-  // hangs the process for 3+ minutes; scanning an empty AGBench-
+  // hangs the process for 3+ minutes; scanning an empty TaskWraith-
   // managed dir completes instantly. We deliberately do NOT
   // overwrite `payload.workspace` itself — downstream sites
   // (MCP bridge setup, image-attachment dirname resolution,
@@ -9008,7 +9004,7 @@ async function runGeminiProvider(
     // Phase I3.x — detect-and-redirect heuristic. If Gemini emits an
     // invoke_agent tool_call when the user asked for cross-provider
     // delegation, surface a single non-blocking warning chip so the
-    // user understands the call didn't reach AGBench's MCP bridge.
+    // user understands the call didn't reach TaskWraith's MCP bridge.
     maybeEmitGeminiCrossProviderWarning(event.sender, route, payload.prompt, text)
   })
 
@@ -9600,7 +9596,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
 
   return buildProductOperationsStatus({
     updateChannel: settings.updateChannel || 'stable',
-    appName: app.getName() || 'AGBench',
+    appName: app.getName() || 'TaskWraith',
     appVersion: app.getVersion() || 'unknown',
     isPackaged: app.isPackaged,
     appPath: app.getAppPath(),
@@ -9655,8 +9651,8 @@ async function exportProductDiagnostics(
         throw new Error('No application window is available for diagnostics export.')
       }
       const result = await dialog.showSaveDialog(mainWindow, {
-        title: 'Export AGBench Diagnostics',
-        defaultPath: `AGBench-Diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+        title: 'Export TaskWraith Diagnostics',
+        defaultPath: `TaskWraith-Diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
         filters: [{ name: 'JSON diagnostics', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -9766,7 +9762,7 @@ async function readGeminiCapabilitySection(
 }
 
 function geminiMcpSocketPath(): string {
-  return join(app.getPath('userData'), 'agentbench-gemini-mcp.sock')
+  return join(app.getPath('userData'), 'taskwraith-gemini-mcp.sock')
 }
 
 function geminiUserSettingsPath(): string {
@@ -9895,7 +9891,7 @@ function ensureMcpBrowserWindow(args: Record<string, any> = {}): BrowserWindow {
   const win = new BrowserWindow({
     width: clampInteger(args.width, 1280, 320, 3840),
     height: clampInteger(args.height, 800, 240, 2160),
-    title: 'AGBench MCP Browser',
+    title: 'TaskWraith MCP Browser',
     show: args.show === false ? false : true,
     backgroundColor: '#111111',
     webPreferences: {
@@ -10027,7 +10023,7 @@ function mcpBrowserConsoleResult(args: Record<string, any>): McpToolExecutionRes
 }
 
 async function executeBrowserTool(
-  toolName: AGBenchMcpToolName,
+  toolName: TaskWraithMcpToolName,
   args: Record<string, any>,
   context: GeminiToolContext
 ): Promise<McpToolExecutionResult> {
@@ -10121,7 +10117,7 @@ async function executeSwitchAuthProfile(args: Record<string, any>) {
 }
 
 async function executeGeminiMcpTool(
-  toolName: AGBenchMcpToolName,
+  toolName: TaskWraithMcpToolName,
   rawArgs: unknown,
   route?: AgentRunRoute | null,
   parentProvider: ProviderId = 'gemini'
@@ -10132,8 +10128,8 @@ async function executeGeminiMcpTool(
     const activeCount = runManager.getActiveByProvider(parentProvider).length
     const error =
       !hasExplicitRoute && activeCount > 1
-        ? `AGBench received an unrouted ${providerLabel(parentProvider)} MCP tool call while ${activeCount} ${providerLabel(parentProvider)} runs are active. Tool execution was blocked to avoid applying it to the wrong run.`
-        : `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`
+        ? `TaskWraith received an unrouted ${providerLabel(parentProvider)} MCP tool call while ${activeCount} ${providerLabel(parentProvider)} runs are active. Tool execution was blocked to avoid applying it to the wrong run.`
+        : `TaskWraith has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`
     return {
       ...mcpStructuredJsonResult({
         ok: false,
@@ -10236,7 +10232,7 @@ async function executeGeminiMcpTool(
       ok: false,
       tool: toolName,
       service: approvalPreview.service,
-      error: `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
+      error: `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by TaskWraith.`
     })
     emitMcpToolTranscriptEvent({
       type: 'tool_result',
@@ -10363,7 +10359,7 @@ async function executeGeminiMcpTool(
       if (!ensembleWakeupsEnabled()) {
         result = {
           ok: false,
-          error: 'schedule_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+          error: 'schedule_wakeup is behind the TASKWRAITH_ENSEMBLE_WAKEUPS safety flag.'
         }
       } else {
         const callingChat = context.appChatId ? AppStore.getChat(context.appChatId) : undefined
@@ -10401,7 +10397,7 @@ async function executeGeminiMcpTool(
       if (!ensembleWakeupsEnabled()) {
         result = {
           ok: false,
-          error: 'cancel_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+          error: 'cancel_wakeup is behind the TASKWRAITH_ENSEMBLE_WAKEUPS safety flag.'
         }
       } else {
         const callingChat = context.appChatId ? AppStore.getChat(context.appChatId) : undefined
@@ -10780,7 +10776,7 @@ async function executeGeminiMcpTool(
         // can adjust + continue the parent turn without delegating.
         // No sub-thread created, no run dispatched, no audit event.
         const declineText =
-          `Sub-thread delegation to ${targetProviderLabel} was declined by AGBench policy. ` +
+          `Sub-thread delegation to ${targetProviderLabel} was declined by TaskWraith policy. ` +
           `${parentProviderLabel} continues without delegating; ` +
           `the user can change the policy in Settings → Behavior → Agentic Services → Sub-thread delegation.`
         emitMcpToolTranscriptEvent({
@@ -10854,7 +10850,7 @@ async function executeGeminiMcpTool(
         // (could be Gemini, Codex, Claude or Kimi), so cross-provider
         // delegation chains are traceable. Source stays
         // 'mcp:delegate_to_subthread' since the tool lives on the
-        // shared AGBench MCP server across all CLIs.
+        // shared TaskWraith MCP server across all CLIs.
         //
         // Phase J2: same event kind for spawn AND recall to avoid
         // adding a new RunEventKind (which would ripple through the
@@ -11063,7 +11059,7 @@ function mcpToolDefinitions() {
     {
       name: 'run_shell_command',
       description:
-        'Run a shell command in the active AGBench workspace after AGBench approval policy allows it.',
+        'Run a shell command in the active TaskWraith workspace after TaskWraith approval policy allows it.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -11084,7 +11080,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'write_file',
-      description: 'Write a UTF-8 text file inside the active AGBench workspace after approval.',
+      description: 'Write a UTF-8 text file inside the active TaskWraith workspace after approval.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -11103,7 +11099,7 @@ function mcpToolDefinitions() {
     {
       name: 'replace',
       description:
-        'Replace text in a UTF-8 file inside the active AGBench workspace after approval.',
+        'Replace text in a UTF-8 file inside the active TaskWraith workspace after approval.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -11124,7 +11120,7 @@ function mcpToolDefinitions() {
     {
       name: 'read_file',
       description:
-        'Read a UTF-8 text file inside the active AGBench workspace after tool policy allows it.',
+        'Read a UTF-8 text file inside the active TaskWraith workspace after tool policy allows it.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -11142,7 +11138,7 @@ function mcpToolDefinitions() {
     {
       name: 'list_directory',
       description:
-        'List a directory inside the active AGBench workspace after tool policy allows it.',
+        'List a directory inside the active TaskWraith workspace after tool policy allows it.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -11443,7 +11439,7 @@ function mcpToolDefinitions() {
     {
       name: 'attached_window_capture',
       description:
-        "Capture one frame of the macOS window the user attached via the AGBench picker. Returns a PNG (as an image content block) plus optional local Vision OCR. Fails fast with a structured error when no window is attached — never enumerates windows the user hasn't picked. The user must click the Attach button (or use the hotkey) first; you cannot initiate the pick.",
+        "Capture one frame of the macOS window the user attached via the TaskWraith picker. Returns a PNG (as an image content block) plus optional local Vision OCR. Fails fast with a structured error when no window is attached — never enumerates windows the user hasn't picked. The user must click the Attach button (or use the hotkey) first; you cannot initiate the pick.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -11829,7 +11825,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_app_capabilities',
       description:
-        'Return detailed AGBench creative app adapter capabilities for Final Cut Pro, Logic Pro, and Blender, including safe transports, approval risk tiers, prompts, and known limitations.',
+        'Return detailed TaskWraith creative app adapter capabilities for Final Cut Pro, Logic Pro, and Blender, including safe transports, approval risk tiers, prompts, and known limitations.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -11892,7 +11888,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_timeline_ir',
       description:
-        'Parse a workspace FCPXML document into the compact AGBench timeline IR for preview, diff, and plan workflows. Does not import or mutate Final Cut Pro projects.',
+        'Parse a workspace FCPXML document into the compact TaskWraith timeline IR for preview, diff, and plan workflows. Does not import or mutate Final Cut Pro projects.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -11938,7 +11934,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_timeline_import',
       description:
-        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval.',
+        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in TaskWraith asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -12067,7 +12063,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_midi_dispatch',
       description:
-        'Send a MIDI event through AGBench\'s virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI receiver) can route this source as input. Supported eventTypes: note_on, note_off, cc, program_change, transport_play, transport_stop. Requires user approval; approval is cacheable per eventType for the session.',
+        'Send a MIDI event through TaskWraith\'s virtual "TaskWraith" Core MIDI source. Logic Pro (or any MIDI receiver) can route this source as input. Supported eventTypes: note_on, note_off, cc, program_change, transport_play, transport_stop. Requires user approval; approval is cacheable per eventType for the session.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -12164,7 +12160,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'create_handoff_card',
-      description: 'Create an AGBench handoff card from the active chat/run.',
+      description: 'Create an TaskWraith handoff card from the active chat/run.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -12366,7 +12362,7 @@ function mcpToolDefinitions() {
       // sidebar or wait for the returned sub-thread result card.
       name: 'delegate_to_subthread',
       description:
-        'Send a prompt to a sub-thread on a chosen AGBench provider (gemini/codex/claude/kimi). ' +
+        'Send a prompt to a sub-thread on a chosen TaskWraith provider (gemini/codex/claude/kimi). ' +
         'By DEFAULT this spawns a NEW context-isolated sub-thread under the active parent — the returned tool_result includes the sub-thread id. ' +
         'To CONTINUE an existing completed/returned sub-thread (back-and-forth conversation with the same delegated agent), pass that id as `subThreadId` on subsequent calls. ' +
         'Recall is opt-in: omitting `subThreadId` always spawns fresh. ' +
@@ -12384,7 +12380,7 @@ function mcpToolDefinitions() {
           provider: {
             type: 'string',
             enum: availableProviderIds(),
-            description: 'Which AGBench provider should run the sub-thread.'
+            description: 'Which TaskWraith provider should run the sub-thread.'
           },
           prompt: {
             type: 'string',
@@ -12415,7 +12411,7 @@ function startGeminiMcpBridgeProcess(): void {
   // so the scope is atomic with the spawn (argv travels with the process; we do
   // not depend on the parent forwarding env to the MCP child).
   if (process.argv.includes(GEMINI_MCP_SAFE_SUBSET_ARG)) {
-    process.env.AGENTBENCH_MCP_SAFE_SUBSET = '1'
+    process.env.TASKWRAITH_MCP_SAFE_SUBSET = '1'
   }
   startGeminiMcpBridgeProcessWithDeps({
     getDefaultSocketPath: () => geminiMcpSocketPath(),
@@ -12598,7 +12594,7 @@ function appendGeminiCliSessionArgs(
   resumeSessionId?: string | null,
   checkpointingEnabled: boolean = false,
   worktree: GeminiWorktreeLaunchOption = null,
-  allowAgentbenchMcp: boolean = false,
+  allowTaskWraithMcp: boolean = false,
   externalPathGrants?: ExternalPathGrant[],
   // 1.0.72 — flagged read-only advertise: advertise the safe subset + drop the
   // seatbelt for a plan-mode run (see geminiReadOnlyMcpAdvertiseEnabled).
@@ -12618,14 +12614,14 @@ function appendGeminiCliSessionArgs(
   // matches Codex / Claude / Kimi enforcement.
   args.push(...externalPathGrantsToGeminiIncludeDirArgs(externalPathGrants))
 
-  // Sandbox vs. AGBench MCP bridge: Gemini CLI's `--sandbox` flag wraps
+  // Sandbox vs. TaskWraith MCP bridge: Gemini CLI's `--sandbox` flag wraps
   // the agent in macOS `sandbox-exec` with a seatbelt profile that
-  // restricts subprocess spawning. That blocks the AGBench MCP
+  // restricts subprocess spawning. That blocks the TaskWraith MCP
   // bridge from launching at session init, leaving Gemini-CLI with a
-  // dead transport and every `AGBench__*` tool call returning
+  // dead transport and every `TaskWraith__*` tool call returning
   // "Not connected" to the agent (the user reproduced this with
   // delegate_to_subthread on 2026-05-16). Skip sandboxing when the MCP
-  // bridge is enabled — AGBench's broker-level approval gates already
+  // bridge is enabled — TaskWraith's broker-level approval gates already
   // mediate every tool call (file edits, shell commands, sub-thread
   // delegation), giving us equivalent isolation through a different
   // mechanism. For read-only Gemini runs (where MCP isn't registered)
@@ -12633,31 +12629,31 @@ function appendGeminiCliSessionArgs(
   // path.
   //
   // KNOWN LIMITATION (1.0.72) — because the seatbelt blocks the bridge
-  // subprocess, Gemini in plan/read-only mode has NO AGBench MCP tools,
+  // subprocess, Gemini in plan/read-only mode has NO TaskWraith MCP tools,
   // including the non-mutating `ask_user_question` / `ensemble_yield` that
   // Codex, Claude and Kimi keep available in plan mode. The deferred fix is to
   // swap this seatbelt for a strict read-only `--allowed-tools` allowlist
   // (advertise only the non-mutating subset; keep write/shell unadvertised AND
   // host-gated) and verify read-only Gemini still cannot write natively — a
   // deliberate, write-verified follow-up. As of 1.0.72 a FLAGGED opt-in path
-  // (readOnlyMcpAdvertise, gated on AGBENCH_GEMINI_READONLY_MCP, default OFF)
+  // (readOnlyMcpAdvertise, gated on TASKWRAITH_GEMINI_READONLY_MCP, default OFF)
   // does exactly this — advertises the safe subset + drops the seatbelt —
   // pending the runtime write-verification.
   // (Grok and Cursor share this plan-mode gap structurally: their CLIs expose
-  // no per-run MCP in plan mode at all, so it can't be closed AGBench-side.)
+  // no per-run MCP in plan mode at all, so it can't be closed TaskWraith-side.)
   //
   // SECURITY: dropping --sandbox removes the ONLY containment for Gemini's NATIVE
   // write/shell, so the read-only-advertise path stays behind the default-OFF
   // flag until verified. Default OFF ⇒ unchanged (seatbelt on, no read-only
   // bridge). The advertised set is the non-mutating safe subset only.
-  const advertiseBridge = allowAgentbenchMcp || readOnlyMcpAdvertise
+  const advertiseBridge = allowTaskWraithMcp || readOnlyMcpAdvertise
   if (!advertiseBridge) {
     args.push('--sandbox')
   }
 
   if (advertiseBridge) {
     args.push('--allowed-mcp-server-names', GEMINI_MCP_SERVER_NAME)
-    const advertisedToolNames = allowAgentbenchMcp
+    const advertisedToolNames = allowTaskWraithMcp
       ? GEMINI_MCP_ALLOWED_TOOL_NAMES
       : GEMINI_MCP_READ_ONLY_TOOL_NAMES
     for (const toolName of advertisedToolNames) {
@@ -12991,10 +12987,10 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
     !settings.reduceTransparency
   const title =
     kind === 'file-editor'
-      ? 'AGBench File Editor'
+      ? 'TaskWraith File Editor'
       : kind === 'diff-studio'
-        ? 'AGBench Diff Studio'
-        : 'AGBench Chat'
+        ? 'TaskWraith Diff Studio'
+        : 'TaskWraith Chat'
   const win = new BrowserWindow({
     width: kind === 'file-editor' ? 980 : kind === 'diff-studio' ? 1120 : 900,
     height: kind === 'file-editor' ? 720 : 760,
@@ -13077,7 +13073,7 @@ if (isGeminiMcpBridgeProcess) {
      * Suppresses the recurring NSMenu warning:
      *   "representedObject is not a WeakPtrToElectronMenuModelAsNSObject"
      *
-     * Investigation finding: AGBench never constructed an application
+     * Investigation finding: TaskWraith never constructed an application
      * menu (no `Menu.buildFromTemplate` / `setApplicationMenu` calls
      * anywhere in src/). Electron auto-generated a default macOS
      * menu bar, and its internal NSMenu bridge emits the warning
@@ -13090,7 +13086,7 @@ if (isGeminiMcpBridgeProcess) {
      * fields, no non-standard MenuItem props). The role-based items
      * use Electron's own bridge representation, which the NSMenu
      * shim accepts without warning. We get the standard
-     * AGBench / File / Edit / View / Window / Help menus back,
+     * TaskWraith / File / Edit / View / Window / Help menus back,
      * just sourced from us explicitly rather than
      * auto-generated.
      */
@@ -13196,19 +13192,19 @@ if (isGeminiMcpBridgeProcess) {
     // Phase B1: centralize run-event fan-out via the bus. The Electron IPC
     // sink replays today's "send to the originating WebContents" behavior, so
     // the renderer sees an identical event stream. The debug-logger sink
-    // (gated by AGBENCH_DEBUG_BUS) is the proof of fan-out: when enabled, you
+    // (gated by TASKWRAITH_DEBUG_BUS) is the proof of fan-out: when enabled, you
     // can see every published event in the main-process console without
     // touching publish call sites. Future remote-bridge sinks (Phase C) plug
     // in here too.
     runEventBus.subscribe(makeElectronIpcSink())
-    if (process.env.AGBENCH_DEBUG_BUS === '1' || process.env.AGBENCH_DEBUG_BUS === 'true') {
+    if (process.env.TASKWRAITH_DEBUG_BUS === '1' || process.env.TASKWRAITH_DEBUG_BUS === 'true') {
       runEventBus.subscribe(makeDebugLoggerSink())
     }
 
     // Phase C4: workspace allowlist is constructed unconditionally so the
     // admin IPC handlers (`bridge-allowlist-*`) can manage entries even when
     // the daemon itself is not yet running. The router and daemon spawn below
-    // are still gated by `AGBENCH_BRIDGE_DAEMON`.
+    // are still gated by `TASKWRAITH_BRIDGE_DAEMON`.
     const bridgeAllowlistPath = join(app.getPath('userData'), 'bridge', 'remote-workspaces.json')
     const bridgeAllowlist = new RemoteWorkspaceAllowlist({
       storagePath: bridgeAllowlistPath,
@@ -13281,8 +13277,8 @@ if (isGeminiMcpBridgeProcess) {
       log: (line) => console.log(line)
     })
 
-    // Phase E2: AgbenchBridge daemon supervisor. Default-on by setting,
-    // with AGBENCH_BRIDGE_DAEMON preserving explicit force-on/force-off
+    // Phase E2: TaskWraithBridge daemon supervisor. Default-on by setting,
+    // with TASKWRAITH_BRIDGE_DAEMON preserving explicit force-on/force-off
     // override semantics for staging and emergency disable.
     let bridgeDaemon: BridgeDaemonClient | null = null
     let bridgeBroadcaster: BridgeBroadcaster | null = null
@@ -13624,7 +13620,7 @@ if (isGeminiMcpBridgeProcess) {
       if (bridgeDaemonStartPromise || bridgeDaemon?.status().running) return
       bridgeDaemonLastError = null
       // Phase C3.6: daemon → Electron request router. Default policy denies
-      // every action ack request; set AGBENCH_BRIDGE_PERMISSIVE=1 for local
+      // every action ack request; set TASKWRAITH_BRIDGE_PERMISSIVE=1 for local
       // end-to-end testing. Phase C4: also consults the workspace allowlist
       // for prepare-start-turn decisions. Phase C-late: dispatches accepted
       // actions through the executor for real effect (cancel run, etc.).
@@ -13741,7 +13737,7 @@ if (isGeminiMcpBridgeProcess) {
     const reconcileBridgeDaemonFromSettings = (): void => {
       const resolution = resolveDaemonShouldRun(
         AppStore.getSettings().bridgeDaemonEnabled,
-        process.env.AGBENCH_BRIDGE_DAEMON
+        process.env.TASKWRAITH_BRIDGE_DAEMON
       )
       if (resolution.shouldRun) {
         startBridgeDaemon()
@@ -13753,7 +13749,7 @@ if (isGeminiMcpBridgeProcess) {
     const bridgeDaemonStatus = () => {
       const resolution = resolveDaemonShouldRun(
         AppStore.getSettings().bridgeDaemonEnabled,
-        process.env.AGBENCH_BRIDGE_DAEMON
+        process.env.TASKWRAITH_BRIDGE_DAEMON
       )
       const nativeCapabilities = getNativeCapabilitySnapshot()
       const status = bridgeDaemon?.status() || { running: false, startedAt: null, pid: null }
@@ -13851,10 +13847,10 @@ if (isGeminiMcpBridgeProcess) {
 
     // Phase G2: auto-update wiring. Default-off (env override available).
     // Only enabled in packaged builds AND when updateChannel != 'debug'.
-    // The `AGBENCH_AUTO_UPDATE` env var forces enable/disable for
+    // The `TASKWRAITH_AUTO_UPDATE` env var forces enable/disable for
     // staging tests:
-    //   AGBENCH_AUTO_UPDATE=off  → forced disabled (even in production)
-    //   AGBENCH_AUTO_UPDATE=on   → forced enabled (even in dev — useful
+    //   TASKWRAITH_AUTO_UPDATE=off  → forced disabled (even in production)
+    //   TASKWRAITH_AUTO_UPDATE=on   → forced enabled (even in dev — useful
     //                              for testing the checker against a
     //                              local update feed)
     //   unset                    → enabled when app.isPackaged + channel != 'debug'
@@ -13864,7 +13860,7 @@ if (isGeminiMcpBridgeProcess) {
       }
     })
     updateServiceRef = updateService
-    const autoUpdateForce = process.env.AGBENCH_AUTO_UPDATE
+    const autoUpdateForce = process.env.TASKWRAITH_AUTO_UPDATE
     const autoUpdateEnabledByDefault = app.isPackaged
     const autoUpdateEnabled =
       autoUpdateForce === 'on'
@@ -15546,7 +15542,7 @@ if (isGeminiMcpBridgeProcess) {
       try {
         let command: string
         let label: string
-        let postscript = `${action === 'login' ? 'Sign-in' : 'Sign-out'} finished (exit $status). Close this window and return to AGBench.`
+        let postscript = `${action === 'login' ? 'Sign-in' : 'Sign-out'} finished (exit $status). Close this window and return to TaskWraith.`
         if (provider === 'codex') {
           label = 'Codex'
           const resolved = await resolveCliProviderBinary('codex')
@@ -15577,10 +15573,10 @@ if (isGeminiMcpBridgeProcess) {
         const script =
           [
             '#!/bin/zsh',
-            `# Generated by AGBench — interactive provider ${action}.`,
+            `# Generated by TaskWraith — interactive provider ${action}.`,
             '[ -f "$HOME/.zprofile" ] && source "$HOME/.zprofile" 2>/dev/null',
             '[ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" 2>/dev/null',
-            `echo "${action === 'login' ? 'Signing in to' : 'Signing out of'} ${label} for AGBench…"`,
+            `echo "${action === 'login' ? 'Signing in to' : 'Signing out of'} ${label} for TaskWraith…"`,
             `echo "> ${command}"`,
             'echo ""',
             command,
@@ -15869,7 +15865,7 @@ if (isGeminiMcpBridgeProcess) {
       recoverPersistedEnsembleWakeups()
       // 1.0.5-EW37 — Solo wakeups gated behind the same flag as
       // ensemble for now. Once the feature is considered stable
-      // both lanes will move out from behind AGBENCH_ENSEMBLE_WAKEUPS
+      // both lanes will move out from behind TASKWRAITH_ENSEMBLE_WAKEUPS
       // together.
       recoverPersistedSoloChatWakeups()
     }
@@ -16276,7 +16272,7 @@ if (isGeminiMcpBridgeProcess) {
         if (effectiveApprovalMode !== approvalMode) {
           event.sender.send(
             'gemini-session-data',
-            `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because AGBench service settings block write-capable Gemini modes.\r\n`
+            `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because TaskWraith service settings block write-capable Gemini modes.\r\n`
           )
         }
         const resumePolicy = resolveGeminiCliResumePolicy(effectiveApprovalMode, resumeSessionId)
@@ -16349,19 +16345,19 @@ if (isGeminiMcpBridgeProcess) {
           {
             FORCE_COLOR: '1',
             ...resolveGeminiAuthProfileEnv(getDefaultGeminiAuthProfileId()),
-            // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
+            // Gemini's sandbox prevents the TaskWraith MCP bridge subprocess from
             // connecting back to the broker. Keep it disabled whenever this session
-            // exposes write-capable AGBench MCP tools. The flagged read-only-
+            // exposes write-capable TaskWraith MCP tools. The flagged read-only-
             // advertise path drops it too (safe subset only).
             ...(requiresGeminiWriteTools || geminiReadOnlyAdvertise
               ? {}
               : { GEMINI_SANDBOX: 'true' }),
-            AGENTBENCH_RUN_ID: routedSession.appRunId || '',
-            AGENTBENCH_CHAT_ID: routedSession.appChatId || '',
+            TASKWRAITH_RUN_ID: routedSession.appRunId || '',
+            TASKWRAITH_CHAT_ID: routedSession.appChatId || '',
             // Phase I2: tag the Gemini interactive session so the bridge
             // subprocess stamps broker requests as parent='gemini'. Without
             // this the new I2 default could mis-route session tool calls.
-            AGENTBENCH_PARENT_PROVIDER: 'gemini'
+            TASKWRAITH_PARENT_PROVIDER: 'gemini'
           },
           resolved.binaryPath
         )
@@ -16547,7 +16543,7 @@ if (isGeminiMcpBridgeProcess) {
         if (!allowed) {
           event.sender.send(
             'pty-data',
-            'Terminal start denied by AGBench approval policy.\r\n',
+            'Terminal start denied by TaskWraith approval policy.\r\n',
             ptySessionId
           )
           event.sender.send('pty-exit', -1, ptySessionId)

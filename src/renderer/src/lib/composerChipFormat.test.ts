@@ -176,7 +176,7 @@ describe('formatComposerModelChip', () => {
     ).toBe('K2.6 Thinking')
   })
 
-  it('AGBench native shell + codex provider falls back to "GPT-5.5 · High"', () => {
+  it('TaskWraith native shell + codex provider falls back to "GPT-5.5 · High"', () => {
     expect(
       formatComposerModelChip({
         provider: 'codex',

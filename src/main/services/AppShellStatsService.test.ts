@@ -59,7 +59,7 @@ describe('collectAppShellStatsSnapshot', () => {
 })
 
 describe('AppShellStatsService', () => {
-  it('injects the active AGBench thread count into published snapshots', async () => {
+  it('injects the active TaskWraith thread count into published snapshots', async () => {
     const service = new AppShellStatsService({
       getAppMetrics: () => [],
       getTotalMemoryBytes: () => 1,
