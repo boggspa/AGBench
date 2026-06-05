@@ -1677,7 +1677,9 @@
 .app-inspector,
 .app-file-editor {
   background-image: var(--theme-gradient-panel);
-  border-left-color: color-mix(in srgb, var(--theme-border-accent) 74%, transparent);
+  /* Full-perimeter accent (not a left-edge nail) — matches the native_glass
+   * variant below which already uses border-color. */
+  border-color: color-mix(in srgb, var(--theme-border-accent) 74%, transparent);
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] :is(.app-inspector, .app-file-editor) {

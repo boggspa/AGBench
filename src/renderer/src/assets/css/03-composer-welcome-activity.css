@@ -6203,11 +6203,6 @@ button.diff-file-row {
   to   { transform: rotate(360deg); }
 }
 
-@keyframes activity-border-pulse {
-  from { border-left-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-  to   { border-left-color: var(--accent); }
-}
-
 /* Phase L3 slice 4 — stamp animation on status transition. Triggered
  * by ActivityRow adding `.activity-status-stamping` for ~260ms when
  * the activity transitions running → success/warning/error. The
@@ -6970,8 +6965,8 @@ button.diff-file-row {
   outline: none;
 }
 
-/* Small dot pulse for inline running/pending rows. Replaces the heavier
- * `activity-border-pulse` border animation that only the card variant uses. */
+/* Small dot pulse for inline running/pending rows (replaced an earlier
+ * left-border pulse animation, since removed). */
 .activity-row-inline.is-pulsing .activity-category-pip {
   animation: activity-inline-pip-pulse 1.1s ease-in-out infinite;
 }
