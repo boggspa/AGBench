@@ -9530,9 +9530,14 @@ function migrateLegacyUserDataSync(): void {
     const newDir = app.getPath('userData')
     const marker = join(newDir, '.taskwraith-userdata-migration')
     if (fsSync.existsSync(marker)) return
+    // A profile counts as "real" if it has ANY of these — broader than
+    // settings.json alone, so a user who has chats but never changed a setting
+    // is still detected (and fully migrated) rather than silently skipped.
+    const profileMarkers = ['settings.json', 'chats', 'usage.json', 'workspaces.json']
+    const hasProfile = (dir: string): boolean =>
+      profileMarkers.some((name) => fsSync.existsSync(join(dir, name)))
     // Only seed a FRESH TaskWraith profile — never migrate over real data.
-    const established = fsSync.existsSync(join(newDir, 'settings.json'))
-    if (!established) {
+    if (!hasProfile(newDir)) {
       const parent = dirname(newDir)
       // Volatile Chromium/runtime state that should regenerate, not carry over.
       const skipTop = new Set([
@@ -9550,7 +9555,7 @@ function migrateLegacyUserDataSync(): void {
       for (const legacyName of ['AGBench', 'agbench']) {
         const oldDir = join(parent, legacyName)
         if (oldDir === newDir) continue
-        if (!fsSync.existsSync(join(oldDir, 'settings.json'))) continue
+        if (!hasProfile(oldDir)) continue
         fsSync.cpSync(oldDir, newDir, {
           recursive: true,
           force: false,
