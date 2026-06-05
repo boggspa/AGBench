@@ -5816,7 +5816,6 @@
   padding: var(--space-sm) var(--space-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  border-left: 2px solid transparent;
   transition: background 0.1s ease;
 }
 
@@ -5831,7 +5830,8 @@
 .diff-file-row:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
 .diff-file-row.selected {
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-left-color: var(--accent);
+  /* Full-perimeter rim (not a left-edge sliver) for the selected diff row. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 button.diff-file-row {

@@ -533,7 +533,8 @@
 
 .app-inspector .diff-file-row.selected {
   background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border-left-color: var(--accent);
+  /* Full-perimeter rim (not a left-edge sliver) — matches the base diff row. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .app-inspector .diff-file-row.selected .diff-file-name {
@@ -656,7 +657,7 @@
     color-mix(in srgb, var(--accent) 7%, transparent) 65%,
     transparent 100%
   );
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent);
   color: var(--text-primary);
 }
 
@@ -1149,7 +1150,9 @@
 }
 
 :root[data-fx-enabled="true"][data-fx-mode="epic"] .app-inspector .safety-card {
-  border-left: 3px solid transparent;
+  /* Full-perimeter gradient rim (not a left-edge bar): border-image spans all
+   * four sides when the shorthand border (not border-left) carries it. */
+  border: 1.5px solid transparent;
   border-image: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 30%, transparent)) 1;
 }
 
@@ -2713,7 +2716,9 @@
 .fx-agent-aura-root .inspector-panel,
 .fx-agent-aura-root .inspector-sidebar,
 .fx-agent-aura-root .app-inspector {
-  box-shadow: inset 1px 0 0 rgb(var(--agent-aura-rgb, 87 148 255) / 0.22);
+  /* Full-perimeter aura rim (not a left-edge sliver) — matches the sidebar
+   * active-item rim treatment above. */
+  box-shadow: inset 0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.22);
 }
 
 .settings-fx-labs {
@@ -3175,8 +3180,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1px solid rgb(var(--agent-accent-rgb) / 0.18);
-  border-left: 3px solid color-mix(in srgb, var(--accent) 70%, var(--info));
+  /* Full-perimeter accent rim (not a left-edge bar). */
+  border: 1.5px solid color-mix(in srgb, var(--accent) 40%, var(--info));
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgb(var(--agent-accent-rgb) / 0.09), transparent 60%),
@@ -3379,22 +3384,21 @@
   gap: 2px;
   min-width: 0;
   border: 1px solid rgb(255 255 255 / 0.075);
-  border-left-width: 3px;
   border-radius: 6px;
   background: rgb(255 255 255 / 0.03);
   padding: 6px 7px;
 }
 
 .creative-timeline-item.tone-added {
-  border-left-color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 55%, transparent);
 }
 
 .creative-timeline-item.tone-changed {
-  border-left-color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 55%, transparent);
 }
 
 .creative-timeline-item.tone-removed {
-  border-left-color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
 }
 
 .creative-timeline-item-name,
