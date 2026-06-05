@@ -33,6 +33,7 @@ async function validateNativeModules(context) {
 
   if (platform === 'darwin' && expectedMacArchs.length > 0) {
     validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
+    validateMacClaudeAgentSdkBinaries(unpackedDir, expectedMacArchs)
   }
 
   // macOS-only: confirm the Swift AgbenchBridgeDaemon was embedded
@@ -158,8 +159,57 @@ function validateMacNodePtyBindings(unpackedDir, expectedArchs) {
     return
   }
 
-  for (const binding of findFiles(nodePtyDir, (filePath) => path.basename(filePath) === 'pty.node')) {
-    verifyMachOArchitectures(binding, expectedArchs, `node-pty ${path.relative(nodePtyDir, binding)}`)
+  const pathArch = expectedArchs[0] === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
+  const machArch = expectedArchs[0]
+  const prebuildPath = path.join(nodePtyDir, 'prebuilds', pathArch, 'pty.node')
+  if (fs.existsSync(prebuildPath)) {
+    verifyMachOArchitectures(prebuildPath, [machArch], `node-pty ${pathArch}`)
+  }
+  const buildBinding = path.join(nodePtyDir, 'build', 'Release', 'pty.node')
+  if (fs.existsSync(buildBinding)) {
+    verifyMachOArchitectures(buildBinding, [machArch], 'node-pty build/Release')
+  }
+}
+
+function validateMacClaudeAgentSdkBinaries(unpackedDir, expectedArchs) {
+  const nodeModulesDir = findNodeModulesDir(unpackedDir)
+  if (!nodeModulesDir) return
+
+  const requiredPackages = []
+  if (expectedArchs.includes('arm64')) {
+    requiredPackages.push({
+      packageName: '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+      machArch: 'arm64'
+    })
+  }
+  if (expectedArchs.includes('x86_64')) {
+    requiredPackages.push({
+      packageName: '@anthropic-ai/claude-agent-sdk-darwin-x64',
+      machArch: 'x86_64'
+    })
+  }
+
+  for (const requiredPackage of requiredPackages) {
+    const binaryPath = path.join(
+      nodeModulesDir,
+      ...requiredPackage.packageName.split('/'),
+      'claude'
+    )
+    if (!fs.existsSync(binaryPath)) {
+      throw new Error(`Required Claude Agent SDK helper is missing: ${binaryPath}`)
+    }
+    verifyMachOArchitectures(
+      binaryPath,
+      [requiredPackage.machArch],
+      requiredPackage.packageName
+    )
+  }
+  if (requiredPackages.length > 0) {
+    console.log(
+      `Validated Claude Agent SDK Darwin helpers: ${requiredPackages
+        .map((item) => item.packageName)
+        .join(', ')}`
+    )
   }
 }
 
@@ -177,10 +227,18 @@ function removeHostOnlyNodePtyBuildBinding(unpackedDir, expectedArchs) {
 }
 
 function findNodePtyDir(unpackedDir) {
+  const candidates = findDirectories(unpackedDir, (candidate) => {
+    const normalized = candidate.split(path.sep).join('/')
+    return normalized.endsWith('/node_modules/node-pty')
+  }, 8)
+  return candidates[0]
+}
+
+function findNodeModulesDir(unpackedDir) {
   const candidates = findDirectories(
     unpackedDir,
-    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules/node-pty'),
-    8
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules'),
+    6
   )
   return candidates[0]
 }
@@ -215,6 +273,8 @@ function validateMacAppBinaries(resourcesDir, context, expectedArchs) {
 
 function expectedMacArchitectures(context, arch) {
   const appOutDir = String(context.appOutDir || '').toLowerCase()
+  if (appOutDir.includes('x64-temp')) return ['x86_64']
+  if (appOutDir.includes('arm64-temp')) return ['arm64']
   if (arch === 'universal' || appOutDir.includes('mac-universal')) return ['arm64', 'x86_64']
   if (arch === 'arm64') return ['arm64']
   if (arch === 'x64') return ['x86_64']

@@ -43,6 +43,11 @@ mac:
       arch:
         - universal
   artifactName: AGBench-${version}-universal-mac.${ext}
+  # These packages ship separate darwin-arm64 and darwin-x64 helper
+  # resources. Each helper binary is intentionally single-arch and
+  # identical in the x64/arm64 temp apps, so @electron/universal must
+  # keep them as resources rather than trying to lipo them.
+  x64ArchFiles: '{**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude,**/node_modules/node-pty/prebuilds/darwin-*/*}'
   entitlementsInherit: build/entitlements.mac.plist
   sign: build/sign-with-identity-hash.cjs
   # extendInfo MUST be a flat dict, not a list-of-dicts. The list form

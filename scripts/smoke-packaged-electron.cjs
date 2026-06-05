@@ -58,6 +58,7 @@ async function main() {
   if (packageTarget.platform === 'darwin') {
     validateMacPackageBinaries(packageRoot, resourcesDir, expectedMacArchs)
     validateMacNodePtyBindings(unpackedDir, expectedMacArchs)
+    validateMacClaudeAgentSdkBinaries(unpackedDir, expectedMacArchs)
   }
 
   validateZipArtifacts(searchRoots)
@@ -358,6 +359,44 @@ function validateMacNodePtyBindings(unpackedDir, expectedArchs) {
       assertFile(prebuildPath, `node-pty ${prebuild.pathArch} prebuild`)
       verifyMachOArchitectures(prebuildPath, [prebuild.machArch], `node-pty ${prebuild.pathArch}`)
     }
+  }
+}
+
+function validateMacClaudeAgentSdkBinaries(unpackedDir, expectedArchs) {
+  if (expectedArchs.length === 0 || process.platform !== 'darwin') return
+  const nodeModulesDir = findDirectories(
+    unpackedDir,
+    (candidate) => candidate.split(path.sep).join('/').endsWith('/node_modules'),
+    6
+  )[0]
+  if (!nodeModulesDir) return
+
+  const requiredPackages = []
+  if (expectedArchs.includes('arm64')) {
+    requiredPackages.push({
+      packageName: '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+      machArch: 'arm64'
+    })
+  }
+  if (expectedArchs.includes('x86_64')) {
+    requiredPackages.push({
+      packageName: '@anthropic-ai/claude-agent-sdk-darwin-x64',
+      machArch: 'x86_64'
+    })
+  }
+
+  for (const requiredPackage of requiredPackages) {
+    const binaryPath = path.join(
+      nodeModulesDir,
+      ...requiredPackage.packageName.split('/'),
+      'claude'
+    )
+    assertFile(binaryPath, `${requiredPackage.packageName} helper`)
+    verifyMachOArchitectures(
+      binaryPath,
+      [requiredPackage.machArch],
+      requiredPackage.packageName
+    )
   }
 }
 
