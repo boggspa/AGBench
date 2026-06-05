@@ -4102,23 +4102,21 @@ input:disabled, select:disabled, textarea:disabled {
   gap: 0.45rem;
   width: 100%;
   background: rgb(255 255 255 / 0.025);
-  border: 1px solid rgb(255 255 255 / 0.06);
+  /* Agent-tinted rim highlight — matches .subthread-return-card /
+   * .subthread-delegation-card. --agent-rim is set inline on the parent
+   * .delegation-timeline-node from this row's agentIdentity.accent and
+   * cascades here; the FULL border carries the agent colour (not a left-edge
+   * sliver). Neutral fallback when unset. */
+  border: 1px solid color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.14)) 50%, transparent);
   border-radius: 7px;
   padding: 0.35rem 0.55rem;
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  /* Agent-tinted delegation rim — matches .subthread-return-card /
-   * .subthread-delegation-card. --agent-rim is set inline on the parent
-   * .delegation-timeline-node from this row's agentIdentity.accent and
-   * cascades here; 3px left-edge inset so each timeline row reads as its
-   * agent's colour. Neutral hairline fallback when unset. */
-  box-shadow: inset 3px 0 0 0
-    color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.14)) 70%, transparent);
 }
 
 .delegation-timeline-row:hover {
-  border-color: rgb(255 255 255 / 0.18);
+  border-color: color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.22)) 70%, transparent);
   background: rgb(255 255 255 / 0.045);
 }
 
@@ -4128,9 +4126,7 @@ input:disabled, select:disabled, textarea:disabled {
 
 .delegation-timeline-row.is-current {
   border-color: var(--accent);
-  box-shadow:
-    inset 3px 0 0 0 color-mix(in srgb, var(--agent-rim, rgb(255 255 255 / 0.14)) 70%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .delegation-timeline-dot {
