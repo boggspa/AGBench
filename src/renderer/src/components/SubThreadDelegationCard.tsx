@@ -5,6 +5,8 @@ import {
   agentInvocationSourceLabel,
   providerDisplayName
 } from '../lib/AgentInvocationPresentation'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 import { resolveDelegationStatus, type DelegationCardStatus } from './SubThreadDelegationCardModel'
 
 interface SubThreadDelegationCardProps {
@@ -71,6 +73,9 @@ export function SubThreadDelegationCard({
 }: SubThreadDelegationCardProps) {
   const metadata = message.metadata || {}
   const subThreadId = textValue(metadata.subThreadId)
+  // Same deterministic identity as the result card + timeline (seeded by
+  // the sub-thread chat id) so one sub-thread = one character everywhere.
+  const agentIdentity = subThreadId ? assignAgentIdentityFromSeed(subThreadId) : null
   const parentProvider =
     typeof metadata.parentProvider === 'string'
       ? (metadata.parentProvider as ProviderId)
@@ -122,6 +127,18 @@ export function SubThreadDelegationCard({
           >
             {agentInvocationSourceLabel('agbench-subthread')}
           </span>
+          {agentIdentity && (
+            <span className="subthread-delegation-agent" title={agentIdentity.name}>
+              <AgentIdentityIcon
+                name={agentIdentity.key}
+                color={agentIdentity.accent}
+                size={18}
+                className="subthread-delegation-agent-icon"
+                title={agentIdentity.name}
+              />
+              <span className="subthread-delegation-agent-name">{agentIdentity.name}</span>
+            </span>
+          )}
           <div className="subthread-delegation-arc" aria-hidden="true">
             <span
               className={`subthread-delegation-chip provider-${parentProvider || 'unknown'}`}

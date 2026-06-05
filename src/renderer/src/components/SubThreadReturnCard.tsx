@@ -4,6 +4,8 @@ import {
   agentInvocationSourceLabel,
   providerDisplayName
 } from '../lib/AgentInvocationPresentation'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 import { MarkdownMessage } from './MarkdownMessage'
 import { subThreadReturnBody } from './SubThreadReturnCardModel'
 
@@ -23,6 +25,10 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
   const providerName = providerDisplayName(typeof provider === 'string' ? provider : undefined)
   const title = textValue(metadata.subThreadTitle) || 'Untitled sub-thread'
   const subThreadId = textValue(metadata.subThreadId)
+  // Deterministic per-sub-thread identity (same id -> same character on
+  // every delegation surface: this card, the Agent-Invocation card, the
+  // delegation timeline). Seeded by the sub-thread chat id.
+  const agentIdentity = subThreadId ? assignAgentIdentityFromSeed(subThreadId) : null
   const body = subThreadReturnBody(message.content)
 
   return (
@@ -38,6 +44,18 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
           >
             {agentInvocationSourceLabel('agbench-subthread')}
           </span>
+          {agentIdentity && (
+            <span className="subthread-return-agent" title={agentIdentity.name}>
+              <AgentIdentityIcon
+                name={agentIdentity.key}
+                color={agentIdentity.accent}
+                size={18}
+                className="subthread-return-agent-icon"
+                title={agentIdentity.name}
+              />
+              <span className="subthread-return-agent-name">{agentIdentity.name}</span>
+            </span>
+          )}
           <span className={`subthread-return-provider provider-${provider || 'unknown'}`}>
             {providerName}
           </span>

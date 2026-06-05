@@ -4139,6 +4139,19 @@ input:disabled, select:disabled, textarea:disabled {
   overflow: hidden;
 }
 
+/* Per-sub-thread identicon (replaces the old provider dot) + the assigned
+ * character name in each delegation-timeline row. Same identity as the
+ * Agent-Invocation + result cards. */
+.delegation-timeline-identicon {
+  flex: 0 0 auto;
+}
+.delegation-timeline-agent-name {
+  flex: 0 0 auto;
+  font-weight: 650;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
 .delegation-timeline-title {
   color: var(--text-secondary);
   overflow: hidden;

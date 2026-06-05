@@ -3490,6 +3490,27 @@
   gap: 0.45rem;
 }
 
+/* Agent identity (identicon + assigned character name) on the sub-thread
+ * delegation + return cards — deterministic per sub-thread id, so the same
+ * character shows on the Agent-Invocation card, the result card, and the
+ * delegation timeline. */
+.subthread-return-agent,
+.subthread-delegation-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.subthread-return-agent-name,
+.subthread-delegation-agent-name {
+  font-weight: 650;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18ch;
+}
+
 .agent-invocation-label {
   color: var(--text-secondary);
   font-size: var(--font-size-xs);

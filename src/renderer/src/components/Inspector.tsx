@@ -3,6 +3,8 @@ import { DiffViewer } from './DiffViewer'
 import { TerminalPanel } from './TerminalPanel'
 import { BackgroundTasksPanel } from './BackgroundTasksPanel'
 import { ReadOnlyToolClassBreakdown } from './ToolClassBreakdown'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 import type {
   ChatRecord,
   DiffFileSummary,
@@ -956,8 +958,11 @@ function DelegationTimelineTreeNode({
 }) {
   const status = timelineNodeStatus(node, runningChatIds)
   const provider = node.chat.provider || 'gemini'
-  const providerColor = `var(--provider-${provider}-color)`
   const isClickable = Boolean(onOpenSubThread)
+  // Deterministic per-sub-thread identity (seeded by the sub-thread chat id —
+  // the same seed the Agent-Invocation + result cards use) so the character
+  // is identical across every delegation surface.
+  const agentIdentity = assignAgentIdentityFromSeed(node.chat.appChatId)
   const lastRun = node.chat.runs?.[node.chat.runs.length - 1]
   const elapsed = formatTimelineElapsed(
     lastRun?.startedAt ? Date.parse(lastRun.startedAt) : node.chat.createdAt
@@ -980,13 +985,16 @@ function DelegationTimelineTreeNode({
         disabled={!isClickable}
         title={node.chat.title}
       >
-        <span
-          className="delegation-timeline-dot"
-          aria-hidden="true"
-          style={{ background: providerColor }}
+        <AgentIdentityIcon
+          name={agentIdentity.key}
+          color={agentIdentity.accent}
+          size={18}
+          className="delegation-timeline-identicon"
+          title={agentIdentity.name}
         />
         <span className="delegation-timeline-label">
           <strong>{providerLabel(provider)}</strong>
+          <span className="delegation-timeline-agent-name">{agentIdentity.name}</span>
           <span className="delegation-timeline-title">{node.chat.title}</span>
         </span>
         <span className="delegation-timeline-meta">
