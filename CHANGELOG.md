@@ -4,6 +4,36 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.74 — 2026-06-05
+
+### Changed
+- **AGBench is now TaskWraith.** The app is renamed end to end — name, icon,
+  bundle ID, updater, MCP services, and docs. Your existing data carries over
+  automatically on first launch: chats, settings, usage history, and saved state
+  are migrated from the previous install.
+- **Git-grounded workspace status.** The composer's "N files changed / +A −B"
+  now reflects the real working tree via Git instead of tallying a thread's tool
+  activity — so it drops to 0 the moment you commit, the way Codex/Claude desktop
+  apps behave. Applies to the primary workspace and every additional workspace.
+- **One clean row per additional workspace.** Adding a secondary/tertiary folder
+  now shows a single native row per folder (with a combined read/edit access
+  pill) instead of one row per participating provider, and revoking removes the
+  whole folder in a click.
+
+### Added
+- **Branch state at a glance.** The composer branch chip shows a
+  merge / rebase / cherry-pick badge and a conflict count when the tree is
+  mid-operation, and the CI check rollup is now clickable (opens the PR or the
+  failing run).
+
+### Fixed
+- **Delegation cards read as one agent.** Sub-agent cards and the inspector
+  timeline are tinted with each agent's identity colour as a full rim, replacing
+  the left-edge accent sliver.
+- **Composer above-rows.** The Git-status row stacks correctly in every composer
+  shell (including Codex's tucked-tab layout), and a transcript render crash from
+  a missing snapshot field is fixed.
+
 ## 1.0.73 — 2026-06-04
 
 ### Added
