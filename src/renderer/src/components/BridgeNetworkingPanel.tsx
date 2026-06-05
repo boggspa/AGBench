@@ -30,8 +30,12 @@ interface BridgeNetworkingStatus {
     pid?: number | null
     startedAt?: string | null
     lastError?: string | null
-    bonjourServiceType: string
+    bonjourServiceType: string | null
     hostname: string
+    localOnly?: boolean
+    nativeCapabilities?: {
+      bridge: { available: boolean; reason?: string }
+    }
   }
   tailscale: {
     available: boolean
@@ -70,7 +74,11 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
   }, [refresh])
 
   const lan = status?.lan
-  const daemonSwitchDisabled = loading || savingDaemon || Boolean(lan?.envOverride)
+  const nativeBridgeUnavailable = Boolean(
+    lan?.nativeCapabilities && !lan.nativeCapabilities.bridge.available
+  )
+  const daemonSwitchDisabled =
+    loading || savingDaemon || Boolean(lan?.envOverride) || nativeBridgeUnavailable
   const daemonSwitchChecked = lan?.envOverride
     ? lan.effectiveEnabled
     : (lan?.settingEnabled ?? true)
@@ -79,7 +87,9 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
       ? 'Enabled by AGBENCH_BRIDGE_DAEMON.'
       : lan?.envOverride === 'force-off'
         ? 'Disabled by environment override.'
-        : 'Runs on launch and accepts iOS pairing/control requests.'
+        : nativeBridgeUnavailable
+          ? lan?.nativeCapabilities?.bridge.reason || 'Native bridge unavailable on this host.'
+          : 'Runs on launch and serves local macOS-native tools.'
   const daemonPillLabel = lan?.running
     ? 'Running'
     : lan?.effectiveEnabled && !lan?.lastError
@@ -109,8 +119,8 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
       <div className="bridge-networking-header">
         <label className="settings-label">Bridge networking</label>
         <div className="settings-hint">
-          How a paired iPhone reaches this desktop. LAN works when both devices are on the same
-          Wi-Fi; Tailscale works from anywhere.
+          Local native bridge status for Screen Watch, Appwatch, AppleEvents, editor handoff, and
+          creative-app tools.
         </div>
       </div>
 
@@ -140,22 +150,25 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
 
       <section className="bridge-networking-section">
         <header className="bridge-networking-section-header">
-          <span className="bridge-networking-section-title">LAN</span>
+          <span className="bridge-networking-section-title">Local bridge</span>
           <StatusPill
             kind={lan?.running ? 'ok' : 'idle'}
-            label={lan?.running ? 'Bonjour visible' : 'Not advertising'}
+            label={lan?.running ? 'Local only' : 'Stopped'}
           />
         </header>
         {lan && (
           <dl className="bridge-networking-fields">
-            <Field label="Bonjour service" value={lan.bonjourServiceType} />
+            <Field label="Transport" value="Local stdio" />
             <Field label="Hostname" value={lan.hostname} />
             {lan.pid && <Field label="Daemon PID" value={String(lan.pid)} />}
+            {lan.nativeCapabilities?.bridge.reason && (
+              <Field label="Capability" value={lan.nativeCapabilities.bridge.reason} />
+            )}
           </dl>
         )}
         {!lan?.running && (
           <div className="settings-hint">
-            The iOS companion can pair only while the daemon is running.
+            Native bridge tools stay disabled until the local daemon is running.
           </div>
         )}
       </section>

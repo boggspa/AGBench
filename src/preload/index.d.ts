@@ -45,6 +45,7 @@ import {
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
+import type { NativeCapabilitySnapshot } from '../main/NativeCapabilities'
 import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
@@ -542,8 +543,10 @@ declare global {
           pid?: number | null
           startedAt?: string | null
           lastError?: string | null
-          bonjourServiceType: string
+          bonjourServiceType: string | null
           hostname: string
+          localOnly?: boolean
+          nativeCapabilities?: NativeCapabilitySnapshot
         }
         tailscale: {
           available: boolean
@@ -568,8 +571,10 @@ declare global {
           pid?: number | null
           startedAt?: string | null
           lastError?: string | null
-          bonjourServiceType: string
+          bonjourServiceType: string | null
           hostname: string
+          localOnly?: boolean
+          nativeCapabilities?: NativeCapabilitySnapshot
         }
         tailscale: {
           available: boolean

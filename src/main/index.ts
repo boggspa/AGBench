@@ -154,6 +154,7 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { getNativeCapabilitySnapshot } from './NativeCapabilities'
 import { AuditService } from './services/AuditService'
 import {
   ApprovalService,
@@ -796,6 +797,7 @@ let attachedWindowSnapshot: AttachedWindowSnapshot | null = null
 
 const desktopToolExecutors = createDesktopToolExecutors({
   getBridgeDaemon: () => bridgeDaemonRef,
+  getNativeCapabilities: () => getNativeCapabilitySnapshot(),
   getCreativeApprovalGate: () => creativeApprovalGateRef,
   attachedWindow: {
     get: () => attachedWindowSnapshot,
@@ -13613,8 +13615,10 @@ if (isGeminiMcpBridgeProcess) {
     }
 
     const startBridgeDaemon = (): void => {
-      if (process.platform !== 'darwin') {
-        bridgeDaemonLastError = 'Bridge daemon is only available on macOS.'
+      const nativeCapabilities = getNativeCapabilitySnapshot()
+      if (!nativeCapabilities.bridge.available) {
+        bridgeDaemonLastError =
+          nativeCapabilities.bridge.reason || 'Native bridge features are unavailable on this host.'
         return
       }
       if (bridgeDaemonStartPromise || bridgeDaemon?.status().running) return
@@ -13751,20 +13755,21 @@ if (isGeminiMcpBridgeProcess) {
         AppStore.getSettings().bridgeDaemonEnabled,
         process.env.AGBENCH_BRIDGE_DAEMON
       )
+      const nativeCapabilities = getNativeCapabilitySnapshot()
       const status = bridgeDaemon?.status() || { running: false, startedAt: null, pid: null }
       return {
-        enabled: resolution.shouldRun,
+        enabled: resolution.shouldRun && nativeCapabilities.bridge.available,
         running: status.running,
         settingEnabled: resolution.settingEnabled,
-        effectiveEnabled: resolution.shouldRun,
+        effectiveEnabled: resolution.shouldRun && nativeCapabilities.bridge.available,
         envOverride: resolution.envOverride,
         status: status.running ? ('running' as const) : ('stopped' as const),
         pid: status.pid,
         startedAt: status.startedAt,
-        lastError: bridgeDaemonLastError,
-        bonjourServiceType: '_agbench._tcp',
-        // Hostname the daemon broadcasts under. Currently the OS
-        // hostname; future revs may make this configurable.
+        lastError: bridgeDaemonLastError || nativeCapabilities.bridge.reason,
+        nativeCapabilities,
+        localOnly: true,
+        bonjourServiceType: null,
         hostname: os.hostname()
       }
     }
@@ -13999,6 +14004,17 @@ if (isGeminiMcpBridgeProcess) {
     // the picker blocks on a user gesture — the default 10s would fire
     // long before most users finish picking.
     ipcMain.handle('attach-window:pick', async () => {
+      const nativeCapabilities = getNativeCapabilitySnapshot()
+      if (!nativeCapabilities.screenWatch.available) {
+        return {
+          ok: false,
+          unsupported: true,
+          error:
+            nativeCapabilities.screenWatch.reason ||
+            'Screen Watch is unavailable on this host.',
+          nativeCapabilities
+        }
+      }
       if (!bridgeDaemon?.status().running) {
         return {
           ok: false,

@@ -42,6 +42,7 @@ import { redactGeminiProfileForMcp } from '../GeminiAuthRedaction'
 import { buildProviderAuthStatusV2 } from '../ProviderAuthStatus'
 import type { NormalizedProviderUsageSnapshot } from '../ProviderQuotaSnapshots'
 import { summarizeProviderUsage, type ProviderUsageSummary } from '../ProviderUsageStatus'
+import type { NativeCapabilitySnapshot } from '../NativeCapabilities'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import type {
@@ -177,6 +178,7 @@ export interface DesktopProviderAuthDeps {
 
 export interface DesktopToolExecutorDeps {
   getBridgeDaemon(): DesktopBridgeDaemon | null
+  getNativeCapabilities?: () => NativeCapabilitySnapshot
   getCreativeApprovalGate(): CreativeApprovalGateLike | null
   attachedWindow: DesktopAttachedWindowState
   store: DesktopToolStore
@@ -224,6 +226,20 @@ export const DESKTOP_MCP_TOOL_NAMES = [
 export type DesktopMcpToolName = (typeof DESKTOP_MCP_TOOL_NAMES)[number]
 
 const DESKTOP_MCP_TOOL_NAME_SET = new Set<string>(DESKTOP_MCP_TOOL_NAMES)
+const NATIVE_BRIDGE_TOOL_NAMES = new Set<string>([
+  'creative_app_status',
+  'creative_app_capabilities',
+  'creative_timeline_import',
+  'creative_applescript_dispatch',
+  'creative_blender_python',
+  'creative_midi_dispatch',
+  'open_in_ide',
+  'open_in_ide_at_position',
+  'reveal_in_finder',
+  'ide_app_status',
+  'ide_app_capabilities',
+  'list_running_ides'
+])
 
 export function isDesktopMcpToolName(toolName: string): toolName is DesktopMcpToolName {
   return DESKTOP_MCP_TOOL_NAME_SET.has(toolName)
@@ -657,6 +673,29 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
   function handleAppwatchWindowGone(): void {
     deps.attachedWindow.set(null)
     notifyAttachedWindowChanged(null)
+  }
+
+  function unsupportedNativeToolResult(tool: DesktopMcpToolName): McpToolExecutionResult | null {
+    const capabilities = deps.getNativeCapabilities?.()
+    if (!capabilities) return null
+    const feature =
+      tool.startsWith('appwatch_')
+        ? capabilities.appwatch
+        : tool.startsWith('attached_window_')
+          ? capabilities.screenWatch
+          : tool === 'creative_applescript_dispatch'
+            ? capabilities.appleEvents
+            : NATIVE_BRIDGE_TOOL_NAMES.has(tool)
+              ? capabilities.bridge
+              : { available: true }
+    if (feature.available) return null
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool,
+      unsupported: true,
+      error: feature.reason || 'This native bridge feature is unavailable on this host.',
+      nativeCapabilities: capabilities
+    })
   }
 
   function currentCreativeAttachedWindowMeta(): CreativeAttachedWindowMeta | null {
@@ -2175,6 +2214,8 @@ export function createDesktopToolExecutors(deps: DesktopToolExecutorDeps) {
     context: DesktopToolContext,
     parentProvider: ProviderId
   ): Promise<McpToolExecutionResult> {
+    const unsupportedNativeTool = unsupportedNativeToolResult(toolName)
+    if (unsupportedNativeTool) return { ...unsupportedNativeTool, isError: true }
     if (toolName === 'attached_window_capture') return executeAttachedWindowCapture(args)
     if (toolName === 'attached_window_status') return executeAttachedWindowStatus()
     if (toolName === 'appwatch_start') return executeAppwatchStart(args)
