@@ -2935,6 +2935,17 @@
   color: rgba(255, 200, 200, 0.94);
   font-size: 0.86em;
 }
+.changelog-sheet-status {
+  margin: 0 0 10px;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.changelog-sheet-status-available,
+.changelog-sheet-status-downloading,
+.changelog-sheet-status-downloaded {
+  color: var(--accent-color, #6f9dff);
+}
 .changelog-sheet-notes {
   min-height: 180px;
   max-height: min(52vh, 520px);

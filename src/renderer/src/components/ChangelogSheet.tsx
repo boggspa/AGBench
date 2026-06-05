@@ -57,6 +57,22 @@ export function ChangelogSheet({
   const releasePageUrl = updateSnapshot?.releasePageUrl
   const updateStatus = updateSnapshot?.status || 'idle'
   const canAct = !busy && updateStatus !== 'checking' && updateStatus !== 'downloading'
+  // Phase-by-phase signpost for the update flow (check → download → ready →
+  // installs on restart), so the user is guided through it rather than guessing
+  // what each button does.
+  const downloadPercent = Math.round(updateSnapshot?.downloadProgress?.percent ?? 0)
+  const statusCaption =
+    updateStatus === 'checking'
+      ? 'Checking for updates…'
+      : updateStatus === 'available'
+        ? `Update ${entry.version} available — download to continue.`
+        : updateStatus === 'downloading'
+          ? `Downloading update… ${downloadPercent}%`
+          : updateStatus === 'downloaded'
+            ? `Update ${entry.version} downloaded — it installs when you restart.`
+            : updateStatus === 'not-available'
+              ? "You're on the latest version."
+              : null
 
   const handleInstall = useCallback(() => {
     if (!onInstallUpdateNow) return
@@ -107,6 +123,15 @@ export function ChangelogSheet({
             x
           </button>
         </header>
+
+        {statusCaption && (
+          <div
+            className={`changelog-sheet-status changelog-sheet-status-${updateStatus}`}
+            role="status"
+          >
+            {statusCaption}
+          </div>
+        )}
 
         {updateStatus === 'downloading' && updateSnapshot?.downloadProgress && (
           <div className="changelog-sheet-progress" role="status">
