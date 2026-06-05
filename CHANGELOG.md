@@ -4,6 +4,14 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.75 — 2026-06-05
+
+### Fixed
+- **No more runaway background processes.** Fixed a loop where leftover Gemini
+  MCP bridge registrations from before the rename could relaunch the app
+  repeatedly in the background. Bridge detection is now rename-proof, and stale
+  registrations are cleaned up automatically on launch.
+
 ## 1.0.74 — 2026-06-05
 
 ### Changed
