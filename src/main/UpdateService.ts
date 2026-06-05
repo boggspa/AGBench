@@ -9,6 +9,10 @@ import type {
   ProductUpdateReleaseNoteInfo,
   ProductUpdateReleaseNotes
 } from './store/types'
+import {
+  evaluateUpdateArchitectureCompatibility,
+  type UpdateArchitectureCompatibility
+} from './UpdateArchitecture'
 
 /**
  * UpdateService — Phase G2 wrapper around `electron-updater`.
@@ -69,6 +73,7 @@ export interface UpdateStateSnapshot {
   releaseDate?: string
   releaseNotes?: ProductUpdateReleaseNotes
   releasePageUrl?: string
+  updateArchitecture?: UpdateArchitectureCompatibility
   downloadProgress?: ProgressInfo
   errorMessage?: string
   /** When the last manual or automatic check was attempted. ISO. */
@@ -85,15 +90,20 @@ export class UpdateService {
   private releaseDate: string | undefined
   private releaseNotes: ProductUpdateReleaseNotes | undefined
   private releasePageUrl: string | undefined
+  private updateArchitecture: UpdateArchitectureCompatibility | undefined
   private downloadProgress: ProgressInfo | undefined
   private errorMessage: string | undefined
   private lastCheckedAt: string | undefined
   private listeners = new Set<Listener>()
   private wired = false
   private log: (line: string) => void
+  private hostPlatform: string
+  private hostArch: string
 
-  constructor(options: { log?: (line: string) => void } = {}) {
+  constructor(options: { log?: (line: string) => void; platform?: string; arch?: string } = {}) {
     this.log = options.log ?? (() => {})
+    this.hostPlatform = options.platform || process.platform
+    this.hostArch = options.arch || process.arch
   }
 
   /**
@@ -161,6 +171,7 @@ export class UpdateService {
    * `'available'`. */
   async downloadUpdate(): Promise<void> {
     if (this.status !== 'available') return
+    if (this.updateArchitecture && !this.updateArchitecture.compatible) return
     this.status = 'downloading'
     this.publish()
     try {
@@ -195,6 +206,7 @@ export class UpdateService {
       releaseDate: this.releaseDate,
       releaseNotes: this.releaseNotes,
       releasePageUrl: this.releasePageUrl,
+      updateArchitecture: this.updateArchitecture,
       downloadProgress: this.downloadProgress,
       errorMessage: this.errorMessage,
       lastCheckedAt: this.lastCheckedAt
@@ -218,8 +230,12 @@ export class UpdateService {
       this.publish()
     })
     autoUpdater.on('update-available', (info) => {
+      const compatibility = this.applyUpdateInfo(info)
+      if (!compatibility.compatible) {
+        this.handleError(compatibility.reason || 'Incompatible update artifact.')
+        return
+      }
       this.status = 'available'
-      this.applyUpdateInfo(info)
       this.publish()
     })
     autoUpdater.on('update-not-available', () => {
@@ -236,14 +252,19 @@ export class UpdateService {
       this.publish()
     })
     autoUpdater.on('update-downloaded', (info) => {
+      const compatibility = this.applyUpdateInfo(info)
+      if (!compatibility.compatible) {
+        this.downloadProgress = undefined
+        this.handleError(compatibility.reason || 'Incompatible update artifact.')
+        return
+      }
       this.status = 'downloaded'
-      this.applyUpdateInfo(info)
       this.downloadProgress = undefined
       this.publish()
     })
   }
 
-  private applyUpdateInfo(info: UpdateInfo): void {
+  private applyUpdateInfo(info: UpdateInfo): UpdateArchitectureCompatibility {
     this.latestVersion = info.version
     this.releaseName = info.releaseName || undefined
     this.releaseDate = info.releaseDate || undefined
@@ -251,6 +272,11 @@ export class UpdateService {
     this.releasePageUrl = info.version
       ? `https://github.com/boggspa/AGBench/releases/tag/v${info.version}`
       : undefined
+    this.updateArchitecture = evaluateUpdateArchitectureCompatibility(info, {
+      platform: this.hostPlatform,
+      arch: this.hostArch
+    })
+    return this.updateArchitecture
   }
 
   private clearReleaseMetadata(): void {
@@ -259,6 +285,7 @@ export class UpdateService {
     this.releaseDate = undefined
     this.releaseNotes = undefined
     this.releasePageUrl = undefined
+    this.updateArchitecture = undefined
   }
 
   private handleError(message: string): void {

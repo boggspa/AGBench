@@ -37,6 +37,7 @@
     "prebuild:bridge-daemon": "node scripts/build-bridge-daemon.cjs",
     "test:swift:bridge": "cd swift/AgbenchBridge && swift test",
     "validate:release": "node scripts/validate-release.cjs",
+    "validate:mac-update-feed": "node scripts/validate-mac-update-feed.cjs dist",
     "build:unpack": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist",
     "build:debug:mac": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir --config electron-builder.debug.yml && node scripts/smoke-packaged-electron.cjs dist-debug",
     "build:debug:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist-debug",

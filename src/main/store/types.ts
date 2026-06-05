@@ -1606,6 +1606,20 @@ export interface ProductInstallRepairStatus {
   checks: ProductHealthCheck[]
 }
 
+export type ProductMacUpdateArtifactArch = 'universal' | 'arm64' | 'x64' | 'unknown'
+
+export interface ProductArchitectureCompatibilityStatus {
+  checkedAt: string
+  status: ProductOperationStatus
+  hostPlatform: string
+  hostArch: string
+  updateArtifactName?: string
+  updateArtifactArch: ProductMacUpdateArtifactArch
+  updateCompatible: boolean
+  reason?: string
+  message: string
+}
+
 export interface ProductReleaseAutomationStatus {
   checkedAt: string
   status: ProductOperationStatus
@@ -1650,6 +1664,7 @@ export interface ProductReleaseAutomationStatus {
     identity?: string
     message: string
   }
+  architectureCompatibility?: ProductArchitectureCompatibilityStatus
   releaseSteps: string[]
 }
 

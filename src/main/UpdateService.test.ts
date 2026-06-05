@@ -178,7 +178,7 @@ describe('UpdateService', () => {
   })
 
   it('captures release metadata when an update is available', () => {
-    const svc = new UpdateService()
+    const svc = new UpdateService({ platform: 'darwin', arch: 'arm64' })
     svc.configure({ channel: 'stable', enabled: true })
     emitUpdaterEvent('update-available', {
       version: '1.0.73',
@@ -196,7 +196,65 @@ describe('UpdateService', () => {
       releaseName: 'AGBench 1.0.73',
       releaseDate: '2026-06-04T12:00:00.000Z',
       releaseNotes: 'New updater UI.',
+      updateArchitecture: {
+        platform: 'darwin',
+        arch: 'arm64',
+        artifactName: 'AGBench-1.0.73.dmg',
+        artifactArch: 'unknown',
+        compatible: true,
+        reason: 'Unknown mac update artifact architecture: AGBench-1.0.73.dmg'
+      },
       releasePageUrl: 'https://github.com/boggspa/AGBench/releases/tag/v1.0.73'
+    })
+  })
+
+  it('rejects an arm64-only mac update before download on Intel', async () => {
+    const svc = new UpdateService({ platform: 'darwin', arch: 'x64' })
+    svc.configure({ channel: 'stable', enabled: true })
+
+    emitUpdaterEvent('update-available', {
+      version: '1.0.73',
+      files: [{ url: 'AGBench-1.0.73-arm64-mac.zip', sha512: 'abc', size: 1 }],
+      path: 'AGBench-1.0.73-arm64-mac.zip',
+      sha512: 'abc'
+    })
+
+    expect(svc.snapshot()).toMatchObject({
+      status: 'error',
+      errorMessage: 'Incompatible update artifact: host=darwin-x64 artifact=arm64',
+      updateArchitecture: {
+        platform: 'darwin',
+        arch: 'x64',
+        artifactName: 'AGBench-1.0.73-arm64-mac.zip',
+        artifactArch: 'arm64',
+        compatible: false
+      }
+    })
+
+    await svc.downloadUpdate()
+    expect(mockAutoUpdater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  it('accepts a universal mac update on Intel', () => {
+    const svc = new UpdateService({ platform: 'darwin', arch: 'x64' })
+    svc.configure({ channel: 'stable', enabled: true })
+
+    emitUpdaterEvent('update-available', {
+      version: '1.0.73',
+      files: [{ url: 'AGBench-1.0.73-universal-mac.zip', sha512: 'abc', size: 1 }],
+      path: 'AGBench-1.0.73-universal-mac.zip',
+      sha512: 'abc'
+    })
+
+    expect(svc.snapshot()).toMatchObject({
+      status: 'available',
+      updateArchitecture: {
+        platform: 'darwin',
+        arch: 'x64',
+        artifactName: 'AGBench-1.0.73-universal-mac.zip',
+        artifactArch: 'universal',
+        compatible: true
+      }
     })
   })
 

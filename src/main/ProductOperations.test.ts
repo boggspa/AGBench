@@ -178,6 +178,43 @@ describe('ProductOperations', () => {
     expect(status.appId).toBe('com.chrisizatt.agbench')
   })
 
+  it('surfaces incompatible mac update artifacts in release automation diagnostics', () => {
+    const status = buildReleaseAutomationStatus({
+      updateChannel: 'stable',
+      now: '2026-05-07T10:00:00.000Z',
+      packageJson: {
+        scripts: {
+          build: 'npm run typecheck && electron-vite build',
+          test: 'vitest run',
+          ci: 'npm run typecheck && npm run test',
+          'build:unpack': 'electron-builder --dir',
+          'smoke:node-pty': 'node scripts/smoke-node-pty.cjs',
+          'smoke:package': 'node scripts/smoke-packaged-electron.cjs'
+        }
+      },
+      builderConfigText: '',
+      updateArchitecture: {
+        platform: 'darwin',
+        arch: 'x64',
+        artifactName: 'AGBench-1.0.73-arm64-mac.zip',
+        artifactArch: 'arm64',
+        compatible: false,
+        reason: 'Incompatible update artifact: host=darwin-x64 artifact=arm64'
+      }
+    })
+
+    expect(status.status).toBe('error')
+    expect(status.architectureCompatibility).toMatchObject({
+      status: 'error',
+      hostPlatform: 'darwin',
+      hostArch: 'x64',
+      updateArtifactName: 'AGBench-1.0.73-arm64-mac.zip',
+      updateArtifactArch: 'arm64',
+      updateCompatible: false,
+      reason: 'Incompatible update artifact: host=darwin-x64 artifact=arm64'
+    })
+  })
+
   it('builds a redacted diagnostics snapshot with product counts', () => {
     const status = buildProductOperationsStatus({
       updateChannel: 'debug',

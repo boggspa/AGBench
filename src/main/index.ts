@@ -731,6 +731,7 @@ let runCoordinatorRef: RunCoordinator | null = null
 let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
 let sessionCheckpointStoreRef: SessionCheckpointStore | null = null
+let updateServiceRef: UpdateService | null = null
 // 1.0.5-EW37 — Solo-chat wakeup service. Extends the Phase N
 // wakeup infrastructure off the ensemble-only path so a solo chat
 // can also pause + resume itself via `schedule_wakeup`. Set in
@@ -9620,7 +9621,8 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
     env: {
       APPLE_KEYCHAIN_PROFILE: process.env.APPLE_KEYCHAIN_PROFILE,
       CSC_NAME: process.env.CSC_NAME
-    }
+    },
+    updateArchitecture: updateServiceRef?.snapshot().updateArchitecture
   })
 }
 
@@ -13856,6 +13858,7 @@ if (isGeminiMcpBridgeProcess) {
         console.log(line)
       }
     })
+    updateServiceRef = updateService
     const autoUpdateForce = process.env.AGBENCH_AUTO_UPDATE
     const autoUpdateEnabledByDefault = app.isPackaged
     const autoUpdateEnabled =

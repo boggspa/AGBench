@@ -11,6 +11,7 @@ import type {
   ProductInstallRepairStatus,
   ProductOperationStatus,
   ProductOperationsStatus,
+  ProductArchitectureCompatibilityStatus,
   ProductReleaseAutomationStatus,
   ProductUpdateChannel,
   RunQueueJob,
@@ -20,6 +21,7 @@ import type {
   WorkspaceRecord,
   ChatRecord
 } from './store/types'
+import type { UpdateArchitectureCompatibility } from './UpdateArchitecture'
 
 const MAX_CRASH_TEXT_CHARS = 12_000
 const MAX_DIAGNOSTIC_RECORDS = 250
@@ -64,6 +66,36 @@ function builderConfigIncludes(text: string | undefined, pattern: RegExp): boole
 
 function listStatusChecks(checks: ProductHealthCheck[]): ProductOperationStatus {
   return normalizeStatus(checks.map((check) => check.status))
+}
+
+function buildArchitectureCompatibilityStatus(
+  compatibility: UpdateArchitectureCompatibility | undefined,
+  checkedAt: string
+): ProductArchitectureCompatibilityStatus | undefined {
+  if (!compatibility) return undefined
+  const status: ProductOperationStatus = !compatibility.compatible
+    ? 'error'
+    : compatibility.artifactArch === 'unknown'
+      ? 'warning'
+      : 'ok'
+  const target = `${compatibility.platform}-${compatibility.arch}`
+  const artifact = compatibility.artifactName || 'unknown update artifact'
+  const message = !compatibility.compatible
+    ? compatibility.reason || `Update artifact ${artifact} is incompatible with ${target}.`
+    : compatibility.artifactArch === 'unknown'
+      ? compatibility.reason || `Update artifact architecture is unknown for ${artifact}.`
+      : `Update artifact ${artifact} is compatible with ${target}.`
+  return {
+    checkedAt,
+    status,
+    hostPlatform: compatibility.platform,
+    hostArch: compatibility.arch,
+    ...(compatibility.artifactName ? { updateArtifactName: compatibility.artifactName } : {}),
+    updateArtifactArch: compatibility.artifactArch,
+    updateCompatible: compatibility.compatible,
+    ...(compatibility.reason ? { reason: compatibility.reason } : {}),
+    message
+  }
 }
 
 export function redactProductOperationsText(value: string): string {
@@ -211,6 +243,7 @@ export function buildReleaseAutomationStatus(input: {
   packageJson?: { scripts?: Record<string, string>; version?: string; name?: string }
   builderConfigText?: string
   env?: Record<string, string | undefined>
+  updateArchitecture?: UpdateArchitectureCompatibility
 }): ProductReleaseAutomationStatus {
   const checkedAt = input.now || new Date().toISOString()
   const scripts = input.packageJson?.scripts || {}
@@ -285,6 +318,10 @@ export function buildReleaseAutomationStatus(input: {
       : publishProvider === 'generic'
         ? Boolean(publishUrl && !/example\.com/i.test(publishUrl))
         : Boolean(publishProvider)
+  const architectureCompatibility = buildArchitectureCompatibilityStatus(
+    input.updateArchitecture,
+    checkedAt
+  )
   const releaseSteps = [
     'npm run ci',
     'npm run build:unpack',
@@ -303,7 +340,8 @@ export function buildReleaseAutomationStatus(input: {
     signingConfigured ? 'ok' : 'warning',
     appId && productName ? 'ok' : 'warning',
     nativeModulesConfigured ? 'ok' : 'warning',
-    updateDistributionConfigured ? 'ok' : 'warning'
+    updateDistributionConfigured ? 'ok' : 'warning',
+    architectureCompatibility?.status || 'ok'
   ]
 
   return {
@@ -360,6 +398,7 @@ export function buildReleaseAutomationStatus(input: {
         ? 'Codesigning identity is configured through the debug build scripts or environment.'
         : 'Codesigning identity was not detected in scripts or environment.'
     },
+    ...(architectureCompatibility ? { architectureCompatibility } : {}),
     releaseSteps
   }
 }
@@ -388,6 +427,7 @@ export function buildProductOperationsStatus(input: {
   packageJson?: { scripts?: Record<string, string>; version?: string; name?: string }
   builderConfigText?: string
   env?: Record<string, string | undefined>
+  updateArchitecture?: UpdateArchitectureCompatibility
 }): ProductOperationsStatus {
   const generatedAt = input.now || new Date().toISOString()
   const bridgeHealth = [createBridgeHealthRecord(input.geminiBridgeStatus, generatedAt)]
@@ -403,7 +443,8 @@ export function buildProductOperationsStatus(input: {
     updateChannel: input.updateChannel,
     packageJson: input.packageJson,
     builderConfigText: input.builderConfigText,
-    env: input.env
+    env: input.env,
+    updateArchitecture: input.updateArchitecture
   })
   const activeRuns = input.runQueue.filter(
     (job) => job.status === 'active' || job.status === 'starting'
