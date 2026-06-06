@@ -8539,8 +8539,8 @@
    * overlap the composer's top edge by 10px, z-index 1 so the
    * composer-surface (z-index 2) paints over the overlap and the
    * stack reads as a real "tab tucked under" the composer. */
-  width: 100%;
-  max-width: 100%;
+  width: calc(100% - 80px);
+  max-width: calc(100% - 80px);
   align-self: center;
   gap: 0;
   border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
@@ -8569,8 +8569,18 @@
  * single line, and let the branch summary ellipsize so nothing wraps. */
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar {
+  /* THE root fix: the Codex shell makes .composer-above-bar a 3-column grid
+   * (1fr auto 1fr) for the solo primary row. The merged ensemble rows inherit
+   * it, which centered the middle chips (col 2 justify-self:center) and
+   * auto-placed the unplaced revoke × onto a new implicit grid row — and a grid
+   * ignores flex-wrap / margin:auto, so the nowrap below did nothing. Force flex
+   * (higher specificity than the grid rule) so the row flows left→right, one
+   * line, with a tighter gap so it fits the reduced-width tucked tab. */
+  display: flex;
+  align-items: center;
   flex-wrap: nowrap;
   justify-content: flex-start;
+  gap: 6px;
 }
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar
