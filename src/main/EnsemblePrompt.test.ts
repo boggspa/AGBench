@@ -92,6 +92,27 @@ describe('Ensemble prompt composition', () => {
     expect(ordered.map((participant) => participant.id)).toEqual(['codex', 'gemini', 'claude'])
   })
 
+  it('scopes active Work Session rosters to allowed participants and leads with the configured lead', () => {
+    const ordered = getOrderedEnsembleParticipants({
+      ...ensemble,
+      workSession: {
+        enabled: true,
+        status: 'active',
+        objective: 'Implement the plan.',
+        acceptanceCriteria: 'All checks pass.',
+        allowedParticipantIds: ['codex', 'gemini'],
+        leadParticipantId: 'gemini',
+        permissionPresetId: 'workspace_write',
+        maxRoundsPerProvider: 3,
+        maxDurationMs: 60 * 60 * 1000,
+        enableScoutPass: false,
+        roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
+        totalRoundsUsed: 0
+      }
+    })
+    expect(ordered.map((participant) => participant.id)).toEqual(['gemini', 'codex'])
+  })
+
   // 1.0.4-AR2 — pre-AR2 the prompt-builder treated any
   // `maxParticipants <= 4` as legacy data and fell back to the
   // global ceiling. AR2 honored the per-chat value as long as it's

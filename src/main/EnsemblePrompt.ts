@@ -103,7 +103,7 @@ export function getOrderedEnsembleParticipants(
     )
     .slice(0, Math.max(1, maxParticipants))
   if (!currentPrompt || /@all\b/i.test(currentPrompt)) {
-    return applyChairSummaryOrder(enabled, config)
+    return applyActiveWorkSessionRoster(applyChairSummaryOrder(enabled, config), config)
   }
 
   const prompt = currentPrompt.toLowerCase()
@@ -120,12 +120,17 @@ export function getOrderedEnsembleParticipants(
       mentioned.add(participant.id)
     }
   }
-  if (mentioned.size === 0) return applyChairSummaryOrder(enabled, config)
-  return applyChairSummaryOrder(
-    [
-      ...enabled.filter((participant) => mentioned.has(participant.id)),
-      ...enabled.filter((participant) => !mentioned.has(participant.id))
-    ],
+  if (mentioned.size === 0) {
+    return applyActiveWorkSessionRoster(applyChairSummaryOrder(enabled, config), config)
+  }
+  return applyActiveWorkSessionRoster(
+    applyChairSummaryOrder(
+      [
+        ...enabled.filter((participant) => mentioned.has(participant.id)),
+        ...enabled.filter((participant) => !mentioned.has(participant.id))
+      ],
+      config
+    ),
     config
   )
 }
@@ -144,6 +149,28 @@ function applyChairSummaryOrder(
   const next = [...participants]
   const [synthesizer] = next.splice(idx, 1)
   next.push(synthesizer)
+  return next
+}
+
+function applyActiveWorkSessionRoster(
+  participants: EnsembleParticipant[],
+  config: EnsembleConfig
+): EnsembleParticipant[] {
+  const workSession = config.workSession
+  if (!workSession?.enabled || workSession.status !== 'active') return participants
+  const allowedIds = Array.isArray(workSession.allowedParticipantIds)
+    ? new Set(workSession.allowedParticipantIds)
+    : null
+  const scoped = allowedIds
+    ? participants.filter((participant) => allowedIds.has(participant.id))
+    : participants
+  const leadId = workSession.leadParticipantId
+  if (!leadId) return scoped
+  const idx = scoped.findIndex((participant) => participant.id === leadId)
+  if (idx <= 0) return scoped
+  const next = [...scoped]
+  const [lead] = next.splice(idx, 1)
+  next.unshift(lead)
   return next
 }
 

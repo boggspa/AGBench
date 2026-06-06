@@ -646,6 +646,13 @@ interface ActiveRoundRuntime {
    */
   activeScoutRunIds?: Set<string>
   /**
+   * Participant ids that already completed an explicit `ensemble_fanout`
+   * lane in this round. Those participants may still be present in the
+   * serial `remaining` queue captured before the fan-out call; skip them
+   * there so one tool call cannot produce duplicate future turns.
+   */
+  fannedOutParticipantIds?: Set<string>
+  /**
    * 1.0.4-AK6 — structured briefs recorded by participants during
    * the parallel fan-out pass via the `scout_brief` MCP tool. After
    * the fan-out pass closes, the serial writer's prompt builder
@@ -1077,6 +1084,10 @@ export class EnsembleOrchestrator {
         mode,
         sourceRunId: runId
       })
+      if (!runtime.fannedOutParticipantIds) runtime.fannedOutParticipantIds = new Set()
+      for (const participant of resolvedTargets.targets) {
+        runtime.fannedOutParticipantIds.add(participant.id)
+      }
       return {
         ok: true,
         tool: 'ensemble_fanout',
@@ -2139,11 +2150,11 @@ export class EnsembleOrchestrator {
       const writers: EnsembleParticipant[] = []
       for (const participant of remaining) {
         const permissions = chatForFanout
-          ? this.resolveParticipantPermissions(
+          ? this.resolveFanoutEligibilityPermissions(
               chatForFanout,
+              runtime,
               participant,
-              runtime.externalPathGrants,
-              { ignoreWorkSessionOverride: true }
+              'read_only'
             )
           : null
         if (permissions?.readOnly) {
@@ -2186,6 +2197,9 @@ export class EnsembleOrchestrator {
       const chat = this.deps.getChat(runtime.chatId)
       if (!chat?.ensemble) break
       const participant = remaining.shift()!
+      if (runtime.fannedOutParticipantIds?.has(participant.id)) {
+        continue
+      }
       const wasYieldTarget = yieldedTargetParticipantId === participant.id
       yieldedTargetParticipantId = null
       const resumeWakeup =
@@ -2684,9 +2698,7 @@ export class EnsembleOrchestrator {
       if (participant.id === run.participant.id) return false
       if (activeParticipantIds.has(participant.id)) return false
       if (mode === 'locked_writers') return true
-      return this.resolveParticipantPermissions(chat, participant, runtime.externalPathGrants, {
-        ignoreWorkSessionOverride: true
-      }).readOnly
+      return this.resolveFanoutEligibilityPermissions(chat, runtime, participant, mode).readOnly
     }
     if (explicitTargets.length === 0 || explicitTargets.some((target) => /^@?all$/i.test(target))) {
       const targets = participants.filter(isEligible)
@@ -2722,11 +2734,11 @@ export class EnsembleOrchestrator {
         }
       }
       if (mode === 'read_only') {
-        const permissions = this.resolveParticipantPermissions(
+        const permissions = this.resolveFanoutEligibilityPermissions(
           chat,
+          runtime,
           participant,
-          runtime.externalPathGrants,
-          { ignoreWorkSessionOverride: true }
+          mode
         )
         if (!permissions.readOnly) {
           return {
@@ -2794,12 +2806,7 @@ export class EnsembleOrchestrator {
       throw new Error('Locked writer fan-out requires TASKWRAITH_CONCURRENT_WRITE_LANES.')
     }
     for (const participant of participants) {
-      const permissions = this.resolveParticipantPermissions(
-        chat,
-        participant,
-        runtime.externalPathGrants,
-        mode === 'read_only' ? { ignoreWorkSessionOverride: true } : {}
-      )
+      const permissions = this.resolveFanoutEligibilityPermissions(chat, runtime, participant, mode)
       if (mode === 'read_only' && !permissions.readOnly) {
         throw new Error(
           `runParallelFanoutPass: non-read-only participant ${participant.id} cannot run in read_only fan-out.`
@@ -2810,12 +2817,7 @@ export class EnsembleOrchestrator {
     if (!runtime.activeScoutRunIds) runtime.activeScoutRunIds = new Set<string>()
 
     const readOnlyCount = participants.filter((participant) =>
-      this.resolveParticipantPermissions(
-        chat,
-        participant,
-        runtime.externalPathGrants,
-        mode === 'read_only' ? { ignoreWorkSessionOverride: true } : {}
-      ).readOnly
+      this.resolveFanoutDispatchPermissions(chat, runtime, participant, mode).readOnly
     ).length
     const writeCount = participants.length - readOnlyCount
     const label =
@@ -2842,14 +2844,7 @@ export class EnsembleOrchestrator {
     // appended.
     const laneRuns: ActiveParticipantRun[] = participants.map((participant, index) => {
       const freshChat = this.deps.getChat(runtime.chatId) || chat
-      const permissions = this.resolveParticipantPermissions(
-        chat,
-        participant,
-        runtime.externalPathGrants,
-        mode === 'read_only'
-          ? { presetId: 'read_only', ignoreWorkSessionOverride: true, ignoreOverrides: true }
-          : {}
-      )
+      const permissions = this.resolveFanoutDispatchPermissions(chat, runtime, participant, mode)
       return this.seedParticipantRun(freshChat, runtime, participant, {
         laneId: buildLaneId(runtime.roundId, participant.id, index + 1),
         laneIntent: permissions.readOnly ? 'read' : 'write'
@@ -2867,11 +2862,7 @@ export class EnsembleOrchestrator {
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
       })
-      const permissions = this.resolveParticipantPermissions(
-        chat,
-        participant,
-        runtime.externalPathGrants
-      )
+      const permissions = this.resolveFanoutDispatchPermissions(chat, runtime, participant, mode)
       const promptForLane = options.prompt?.trim()
         ? `Parallel fan-out request from ${options.sourceRunId ? 'another participant' : 'the orchestrator'}:\n${options.prompt.trim()}${
             options.reason ? `\n\nReason: ${options.reason}` : ''
@@ -3662,6 +3653,36 @@ export class EnsembleOrchestrator {
     if (this.roundsByChatId.get(runtime.chatId)?.roundId === runtime.roundId) {
       this.roundsByChatId.delete(runtime.chatId)
     }
+  }
+
+  private resolveFanoutEligibilityPermissions(
+    chat: ChatRecord,
+    runtime: ActiveRoundRuntime,
+    participant: EnsembleParticipant,
+    mode: EnsembleFanoutMode
+  ): EffectiveRunPermissions {
+    return this.resolveParticipantPermissions(
+      chat,
+      participant,
+      runtime.externalPathGrants,
+      mode === 'read_only' ? { ignoreWorkSessionOverride: true } : {}
+    )
+  }
+
+  private resolveFanoutDispatchPermissions(
+    chat: ChatRecord,
+    runtime: ActiveRoundRuntime,
+    participant: EnsembleParticipant,
+    mode: EnsembleFanoutMode
+  ): EffectiveRunPermissions {
+    return this.resolveParticipantPermissions(
+      chat,
+      participant,
+      runtime.externalPathGrants,
+      mode === 'read_only'
+        ? { presetId: 'read_only', ignoreWorkSessionOverride: true, ignoreOverrides: true }
+        : {}
+    )
   }
 
   private updateChatRound(

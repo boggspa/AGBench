@@ -3087,6 +3087,76 @@ Next action:
     expect(harness.dispatched[0].effectivePermissions?.presetId).toBe('read_only')
   })
 
+  it('1.0.4-AK3: scopes active Work Session rounds to allowed participants and leads with the configured lead', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 3,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test scoped roster',
+      acceptanceCriteria: 'Only allowed participants speak.',
+      allowedParticipantIds: ['codex', 'gemini'],
+      leadParticipantId: 'gemini',
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
+      totalRoundsUsed: 0
+    }
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start scoped work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.chat.ensemble?.activeRound?.participants.map((p) => p.participantId)).toEqual([
+      'gemini',
+      'codex'
+    ])
+    expect(harness.dispatched[0].provider).toBe('gemini')
+
+    harness.orchestrator.handleProviderOutput(
+      'gemini',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+    expect(harness.dispatched.map((payload) => payload.provider)).not.toContain('claude')
+  })
+
   it('1.0.4-AK3: drops queued prompts when workSession transitions to completed mid-round', async () => {
     const harness = makeHarness()
     harness.chat.ensemble!.workSession = {
@@ -3325,6 +3395,14 @@ Next action:
     })
     const dispatchProviders = harness.dispatched.map((p) => p.provider).sort()
     expect(dispatchProviders).toEqual(['claude', 'gemini'])
+    expect(
+      harness.dispatched.every(
+        (payload) =>
+          payload.effectivePermissions?.presetId === 'read_only' &&
+          payload.effectivePermissions?.readOnly === true &&
+          payload.approvalMode === 'plan'
+      )
+    ).toBe(true)
 
     // Resolve both scouts so the parallel-pass's Promise.all
     // settles. Each scout sends content + result.
@@ -3357,6 +3435,7 @@ Next action:
       timeout: 1000
     })
     expect(harness.dispatched[2].provider).toBe('codex')
+    expect(harness.dispatched[2].effectivePermissions?.presetId).toBe('workspace_write')
 
     // Transcript has the fan-out open/close status notes.
     const fanoutOpenNote = harness.chat.messages.find(
@@ -3526,6 +3605,73 @@ Next action:
     const result = await fanout
     expect(result.ok).toBe(true)
     expect(result.laneIds).toHaveLength(2)
+  })
+
+  it('1.0.8: ensemble_fanout does not dispatch the same future participants again serially', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 1,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 3,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Worker starts, peers fan out.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const fanout = harness.orchestrator.fanoutForRun(harness.dispatched[0].appRunId, {
+      targets: ['Reviewer', 'Researcher'],
+      prompt: 'Inspect the workspace and emit a brief.'
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), { timeout: 1000 })
+    for (const payload of harness.dispatched.slice(1)) {
+      harness.orchestrator.handleProviderOutput(
+        payload.provider,
+        { appRunId: payload.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'result', status: 'success' }
+      )
+    }
+    await expect(fanout).resolves.toMatchObject({ ok: true })
+
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
+    expect(harness.dispatched).toHaveLength(3)
+    expect(harness.dispatched.map((payload) => payload.provider).sort()).toEqual([
+      'claude',
+      'codex',
+      'gemini'
+    ])
   })
 
   it('1.0.8: ensemble_fanout locked_writers mode is feature-gated', async () => {
