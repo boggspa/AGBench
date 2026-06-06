@@ -194,6 +194,16 @@ export function SubThreadDelegationCard({
             className="subthread-delegation-open"
             onClick={(event) => {
               event.stopPropagation()
+              onOpenSubThreadInSidePanel(subThreadId)
+            }}
+          >
+            Open beside
+          </button>
+          <button
+            type="button"
+            className="subthread-delegation-open"
+            onClick={(event) => {
+              event.stopPropagation()
               onOpenSubThread(subThreadId)
             }}
           >

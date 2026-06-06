@@ -186,6 +186,7 @@ describe('SubThreadDelegationCard', () => {
     )
 
     expect(html).toContain('opens beside parent')
+    expect(html).toContain('Open beside')
     expect(html).toContain('Open main')
   })
 })
