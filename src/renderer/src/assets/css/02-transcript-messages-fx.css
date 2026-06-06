@@ -26,7 +26,12 @@
    * stays clear: the composer's top edge IS the boundary, just like
    * before — there's more air above it now, not less definition.
    */
-  --composer-scroll-clearance: 56px;
+  /* 1.0.x — bumped 56→140px. The composer is taller now (unified above-rows +
+   * ensemble mode picker + 1.6x corner chrome era), and it was overlapping the
+   * most recent message / final summary with no way to scroll it clear. This
+   * reserves significant buffer below the last message on top of the measured
+   * composer height. */
+  --composer-scroll-clearance: 140px;
   --composer-scroll-under-padding: calc(
     var(--composer-reserved-height) + var(--composer-bottom-gap) + var(--composer-scroll-clearance) +
       env(safe-area-inset-bottom, 0px)
