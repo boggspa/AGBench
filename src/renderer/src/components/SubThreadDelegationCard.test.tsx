@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   resolveDelegationStatus,
   isSubThreadDelegationMessage
 } from './SubThreadDelegationCardModel'
 import type { ChatMessage, ChatRecord } from '../../../main/store/types'
+import { findButtonByText } from '../test/reactElementTree'
 import { SubThreadDelegationCard } from './SubThreadDelegationCard'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
@@ -189,5 +190,34 @@ describe('SubThreadDelegationCard', () => {
     expect(html).toContain('Open beside')
     expect(html).toContain('Open drawer')
     expect(html).toContain('Open main')
+  })
+
+  it('routes the drawer action through the side-panel presentation callback', () => {
+    const msg: ChatMessage = {
+      id: 'm',
+      role: 'system',
+      content: '↪ Delegated to Kimi sub-thread.',
+      timestamp: 't',
+      metadata: {
+        kind: 'subThreadDelegation',
+        subThreadId: 'sub-1',
+        parentProvider: 'claude',
+        subThreadProvider: 'kimi',
+        subThreadTitle: 'Review helper'
+      }
+    }
+    const onOpenSubThreadInSidePanel = vi.fn()
+    const stopPropagation = vi.fn()
+    const tree = SubThreadDelegationCard({
+      message: msg,
+      chats: [makeChat()],
+      onOpenSubThread: () => {},
+      onOpenSubThreadInSidePanel
+    })
+
+    findButtonByText(tree, 'Open drawer').props.onClick?.({ stopPropagation })
+
+    expect(stopPropagation).toHaveBeenCalledOnce()
+    expect(onOpenSubThreadInSidePanel).toHaveBeenCalledWith('sub-1', 'drawer')
   })
 })

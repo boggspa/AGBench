@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '../../../main/store/types'
+import { findButtonByText } from '../test/reactElementTree'
 import { isSubThreadReturnMessage, subThreadReturnBody } from './SubThreadReturnCardModel'
 import { SubThreadReturnCard } from './SubThreadReturnCard'
 
@@ -56,5 +57,18 @@ describe('SubThreadReturnCard', () => {
     expect(html).toContain('Open beside')
     expect(html).toContain('Open drawer')
     expect(html).toContain('Open sub-thread')
+  })
+
+  it('routes the drawer action through the side-panel presentation callback', () => {
+    const onOpenSubThreadInSidePanel = vi.fn()
+    const tree = SubThreadReturnCard({
+      message: subThreadMessage(),
+      onOpenSubThread: () => {},
+      onOpenSubThreadInSidePanel
+    })
+
+    findButtonByText(tree, 'Open drawer').props.onClick?.()
+
+    expect(onOpenSubThreadInSidePanel).toHaveBeenCalledWith('chat-child-1', 'drawer')
   })
 })
