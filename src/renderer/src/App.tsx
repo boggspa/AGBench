@@ -13312,11 +13312,13 @@ function App(): React.JSX.Element {
         null
       : null
   const chatPopoutKindLabel =
-    currentChat?.parentChatRelation === 'subThread'
-      ? 'Agent sub-thread'
-      : currentChat?.chatKind === 'ensemble'
-        ? 'Side ensemble'
-        : 'Side chat'
+    isLinkedChatPopout && currentChat ? getLinkedChatKindLabel(currentChat) : 'Side chat'
+  const chatPopoutContextLabel =
+    isLinkedChatPopout && currentChat ? getLinkedChatContextLabel(currentChat) : ''
+  const chatPopoutModeLabel =
+    isLinkedChatPopout && currentChat?.parentChatRelation === 'sideChat'
+      ? getSideChatModeLabel(currentChat)
+      : ''
   const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
@@ -13595,6 +13597,16 @@ function App(): React.JSX.Element {
               <small title={chatPopoutParentChat?.title || undefined}>
                 Parent: {chatPopoutParentChat?.title || 'linked chat'}
               </small>
+              <span className="chat-popout-dock-meta">
+                {chatPopoutContextLabel && (
+                  <span className="side-chat-context-chip">{chatPopoutContextLabel}</span>
+                )}
+                {chatPopoutModeLabel && (
+                  <span className="side-chat-context-chip side-chat-mode-chip">
+                    {chatPopoutModeLabel}
+                  </span>
+                )}
+              </span>
             </div>
             <div className="chat-popout-dock-actions">
               {chatPopoutParentChat && (

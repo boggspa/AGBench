@@ -157,6 +157,19 @@
   font-size: var(--font-size-xs);
 }
 
+.chat-popout-dock-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  -webkit-app-region: no-drag;
+}
+
+.chat-popout-dock-meta .side-chat-context-chip {
+  max-width: min(240px, 42vw);
+}
+
 .chat-popout-dock-actions {
   flex: 0 0 auto;
   display: inline-flex;
