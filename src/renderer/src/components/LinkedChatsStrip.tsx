@@ -13,6 +13,7 @@ interface LinkedChatsStripProps {
   runningChatIds: string[]
   onOpenBeside?: (chatId: string) => void
   onOpenMain?: (chatId: string) => void
+  onPopOut?: (chatId: string) => void
   defaultCollapsed?: boolean
 }
 
@@ -111,6 +112,7 @@ export function LinkedChatsStrip({
   runningChatIds,
   onOpenBeside,
   onOpenMain,
+  onPopOut,
   defaultCollapsed = false
 }: LinkedChatsStripProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
@@ -227,6 +229,16 @@ export function LinkedChatsStrip({
                     title={`Open as main chat: ${title}`}
                   >
                     Open as main
+                  </button>
+                )}
+                {onPopOut && (
+                  <button
+                    type="button"
+                    className="linked-chats-strip-main"
+                    onClick={() => onPopOut(chat.appChatId)}
+                    title={`Pop out linked chat: ${title}`}
+                  >
+                    Pop out
                   </button>
                 )}
               </div>

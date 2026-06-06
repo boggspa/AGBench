@@ -77,6 +77,7 @@ describe('LinkedChatsStrip', () => {
         runningChatIds={['sub-1']}
         onOpenBeside={() => {}}
         onOpenMain={() => {}}
+        onPopOut={() => {}}
       />
     )
 
@@ -97,6 +98,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain(subThreadIdentity.name)
     expect(html).toContain('linked-chats-strip-agent-icon')
     expect(html).toContain('Open as main')
+    expect(html).toContain('Pop out')
     expect(html).toContain('is-running')
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')

@@ -14322,6 +14322,12 @@ function App(): React.JSX.Element {
             runningChatIds={runningChatIdsArray}
             onOpenBeside={handleOpenLinkedChatInSidePanelById}
             onOpenMain={handleOpenCockpitThread}
+            onPopOut={(chatId) => {
+              const linkedChat =
+                chatByIdRef.current.get(chatId) ||
+                chats.find((candidate) => candidate.appChatId === chatId)
+              if (linkedChat) popOutLinkedChat(linkedChat)
+            }}
           />
 
           {/*
