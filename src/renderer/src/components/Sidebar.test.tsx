@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types'
 import { Sidebar } from './Sidebar'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sub-thread-parent-ids'
@@ -96,6 +97,7 @@ describe('Sidebar sub-thread collapse', () => {
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
       [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
     })
+    const childIdentity = assignAgentIdentityFromSeed('child-1')
 
     const html = renderSidebar([
       makeChat(),
@@ -111,6 +113,8 @@ describe('Sidebar sub-thread collapse', () => {
 
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('sidebar-chat-children')
+    expect(html).toContain(childIdentity.name)
+    expect(html).toContain('sidebar-sub-thread-identicon')
   })
 
   it('labels fan-out side-chat children distinctly in the sidebar', () => {

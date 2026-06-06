@@ -28,6 +28,8 @@ import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 import { isSubThreadChat } from '../lib/chatScope'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 
 const ageTickListeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -1957,6 +1959,7 @@ export function Sidebar({
     const subLastStatus = getLastRunStatus(subChat)
     const subIsSideChat = isSideChatRecord(subChat)
     const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Agent sub-thread'
+    const subAgentIdentity = !subIsSideChat ? assignAgentIdentityFromSeed(subChat.appChatId) : null
     const subSideChatMetaLabels = subIsSideChat
       ? [
           getSideChatChildModeLabel(subChat),
@@ -1979,7 +1982,17 @@ export function Sidebar({
         <span className="sidebar-sub-thread-prefix" aria-hidden>
           {subIsSideChat ? '⇄' : '↳'}
         </span>
-        <span className="sidebar-sub-thread-dot" aria-hidden="true" style={{ background: subProviderColor }} />
+        {subAgentIdentity ? (
+          <AgentIdentityIcon
+            name={subAgentIdentity.key}
+            color={subAgentIdentity.accent}
+            size={18}
+            className="sidebar-sub-thread-identicon"
+            title={subAgentIdentity.name}
+          />
+        ) : (
+          <span className="sidebar-sub-thread-dot" aria-hidden="true" style={{ background: subProviderColor }} />
+        )}
         <span className="sidebar-chat-copy" title={subChat.title}>
           <span className="sidebar-chat-title-line">
             <SidebarProviderLabel provider={subChat.provider} />
@@ -1996,6 +2009,9 @@ export function Sidebar({
           </span>
           <span className="sidebar-chat-subline">
             <span className="sidebar-run-status tone-muted">{subKindLabel}</span>
+            {subAgentIdentity && (
+              <span className="sidebar-run-status tone-muted">{subAgentIdentity.name}</span>
+            )}
             {subSideChatMetaLabels.map((label) => (
               <span key={label} className="sidebar-run-status tone-muted">
                 {label}

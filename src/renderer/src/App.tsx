@@ -257,6 +257,8 @@ import { applyWorkSessionConfirmation, cancelWorkSessionOnChat } from './lib/wor
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { LinkedChatsStrip } from './components/LinkedChatsStrip'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
+import { AgentIdentityIcon } from './components/icons/AgentIdentityIcon'
+import { assignAgentIdentityFromSeed } from './lib/agentIdentitySeed'
 import {
   extractFirstEnsembleDmTarget,
   formatComposerPathMention,
@@ -528,6 +530,11 @@ function getSideChatSelectedParticipantLabel(chat: ChatRecord): string {
 
 function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
+}
+
+function getDelegatedAgentIdentity(chat: ChatRecord | null | undefined) {
+  if (!chat || !isSubThreadChat(chat)) return null
+  return assignAgentIdentityFromSeed(chat.appChatId)
 }
 
 function getLinkedChatKindLabel(chat: ChatRecord): string {
@@ -1790,6 +1797,7 @@ function App(): React.JSX.Element {
   const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
   const sidePanelModeLabel = sideChat ? getSideChatModeLabel(sideChat) : ''
   const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
+  const sidePanelAgentIdentity = getDelegatedAgentIdentity(sideChat)
   const currentChatIsLinkedChild = Boolean(
     currentChat?.parentChatId &&
       (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
@@ -1807,6 +1815,8 @@ function App(): React.JSX.Element {
     currentLinkedParentChat && currentChat
       ? getLinkedChatContextLabel(currentChat)
       : 'No parent context'
+  const currentLinkedAgentIdentity =
+    currentLinkedParentChat && currentChat ? getDelegatedAgentIdentity(currentChat) : null
   const popoutSideChatLifecycleId =
     isChatPopoutWindow && currentChat?.parentChatRelation === 'sideChat'
       ? currentChat.appChatId
@@ -13338,6 +13348,8 @@ function App(): React.JSX.Element {
     isLinkedChatPopout && currentChat?.parentChatRelation === 'sideChat'
       ? getSideChatModeLabel(currentChat)
       : ''
+  const chatPopoutAgentIdentity =
+    isLinkedChatPopout && currentChat ? getDelegatedAgentIdentity(currentChat) : null
   const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
@@ -13612,6 +13624,21 @@ function App(): React.JSX.Element {
           <div className="chat-popout-dock-toolbar" role="banner">
             <div className="chat-popout-dock-title">
               <span>{chatPopoutKindLabel}</span>
+              {chatPopoutAgentIdentity && (
+                <span
+                  className="linked-chat-agent-identity chat-popout-dock-agent"
+                  title={chatPopoutAgentIdentity.name}
+                >
+                  <AgentIdentityIcon
+                    name={chatPopoutAgentIdentity.key}
+                    color={chatPopoutAgentIdentity.accent}
+                    size={22}
+                    className="linked-chat-agent-identicon"
+                    title={chatPopoutAgentIdentity.name}
+                  />
+                  <span>{chatPopoutAgentIdentity.name}</span>
+                </span>
+              )}
               <strong title={currentChat.title}>{currentChat.title}</strong>
               <small title={chatPopoutParentChat?.title || undefined}>
                 Parent: {chatPopoutParentChat?.title || 'linked chat'}
@@ -14094,6 +14121,21 @@ function App(): React.JSX.Element {
                   <ProviderBadgeIcon provider={currentProvider} />
                   <span>{currentLinkedKindLabel}</span>
                 </span>
+                {currentLinkedAgentIdentity && (
+                  <span
+                    className="linked-chat-agent-identity"
+                    title={currentLinkedAgentIdentity.name}
+                  >
+                    <AgentIdentityIcon
+                      name={currentLinkedAgentIdentity.key}
+                      color={currentLinkedAgentIdentity.accent}
+                      size={22}
+                      className="linked-chat-agent-identicon"
+                      title={currentLinkedAgentIdentity.name}
+                    />
+                    <span>{currentLinkedAgentIdentity.name}</span>
+                  </span>
+                )}
                 <strong title={currentChat.title}>{currentChat.title}</strong>
                 <span className="linked-chat-parent-line">
                   Parent: {currentLinkedParentChat.title || 'Parent chat'}
@@ -17119,6 +17161,21 @@ function App(): React.JSX.Element {
                   <ProviderBadgeIcon provider={sideProvider} />
                   <span>{sidePanelKindLabel}</span>
                 </span>
+                {sidePanelAgentIdentity && (
+                  <span
+                    className="linked-chat-agent-identity side-chat-agent-identity"
+                    title={sidePanelAgentIdentity.name}
+                  >
+                    <AgentIdentityIcon
+                      name={sidePanelAgentIdentity.key}
+                      color={sidePanelAgentIdentity.accent}
+                      size={22}
+                      className="linked-chat-agent-identicon"
+                      title={sidePanelAgentIdentity.name}
+                    />
+                    <span>{sidePanelAgentIdentity.name}</span>
+                  </span>
+                )}
                 <span className="side-chat-parent-link">
                   Parent: {sidePanelParentChat?.title || 'current chat'}
                 </span>

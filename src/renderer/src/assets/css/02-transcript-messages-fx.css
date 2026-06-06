@@ -3976,6 +3976,26 @@
   white-space: nowrap;
 }
 
+.linked-chats-strip-agent {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  color: var(--text-1);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.linked-chats-strip-agent-icon.agent-identity-icon {
+  flex: 0 0 auto;
+}
+
+.linked-chats-strip-agent > span:last-child {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .linked-chats-strip-title {
   min-width: 0;
   overflow: hidden;

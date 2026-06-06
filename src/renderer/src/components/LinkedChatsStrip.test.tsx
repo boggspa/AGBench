@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ChatRecord } from '../../../main/store/types'
 import { LinkedChatsStrip } from './LinkedChatsStrip'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
@@ -23,6 +24,7 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
 describe('LinkedChatsStrip', () => {
   it('renders direct side chats and subthreads under the active parent', () => {
     const parent = makeChat()
+    const subThreadIdentity = assignAgentIdentityFromSeed('sub-1')
     const sideChat = makeChat({
       appChatId: 'side-1',
       parentChatId: 'parent-1',
@@ -90,6 +92,8 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Investigate tests')
     expect(html).toContain('Delegated agent')
     expect(html).toContain('Delegation context')
+    expect(html).toContain(subThreadIdentity.name)
+    expect(html).toContain('linked-chats-strip-agent-icon')
     expect(html).toContain('is-running')
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')

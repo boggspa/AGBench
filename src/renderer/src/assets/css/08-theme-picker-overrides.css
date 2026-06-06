@@ -1206,6 +1206,10 @@
   color: var(--text-tertiary);
   font-weight: 600;
 }
+.sidebar-sub-thread-identicon.agent-identity-icon {
+  flex: 0 0 auto;
+  margin-right: 6px;
+}
 .sidebar-chat-delegate {
   display: inline-flex;
   align-items: center;

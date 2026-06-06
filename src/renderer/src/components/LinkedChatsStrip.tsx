@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
 import { isSubThreadChat } from '../lib/chatScope'
+import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
+import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 
 const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
@@ -49,6 +51,10 @@ function linkedParticipantLabel(chat: ChatRecord): string {
   if (typeof roleValue === 'string' && roleValue.trim()) return roleValue.trim()
   const idValue = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
   return typeof idValue === 'string' && idValue.trim() ? providerLabel(chat.provider) : ''
+}
+
+function delegatedAgentIdentity(chat: ChatRecord) {
+  return isSubThreadChat(chat) ? assignAgentIdentityFromSeed(chat.appChatId) : null
 }
 
 function linkedContextLabel(chat: ChatRecord): string {
@@ -144,6 +150,7 @@ export function LinkedChatsStrip({
             const stateLabel = linkedStateLabel(chat, running)
             const contextLabel = linkedContextLabel(chat)
             const modeLabel = linkedModeLabel(chat)
+            const agentIdentity = delegatedAgentIdentity(chat)
             return (
               <div
                 key={chat.appChatId}
@@ -165,6 +172,21 @@ export function LinkedChatsStrip({
                   />
                   <span className="linked-chats-strip-provider">{providerLabel(provider)}</span>
                   <span className="linked-chats-strip-kind">{linkedKindLabel(chat)}</span>
+                  {agentIdentity && (
+                    <span
+                      className="linked-chats-strip-agent"
+                      title={agentIdentity.name}
+                    >
+                      <AgentIdentityIcon
+                        name={agentIdentity.key}
+                        color={agentIdentity.accent}
+                        size={20}
+                        className="linked-chats-strip-agent-icon"
+                        title={agentIdentity.name}
+                      />
+                      <span>{agentIdentity.name}</span>
+                    </span>
+                  )}
                   <span className="linked-chats-strip-title">{title}</span>
                   <span className="linked-chats-strip-meta">
                     <span className="linked-chats-strip-state">{stateLabel}</span>
