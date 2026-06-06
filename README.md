@@ -17,13 +17,13 @@ workspace state on the user's machine.
     </td>
     <td align="center" valign="top" width="33%">
       <img width="100%" alt="A live ensemble run" src="https://github.com/user-attachments/assets/95eb5142-7c41-4f2e-82e5-14e22e4ab911" /><br />
-      <sub><b>A live ensemble run</b></sub>
+      <sub><b>A live Ensemble run</b></sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="33%">
       <img width="100%" alt="Git-aware composer" src="https://github.com/user-attachments/assets/e50e5f5d-eb7b-4a34-9fe1-50eb8d54a5d1" /><br />
-      <sub><b>Git-aware composer</b></sub>
+      <sub><b>Pop-Out Chat Windows</b></sub>
     </td>
     <td align="center" valign="top" width="33%">
       <img width="100%" alt="Diff Studio" src="https://github.com/user-attachments/assets/b671a8a0-a81a-44b9-8383-37a8d47da478" /><br />
