@@ -122,7 +122,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build:win
+      # NOTE: not `npm run build:win` — that bundles a packaged-app launch smoke
+      # that errors "spawn UNKNOWN" on the headless windows-latest runner, and
+      # electron-builder's built-in publish refuses a release published >2h ago.
+      # Build the installers directly (no smoke, --publish never), then attach via
+      # the gh step below (gh release upload --clobber works on an existing release).
+      - run: npm run clean:dist
+      - run: npm run build
+      - run: npx electron-builder --win --x64 --arm64 --publish never
+      - run: node scripts/write-win-update-feeds.cjs dist
       - name: Upload unsigned Windows installers to the release
         shell: pwsh
         run: |
