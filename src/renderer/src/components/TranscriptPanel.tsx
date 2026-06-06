@@ -161,6 +161,7 @@ type TranscriptPanelProps = {
    */
   onCopyMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
+  onOpenSideChatFromMessage?: (message: ChatMessage) => void
   onPreviewImage: (ref: ChatMediaRef) => void
   /**
    * 1.0.8 — shared copy-to-clipboard feedback (see {@link useCopyFeedback}).
@@ -673,6 +674,7 @@ export const TranscriptPanel = memo(
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
+    onOpenSideChatFromMessage,
     onPreviewImage,
     copiedId,
     copy,
@@ -1088,6 +1090,11 @@ export const TranscriptPanel = memo(
                             <MessageActionsChip
                               onCopy={() => onCopyMessage(msg.id, msg.content)}
                               onDelete={() => onDeleteMessage(msg.id)}
+                              onOpenSideChat={
+                                onOpenSideChatFromMessage
+                                  ? () => onOpenSideChatFromMessage(msg)
+                                  : undefined
+                              }
                               copied={copiedId === msg.id}
                               label="user message"
                             />
@@ -1109,6 +1116,11 @@ export const TranscriptPanel = memo(
                           <MessageActionsChip
                             onCopy={() => onCopyMessage(msg.id, msg.content)}
                             onDelete={() => onDeleteMessage(msg.id)}
+                            onOpenSideChat={
+                              onOpenSideChatFromMessage
+                                ? () => onOpenSideChatFromMessage(msg)
+                                : undefined
+                            }
                             copied={copiedId === msg.id}
                             label={`${msg.role} message`}
                           />
@@ -1411,6 +1423,7 @@ export const TranscriptPanel = memo(
     previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
     previous.onCopyMessage === next.onCopyMessage &&
     previous.onDeleteMessage === next.onDeleteMessage &&
+    previous.onOpenSideChatFromMessage === next.onOpenSideChatFromMessage &&
     previous.onPreviewImage === next.onPreviewImage &&
     previous.copiedId === next.copiedId &&
     previous.copy === next.copy &&

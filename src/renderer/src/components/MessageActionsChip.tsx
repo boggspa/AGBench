@@ -16,11 +16,13 @@
 function MessageActionsChip({
   onCopy,
   onDelete,
+  onOpenSideChat,
   copied = false,
   label
 }: {
   onCopy: () => void
   onDelete: () => void
+  onOpenSideChat?: () => void
   /** 1.0.8 — when true the copy button shows a transient confirmation
    * (driven by the host's shared `useCopyFeedback`). */
   copied?: boolean
@@ -68,6 +70,33 @@ function MessageActionsChip({
           </svg>
         )}
       </button>
+      {onOpenSideChat && (
+        <button
+          type="button"
+          className="message-actions-chip-button message-actions-chip-button--side-chat"
+          onClick={onOpenSideChat}
+          title="Open side chat from this message"
+          aria-label={`Open side chat from ${label}`}
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <rect x="2.5" y="3" width="11" height="10" rx="1.4" />
+            <path d="M8 3.2v9.6" />
+            <path d="M4.5 6h2" />
+            <path d="M10 8.2h1.8" />
+            <path d="M10 10.3h1.2" />
+          </svg>
+        </button>
+      )}
       <button
         type="button"
         className="message-actions-chip-button message-actions-chip-button--delete"

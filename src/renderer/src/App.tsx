@@ -254,7 +254,7 @@ import { applyWorkSessionConfirmation, cancelWorkSessionOnChat } from './lib/wor
 // (EnsembleParticipantsAboveRow) where each chip opens a flyout in the
 // same visual language as the rest of the composer pickers.
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
-import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
+import { LinkedChatsStrip } from './components/LinkedChatsStrip'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import {
   extractFirstEnsembleDmTarget,
@@ -480,6 +480,10 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
 ])
 
 type SidePanelPresentation = 'split' | 'drawer'
+type SideChatSeedContext = {
+  originMessageId?: string
+  originRunId?: string
+}
 
 /**
  * Derive the per-thread run-complete card from a chat's PERSISTED last run
@@ -8122,7 +8126,8 @@ function App(): React.JSX.Element {
   const createSideChatFromCurrentChat = async (
     seedPrompt = '',
     clearParentDraft = false,
-    presentation: SidePanelPresentation = 'split'
+    presentation: SidePanelPresentation = 'split',
+    seedContext: SideChatSeedContext = {}
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
@@ -8132,6 +8137,8 @@ function App(): React.JSX.Element {
         parentChatId: parentChat.appChatId,
         chatKind: parentChat.chatKind === 'ensemble' ? 'ensemble' : 'single',
         provider: parentProvider,
+        originMessageId: seedContext.originMessageId,
+        originRunId: seedContext.originRunId,
         title:
           parentChat.chatKind === 'ensemble'
             ? `Side ensemble from ${parentChat.title || 'ensemble chat'}`
@@ -8199,13 +8206,29 @@ function App(): React.JSX.Element {
   const ensureSideChatForCurrentChat = async (
     seedPrompt = '',
     clearParentDraft = false,
-    presentation: SidePanelPresentation = 'split'
+    presentation: SidePanelPresentation = 'split',
+    seedContext: SideChatSeedContext = {}
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
     const existing = findReusableSideChatForCurrentChat()
     if (existing) {
       openLinkedChatInSidePanel(existing, presentation)
+      if (seedContext.originMessageId || seedContext.originRunId) {
+        updateChatById(existing.appChatId, (source) => ({
+          ...source,
+          updatedAt: Date.now(),
+          sideChatContext: {
+            createdAt: source.sideChatContext?.createdAt || Date.now(),
+            ...source.sideChatContext,
+            ...(seedContext.originMessageId
+              ? { originMessageId: seedContext.originMessageId }
+              : {}),
+            ...(seedContext.originRunId ? { originRunId: seedContext.originRunId } : {}),
+            transcriptVisibility: 'selected'
+          }
+        }))
+      }
       if (seedPrompt) {
         setChatPromptDraft(existing.appChatId, seedPrompt)
       }
@@ -8214,7 +8237,7 @@ function App(): React.JSX.Element {
       }
       return existing
     }
-    return createSideChatFromCurrentChat(seedPrompt, clearParentDraft, presentation)
+    return createSideChatFromCurrentChat(seedPrompt, clearParentDraft, presentation, seedContext)
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
@@ -9486,6 +9509,28 @@ function App(): React.JSX.Element {
       deleteMessageFromChat(currentChat, messageId)
     },
     [currentChat, deleteMessageFromChat]
+  )
+
+  const handleOpenSideChatFromMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!currentChat || !message?.id) return
+      const roleLabel =
+        message.role === 'user'
+          ? 'user message'
+          : message.role === 'assistant'
+            ? 'assistant message'
+            : `${message.role} message`
+      const seedPrompt = [
+        `Use this selected ${roleLabel} from the parent chat as the starting point.`,
+        'This side chat is isolated and does not have the rest of the parent transcript unless I paste it here.',
+        '',
+        message.content.trim()
+      ].join('\n')
+      void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+        originMessageId: message.id
+      })
+    },
+    [currentChat, ensureSideChatForCurrentChat]
   )
 
   const handlePlanChoiceSubmit = (messageId: string, option: string) => {
@@ -12831,11 +12876,12 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          <SubThreadStatusTicker
+          <LinkedChatsStrip
             currentChat={currentChat}
             chats={chats}
             runningChatIds={runningChatIdsArray}
-            onOpenSubThread={handleOpenCockpitThread}
+            onOpenBeside={handleOpenLinkedChatInSidePanelById}
+            onOpenMain={handleOpenCockpitThread}
           />
 
           {/*
@@ -12911,6 +12957,7 @@ function App(): React.JSX.Element {
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewImage={setPreviewChatMediaRef}
+                onOpenSideChatFromMessage={handleOpenSideChatFromMessage}
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}

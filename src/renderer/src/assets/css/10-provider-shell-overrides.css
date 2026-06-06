@@ -437,6 +437,11 @@
   color: var(--text-1);
   background: color-mix(in srgb, var(--text-1) 12%, transparent);
 }
+.message-actions-chip-button--side-chat:hover,
+.message-actions-chip-button--side-chat:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .message-actions-chip-button--delete:hover,
 .message-actions-chip-button--delete:focus-visible {
   color: var(--danger, #ff6363);
