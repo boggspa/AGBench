@@ -8467,7 +8467,8 @@ function App(): React.JSX.Element {
     clearParentDraft = false,
     presentation: SidePanelPresentation = 'split',
     seedContext: SideChatSeedContext = {},
-    mode?: SideChatCreateMode
+    mode?: SideChatCreateMode,
+    presentInline = true
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
@@ -8571,21 +8572,25 @@ function App(): React.JSX.Element {
         nextSideChat,
         ...prev.filter((chat) => chat.appChatId !== nextSideChat.appChatId)
       ])
-      if (sideChat?.appChatId && sideChat.appChatId !== nextSideChat.appChatId) {
+      if (presentInline && sideChat?.appChatId && sideChat.appChatId !== nextSideChat.appChatId) {
         closeSideChatPresentationRecord(sideChat)
       }
-      setSidePanelPresentation(presentation)
-      setSideChatId(nextSideChat.appChatId)
-      setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
-      setShowFileEditor(false)
-      appearance.update({ showInspector: false })
+      if (presentInline) {
+        setSidePanelPresentation(presentation)
+        setSideChatId(nextSideChat.appChatId)
+        setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
+        setShowFileEditor(false)
+        appearance.update({ showInspector: false })
+      }
       setChatPromptDraft(nextSideChat.appChatId, seedPrompt)
       if (clearParentDraft) {
         setChatPromptDraft(parentChat.appChatId, '')
       }
-      requestAnimationFrame(() => {
-        sideComposerTextareaRef.current?.focus()
-      })
+      if (presentInline) {
+        requestAnimationFrame(() => {
+          sideComposerTextareaRef.current?.focus()
+        })
+      }
       return nextSideChat
     } catch (error) {
       appendThreadRawLog(parentChat.appChatId, {
@@ -8656,7 +8661,8 @@ function App(): React.JSX.Element {
     clearParentDraft = false,
     presentation: SidePanelPresentation = 'split',
     seedContext: SideChatSeedContext = {},
-    mode?: SideChatCreateMode
+    mode?: SideChatCreateMode,
+    presentInline = true
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
@@ -8673,7 +8679,9 @@ function App(): React.JSX.Element {
         : undefined
     const existing = findReusableSideChatForCurrentChat(sideChatMode, selectedSideProvider)
     if (existing) {
-      openLinkedChatInSidePanel(existing, presentation)
+      if (presentInline) {
+        openLinkedChatInSidePanel(existing, presentation)
+      }
       if (
         seedContext.originMessageId ||
         seedContext.originRunId ||
@@ -8717,27 +8725,37 @@ function App(): React.JSX.Element {
       clearParentDraft,
       presentation,
       seedContext,
-      sideChatMode
+      sideChatMode,
+      presentInline
     )
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
+    const targetChat =
+      chat.parentChatRelation === 'sideChat' ? applySideChatLifecycle(chat, 'active') : chat
+    if (targetChat !== chat) {
+      chatByIdRef.current.set(targetChat.appChatId, targetChat)
+      setChats((prev) =>
+        prev.map((item) => (item.appChatId === targetChat.appChatId ? targetChat : item))
+      )
+      void window.api.saveChat(targetChat).catch(() => {})
+    }
     const wasInlinePresentation =
-      sideChatId === chat.appChatId || sideChat?.appChatId === chat.appChatId
-    writeChatPopoutHandoff(chat.appChatId, {
-      draft: composerDraftsByChatId[chat.appChatId] || '',
+      sideChatId === targetChat.appChatId || sideChat?.appChatId === targetChat.appChatId
+    writeChatPopoutHandoff(targetChat.appChatId, {
+      draft: composerDraftsByChatId[targetChat.appChatId] || '',
       scrollState: captureChatScrollState(
         wasInlinePresentation
           ? sideTranscriptScrollRef.current
-          : currentChat?.appChatId === chat.appChatId
+          : currentChat?.appChatId === targetChat.appChatId
             ? transcriptScrollRef.current
             : null
       )
     })
     void window.api.openWorkspacePopout({
       kind: 'chat',
-      chatId: chat.appChatId,
-      workspacePath: chat.workspacePath
+      chatId: targetChat.appChatId,
+      workspacePath: targetChat.workspacePath
     })
     if (wasInlinePresentation) {
       setSideChatId(null)
@@ -8787,7 +8805,8 @@ function App(): React.JSX.Element {
       false,
       presentation === 'drawer' ? 'drawer' : 'split',
       {},
-      mode
+      mode,
+      presentation !== 'popout' && presentation !== 'main'
     )
     if (!linkedChat) return
     if (presentation === 'popout') {
