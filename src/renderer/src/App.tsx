@@ -10155,7 +10155,7 @@ function App(): React.JSX.Element {
     ).then((linkedChat) => {
       if (!linkedChat) return
       if (sideCommand.presentation === 'popout') {
-        popOutLinkedChat(linkedChat)
+        popOutLinkedChat(linkedChat, sideCommand.seedPrompt)
       } else if (sideCommand.presentation === 'main') {
         void handleSelectChat(linkedChat)
       }
