@@ -10,6 +10,7 @@ interface RunCardProps {
    * this run. Without it, the button just logs a stub for debugging
    * (the K1A default). */
   onInspect?: (runId: string) => void
+  onOpenSideChat?: (runId: string) => void
 }
 
 interface RunAggregate {
@@ -17,7 +18,12 @@ interface RunAggregate {
   eventFileCount: number | null
 }
 
-export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX.Element {
+export function RunCard({
+  run,
+  fallbackProvider,
+  onInspect,
+  onOpenSideChat
+}: RunCardProps): JSX.Element {
   const provider = run.provider || fallbackProvider || 'gemini'
   const [aggregate, setAggregate] = useState<RunAggregate>({
     approvalCount: 0,
@@ -124,6 +130,17 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
         <span>Inspect</span>
         <span aria-hidden>→</span>
       </button>
+      {run.runId && run.endedAt && onOpenSideChat && (
+        <button
+          type="button"
+          className="run-card-inspect run-card-side-chat"
+          onClick={() => onOpenSideChat(run.runId)}
+          title="Open side chat from this run result"
+          aria-label="Open side chat from this run result"
+        >
+          <span>Side chat</span>
+        </button>
+      )}
     </div>
   )
 }

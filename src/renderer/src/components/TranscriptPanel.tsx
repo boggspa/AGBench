@@ -883,6 +883,7 @@ export const TranscriptPanel = memo(
                     run={boundaryRun}
                     fallbackProvider={getChatProvider(currentChat)}
                     onInspect={onInspectRun}
+                    onOpenSideChat={onOpenSideChatFromRun}
                   />
                 )}
                 {isDelegationCard || isReturnCard ? (

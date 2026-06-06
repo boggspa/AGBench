@@ -213,6 +213,43 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('Side chat')
   })
 
+  it('renders a run-result side chat action on historical run boundary cards', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          messages: [
+            {
+              id: 'm-run',
+              role: 'user',
+              content: 'Run this task',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              runId: 'run-1'
+            }
+          ],
+          currentChat: {
+            appChatId: 'chat-1',
+            provider: 'codex',
+            runs: [
+              {
+                runId: 'run-1',
+                provider: 'codex',
+                promptMessageId: 'm-run',
+                startedAt: '2026-01-01T00:00:00.000Z',
+                endedAt: '2026-01-01T00:00:10.000Z',
+                status: 'success'
+              }
+            ]
+          },
+          onOpenSideChatFromRun: () => {}
+        })}
+      />
+    )
+
+    expect(html).toContain('Open side chat from this run result')
+    expect(html).toContain('Side chat')
+  })
+
   it('marks the selected side-chat seed message in the transcript', () => {
     const html = renderToStaticMarkup(
       <TranscriptPanel
