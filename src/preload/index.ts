@@ -224,6 +224,13 @@ const api = {
     chatId: string
     presentation?: 'split' | 'drawer'
     draft?: string
+    scrollState?: {
+      scrollTop: number
+      scrollHeight: number
+      clientHeight: number
+      scrollRatio: number
+      atBottom: boolean
+    }
   }) => ipcRenderer.invoke('dock-side-chat-popout', input) as Promise<{ ok: true }>,
   quitApp: () => ipcRenderer.invoke('app:quit') as Promise<boolean>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
@@ -806,6 +813,13 @@ const api = {
       parentChatId: string
       presentation: 'split' | 'drawer'
       draft?: string
+      scrollState?: {
+        scrollTop: number
+        scrollHeight: number
+        clientHeight: number
+        scrollRatio: number
+        atBottom: boolean
+      }
     }) => void
   ) => {
     const wrapped = (
@@ -815,6 +829,13 @@ const api = {
         parentChatId: string
         presentation: 'split' | 'drawer'
         draft?: string
+        scrollState?: {
+          scrollTop: number
+          scrollHeight: number
+          clientHeight: number
+          scrollRatio: number
+          atBottom: boolean
+        }
       }
     ): void => callback(payload)
     ipcRenderer.on('side-chat:dock-request', wrapped)

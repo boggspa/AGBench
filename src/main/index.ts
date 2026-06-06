@@ -12171,6 +12171,37 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
   return { ok: true }
 }
 
+function sanitizeChatScrollState(value: unknown):
+  | {
+      scrollTop: number
+      scrollHeight: number
+      clientHeight: number
+      scrollRatio: number
+      atBottom: boolean
+    }
+  | undefined {
+  if (!isRecord(value)) return undefined
+  const scrollTop = Number(value.scrollTop)
+  const scrollHeight = Number(value.scrollHeight)
+  const clientHeight = Number(value.clientHeight)
+  const scrollRatio = Number(value.scrollRatio)
+  if (
+    !Number.isFinite(scrollTop) ||
+    !Number.isFinite(scrollHeight) ||
+    !Number.isFinite(clientHeight) ||
+    !Number.isFinite(scrollRatio)
+  ) {
+    return undefined
+  }
+  return {
+    scrollTop: Math.max(0, scrollTop),
+    scrollHeight: Math.max(0, scrollHeight),
+    clientHeight: Math.max(0, clientHeight),
+    scrollRatio: Math.max(0, Math.min(1, scrollRatio)),
+    atBottom: Boolean(value.atBottom)
+  }
+}
+
 async function dockSideChatPopout(
   sender: Electron.WebContents,
   input: unknown
@@ -12181,6 +12212,7 @@ async function dockSideChatPopout(
   const chatId = requireNonEmptyString(input.chatId, 'Chat')
   const presentation = input.presentation === 'drawer' ? 'drawer' : 'split'
   const draft = typeof input.draft === 'string' ? input.draft : undefined
+  const scrollState = sanitizeChatScrollState(input.scrollState)
   const chat = AppStore.getChat(chatId)
   if (!chat) {
     throw new Error('Chat does not exist.')
@@ -12206,7 +12238,8 @@ async function dockSideChatPopout(
     chatId: chat.appChatId,
     parentChatId: parent.appChatId,
     presentation,
-    ...(draft !== undefined ? { draft } : {})
+    ...(draft !== undefined ? { draft } : {}),
+    ...(scrollState ? { scrollState } : {})
   })
 
   const sourceWindow = BrowserWindow.fromWebContents(sender)

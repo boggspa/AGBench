@@ -429,6 +429,13 @@ declare global {
         chatId: string
         presentation?: 'split' | 'drawer'
         draft?: string
+        scrollState?: {
+          scrollTop: number
+          scrollHeight: number
+          clientHeight: number
+          scrollRatio: number
+          atBottom: boolean
+        }
       }) => Promise<{ ok: true }>
       quitApp: () => Promise<boolean>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
@@ -960,6 +967,13 @@ declare global {
           parentChatId: string
           presentation: 'split' | 'drawer'
           draft?: string
+          scrollState?: {
+            scrollTop: number
+            scrollHeight: number
+            clientHeight: number
+            scrollRatio: number
+            atBottom: boolean
+          }
         }) => void
       ) => () => void
       onCreativeActionRequest: (

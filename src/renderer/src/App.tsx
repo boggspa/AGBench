@@ -485,6 +485,20 @@ type SideChatSeedContext = {
   originMessageId?: string
   originRunId?: string
 }
+type ChatScrollState = {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+  scrollRatio: number
+  atBottom: boolean
+}
+type ChatPopoutHandoffState = {
+  draft?: string
+  scrollState?: ChatScrollState
+  writtenAt: number
+}
+
+const CHAT_POPOUT_HANDOFF_PREFIX = 'taskwraith.chatPopoutHandoff.'
 
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
   if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
@@ -495,6 +509,98 @@ function permissionPresetToApprovalMode(preset?: string): string {
   if (preset === 'read_only') return 'plan'
   if (preset === 'workspace_write' || preset === 'full_access') return 'auto_edit'
   return 'default'
+}
+
+function captureChatScrollState(scroller: HTMLElement | null | undefined): ChatScrollState | undefined {
+  if (!scroller) return undefined
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+  const scrollTop = Math.max(0, Math.min(maxScrollTop, scroller.scrollTop))
+  const distanceFromBottom = maxScrollTop - scrollTop
+  return {
+    scrollTop,
+    scrollHeight: scroller.scrollHeight,
+    clientHeight: scroller.clientHeight,
+    scrollRatio: maxScrollTop > 0 ? scrollTop / maxScrollTop : 1,
+    atBottom: distanceFromBottom <= 24
+  }
+}
+
+function normalizeChatScrollState(value: unknown): ChatScrollState | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Record<string, unknown>
+  const scrollTop = Number(source.scrollTop)
+  const scrollHeight = Number(source.scrollHeight)
+  const clientHeight = Number(source.clientHeight)
+  const scrollRatio = Number(source.scrollRatio)
+  if (
+    !Number.isFinite(scrollTop) ||
+    !Number.isFinite(scrollHeight) ||
+    !Number.isFinite(clientHeight) ||
+    !Number.isFinite(scrollRatio)
+  ) {
+    return undefined
+  }
+  return {
+    scrollTop: Math.max(0, scrollTop),
+    scrollHeight: Math.max(0, scrollHeight),
+    clientHeight: Math.max(0, clientHeight),
+    scrollRatio: Math.max(0, Math.min(1, scrollRatio)),
+    atBottom: Boolean(source.atBottom)
+  }
+}
+
+function restoreChatScrollState(
+  scroller: HTMLElement | null | undefined,
+  scrollState: ChatScrollState | undefined
+): void {
+  if (!scroller || !scrollState) return
+  const apply = () => {
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    scroller.scrollTop = scrollState.atBottom
+      ? scroller.scrollHeight
+      : Math.max(0, Math.min(maxScrollTop, scrollState.scrollRatio * maxScrollTop))
+  }
+  requestAnimationFrame(() => {
+    apply()
+    requestAnimationFrame(apply)
+  })
+}
+
+function chatPopoutHandoffKey(chatId: string): string {
+  return `${CHAT_POPOUT_HANDOFF_PREFIX}${chatId}`
+}
+
+function writeChatPopoutHandoff(chatId: string, handoff: Omit<ChatPopoutHandoffState, 'writtenAt'>): void {
+  if (typeof window === 'undefined' || !chatId) return
+  try {
+    window.localStorage.setItem(
+      chatPopoutHandoffKey(chatId),
+      JSON.stringify({ ...handoff, writtenAt: Date.now() })
+    )
+  } catch {
+    // Best-effort only. Transcript/run state still lives on the chat record.
+  }
+}
+
+function readChatPopoutHandoff(chatId: string): ChatPopoutHandoffState | null {
+  if (typeof window === 'undefined' || !chatId) return null
+  const key = chatPopoutHandoffKey(chatId)
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    window.localStorage.removeItem(key)
+    const parsed = JSON.parse(raw) as Partial<ChatPopoutHandoffState>
+    return {
+      ...(typeof parsed.draft === 'string' ? { draft: parsed.draft } : {}),
+      ...(parsed.scrollState
+        ? { scrollState: normalizeChatScrollState(parsed.scrollState) }
+        : {}),
+      writtenAt: typeof parsed.writtenAt === 'number' ? parsed.writtenAt : Date.now()
+    }
+  } catch {
+    window.localStorage.removeItem(key)
+    return null
+  }
 }
 
 /**
@@ -2793,12 +2899,20 @@ function App(): React.JSX.Element {
         }
         setCurrentChat(popoutChat)
         applyChatComposerSelection(popoutChat, provider)
+        const popoutHandoff = readChatPopoutHandoff(popoutChat.appChatId)
+        if (typeof popoutHandoff?.draft === 'string') {
+          setChatPromptDraft(popoutChat.appChatId, popoutHandoff.draft)
+        }
         void refreshUsageSummary(getUsageWorkspaceIdForChat(popoutChat), provider)
         void refreshProviderMetadata(provider, popoutChat.workspacePath)
         setRawLogs(rawLogsByChatIdRef.current.get(popoutChat.appChatId) || [])
         hydrateThreadRawLogsFromEvents(popoutChat.appChatId)
         setShowFallbackUX(false)
         setIsThinking(runningChatIds.has(popoutChat.appChatId))
+        if (popoutHandoff?.scrollState) {
+          autoFollowRef.current = popoutHandoff.scrollState.atBottom
+          restoreChatScrollState(transcriptScrollRef.current, popoutHandoff.scrollState)
+        }
         return
       }
       console.warn('[chat-popout] requested chat was not found:', chatPopoutChatIdRef.current)
@@ -8350,6 +8464,16 @@ function App(): React.JSX.Element {
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
+    writeChatPopoutHandoff(chat.appChatId, {
+      draft: composerDraftsByChatId[chat.appChatId] || '',
+      scrollState: captureChatScrollState(
+        sideChat?.appChatId === chat.appChatId
+          ? sideTranscriptScrollRef.current
+          : currentChat?.appChatId === chat.appChatId
+            ? transcriptScrollRef.current
+            : null
+      )
+    })
     void window.api.openWorkspacePopout({
       kind: 'chat',
       chatId: chat.appChatId,
@@ -8404,6 +8528,7 @@ function App(): React.JSX.Element {
     if (isChatPopoutWindow || typeof window.api.onSideChatDockRequest !== 'function') return
     const unsubscribe = window.api.onSideChatDockRequest((request) => {
       void (async () => {
+        const dockScrollState = normalizeChatScrollState(request.scrollState)
         let linkedChat =
           chatByIdRef.current.get(request.chatId) ||
           (await window.api.getChat(request.chatId)) ||
@@ -8444,6 +8569,10 @@ function App(): React.JSX.Element {
           await handleSelectChatRef.current(parentChat)
         }
         openLinkedChatInSidePanelRef.current(linkedChat, request.presentation, parentChat)
+        if (dockScrollState) {
+          sideAutoFollowRef.current = dockScrollState.atBottom
+          restoreChatScrollState(sideTranscriptScrollRef.current, dockScrollState)
+        }
       })()
     })
     return unsubscribe
@@ -10362,6 +10491,10 @@ function App(): React.JSX.Element {
 
   const openChatPopoutWindow = useCallback(() => {
     if (!currentChat?.appChatId) return
+    writeChatPopoutHandoff(currentChat.appChatId, {
+      draft: prompt,
+      scrollState: captureChatScrollState(transcriptScrollRef.current)
+    })
     void window.api.openWorkspacePopout({
       kind: 'chat',
       chatId: currentChat.appChatId,
@@ -10375,7 +10508,8 @@ function App(): React.JSX.Element {
       void window.api.dockSideChatPopout({
         chatId: currentChat.appChatId,
         presentation,
-        draft: prompt
+        draft: prompt,
+        scrollState: captureChatScrollState(transcriptScrollRef.current)
       })
     },
     [currentChat?.appChatId, isChatPopoutWindow, prompt]
