@@ -245,6 +245,7 @@ import {
   rebindWelcomeEnsembleChatToWorkspace
 } from './lib/ensembleWelcomeWorkspace'
 import { withSessionActivityLedger } from './lib/sessionActivityLedger'
+import { applyWorkSessionConfirmation, cancelWorkSessionOnChat } from './lib/workSessionChat'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -10418,17 +10419,11 @@ function App(): React.JSX.Element {
     }: WorkSessionSetupConfirmInput) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
       updateChatById(currentChat.appChatId, (source) => {
-        const patched: ChatRecord = {
-          ...source,
-          ensemble: {
-            ...source.ensemble!,
-            workSession: config,
-            roundMode,
-            synthesizerParticipantId,
-            updatedAt: new Date().toISOString()
-          }
-        }
-        return withSessionActivityLedger(source, patched)
+        return applyWorkSessionConfirmation(source, {
+          config,
+          roundMode,
+          synthesizerParticipantId
+        })
       })
       setShowWorkSessionSheet(false)
       // Pre-fill the composer with the initial prompt so the user
@@ -10456,22 +10451,7 @@ function App(): React.JSX.Element {
       // doesn't show a stale active strip after a failed cancel.
     }
     updateChatById(currentChat.appChatId, (source) => {
-      const session = source.ensemble?.workSession
-      if (!session) return source
-      const patched: ChatRecord = {
-        ...source,
-        ensemble: {
-          ...source.ensemble!,
-          workSession: {
-            ...session,
-            status: 'cancelled',
-            endedAt: new Date().toISOString(),
-            endedReason: 'Stopped by user.'
-          },
-          updatedAt: new Date().toISOString()
-        }
-      }
-      return withSessionActivityLedger(source, patched)
+      return cancelWorkSessionOnChat(source)
     })
   }, [
     isCurrentEnsembleChat,
