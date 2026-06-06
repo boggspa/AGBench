@@ -1262,6 +1262,7 @@ function App(): React.JSX.Element {
   const [sidePanelPresentation, setSidePanelPresentation] =
     useState<SidePanelPresentation>('split')
   const [sideChatMenuOpen, setSideChatMenuOpen] = useState(false)
+  const [sideChatSeedMessageId, setSideChatSeedMessageId] = useState<string | null>(null)
 
   // Reset inspector when the user navigates to a chat that doesn't own
   // the currently-inspected run. Conditional (not unconditional) because
@@ -1641,6 +1642,7 @@ function App(): React.JSX.Element {
   }, [sideChatMenuOpen])
   useEffect(() => {
     setSideChatMenuOpen(false)
+    setSideChatSeedMessageId(null)
   }, [currentChat?.appChatId])
   const permissionRequestState = currentComposerChatId
     ? permissionRequestByChatId[currentComposerChatId] || EMPTY_PERMISSION_STATE
@@ -9710,6 +9712,19 @@ function App(): React.JSX.Element {
     },
     [currentChat, ensureSideChatForCurrentChat]
   )
+  const selectedSideChatSeedMessage =
+    sideChatSeedMessageId && currentChat?.messages
+      ? currentChat.messages.find((message) => message.id === sideChatSeedMessageId) || null
+      : null
+  const handleMessageSelectionCandidate = useCallback((message: ChatMessage) => {
+    if (!message?.id) return
+    setSideChatSeedMessageId(message.id)
+  }, [])
+  const handleOpenSideChatFromSelectedMessage = useCallback(() => {
+    if (!selectedSideChatSeedMessage) return
+    handleOpenSideChatFromMessage(selectedSideChatSeedMessage)
+    setSideChatMenuOpen(false)
+  }, [handleOpenSideChatFromMessage, selectedSideChatSeedMessage])
 
   const handlePlanChoiceSubmit = (messageId: string, option: string) => {
     if (!currentWorkspace || !currentChat || !option.trim()) return
@@ -13224,9 +13239,18 @@ function App(): React.JSX.Element {
                       </button>
                     </>
                   )}
-                  <button type="button" role="menuitem" disabled>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleOpenSideChatFromSelectedMessage}
+                    disabled={!selectedSideChatSeedMessage}
+                  >
                     <span>Open from selected message</span>
-                    <small>Select-message seeding</small>
+                    <small>
+                      {selectedSideChatSeedMessage
+                        ? `${selectedSideChatSeedMessage.role} message`
+                        : 'Hover or focus a message'}
+                    </small>
                   </button>
                 </div>
               )}
@@ -13477,6 +13501,7 @@ function App(): React.JSX.Element {
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onMessageSelectionCandidate={handleMessageSelectionCandidate}
                 onPreviewImage={setPreviewChatMediaRef}
                 onOpenSideChatFromMessage={handleOpenSideChatFromMessage}
                 copiedId={copiedId}

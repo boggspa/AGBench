@@ -161,6 +161,7 @@ type TranscriptPanelProps = {
    */
   onCopyMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
+  onMessageSelectionCandidate?: (message: ChatMessage) => void
   onOpenSideChatFromMessage?: (message: ChatMessage) => void
   onPreviewImage: (ref: ChatMediaRef) => void
   /**
@@ -674,6 +675,7 @@ export const TranscriptPanel = memo(
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
+    onMessageSelectionCandidate,
     onOpenSideChatFromMessage,
     onPreviewImage,
     copiedId,
@@ -862,6 +864,9 @@ export const TranscriptPanel = memo(
                 key={`message-block-${rowKey}`}
                 className="transcript-message-block"
                 data-vrow-id={rowKey}
+                data-message-id={msg.id}
+                onMouseEnter={() => onMessageSelectionCandidate?.(msg)}
+                onFocus={() => onMessageSelectionCandidate?.(msg)}
                 ref={virtualizeEnabled ? virtualBlockRef : undefined}
               >
                 {boundaryRun && (
@@ -1423,6 +1428,7 @@ export const TranscriptPanel = memo(
     previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
     previous.onCopyMessage === next.onCopyMessage &&
     previous.onDeleteMessage === next.onDeleteMessage &&
+    previous.onMessageSelectionCandidate === next.onMessageSelectionCandidate &&
     previous.onOpenSideChatFromMessage === next.onOpenSideChatFromMessage &&
     previous.onPreviewImage === next.onPreviewImage &&
     previous.copiedId === next.copiedId &&
