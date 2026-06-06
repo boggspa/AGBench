@@ -8662,7 +8662,8 @@ function App(): React.JSX.Element {
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
-    const wasInlinePresentation = sideChat?.appChatId === chat.appChatId
+    const wasInlinePresentation =
+      sideChatId === chat.appChatId || sideChat?.appChatId === chat.appChatId
     writeChatPopoutHandoff(chat.appChatId, {
       draft: composerDraftsByChatId[chat.appChatId] || '',
       scrollState: captureChatScrollState(
