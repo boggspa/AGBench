@@ -1840,6 +1840,10 @@ function App(): React.JSX.Element {
   const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
   const sidePanelAgentIdentity = getLinkedChatAgentIdentity(sideChat)
   const sidePanelRouteLabel = sideChat ? getLinkedChatRouteLabel(sideChat, sidePanelParentChat) : ''
+  const sideChatPresentationForCurrentParent: SidePanelPresentation =
+    sideChat && currentChat && sideChat.parentChatId === currentChat.appChatId
+      ? sidePanelPresentation
+      : 'split'
   const currentChatIsLinkedChild = Boolean(
     currentChat?.parentChatId &&
       (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
@@ -10377,21 +10381,31 @@ function App(): React.JSX.Element {
         '',
         message.content.trim()
       ].join('\n')
-      void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+      void ensureSideChatForCurrentChat(seedPrompt, false, sideChatPresentationForCurrentParent, {
         originMessageId: message.id
       })
     },
-    [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat]
+    [
+      canCreateSideChatFromCurrent,
+      currentChat,
+      ensureSideChatForCurrentChat,
+      sideChatPresentationForCurrentParent
+    ]
   )
   const handleOpenSideChatFromRunResult = useCallback(
     (runId: string) => {
       if (!canCreateSideChatFromCurrent || !currentChat || !runId) return
       const seedPrompt = buildSideChatRunResultSeedPrompt(currentChat, runId)
-      void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+      void ensureSideChatForCurrentChat(seedPrompt, false, sideChatPresentationForCurrentParent, {
         originRunId: runId
       })
     },
-    [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat]
+    [
+      canCreateSideChatFromCurrent,
+      currentChat,
+      ensureSideChatForCurrentChat,
+      sideChatPresentationForCurrentParent
+    ]
   )
   const latestSideChatRunResultSeed = useMemo(() => {
     if (!currentChat?.runs?.length) return null
@@ -10433,11 +10447,17 @@ function App(): React.JSX.Element {
       '',
       sideChatSummarySeed.content
     ].join('\n')
-    void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+    void ensureSideChatForCurrentChat(seedPrompt, false, sideChatPresentationForCurrentParent, {
       transcriptVisibility: 'summary'
     })
     setSideChatMenuOpen(false)
-  }, [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat, sideChatSummarySeed])
+  }, [
+    canCreateSideChatFromCurrent,
+    currentChat,
+    ensureSideChatForCurrentChat,
+    sideChatPresentationForCurrentParent,
+    sideChatSummarySeed
+  ])
   const selectedSideChatSeedMessage =
     sideChatSeedMessageId && currentChat?.messages
       ? currentChat.messages.find((message) => message.id === sideChatSeedMessageId) || null
