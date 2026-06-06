@@ -133,6 +133,7 @@ type TranscriptPanelProps = {
   /** Phase K1B: when set, RunCard's "Inspect →" affordance enters Run
    * mode for the clicked run. Plumbed from App.tsx down. */
   onInspectRun?: (runId: string) => void
+  onOpenSideChatFromRun?: (runId: string) => void
   /** Phase L3 slice 6 — `settings.compactDensity` plumbed through so
    * every `ActivityStack` inside the transcript renders in the same
    * density as the rest of the chat. */
@@ -671,6 +672,7 @@ export const TranscriptPanel = memo(
     onOpenSubThread,
     onOpenSubThreadInSidePanel,
     onInspectRun,
+    onOpenSideChatFromRun,
     compactDensity,
     pendingQueuedAppRunIds,
     onCopyMessage,
@@ -1293,6 +1295,17 @@ export const TranscriptPanel = memo(
                     </button>
                   )
                 })()}
+                {currentRun?.runId && onOpenSideChatFromRun && (
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    type="button"
+                    onClick={() => onOpenSideChatFromRun(currentRun.runId)}
+                    title="Open side chat seeded from this run result"
+                    aria-label="Open side chat from run result"
+                  >
+                    Side chat
+                  </button>
+                )}
               </div>
               {runCompleteSummaryRows.length > 0 && (
                 <div className="run-complete-summary-card">

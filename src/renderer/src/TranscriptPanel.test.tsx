@@ -182,4 +182,34 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('transcript-virtualized')
     expect(countBlocks(html)).toBeLessThan(40)
   })
+
+  it('renders a run-result side chat action when the current run is complete', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          messages: [
+            {
+              id: 'assistant-1',
+              role: 'assistant',
+              content: 'Run result summary',
+              timestamp: '2026-01-01T00:00:00.000Z'
+            }
+          ],
+          runCompleteNotice: {
+            timestamp: '2026-01-01T00:00:10.000Z',
+            exitCode: 0
+          },
+          currentRun: {
+            runId: 'run-1',
+            startedAt: '2026-01-01T00:00:00.000Z'
+          },
+          onOpenSideChatFromRun: () => {}
+        })}
+      />
+    )
+
+    expect(html).toContain('Open side chat from run result')
+    expect(html).toContain('Side chat')
+  })
 })

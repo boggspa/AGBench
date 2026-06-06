@@ -8522,7 +8522,11 @@ function App(): React.JSX.Element {
               ? { originMessageId: seedContext.originMessageId }
               : {}),
             ...(seedContext.originRunId ? { originRunId: seedContext.originRunId } : {}),
-            transcriptVisibility: 'selected'
+            transcriptVisibility: seedContext.originMessageId
+              ? 'selected'
+              : seedContext.originRunId
+                ? 'snapshot'
+                : source.sideChatContext?.transcriptVisibility || 'none'
           }
         }))
       }
@@ -9951,6 +9955,33 @@ function App(): React.JSX.Element {
       ].join('\n')
       void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
         originMessageId: message.id
+      })
+    },
+    [currentChat, ensureSideChatForCurrentChat]
+  )
+  const handleOpenSideChatFromRunResult = useCallback(
+    (runId: string) => {
+      if (!currentChat || !runId) return
+      const sourceRun = (currentChat.runs || []).find((run) => run.runId === runId)
+      const latestAssistantMessage = [...(currentChat.messages || [])]
+        .reverse()
+        .find((message) => message.role === 'assistant')
+      const seedPrompt = [
+        'Use this parent run result as the starting point.',
+        'This side chat is isolated and does not have the full parent transcript unless I paste it here.',
+        '',
+        `Run ID: ${runId}`,
+        sourceRun?.status ? `Run status: ${sourceRun.status}` : '',
+        sourceRun?.startedAt ? `Started: ${sourceRun.startedAt}` : '',
+        sourceRun?.endedAt ? `Ended: ${sourceRun.endedAt}` : '',
+        latestAssistantMessage?.content?.trim()
+          ? `Latest assistant response:\n\n${latestAssistantMessage.content.trim()}`
+          : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+      void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+        originRunId: runId
       })
     },
     [currentChat, ensureSideChatForCurrentChat]
@@ -13758,6 +13789,9 @@ function App(): React.JSX.Element {
                 onOpenSubThread={handleOpenCockpitThread}
                 onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
                 onInspectRun={(runId) => setInspectingRunId(runId)}
+                onOpenSideChatFromRun={
+                  currentChat?.parentChatId ? undefined : handleOpenSideChatFromRunResult
+                }
                 compactDensity={appearance.compactDensity}
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
