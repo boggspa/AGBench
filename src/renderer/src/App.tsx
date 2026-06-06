@@ -13339,6 +13339,16 @@ function App(): React.JSX.Element {
               </small>
             </div>
             <div className="chat-popout-dock-actions">
+              {chatPopoutParentChat && (
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => void handleSelectChat(chatPopoutParentChat)}
+                  title="Open the parent chat in this popout"
+                >
+                  Back
+                </button>
+              )}
               <button
                 type="button"
                 className="side-chat-header-btn"
