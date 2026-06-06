@@ -1473,10 +1473,14 @@
  * only — the ensemble chip strip + queued rows keep their own layout. */
 [data-composer-style="grok"] .composer-above-bar.style-unified,
 [data-composer-style="grok"] .composer-above-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* Was a 1fr auto 1fr grid (same pattern as the Codex shell). The unified
+   * Create PR row's unplaced children (sync chip, access pill) auto-placed onto
+   * an implicit 2nd grid row, two-rowing the row. Flex keeps it on one line; the
+   * action right-anchors via margin-left:auto below. */
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  column-gap: 0;
+  gap: 8px;
 }
 [data-composer-style="grok"] .composer-above-bar > .composer-above-bar-branch {
   grid-column: 1;
@@ -1498,9 +1502,7 @@
 }
 [data-composer-style="grok"] .composer-above-bar > .composer-above-bar-action,
 [data-composer-style="grok"] .composer-above-bar > .composer-diff-action-menu-wrap {
-  grid-column: 3;
-  justify-self: end;
-  margin-left: 0;
+  margin-left: auto;
 }
 /* The inline WorkspaceAccessControls renders an empty div for non-Gemini
  * providers; hide it so it doesn't claim a phantom 4th grid track and
