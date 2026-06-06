@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_release_tag:
+        description: "Tag to attach an UNSIGNED Windows installer to (e.g. v1.1.0). Blank = skip."
+        required: false
+        default: ""
 
 jobs:
   test:
@@ -103,3 +108,33 @@ jobs:
               throw "Missing $feed"
             }
           }
+
+  unsigned-windows-build:
+    name: Unsigned Windows Build (testing)
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_release_tag != ''
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:win
+      - name: Upload unsigned Windows installers to the release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ inputs.windows_release_tag }}"
+          $assets = @(
+            Get-ChildItem -Path dist -Filter "TaskWraith-*-win-*-setup.exe"
+            Get-ChildItem -Path dist -Filter "TaskWraith-*-win-*-setup.exe.blockmap"
+            Get-ChildItem -Path dist -Filter "latest-win-*.yml"
+          ) | ForEach-Object { $_.FullName }
+          if ($assets.Count -lt 2) {
+            throw "Expected Windows installers in dist/, found $($assets.Count)."
+          }
+          Write-Host "Uploading $($assets.Count) asset(s) to release $tag"
+          gh release upload $tag @assets --clobber
