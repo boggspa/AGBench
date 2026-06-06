@@ -3970,6 +3970,32 @@
   color: var(--text-secondary);
 }
 
+.linked-chats-strip-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  min-width: 0;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.linked-chats-strip-meta > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 999px;
+  padding: 0 0.34rem;
+  background: rgb(255 255 255 / 0.035);
+  font-size: 0.92em;
+  line-height: 1;
+}
+
+.linked-chats-strip-state {
+  color: var(--text-1);
+  font-weight: 700;
+}
+
 .linked-chats-strip-main {
   min-height: 28px;
   padding: 0.24rem 0.46rem;
@@ -3997,6 +4023,10 @@
 
   .linked-chats-strip-open {
     max-width: 72vw;
+  }
+
+  .linked-chats-strip-meta {
+    display: none;
   }
 }
 

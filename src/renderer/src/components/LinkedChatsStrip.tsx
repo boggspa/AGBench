@@ -28,11 +28,35 @@ function linkedKindLabel(chat: ChatRecord): string {
   return 'Agent sub-thread'
 }
 
+function linkedModeLabel(chat: ChatRecord): string {
+  if (chat.parentChatRelation !== 'sideChat') return 'Delegated agent'
+  if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
+  if (chat.sideChatContext?.mode === 'singleProvider') return 'Single provider'
+  if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out'
+  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+}
+
+function linkedContextLabel(chat: ChatRecord): string {
+  if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
+  if (chat.sideChatContext?.originMessageId) return 'Seeded from message'
+  if (chat.sideChatContext?.originRunId) return 'Seeded from run'
+  if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
+  return 'No parent context'
+}
+
 function isTerminatedSideChat(chat: ChatRecord): boolean {
   if (chat.parentChatRelation !== 'sideChat') return false
   const state = chat.sideChatContext?.lifecycleState
   if (state === 'terminated') return true
   return chat.archived && !state
+}
+
+function linkedStateLabel(chat: ChatRecord, running: boolean): string {
+  if (running) return 'Running'
+  if (chat.parentChatRelation !== 'sideChat') return 'Ready'
+  if (chat.sideChatContext?.lifecycleState === 'active') return 'Active'
+  if (chat.sideChatContext?.lifecycleState === 'closed') return 'Closed'
+  return 'Ready'
 }
 
 function countLabel(count: number, singular: string, plural = `${singular}s`): string {
@@ -73,12 +97,13 @@ export function LinkedChatsStrip({
     sideChatCount > 0 ? countLabel(sideChatCount, 'side chat') : '',
     subThreadCount > 0 ? countLabel(subThreadCount, 'agent') : ''
   ].filter(Boolean)
+  const markerLabel = sideChatCount > 0 ? 'Side chats opened' : 'Linked threads'
   const listId = `linked-chats-strip-list-${currentChat.appChatId}`
 
   return (
     <div
       className={`linked-chats-strip ${collapsed ? 'is-collapsed' : 'is-expanded'}`}
-      aria-label="Linked chats"
+      aria-label={markerLabel}
     >
       <button
         type="button"
@@ -91,7 +116,7 @@ export function LinkedChatsStrip({
         <span className="linked-chats-strip-caret" aria-hidden>
           {collapsed ? '+' : '-'}
         </span>
-        <span className="linked-chats-strip-label">Linked threads</span>
+        <span className="linked-chats-strip-label">{markerLabel}</span>
         <span className="linked-chats-strip-summary">{summaryParts.join(' | ')}</span>
       </button>
       {!collapsed && (
@@ -101,6 +126,9 @@ export function LinkedChatsStrip({
             const running = runningSet.has(chat.appChatId)
             const title = chat.title || linkedKindLabel(chat)
             const canOpenBeside = Boolean(onOpenBeside)
+            const stateLabel = linkedStateLabel(chat, running)
+            const contextLabel = linkedContextLabel(chat)
+            const modeLabel = linkedModeLabel(chat)
             return (
               <div
                 key={chat.appChatId}
@@ -113,7 +141,7 @@ export function LinkedChatsStrip({
                   className="linked-chats-strip-open"
                   onClick={canOpenBeside ? () => onOpenBeside?.(chat.appChatId) : undefined}
                   disabled={!canOpenBeside}
-                  title={`Open beside: ${title}`}
+                  title={`Open beside: ${title} (${contextLabel})`}
                 >
                   <span
                     className="linked-chats-strip-provider-dot"
@@ -123,6 +151,11 @@ export function LinkedChatsStrip({
                   <span className="linked-chats-strip-provider">{providerLabel(provider)}</span>
                   <span className="linked-chats-strip-kind">{linkedKindLabel(chat)}</span>
                   <span className="linked-chats-strip-title">{title}</span>
+                  <span className="linked-chats-strip-meta">
+                    <span className="linked-chats-strip-state">{stateLabel}</span>
+                    <span className="linked-chats-strip-mode">{modeLabel}</span>
+                    <span className="linked-chats-strip-context">{contextLabel}</span>
+                  </span>
                 </button>
                 {onOpenMain && (
                   <button

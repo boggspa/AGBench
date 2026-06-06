@@ -28,7 +28,14 @@ describe('LinkedChatsStrip', () => {
       parentChatId: 'parent-1',
       parentChatRelation: 'sideChat',
       provider: 'codex',
-      title: 'Scratch beside parent'
+      title: 'Scratch beside parent',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'active',
+        originMessageId: 'message-1',
+        mode: 'singleProvider',
+        transcriptVisibility: 'selected'
+      }
     })
     const subThread = makeChat({
       appChatId: 'sub-1',
@@ -71,13 +78,18 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
-    expect(html).toContain('Linked threads')
+    expect(html).toContain('Side chats opened')
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
     expect(html).toContain('Side chat')
     expect(html).toContain('Scratch beside parent')
+    expect(html).toContain('Active')
+    expect(html).toContain('Single provider')
+    expect(html).toContain('Seeded from message')
     expect(html).toContain('Agent sub-thread')
     expect(html).toContain('Investigate tests')
+    expect(html).toContain('Delegated agent')
+    expect(html).toContain('Delegation context')
     expect(html).toContain('is-running')
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')
@@ -111,6 +123,7 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
+    expect(html).toContain('Side chats opened')
     expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
     expect(html).not.toContain('Scratch beside parent')
