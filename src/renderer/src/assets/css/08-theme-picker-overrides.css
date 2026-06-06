@@ -7106,15 +7106,12 @@
  * ---------------------------------------------------------- */
 
 [data-composer-style="codex"] .composer-above-bar {
-  /* CX1 (refined): width is parent-relative `calc(100% - 80px)`
-   * rather than capped via `--composer-content-max-width`. The
-   * stack parent IS the variable's width, so a var-based max
-   * just matched it; pulling the width from the parent ensures
-   * the tab is *visibly* 80px narrower than the composer-surface
-   * below regardless of viewport size — which is what stops it
-   * from fighting the composer's rounded corners. */
-  width: calc(100% - 80px);
-  max-width: calc(100% - 80px);
+  /* CX1 (refined): fixed at the composer max minus the 80px inset,
+   * while still shrinking on narrow panes. The parent is full-width,
+   * so `100% - 80px` alone scaled the tab with the window instead of
+   * keeping it matched to the fixed-width composer shell. */
+  width: min(calc(100% - 80px), 900px);
+  max-width: min(calc(100% - 80px), 900px);
   align-self: center;
   /* Tucked-tab geometry retained from the earlier shape. */
   border-bottom-left-radius: 0;
@@ -8554,8 +8551,8 @@
    * overlap the composer's top edge by 10px, z-index 1 so the
    * composer-surface (z-index 2) paints over the overlap and the
    * stack reads as a real "tab tucked under" the composer. */
-  width: calc(100% - 80px);
-  max-width: calc(100% - 80px);
+  width: min(calc(100% - 80px), 900px);
+  max-width: min(calc(100% - 80px), 900px);
   align-self: center;
   gap: 0;
   border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
