@@ -29,6 +29,12 @@ export interface RunLane {
   updatedAt?: string
 }
 
+export interface CockpitRunSource {
+  chat: ChatRecord | null
+  run: ChatRun | null
+  prompt: string
+}
+
 const getChatProvider = (chat?: ChatRecord | null): ProviderId => chat?.provider || 'gemini'
 
 const getRuntimeProfileLabel = (profiles: RuntimeProfile[], id?: string): string | undefined =>
@@ -57,6 +63,24 @@ export const extractRunTouchedFiles = (run: ChatRun): string[] => {
     }
   }
   return [...new Set(files)]
+}
+
+export const resolveCockpitRunSource = (
+  lane: RunLane,
+  chats: ChatRecord[],
+  chatById?: ReadonlyMap<string, ChatRecord>
+): CockpitRunSource => {
+  const chat = lane.chatId
+    ? chatById?.get(lane.chatId) || chats.find((item) => item.appChatId === lane.chatId) || null
+    : null
+  const run = chat?.runs?.find((item) => item.runId === lane.runId) || null
+  const prompt = run
+    ? chat?.messages.find((message) => message.id === run.promptMessageId)?.content ||
+      [...(chat?.messages || [])].reverse().find((message) => message.role === 'user')?.content ||
+      lane.promptPreview ||
+      ''
+    : lane.promptPreview || ''
+  return { chat, run, prompt }
 }
 
 const runLanePhaseFromStatus = (status: string): RunLane['phase'] => {

@@ -280,6 +280,7 @@ import {
   buildRunLanes,
   compactPromptPreview,
   extractRunTouchedFiles,
+  resolveCockpitRunSource,
   type RunLane
 } from './lib/RunLanes'
 import { formatOpaqueMarkdownPromptSection } from './lib/HandoffPrompt'
@@ -8469,19 +8470,7 @@ function App(): React.JSX.Element {
   const getCockpitRunSource = (
     lane: RunLane
   ): { chat: ChatRecord | null; run: ChatRun | null; prompt: string } => {
-    const chat = lane.chatId
-      ? chatByIdRef.current.get(lane.chatId) ||
-        chats.find((item) => item.appChatId === lane.chatId) ||
-        null
-      : null
-    const run = chat?.runs?.find((item) => item.runId === lane.runId) || null
-    const prompt = run
-      ? chat?.messages.find((message) => message.id === run.promptMessageId)?.content ||
-        [...(chat?.messages || [])].reverse().find((message) => message.role === 'user')?.content ||
-        lane.promptPreview ||
-        ''
-      : lane.promptPreview || ''
-    return { chat, run, prompt }
+    return resolveCockpitRunSource(lane, chats, chatByIdRef.current)
   }
 
   const handleOpenCockpitThread = (chatId?: string) => {

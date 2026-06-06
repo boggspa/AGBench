@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type {
   ChatRecord,
+  ChatRun,
   RunQueueJob,
   ScheduledTask,
   RuntimeProfile
 } from '../../../main/store/types'
-import { buildRunLanes } from './RunLanes'
+import { buildRunLanes, resolveCockpitRunSource, type RunLane } from './RunLanes'
 
 const now = '2026-05-12T10:00:00.000Z'
 
@@ -74,6 +75,27 @@ const scheduledTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask =>
   status: 'due',
   createdAt: now,
   updatedAt: now,
+  ...overrides
+})
+
+const run = (overrides: Partial<ChatRun> = {}): ChatRun => ({
+  runId: 'run-1',
+  provider: 'codex',
+  startedAt: now,
+  promptMessageId: 'prompt-1',
+  status: 'success',
+  ...overrides
+})
+
+const lane = (overrides: Partial<RunLane> = {}): RunLane => ({
+  id: 'run:run-1',
+  runId: 'run-1',
+  provider: 'codex',
+  phase: 'completed',
+  status: 'success',
+  source: 'history',
+  chatId: 'chat-1',
+  touchedFiles: [],
   ...overrides
 })
 
@@ -147,5 +169,54 @@ describe('buildRunLanes', () => {
 
     expect(lanes[0].conflictSummary).toBe('Shares workspace with 1 other live lane.')
     expect(lanes[1].conflictSummary).toBe('Shares workspace with 1 other live lane.')
+  })
+})
+
+describe('resolveCockpitRunSource', () => {
+  it('prefers the current chat cache and returns the run prompt message', () => {
+    const staleChat = chat({
+      messages: [{ id: 'prompt-1', role: 'user', content: 'stale prompt', timestamp: now }],
+      runs: [run()]
+    })
+    const cachedChat = chat({
+      title: 'Cached',
+      messages: [{ id: 'prompt-1', role: 'user', content: 'cached prompt', timestamp: now }],
+      runs: [run()]
+    })
+
+    const source = resolveCockpitRunSource(lane(), [staleChat], new Map([['chat-1', cachedChat]]))
+
+    expect(source.chat?.title).toBe('Cached')
+    expect(source.run?.runId).toBe('run-1')
+    expect(source.prompt).toBe('cached prompt')
+  })
+
+  it('falls back to the latest user message when the run prompt message is missing', () => {
+    const source = resolveCockpitRunSource(
+      lane({ promptPreview: 'lane preview' }),
+      [
+        chat({
+          messages: [
+            { id: 'u1', role: 'user', content: 'older prompt', timestamp: now },
+            { id: 'a1', role: 'assistant', content: 'assistant answer', timestamp: now },
+            { id: 'u2', role: 'user', content: 'latest prompt', timestamp: now }
+          ],
+          runs: [run({ promptMessageId: 'missing' })]
+        })
+      ]
+    )
+
+    expect(source.prompt).toBe('latest prompt')
+  })
+
+  it('uses the lane preview when no source chat/run can be resolved', () => {
+    const source = resolveCockpitRunSource(
+      lane({ chatId: 'missing-chat', promptPreview: 'preview prompt' }),
+      []
+    )
+
+    expect(source.chat).toBeNull()
+    expect(source.run).toBeNull()
+    expect(source.prompt).toBe('preview prompt')
   })
 })
