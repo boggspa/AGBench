@@ -10357,6 +10357,21 @@ function App(): React.JSX.Element {
     },
     [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat]
   )
+  const latestSideChatRunResultSeed = useMemo(() => {
+    if (!currentChat?.runs?.length) return null
+    const sourceRun = [...currentChat.runs].reverse().find((run) => run.runId && run.endedAt)
+    if (!sourceRun) return null
+    const providerLabel = getProviderLabel(sourceRun.provider || getChatProvider(currentChat))
+    return {
+      runId: sourceRun.runId,
+      label: `${providerLabel} run${sourceRun.status ? ` · ${sourceRun.status}` : ''}`
+    }
+  }, [currentChat])
+  const handleOpenSideChatFromLatestRunResult = useCallback(() => {
+    if (!latestSideChatRunResultSeed?.runId) return
+    handleOpenSideChatFromRunResult(latestSideChatRunResultSeed.runId)
+    setSideChatMenuOpen(false)
+  }, [handleOpenSideChatFromRunResult, latestSideChatRunResultSeed])
   const sideChatSummarySeed = useMemo(() => {
     const ensembleSummary = currentChat?.ensemble?.lastRoundSummary?.trim()
     if (ensembleSummary) {
@@ -14014,6 +14029,15 @@ function App(): React.JSX.Element {
                         ? `${selectedSideChatSeedMessage.role} message`
                         : 'Hover or focus a message'}
                     </small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleOpenSideChatFromLatestRunResult}
+                    disabled={!canCreateSideChatFromCurrent || !latestSideChatRunResultSeed}
+                  >
+                    <span>Open from latest run result</span>
+                    <small>{latestSideChatRunResultSeed?.label || 'No completed run yet'}</small>
                   </button>
                   <button
                     type="button"
