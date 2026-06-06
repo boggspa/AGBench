@@ -186,9 +186,9 @@
   position: absolute;
   z-index: 9;
   top: calc(var(--space-lg) * 5.5);
-  left: clamp(16px, var(--chat-side-gutter), 48px);
+  left: 20px;
   width: min(720px, calc(100% - 32px));
-  max-width: calc(100% - clamp(16px, var(--chat-side-gutter), 48px) - 16px);
+  max-width: calc(100% - 40px);
   margin: 0;
   display: flex;
   align-items: center;
