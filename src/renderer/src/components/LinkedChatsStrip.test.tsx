@@ -130,6 +130,37 @@ describe('LinkedChatsStrip', () => {
     expect(html).not.toContain('Investigate tests')
   })
 
+  it('labels fan-out side chats distinctly from ensemble clones', () => {
+    const parent = makeChat()
+    const fanOut = makeChat({
+      appChatId: 'fan-out-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      chatKind: 'ensemble',
+      provider: 'gemini',
+      title: 'Parallel branch',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'active',
+        mode: 'fanOut',
+        transcriptVisibility: 'none'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, fanOut]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('Fan-out side chat')
+    expect(html).toContain('Fan-out')
+    expect(html).toContain('No parent context')
+  })
+
   it('renders nothing without linked children', () => {
     const parent = makeChat()
     const html = renderToStaticMarkup(

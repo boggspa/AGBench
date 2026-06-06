@@ -519,9 +519,28 @@ function isTerminatedSideChat(chat: ChatRecord): boolean {
 
 function getLinkedChatKindLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation === 'sideChat') {
-    return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+    const mode = getSideChatMode(chat)
+    if (mode === 'fanOut') return 'Fan-out side chat'
+    if (mode === 'ensembleClone') return 'Side ensemble'
+    return 'Side chat'
   }
   return 'Agent sub-thread'
+}
+
+function getSideChatModeLabel(chat: ChatRecord): string {
+  if (chat.parentChatRelation !== 'sideChat') return ''
+  const mode = getSideChatMode(chat)
+  if (mode === 'fanOut') return 'Parallel fan-out'
+  if (mode === 'ensembleClone') return 'Ensemble clone'
+  return 'Single provider'
+}
+
+function getSideChatModeDescription(chat: ChatRecord): string {
+  if (chat.parentChatRelation !== 'sideChat') return 'Delegated agent thread.'
+  const mode = getSideChatMode(chat)
+  if (mode === 'fanOut') return 'Participants answer in parallel from this linked side thread.'
+  if (mode === 'ensembleClone') return 'A linked ensemble clone with the parent participants.'
+  return 'A linked provider chat with isolated context.'
 }
 
 function getLinkedChatContextLabel(chat: ChatRecord): string {
@@ -1750,6 +1769,8 @@ function App(): React.JSX.Element {
     : null
   const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Side chat'
   const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
+  const sidePanelModeLabel = sideChat ? getSideChatModeLabel(sideChat) : ''
+  const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
   const currentChatIsLinkedChild = Boolean(
     currentChat?.parentChatId &&
       (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
@@ -11613,6 +11634,14 @@ function App(): React.JSX.Element {
         hasSideChatActiveRunQueueJob ||
         sideChat.ensemble?.activeRound?.status === 'running')
   )
+  const sideChatStatusLabel =
+    sideChat && getSideChatMode(sideChat) === 'fanOut'
+      ? isSideChatRunning
+        ? 'Fan-out running'
+        : 'Fan-out ready'
+      : isSideChatRunning
+        ? 'Running'
+        : 'Ready'
   const sideRunCompleteNotice = sideChat
     ? deriveRunCompleteNotice(sideChat, isSideChatRunning)
     : null
@@ -17025,7 +17054,14 @@ function App(): React.JSX.Element {
                   Parent: {sidePanelParentChat?.title || 'current chat'}
                 </span>
                 <strong title={sideChat.title}>{sideChat.title}</strong>
-                <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
+                <span className="side-chat-header-chips">
+                  <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
+                  {sidePanelModeLabel && (
+                    <span className="side-chat-context-chip side-chat-mode-chip">
+                      {sidePanelModeLabel}
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="side-chat-actions">
                 {sidePanelParentChat && (
@@ -17081,11 +17117,12 @@ function App(): React.JSX.Element {
                 <h2>
                   {sidePanelRelation === 'subThread'
                     ? 'Agent sub-thread'
-                    : sideChat.chatKind === 'ensemble'
-                      ? 'Side ensemble'
-                      : 'Side chat'}
+                    : sidePanelKindLabel}
                 </h2>
-                <p>{sidePanelParentChat?.title || 'Parent chat'}</p>
+                <p>{sidePanelModeDescription}</p>
+                <span className="side-chat-welcome-parent">
+                  Parent: {sidePanelParentChat?.title || 'Parent chat'}
+                </span>
                 {sideChat.chatKind === 'ensemble' && sideChat.ensemble?.participants?.length ? (
                   <div className="side-chat-welcome-chain" aria-label="Ensemble participants">
                     {[...(sideChat.ensemble.participants || [])]
@@ -17291,7 +17328,7 @@ function App(): React.JSX.Element {
                       </div>
                       <div className="composer-inline-actions side-chat-inline-actions">
                         <span className="side-chat-status" aria-live="polite">
-                          {isSideChatRunning ? 'Running' : 'Ready'}
+                          {sideChatStatusLabel}
                         </span>
                         <span className="composer-send-cluster side-chat-send-cluster">
                           {isSideChatRunning && (

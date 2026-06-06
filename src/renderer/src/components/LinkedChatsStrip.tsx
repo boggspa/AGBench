@@ -23,7 +23,9 @@ function providerLabel(provider?: ProviderId): string {
 
 function linkedKindLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation === 'sideChat') {
-    return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+    if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
+    if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
+    return 'Side chat'
   }
   return 'Agent sub-thread'
 }

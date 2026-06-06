@@ -390,6 +390,20 @@ body.is-resizing-side-chat * {
   color: color-mix(in srgb, var(--accent) 72%, var(--text-secondary));
 }
 
+.side-chat-header-chips {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.side-chat-mode-chip.side-chat-context-chip {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--panel-border) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 46%, transparent);
+}
+
 .side-chat-actions,
 .side-chat-send-cluster {
   display: inline-flex;
@@ -486,6 +500,12 @@ body.is-resizing-side-chat * {
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.side-chat-welcome-parent {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
 }
 
 .side-chat-welcome-chain {
