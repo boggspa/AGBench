@@ -5,9 +5,12 @@ agents against developer workspaces. It provides a macOS-focused Electron UI for
 provider CLIs and SDK-backed workflows while keeping execution, history, and
 workspace state on the user's machine.
 
-
-<img width="1525" height="2160" alt="Screenshot 2026-06-01 at 21 09 25" src="https://github.com/user-attachments/assets/95b09f35-2636-4d2e-8643-1981f2e9a080" />
-<img width="1525" height="2160" alt="Screenshot 2026-06-01 at 20 54 50" src="https://github.com/user-attachments/assets/17ccc7cb-d98c-4333-954b-90a3bab38ea9" />
+<img width="1525" height="2094" alt="Screenshot 2026-06-06 at 04 57 21" src="https://github.com/user-attachments/assets/9a3036ec-3761-4a64-98d9-bec13d44c996" />
+<img width="1525" height="2094" alt="Screenshot 2026-06-06 at 04 54 44" src="https://github.com/user-attachments/assets/1523ff12-b8c2-41e8-a966-d735ee545e38" />
+<img width="1525" height="2094" alt="Screenshot 2026-06-06 at 04 56 31" src="https://github.com/user-attachments/assets/95eb5142-7c41-4f2e-82e5-14e22e4ab911" />
+<img width="1012" height="872" alt="Screenshot 2026-06-06 at 05 00 42" src="https://github.com/user-attachments/assets/e50e5f5d-eb7b-4a34-9fe1-50eb8d54a5d1" />
+<img width="1260" height="1276" alt="Screenshot 2026-06-06 at 04 59 17" src="https://github.com/user-attachments/assets/b671a8a0-a81a-44b9-8383-37a8d47da478" />
+<img width="1140" height="1071" alt="Screenshot 2026-06-06 at 04 59 58" src="https://github.com/user-attachments/assets/fcb6cfce-e65d-41d5-a466-95ccf7b9cfb8" />
 
 
 
