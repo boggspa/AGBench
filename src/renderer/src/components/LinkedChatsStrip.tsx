@@ -26,6 +26,13 @@ function linkedKindLabel(chat: ChatRecord): string {
   return 'Agent sub-thread'
 }
 
+function isTerminatedSideChat(chat: ChatRecord): boolean {
+  if (chat.parentChatRelation !== 'sideChat') return false
+  const state = chat.sideChatContext?.lifecycleState
+  if (state === 'terminated') return true
+  return chat.archived && !state
+}
+
 export function LinkedChatsStrip({
   currentChat,
   chats,
@@ -39,6 +46,7 @@ export function LinkedChatsStrip({
     .filter(
       (chat) =>
         !chat.archived &&
+        !isTerminatedSideChat(chat) &&
         chat.parentChatId === currentChat.appChatId &&
         (chat.parentChatRelation === 'sideChat' || isSubThreadChat(chat))
     )

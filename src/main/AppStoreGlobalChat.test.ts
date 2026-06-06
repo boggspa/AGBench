@@ -69,6 +69,33 @@ describe('AppStore global chats', () => {
     expect(workspaceChat.workspacePath).toBe('/repo')
   })
 
+  it('defaults side-chat lifecycle metadata for legacy records', () => {
+    const activeSideChat = AppStore.normalizeChatRecord({
+      appChatId: 'side-chat',
+      provider: 'codex',
+      title: 'Side',
+      workspaceId: 'workspace-1',
+      workspacePath: '/repo',
+      createdAt: 10,
+      updatedAt: 11,
+      archived: false,
+      messages: [],
+      runs: [],
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      sideChatContext: { createdAt: 10 }
+    } as ChatRecord)
+    const archivedSideChat = AppStore.normalizeChatRecord({
+      ...activeSideChat,
+      appChatId: 'archived-side-chat',
+      archived: true,
+      sideChatContext: { createdAt: 10 }
+    } as ChatRecord)
+
+    expect(activeSideChat.sideChatContext?.lifecycleState).toBe('active')
+    expect(archivedSideChat.sideChatContext?.lifecycleState).toBe('terminated')
+  })
+
   it('keeps chat ids inside the chat persistence directory', () => {
     const settingsPath = join(userDataPath, 'settings.json')
     fs.writeFileSync(settingsPath, '{"sentinel":true}', 'utf8')

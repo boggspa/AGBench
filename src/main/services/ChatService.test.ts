@@ -76,6 +76,8 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
         sideChatContext: {
           createdAt: 2,
           mode: args.sideChatMode,
+          lifecycleState: 'active',
+          openedAt: 2,
           originMessageId: args.originMessageId,
           originRunId: args.originRunId,
           transcriptVisibility: 'none'
@@ -229,6 +231,7 @@ describe('ChatService', () => {
     })
     expect(sideChat.appChatId).toBe('side-chat-1')
     expect(sideChat.parentChatRelation).toBe('sideChat')
+    expect(sideChat.sideChatContext?.lifecycleState).toBe('active')
     expect(store.createSideChat).toHaveBeenCalledWith({
       parentChatId: 'chat-1',
       chatKind: 'ensemble',

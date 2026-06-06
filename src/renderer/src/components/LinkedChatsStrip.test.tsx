@@ -44,6 +44,16 @@ describe('LinkedChatsStrip', () => {
       title: 'Archived child',
       archived: true
     })
+    const terminated = makeChat({
+      appChatId: 'terminated-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      title: 'Terminated child',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'terminated'
+      }
+    })
     const unrelated = makeChat({
       appChatId: 'other-1',
       parentChatId: 'other-parent',
@@ -54,7 +64,7 @@ describe('LinkedChatsStrip', () => {
     const html = renderToStaticMarkup(
       <LinkedChatsStrip
         currentChat={parent}
-        chats={[parent, sideChat, subThread, archived, unrelated]}
+        chats={[parent, sideChat, subThread, archived, terminated, unrelated]}
         runningChatIds={['sub-1']}
         onOpenBeside={() => {}}
         onOpenMain={() => {}}
@@ -68,6 +78,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Investigate tests')
     expect(html).toContain('is-running')
     expect(html).not.toContain('Archived child')
+    expect(html).not.toContain('Terminated child')
     expect(html).not.toContain('Other child')
   })
 

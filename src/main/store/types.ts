@@ -159,6 +159,7 @@ export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type ChatParentRelation = 'subThread' | 'sideChat'
 export type SideChatMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
+export type SideChatLifecycleState = 'active' | 'closed' | 'terminated'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
@@ -1953,6 +1954,11 @@ export interface ChatRecord {
   sideChatContext?: {
     createdAt: number
     mode?: SideChatMode
+    lifecycleState?: SideChatLifecycleState
+    openedAt?: number
+    closedAt?: number
+    terminatedAt?: number
+    terminationReason?: string
     originMessageId?: string
     originRunId?: string
     transcriptVisibility?: 'none' | 'summary' | 'selected' | 'snapshot'

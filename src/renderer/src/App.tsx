@@ -54,7 +54,8 @@ import {
   HandoffCard,
   EnsembleParticipant,
   EnsembleOrchestrationMode,
-  PermissionPresetId
+  PermissionPresetId,
+  SideChatLifecycleState
 } from '../../main/store/types'
 import type { NativeCapabilitySnapshot } from '../../main/NativeCapabilities'
 import {
@@ -503,6 +504,49 @@ const CHAT_POPOUT_HANDOFF_PREFIX = 'taskwraith.chatPopoutHandoff.'
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
   if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
   return chat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider'
+}
+
+function getSideChatLifecycleState(chat: ChatRecord): SideChatLifecycleState {
+  const state = chat.sideChatContext?.lifecycleState
+  if (state === 'active' || state === 'closed' || state === 'terminated') return state
+  return chat.archived ? 'terminated' : 'active'
+}
+
+function isTerminatedSideChat(chat: ChatRecord): boolean {
+  return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
+}
+
+function applySideChatLifecycle(
+  chat: ChatRecord,
+  lifecycleState: SideChatLifecycleState,
+  terminationReason?: string
+): ChatRecord {
+  if (chat.parentChatRelation !== 'sideChat') return chat
+  const now = Date.now()
+  const sideChatContext: ChatRecord['sideChatContext'] = {
+    createdAt: chat.sideChatContext?.createdAt || chat.createdAt || now,
+    ...(chat.sideChatContext || {}),
+    lifecycleState
+  }
+  if (lifecycleState === 'active') {
+    sideChatContext.openedAt = now
+    sideChatContext.closedAt = undefined
+    sideChatContext.terminatedAt = undefined
+    sideChatContext.terminationReason = undefined
+  } else if (lifecycleState === 'closed') {
+    sideChatContext.closedAt = now
+    sideChatContext.terminatedAt = undefined
+    sideChatContext.terminationReason = undefined
+  } else {
+    sideChatContext.closedAt = now
+    sideChatContext.terminatedAt = now
+    sideChatContext.terminationReason = terminationReason || 'ended_by_user'
+  }
+  return {
+    ...chat,
+    sideChatContext,
+    ...(lifecycleState === 'terminated' ? { archived: true, updatedAt: now } : {})
+  }
 }
 
 function permissionPresetToApprovalMode(preset?: string): string {
@@ -1717,7 +1761,26 @@ function App(): React.JSX.Element {
     if (!sideChatId) return
     const liveSideChat =
       chatByIdRef.current.get(sideChatId) || chats.find((chat) => chat.appChatId === sideChatId)
-    if (!liveSideChat || liveSideChat.parentChatId !== currentChat?.appChatId) {
+    if (
+      !liveSideChat ||
+      liveSideChat.archived ||
+      isTerminatedSideChat(liveSideChat) ||
+      liveSideChat.parentChatId !== currentChat?.appChatId
+    ) {
+      if (
+        liveSideChat?.parentChatRelation === 'sideChat' &&
+        !liveSideChat.archived &&
+        !isTerminatedSideChat(liveSideChat)
+      ) {
+        const closedSideChat = applySideChatLifecycle(liveSideChat, 'closed')
+        chatByIdRef.current.set(closedSideChat.appChatId, closedSideChat)
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.appChatId === closedSideChat.appChatId ? closedSideChat : chat
+          )
+        )
+        void window.api.saveChat(closedSideChat).catch(() => {})
+      }
       setSideChatId(null)
     }
   }, [sideChatId, chats, currentChat?.appChatId])
@@ -4305,7 +4368,13 @@ function App(): React.JSX.Element {
    */
   const handleToggleArchiveChat = (chatId: string, nextArchived: boolean) => {
     updateChatById(chatId, (source) => ({
-      ...source,
+      ...(source.parentChatRelation === 'sideChat'
+        ? applySideChatLifecycle(
+            source,
+            nextArchived ? 'terminated' : 'closed',
+            'archived_by_user'
+          )
+        : source),
       archived: nextArchived
     }))
   }
@@ -8376,6 +8445,7 @@ function App(): React.JSX.Element {
       .filter(
         (chat) =>
           !chat.archived &&
+          !isTerminatedSideChat(chat) &&
           chat.parentChatId === currentChat.appChatId &&
           chat.parentChatRelation === 'sideChat' &&
           (!mode || getSideChatMode(chat) === mode) &&
@@ -8392,9 +8462,19 @@ function App(): React.JSX.Element {
   ) => {
     const parentChat = parentOverride || currentChat
     if (!parentChat?.appChatId || chat.parentChatId !== parentChat.appChatId) return
-    chatByIdRef.current.set(chat.appChatId, chat)
+    const nextChat =
+      chat.parentChatRelation === 'sideChat' ? applySideChatLifecycle(chat, 'active') : chat
+    chatByIdRef.current.set(nextChat.appChatId, nextChat)
+    if (nextChat !== chat) {
+      setChats((prev) => {
+        const index = prev.findIndex((item) => item.appChatId === nextChat.appChatId)
+        if (index < 0) return [nextChat, ...prev]
+        return prev.map((item) => (item.appChatId === nextChat.appChatId ? nextChat : item))
+      })
+      void window.api.saveChat(nextChat).catch(() => {})
+    }
     setSidePanelPresentation(presentation)
-    setSideChatId(chat.appChatId)
+    setSideChatId(nextChat.appChatId)
     setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
     setShowFileEditor(false)
     appearance.update({ showInspector: false })
@@ -8613,7 +8693,40 @@ function App(): React.JSX.Element {
     syncRunningState()
   }
 
+  const cancelQueuedSideChatRuns = (chatId: string) => {
+    setQueuedRuns((prev) =>
+      prev.filter((request) => {
+        const requestChatId = request.chatRecord?.appChatId
+        if (requestChatId !== chatId) return true
+        if (request.appRunId) {
+          updateRunQueueJobStatus(
+            request.appRunId,
+            'cancelled',
+            'Side chat was ended before this queued run started.'
+          )
+        }
+        return false
+      })
+    )
+    for (const job of runQueueJobsRef.current) {
+      if (job.chatId !== chatId || isTerminalRunQueueStatus(job.status)) continue
+      updateRunQueueJobStatus(
+        job.runId || job.id,
+        'cancelled',
+        'Side chat was ended before this queued run started.'
+      )
+    }
+  }
+
   const hideSideChatPane = () => {
+    const targetChat = sideChat
+    if (targetChat?.parentChatRelation === 'sideChat') {
+      updateChatById(targetChat.appChatId, (source) =>
+        source.archived || isTerminatedSideChat(source)
+          ? source
+          : applySideChatLifecycle(source, 'closed')
+      )
+    }
     setSideChatId(null)
     setSideChatMenuOpen(false)
   }
@@ -8624,10 +8737,10 @@ function App(): React.JSX.Element {
     if (isChatBusy(targetChat.appChatId)) {
       await handleSideCancel()
     }
+    cancelQueuedSideChatRuns(targetChat.appChatId)
     updateChatById(targetChat.appChatId, (source) => ({
-      ...source,
-      archived: true,
-      updatedAt: Date.now()
+      ...applySideChatLifecycle(source, 'terminated', 'ended_by_user'),
+      archived: true
     }))
     hideSideChatPane()
   }
@@ -16577,7 +16690,7 @@ function App(): React.JSX.Element {
                     type="button"
                     className="side-chat-header-btn side-chat-header-btn-danger"
                     onClick={() => void handleTerminateSideChat()}
-                    title="Terminate this side chat and archive the linked record"
+                    title="End this ephemeral side chat, cancel queued work, and archive it"
                   >
                     End
                   </button>
@@ -16586,8 +16699,8 @@ function App(): React.JSX.Element {
                   type="button"
                   className="side-chat-icon-btn"
                   onClick={hideSideChatPane}
-                  title="Hide side pane; linked chat keeps running"
-                  aria-label="Hide side pane"
+                  title="Close side view; linked chat keeps running"
+                  aria-label="Close side view"
                 >
                   <XSymbolIcon />
                 </button>

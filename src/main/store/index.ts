@@ -20,6 +20,7 @@ import {
   ApprovalLedgerScope,
   ProviderId,
   SideChatMode,
+  SideChatLifecycleState,
   RunRecoveryFilter,
   RunRecoveryRecord,
   WorkspaceChangeFilter,
@@ -92,6 +93,14 @@ function cloneEnsembleForSideChat(parent: ChatRecord, provider: ProviderId) {
     escalationSignals: undefined,
     updatedAt: new Date().toISOString()
   }
+}
+
+function normalizeSideChatLifecycleState(
+  value: unknown,
+  fallback: SideChatLifecycleState
+): SideChatLifecycleState {
+  if (value === 'active' || value === 'closed' || value === 'terminated') return value
+  return fallback
 }
 
 const userDataPath = app.getPath('userData')
@@ -799,6 +808,20 @@ export class AppStore {
     const providerMetadata = chat.providerMetadata
       ? canonicalizeExternalPathGrantMetadata(chat.providerMetadata)
       : chat.providerMetadata
+    const sideChatContext =
+      parentChatRelation === 'sideChat'
+        ? {
+            createdAt:
+              typeof chat.sideChatContext?.createdAt === 'number'
+                ? chat.sideChatContext.createdAt
+                : chat.createdAt || Date.now(),
+            ...(chat.sideChatContext || {}),
+            lifecycleState: normalizeSideChatLifecycleState(
+              chat.sideChatContext?.lifecycleState,
+              chat.archived ? 'terminated' : 'active'
+            )
+          }
+        : chat.sideChatContext
     const ensemble =
       chatKind === 'ensemble'
         ? {
@@ -818,6 +841,7 @@ export class AppStore {
         scope,
         chatKind,
         parentChatRelation,
+        sideChatContext,
         ...(ensemble ? { ensemble } : {}),
         providerMetadata
       }
@@ -827,6 +851,7 @@ export class AppStore {
       scope,
       chatKind,
       parentChatRelation,
+      sideChatContext,
       ...(ensemble ? { ensemble } : {}),
       providerMetadata,
       workspaceId: chat.workspaceId || '',
@@ -981,6 +1006,8 @@ export class AppStore {
       sideChatContext: {
         createdAt: now,
         mode: sideChatMode,
+        lifecycleState: 'active',
+        openedAt: now,
         ...(args.originMessageId ? { originMessageId: args.originMessageId } : {}),
         ...(args.originRunId ? { originRunId: args.originRunId } : {}),
         transcriptVisibility: 'none'
