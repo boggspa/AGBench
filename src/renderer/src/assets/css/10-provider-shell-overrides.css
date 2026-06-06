@@ -1511,6 +1511,41 @@
   display: none;
 }
 
+/* ============================================================
+ * Final sign-off — per-shell removal of the outer pill chrome on specific
+ * composer pickers so they read as floating labels (the obsidian/terminal
+ * treatment). Strips bg/border/shadow/blur on the trigger; !important to beat
+ * the base .composer-picker-label / combined-picker-trigger chrome. Gemini +
+ * Kimi KEEP their pills (restyled in a separate rule).
+ * ============================================================ */
+/* Turn picker — Native (default) / Codex / Claude / Cursor / Grok / Satellite */
+[data-composer-style="default"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+[data-composer-style="cursor"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+[data-composer-style="satellite"] [data-composer-control="ensemble-mode"] .composer-picker-label,
+/* Fan-out toggle — Satellite only */
+[data-composer-style="satellite"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button,
+/* Permissions / Model / Provider / Workspace — Native (default): all of them */
+[data-composer-style="default"]
+  :is([data-composer-control="permission"], [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"]),
+[data-composer-style="default"]
+  :is([data-composer-control="permission"], [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"])
+  :is(.composer-picker-label, .composer-combined-picker-trigger),
+/* Provider + Workspace — Claude / Cursor */
+[data-composer-style="claude"] :is([data-composer-control="provider"], [data-composer-control="workspace"]),
+[data-composer-style="claude"] :is([data-composer-control="provider"], [data-composer-control="workspace"]) :is(.composer-picker-label, .composer-combined-picker-trigger),
+[data-composer-style="cursor"] :is([data-composer-control="provider"], [data-composer-control="workspace"]),
+[data-composer-style="cursor"] :is([data-composer-control="provider"], [data-composer-control="workspace"]) :is(.composer-picker-label, .composer-combined-picker-trigger) {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* Diff signal — coloured to match every other shell: +N green,
  * −N red (the canonical `.composer-diff-add/del` hues). Keep the
  * heavier Grok weight for crispness against the monochrome chrome. */
