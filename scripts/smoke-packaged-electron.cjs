@@ -166,14 +166,46 @@ async function runLaunchSmoke(packageRoot) {
 
 async function runWindowsLaunchSmoke(packageRoot) {
   const executablePath = resolveWindowsExecutablePath(packageRoot)
-  const child = spawn(executablePath, [], {
-    cwd: packageRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      TASKWRAITH_AUTO_UPDATE: 'off'
-    }
-  })
+  const targetArch = inferPackageTarget(packageRoot).arch
+
+  // A binary can only be *launched* on a host whose CPU can execute that
+  // architecture. The windows-latest GitHub Actions runner is x64, which cannot
+  // run the arm64 TaskWraith.exe at all: CreateProcessW fails with
+  // ERROR_BAD_EXE_FORMAT (193), libuv maps that to its catch-all "UNKNOWN"
+  // errno, and Node throws it *synchronously* from spawn() (UNKNOWN is not in
+  // the small allowlist of errors emitted on 'error'), so it bypasses the
+  // handler below and crashes the smoke. The structural checks above already
+  // validated this package; only the live launch is host-arch dependent, so
+  // skip it rather than fail the whole build.
+  if (!canExecuteArchOnHost(targetArch)) {
+    console.log(
+      `packaged app launch smoke skipped: cannot execute win32-${targetArch} binary on ${process.arch} host (static package checks already validated this build)`
+    )
+    return
+  }
+
+  let child
+  try {
+    child = spawn(executablePath, ['--no-sandbox', '--disable-gpu'], {
+      cwd: packageRoot,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        TASKWRAITH_AUTO_UPDATE: 'off'
+      }
+    })
+  } catch (error) {
+    // Defence in depth: any other libuv "UNKNOWN" (or similar) spawn failure is
+    // thrown synchronously, so report it cleanly instead of as a bare stack.
+    fail(
+      `Failed to launch packaged Windows app ${path.basename(executablePath)}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+    return
+  }
+
   let output = ''
   let launchError = null
   child.stdout?.on('data', (chunk) => {
@@ -196,6 +228,19 @@ async function runWindowsLaunchSmoke(packageRoot) {
   }
   child.kill()
   console.log(`packaged app launch smoke ok: ${path.basename(executablePath)}`)
+}
+
+// Whether the current host CPU can natively execute a Windows binary of the
+// given target architecture.
+function canExecuteArchOnHost(targetArch) {
+  const hostArch = process.arch
+  if (targetArch === hostArch) return true
+  // Windows on ARM transparently emulates x64 and 32-bit x86 (ia32).
+  if (hostArch === 'arm64' && (targetArch === 'x64' || targetArch === 'ia32')) return true
+  // 64-bit x64 Windows runs 32-bit x86 (ia32) binaries via WOW64.
+  if (hostArch === 'x64' && targetArch === 'ia32') return true
+  // Notably arm64 binaries cannot run on an x64 host (the windows-latest runner).
+  return false
 }
 
 function resolveMacExecutablePath(packageRoot) {
