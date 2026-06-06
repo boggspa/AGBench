@@ -2263,6 +2263,47 @@
   display: none;
 }
 
+/* C (#6/#7) — first-class control tints. The KEPT Gemini/Kimi Turn / Provider /
+ * Workspace pills carry the provider highlight (Gemini blue = the model pill's
+ * #5a8cff; Kimi olive = #84a33b/#bbcf66) instead of the neutral base pill. The
+ * :is() arg includes a 2-class selector so the rule outranks the per-control
+ * neutral styling (your "overridden in the cascade" worry). */
+[data-composer-style="gemini"]
+  :is(
+    [data-composer-control="provider"],
+    [data-composer-control="workspace"],
+    [data-composer-control="ensemble-mode"] .composer-picker-label
+  ) {
+  background: color-mix(in srgb, #5a8cff 18%, transparent);
+  border-color: transparent;
+  color: color-mix(in srgb, #b8ccff 95%, transparent);
+}
+[data-composer-style="gemini"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"]):hover,
+[data-composer-style="gemini"]
+  [data-composer-control="ensemble-mode"]
+  .composer-picker-label:hover {
+  background: color-mix(in srgb, #5a8cff 28%, transparent);
+}
+[data-composer-style="kimi"]
+  :is(
+    [data-composer-control="provider"],
+    [data-composer-control="workspace"],
+    [data-composer-control="ensemble-mode"] .composer-picker-label
+  ) {
+  background: color-mix(in srgb, #84a33b 22%, transparent);
+  border-color: color-mix(in srgb, #bbcf66 34%, transparent);
+  color: color-mix(in srgb, #d4e79a 96%, transparent);
+}
+[data-composer-style="kimi"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"]):hover,
+[data-composer-style="kimi"]
+  [data-composer-control="ensemble-mode"]
+  .composer-picker-label:hover {
+  background: color-mix(in srgb, #84a33b 32%, transparent);
+  border-color: color-mix(in srgb, #bbcf66 46%, transparent);
+}
+
 /* Provider picker — softened outline pill */
 [data-composer-style="gemini"] [data-composer-control="provider"] {
   min-height: 28px;
