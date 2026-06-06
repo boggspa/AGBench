@@ -662,6 +662,7 @@ const api = {
     title?: string
     originMessageId?: string
     originRunId?: string
+    sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut'
   }) => ipcRenderer.invoke('create-side-chat', args),
   getSideChats: (parentChatId: string) => ipcRenderer.invoke('get-side-chats', parentChatId),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),

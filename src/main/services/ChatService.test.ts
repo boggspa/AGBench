@@ -75,6 +75,7 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
         parentChatRelation: 'sideChat',
         sideChatContext: {
           createdAt: 2,
+          mode: args.sideChatMode,
           originMessageId: args.originMessageId,
           originRunId: args.originRunId,
           transcriptVisibility: 'none'
@@ -223,7 +224,8 @@ describe('ChatService', () => {
       chatKind: 'ensemble',
       provider: 'codex',
       title: 'Scratch beside main',
-      originMessageId: 'msg-1'
+      originMessageId: 'msg-1',
+      sideChatMode: 'ensembleClone'
     })
     expect(sideChat.appChatId).toBe('side-chat-1')
     expect(sideChat.parentChatRelation).toBe('sideChat')
@@ -233,7 +235,8 @@ describe('ChatService', () => {
       provider: 'codex',
       title: 'Scratch beside main',
       originMessageId: 'msg-1',
-      originRunId: undefined
+      originRunId: undefined,
+      sideChatMode: 'ensembleClone'
     })
     expect(deps.appendDurableRunEventForRoute).toHaveBeenCalledWith(
       'gemini',
@@ -247,6 +250,28 @@ describe('ChatService', () => {
         provider: 'codex'
       }
     )
+  })
+
+  it('forwards single-provider side-chat shape for ensemble parents', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    const sideChat = service.createSideChat({
+      parentChatId: 'chat-1',
+      chatKind: 'single',
+      provider: 'claude',
+      sideChatMode: 'singleProvider'
+    })
+    expect(sideChat.chatKind).toBe('single')
+    expect(sideChat.sideChatContext?.mode).toBe('singleProvider')
+    expect(store.createSideChat).toHaveBeenCalledWith({
+      parentChatId: 'chat-1',
+      chatKind: 'single',
+      provider: 'claude',
+      title: undefined,
+      originMessageId: undefined,
+      originRunId: undefined,
+      sideChatMode: 'singleProvider'
+    })
   })
 
   it('lets AppStore max-depth validation errors propagate without auditing', () => {

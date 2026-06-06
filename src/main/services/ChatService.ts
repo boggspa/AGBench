@@ -1,5 +1,11 @@
 import type { AgentRunRoute } from '../run/AgentRunTypes'
-import type { ChatRecord, ProviderId, RunEventInput, WorkspaceRecord } from '../store/types'
+import type {
+  ChatRecord,
+  ProviderId,
+  RunEventInput,
+  SideChatMode,
+  WorkspaceRecord
+} from '../store/types'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { assertSafeChatId } from '../ChatPath'
@@ -22,6 +28,7 @@ export interface CreateSideChatInput {
   title?: string
   originMessageId?: string
   originRunId?: string
+  sideChatMode?: SideChatMode
 }
 
 export interface ChatServiceStore {
@@ -139,6 +146,12 @@ export class ChatService {
   createSideChat(args: CreateSideChatInput | undefined): ChatRecord {
     const parentChatId = requireSafeChatId(args?.parentChatId, 'Parent chat id')
     const provider = args?.provider === undefined ? undefined : assertProviderId(args.provider)
+    const sideChatMode =
+      args?.sideChatMode === 'ensembleClone' ||
+      args?.sideChatMode === 'singleProvider' ||
+      args?.sideChatMode === 'fanOut'
+        ? args.sideChatMode
+        : undefined
     const sideChat = this.deps.appStore.createSideChat({
       parentChatId,
       chatKind: args?.chatKind === 'ensemble' ? 'ensemble' : args?.chatKind === 'single' ? 'single' : undefined,
@@ -149,7 +162,8 @@ export class ChatService {
           ? args.originMessageId
           : undefined,
       originRunId:
-        typeof args?.originRunId === 'string' && args.originRunId.trim() ? args.originRunId : undefined
+        typeof args?.originRunId === 'string' && args.originRunId.trim() ? args.originRunId : undefined,
+      sideChatMode
     })
 
     try {

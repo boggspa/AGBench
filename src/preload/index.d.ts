@@ -833,6 +833,7 @@ declare global {
         title?: string
         originMessageId?: string
         originRunId?: string
+        sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut'
       }) => Promise<ChatRecord>
       getSideChats: (parentChatId: string) => Promise<ChatRecord[]>
       saveChat: (chat: ChatRecord) => Promise<void>

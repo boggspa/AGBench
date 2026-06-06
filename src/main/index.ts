@@ -13549,6 +13549,7 @@ if (isGeminiMcpBridgeProcess) {
           title?: string
           originMessageId?: string
           originRunId?: string
+          sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut'
         }
       ) => {
         const chat = chatService.createSideChat(args)

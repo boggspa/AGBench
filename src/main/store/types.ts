@@ -158,6 +158,7 @@ export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok' | 'curs
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type ChatParentRelation = 'subThread' | 'sideChat'
+export type SideChatMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
@@ -1951,6 +1952,7 @@ export interface ChatRecord {
    * auto-resume. */
   sideChatContext?: {
     createdAt: number
+    mode?: SideChatMode
     originMessageId?: string
     originRunId?: string
     transcriptVisibility?: 'none' | 'summary' | 'selected' | 'snapshot'

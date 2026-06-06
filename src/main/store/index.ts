@@ -19,6 +19,7 @@ import {
   AgentApprovalAction,
   ApprovalLedgerScope,
   ProviderId,
+  SideChatMode,
   RunRecoveryFilter,
   RunRecoveryRecord,
   WorkspaceChangeFilter,
@@ -935,6 +936,7 @@ export class AppStore {
     title?: string
     originMessageId?: string
     originRunId?: string
+    sideChatMode?: SideChatMode
   }): ChatRecord {
     const parent = this.getChat(args.parentChatId)
     if (!parent) {
@@ -943,7 +945,17 @@ export class AppStore {
 
     const settings = this.getSettings()
     const now = Date.now()
-    const chatKind = args.chatKind === 'ensemble' || parent.chatKind === 'ensemble' ? 'ensemble' : 'single'
+    const sideChatMode: SideChatMode =
+      args.sideChatMode ||
+      (args.chatKind === 'single'
+        ? 'singleProvider'
+        : parent.chatKind === 'ensemble' || args.chatKind === 'ensemble'
+          ? 'ensembleClone'
+          : 'singleProvider')
+    const chatKind =
+      args.chatKind === 'ensemble' || sideChatMode === 'ensembleClone' || sideChatMode === 'fanOut'
+        ? 'ensemble'
+        : 'single'
     const provider = args.provider || parent.provider || settings.activeProvider || 'gemini'
     const scope = parent.scope ?? 'workspace'
     const title =
@@ -968,6 +980,7 @@ export class AppStore {
       parentChatRelation: 'sideChat',
       sideChatContext: {
         createdAt: now,
+        mode: sideChatMode,
         ...(args.originMessageId ? { originMessageId: args.originMessageId } : {}),
         ...(args.originRunId ? { originRunId: args.originRunId } : {}),
         transcriptVisibility: 'none'
@@ -981,8 +994,15 @@ export class AppStore {
       chatKind === 'ensemble'
         ? {
             ...base,
-            title: args.title?.trim() || `Side ensemble from ${parent.title || 'chat'}`,
-            ensemble: cloneEnsembleForSideChat(parent, provider)
+            title:
+              args.title?.trim() ||
+              (sideChatMode === 'fanOut'
+                ? `Fan-out side chat from ${parent.title || 'chat'}`
+                : `Side ensemble from ${parent.title || 'chat'}`),
+            ensemble: {
+              ...cloneEnsembleForSideChat(parent, provider),
+              ...(sideChatMode === 'fanOut' ? { concurrentModeEnabled: true } : {})
+            }
           }
         : base
 

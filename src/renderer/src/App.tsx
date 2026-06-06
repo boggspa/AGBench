@@ -480,9 +480,21 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
 ])
 
 type SidePanelPresentation = 'split' | 'drawer'
+type SideChatCreateMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
 type SideChatSeedContext = {
   originMessageId?: string
   originRunId?: string
+}
+
+function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
+  if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
+  return chat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider'
+}
+
+function permissionPresetToApprovalMode(preset?: string): string {
+  if (preset === 'read_only') return 'plan'
+  if (preset === 'workspace_write' || preset === 'full_access') return 'auto_edit'
+  return 'default'
 }
 
 /**
@@ -8131,41 +8143,105 @@ function App(): React.JSX.Element {
     seedPrompt = '',
     clearParentDraft = false,
     presentation: SidePanelPresentation = 'split',
-    seedContext: SideChatSeedContext = {}
+    seedContext: SideChatSeedContext = {},
+    mode?: SideChatCreateMode
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
     try {
       const parentProvider = getChatProvider(parentChat)
+      const sideChatMode: SideChatCreateMode =
+        mode || (parentChat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider')
+      const selectedSideParticipant =
+        sideChatMode === 'singleProvider' && parentChat.chatKind === 'ensemble'
+          ? selectedParticipant ||
+            parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
+            parentChat.ensemble?.participants[0] ||
+            null
+          : null
+      const sideProvider = selectedSideParticipant?.provider || parentProvider
+      const sideParticipantLabel = selectedSideParticipant
+        ? selectedSideParticipant.role || getProviderLabel(selectedSideParticipant.provider)
+        : getProviderLabel(sideProvider)
       const createdSideChat = await window.api.createSideChat({
         parentChatId: parentChat.appChatId,
-        chatKind: parentChat.chatKind === 'ensemble' ? 'ensemble' : 'single',
-        provider: parentProvider,
+        chatKind: sideChatMode === 'singleProvider' ? 'single' : 'ensemble',
+        provider: sideProvider,
+        sideChatMode,
         originMessageId: seedContext.originMessageId,
         originRunId: seedContext.originRunId,
         title:
-          parentChat.chatKind === 'ensemble'
-            ? `Side ensemble from ${parentChat.title || 'ensemble chat'}`
-            : `Side chat from ${parentChat.title || getProviderLabel(parentProvider)}`
+          sideChatMode === 'fanOut'
+            ? `Fan-out side chat from ${parentChat.title || 'ensemble chat'}`
+            : sideChatMode === 'ensembleClone'
+              ? `Side ensemble from ${parentChat.title || 'ensemble chat'}`
+              : `Side ${sideParticipantLabel} chat from ${
+                  parentChat.title || getProviderLabel(parentProvider)
+                }`
       })
-      chatByIdRef.current.set(createdSideChat.appChatId, createdSideChat)
+      let nextSideChat = createdSideChat
+      if (selectedSideParticipant) {
+        const participantMetadata: Record<string, unknown> = {
+          selectedModelType:
+            selectedSideParticipant.model ||
+            getDefaultModelForProvider(selectedSideParticipant.provider),
+          customModel: '',
+          approvalMode: permissionPresetToApprovalMode(selectedSideParticipant.permissionPresetId)
+        }
+        if (selectedSideParticipant.runtimeProfileId) {
+          participantMetadata.runtimeProfileId = selectedSideParticipant.runtimeProfileId
+        }
+        if (
+          selectedSideParticipant.provider === 'gemini' &&
+          selectedSideParticipant.geminiAuthProfileId
+        ) {
+          participantMetadata.geminiAuthProfileId = selectedSideParticipant.geminiAuthProfileId
+        }
+        if (selectedSideParticipant.provider === 'codex') {
+          participantMetadata.codexReasoningEffort =
+            selectedSideParticipant.reasoningEffort || 'medium'
+          participantMetadata.codexServiceTier =
+            selectedSideParticipant.serviceTier ||
+            (selectedSideParticipant.fastModeEnabled ? 'fast' : '')
+        }
+        if (selectedSideParticipant.provider === 'claude') {
+          participantMetadata.claudeReasoningEffort =
+            selectedSideParticipant.reasoningEffort || 'off'
+          participantMetadata.claudeFastMode = Boolean(selectedSideParticipant.fastModeEnabled)
+        }
+        if (selectedSideParticipant.provider === 'kimi') {
+          participantMetadata.kimiThinkingEnabled =
+            selectedSideParticipant.thinkingEnabled ?? true
+        }
+        nextSideChat = {
+          ...createdSideChat,
+          provider: selectedSideParticipant.provider,
+          providerMetadata: {
+            ...(createdSideChat.providerMetadata || {}),
+            ...participantMetadata
+          },
+          updatedAt: Date.now()
+        }
+        void window.api.saveChat(nextSideChat).catch(() => {})
+      }
+      chatByIdRef.current.set(nextSideChat.appChatId, nextSideChat)
       setChats((prev) => [
-        createdSideChat,
-        ...prev.filter((chat) => chat.appChatId !== createdSideChat.appChatId)
+        nextSideChat,
+        ...prev.filter((chat) => chat.appChatId !== nextSideChat.appChatId)
       ])
       setSidePanelPresentation(presentation)
-      setSideChatId(createdSideChat.appChatId)
+      setSideChatId(nextSideChat.appChatId)
       setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
       setShowFileEditor(false)
       appearance.update({ showInspector: false })
-      setChatPromptDraft(createdSideChat.appChatId, seedPrompt)
+      setChatPromptDraft(nextSideChat.appChatId, seedPrompt)
       if (clearParentDraft) {
         setChatPromptDraft(parentChat.appChatId, '')
       }
       requestAnimationFrame(() => {
         sideComposerTextareaRef.current?.focus()
       })
-      return createdSideChat
+      return nextSideChat
     } catch (error) {
       appendThreadRawLog(parentChat.appChatId, {
         type: 'stderr',
@@ -8175,14 +8251,19 @@ function App(): React.JSX.Element {
     }
   }
 
-  const findReusableSideChatForCurrentChat = (): ChatRecord | null => {
+  const findReusableSideChatForCurrentChat = (
+    mode?: SideChatCreateMode,
+    provider?: ProviderId
+  ): ChatRecord | null => {
     if (!currentChat?.appChatId) return null
     const linked = chats
       .filter(
         (chat) =>
           !chat.archived &&
           chat.parentChatId === currentChat.appChatId &&
-          chat.parentChatRelation === 'sideChat'
+          chat.parentChatRelation === 'sideChat' &&
+          (!mode || getSideChatMode(chat) === mode) &&
+          (!provider || getChatProvider(chat) === provider)
       )
       .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
     return linked[0] || null
@@ -8215,11 +8296,23 @@ function App(): React.JSX.Element {
     seedPrompt = '',
     clearParentDraft = false,
     presentation: SidePanelPresentation = 'split',
-    seedContext: SideChatSeedContext = {}
+    seedContext: SideChatSeedContext = {},
+    mode?: SideChatCreateMode
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
-    const existing = findReusableSideChatForCurrentChat()
+    const sideChatMode =
+      mode || (parentChat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider')
+    const selectedSideProvider =
+      sideChatMode === 'singleProvider' && parentChat.chatKind === 'ensemble'
+        ? (
+            selectedParticipant ||
+            parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
+            parentChat.ensemble?.participants[0] ||
+            null
+          )?.provider
+        : undefined
+    const existing = findReusableSideChatForCurrentChat(sideChatMode, selectedSideProvider)
     if (existing) {
       openLinkedChatInSidePanel(existing, presentation)
       if (seedContext.originMessageId || seedContext.originRunId) {
@@ -8245,7 +8338,13 @@ function App(): React.JSX.Element {
       }
       return existing
     }
-    return createSideChatFromCurrentChat(seedPrompt, clearParentDraft, presentation, seedContext)
+    return createSideChatFromCurrentChat(
+      seedPrompt,
+      clearParentDraft,
+      presentation,
+      seedContext,
+      sideChatMode
+    )
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
@@ -8257,12 +8356,15 @@ function App(): React.JSX.Element {
   }
 
   const openCurrentSideChatPresentation = async (
-    presentation: SidePanelPresentation | 'popout' | 'main'
+    presentation: SidePanelPresentation | 'popout' | 'main',
+    mode?: SideChatCreateMode
   ) => {
     const linkedChat = await ensureSideChatForCurrentChat(
       '',
       false,
-      presentation === 'drawer' ? 'drawer' : 'split'
+      presentation === 'drawer' ? 'drawer' : 'split',
+      {},
+      mode
     )
     if (!linkedChat) return
     if (presentation === 'popout') {
@@ -13085,6 +13187,43 @@ function App(): React.JSX.Element {
                     <span>Open as main chat</span>
                     <small>Navigate to linked chat</small>
                   </button>
+                  {isCurrentEnsembleChat && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() =>
+                          void openCurrentSideChatPresentation('split', 'ensembleClone')
+                        }
+                      >
+                        <span>Side ensemble clone</span>
+                        <small>Same participants</small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() =>
+                          void openCurrentSideChatPresentation('split', 'singleProvider')
+                        }
+                      >
+                        <span>Single participant chat</span>
+                        <small>
+                          {selectedParticipant
+                            ? selectedParticipant.role ||
+                              getProviderLabel(selectedParticipant.provider)
+                            : 'Selected provider'}
+                        </small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void openCurrentSideChatPresentation('split', 'fanOut')}
+                      >
+                        <span>Fan-out side chat</span>
+                        <small>Parallel read-only round</small>
+                      </button>
+                    </>
+                  )}
                   <button type="button" role="menuitem" disabled>
                     <span>Open from selected message</span>
                     <small>Select-message seeding</small>
