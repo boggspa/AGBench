@@ -9906,7 +9906,12 @@ function App(): React.JSX.Element {
   const tryHandleSideSlashSubmit = (): boolean => {
     const sideSeedPrompt = parseSideSlashPrompt(prompt)
     if (sideSeedPrompt === null) return false
-    void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
+    if (currentChat && currentLinkedParentChat) {
+      setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
+      void openCurrentSideChatPresentation('split')
+    } else {
+      void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
+    }
     setSlashMenuOpen(false)
     setSlashQuery('')
     slashAnchorIndexRef.current = null
@@ -13061,7 +13066,12 @@ function App(): React.JSX.Element {
       group: 'Custom',
       run: () => {
         const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
-        void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
+        if (currentChat && currentLinkedParentChat) {
+          setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
+          void openCurrentSideChatPresentation('split')
+        } else {
+          void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
+        }
       }
     },
     {
