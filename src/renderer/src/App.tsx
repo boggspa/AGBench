@@ -8844,7 +8844,7 @@ function App(): React.JSX.Element {
     )
   }
 
-  const popOutLinkedChat = (chat: ChatRecord) => {
+  const popOutLinkedChat = (chat: ChatRecord, draftOverride?: string) => {
     const targetChat =
       chat.parentChatRelation === 'sideChat' ? applySideChatLifecycle(chat, 'active') : chat
     if (targetChat !== chat) {
@@ -8857,7 +8857,10 @@ function App(): React.JSX.Element {
     const wasInlinePresentation =
       sideChatId === targetChat.appChatId || sideChat?.appChatId === targetChat.appChatId
     writeChatPopoutHandoff(targetChat.appChatId, {
-      draft: composerDraftsByChatId[targetChat.appChatId] || '',
+      draft:
+        typeof draftOverride === 'string'
+          ? draftOverride
+          : composerDraftsByChatId[targetChat.appChatId] || '',
       scrollState: captureChatScrollState(
         wasInlinePresentation
           ? sideTranscriptScrollRef.current
@@ -8894,15 +8897,19 @@ function App(): React.JSX.Element {
   const openCurrentSideChatPresentation = async (
     presentation: SidePanelPresentation | 'popout' | 'main',
     mode?: SideChatCreateMode,
-    participantOverride?: EnsembleParticipant | null
+    participantOverride?: EnsembleParticipant | null,
+    draftOverride?: string
   ) => {
     setSideChatMenuOpen(false)
     if (currentChat && currentChatIsLinkedChild) {
+      if (typeof draftOverride === 'string') {
+        setChatPromptDraft(currentChat.appChatId, draftOverride)
+      }
       const linkedParentChat = await resolveCurrentLinkedParentChat()
       if (!linkedParentChat) return
       if (presentation === 'popout') {
         skipCloseSideChatPresentationIdRef.current = currentChat.appChatId
-        popOutLinkedChat(currentChat)
+        popOutLinkedChat(currentChat, draftOverride)
         await handleSelectChat(linkedParentChat)
         return
       }
@@ -10130,8 +10137,12 @@ function App(): React.JSX.Element {
 
   const openSideChatFromSlashCommand = (sideCommand: SideSlashCommand): void => {
     if (currentChat && currentChatIsLinkedChild) {
-      setChatPromptDraft(currentChat.appChatId, sideCommand.seedPrompt)
-      void openCurrentSideChatPresentation(sideCommand.presentation)
+      void openCurrentSideChatPresentation(
+        sideCommand.presentation,
+        undefined,
+        null,
+        sideCommand.seedPrompt
+      )
       return
     }
     void ensureSideChatForCurrentChat(
