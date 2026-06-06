@@ -8473,6 +8473,14 @@
   letter-spacing: 0.04em;
   color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
 }
+/* First-class rows: the access indicator is now a compact icon (magnify=read /
+ * pencil=write) instead of the wide "read/edit access" label — centre it. */
+.composer-above-bar-secondary-access-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--text-secondary) 82%, transparent);
+}
 
 .composer-above-bar-secondary-revoke {
   display: inline-flex;
