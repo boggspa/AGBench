@@ -10236,8 +10236,8 @@ function App(): React.JSX.Element {
     if (command.kind !== 'insert' && command.kind !== 'prompt-template') {
       consumeSlashTokenFromPrompt()
     }
-    slashAnchorIndexRef.current = null
     dispatch()
+    slashAnchorIndexRef.current = null
   }
 
   const handleRestoreCheckpoint = async () => {
