@@ -212,4 +212,19 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('Open side chat from run result')
     expect(html).toContain('Side chat')
   })
+
+  it('marks the selected side-chat seed message in the transcript', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          sideChatSeedMessageId: 'm2',
+          onOpenSideChatFromMessage: () => {}
+        })}
+      />
+    )
+
+    expect(html).toContain('is-side-chat-seed')
+    expect(html).toContain('data-message-id="m2"')
+  })
 })

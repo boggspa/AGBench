@@ -10181,6 +10181,7 @@ function App(): React.JSX.Element {
   const handleOpenSideChatFromMessage = useCallback(
     (message: ChatMessage) => {
       if (!canCreateSideChatFromCurrent || !currentChat || !message?.id) return
+      setSideChatSeedMessageId(message.id)
       const roleLabel =
         message.role === 'user'
           ? 'user message'
@@ -14163,6 +14164,7 @@ function App(): React.JSX.Element {
                 onOpenSideChatFromMessage={
                   canCreateSideChatFromCurrent ? handleOpenSideChatFromMessage : undefined
                 }
+                sideChatSeedMessageId={sideChatSeedMessageId}
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}

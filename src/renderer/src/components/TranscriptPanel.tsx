@@ -164,6 +164,7 @@ type TranscriptPanelProps = {
   onDeleteMessage: (messageId: string) => void
   onMessageSelectionCandidate?: (message: ChatMessage) => void
   onOpenSideChatFromMessage?: (message: ChatMessage) => void
+  sideChatSeedMessageId?: string | null
   onPreviewImage: (ref: ChatMediaRef) => void
   /**
    * 1.0.8 — shared copy-to-clipboard feedback (see {@link useCopyFeedback}).
@@ -679,6 +680,7 @@ export const TranscriptPanel = memo(
     onDeleteMessage,
     onMessageSelectionCandidate,
     onOpenSideChatFromMessage,
+    sideChatSeedMessageId,
     onPreviewImage,
     copiedId,
     copy,
@@ -861,10 +863,15 @@ export const TranscriptPanel = memo(
             const isDelegationCard = isSubThreadDelegationMessage(msg)
             const isReturnCard = isSubThreadReturnMessage(msg)
             const boundaryRun = runBoundaryByMessageId.get(msg.id)
+            const isSideChatSeedMessage = Boolean(
+              sideChatSeedMessageId && msg.id === sideChatSeedMessageId
+            )
             return (
               <div
                 key={`message-block-${rowKey}`}
-                className="transcript-message-block"
+                className={`transcript-message-block${
+                  isSideChatSeedMessage ? ' is-side-chat-seed' : ''
+                }`}
                 data-vrow-id={rowKey}
                 data-message-id={msg.id}
                 onMouseEnter={() => onMessageSelectionCandidate?.(msg)}
@@ -1443,6 +1450,7 @@ export const TranscriptPanel = memo(
     previous.onDeleteMessage === next.onDeleteMessage &&
     previous.onMessageSelectionCandidate === next.onMessageSelectionCandidate &&
     previous.onOpenSideChatFromMessage === next.onOpenSideChatFromMessage &&
+    previous.sideChatSeedMessageId === next.sideChatSeedMessageId &&
     previous.onPreviewImage === next.onPreviewImage &&
     previous.copiedId === next.copiedId &&
     previous.copy === next.copy &&
