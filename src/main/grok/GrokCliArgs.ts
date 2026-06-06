@@ -71,6 +71,21 @@ export const GROK_READ_ONLY_PROMPT_PREAMBLE =
   'explain what you would change instead of attempting it.'
 
 /**
+ * WRITE-mode steer prepended to a write-capable Grok turn's prompt. In write
+ * mode Grok's Edit/Write tools are auto-approved (diff-reviewed), but a raw
+ * shell command (mkdir/touch/…) is NOT auto-approved on the headless path and is
+ * refused by the host — and Grok was treating that refusal as a dead-end
+ * (stopReason: Cancelled, 0 output) instead of just writing the file. Steer it
+ * to use the file tools and to adapt rather than end the turn on a refusal. Very
+ * small on purpose: a nudge, not a policy. The host gate stays the safety floor.
+ */
+export const GROK_WRITE_MODE_PROMPT_PREAMBLE =
+  'Create and edit files with the Write and Edit tools (they are approved and ' +
+  'diff-reviewed here), not shell commands like mkdir or touch. If a tool call ' +
+  'is refused or fails, do not end your turn — switch to an available tool such ' +
+  'as Write and finish the task.'
+
+/**
  * Prepend the read-only steer to a Grok ACP turn's prompt when the seat is
  * read-only; return the prompt unchanged for a write-capable seat. The
  * read-only-only gate lives here (single-sourced + unit-tested) so callers just
@@ -79,6 +94,20 @@ export const GROK_READ_ONLY_PROMPT_PREAMBLE =
 export function applyGrokReadOnlyPromptPreamble(prompt: string, readOnlySeat: boolean): string {
   if (!readOnlySeat) return prompt
   return `${GROK_READ_ONLY_PROMPT_PREAMBLE}\n\n${prompt}`
+}
+
+/**
+ * Prepend the mode-appropriate steer to a Grok turn's prompt: a write-capable
+ * seat gets the WRITE steer (use Write/Edit, and don't dead-end on a refused
+ * tool); a read-only seat gets the read-only steer. Unlike
+ * applyGrokReadOnlyPromptPreamble (which no-ops a write seat), this ALWAYS
+ * prepends a steer — that is the fix for write/'default' seats silently
+ * hard-cancelling when a shell tool is refused. Single-sourced + unit-tested so
+ * the headless and ACP run paths stay in parity.
+ */
+export function applyGrokPromptPreamble(prompt: string, writeCapable: boolean): string {
+  if (!writeCapable) return applyGrokReadOnlyPromptPreamble(prompt, true)
+  return `${GROK_WRITE_MODE_PROMPT_PREAMBLE}\n\n${prompt}`
 }
 
 export interface BuildGrokCliArgsInput {

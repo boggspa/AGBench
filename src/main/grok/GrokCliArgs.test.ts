@@ -4,7 +4,9 @@ import {
   normalizeGrokEffortFlag,
   grokWriteCapable,
   applyGrokReadOnlyPromptPreamble,
+  applyGrokPromptPreamble,
   GROK_READ_ONLY_PROMPT_PREAMBLE,
+  GROK_WRITE_MODE_PROMPT_PREAMBLE,
   GROK_READ_ONLY_DENY_RULES,
   GROK_WRITE_MODE_DENY_RULES
 } from './GrokCliArgs'
@@ -186,6 +188,42 @@ describe('grokWriteCapable', () => {
     expect(grokWriteCapable('plan ')).toBe(false)
     expect(grokWriteCapable(' plan')).toBe(false)
     expect(grokWriteCapable('\tplan\n')).toBe(false)
+  })
+})
+
+describe('applyGrokPromptPreamble', () => {
+  it('prepends the WRITE steer for a write-capable seat', () => {
+    const out = applyGrokPromptPreamble('write the files', true)
+    expect(out.startsWith(GROK_WRITE_MODE_PROMPT_PREAMBLE)).toBe(true)
+    expect(out.endsWith('write the files')).toBe(true)
+    expect(out).not.toContain(GROK_READ_ONLY_PROMPT_PREAMBLE)
+  })
+
+  it('prepends the read-only steer for a read-only seat', () => {
+    const out = applyGrokPromptPreamble('list the TODOs', false)
+    expect(out.startsWith(GROK_READ_ONLY_PROMPT_PREAMBLE)).toBe(true)
+    expect(out.endsWith('list the TODOs')).toBe(true)
+  })
+
+  it('ALWAYS steers — a write seat is no longer passed through unchanged (the dead-end fix)', () => {
+    // The bug: write/'default' seats got no steer, so a refused shell tool
+    // dead-ended the turn (stopReason: Cancelled, 0 output). Both seats must now
+    // carry a steer.
+    expect(applyGrokPromptPreamble('x', true)).not.toBe('x')
+    expect(applyGrokPromptPreamble('x', false)).not.toBe('x')
+  })
+
+  it("steers 'default' approval mode as write-capable (the reported regression)", () => {
+    const out = applyGrokPromptPreamble('write files', grokWriteCapable('default'))
+    expect(out.startsWith(GROK_WRITE_MODE_PROMPT_PREAMBLE)).toBe(true)
+  })
+
+  it('write steer points at the file tools and tells Grok not to end on a refusal', () => {
+    // Guards intent, not exact wording: mentions Write/Edit + don't-end/adapt.
+    const lower = GROK_WRITE_MODE_PROMPT_PREAMBLE.toLowerCase()
+    expect(lower).toContain('write')
+    expect(lower).toContain('edit')
+    expect(lower).toMatch(/do not end|don't end|adapt|switch/)
   })
 })
 

@@ -397,7 +397,7 @@ import {
 import {
   buildGrokCliArgs,
   grokWriteCapable,
-  applyGrokReadOnlyPromptPreamble,
+  applyGrokPromptPreamble,
   GROK_READ_ONLY_DENY_RULES
 } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
@@ -5329,13 +5329,14 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   // G6 — pass the prior session id so follow-up turns resume the same Grok
   // session (captured from the previous turn's terminal event).
   const args = buildGrokCliArgs({
-    // Steer a read-only Grok turn to answer directly instead of presenting a
-    // plan / attempting a denied tool, which otherwise hard-cancels the turn
-    // with no answer. No-op for write-capable turns (the preamble returns the
-    // prompt unchanged) — parity with the ACP path.
-    prompt: applyGrokReadOnlyPromptPreamble(
+    // Steer the turn by approval mode: a read-only turn answers directly instead
+    // of attempting a denied tool; a write-capable turn (incl. 'default') is
+    // nudged to use the Write/Edit tools — shell isn't auto-approved on this
+    // headless path — and to adapt rather than dead-end if a tool is refused.
+    // Both prevent the silent hard-cancel (stopReason: Cancelled, 0 output).
+    prompt: applyGrokPromptPreamble(
       payload.prompt,
-      !grokWriteCapable(payload.approvalMode)
+      grokWriteCapable(payload.approvalMode)
     ),
     workspace: payload.workspace!,
     model: payload.model,
@@ -5699,11 +5700,12 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     // Read-only seat: prepend the read-only steer so Grok answers from
     // read/inspection tools instead of attempting a write the host gate will
     // refuse — a refused write makes Grok hard-cancel and dead-end with no
-    // answer. Write-capable seats pass through unchanged. Every ACP turn opens a
-    // fresh session/new (no Grok-side resume threads through here), so the steer
-    // must ride each turn's prompt; there's no prior turn for Grok to remember
-    // it from, hence no redundant re-injection to avoid.
-    prompt: applyGrokReadOnlyPromptPreamble(payload.prompt, grokReadOnlySeat),
+    // answer. Write-capable seats get the WRITE steer (use Write/Edit, adapt
+    // rather than end the turn on a refusal). Every ACP turn opens a fresh
+    // session/new (no Grok-side resume threads through here), so the steer must
+    // ride each turn's prompt; there's no prior turn for Grok to remember it
+    // from, hence no redundant re-injection to avoid.
+    prompt: applyGrokPromptPreamble(payload.prompt, !grokReadOnlySeat),
     cwd: payload.workspace!,
     mcpServers: grokMcpServers,
     spawnProcess: () => {
