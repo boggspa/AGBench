@@ -78,6 +78,7 @@ import type { AgentApprovalAction, AgentApprovalRequest } from './lib/agentAppro
 import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeFormat'
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
+import { parseSideSlashCommand } from './lib/SideSlashCommand'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
 import { IOS_REMOTE_ENABLED } from './lib/featureFlags'
 import {
@@ -10126,22 +10127,28 @@ function App(): React.JSX.Element {
     })
   }
 
-  const parseSideSlashPrompt = (value: string): string | null => {
-    const withoutLeadingWhitespace = value.replace(/^\s+/, '')
-    if (!withoutLeadingWhitespace.startsWith('/side')) return null
-    const afterCommand = withoutLeadingWhitespace.slice('/side'.length)
-    if (afterCommand && !/^\s/.test(afterCommand)) return null
-    return afterCommand.trim()
-  }
-
   const tryHandleSideSlashSubmit = (): boolean => {
-    const sideSeedPrompt = parseSideSlashPrompt(prompt)
-    if (sideSeedPrompt === null) return false
+    const sideCommand = parseSideSlashCommand(prompt)
+    if (!sideCommand) return false
     if (currentChat && currentChatIsLinkedChild) {
-      setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
-      void openCurrentSideChatPresentation('split')
+      setChatPromptDraft(currentChat.appChatId, sideCommand.seedPrompt)
+      void openCurrentSideChatPresentation(sideCommand.presentation)
     } else {
-      void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
+      void ensureSideChatForCurrentChat(
+        sideCommand.seedPrompt,
+        true,
+        sideCommand.presentation === 'drawer' ? 'drawer' : 'split',
+        {},
+        undefined,
+        sideCommand.presentation !== 'popout' && sideCommand.presentation !== 'main'
+      ).then((linkedChat) => {
+        if (!linkedChat) return
+        if (sideCommand.presentation === 'popout') {
+          popOutLinkedChat(linkedChat)
+        } else if (sideCommand.presentation === 'main') {
+          void handleSelectChat(linkedChat)
+        }
+      })
     }
     setSlashMenuOpen(false)
     setSlashQuery('')
@@ -13324,7 +13331,7 @@ function App(): React.JSX.Element {
       id: 'taskwraith-side',
       command: '/side',
       label: 'Open side chat',
-      description: 'Open a parallel side pane for this chat.',
+      description: 'Open a parallel side pane. Type /side drawer or /side popout for layout.',
       group: 'Custom',
       run: () => {
         const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
