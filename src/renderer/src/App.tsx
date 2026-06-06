@@ -8322,6 +8322,25 @@ function App(): React.JSX.Element {
     syncRunningState()
   }
 
+  const hideSideChatPane = () => {
+    setSideChatId(null)
+    setSideChatMenuOpen(false)
+  }
+
+  const handleTerminateSideChat = async () => {
+    const targetChat = sideChat
+    if (!targetChat || targetChat.parentChatRelation !== 'sideChat') return
+    if (isChatBusy(targetChat.appChatId)) {
+      await handleSideCancel()
+    }
+    updateChatById(targetChat.appChatId, (source) => ({
+      ...source,
+      archived: true,
+      updatedAt: Date.now()
+    }))
+    hideSideChatPane()
+  }
+
   /**
    * Phase J3 (steer): Codex-CLI-style "interrupt + dispatch this prompt".
    *
@@ -10884,6 +10903,244 @@ function App(): React.JSX.Element {
     sideChat?.chatKind === 'ensemble' ? 'Ensemble' : getProviderLabel(sideProvider)
   const sideThinkingProvider = sideChat?.chatKind === 'ensemble' ? null : sideProvider
   const sideCanRun = Boolean(sideChat && (getChatScope(sideChat) === 'global' || sideWorkspace))
+  const sideComposerSelection = sideChat ? getChatComposerSelection(sideChat, sideProvider) : null
+  const sideComposerProvider = sideComposerSelection?.provider || sideProvider
+  const sideComposerModelOptionsRaw = getProviderModelOptions(sideComposerProvider)
+  const sideComposerSelectedModel = sideComposerSelection?.selectedModelType
+    ? isValidModelForProvider(sideComposerProvider, sideComposerSelection.selectedModelType)
+      ? sideComposerSelection.selectedModelType
+      : getDefaultModelForProvider(sideComposerProvider)
+    : getDefaultModelForProvider(sideComposerProvider)
+  const sideComposerModelOptions: CombinedModelPickerModelOption[] = [
+    ...sideComposerModelOptionsRaw.map((model) => {
+      const retiresAtRaw = (model as { retiresAt?: unknown }).retiresAt
+      const retiresAt = typeof retiresAtRaw === 'string' ? retiresAtRaw : undefined
+      return {
+        id: model.id,
+        label: model.label || model.id,
+        ...(retiresAt ? { retiresAt } : {})
+      }
+    }),
+    ...(sideComposerProvider !== 'kimi' ? [{ id: 'custom', label: 'Custom…' }] : [])
+  ]
+  const sideCodexModelOption =
+    sideComposerProvider === 'codex'
+      ? codexModels.find((model) => model.id === sideComposerSelectedModel)
+      : undefined
+  const sideClaudeModelOption =
+    sideComposerProvider === 'claude'
+      ? (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS).find(
+          (model) => model.id === sideComposerSelectedModel
+        )
+      : undefined
+  const sideCodexReasoning =
+    sideComposerSelection?.codexReasoningEffort ||
+    sideCodexModelOption?.defaultReasoningEffort ||
+    'medium'
+  const sideClaudeReasoning = sideComposerSelection?.claudeReasoningEffort || 'off'
+  const sideKimiThinking = sideComposerSelection?.kimiThinkingEnabled ?? true
+  let sideComposerReasoningOptions: CombinedModelPickerReasoningOption[] = []
+  let sideComposerSelectedReasoning = ''
+  if (sideComposerProvider === 'codex') {
+    const sourceOptions = sideCodexModelOption?.supportedReasoningEfforts?.length
+      ? sideCodexModelOption.supportedReasoningEfforts
+      : [
+          { reasoningEffort: 'low' },
+          { reasoningEffort: 'medium' },
+          { reasoningEffort: 'high' },
+          { reasoningEffort: 'xhigh' }
+        ]
+    sideComposerReasoningOptions = sourceOptions.map((option) => ({
+      value: option.reasoningEffort,
+      label:
+        option.reasoningEffort === 'xhigh'
+          ? 'Extra High'
+          : option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)
+    }))
+    sideComposerSelectedReasoning = sideCodexReasoning
+  } else if (sideComposerProvider === 'claude') {
+    const sourceOptions = sideClaudeModelOption?.supportedReasoningEfforts?.length
+      ? sideClaudeModelOption.supportedReasoningEfforts
+      : CLAUDE_THINKING_EFFORTS
+    sideComposerReasoningOptions = sourceOptions.map((option) => ({
+      value: option.reasoningEffort,
+      label:
+        option.reasoningEffort === 'off'
+          ? 'Thinking off'
+          : option.reasoningEffort === 'high'
+            ? 'Max'
+            : option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)
+    }))
+    sideComposerSelectedReasoning = sideClaudeReasoning
+  } else if (sideComposerProvider === 'kimi') {
+    sideComposerReasoningOptions = [
+      { value: 'on', label: 'Thinking on' },
+      { value: 'off', label: 'Thinking off' }
+    ]
+    sideComposerSelectedReasoning = sideKimiThinking ? 'on' : 'off'
+  }
+  const sideFastModeCapableModelIds = (() => {
+    if (sideComposerProvider === 'codex') {
+      return new Set(
+        codexModels
+          .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+          .map((model) => model.id)
+      )
+    }
+    if (sideComposerProvider === 'claude') {
+      return new Set(
+        (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
+          .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+          .map((model) => model.id)
+      )
+    }
+    if (sideComposerProvider === 'cursor') {
+      return new Set(['composer-2.5', 'composer-2.5-fast'])
+    }
+    return new Set<string>()
+  })()
+  const sideFastModeEnabled =
+    sideComposerProvider === 'codex'
+      ? sideComposerSelection?.codexServiceTier === 'fast'
+      : sideComposerProvider === 'claude'
+        ? Boolean(sideComposerSelection?.claudeFastMode)
+        : sideComposerProvider === 'cursor'
+          ? sideComposerSelectedModel === 'composer-2.5-fast'
+          : false
+  const sidePermissionOptions: PermissionOption[] = [
+    { value: 'plan', label: 'Plan / Read-only' },
+    { value: 'default', label: 'Default Approval' },
+    { value: 'auto_edit', label: 'Full Workspace Access' }
+  ]
+  const sideSelectedPermission = sideComposerSelection?.approvalMode || 'default'
+  const sideIsGlobalChat = sideChat ? isGlobalChat(sideChat) : false
+  const sideGrantWorkspacePath = sideWorkspace?.path || ''
+  const sideEnabledGrantIds = new Set(
+    !sideIsGlobalChat && sideGrantWorkspacePath
+      ? agenticWorkspaceGrants
+          .filter((grant) => {
+            if (!grant || grant.provider !== sideComposerProvider || !grant.workspacePath) {
+              return false
+            }
+            return grant.workspacePath.replace(/\/+$/, '') === sideGrantWorkspacePath.replace(/\/+$/, '')
+          })
+          .map((grant) => grant.service)
+      : []
+  )
+  const sideGrantServices = sideChat && !sideIsGlobalChat && sideWorkspace
+    ? WORKSPACE_POLICY_SERVICES
+    : []
+  const isSideChatProviderLocked = Boolean(
+    sideChat &&
+      (sidePanelRelation !== 'sideChat' ||
+        (sideChat.messages?.length || 0) > 0 ||
+        (sideChat.runs?.length || 0) > 0 ||
+        Boolean(sideChat.linkedGeminiSessionId) ||
+        Boolean(sideChat.linkedProviderSessionId))
+  )
+  const sideChatIsWelcome = Boolean(sideChat && (sideChat.messages?.length || 0) === 0)
+  const isSideComposerLocked = Boolean(isSideChatRunning && sideChat?.chatKind !== 'ensemble')
+  const sideComposerHasMention = Boolean(
+    sideChat && hasResolvedMention(sidePrompt, sideChat.ensemble?.participants || [])
+  )
+  const rememberSideChatComposerSelection = (patch: Record<string, unknown>) => {
+    if (!sideChat) return
+    updateChatById(sideChat.appChatId, (source) => ({
+      ...source,
+      providerMetadata: {
+        ...(source.providerMetadata || {}),
+        ...patch
+      },
+      updatedAt: Date.now()
+    }))
+  }
+  const handleSideProviderChange = (provider: ProviderId): void => {
+    if (!sideChat || isSideChatProviderLocked || provider === sideComposerProvider) return
+    const nextModel = getDefaultModelForProvider(provider)
+    updateChatById(sideChat.appChatId, (source) => ({
+      ...source,
+      provider,
+      providerMetadata: {
+        ...(source.providerMetadata || {}),
+        selectedModelType: nextModel,
+        customModel: '',
+        approvalMode: sideSelectedPermission,
+        ...(provider === 'kimi' ? { kimiThinkingEnabled: true } : {}),
+        runtimeProfileId: defaultRuntimeProfileIdForProvider(provider)
+      },
+      updatedAt: Date.now()
+    }))
+    void refreshProviderMetadata(provider, sideWorkspace?.path)
+  }
+  const handleSideModelChange = (nextModel: string): void => {
+    if (!sideChat) return
+    const metadataPatch: Record<string, unknown> = { selectedModelType: nextModel }
+    if (sideComposerProvider === 'codex') {
+      const modelOption = codexModels.find((model) => model.id === nextModel)
+      if (modelOption?.defaultReasoningEffort) {
+        metadataPatch.codexReasoningEffort = modelOption.defaultReasoningEffort
+      }
+      if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+        metadataPatch.codexServiceTier = ''
+      }
+    }
+    if (sideComposerProvider === 'claude') {
+      const modelOption = (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS).find(
+        (model) => model.id === nextModel
+      )
+      if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+        metadataPatch.claudeFastMode = false
+      }
+    }
+    rememberSideChatComposerSelection(metadataPatch)
+  }
+  const handleSideReasoningChange = (value: string): void => {
+    if (!sideChat) return
+    if (sideComposerProvider === 'codex') {
+      rememberSideChatComposerSelection({ codexReasoningEffort: value })
+    } else if (sideComposerProvider === 'claude') {
+      rememberSideChatComposerSelection({ claudeReasoningEffort: value })
+    } else if (sideComposerProvider === 'kimi') {
+      rememberSideChatComposerSelection({ kimiThinkingEnabled: value !== 'off' })
+    }
+  }
+  const handleSideToggleFastMode =
+    sideComposerProvider === 'codex'
+      ? () =>
+          rememberSideChatComposerSelection({
+            codexServiceTier: sideComposerSelection?.codexServiceTier === 'fast' ? '' : 'fast'
+          })
+      : sideComposerProvider === 'claude'
+        ? () =>
+            rememberSideChatComposerSelection({
+              claudeFastMode: !sideComposerSelection?.claudeFastMode
+            })
+        : sideComposerProvider === 'cursor'
+          ? () =>
+              handleSideModelChange(
+                sideComposerSelectedModel === 'composer-2.5-fast'
+                  ? 'composer-2.5'
+                  : 'composer-2.5-fast'
+              )
+          : undefined
+  const handleSetSideAgenticWorkspaceGrant = async (
+    service: AgenticServiceId,
+    enabled: boolean
+  ) => {
+    if (!sideChat || sideIsGlobalChat || !sideWorkspace?.path) return
+    const nextSettings = enabled
+      ? await window.api.upsertAgenticWorkspaceGrant(
+          sideComposerProvider,
+          sideWorkspace.path,
+          service
+        )
+      : await window.api.removeAgenticWorkspaceGrant(
+          sideComposerProvider,
+          sideWorkspace.path,
+          service
+        )
+    applyAgenticWorkspaceGrantSettings(nextSettings)
+  }
   const composerRunTimecodeStartedAt = isCurrentChatRunning
     ? currentEnsembleRound?.startedAt || currentRun?.startedAt || null
     : null
@@ -12660,9 +12917,15 @@ function App(): React.JSX.Element {
               <button
                 className={`chat-corner-btn ${isSideSplitOpen ? 'active' : ''}`}
                 type="button"
-                onClick={() => setSideChatMenuOpen((open) => !open)}
-                title="Side chat layouts"
-                aria-label="Side chat layouts"
+                onClick={() => {
+                  if (isSideSplitOpen) {
+                    hideSideChatPane()
+                    return
+                  }
+                  setSideChatMenuOpen((open) => !open)
+                }}
+                title={isSideSplitOpen ? 'Hide side chat pane' : 'Side chat layouts'}
+                aria-label={isSideSplitOpen ? 'Hide side chat pane' : 'Side chat layouts'}
                 aria-haspopup="menu"
                 aria-expanded={sideChatMenuOpen}
                 disabled={!currentChat}
@@ -15878,24 +16141,68 @@ function App(): React.JSX.Element {
                 >
                   Open main
                 </button>
+                {sidePanelRelation === 'sideChat' && (
+                  <button
+                    type="button"
+                    className="side-chat-header-btn side-chat-header-btn-danger"
+                    onClick={() => void handleTerminateSideChat()}
+                    title="Terminate this side chat and archive the linked record"
+                  >
+                    End
+                  </button>
+                )}
                 <button
                   type="button"
                   className="side-chat-icon-btn"
-                  onClick={() => setSideChatId(null)}
-                  title="Close side pane"
-                  aria-label="Close side pane"
+                  onClick={hideSideChatPane}
+                  title="Hide side pane; linked chat keeps running"
+                  aria-label="Hide side pane"
                 >
                   <XSymbolIcon />
                 </button>
               </div>
             </div>
+            {sideChatIsWelcome && (
+              <div className="side-chat-welcome" aria-label="Side chat welcome">
+                <span className="side-chat-welcome-kicker">{sidePanelKindLabel}</span>
+                <h2>
+                  {sidePanelRelation === 'subThread'
+                    ? 'Agent sub-thread'
+                    : sideChat.chatKind === 'ensemble'
+                      ? 'Side ensemble'
+                      : 'Side chat'}
+                </h2>
+                <p>{sidePanelParentChat?.title || 'Parent chat'}</p>
+                {sideChat.chatKind === 'ensemble' && sideChat.ensemble?.participants?.length ? (
+                  <div className="side-chat-welcome-chain" aria-label="Ensemble participants">
+                    {[...(sideChat.ensemble.participants || [])]
+                      .filter((participant) => participant.enabled)
+                      .sort((a, b) => a.order - b.order)
+                      .slice(0, 6)
+                      .map((participant, index, enabledParticipants) => (
+                        <span key={participant.id} className="side-chat-welcome-chain-step">
+                          <span className={`side-chat-welcome-participant provider-${participant.provider}`}>
+                            <ProviderBadgeIcon provider={participant.provider} />
+                            <span>{participant.role || getProviderLabel(participant.provider)}</span>
+                          </span>
+                          {index < enabledParticipants.length - 1 && (
+                            <span className="side-chat-welcome-arrow" aria-hidden>
+                              →
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
             <TranscriptPanel
               key={`side-${sideChat.appChatId}`}
               scrollRef={sideTranscriptScrollRef}
               contentRef={sideTranscriptContentRef}
               endRef={sideLogsEndRef}
               messages={sideChat.messages || EMPTY_CHAT_MESSAGES}
-              isWelcomeChat={false}
+              isWelcomeChat={sideChatIsWelcome}
               isThinking={isSideChatRunning}
               showFallbackUX={false}
               pendingPlanChoice={null}
@@ -15946,59 +16253,180 @@ function App(): React.JSX.Element {
                 handleSideRun()
               }}
             >
-              <div className="composer-textarea-wrap side-chat-textarea-wrap">
-                <textarea
-                  ref={sideComposerTextareaRef}
-                  className="composer-textarea side-chat-textarea"
-                  value={sidePrompt}
-                  onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault()
-                      handleSideRun()
-                    }
-                  }}
-                  placeholder={`Ask ${sidePanelKindLabel.toLowerCase()}`}
-                  aria-label="Side chat prompt"
-                  rows={3}
-                  disabled={!sideCanRun}
-                />
-              </div>
-              <div className="side-chat-composer-footer composer-footer">
-                <span className="side-chat-status" aria-live="polite">
-                  {isSideChatRunning ? 'Running' : 'Ready'}
-                </span>
-                <div className="side-chat-send-cluster">
-                  {isSideChatRunning && (
-                    <button
-                      type="button"
-                      className="composer-action-btn stop-btn"
-                      onClick={() => void handleSideCancel()}
-                      title="Stop side chat run"
-                      aria-label="Stop side chat run"
-                    >
-                      <StopSymbolIcon />
-                    </button>
+              <div className="composer-inner-module side-chat-inner-module">
+                <div className="composer-textarea-wrap side-chat-textarea-wrap">
+                  {sideComposerHasMention && (
+                    <ComposerHighlightOverlay
+                      value={sidePrompt}
+                      participants={sideChat.ensemble?.participants}
+                      textareaRef={sideComposerTextareaRef}
+                      syncEpoch={`${appearance.composerStyle}|side|${sideChat.appChatId}`}
+                    />
                   )}
-                  <button
-                    type="submit"
-                    className="composer-action-btn run-btn"
-                    disabled={!sideCanRun || !sidePrompt.trim()}
-                    title={
-                      sideCanRun
-                        ? isSideChatRunning
-                          ? 'Queue side chat prompt'
-                          : 'Run side chat prompt'
-                        : 'Side chat workspace is unavailable'
-                    }
-                    aria-label={isSideChatRunning ? 'Queue side chat prompt' : 'Run side chat prompt'}
-                  >
-                    <ArrowUpSendIcon />
-                  </button>
+                  <textarea
+                    ref={sideComposerTextareaRef}
+                    className={`composer-textarea side-chat-textarea${
+                      sideComposerHasMention ? ' has-mention-overlay' : ''
+                    }`}
+                    value={sidePrompt}
+                    onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        !event.shiftKey &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault()
+                        handleSideRun()
+                      }
+                    }}
+                    placeholder={`Ask ${sidePanelKindLabel.toLowerCase()}`}
+                    aria-label="Side chat prompt"
+                    rows={2}
+                    disabled={!sideCanRun}
+                  />
+                </div>
+                <div className="composer-bottom-controls side-chat-bottom-controls">
+                  <div className="composer-control-footer side-chat-control-footer">
+                    <div className="composer-inline-pickers side-chat-inline-pickers">
+                      <div className="composer-inline-pickers-left">
+                        <ComposerProviderPicker
+                          provider={sideComposerProvider}
+                          composerStyle={appearance.composerStyle}
+                          grokAvailable={grokProviderAvailable}
+                          cursorAvailable={cursorProviderAvailable}
+                          onSelect={handleSideProviderChange}
+                          disabled={
+                            isSideComposerLocked ||
+                            isSideChatProviderLocked ||
+                            sideChat.chatKind === 'ensemble'
+                          }
+                          triggerIcon={<LinkCircleSymbolIcon />}
+                          title={
+                            sideChat.chatKind === 'ensemble'
+                              ? 'Side ensemble provider is configured by participants'
+                              : sidePanelRelation === 'subThread'
+                                ? 'Sub-thread provider'
+                                : 'Side chat provider'
+                          }
+                        />
+                        <CombinedModelPicker
+                          provider={sideComposerProvider}
+                          composerStyle={appearance.composerStyle}
+                          modelOptions={sideComposerModelOptions}
+                          selectedModelId={sideComposerSelectedModel}
+                          onSelectModel={handleSideModelChange}
+                          reasoningOptions={sideComposerReasoningOptions}
+                          selectedReasoning={sideComposerSelectedReasoning}
+                          onSelectReasoning={handleSideReasoningChange}
+                          codexReasoningEffort={sideCodexReasoning}
+                          claudeReasoningEffort={sideClaudeReasoning}
+                          kimiThinkingEnabled={sideKimiThinking}
+                          fastModeCapableModelIds={sideFastModeCapableModelIds}
+                          fastModeEnabled={sideFastModeEnabled}
+                          onToggleFastMode={handleSideToggleFastMode}
+                          disabled={isSideComposerLocked}
+                        />
+                        {sideComposerSelectedModel === 'custom' &&
+                          sideComposerProvider !== 'kimi' && (
+                            <span className="composer-inline-custom-model side-chat-custom-model">
+                              <input
+                                className="composer-inline-input"
+                                type="text"
+                                value={sideComposerSelection?.customModel || ''}
+                                onChange={(event) =>
+                                  rememberSideChatComposerSelection({
+                                    customModel: event.target.value
+                                  })
+                                }
+                                placeholder="Model ID"
+                                disabled={isSideComposerLocked}
+                              />
+                              <button
+                                className="composer-inline-clear"
+                                type="button"
+                                onClick={() =>
+                                  rememberSideChatComposerSelection({
+                                    customModel: '',
+                                    selectedModelType: getDefaultModelForProvider(sideComposerProvider)
+                                  })
+                                }
+                                disabled={isSideComposerLocked}
+                                title="Cancel custom model"
+                                aria-label="Cancel custom model"
+                              >
+                                <XSymbolIcon />
+                              </button>
+                            </span>
+                          )}
+                        <CombinedPermissionsPicker
+                          provider={sideComposerProvider}
+                          composerStyle={appearance.composerStyle}
+                          permissionOptions={sidePermissionOptions}
+                          selectedPermission={sideSelectedPermission}
+                          onSelectPermission={(nextApprovalMode) =>
+                            rememberSideChatComposerSelection({ approvalMode: nextApprovalMode })
+                          }
+                          grantServices={sideGrantServices}
+                          enabledGrantIds={sideEnabledGrantIds}
+                          agenticServices={agenticServices}
+                          onToggleGrant={(service, enabled) =>
+                            void handleSetSideAgenticWorkspaceGrant(service, enabled)
+                          }
+                          disabled={isSideComposerLocked}
+                        />
+                      </div>
+                      <div className="composer-inline-actions side-chat-inline-actions">
+                        <span className="side-chat-status" aria-live="polite">
+                          {isSideChatRunning ? 'Running' : 'Ready'}
+                        </span>
+                        <span className="composer-send-cluster side-chat-send-cluster">
+                          {isSideChatRunning && (
+                            <button
+                              type="button"
+                              className="composer-action-btn stop-btn"
+                              onClick={() => void handleSideCancel()}
+                              title="Stop side chat run"
+                              aria-label="Stop side chat run"
+                            >
+                              <StopSymbolIcon />
+                            </button>
+                          )}
+                          <button
+                            type="submit"
+                            className={`composer-action-btn run-btn${
+                              isSideChatRunning ? ' queue' : ''
+                            }`}
+                            disabled={!sideCanRun || !sidePrompt.trim()}
+                            title={
+                              sideCanRun
+                                ? isSideChatRunning
+                                  ? 'Queue side chat prompt'
+                                  : 'Run side chat prompt'
+                                : 'Side chat workspace is unavailable'
+                            }
+                            aria-label={
+                              isSideChatRunning ? 'Queue side chat prompt' : 'Run side chat prompt'
+                            }
+                          >
+                            {isSideChatRunning ? (
+                              <QueueSymbolIcon />
+                            ) : appearance.composerStyle === 'claude' ? (
+                              <ClaudeReturnSymbolIcon />
+                            ) : appearance.composerStyle === 'codex' ||
+                              appearance.composerStyle === 'gemini' ||
+                              appearance.composerStyle === 'cursor' ||
+                              appearance.composerStyle === 'grok' ||
+                              appearance.composerStyle === 'kimi' ? (
+                              <ArrowUpSendIcon />
+                            ) : (
+                              <RunSymbolIcon />
+                            )}
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </form>
