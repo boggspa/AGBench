@@ -8539,8 +8539,8 @@
    * overlap the composer's top edge by 10px, z-index 1 so the
    * composer-surface (z-index 2) paints over the overlap and the
    * stack reads as a real "tab tucked under" the composer. */
-  width: calc(100% - 28px);
-  max-width: calc(100% - 28px);
+  width: 100%;
+  max-width: 100%;
   align-self: center;
   gap: 0;
   border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
@@ -8561,6 +8561,42 @@
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar::before {
   display: none;
+}
+/* One-line layout, matching the other shells. The tucked stack's distributed
+ * auto-margins were centering the middle chips + wrapping the trailing revoke ×.
+ * Reset child left-margins so chips flow left, re-anchor ONLY the trailing
+ * action / access cluster to the right (one auto-margin), keep the row on a
+ * single line, and let the branch summary ellipsize so nothing wraps. */
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  > * {
+  margin-left: 0;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  > .composer-diff-action-menu-wrap,
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  > .composer-above-bar-secondary-access {
+  margin-left: auto;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  .composer-above-bar-branch {
+  min-width: 0;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  .composer-above-bar-branch
+  > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Inner rows lose their own chrome AND any width/margin overrides
  * from the solo-Codex rules above — the parent stack drives
