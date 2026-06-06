@@ -96,6 +96,27 @@ describe('AppStore global chats', () => {
     expect(archivedSideChat.sideChatContext?.lifecycleState).toBe('terminated')
   })
 
+  it('creates fan-out side chats as concurrent linked ensembles', () => {
+    const parent = AppStore.createEnsembleChat()
+    const sideChat = AppStore.createSideChat({
+      parentChatId: parent.appChatId,
+      sideChatMode: 'fanOut'
+    })
+
+    expect(sideChat.parentChatId).toBe(parent.appChatId)
+    expect(sideChat.parentChatRelation).toBe('sideChat')
+    expect(sideChat.chatKind).toBe('ensemble')
+    expect(sideChat.sideChatContext).toMatchObject({
+      mode: 'fanOut',
+      lifecycleState: 'active',
+      transcriptVisibility: 'none'
+    })
+    expect(sideChat.ensemble?.concurrentModeEnabled).toBe(true)
+    expect(sideChat.ensemble?.participants.map((participant) => participant.id)).toEqual(
+      parent.ensemble?.participants.map((participant) => participant.id)
+    )
+  })
+
   it('keeps chat ids inside the chat persistence directory', () => {
     const settingsPath = join(userDataPath, 'settings.json')
     fs.writeFileSync(settingsPath, '{"sentinel":true}', 'utf8')
