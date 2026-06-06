@@ -12039,7 +12039,7 @@ function App(): React.JSX.Element {
     sideChat && hasResolvedMention(sidePrompt, sideChat.ensemble?.participants || [])
   )
   const rememberSideChatComposerSelection = (patch: Record<string, unknown>) => {
-    if (!sideChat) return
+    if (!sideChat || isSideEnsembleComposerLocked) return
     updateChatById(sideChat.appChatId, (source) => ({
       ...source,
       providerMetadata: {
@@ -17752,7 +17752,7 @@ function App(): React.JSX.Element {
                                   })
                                 }
                                 placeholder="Model ID"
-                                disabled={isSideComposerLocked}
+                                disabled={isSideComposerLocked || isSideEnsembleComposerLocked}
                               />
                               <button
                                 className="composer-inline-clear"
@@ -17763,7 +17763,7 @@ function App(): React.JSX.Element {
                                     selectedModelType: getDefaultModelForProvider(sideComposerProvider)
                                   })
                                 }
-                                disabled={isSideComposerLocked}
+                                disabled={isSideComposerLocked || isSideEnsembleComposerLocked}
                                 title="Cancel custom model"
                                 aria-label="Cancel custom model"
                               >
