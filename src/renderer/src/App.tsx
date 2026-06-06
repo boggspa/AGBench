@@ -1815,6 +1815,10 @@ function App(): React.JSX.Element {
     currentLinkedParentChat && currentChat
       ? getLinkedChatContextLabel(currentChat)
       : 'No parent context'
+  const currentLinkedModeLabel =
+    currentLinkedParentChat && currentChat?.parentChatRelation === 'sideChat'
+      ? getSideChatModeLabel(currentChat)
+      : ''
   const currentLinkedAgentIdentity =
     currentLinkedParentChat && currentChat ? getDelegatedAgentIdentity(currentChat) : null
   const popoutSideChatLifecycleId =
@@ -14189,6 +14193,11 @@ function App(): React.JSX.Element {
                 <span className="side-chat-context-chip linked-chat-parent-context">
                   {currentLinkedContextLabel}
                 </span>
+                {currentLinkedModeLabel && (
+                  <span className="side-chat-context-chip side-chat-mode-chip linked-chat-parent-context">
+                    {currentLinkedModeLabel}
+                  </span>
+                )}
               </div>
               <div className="linked-chat-parent-actions">
                 <button
