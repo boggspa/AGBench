@@ -309,6 +309,7 @@ import {
   normalizeCliProviderModel,
   normalizeCodexModel
 } from './providers/StaticProviderModels'
+import { buildCodexStatusSnapshot } from './CodexStatusSnapshot'
 import {
   applyRuntimeProfileToPayload as applyRuntimeProfileToPayloadViaCliRuntime,
   captureProcessOutput,
@@ -3591,13 +3592,21 @@ async function getCodexStatusSnapshotForCliRuntime(): Promise<any> {
   let accountStatus: any = null
   let rateLimitStatus: any = null
   let codexUsage: any = null
+  let startupError: string | null = null
   try {
     const client = getCodexClient()
     await client.ensureStarted(app.getVersion())
-    accountStatus = await client.request('account/read', { refreshToken: false }, 15_000)
-    rateLimitStatus = await client.request('account/rateLimits/read', {}, 15_000)
   } catch (error) {
-    accountStatus = { error: error instanceof Error ? error.message : String(error) }
+    startupError = error instanceof Error ? error.message : String(error)
+  }
+  if (!startupError) {
+    try {
+      const client = getCodexClient()
+      accountStatus = await client.request('account/read', { refreshToken: false }, 15_000)
+      rateLimitStatus = await client.request('account/rateLimits/read', {}, 15_000)
+    } catch (error) {
+      accountStatus = { error: error instanceof Error ? error.message : String(error) }
+    }
   }
   try {
     codexUsage = await fetchCodexUsageSnapshot()
@@ -3608,24 +3617,14 @@ async function getCodexStatusSnapshotForCliRuntime(): Promise<any> {
       error: error instanceof Error ? error.message : String(error)
     }
   }
-  const account = accountStatus?.account || null
-  return {
-    provider: 'codex',
+  return buildCodexStatusSnapshot({
     version: await readCliVersion('codex'),
-    appServer: codexClient ? 'started' : 'lazy',
-    authState: account
-      ? account.type
-      : accountStatus?.requiresOpenaiAuth
-        ? 'missing'
-        : 'not-required',
-    planType: account?.planType || null,
-    account,
-    requiresOpenaiAuth: Boolean(accountStatus?.requiresOpenaiAuth),
-    rateLimits: rateLimitStatus?.rateLimits || null,
-    rateLimitsByLimitId: rateLimitStatus?.rateLimitsByLimitId || null,
+    clientStarted: Boolean(codexClient),
+    accountStatus,
+    rateLimitStatus,
     codexUsage,
-    error: accountStatus?.error
-  }
+    startupError
+  })
 }
 
 async function getCodexMcpStatusSnapshotForCliRuntime(): Promise<any> {
@@ -6653,9 +6652,12 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   })
 }
 
-function getCodexClient(): CodexAppServerClient {
+function getCodexClient(runtimeProfile?: RuntimeProfile | null): CodexAppServerClient {
   if (!codexClient) {
     codexClient = new CodexAppServerClient()
+  }
+  if (arguments.length > 0) {
+    codexClient.setRuntimeProfile(runtimeProfile ?? null)
   }
   // Phase I2: refresh the MCP config on every accessor call so the
   // toggle in Settings → MCP Bridge takes effect on the NEXT Codex
@@ -6705,13 +6707,20 @@ async function probeEnsembleParticipant(
   participant: EnsembleParticipant
 ): Promise<ParticipantProbeResult> {
   if (participant.provider === 'codex') {
-    return probeCodexParticipant()
+    const runtimeProfile = participant.runtimeProfileId
+      ? AppStore.getRuntimeProfiles('codex').find(
+          (profile) => profile.id === participant.runtimeProfileId
+        )
+      : null
+    return probeCodexParticipant(runtimeProfile)
   }
   return probeCliParticipant(participant)
 }
 
-async function probeCodexParticipant(): Promise<ParticipantProbeResult> {
-  const client = getCodexClient()
+async function probeCodexParticipant(
+  runtimeProfile?: RuntimeProfile | null
+): Promise<ParticipantProbeResult> {
+  const client = getCodexClient(runtimeProfile ?? null)
   const ensure = client
     .ensureStarted(app.getVersion())
     .then<ParticipantProbeResult>(() => ({ reachable: true }))
@@ -8240,7 +8249,7 @@ async function runApprovedHostCommand(requestId: string): Promise<boolean> {
 }
 
 async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
-  const client = getCodexClient()
+  const client = getCodexClient(payload.runtimeProfile ?? null)
   client.setNotificationHandler(handleCodexNotification)
   client.setRequestHandler(handleCodexServerRequest)
   client.setStderrHandler((chunk) => {
@@ -8450,8 +8459,19 @@ async function runCodexExecFallback(
     route
   )
 
-  const resolvedCodex = await resolveCliProviderBinary('codex')
-  const codexCommand = resolvedCodex.binaryPath || 'codex'
+  const resolvedCodex = await resolveCliProviderBinary('codex', payload.runtimeProfile)
+  if (!resolvedCodex.binaryPath) {
+    sendAgentCompatError(
+      event.sender,
+      'codex',
+      resolvedCodex.error || 'Codex CLI was not found.',
+      route
+    )
+    sendAgentCompatExit(event.sender, 'codex', -1, route)
+    runManager.finish(route.appRunId, 'failed')
+    return
+  }
+  const codexCommand = resolvedCodex.binaryPath
   const codexSpawnPlan = createCliSpawnPlan(codexCommand, args)
   const child = spawn(codexSpawnPlan.command, codexSpawnPlan.args, {
     cwd: payload.workspace!,
@@ -8547,11 +8567,12 @@ async function runCodexExecFallback(
 
 async function maybeWarnNewerCodexBinary(
   sender: Electron.WebContents,
-  route: AgentRunRoute
+  route: AgentRunRoute,
+  runtimeProfile?: RuntimeProfile | null
 ): Promise<void> {
   if (codexNewerBinaryWarned) return
   try {
-    const resolved = await resolveCliProviderBinary('codex')
+    const resolved = await resolveCliProviderBinary('codex', runtimeProfile)
     if (!resolved.binaryPath) return
     const usedVersion = await readResolvedCliVersion(resolved)
 
@@ -8604,7 +8625,11 @@ async function runCodexProvider(
   // One-time, best-effort hint when a NEWER codex CLI is installed than the one
   // TaskWraith will actually spawn (the exact mismatch that lets Codex.app write a
   // config the homebrew CLI rejects). Detection + warning only — never auto-switch.
-  void maybeWarnNewerCodexBinary(event.sender, routeWithRunId('codex', payload))
+  void maybeWarnNewerCodexBinary(
+    event.sender,
+    routeWithRunId('codex', payload),
+    payload.runtimeProfile
+  )
   try {
     await runCodexAppServer(event, payload)
   } catch (error) {

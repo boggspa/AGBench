@@ -5,6 +5,7 @@ import {
   createCliSpawnPlan,
   resolveCliProviderBinary
 } from './providers/CliProviderRuntime'
+import type { RuntimeProfile } from './store/types'
 
 /**
  * Codex's app-server only accepts UUID thread ids (optionally `urn:uuid:`-
@@ -198,6 +199,10 @@ export interface CodexMcpTaskWraithConfig {
   parentProvider: 'codex'
 }
 
+export function codexRuntimeProfileKey(profile: RuntimeProfile | null | undefined): string {
+  return profile?.id || 'default'
+}
+
 /**
  * Format a JS string for safe embedding inside a TOML double-quoted
  * string (i.e. the value half of a `-c key="value"` Codex CLI
@@ -253,6 +258,8 @@ export class CodexAppServerClient {
   private requestHandler: ((message: any) => void) | null = null
   private stderrHandler: ((chunk: string) => void) | null = null
   private mcpConfig: CodexMcpTaskWraithConfig | null = null
+  private runtimeProfile: RuntimeProfile | null = null
+  private runtimeProfileKey = codexRuntimeProfileKey(null)
   // Ring buffer of the most recent stderr the codex CLI emitted. When the
   // app-server refuses to start because of a bad ~/.codex/config.toml, the
   // CLI writes the parse error here and exits — and `ensureStarted` otherwise
@@ -292,6 +299,18 @@ export class CodexAppServerClient {
    */
   setMcpConfig(config: CodexMcpTaskWraithConfig | null): void {
     this.mcpConfig = config
+  }
+
+  setRuntimeProfile(profile: RuntimeProfile | null): void {
+    const nextKey = codexRuntimeProfileKey(profile)
+    if (nextKey === this.runtimeProfileKey) return
+    this.dispose()
+    this.runtimeProfile = profile
+    this.runtimeProfileKey = nextKey
+  }
+
+  getRuntimeProfileKey(): string {
+    return this.runtimeProfileKey
   }
 
   async ensureStarted(appVersion: string): Promise<void> {
@@ -348,6 +367,7 @@ export class CodexAppServerClient {
   }
 
   dispose() {
+    this.startPromise = null
     this.stdoutReader?.close()
     this.stdoutReader = null
     if (this.proc && !this.proc.killed) {
@@ -375,16 +395,20 @@ export class CodexAppServerClient {
     )
     const codexArgs = [...mcpArgs, 'app-server']
     const codexEnv: Record<string, string> = {
+      ...(this.runtimeProfile?.env || {}),
       FORCE_COLOR: '0',
       NO_COLOR: '1'
     }
     if (this.mcpConfig?.enabled) {
       codexEnv.TASKWRAITH_PARENT_PROVIDER = this.mcpConfig.parentProvider
     }
+    if (this.runtimeProfile?.id) {
+      codexEnv.TASKWRAITH_RUNTIME_PROFILE_ID = this.runtimeProfile.id
+    }
     // Reset the stderr ring buffer for this start attempt so a stale error
     // from a prior failed start can't be misattributed to this one.
     this.recentStderr = ''
-    const resolvedCodex = await resolveCliProviderBinary('codex')
+    const resolvedCodex = await resolveCliProviderBinary('codex', this.runtimeProfile)
     if (!resolvedCodex.binaryPath) {
       throw new Error(resolvedCodex.error || 'Codex CLI was not found.')
     }

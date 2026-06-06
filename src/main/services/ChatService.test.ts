@@ -206,10 +206,13 @@ describe('ChatService', () => {
     const service = new ChatService(deps)
     const chat = service.createEnsembleChat({ workspaceId: 'workspace-1', workspacePath: '/repo' })
     expect(chat.chatKind).toBe('ensemble')
-    expect(store.createEnsembleChat).toHaveBeenCalledWith({
-      workspaceId: 'workspace-1',
-      workspacePath: '/canonical/repo'
-    })
+    expect(store.createEnsembleChat).toHaveBeenCalledWith(
+      {
+        workspaceId: 'workspace-1',
+        workspacePath: '/canonical/repo'
+      },
+      undefined
+    )
   })
 
   it('creates side chats and writes a side-chat audit event', () => {

@@ -10,12 +10,32 @@ vi.mock('electron', () => ({
 import {
   buildCodexTaskWraithMcpArgs,
   codexConfigParseUserMessage,
+  codexRuntimeProfileKey,
+  CodexAppServerClient,
   compareCodexVersions,
   isCodexAppServerThreadId,
   isCodexConfigParseError,
   parseCodexVersion,
   type CodexMcpTaskWraithConfig
 } from './CodexAppServerClient'
+import type { RuntimeProfile } from './store/types'
+
+function makeRuntimeProfile(overrides: Partial<RuntimeProfile> = {}): RuntimeProfile {
+  return {
+    id: 'profile-1',
+    name: 'Profile 1',
+    provider: 'codex',
+    scope: 'workspace',
+    workspaceMode: 'local',
+    binaryPath: '/custom/codex',
+    env: { CODEX_HOME: '/custom/home' },
+    networkPolicy: 'inherit',
+    persistence: 'reusable',
+    createdAt: '2026-06-06T00:00:00.000Z',
+    updatedAt: '2026-06-06T00:00:00.000Z',
+    ...overrides
+  }
+}
 
 describe('isCodexAppServerThreadId', () => {
   it('accepts a plain UUID (a real app-server thread id)', () => {
@@ -37,6 +57,28 @@ describe('isCodexAppServerThreadId', () => {
     expect(isCodexAppServerThreadId('')).toBe(false)
     expect(isCodexAppServerThreadId(null)).toBe(false)
     expect(isCodexAppServerThreadId(undefined)).toBe(false)
+  })
+})
+
+describe('CodexAppServerClient runtime profile tracking', () => {
+  it('keys app-server startup by runtime profile id', () => {
+    expect(codexRuntimeProfileKey(null)).toBe('default')
+    expect(codexRuntimeProfileKey(makeRuntimeProfile({ id: 'custom-codex' }))).toBe(
+      'custom-codex'
+    )
+  })
+
+  it('disposes a running client when switching profiles', () => {
+    const client = new CodexAppServerClient()
+    const dispose = vi.spyOn(client, 'dispose')
+    client.setRuntimeProfile(makeRuntimeProfile({ id: 'profile-1' }))
+    expect(client.getRuntimeProfileKey()).toBe('profile-1')
+    expect(dispose).toHaveBeenCalledTimes(1)
+    client.setRuntimeProfile(makeRuntimeProfile({ id: 'profile-1', binaryPath: '/other/codex' }))
+    expect(dispose).toHaveBeenCalledTimes(1)
+    client.setRuntimeProfile(null)
+    expect(client.getRuntimeProfileKey()).toBe('default')
+    expect(dispose).toHaveBeenCalledTimes(2)
   })
 })
 
