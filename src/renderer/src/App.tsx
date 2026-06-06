@@ -12033,6 +12033,7 @@ function App(): React.JSX.Element {
         Boolean(sideChat.linkedProviderSessionId))
   )
   const sideChatIsWelcome = Boolean(sideChat && (sideChat.messages?.length || 0) === 0)
+  const isSideEnsembleComposerLocked = Boolean(sideChat?.chatKind === 'ensemble')
   const isSideComposerLocked = Boolean(isSideChatRunning && sideChat?.chatKind !== 'ensemble')
   const sideComposerHasMention = Boolean(
     sideChat && hasResolvedMention(sidePrompt, sideChat.ensemble?.participants || [])
@@ -17736,7 +17737,7 @@ function App(): React.JSX.Element {
                           fastModeCapableModelIds={sideFastModeCapableModelIds}
                           fastModeEnabled={sideFastModeEnabled}
                           onToggleFastMode={handleSideToggleFastMode}
-                          disabled={isSideComposerLocked}
+                          disabled={isSideComposerLocked || isSideEnsembleComposerLocked}
                         />
                         {sideComposerSelectedModel === 'custom' &&
                           sideComposerProvider !== 'kimi' && (
@@ -17784,7 +17785,7 @@ function App(): React.JSX.Element {
                           onToggleGrant={(service, enabled) =>
                             void handleSetSideAgenticWorkspaceGrant(service, enabled)
                           }
-                          disabled={isSideComposerLocked}
+                          disabled={isSideComposerLocked || isSideEnsembleComposerLocked}
                         />
                       </div>
                       <div className="composer-inline-actions side-chat-inline-actions">
