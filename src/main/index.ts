@@ -211,6 +211,7 @@ import {
   coalesceExternalPathGrants,
   collectExternalPathGrantsFromMetadata
 } from './store/ExternalPathGrants'
+import { resolveRegisteredExplicitExternalPath } from './ExternalPathGrantRequest'
 import {
   runEventBus,
   makeElectronIpcSink,
@@ -6365,6 +6366,8 @@ async function runKimiWireProvider(
                 child,
                 rpcId: message.id,
                 params: message.params,
+                service: kimiGateService || undefined,
+                workspacePath: workspacePathForKimiApproval,
                 runId: route.appRunId,
                 externalPathDetection
               })
@@ -15400,8 +15403,18 @@ if (isGeminiMcpBridgeProcess) {
         const explicitPath = optionalString(payload?.path)
         let selectedPath: string
         let bookmark: string | undefined
+        let registeredExplicitWorkspace: WorkspaceRecord | undefined
         if (explicitPath) {
-          selectedPath = resolve(explicitPath)
+          const registeredExplicitPath = resolveRegisteredExplicitExternalPath({
+            explicitPath,
+            findRegisteredWorkspace,
+            canonicalPath
+          })
+          if (!registeredExplicitPath) {
+            return { ok: false, reason: 'cancelled' }
+          }
+          selectedPath = registeredExplicitPath.path
+          registeredExplicitWorkspace = registeredExplicitPath.workspace
           try {
             await fs.stat(selectedPath)
           } catch {
@@ -15446,7 +15459,7 @@ if (isGeminiMcpBridgeProcess) {
           issueExternalPathGrant({
             id: `proactive-${now}-${provider}-${randomBytes(4).toString('hex')}`,
             provider,
-            workspaceId: undefined,
+            workspaceId: registeredExplicitWorkspace?.id,
             chatId,
             path: selectedPath,
             kind,

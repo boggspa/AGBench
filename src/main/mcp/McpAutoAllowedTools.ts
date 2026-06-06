@@ -3,12 +3,13 @@ import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithM
 /**
  * MCP tools that skip the per-call approval modal (auto-allowed).
  *
- * ⚠️ SAFETY INVARIANT — this set may contain ONLY non-mutating tools. Being a
- * member makes a tool SKIP the host-side approval gate
+ * ⚠️ SAFETY INVARIANT — this set may contain ONLY host-safe non-mutating tools.
+ * Being a member makes a tool SKIP the host-side approval gate
  * (`requestAgenticServiceApproval`), so any mutating tool added here would
- * execute even under the `read_only` preset. Writes / shell / patch tools MUST
- * stay out — they remain gated and are denied under read_only. The invariant is
- * enforced by `McpAutoAllowedTools.test.ts`; do not weaken it.
+ * execute even under the `read_only` preset. Writes / shell / patch tools and
+ * app-state mutation tools MUST stay out — they remain gated and are denied
+ * under read_only. The invariant is enforced by
+ * `McpAutoAllowedTools.test.ts`; do not weaken it.
  *
  * Historically this held only status / focus tools (state the user already
  * sees, or focus changes). 1.0.71 adds the four workspace READ tools so every
@@ -47,12 +48,7 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   'ide_app_capabilities',
   'list_running_ides',
   'ensemble_yield',
-  'ensemble_send',
-  'ensemble_fanout',
   'list_ensemble_participants',
-  'schedule_wakeup',
-  'cancel_wakeup',
-  'blackboard_post',
   // QMOD (1.0.3): asking the user a question is the inverse of the
   // user prompting the agent — it's a focus-shift, not a state mutation.
   // The renderer modal IS the approval surface, so a second confirm
@@ -66,6 +62,14 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   'list_directory',
   'workspace_search',
   'workspace_symbols'
+])
+
+export const MCP_APP_STATE_MUTATION_TOOLS = new Set<TaskWraithMcpToolName>([
+  'ensemble_send',
+  'ensemble_fanout',
+  'schedule_wakeup',
+  'cancel_wakeup',
+  'blackboard_post'
 ])
 
 /**

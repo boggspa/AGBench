@@ -70,6 +70,7 @@ import {
   filterWorkspaceChangeSets
 } from '../WorkspaceChangeModel'
 import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
+import { chatPathForId, isSafeChatId } from '../ChatPath'
 
 function cloneEnsembleForSideChat(parent: ChatRecord, provider: ProviderId) {
   const source = parent.ensemble || createDefaultEnsembleConfig(provider)
@@ -849,7 +850,8 @@ export class AppStore {
   }
 
   static getChat(chatId: string): ChatRecord | null {
-    const chatPath = path.join(chatsDir, `${chatId}.json`)
+    if (!isSafeChatId(chatId)) return null
+    const chatPath = chatPathForId(chatsDir, chatId)
     const chat = readJson<ChatRecord | null>(chatPath, null)
     return chat ? this.normalizeChatRecord(chat) : null
   }
@@ -1104,7 +1106,7 @@ export class AppStore {
 
     const normalizedChat = this.normalizeChatRecord(chat)
     normalizedChat.updatedAt = Date.now()
-    const chatPath = path.join(chatsDir, `${normalizedChat.appChatId}.json`)
+    const chatPath = chatPathForId(chatsDir, normalizedChat.appChatId)
     writeJson(chatPath, normalizedChat)
   }
 
@@ -1122,7 +1124,7 @@ export class AppStore {
       }
     }
 
-    const chatPath = path.join(chatsDir, `${chatId}.json`)
+    const chatPath = chatPathForId(chatsDir, chatId)
     if (fs.existsSync(chatPath)) {
       fs.unlinkSync(chatPath)
     }

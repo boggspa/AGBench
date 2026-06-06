@@ -2,6 +2,7 @@ import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type { ChatRecord, ProviderId, RunEventInput, WorkspaceRecord } from '../store/types'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
+import { assertSafeChatId } from '../ChatPath'
 
 const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
 
@@ -69,7 +70,7 @@ export class ChatService {
   }
 
   getChat(chatId: string): ChatRecord | null {
-    return this.deps.appStore.getChat(chatId)
+    return this.deps.appStore.getChat(requireSafeChatId(chatId, 'Chat id'))
   }
 
   createChat(workspaceId: string, workspacePath: string): ChatRecord {
@@ -101,7 +102,7 @@ export class ChatService {
   }
 
   createSubThread(args: CreateSubThreadInput | undefined): ChatRecord {
-    const parentChatId = requireNonEmptyString(args?.parentChatId, 'Parent chat id')
+    const parentChatId = requireSafeChatId(args?.parentChatId, 'Parent chat id')
     const provider = assertProviderId(args?.provider)
     const delegationPrompt = requireNonEmptyString(args?.delegationPrompt, 'Delegation prompt')
     const returnResultToParent = Boolean(args?.returnResultToParent)
@@ -136,7 +137,7 @@ export class ChatService {
   }
 
   createSideChat(args: CreateSideChatInput | undefined): ChatRecord {
-    const parentChatId = requireNonEmptyString(args?.parentChatId, 'Parent chat id')
+    const parentChatId = requireSafeChatId(args?.parentChatId, 'Parent chat id')
     const provider = args?.provider === undefined ? undefined : assertProviderId(args.provider)
     const sideChat = this.deps.appStore.createSideChat({
       parentChatId,
@@ -172,19 +173,21 @@ export class ChatService {
   }
 
   getSubThreads(parentChatId: string): ChatRecord[] {
-    return this.deps.appStore.getChildChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
+    return this.deps.appStore.getChildChats(requireSafeChatId(parentChatId, 'Parent chat id'))
   }
 
   getSideChats(parentChatId: string): ChatRecord[] {
-    return this.deps.appStore.getSideChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
+    return this.deps.appStore.getSideChats(requireSafeChatId(parentChatId, 'Parent chat id'))
   }
 
   saveChat(chat: ChatRecord): void {
-    this.deps.appStore.saveChat(this.deps.sanitizeChatForSave(chat))
+    const sanitized = this.deps.sanitizeChatForSave(chat)
+    assertSafeChatId(sanitized.appChatId)
+    this.deps.appStore.saveChat(sanitized)
   }
 
   deleteChat(chatId: string): void {
-    this.deps.appStore.deleteChat(chatId)
+    this.deps.appStore.deleteChat(requireSafeChatId(chatId, 'Chat id'))
   }
 
   clearChats(workspaceId?: string): void {
@@ -211,4 +214,11 @@ function requireNonEmptyString(value: unknown, label: string): string {
     throw new Error(`${label} is required.`)
   }
   return value
+}
+
+function requireSafeChatId(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} is required.`)
+  }
+  return assertSafeChatId(value, label)
 }

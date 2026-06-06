@@ -155,6 +155,19 @@ describe('ChatService', () => {
     expect(store.saveChat).toHaveBeenCalledWith(makeChat({ title: 'Needs trim' }))
   })
 
+  it('rejects unsafe chat ids before reading, saving, or deleting', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    expect(() => service.getChat('../settings')).toThrow(/safe chat id/)
+    expect(() => service.deleteChat('../settings')).toThrow(/safe chat id/)
+    expect(() => service.saveChat(makeChat({ appChatId: '../settings' }))).toThrow(
+      /safe chat id/
+    )
+    expect(store.getChat).not.toHaveBeenCalled()
+    expect(store.deleteChat).not.toHaveBeenCalled()
+    expect(store.saveChat).not.toHaveBeenCalled()
+  })
+
   it('creates sub-threads and writes the same best-effort audit event', () => {
     const { deps, store } = makeDeps()
     const service = new ChatService(deps)
@@ -291,6 +304,14 @@ describe('ChatService', () => {
         returnResultToParent: false
       })
     ).toThrow('Provider is invalid.')
+    expect(() =>
+      service.createSubThread({
+        parentChatId: '../settings',
+        provider: 'codex',
+        delegationPrompt: 'Prompt',
+        returnResultToParent: false
+      })
+    ).toThrow(/safe chat id/)
     expect(store.createSubThread).not.toHaveBeenCalled()
   })
 

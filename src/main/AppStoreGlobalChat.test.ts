@@ -68,4 +68,26 @@ describe('AppStore global chats', () => {
     expect(workspaceChat.scope).toBe('workspace')
     expect(workspaceChat.workspacePath).toBe('/repo')
   })
+
+  it('keeps chat ids inside the chat persistence directory', () => {
+    const settingsPath = join(userDataPath, 'settings.json')
+    fs.writeFileSync(settingsPath, '{"sentinel":true}', 'utf8')
+
+    expect(AppStore.getChat('../settings')).toBeNull()
+    expect(() =>
+      AppStore.saveChat({
+        appChatId: '../settings',
+        scope: 'global',
+        provider: 'gemini',
+        title: 'Traversal',
+        createdAt: 1,
+        updatedAt: 1,
+        archived: false,
+        messages: [],
+        runs: []
+      } as ChatRecord)
+    ).toThrow(/safe chat id/)
+    expect(() => AppStore.deleteChat('../settings')).toThrow(/safe chat id/)
+    expect(fs.readFileSync(settingsPath, 'utf8')).toBe('{"sentinel":true}')
+  })
 })

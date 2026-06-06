@@ -64,6 +64,16 @@ describe('IpcValidation', () => {
         }
       ])
     ).toThrow(/chat/)
+    expect(() =>
+      validateIpcArgs('run-agent', [
+        {
+          scope: 'global',
+          provider: 'codex',
+          appChatId: '../settings',
+          prompt: 'unsafe chat id'
+        }
+      ])
+    ).toThrow(/safe chat id/)
   })
 
   it('rejects invalid providers and relative workspaces', () => {
@@ -187,6 +197,26 @@ describe('IpcValidation', () => {
     ).not.toThrow()
     // Non-object args still rejected.
     expect(() => validateIpcArgs('external-path:pick-and-persist', ['nope'])).toThrow()
+  })
+
+  it('rejects unsafe chat ids for chat persistence IPC', () => {
+    expect(() => validateIpcArgs('get-chat', ['../settings'])).toThrow(/safe chat id/)
+    expect(() => validateIpcArgs('delete-chat', ['../settings'])).toThrow(/safe chat id/)
+    expect(() =>
+      validateIpcArgs('save-chat', [
+        {
+          appChatId: '../settings',
+          scope: 'global',
+          provider: 'gemini',
+          title: 'Traversal',
+          createdAt: 1,
+          updatedAt: 1,
+          archived: false,
+          messages: [],
+          runs: []
+        }
+      ])
+    ).toThrow(/safe chat id/)
   })
 
   it('accepts ensemble and sub-thread chat IPC payloads', () => {

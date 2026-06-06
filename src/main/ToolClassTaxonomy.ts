@@ -19,6 +19,8 @@
  * (an unrecognised tool is treated as mutating, never surfaced as "safe").
  */
 
+import { MCP_APP_STATE_MUTATION_TOOLS } from './mcp/McpAutoAllowedTools'
+
 export type ToolClass = 'workspace_read' | 'workspace_write' | 'orchestration' | 'ui_elicitation'
 
 /** Display order: the allowed-under-read-only classes first, writes last. */
@@ -110,9 +112,9 @@ export function classifyTool(name: string): ToolClass {
 
 /**
  * Is this tool BLOCKED for a read-only / plan participant? True when the run is
- * read-only AND the tool is mutating / side-effecting (classifyTool →
- * workspace_write, which also catches unmapped / unknown tools by default —
- * safe-by-default for an unrecognised tool under read-only).
+ * read-only AND the tool is mutating / side-effecting. Unknown tools default to
+ * workspace_write; app-state mutation tools are denied explicitly even though
+ * they remain grouped as orchestration for display.
  *
  * The host gate already hard-denies the file/shell-classified mutators under
  * read-only; this is what lets the dispatchers also hard-deny the side-effecting
@@ -124,7 +126,11 @@ export function isReadOnlyBlockedTool(
   toolName: string,
   effectivePermissions?: { readOnly?: boolean }
 ): boolean {
-  return Boolean(effectivePermissions?.readOnly) && classifyTool(toolName) === 'workspace_write'
+  return (
+    Boolean(effectivePermissions?.readOnly) &&
+    (classifyTool(toolName) === 'workspace_write' ||
+      (MCP_APP_STATE_MUTATION_TOOLS as ReadonlySet<string>).has(toolName))
+  )
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron'
 import { experimentalGrokProviderEnabled } from './grokGate'
 import { experimentalCursorProviderEnabled } from './cursorGate'
+import { assertSafeChatId } from './ChatPath'
 
 type ArgSpec =
   | 'any'
@@ -19,6 +20,7 @@ type ArgSpec =
   | 'optionalProvider'
   | 'approvalAction'
   | 'settingsPatch'
+  | 'chatRecord'
   | 'runPayload'
   | 'workspacePath'
   | 'filePath'
@@ -79,8 +81,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-sub-threads': ['chatId'],
   'create-side-chat': ['object'],
   'get-side-chats': ['chatId'],
-  'save-chat': ['object'],
-  'delete-chat': ['string'],
+  'save-chat': ['chatRecord'],
+  'delete-chat': ['chatId'],
   'clear-chats': ['optionalString'],
   'record-usage': ['object'],
   'get-usage': ['optionalString', 'optionalString'],
@@ -308,6 +310,7 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
     (typeof value !== 'string' || !value.trim())
   )
     throw new Error(`${label} must be a non-empty string.`)
+  if (spec === 'chatId') assertSafeChatId(value, label)
   if (spec === 'workspacePath' && !/^([/\\~]|[A-Za-z]:[\\/])/.test(value as string))
     throw new Error(`${label} must be an absolute workspace path.`)
   if (spec === 'filePath' && /\0/.test(value as string))
@@ -323,6 +326,7 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
     (spec === 'object' ||
       spec === 'optionalObject' ||
       spec === 'settingsPatch' ||
+      spec === 'chatRecord' ||
       spec === 'runPayload') &&
     !isRecord(value)
   )
@@ -350,6 +354,7 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
   )
     throw new Error(`${label} must be read or write.`)
   if (spec === 'runPayload') validateRunPayload(channel, value)
+  if (spec === 'chatRecord') validateChatRecord(channel, value)
   if (spec === 'settingsPatch') validateSettingsPatch(channel, value)
   if (spec === 'bugReportPayload') validateBugReportPayload(channel, value)
 }
@@ -363,6 +368,7 @@ function validateRunPayload(channel: string, value: unknown): void {
     if (typeof chatId !== 'string' || !chatId.trim()) {
       throw new Error(`${channel} global payload chat id must be a non-empty string.`)
     }
+    assertSafeChatId(chatId, `${channel} global payload chat id`)
   } else {
     validateArg(channel, 'workspacePath', value.workspace, 1)
   }
@@ -370,6 +376,11 @@ function validateRunPayload(channel: string, value: unknown): void {
     throw new Error(`${channel} payload prompt must be a string.`)
   if (value.imagePaths !== undefined && !Array.isArray(value.imagePaths))
     throw new Error(`${channel} payload imagePaths must be an array.`)
+}
+
+function validateChatRecord(channel: string, value: unknown): void {
+  if (!isRecord(value)) throw new Error(`${channel} chat must be an object.`)
+  assertSafeChatId(value.appChatId, `${channel} chat id`)
 }
 
 function validateSettingsPatch(channel: string, value: unknown): void {

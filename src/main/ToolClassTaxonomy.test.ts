@@ -8,7 +8,7 @@ import {
 } from './ToolClassTaxonomy'
 import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 import { READ_ONLY_TOOL_PRESET } from './PermissionEnvelope'
-import { MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
+import { MCP_APP_STATE_MUTATION_TOOLS, MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 
 describe('classifyTool', () => {
   it('classifies each non-write class', () => {
@@ -108,6 +108,9 @@ describe('isReadOnlyBlockedTool', () => {
     expect(isReadOnlyBlockedTool('write_file', ro)).toBe(true)
     expect(isReadOnlyBlockedTool('switch_auth_profile', ro)).toBe(true)
     expect(isReadOnlyBlockedTool('browser_open', ro)).toBe(true)
+    for (const tool of MCP_APP_STATE_MUTATION_TOOLS) {
+      expect(isReadOnlyBlockedTool(tool, ro)).toBe(true)
+    }
   })
 
   it('never blocks reads / coordination, or anything when not read-only', () => {

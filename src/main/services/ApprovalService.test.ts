@@ -67,7 +67,15 @@ function makeDeps(overrides: Partial<ApprovalServiceDeps> = {}): {
       clearApproval: vi.fn()
     },
     permissionService: {
-      applyApprovalDecision: vi.fn(() => true),
+      applyApprovalDecision: vi.fn((input: { action: string }) =>
+        [
+          'accept',
+          'acceptForSession',
+          'acceptForWorkspace',
+          'grantExternalPathRead',
+          'grantExternalPathEdit'
+        ].includes(input.action)
+      ),
       isApprovedAction: vi.fn(
         (action: string) => action === 'accept' || action === 'acceptForSession'
       )
@@ -465,7 +473,58 @@ describe('ApprovalService — resolve dispatch', () => {
       42,
       expect.objectContaining({ request_id: 'kimi-req-1', response: 'approve' })
     )
+    expect(spies.permissionService.applyApprovalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'kimi',
+        action: 'accept'
+      })
+    )
     expect(childKill).not.toHaveBeenCalled()
+  })
+
+  it('Kimi: persists session/workspace grants through PermissionService', async () => {
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    svc.registerKimi('k-1', {
+      child: { kill: vi.fn() } as never,
+      rpcId: 42,
+      params: { payload: { id: 'kimi-req-1' } },
+      service: 'mcpTools',
+      workspacePath: '/ws',
+      runId: 'r-1'
+    })
+    await svc.resolve('k-1', 'acceptForWorkspace')
+    expect(spies.permissionService.applyApprovalDecision).toHaveBeenCalledWith({
+      provider: 'kimi',
+      workspacePath: '/ws',
+      service: 'mcpTools',
+      runId: 'r-1',
+      action: 'acceptForWorkspace'
+    })
+    expect(spies.respondToKimiWireRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      42,
+      expect.objectContaining({ request_id: 'kimi-req-1', response: 'approve_for_session' })
+    )
+  })
+
+  it('Kimi: decline rejects the pending wire request', async () => {
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    svc.registerKimi('k-1', {
+      child: { kill: vi.fn() } as never,
+      rpcId: 42,
+      params: { payload: { id: 'kimi-req-1' } },
+      service: 'mcpTools',
+      workspacePath: '/ws',
+      runId: 'r-1'
+    })
+    await svc.resolve('k-1', 'decline')
+    expect(spies.respondToKimiWireRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      42,
+      expect.objectContaining({ request_id: 'kimi-req-1', response: 'reject' })
+    )
   })
 
   it('Kimi: external path grant actions approve the pending wire request', async () => {

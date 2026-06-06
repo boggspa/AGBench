@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   MCP_AUTO_ALLOWED_TOOLS,
+  MCP_APP_STATE_MUTATION_TOOLS,
   READ_ONLY_MCP_ADVERTISE_TOOLS,
   isReadOnlyAdvertisedTool
 } from './McpAutoAllowedTools'
 
 describe('MCP_AUTO_ALLOWED_TOOLS', () => {
+  const autoAllowedTools = MCP_AUTO_ALLOWED_TOOLS as ReadonlySet<string>
+
   it('auto-allows the four workspace read tools (1.0.71 read parity)', () => {
     for (const tool of [
       'read_file',
@@ -13,7 +16,7 @@ describe('MCP_AUTO_ALLOWED_TOOLS', () => {
       'workspace_search',
       'workspace_symbols'
     ] as const) {
-      expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(true)
+      expect(autoAllowedTools.has(tool)).toBe(true)
     }
   })
 
@@ -27,9 +30,10 @@ describe('MCP_AUTO_ALLOWED_TOOLS', () => {
       'run_shell_command',
       'git_stage',
       'git_commit',
-      'run_task'
-    ] as const) {
-      expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(false)
+      'run_task',
+      ...MCP_APP_STATE_MUTATION_TOOLS
+    ]) {
+      expect(autoAllowedTools.has(tool)).toBe(false)
     }
   })
 })
@@ -49,15 +53,17 @@ describe('READ_ONLY_MCP_ADVERTISE_TOOLS', () => {
       'run_shell_command',
       'git_stage',
       'git_commit',
-      'run_task'
-    ] as const) {
+      'run_task',
+      ...MCP_APP_STATE_MUTATION_TOOLS
+    ]) {
       expect(READ_ONLY_MCP_ADVERTISE_TOOLS).not.toContain(tool)
     }
   })
 
   it('is a strict subset of the gate-skip set (every advertised tool is auto-allowed)', () => {
+    const autoAllowedTools = MCP_AUTO_ALLOWED_TOOLS as ReadonlySet<string>
     for (const tool of READ_ONLY_MCP_ADVERTISE_TOOLS) {
-      expect(MCP_AUTO_ALLOWED_TOOLS.has(tool)).toBe(true)
+      expect(autoAllowedTools.has(tool)).toBe(true)
     }
   })
 })
@@ -78,6 +84,11 @@ describe('isReadOnlyAdvertisedTool (bridge scope guard)', () => {
       'git_stage',
       'git_commit',
       'run_task',
+      'ensemble_send',
+      'ensemble_fanout',
+      'schedule_wakeup',
+      'cancel_wakeup',
+      'blackboard_post',
       'delegate_to_subthread',
       'totally_unknown_future_tool'
     ]) {

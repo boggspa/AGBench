@@ -119,6 +119,8 @@ export interface PendingKimiApproval {
   child: ChildProcess
   rpcId: number | string
   params: unknown
+  service?: AgenticServiceId
+  workspacePath?: string
   runId?: string
   externalPathDetection?: PendingExternalPathDetection
 }
@@ -317,7 +319,8 @@ export class ApprovalService {
   registerKimi(approvalId: string, info: PendingKimiApproval): void {
     this.pendingKimi.set(approvalId, info)
     this.emitApprovalRunEvent('approval_pending', approvalId, 'kimi', {
-      appRunId: info.runId
+      appRunId: info.runId,
+      workspacePath: info.workspacePath
     })
   }
 
@@ -703,28 +706,35 @@ export class ApprovalService {
           requestId,
           action,
           rpcId: pendingKimi.rpcId,
-          params: pendingKimi.params
+          params: pendingKimi.params,
+          service: pendingKimi.service,
+          workspacePath: pendingKimi.workspacePath
         }
       )
       this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
       this.emitApprovalRunEvent('approval_resolved', requestId, 'kimi', {
         appRunId: session?.runId || pendingKimi.runId,
         appChatId: session?.appChatId,
+        workspacePath: pendingKimi.workspacePath,
         action,
         decisionSource
       })
       this.pendingKimi.delete(requestId)
       this.deps.runManager.clearApproval(requestId)
+      const allowed = this.deps.permissionService.applyApprovalDecision({
+        provider: 'kimi',
+        workspacePath: pendingKimi.workspacePath,
+        service: pendingKimi.service,
+        runId: pendingKimi.runId,
+        action
+      })
       const params = pendingKimi.params as { payload?: { id?: string } } | null
       const payload = params?.payload || {}
-      const response =
-        action === 'acceptForSession' || action === 'acceptForWorkspace'
+      const response = allowed
+        ? action === 'acceptForSession' || action === 'acceptForWorkspace'
           ? 'approve_for_session'
-          : action === 'accept' ||
-              action === 'grantExternalPathRead' ||
-              action === 'grantExternalPathEdit'
-            ? 'approve'
-            : 'reject'
+          : 'approve'
+        : 'reject'
       this.deps.respondToKimiWireRequest(pendingKimi.child, pendingKimi.rpcId, {
         request_id: payload.id || requestId,
         response,
