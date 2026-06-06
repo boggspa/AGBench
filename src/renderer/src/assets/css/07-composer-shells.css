@@ -2304,6 +2304,24 @@
   border-color: color-mix(in srgb, #bbcf66 46%, transparent);
 }
 
+/* D — shared-history char-budget slider in the ensemble Turn picker popover. */
+.composer-ensemble-context-section {
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+.composer-ensemble-context-slider {
+  width: 100%;
+  margin: 6px 0 4px;
+  accent-color: currentColor;
+  cursor: pointer;
+}
+.composer-ensemble-context-value {
+  font-size: var(--font-size-xs);
+  opacity: 0.72;
+  text-align: center;
+}
+
 /* Provider picker — softened outline pill */
 [data-composer-style="gemini"] [data-composer-control="provider"] {
   min-height: 28px;

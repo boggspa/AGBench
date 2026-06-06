@@ -43,13 +43,24 @@ const MODE_ROWS: EnsembleModeRow[] = [
   }
 ]
 
+// Shared-transcript char budget bounds (mirror buildTaggedTranscript's clamp).
+const CONTEXT_MIN = 5_000
+const CONTEXT_MAX = 500_000
+const CONTEXT_DEFAULT = 24_000
+
+function formatCharBudget(chars: number): string {
+  return chars >= 1000 ? `${Math.round(chars / 1000)}K` : `${chars}`
+}
+
 export function EnsembleModePicker({
   mode,
   workSessionActive,
   composerStyle,
   onSelectMode,
   onOpenWorkSession,
-  disabled
+  disabled,
+  contextChars,
+  onContextCharsChange
 }: {
   mode: EnsembleOrchestrationMode
   workSessionActive: boolean
@@ -57,6 +68,8 @@ export function EnsembleModePicker({
   onSelectMode: (mode: EnsembleOrchestrationMode) => void
   onOpenWorkSession: () => void
   disabled?: boolean
+  contextChars?: number
+  onContextCharsChange: (chars: number) => void
 }): React.JSX.Element {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -165,6 +178,22 @@ export function EnsembleModePicker({
                   </button>
                 )
               })}
+            </div>
+            <div className="composer-plus-picker-section composer-ensemble-context-section">
+              <div className="composer-combined-picker-column-header">Shared history budget</div>
+              <input
+                type="range"
+                className="composer-ensemble-context-slider"
+                min={CONTEXT_MIN}
+                max={CONTEXT_MAX}
+                step={5_000}
+                value={contextChars ?? CONTEXT_DEFAULT}
+                onChange={(event) => onContextCharsChange(Number(event.target.value))}
+                aria-label="Shared transcript character budget"
+              />
+              <div className="composer-ensemble-context-value">
+                {formatCharBudget(contextChars ?? CONTEXT_DEFAULT)} chars of recent panel history
+              </div>
             </div>
           </div>,
           document.body

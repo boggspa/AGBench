@@ -10268,6 +10268,30 @@ function App(): React.JSX.Element {
     [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
   )
 
+  // D — persist the user-set shared-transcript char budget (5K–500K) onto
+  // chat.ensemble.ensembleContextChars. Drives buildTaggedTranscript's budget
+  // for the NEXT round; clamped here so a malformed value never lands.
+  const updateCurrentEnsembleContextChars = useCallback(
+    (nextChars: number) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      const safeChars = Math.max(5_000, Math.min(500_000, Math.round(Number(nextChars) || 0)))
+      if (!Number.isFinite(safeChars) || safeChars <= 0) return
+      updateChatById(currentChat.appChatId, (source) => {
+        if (!source.ensemble) return source
+        const patched: ChatRecord = {
+          ...source,
+          ensemble: {
+            ...source.ensemble,
+            ensembleContextChars: safeChars,
+            updatedAt: new Date().toISOString()
+          }
+        }
+        return withSessionActivityLedger(source, patched)
+      })
+    },
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
+  )
+
   // 1.0.6 — persist the user-set max handoff turns for continuous rounds onto
   // chat.ensemble.maxContinuationHops. Range-clamped at the call site
   // (ContinuousHopsLimitChip enforces 1–50); we still guard here so a malformed
@@ -14405,6 +14429,8 @@ function App(): React.JSX.Element {
                                 updateCurrentEnsembleOrchestrationMode(nextMode)
                               }
                               onOpenWorkSession={() => setShowWorkSessionSheet(true)}
+                              contextChars={currentChat?.ensemble?.ensembleContextChars}
+                              onContextCharsChange={updateCurrentEnsembleContextChars}
                             />
                             <button
                               type="button"
