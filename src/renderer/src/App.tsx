@@ -13663,7 +13663,7 @@ function App(): React.JSX.Element {
               )}
               <strong title={currentChat.title}>{currentChat.title}</strong>
               <small title={chatPopoutParentChat?.title || undefined}>
-                Parent: {chatPopoutParentChat?.title || 'linked chat'}
+                {chatPopoutKindLabel} · Parent: {chatPopoutParentChat?.title || 'linked chat'}
               </small>
               <span className="chat-popout-dock-meta">
                 {chatPopoutContextLabel && (
@@ -14160,7 +14160,7 @@ function App(): React.JSX.Element {
                 )}
                 <strong title={currentChat.title}>{currentChat.title}</strong>
                 <span className="linked-chat-parent-line">
-                  Parent: {currentLinkedParentChat.title || 'Parent chat'}
+                  {currentLinkedKindLabel} · Parent: {currentLinkedParentChat.title || 'Parent chat'}
                 </span>
                 <span className="side-chat-context-chip linked-chat-parent-context">
                   {currentLinkedContextLabel}
@@ -17199,7 +17199,7 @@ function App(): React.JSX.Element {
                   </span>
                 )}
                 <span className="side-chat-parent-link">
-                  Parent: {sidePanelParentChat?.title || 'current chat'}
+                  {sidePanelKindLabel} · Parent: {sidePanelParentChat?.title || 'current chat'}
                 </span>
                 <strong title={sideChat.title}>{sideChat.title}</strong>
                 <span className="side-chat-header-chips">
@@ -17269,7 +17269,7 @@ function App(): React.JSX.Element {
                 </h2>
                 <p>{sidePanelModeDescription}</p>
                 <span className="side-chat-welcome-parent">
-                  Parent: {sidePanelParentChat?.title || 'Parent chat'}
+                  {sidePanelKindLabel} · Parent: {sidePanelParentChat?.title || 'Parent chat'}
                 </span>
                 <span className="side-chat-welcome-context">
                   <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
