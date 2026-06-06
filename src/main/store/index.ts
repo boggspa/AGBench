@@ -899,7 +899,8 @@ export class AppStore {
   }
 
   static createEnsembleChat(
-    args: { workspaceId?: string; workspacePath?: string } = {}
+    args: { workspaceId?: string; workspacePath?: string } = {},
+    configuredProviders?: Set<ProviderId>
   ): ChatRecord {
     const settings = this.getSettings()
     const activeProvider = settings.activeProvider || 'gemini'
@@ -919,7 +920,7 @@ export class AppStore {
       archived: false,
       messages: [],
       runs: [],
-      ensemble: createDefaultEnsembleConfig(activeProvider)
+      ensemble: createDefaultEnsembleConfig(activeProvider, configuredProviders)
     }
     if (settings.storeLocalChatHistory) {
       this.saveChat(chat)

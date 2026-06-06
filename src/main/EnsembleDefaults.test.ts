@@ -99,3 +99,42 @@ describe('createDefaultEnsembleConfig parity guard', () => {
     expect(Number.isNaN(Date.parse(config.updatedAt ?? ''))).toBe(false)
   })
 })
+
+describe('createDefaultEnsembleConfig — configured-provider seeding (E)', () => {
+  it('seeds all six when no configured set is supplied (back-compat)', () => {
+    const providers = createDefaultEnsembleConfig('gemini').participants.map((p) => p.provider)
+    expect(new Set(providers)).toEqual(new Set(EXPECTED_PROVIDERS))
+  })
+
+  it('seeds only the configured providers when a set is supplied', () => {
+    const configured = new Set<ProviderId>(['claude', 'gemini'])
+    const providers = createDefaultEnsembleConfig('claude', configured).participants.map(
+      (p) => p.provider
+    )
+    expect(new Set(providers)).toEqual(new Set(['claude', 'gemini']))
+    expect(providers).toHaveLength(2)
+  })
+
+  it('always includes the active provider even if absent from the configured set', () => {
+    const configured = new Set<ProviderId>(['claude', 'gemini'])
+    const providers = createDefaultEnsembleConfig('grok', configured).participants.map(
+      (p) => p.provider
+    )
+    expect(new Set(providers)).toEqual(new Set(['claude', 'gemini', 'grok']))
+  })
+
+  it('falls back to the full roster when fewer than two would remain', () => {
+    const configured = new Set<ProviderId>(['claude'])
+    const providers = createDefaultEnsembleConfig('claude', configured).participants.map(
+      (p) => p.provider
+    )
+    expect(new Set(providers)).toEqual(new Set(EXPECTED_PROVIDERS))
+  })
+
+  it('treats an empty configured set as a fallback to the full roster', () => {
+    const providers = createDefaultEnsembleConfig('gemini', new Set<ProviderId>()).participants.map(
+      (p) => p.provider
+    )
+    expect(new Set(providers)).toEqual(new Set(EXPECTED_PROVIDERS))
+  })
+})

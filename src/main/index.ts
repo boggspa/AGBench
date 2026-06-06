@@ -171,6 +171,7 @@ import {
   type PendingExternalPathDetection
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
+import { detectConfiguredProviders } from './ProviderConfiguration'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
 import { EnsembleOrchestrator, type ParticipantProbeResult } from './services/EnsembleOrchestrator'
 import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
@@ -14923,11 +14924,12 @@ if (isGeminiMcpBridgeProcess) {
     })
     ipcMain.handle(
       'create-ensemble-chat',
-      (_, args?: { workspaceId?: string; workspacePath?: string }) => {
+      async (_, args?: { workspaceId?: string; workspacePath?: string }) => {
         if (AppStore.getSettings().ensembleModeEnabled === false) {
           throw new Error('Ensemble Mode is disabled.')
         }
-        const chat = chatService.createEnsembleChat(args)
+        const configuredProviders = await detectConfiguredProviders(AppStore.getSettings())
+        const chat = chatService.createEnsembleChat(args, configuredProviders)
         broadcastThreadUpdate(chat?.appChatId)
         return chat
       }

@@ -29,7 +29,7 @@ export interface ChatServiceStore {
   getChat: (chatId: string) => ChatRecord | null
   createChat: (workspaceId: string, workspacePath: string) => ChatRecord
   createGlobalChat: () => ChatRecord
-  createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }) => ChatRecord
+  createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }, configuredProviders?: Set<ProviderId>) => ChatRecord
   createSubThread: (args: CreateSubThreadInput) => ChatRecord
   createSideChat: (args: CreateSideChatInput) => ChatRecord
   getChildChats: (parentChatId: string) => ChatRecord[]
@@ -85,9 +85,9 @@ export class ChatService {
     return this.deps.appStore.createGlobalChat()
   }
 
-  createEnsembleChat(args?: { workspaceId?: string; workspacePath?: string }): ChatRecord {
+  createEnsembleChat(args?: { workspaceId?: string; workspacePath?: string }, configuredProviders?: Set<ProviderId>): ChatRecord {
     if (!args?.workspaceId && !args?.workspacePath) {
-      return this.deps.appStore.createEnsembleChat()
+      return this.deps.appStore.createEnsembleChat(undefined, configuredProviders)
     }
     const workspaceId = requireNonEmptyString(args.workspaceId, 'Workspace id')
     const workspacePath = requireNonEmptyString(args.workspacePath, 'Workspace path')
@@ -98,7 +98,7 @@ export class ChatService {
     return this.deps.appStore.createEnsembleChat({
       workspaceId,
       workspacePath: this.deps.canonicalPath(workspacePath)
-    })
+    }, configuredProviders)
   }
 
   createSubThread(args: CreateSubThreadInput | undefined): ChatRecord {

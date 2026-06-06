@@ -73,9 +73,20 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
   }
 ]
 
-export function createDefaultEnsembleConfig(activeProvider?: ProviderId): EnsembleConfig {
+export function createDefaultEnsembleConfig(activeProvider?: ProviderId, configuredProviders?: Set<ProviderId>): EnsembleConfig {
+  // E — seed only providers the user has actually configured (one of each) when
+  // a set is supplied. The active provider is always included (current context).
+  // Fall back to the full roster if fewer than 2 would remain, so a fresh or
+  // barely-configured install still gets a usable panel, not a 1-participant one.
+  let roles = DEFAULT_ENSEMBLE_ROLES
+  if (configuredProviders) {
+    const allowed = new Set(configuredProviders)
+    if (activeProvider) allowed.add(activeProvider)
+    const filtered = DEFAULT_ENSEMBLE_ROLES.filter((entry) => allowed.has(entry.provider))
+    if (filtered.length >= 2) roles = filtered
+  }
   const orderedProviders = rotateProviderFirst(
-    DEFAULT_ENSEMBLE_ROLES.map((entry) => entry.provider),
+    roles.map((entry) => entry.provider),
     activeProvider
   )
   const orderByProvider = new Map(orderedProviders.map((provider, index) => [provider, index + 1]))
@@ -84,7 +95,7 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
   // inline with one click. Previously we only enabled `activeProvider`
   // + claude + codex, which left Gemini / Kimi feeling like
   // second-class members of the ensemble surface.
-  const participants: EnsembleParticipant[] = DEFAULT_ENSEMBLE_ROLES.map((entry) => ({
+  const participants: EnsembleParticipant[] = roles.map((entry) => ({
     id: `ensemble-${entry.provider}`,
     provider: entry.provider,
     enabled: true,
