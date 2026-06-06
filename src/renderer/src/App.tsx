@@ -1750,13 +1750,17 @@ function App(): React.JSX.Element {
     : null
   const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Side chat'
   const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
-  const currentLinkedParentChat =
+  const currentChatIsLinkedChild = Boolean(
     currentChat?.parentChatId &&
-    (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
+      (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
+  )
+  const currentLinkedParentChat =
+    currentChatIsLinkedChild && currentChat?.parentChatId
       ? chatByIdRef.current.get(currentChat.parentChatId) ||
         chats.find((chat) => chat.appChatId === currentChat.parentChatId) ||
         null
       : null
+  const canCreateSideChatFromCurrent = Boolean(currentChat && !currentChatIsLinkedChild)
   const currentLinkedKindLabel =
     currentLinkedParentChat && currentChat ? getLinkedChatKindLabel(currentChat) : 'Linked chat'
   const currentLinkedContextLabel =
@@ -10109,7 +10113,7 @@ function App(): React.JSX.Element {
 
   const handleOpenSideChatFromMessage = useCallback(
     (message: ChatMessage) => {
-      if (!currentChat || !message?.id) return
+      if (!canCreateSideChatFromCurrent || !currentChat || !message?.id) return
       const roleLabel =
         message.role === 'user'
           ? 'user message'
@@ -10126,11 +10130,11 @@ function App(): React.JSX.Element {
         originMessageId: message.id
       })
     },
-    [currentChat, ensureSideChatForCurrentChat]
+    [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat]
   )
   const handleOpenSideChatFromRunResult = useCallback(
     (runId: string) => {
-      if (!currentChat || !runId) return
+      if (!canCreateSideChatFromCurrent || !currentChat || !runId) return
       const sourceRun = (currentChat.runs || []).find((run) => run.runId === runId)
       const latestAssistantMessage = [...(currentChat.messages || [])]
         .reverse()
@@ -10153,7 +10157,7 @@ function App(): React.JSX.Element {
         originRunId: runId
       })
     },
-    [currentChat, ensureSideChatForCurrentChat]
+    [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat]
   )
   const sideChatSummarySeed = useMemo(() => {
     const ensembleSummary = currentChat?.ensemble?.lastRoundSummary?.trim()
@@ -10173,7 +10177,7 @@ function App(): React.JSX.Element {
     }
   }, [currentChat])
   const handleOpenSideChatFromSummary = useCallback(() => {
-    if (!currentChat || !sideChatSummarySeed?.content) return
+    if (!canCreateSideChatFromCurrent || !currentChat || !sideChatSummarySeed?.content) return
     const seedPrompt = [
       `Use this ${sideChatSummarySeed.label.toLowerCase()} from the parent chat as the starting point.`,
       'This side chat is isolated and only receives the pasted summary below, not the full parent transcript.',
@@ -10184,7 +10188,7 @@ function App(): React.JSX.Element {
       transcriptVisibility: 'summary'
     })
     setSideChatMenuOpen(false)
-  }, [currentChat, ensureSideChatForCurrentChat, sideChatSummarySeed])
+  }, [canCreateSideChatFromCurrent, currentChat, ensureSideChatForCurrentChat, sideChatSummarySeed])
   const selectedSideChatSeedMessage =
     sideChatSeedMessageId && currentChat?.messages
       ? currentChat.messages.find((message) => message.id === sideChatSeedMessageId) || null
@@ -13753,7 +13757,7 @@ function App(): React.JSX.Element {
                     type="button"
                     role="menuitem"
                     onClick={handleOpenSideChatFromSelectedMessage}
-                    disabled={!selectedSideChatSeedMessage}
+                    disabled={!canCreateSideChatFromCurrent || !selectedSideChatSeedMessage}
                   >
                     <span>Open from selected message</span>
                     <small>
@@ -13766,7 +13770,7 @@ function App(): React.JSX.Element {
                     type="button"
                     role="menuitem"
                     onClick={handleOpenSideChatFromSummary}
-                    disabled={!sideChatSummarySeed}
+                    disabled={!canCreateSideChatFromCurrent || !sideChatSummarySeed}
                   >
                     <span>Open from summary</span>
                     <small>{sideChatSummarySeed?.label || 'No summary yet'}</small>
@@ -14071,15 +14075,19 @@ function App(): React.JSX.Element {
                 onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
                 onInspectRun={(runId) => setInspectingRunId(runId)}
                 onOpenSideChatFromRun={
-                  currentChat?.parentChatId ? undefined : handleOpenSideChatFromRunResult
+                  canCreateSideChatFromCurrent ? handleOpenSideChatFromRunResult : undefined
                 }
                 compactDensity={appearance.compactDensity}
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
-                onMessageSelectionCandidate={handleMessageSelectionCandidate}
+                onMessageSelectionCandidate={
+                  canCreateSideChatFromCurrent ? handleMessageSelectionCandidate : undefined
+                }
                 onPreviewImage={setPreviewChatMediaRef}
-                onOpenSideChatFromMessage={handleOpenSideChatFromMessage}
+                onOpenSideChatFromMessage={
+                  canCreateSideChatFromCurrent ? handleOpenSideChatFromMessage : undefined
+                }
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}
