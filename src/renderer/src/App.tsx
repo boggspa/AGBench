@@ -12050,7 +12050,14 @@ function App(): React.JSX.Element {
     }))
   }
   const handleSideProviderChange = (provider: ProviderId): void => {
-    if (!sideChat || isSideChatProviderLocked || provider === sideComposerProvider) return
+    if (
+      !sideChat ||
+      isSideEnsembleComposerLocked ||
+      isSideChatProviderLocked ||
+      provider === sideComposerProvider
+    ) {
+      return
+    }
     const nextModel = getDefaultModelForProvider(provider)
     updateChatById(sideChat.appChatId, (source) => ({
       ...source,
@@ -12122,7 +12129,9 @@ function App(): React.JSX.Element {
     service: AgenticServiceId,
     enabled: boolean
   ) => {
-    if (!sideChat || sideIsGlobalChat || !sideWorkspace?.path) return
+    if (!sideChat || isSideEnsembleComposerLocked || sideIsGlobalChat || !sideWorkspace?.path) {
+      return
+    }
     const nextSettings = enabled
       ? await window.api.upsertAgenticWorkspaceGrant(
           sideComposerProvider,
