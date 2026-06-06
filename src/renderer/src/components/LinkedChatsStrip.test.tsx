@@ -72,6 +72,8 @@ describe('LinkedChatsStrip', () => {
     )
 
     expect(html).toContain('Linked threads')
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
     expect(html).toContain('Side chat')
     expect(html).toContain('Scratch beside parent')
     expect(html).toContain('Agent sub-thread')
@@ -80,6 +82,39 @@ describe('LinkedChatsStrip', () => {
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')
     expect(html).not.toContain('Other child')
+  })
+
+  it('can render the linked marker collapsed to a summary', () => {
+    const parent = makeChat()
+    const sideChat = makeChat({
+      appChatId: 'side-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'codex',
+      title: 'Scratch beside parent'
+    })
+    const subThread = makeChat({
+      appChatId: 'sub-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'subThread',
+      provider: 'claude',
+      title: 'Investigate tests'
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, sideChat, subThread]}
+        runningChatIds={['sub-1']}
+        onOpenBeside={() => {}}
+        defaultCollapsed
+      />
+    )
+
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
+    expect(html).not.toContain('Scratch beside parent')
+    expect(html).not.toContain('Investigate tests')
   })
 
   it('renders nothing without linked children', () => {
