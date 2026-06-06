@@ -93,6 +93,20 @@
   opacity: 0.48;
 }
 
+.side-chat-layout-menu-section {
+  padding: 7px 9px 3px;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.side-chat-layout-menu-section:first-child {
+  padding-top: 2px;
+}
+
 .side-chat-layout-menu span {
   font-size: var(--font-size-sm);
   font-weight: 650;

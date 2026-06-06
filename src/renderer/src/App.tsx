@@ -14028,6 +14028,9 @@ function App(): React.JSX.Element {
               </button>
               {sideChatMenuOpen && (
                 <div className="side-chat-layout-menu" role="menu" aria-label="Side chat layouts">
+                  <div className="side-chat-layout-menu-section" role="presentation">
+                    Layout
+                  </div>
                   <button
                     type="button"
                     role="menuitem"
@@ -14062,6 +14065,9 @@ function App(): React.JSX.Element {
                   </button>
                   {isCurrentEnsembleChat && (
                     <>
+                      <div className="side-chat-layout-menu-section" role="presentation">
+                        Ensemble shape
+                      </div>
                       <button
                         type="button"
                         role="menuitem"
@@ -14114,10 +14120,13 @@ function App(): React.JSX.Element {
                         onClick={() => void openCurrentSideChatPresentation('split', 'fanOut')}
                       >
                         <span>Fan-out side chat</span>
-                        <small>Parallel read-only round</small>
+                        <small>Participants answer in parallel</small>
                       </button>
                     </>
                   )}
+                  <div className="side-chat-layout-menu-section" role="presentation">
+                    Start from context
+                  </div>
                   <button
                     type="button"
                     role="menuitem"
