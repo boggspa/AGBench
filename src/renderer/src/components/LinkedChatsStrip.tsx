@@ -201,7 +201,7 @@ export function LinkedChatsStrip({
                     onClick={() => onOpenMain(chat.appChatId)}
                     title={`Open as main chat: ${title}`}
                   >
-                    Main
+                    Open as main
                   </button>
                 )}
               </div>

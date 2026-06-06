@@ -457,7 +457,7 @@ body.is-resizing-side-chat * {
 .side-chat-actions {
   justify-content: flex-end;
   flex-wrap: wrap;
-  max-width: 168px;
+  max-width: 252px;
 }
 
 .side-chat-header-btn,
@@ -474,6 +474,7 @@ body.is-resizing-side-chat * {
   border-radius: 6px;
   font-size: var(--font-size-xs);
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .side-chat-icon-btn {

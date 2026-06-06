@@ -4036,6 +4036,7 @@
   border-left: 1px solid rgb(255 255 255 / 0.08);
   color: var(--text-tertiary);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .linked-chats-strip-more {

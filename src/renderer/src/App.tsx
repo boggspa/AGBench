@@ -13662,7 +13662,7 @@ function App(): React.JSX.Element {
                   onClick={() => void handleSelectChat(chatPopoutParentChat)}
                   title="Open the parent chat in this popout"
                 >
-                  Back
+                  Back to parent
                 </button>
               )}
               <button
@@ -17197,7 +17197,7 @@ function App(): React.JSX.Element {
                     onClick={() => void handleSelectChat(sidePanelParentChat)}
                     title="Back to parent chat"
                   >
-                    Back
+                    Back to parent
                   </button>
                 )}
                 <button
@@ -17214,7 +17214,7 @@ function App(): React.JSX.Element {
                   onClick={() => void handleSelectChat(sideChat)}
                   title="Open side chat as the main thread"
                 >
-                  Open main
+                  Open as main
                 </button>
                 {sidePanelRelation === 'sideChat' && (
                   <button

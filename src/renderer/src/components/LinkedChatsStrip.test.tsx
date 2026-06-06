@@ -94,6 +94,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Delegation context')
     expect(html).toContain(subThreadIdentity.name)
     expect(html).toContain('linked-chats-strip-agent-icon')
+    expect(html).toContain('Open as main')
     expect(html).toContain('is-running')
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')
