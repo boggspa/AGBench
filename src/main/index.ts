@@ -15002,7 +15002,13 @@ if (isGeminiMcpBridgeProcess) {
     })
 
     // Usage
-    ipcMain.handle('record-usage', (_, usage: any) => AppStore.recordUsage(usage))
+    ipcMain.handle('record-usage', (_, usage: any) => {
+      const result = AppStore.recordUsage(usage)
+      // Broadcast so the renderer's usage meters (sidebar + Settings) refresh
+      // immediately instead of waiting up to 90s for the next poll.
+      mainWindow?.webContents.send('usage-changed')
+      return result
+    })
     ipcMain.handle('get-usage', (_, workspaceId?: string, chatId?: string) =>
       AppStore.getUsage(workspaceId, chatId)
     )

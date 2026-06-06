@@ -942,6 +942,7 @@ declare global {
       ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
+      onUsageChanged: (callback: () => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => () => void
       onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void
       onWorkspacePopoutRefresh: (

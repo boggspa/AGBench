@@ -6292,6 +6292,14 @@ function App(): React.JSX.Element {
       })
     }
 
+    if (typeof window.api.onUsageChanged === 'function') {
+      // Live-refresh the usage meters the moment a run records usage, rather
+      // than waiting for the 90s poll.
+      window.api.onUsageChanged(() => {
+        void refreshUsageSummaryRef.current?.()
+      })
+    }
+
     if (typeof window.api.onChatUpdated === 'function') {
       // Phase F2: when the main process updates a chat (sub-thread
       // result back-propagation in particular), splice the fresh
