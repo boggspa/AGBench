@@ -341,6 +341,13 @@ body.is-resizing-side-chat * {
   isolation: isolate;
 }
 
+.side-chat-pane.has-linked-agent-identity {
+  border-left-color: color-mix(in srgb, var(--agent-rim, var(--accent)) 54%, var(--panel-border));
+  box-shadow:
+    -14px 0 32px color-mix(in srgb, #000 12%, transparent),
+    inset 1px 0 0 color-mix(in srgb, var(--agent-rim, var(--accent)) 28%, transparent);
+}
+
 .chat-split-region.side-chat-layout-drawer .side-chat-resize-handle {
   display: none;
 }
@@ -446,6 +453,12 @@ body.is-resizing-side-chat * {
   background: color-mix(in srgb, var(--surface-2) 46%, transparent);
 }
 
+.side-chat-route-chip.side-chat-context-chip {
+  color: color-mix(in srgb, var(--agent-rim, var(--accent)) 72%, var(--text-secondary));
+  border-color: color-mix(in srgb, var(--agent-rim, var(--accent)) 38%, var(--panel-border));
+  background: color-mix(in srgb, var(--agent-rim, var(--accent)) 10%, transparent);
+}
+
 .side-chat-actions,
 .side-chat-send-cluster {
   display: inline-flex;
@@ -523,6 +536,25 @@ body.is-resizing-side-chat * {
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.side-chat-welcome-agent {
+  min-width: 0;
+  max-width: min(260px, 100%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 780;
+}
+
+.side-chat-welcome-agent > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .side-chat-welcome h2 {

@@ -532,9 +532,28 @@ function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
 }
 
-function getDelegatedAgentIdentity(chat: ChatRecord | null | undefined) {
-  if (!chat || !isSubThreadChat(chat)) return null
-  return assignAgentIdentityFromSeed(chat.appChatId)
+function getLinkedChatAgentIdentity(chat: ChatRecord | null | undefined) {
+  if (!chat) return null
+  if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
+  if (chat.parentChatRelation !== 'sideChat' || getSideChatMode(chat) !== 'singleProvider') return null
+  const participantId = getSideChatSelectedParticipantId(chat)
+  const seed = participantId ? `${chat.parentChatId || chat.appChatId}:${participantId}` : chat.appChatId
+  return assignAgentIdentityFromSeed(seed)
+}
+
+function getLinkedChatRouteLabel(chat: ChatRecord, parentChat?: ChatRecord | null): string {
+  const parentProvider = chat.delegationContext?.parentProvider || (parentChat ? getChatProvider(parentChat) : undefined)
+  const parentLabel = parentProvider ? getProviderLabel(parentProvider) : 'Parent'
+  const childLabel = getProviderLabel(getChatProvider(chat))
+  if (isSubThreadChat(chat)) return `${parentLabel} delegated to ${childLabel}`
+  if (chat.parentChatRelation !== 'sideChat') return ''
+  const mode = getSideChatMode(chat)
+  if (mode === 'fanOut') return `${parentLabel} parallel fan-out`
+  if (mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
+  const participantLabel = getSideChatSelectedParticipantLabel(chat)
+  return participantLabel
+    ? `${parentLabel} dedicated branch to ${participantLabel}`
+    : `${parentLabel} side branch to ${childLabel}`
 }
 
 function getLinkedChatKindLabel(chat: ChatRecord): string {
@@ -1797,7 +1816,8 @@ function App(): React.JSX.Element {
   const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
   const sidePanelModeLabel = sideChat ? getSideChatModeLabel(sideChat) : ''
   const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
-  const sidePanelAgentIdentity = getDelegatedAgentIdentity(sideChat)
+  const sidePanelAgentIdentity = getLinkedChatAgentIdentity(sideChat)
+  const sidePanelRouteLabel = sideChat ? getLinkedChatRouteLabel(sideChat, sidePanelParentChat) : ''
   const currentChatIsLinkedChild = Boolean(
     currentChat?.parentChatId &&
       (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
@@ -1819,8 +1839,10 @@ function App(): React.JSX.Element {
     currentLinkedParentChat && currentChat?.parentChatRelation === 'sideChat'
       ? getSideChatModeLabel(currentChat)
       : ''
+  const currentLinkedRouteLabel =
+    currentLinkedParentChat && currentChat ? getLinkedChatRouteLabel(currentChat, currentLinkedParentChat) : ''
   const currentLinkedAgentIdentity =
-    currentLinkedParentChat && currentChat ? getDelegatedAgentIdentity(currentChat) : null
+    currentLinkedParentChat && currentChat ? getLinkedChatAgentIdentity(currentChat) : null
   const popoutSideChatLifecycleId =
     isChatPopoutWindow && currentChat?.parentChatRelation === 'sideChat'
       ? currentChat.appChatId
@@ -13398,8 +13420,10 @@ function App(): React.JSX.Element {
     isLinkedChatPopout && currentChat?.parentChatRelation === 'sideChat'
       ? getSideChatModeLabel(currentChat)
       : ''
+  const chatPopoutRouteLabel =
+    isLinkedChatPopout && currentChat ? getLinkedChatRouteLabel(currentChat, chatPopoutParentChat) : ''
   const chatPopoutAgentIdentity =
-    isLinkedChatPopout && currentChat ? getDelegatedAgentIdentity(currentChat) : null
+    isLinkedChatPopout && currentChat ? getLinkedChatAgentIdentity(currentChat) : null
   const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
@@ -13700,6 +13724,11 @@ function App(): React.JSX.Element {
                 {chatPopoutModeLabel && (
                   <span className="side-chat-context-chip side-chat-mode-chip">
                     {chatPopoutModeLabel}
+                  </span>
+                )}
+                {chatPopoutRouteLabel && (
+                  <span className="side-chat-context-chip side-chat-route-chip">
+                    {chatPopoutRouteLabel}
                   </span>
                 )}
               </span>
@@ -14196,6 +14225,11 @@ function App(): React.JSX.Element {
                 {currentLinkedModeLabel && (
                   <span className="side-chat-context-chip side-chat-mode-chip linked-chat-parent-context">
                     {currentLinkedModeLabel}
+                  </span>
+                )}
+                {currentLinkedRouteLabel && (
+                  <span className="side-chat-context-chip side-chat-route-chip linked-chat-parent-context">
+                    {currentLinkedRouteLabel}
                   </span>
                 )}
               </div>
@@ -17207,7 +17241,12 @@ function App(): React.JSX.Element {
               <aside
                 className={`side-chat-pane app-transcript provider-${sideProvider} interface-${interfaceStyle} ${
                   sideChat.chatKind === 'ensemble' ? 'chat-kind-ensemble' : ''
-                }`}
+                } ${sidePanelAgentIdentity ? 'has-linked-agent-identity' : ''}`}
+                style={
+                  sidePanelAgentIdentity
+                    ? ({ '--agent-rim': sidePanelAgentIdentity.accent } as CSSProperties)
+                    : undefined
+                }
                 aria-label="Side chat"
               >
             <div className="side-chat-header">
@@ -17240,6 +17279,11 @@ function App(): React.JSX.Element {
                   {sidePanelModeLabel && (
                     <span className="side-chat-context-chip side-chat-mode-chip">
                       {sidePanelModeLabel}
+                    </span>
+                  )}
+                  {sidePanelRouteLabel && (
+                    <span className="side-chat-context-chip side-chat-route-chip">
+                      {sidePanelRouteLabel}
                     </span>
                   )}
                 </span>
@@ -17295,6 +17339,18 @@ function App(): React.JSX.Element {
             {sideChatIsWelcome && (
               <div className="side-chat-welcome" aria-label="Side chat welcome">
                 <span className="side-chat-welcome-kicker">{sidePanelKindLabel}</span>
+                {sidePanelAgentIdentity && (
+                  <span className="side-chat-welcome-agent" title={sidePanelAgentIdentity.name}>
+                    <AgentIdentityIcon
+                      name={sidePanelAgentIdentity.key}
+                      color={sidePanelAgentIdentity.accent}
+                      size={44}
+                      className="linked-chat-agent-identicon"
+                      title={sidePanelAgentIdentity.name}
+                    />
+                    <span>{sidePanelAgentIdentity.name}</span>
+                  </span>
+                )}
                 <h2>
                   {sidePanelRelation === 'subThread'
                     ? 'Agent sub-thread'
@@ -17309,6 +17365,11 @@ function App(): React.JSX.Element {
                   {sidePanelModeLabel && (
                     <span className="side-chat-context-chip side-chat-mode-chip">
                       {sidePanelModeLabel}
+                    </span>
+                  )}
+                  {sidePanelRouteLabel && (
+                    <span className="side-chat-context-chip side-chat-route-chip">
+                      {sidePanelRouteLabel}
                     </span>
                   )}
                 </span>

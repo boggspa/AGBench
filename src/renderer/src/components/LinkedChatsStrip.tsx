@@ -53,8 +53,29 @@ function linkedParticipantLabel(chat: ChatRecord): string {
   return typeof idValue === 'string' && idValue.trim() ? providerLabel(chat.provider) : ''
 }
 
-function delegatedAgentIdentity(chat: ChatRecord) {
-  return isSubThreadChat(chat) ? assignAgentIdentityFromSeed(chat.appChatId) : null
+function linkedAgentIdentity(chat: ChatRecord) {
+  if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
+  if (chat.parentChatRelation !== 'sideChat' || chat.sideChatContext?.mode !== 'singleProvider') return null
+  const participantId = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
+  const seed =
+    typeof participantId === 'string' && participantId.trim()
+      ? `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
+      : chat.appChatId
+  return assignAgentIdentityFromSeed(seed)
+}
+
+function linkedRouteLabel(chat: ChatRecord, parentChat: ChatRecord): string {
+  const parentProvider = chat.delegationContext?.parentProvider || parentChat.provider
+  const parentLabel = providerLabel(parentProvider)
+  const childLabel = providerLabel(chat.provider)
+  if (isSubThreadChat(chat)) return `${parentLabel} delegated to ${childLabel}`
+  if (chat.parentChatRelation !== 'sideChat') return ''
+  if (chat.sideChatContext?.mode === 'fanOut') return `${parentLabel} parallel fan-out`
+  if (chat.sideChatContext?.mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
+  const participantLabel = linkedParticipantLabel(chat)
+  return participantLabel
+    ? `${parentLabel} dedicated branch to ${participantLabel}`
+    : `${parentLabel} side branch to ${childLabel}`
 }
 
 function linkedContextLabel(chat: ChatRecord): string {
@@ -150,7 +171,8 @@ export function LinkedChatsStrip({
             const stateLabel = linkedStateLabel(chat, running)
             const contextLabel = linkedContextLabel(chat)
             const modeLabel = linkedModeLabel(chat)
-            const agentIdentity = delegatedAgentIdentity(chat)
+            const routeLabel = linkedRouteLabel(chat, currentChat)
+            const agentIdentity = linkedAgentIdentity(chat)
             return (
               <div
                 key={chat.appChatId}
@@ -192,6 +214,9 @@ export function LinkedChatsStrip({
                     <span className="linked-chats-strip-state">{stateLabel}</span>
                     <span className="linked-chats-strip-mode">{modeLabel}</span>
                     <span className="linked-chats-strip-context">{contextLabel}</span>
+                    {routeLabel && (
+                      <span className="linked-chats-strip-route">{routeLabel}</span>
+                    )}
                   </span>
                 </button>
                 {onOpenMain && (

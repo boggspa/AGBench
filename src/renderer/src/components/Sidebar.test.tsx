@@ -115,6 +115,7 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('sidebar-chat-children')
     expect(html).toContain(childIdentity.name)
     expect(html).toContain('sidebar-sub-thread-identicon')
+    expect(html).toContain('Gemini delegated to Codex')
   })
 
   it('labels fan-out side-chat children distinctly in the sidebar', () => {
@@ -147,6 +148,7 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Fan-out side chat')
     expect(html).toContain('Parallel fan-out')
     expect(html).toContain('No parent context')
+    expect(html).toContain('Gemini parallel fan-out')
   })
 
   it('shows participant and context metadata for side-chat children', () => {
@@ -155,6 +157,7 @@ describe('Sidebar sub-thread collapse', () => {
       [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
     })
 
+    const sideChatIdentity = assignAgentIdentityFromSeed('parent-1:reviewer-codex')
     const html = renderSidebar([
       makeChat(),
       makeChat({
@@ -183,6 +186,9 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Side chat')
     expect(html).toContain('Participant: Reviewer')
     expect(html).toContain('Seeded from selected message')
+    expect(html).toContain('Gemini dedicated branch to Reviewer')
+    expect(html).toContain(sideChatIdentity.name)
+    expect(html).toContain('sidebar-sub-thread-identicon')
     expect(html).toContain('Closed')
   })
 

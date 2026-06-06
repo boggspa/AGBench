@@ -92,6 +92,8 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Investigate tests')
     expect(html).toContain('Delegated agent')
     expect(html).toContain('Delegation context')
+    expect(html).toContain('Gemini side branch to Codex')
+    expect(html).toContain('Gemini delegated to Claude')
     expect(html).toContain(subThreadIdentity.name)
     expect(html).toContain('linked-chats-strip-agent-icon')
     expect(html).toContain('Open as main')
@@ -164,10 +166,12 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Fan-out side chat')
     expect(html).toContain('Fan-out')
     expect(html).toContain('No parent context')
+    expect(html).toContain('Gemini parallel fan-out')
   })
 
   it('labels participant-dedicated side chats with the selected participant', () => {
     const parent = makeChat()
+    const participantIdentity = assignAgentIdentityFromSeed('parent-1:reviewer-codex')
     const participantSideChat = makeChat({
       appChatId: 'participant-side-1',
       parentChatId: 'parent-1',
@@ -198,6 +202,9 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Side chat')
     expect(html).toContain('Reviewer branch')
     expect(html).toContain('Participant: Reviewer')
+    expect(html).toContain('Gemini dedicated branch to Reviewer')
+    expect(html).toContain(participantIdentity.name)
+    expect(html).toContain('linked-chats-strip-agent-icon')
   })
 
   it('labels run-result seeded side chats explicitly', () => {

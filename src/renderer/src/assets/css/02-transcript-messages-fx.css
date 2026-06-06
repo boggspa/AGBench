@@ -4013,6 +4013,10 @@
   white-space: nowrap;
 }
 
+.linked-chats-strip-route {
+  color: color-mix(in srgb, var(--accent) 68%, var(--text-tertiary));
+}
+
 .linked-chats-strip-meta > span {
   display: inline-flex;
   align-items: center;

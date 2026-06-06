@@ -203,6 +203,31 @@ const getSideChatChildLifecycleLabel = (chat: ChatRecord): string => {
   return ''
 }
 
+const getLinkedChildAgentIdentity = (chat: ChatRecord) => {
+  if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
+  if (!isSideChatRecord(chat) || chat.sideChatContext?.mode !== 'singleProvider') return null
+  const participantId = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
+  const seed =
+    typeof participantId === 'string' && participantId.trim()
+      ? `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
+      : chat.appChatId
+  return assignAgentIdentityFromSeed(seed)
+}
+
+const getLinkedChildRouteLabel = (chat: ChatRecord, parentChat: ChatRecord | null): string => {
+  const parentProvider = chat.delegationContext?.parentProvider || parentChat?.provider
+  const parentLabel = parentProvider ? getProviderName(parentProvider) : 'Parent'
+  const childLabel = getProviderName(chat.provider)
+  if (isSubThreadChat(chat)) return `${parentLabel} delegated to ${childLabel}`
+  if (!isSideChatRecord(chat)) return ''
+  if (chat.sideChatContext?.mode === 'fanOut') return `${parentLabel} parallel fan-out`
+  if (chat.sideChatContext?.mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
+  const participantLabel = getSideChatChildParticipantLabel(chat)
+  return participantLabel
+    ? `${parentLabel} dedicated branch to ${participantLabel}`
+    : `${parentLabel} side branch to ${childLabel}`
+}
+
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sub-thread-parent-ids'
 /**
@@ -1959,11 +1984,15 @@ export function Sidebar({
     const subLastStatus = getLastRunStatus(subChat)
     const subIsSideChat = isSideChatRecord(subChat)
     const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Agent sub-thread'
-    const subAgentIdentity = !subIsSideChat ? assignAgentIdentityFromSeed(subChat.appChatId) : null
+    const subParentChat =
+      subChat.parentChatId ? chats.find((chat) => chat.appChatId === subChat.parentChatId) || null : null
+    const subRouteLabel = getLinkedChildRouteLabel(subChat, subParentChat)
+    const subAgentIdentity = getLinkedChildAgentIdentity(subChat)
     const subSideChatMetaLabels = subIsSideChat
       ? [
           getSideChatChildModeLabel(subChat),
           getSideChatChildContextLabel(subChat),
+          subRouteLabel,
           getSideChatChildLifecycleLabel(subChat)
         ].filter(Boolean)
       : []
@@ -2011,6 +2040,9 @@ export function Sidebar({
             <span className="sidebar-run-status tone-muted">{subKindLabel}</span>
             {subAgentIdentity && (
               <span className="sidebar-run-status tone-muted">{subAgentIdentity.name}</span>
+            )}
+            {!subIsSideChat && subRouteLabel && (
+              <span className="sidebar-run-status tone-muted">{subRouteLabel}</span>
             )}
             {subSideChatMetaLabels.map((label) => (
               <span key={label} className="sidebar-run-status tone-muted">
