@@ -8690,6 +8690,21 @@ function App(): React.JSX.Element {
     mode?: SideChatCreateMode
   ) => {
     setSideChatMenuOpen(false)
+    if (currentChat && currentLinkedParentChat) {
+      if (presentation === 'popout') {
+        popOutLinkedChat(currentChat)
+        await handleSelectChat(currentLinkedParentChat)
+        return
+      }
+      if (presentation === 'main') {
+        return
+      }
+      if (currentChatIdRef.current !== currentLinkedParentChat.appChatId) {
+        await handleSelectChat(currentLinkedParentChat)
+      }
+      openLinkedChatInSidePanel(currentChat, presentation, currentLinkedParentChat)
+      return
+    }
     const linkedChat = await ensureSideChatForCurrentChat(
       '',
       false,
@@ -13944,7 +13959,7 @@ function App(): React.JSX.Element {
                 <button
                   type="button"
                   className="side-chat-header-btn"
-                  onClick={() => popOutLinkedChat(currentChat)}
+                  onClick={() => void openCurrentSideChatPresentation('popout')}
                   title="Pop out this linked chat"
                 >
                   Pop out
