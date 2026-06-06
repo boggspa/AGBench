@@ -12332,6 +12332,41 @@ function App(): React.JSX.Element {
           )}
 
           {!isChatPopoutWindow && (
+            <div className="chat-corner-controls chat-corner-controls-center">
+            <button
+              className="chat-corner-btn"
+              type="button"
+              onClick={() => openWorkspacePopoutWindow('file-editor')}
+              title="Open file editor in new window"
+              aria-label="Open file editor in new window"
+              disabled={!canOpenWorkspacePopout}
+            >
+              <span className="chat-corner-symbol">↗</span>
+            </button>
+            <button
+              className="chat-corner-btn"
+              type="button"
+              onClick={() => openWorkspacePopoutWindow('diff-studio')}
+              title="Open Diff Studio in new window"
+              aria-label="Open Diff Studio in new window"
+              disabled={!canOpenWorkspacePopout}
+            >
+              <span className="chat-corner-symbol">Δ</span>
+            </button>
+            <button
+              className="chat-corner-btn"
+              type="button"
+              onClick={openChatPopoutWindow}
+              title="Pop out chat window"
+              aria-label="Pop out chat window"
+              disabled={!currentChat}
+            >
+              <ChatPopoutIcon />
+            </button>
+            </div>
+          )}
+
+          {!isChatPopoutWindow && (
             <div className="chat-corner-controls chat-corner-controls-right">
             <button
               className={`chat-corner-btn ${showCockpit ? 'active' : ''}`}
@@ -12387,36 +12422,8 @@ function App(): React.JSX.Element {
             >
               <FileMenuSelectionIcon />
             </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={() => openWorkspacePopoutWindow('file-editor')}
-              title="Open file editor in new window"
-              aria-label="Open file editor in new window"
-              disabled={!canOpenWorkspacePopout}
-            >
-              <span className="chat-corner-symbol">↗</span>
-            </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={() => openWorkspacePopoutWindow('diff-studio')}
-              title="Open Diff Studio in new window"
-              aria-label="Open Diff Studio in new window"
-              disabled={!canOpenWorkspacePopout}
-            >
-              <span className="chat-corner-symbol">Δ</span>
-            </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={openChatPopoutWindow}
-              title="Pop out chat window"
-              aria-label="Pop out chat window"
-              disabled={!currentChat}
-            >
-              <ChatPopoutIcon />
-            </button>
+            {/* Pop-out buttons (file editor ↗ / Diff Studio Δ / pop-out chat)
+              live in the top-center pill now — see chat-corner-controls-center. */}
               <button
                 className="chat-corner-btn"
                 type="button"

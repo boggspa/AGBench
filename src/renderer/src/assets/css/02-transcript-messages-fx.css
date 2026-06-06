@@ -364,6 +364,18 @@
   gap: 8px;
 }
 
+/* Top-center glass pill housing the pop-out buttons (file editor / Diff Studio /
+ * pop-out chat). Centered WITHOUT transform (left:0 + right:0 + auto margins +
+ * fit-content width) so the inherited backdrop-filter blur keeps working. */
+.chat-corner-controls-center {
+  left: 0;
+  right: 0;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  gap: 8px;
+}
+
 .chat-corner-controls .chat-corner-btn {
   position: relative;
   background: transparent;
