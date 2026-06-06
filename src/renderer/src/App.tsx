@@ -501,6 +501,8 @@ type ChatPopoutHandoffState = {
 }
 
 const CHAT_POPOUT_HANDOFF_PREFIX = 'taskwraith.chatPopoutHandoff.'
+const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
+const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
 
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
   if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
@@ -511,6 +513,11 @@ function getSideChatLifecycleState(chat: ChatRecord): SideChatLifecycleState {
   const state = chat.sideChatContext?.lifecycleState
   if (state === 'active' || state === 'closed' || state === 'terminated') return state
   return chat.archived ? 'terminated' : 'active'
+}
+
+function getSideChatSelectedParticipantId(chat: ChatRecord): string {
+  const value = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
+  return typeof value === 'string' ? value : ''
 }
 
 function isTerminatedSideChat(chat: ChatRecord): boolean {
@@ -8517,7 +8524,10 @@ function App(): React.JSX.Element {
             selectedSideParticipant.model ||
             getDefaultModelForProvider(selectedSideParticipant.provider),
           customModel: '',
-          approvalMode: permissionPresetToApprovalMode(selectedSideParticipant.permissionPresetId)
+          approvalMode: permissionPresetToApprovalMode(selectedSideParticipant.permissionPresetId),
+          [SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]: selectedSideParticipant.id,
+          [SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY]:
+            selectedSideParticipant.role || getProviderLabel(selectedSideParticipant.provider)
         }
         if (selectedSideParticipant.runtimeProfileId) {
           participantMetadata.runtimeProfileId = selectedSideParticipant.runtimeProfileId
@@ -8603,7 +8613,8 @@ function App(): React.JSX.Element {
 
   const findReusableSideChatForCurrentChat = (
     mode?: SideChatCreateMode,
-    provider?: ProviderId
+    provider?: ProviderId,
+    selectedParticipantId?: string
   ): ChatRecord | null => {
     if (!currentChat?.appChatId) return null
     const linked = chats
@@ -8614,7 +8625,9 @@ function App(): React.JSX.Element {
           chat.parentChatId === currentChat.appChatId &&
           chat.parentChatRelation === 'sideChat' &&
           (!mode || getSideChatMode(chat) === mode) &&
-          (!provider || getChatProvider(chat) === provider)
+          (!provider || getChatProvider(chat) === provider) &&
+          (!selectedParticipantId ||
+            getSideChatSelectedParticipantId(chat) === selectedParticipantId)
       )
       .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
     return linked[0] || null
@@ -8668,16 +8681,20 @@ function App(): React.JSX.Element {
     if (!parentChat) return null
     const sideChatMode =
       mode || (parentChat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider')
-    const selectedSideProvider =
+    const selectedSideParticipant =
       sideChatMode === 'singleProvider' && parentChat.chatKind === 'ensemble'
-        ? (
-            selectedParticipant ||
-            parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
-            parentChat.ensemble?.participants[0] ||
-            null
-          )?.provider
-        : undefined
-    const existing = findReusableSideChatForCurrentChat(sideChatMode, selectedSideProvider)
+        ? selectedParticipant ||
+          parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
+          parentChat.ensemble?.participants[0] ||
+          null
+        : null
+    const selectedSideProvider = selectedSideParticipant?.provider
+    const selectedSideParticipantId = selectedSideParticipant?.id
+    const existing = findReusableSideChatForCurrentChat(
+      sideChatMode,
+      selectedSideProvider,
+      selectedSideParticipantId
+    )
     if (existing) {
       if (presentInline) {
         openLinkedChatInSidePanel(existing, presentation)
