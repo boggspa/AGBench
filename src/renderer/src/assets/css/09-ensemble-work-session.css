@@ -512,6 +512,30 @@
   align-self: center;
 }
 
+/* Codex ensemble row ONLY — the reduced shell width left the first (centred)
+ * chip cramped against the strip's left edge while the +/- buttons kept their
+ * full 10px gaps. Tighten the row gap and group the +/- into one segmented pill
+ * (the − abuts the +, sharing the +'s right border as the divider) so the
+ * flex:1 chip strip reclaims that slack and its centred chips re-balance. No
+ * overall width change. Sibling-guarded so it only kicks in when BOTH buttons
+ * are present (e.g. not at the 12-participant cap, where the + is hidden). */
+[data-composer-style="codex"] .ensemble-above-row {
+  gap: 6px;
+}
+[data-composer-style="codex"] .ensemble-above-row
+  > .ensemble-above-add-participant:has(+ .ensemble-above-remove-participant) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+[data-composer-style="codex"] .ensemble-above-row
+  > .ensemble-above-add-participant
+  + .ensemble-above-remove-participant {
+  margin-left: -6px;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* Slice F v2 (1.0.3) — the chip wrapper is now a `<div>` (not a
  * <button>) because the chip hosts BOTH a click-to-select body
  * AND an overflow `⋯` action when selected. The inner body
