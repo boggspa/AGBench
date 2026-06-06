@@ -8762,6 +8762,22 @@ function App(): React.JSX.Element {
       sideComposerTextareaRef.current?.focus()
     })
   }
+
+  const openLinkedChatAsMain = async (chat: ChatRecord) => {
+    const inlineScrollState =
+      sideChatId === chat.appChatId
+        ? captureChatScrollState(sideTranscriptScrollRef.current)
+        : undefined
+    if (sideChatId === chat.appChatId) {
+      setSideChatId(null)
+      setSideChatMenuOpen(false)
+    }
+    await handleSelectChat(chat)
+    if (inlineScrollState) {
+      autoFollowRef.current = inlineScrollState.atBottom
+      restoreChatScrollStateWhenReady(() => transcriptScrollRef.current, inlineScrollState)
+    }
+  }
   const openLinkedChatInSidePanelRef = useRef(openLinkedChatInSidePanel)
   useEffect(() => {
     openLinkedChatInSidePanelRef.current = openLinkedChatInSidePanel
@@ -8949,7 +8965,7 @@ function App(): React.JSX.Element {
         return
       }
       if (presentation === 'main') {
-        void handleSelectChat(activeLinkedChatForParent)
+        void openLinkedChatAsMain(activeLinkedChatForParent)
         return
       }
       openLinkedChatInSidePanel(
@@ -8973,7 +8989,7 @@ function App(): React.JSX.Element {
       return
     }
     if (presentation === 'main') {
-      void handleSelectChat(linkedChat)
+      void openLinkedChatAsMain(linkedChat)
     }
   }
 
@@ -9514,7 +9530,14 @@ function App(): React.JSX.Element {
     if (!chatId) return
     const chat = chatByIdRef.current.get(chatId) || chats.find((item) => item.appChatId === chatId)
     if (chat) {
-      void handleSelectChat(chat)
+      if (
+        chat.parentChatRelation === 'sideChat' ||
+        chat.parentChatRelation === 'subThread'
+      ) {
+        void openLinkedChatAsMain(chat)
+      } else {
+        void handleSelectChat(chat)
+      }
       setShowCockpit(false)
     }
   }
@@ -17499,7 +17522,7 @@ function App(): React.JSX.Element {
                 <button
                   type="button"
                   className="side-chat-header-btn"
-                  onClick={() => void handleSelectChat(sideChat)}
+                  onClick={() => void openLinkedChatAsMain(sideChat)}
                   title="Open side chat as the main thread"
                 >
                   Open as main
@@ -17620,8 +17643,7 @@ function App(): React.JSX.Element {
               onOpenSubThread={handleOpenCockpitThread}
               onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
               onInspectRun={(runId) => {
-                void handleSelectChat(sideChat)
-                setInspectingRunId(runId)
+                void openLinkedChatAsMain(sideChat).then(() => setInspectingRunId(runId))
               }}
               compactDensity={appearance.compactDensity}
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
