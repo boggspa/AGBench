@@ -700,6 +700,7 @@ function App(): React.JSX.Element {
   const { copiedId, copy } = useCopyFeedback()
   const chatPopoutChatIdRef = useRef(getInitialChatPopoutChatId())
   const isChatPopoutWindow = Boolean(chatPopoutChatIdRef.current)
+  const isDockingChatPopoutRef = useRef(false)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   // 1.0.7 — per-provider rate table (USD per 1M tokens) for the ensemble
   // run-complete card's projected cost estimate. Hydrated once at mount from
@@ -1761,6 +1762,10 @@ function App(): React.JSX.Element {
     currentLinkedParentChat && currentChat
       ? getLinkedChatContextLabel(currentChat)
       : 'No parent context'
+  const popoutSideChatLifecycleId =
+    isChatPopoutWindow && currentChat?.parentChatRelation === 'sideChat'
+      ? currentChat.appChatId
+      : null
   const sideSplitParentChatId = sideChat?.parentChatId || null
   const setSideChatSplitWidth = (nextWidth: number) => {
     const maxWidth = getSideChatMaxWidth()
@@ -1776,6 +1781,11 @@ function App(): React.JSX.Element {
     if (!sideChatId) return
     const liveSideChat =
       chatByIdRef.current.get(sideChatId) || chats.find((chat) => chat.appChatId === sideChatId)
+    const sideChatIsMainChat = liveSideChat?.appChatId === currentChat?.appChatId
+    if (sideChatIsMainChat) {
+      setSideChatId(null)
+      return
+    }
     if (
       !liveSideChat ||
       liveSideChat.archived ||
@@ -5015,6 +5025,44 @@ function App(): React.JSX.Element {
     updateExternalPathGrants(externalPathGrants.filter((grant) => grant.path !== path))
   }
 
+  const closeSideChatPresentationRecord = (chat: ChatRecord | null | undefined) => {
+    if (!chat || chat.parentChatRelation !== 'sideChat') return
+    updateChatById(chat.appChatId, (source) =>
+      source.archived || isTerminatedSideChat(source)
+        ? source
+        : applySideChatLifecycle(source, 'closed')
+    )
+  }
+
+  useEffect(() => {
+    if (!popoutSideChatLifecycleId) return
+
+    const markPopoutSideChatClosed = () => {
+      if (isDockingChatPopoutRef.current) return
+      const liveChat = chatByIdRef.current.get(popoutSideChatLifecycleId)
+      if (
+        !liveChat ||
+        liveChat.parentChatRelation !== 'sideChat' ||
+        liveChat.archived ||
+        isTerminatedSideChat(liveChat)
+      ) {
+        return
+      }
+      const closedChat = applySideChatLifecycle(liveChat, 'closed')
+      chatByIdRef.current.set(closedChat.appChatId, closedChat)
+      setChats((prev) =>
+        prev.map((chat) => (chat.appChatId === closedChat.appChatId ? closedChat : chat))
+      )
+      void window.api.saveChat(closedChat).catch(() => {})
+    }
+
+    window.addEventListener('beforeunload', markPopoutSideChatClosed)
+    return () => {
+      window.removeEventListener('beforeunload', markPopoutSideChatClosed)
+      markPopoutSideChatClosed()
+    }
+  }, [popoutSideChatLifecycleId])
+
   // 1.0.6-EW66 — Apply a renderer-supplied drag order to the
   // additional-workspace list. `reorderExternalPathGrantsByPath`
   // rewrites each grant's per-path `order` to match `orderedPaths`;
@@ -5026,6 +5074,14 @@ function App(): React.JSX.Element {
   }
 
   const handleSelectChat = async (chat: ChatRecord) => {
+    const currentMainChat =
+      (currentChatIdRef.current
+        ? chatByIdRef.current.get(currentChatIdRef.current) ||
+          chats.find((item) => item.appChatId === currentChatIdRef.current)
+        : currentChat) || null
+    if (currentMainChat?.appChatId && currentMainChat.appChatId !== chat.appChatId) {
+      closeSideChatPresentationRecord(currentMainChat)
+    }
     const selectedChat =
       chat.parentChatRelation === 'sideChat' && !chat.archived && !isTerminatedSideChat(chat)
         ? applySideChatLifecycle(chat, 'active')
@@ -10766,11 +10822,14 @@ function App(): React.JSX.Element {
   const dockChatPopoutWindow = useCallback(
     (presentation: SidePanelPresentation) => {
       if (!isChatPopoutWindow || !currentChat?.appChatId) return
+      isDockingChatPopoutRef.current = true
       void window.api.dockSideChatPopout({
         chatId: currentChat.appChatId,
         presentation,
         draft: prompt,
         scrollState: captureChatScrollState(transcriptScrollRef.current)
+      }).catch(() => {
+        isDockingChatPopoutRef.current = false
       })
     },
     [currentChat?.appChatId, isChatPopoutWindow, prompt]
