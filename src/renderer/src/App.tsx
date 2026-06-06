@@ -690,6 +690,26 @@ function restoreChatScrollState(
   })
 }
 
+function restoreChatScrollStateWhenReady(
+  getScroller: () => HTMLElement | null | undefined,
+  scrollState: ChatScrollState | undefined,
+  attempts = 8
+): void {
+  if (!scrollState) return
+  let remainingAttempts = attempts
+  const tryRestore = () => {
+    const scroller = getScroller()
+    if (scroller) {
+      restoreChatScrollState(scroller, scrollState)
+      return
+    }
+    if (remainingAttempts <= 0) return
+    remainingAttempts -= 1
+    requestAnimationFrame(tryRestore)
+  }
+  tryRestore()
+}
+
 function chatPopoutHandoffKey(chatId: string): string {
   return `${CHAT_POPOUT_HANDOFF_PREFIX}${chatId}`
 }
@@ -3080,7 +3100,7 @@ function App(): React.JSX.Element {
         setIsThinking(runningChatIds.has(popoutChat.appChatId))
         if (popoutHandoff?.scrollState) {
           autoFollowRef.current = popoutHandoff.scrollState.atBottom
-          restoreChatScrollState(transcriptScrollRef.current, popoutHandoff.scrollState)
+          restoreChatScrollStateWhenReady(() => transcriptScrollRef.current, popoutHandoff.scrollState)
         }
         return
       }
@@ -3124,7 +3144,7 @@ function App(): React.JSX.Element {
       }
       if (popoutHandoff?.scrollState) {
         autoFollowRef.current = popoutHandoff.scrollState.atBottom
-        restoreChatScrollState(transcriptScrollRef.current, popoutHandoff.scrollState)
+        restoreChatScrollStateWhenReady(() => transcriptScrollRef.current, popoutHandoff.scrollState)
       }
     }
     const handleStorage = (event: StorageEvent) => {
@@ -8998,7 +9018,7 @@ function App(): React.JSX.Element {
         openLinkedChatInSidePanelRef.current(linkedChat, request.presentation, parentChat)
         if (dockScrollState) {
           sideAutoFollowRef.current = dockScrollState.atBottom
-          restoreChatScrollState(sideTranscriptScrollRef.current, dockScrollState)
+          restoreChatScrollStateWhenReady(() => sideTranscriptScrollRef.current, dockScrollState)
         }
       })()
     })
