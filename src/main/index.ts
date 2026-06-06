@@ -12171,6 +12171,51 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
   return { ok: true }
 }
 
+async function dockSideChatPopout(
+  sender: Electron.WebContents,
+  input: unknown
+): Promise<{ ok: true }> {
+  if (!isRecord(input)) {
+    throw new Error('Dock request is invalid.')
+  }
+  const chatId = requireNonEmptyString(input.chatId, 'Chat')
+  const presentation = input.presentation === 'drawer' ? 'drawer' : 'split'
+  const draft = typeof input.draft === 'string' ? input.draft : undefined
+  const chat = AppStore.getChat(chatId)
+  if (!chat) {
+    throw new Error('Chat does not exist.')
+  }
+  if (
+    !chat.parentChatId ||
+    (chat.parentChatRelation !== 'sideChat' && chat.parentChatRelation !== 'subThread')
+  ) {
+    throw new Error('Only linked side chats and sub-threads can be docked.')
+  }
+  const parent = AppStore.getChat(chat.parentChatId)
+  if (!parent) {
+    throw new Error('Parent chat does not exist.')
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('Main window is unavailable.')
+  }
+
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.focus()
+  safeSendToWebContents(mainWindow, 'side-chat:dock-request', {
+    chatId: chat.appChatId,
+    parentChatId: parent.appChatId,
+    presentation,
+    ...(draft !== undefined ? { draft } : {})
+  })
+
+  const sourceWindow = BrowserWindow.fromWebContents(sender)
+  if (sourceWindow && sourceWindow !== mainWindow && !sourceWindow.isDestroyed()) {
+    sourceWindow.close()
+  }
+  return { ok: true }
+}
+
 if (isGeminiMcpBridgeProcess) {
   startGeminiMcpBridgeProcess()
 } else {
@@ -15637,6 +15682,10 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle('open-workspace-popout', async (_, input: unknown) => {
       return openWorkspacePopout(input)
+    })
+
+    ipcMain.handle('dock-side-chat-popout', async (event, input: unknown) => {
+      return dockSideChatPopout(event.sender, input)
     })
 
     ipcMain.handle('app:quit', async () => {

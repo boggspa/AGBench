@@ -242,6 +242,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'resize-gemini-session': ['number', 'number'],
   'get-diff': ['workspacePath'],
   'open-workspace-popout': ['object'],
+  'dock-side-chat-popout': ['object'],
   'wake-ensemble-participant-now': ['string'],
   'cancel-ensemble-participant-wakeup': ['string'],
   'get-workspace-change-sets': ['optionalObject'],

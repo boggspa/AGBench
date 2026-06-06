@@ -4861,6 +4861,10 @@ function App(): React.JSX.Element {
     setShowFallbackUX(false)
     setIsThinking(runningChatIds.has(chat.appChatId))
   }
+  const handleSelectChatRef = useRef(handleSelectChat)
+  useEffect(() => {
+    handleSelectChatRef.current = handleSelectChat
+  })
 
   useEffect(() => {
     const transcript = appTranscriptRef.current
@@ -8202,6 +8206,10 @@ function App(): React.JSX.Element {
       sideComposerTextareaRef.current?.focus()
     })
   }
+  const openLinkedChatInSidePanelRef = useRef(openLinkedChatInSidePanel)
+  useEffect(() => {
+    openLinkedChatInSidePanelRef.current = openLinkedChatInSidePanel
+  })
 
   const ensureSideChatForCurrentChat = async (
     seedPrompt = '',
@@ -8287,6 +8295,55 @@ function App(): React.JSX.Element {
     }
     openLinkedChatInSidePanel(chat, 'split', parentChat)
   }
+
+  useEffect(() => {
+    if (isChatPopoutWindow || typeof window.api.onSideChatDockRequest !== 'function') return
+    const unsubscribe = window.api.onSideChatDockRequest((request) => {
+      void (async () => {
+        let linkedChat =
+          chatByIdRef.current.get(request.chatId) ||
+          (await window.api.getChat(request.chatId)) ||
+          null
+        if (
+          !linkedChat ||
+          linkedChat.parentChatId !== request.parentChatId ||
+          (linkedChat.parentChatRelation !== 'sideChat' &&
+            linkedChat.parentChatRelation !== 'subThread')
+        ) {
+          return
+        }
+        const parentChat =
+          chatByIdRef.current.get(request.parentChatId) ||
+          (await window.api.getChat(request.parentChatId)) ||
+          null
+        if (!parentChat) return
+
+        chatByIdRef.current.set(parentChat.appChatId, parentChat)
+        chatByIdRef.current.set(linkedChat.appChatId, linkedChat)
+        setChats((prev) => {
+          let next = prev
+          for (const record of [parentChat, linkedChat]) {
+            const idx = next.findIndex((chat) => chat.appChatId === record.appChatId)
+            if (idx < 0) {
+              next = [record, ...next]
+              continue
+            }
+            if (next === prev) next = prev.slice()
+            next[idx] = record
+          }
+          return next
+        })
+        if (typeof request.draft === 'string') {
+          setChatPromptDraft(linkedChat.appChatId, request.draft)
+        }
+        if (currentChatIdRef.current !== parentChat.appChatId) {
+          await handleSelectChatRef.current(parentChat)
+        }
+        openLinkedChatInSidePanelRef.current(linkedChat, request.presentation, parentChat)
+      })()
+    })
+    return unsubscribe
+  }, [isChatPopoutWindow, setChatPromptDraft])
 
   const handleSideRun = () => {
     if (!sideChat || !sidePrompt.trim()) return
@@ -10194,6 +10251,18 @@ function App(): React.JSX.Element {
       workspacePath: currentChat.workspacePath
     })
   }, [currentChat?.appChatId, currentChat?.workspacePath])
+
+  const dockChatPopoutWindow = useCallback(
+    (presentation: SidePanelPresentation) => {
+      if (!isChatPopoutWindow || !currentChat?.appChatId) return
+      void window.api.dockSideChatPopout({
+        chatId: currentChat.appChatId,
+        presentation,
+        draft: prompt
+      })
+    },
+    [currentChat?.appChatId, isChatPopoutWindow, prompt]
+  )
 
   const keyboardActionsRef = useRef({
     clearImagePermissions,
@@ -12511,6 +12580,24 @@ function App(): React.JSX.Element {
     'Inspectors',
     'Custom'
   ]
+  const isLinkedChatPopout = Boolean(
+    isChatPopoutWindow &&
+      currentChat?.parentChatId &&
+      (currentChat.parentChatRelation === 'sideChat' ||
+        currentChat.parentChatRelation === 'subThread')
+  )
+  const chatPopoutParentChat =
+    isLinkedChatPopout && currentChat?.parentChatId
+      ? chatByIdRef.current.get(currentChat.parentChatId) ||
+        chats.find((chat) => chat.appChatId === currentChat.parentChatId) ||
+        null
+      : null
+  const chatPopoutKindLabel =
+    currentChat?.parentChatRelation === 'subThread'
+      ? 'Agent sub-thread'
+      : currentChat?.chatKind === 'ensemble'
+        ? 'Side ensemble'
+        : 'Side chat'
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
     ? `side-chat-open side-chat-layout-${sidePanelPresentation}`
@@ -12544,7 +12631,9 @@ function App(): React.JSX.Element {
       <div
         className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass} ${
           isChatPopoutWindow ? 'chat-popout-main' : ''
-        } ${isSideSplitOpen ? 'side-chat-open' : ''}`}
+        } ${isLinkedChatPopout ? 'chat-popout-linked-main' : ''} ${
+          isSideSplitOpen ? 'side-chat-open' : ''
+        }`}
         style={appMainStyle}
       >
         {showWorkspaceSidebar && !isChatPopoutWindow && (
@@ -12775,6 +12864,36 @@ function App(): React.JSX.Element {
               onTogglePinWorkspace={handleTogglePinWorkspace}
               usageSummary={usageSummary}
             />
+          </div>
+        )}
+
+        {isLinkedChatPopout && currentChat && (
+          <div className="chat-popout-dock-toolbar" role="banner">
+            <div className="chat-popout-dock-title">
+              <span>{chatPopoutKindLabel}</span>
+              <strong title={currentChat.title}>{currentChat.title}</strong>
+              <small title={chatPopoutParentChat?.title || undefined}>
+                Parent: {chatPopoutParentChat?.title || 'linked chat'}
+              </small>
+            </div>
+            <div className="chat-popout-dock-actions">
+              <button
+                type="button"
+                className="side-chat-header-btn"
+                onClick={() => dockChatPopoutWindow('split')}
+                title="Dock this linked chat into the main pane split"
+              >
+                Dock split
+              </button>
+              <button
+                type="button"
+                className="side-chat-header-btn"
+                onClick={() => dockChatPopoutWindow('drawer')}
+                title="Dock this linked chat into the side drawer"
+              >
+                Dock drawer
+              </button>
+            </div>
           </div>
         )}
 

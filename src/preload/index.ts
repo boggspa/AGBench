@@ -220,6 +220,11 @@ const api = {
       | { kind: 'chat'; chatId: string; workspacePath?: string }
   ) =>
     ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
+  dockSideChatPopout: (input: {
+    chatId: string
+    presentation?: 'split' | 'drawer'
+    draft?: string
+  }) => ipcRenderer.invoke('dock-side-chat-popout', input) as Promise<{ ok: true }>,
   quitApp: () => ipcRenderer.invoke('app:quit') as Promise<boolean>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
   readWorkspaceFile: (workspace: string, path: string) =>
@@ -794,6 +799,26 @@ const api = {
     ipcRenderer.on('workspace-popout-refresh', wrapped)
     return () => ipcRenderer.removeListener('workspace-popout-refresh', wrapped)
   },
+  onSideChatDockRequest: (
+    callback: (payload: {
+      chatId: string
+      parentChatId: string
+      presentation: 'split' | 'drawer'
+      draft?: string
+    }) => void
+  ) => {
+    const wrapped = (
+      _event: unknown,
+      payload: {
+        chatId: string
+        parentChatId: string
+        presentation: 'split' | 'drawer'
+        draft?: string
+      }
+    ): void => callback(payload)
+    ipcRenderer.on('side-chat:dock-request', wrapped)
+    return () => ipcRenderer.removeListener('side-chat:dock-request', wrapped)
+  },
   // Phase K3 — creative-app approval flow. Main process broadcasts
   // pending requests; renderer modal renders + collects decision.
   onCreativeActionRequest: (callback: (payload: unknown) => void) => {
@@ -826,6 +851,7 @@ const api = {
     ipcRenderer.removeAllListeners('chat-updated')
     ipcRenderer.removeAllListeners('app-shell-stats-changed')
     ipcRenderer.removeAllListeners('workspace-popout-refresh')
+    ipcRenderer.removeAllListeners('side-chat:dock-request')
     ipcRenderer.removeAllListeners('creative-action:request')
   }
 }

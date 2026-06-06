@@ -425,6 +425,11 @@ declare global {
         chatId: string
         workspacePath?: string
       }) => Promise<{ ok: true }>
+      dockSideChatPopout: (input: {
+        chatId: string
+        presentation?: 'split' | 'drawer'
+        draft?: string
+      }) => Promise<{ ok: true }>
       quitApp: () => Promise<boolean>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
       readWorkspaceFile: (workspace: string, path: string) => Promise<WorkspaceFileReadResult>
@@ -947,6 +952,14 @@ declare global {
       onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void
       onWorkspacePopoutRefresh: (
         callback: (payload: { workspacePath: string; reason: string }) => void
+      ) => () => void
+      onSideChatDockRequest: (
+        callback: (payload: {
+          chatId: string
+          parentChatId: string
+          presentation: 'split' | 'drawer'
+          draft?: string
+        }) => void
       ) => () => void
       onCreativeActionRequest: (
         callback: (payload: {
