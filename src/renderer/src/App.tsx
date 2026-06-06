@@ -8694,25 +8694,41 @@ function App(): React.JSX.Element {
     }
   }
 
+  const resolveCurrentLinkedParentChat = async (): Promise<ChatRecord | null> => {
+    if (!currentChatIsLinkedChild || !currentChat?.parentChatId) return null
+    const parentChat =
+      currentLinkedParentChat || (await window.api.getChat(currentChat.parentChatId)) || null
+    if (!parentChat) return null
+    chatByIdRef.current.set(parentChat.appChatId, parentChat)
+    setChats((prev) => {
+      const index = prev.findIndex((chat) => chat.appChatId === parentChat.appChatId)
+      if (index < 0) return [parentChat, ...prev]
+      return prev.map((chat) => (chat.appChatId === parentChat.appChatId ? parentChat : chat))
+    })
+    return parentChat
+  }
+
   const openCurrentSideChatPresentation = async (
     presentation: SidePanelPresentation | 'popout' | 'main',
     mode?: SideChatCreateMode
   ) => {
     setSideChatMenuOpen(false)
-    if (currentChat && currentLinkedParentChat) {
+    if (currentChat && currentChatIsLinkedChild) {
+      const linkedParentChat = await resolveCurrentLinkedParentChat()
+      if (!linkedParentChat) return
       if (presentation === 'popout') {
         skipCloseSideChatPresentationIdRef.current = currentChat.appChatId
         popOutLinkedChat(currentChat)
-        await handleSelectChat(currentLinkedParentChat)
+        await handleSelectChat(linkedParentChat)
         return
       }
       if (presentation === 'main') {
         return
       }
-      if (currentChatIdRef.current !== currentLinkedParentChat.appChatId) {
-        await handleSelectChat(currentLinkedParentChat)
+      if (currentChatIdRef.current !== linkedParentChat.appChatId) {
+        await handleSelectChat(linkedParentChat)
       }
-      openLinkedChatInSidePanel(currentChat, presentation, currentLinkedParentChat)
+      openLinkedChatInSidePanel(currentChat, presentation, linkedParentChat)
       return
     }
     const linkedChat = await ensureSideChatForCurrentChat(
@@ -9910,7 +9926,7 @@ function App(): React.JSX.Element {
   const tryHandleSideSlashSubmit = (): boolean => {
     const sideSeedPrompt = parseSideSlashPrompt(prompt)
     if (sideSeedPrompt === null) return false
-    if (currentChat && currentLinkedParentChat) {
+    if (currentChat && currentChatIsLinkedChild) {
       setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
       void openCurrentSideChatPresentation('split')
     } else {
@@ -13070,7 +13086,7 @@ function App(): React.JSX.Element {
       group: 'Custom',
       run: () => {
         const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
-        if (currentChat && currentLinkedParentChat) {
+        if (currentChat && currentChatIsLinkedChild) {
           setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
           void openCurrentSideChatPresentation('split')
         } else {
