@@ -13212,6 +13212,12 @@ function App(): React.JSX.Element {
                         onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
                         createPrState={getCreatePrState(group.path)}
                         onCreatePr={() => handleCreateGithubPr(group.path)}
+                        onReviewChanges={() =>
+                          void window.api.openWorkspacePopout({
+                            kind: 'diff-studio',
+                            workspacePath: group.path
+                          })
+                        }
                       />
                     ))}
                   </>

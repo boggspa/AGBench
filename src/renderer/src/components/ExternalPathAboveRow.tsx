@@ -21,7 +21,9 @@ import type { ExternalPathGrant } from '../../../main/store/types'
 import type { ExternalPathGitMetadata } from '../lib/ExternalPathRepoDetect'
 import { describeExternalPath } from '../lib/ExternalPathRepoDetect'
 import { getProviderName } from './Sidebar'
+import { useState } from 'react'
 import { branchTone, GitMergeBadge, GitSyncChip } from './GitStatusChips'
+import { GitCommitControls } from './GitCommitControls'
 import type { GitRepositorySnapshot } from '../../../main/services/GitService'
 
 /**
@@ -116,6 +118,8 @@ interface ExternalPathAboveRowProps {
    */
   createPrState?: { status: 'idle' | 'pending' | 'success' | 'error'; message?: string }
   onCreatePr?: (grant: ExternalPathGrant) => void
+  /** Per-path "Review changes" — opens Diff Studio scoped to this path. */
+  onReviewChanges?: () => void
 }
 
 function BranchGlyph(): React.JSX.Element {
@@ -176,6 +180,44 @@ function RevokeGlyph(): React.JSX.Element {
   )
 }
 
+function ReadGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="7" cy="7" r="4.3" />
+      <path d="M10.3 10.3L14 14" />
+    </svg>
+  )
+}
+
+function WriteGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M11.5 2.5l2 2" />
+      <path d="M3 13l1-3 7.5-7.5 2 2L6 12z" />
+    </svg>
+  )
+}
+
 export function ExternalPathAboveRow({
   grant,
   access,
@@ -185,7 +227,8 @@ export function ExternalPathAboveRow({
   diffStats,
   onRevoke,
   createPrState,
-  onCreatePr
+  onCreatePr,
+  onReviewChanges
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
   // Union access (write if ANY provider for this path can write) drives the
@@ -196,7 +239,10 @@ export function ExternalPathAboveRow({
   // Create-PR action matching the primary workspace row, scoped to
   // this grant's path. Mirror the primary's label/state machine.
   const prStatus = createPrState?.status ?? 'idle'
-  const showCreatePr = isWrite && descriptor.isRepo && typeof onCreatePr === 'function'
+  // First-class: every connected repo row gets the full action set (not just
+  // write-access Create-PR). The read/write distinction now lives in the
+  // compact access icon instead.
+  const showRepoActions = descriptor.isRepo && typeof onCreatePr === 'function'
   const createPrLabel =
     prStatus === 'pending'
       ? 'Creating…'
@@ -212,6 +258,23 @@ export function ExternalPathAboveRow({
   // separate variable is no longer needed.
   const hasDiff =
     diffStats && (diffStats.filesChanged > 0 || diffStats.additions > 0 || diffStats.deletions > 0)
+  // Context-aware headline + per-row commit/push/PR menu, mirroring the primary
+  // workspace row (Review changes → Push/Publish → Create PR).
+  const [diffMenuOpen, setDiffMenuOpen] = useState(false)
+  const needsPush = Boolean(
+    snapshot &&
+      !snapshot.detached &&
+      snapshot.branch &&
+      snapshot.remoteUrl &&
+      (!snapshot.upstream || (snapshot.ahead ?? 0) > 0)
+  )
+  const actionLabel = hasDiff
+    ? 'Review changes'
+    : needsPush
+      ? snapshot && !snapshot.upstream
+        ? 'Publish branch'
+        : 'Push'
+      : createPrLabel
   // 1.0.5-EW42b — Build a rich tooltip that explains what created
   // this grant (composer-proactive vs. agent-approval vs. legacy
   // manual picker), which provider it's scoped to, and when it
@@ -275,26 +338,45 @@ export function ExternalPathAboveRow({
         </>
       )}
       {snapshot && <GitSyncChip snapshot={snapshot} />}
-      <span className="composer-above-bar-secondary-access" title={originTooltip}>
-        {isWrite ? 'edit access' : 'read access'}
+      <span
+        className="composer-above-bar-secondary-access composer-above-bar-secondary-access-icon"
+        title={`${isWrite ? 'Edit' : 'Read'} access — ${originTooltip}`}
+        aria-label={isWrite ? 'Edit access' : 'Read access'}
+      >
+        {isWrite ? <WriteGlyph /> : <ReadGlyph />}
       </span>
-      {showCreatePr && (
-        <button
-          type="button"
-          className={`composer-above-bar-action ${prStatus === 'pending' ? 'is-pending' : ''} ${
-            prStatus === 'error' ? 'is-error' : ''
-          } ${prStatus === 'success' ? 'is-success' : ''}`}
-          onClick={() => onCreatePr?.(grant)}
-          disabled={prStatus === 'pending'}
-          title={
-            createPrState?.message ||
-            `Run \`gh pr create --fill\` against ${descriptor.basename}${
-              descriptor.branch ? ` (${descriptor.branch})` : ''
-            }`
-          }
-        >
-          {createPrLabel}
-        </button>
+      {showRepoActions && (
+        <span className="composer-diff-action-menu-wrap">
+          <button
+            type="button"
+            className={`composer-above-bar-action ${prStatus === 'pending' ? 'is-pending' : ''} ${
+              prStatus === 'error' ? 'is-error' : ''
+            } ${prStatus === 'success' ? 'is-success' : ''}`}
+            onClick={() => setDiffMenuOpen((open) => !open)}
+            disabled={prStatus === 'pending'}
+            aria-haspopup="menu"
+            aria-expanded={diffMenuOpen}
+            title={
+              createPrState?.message ||
+              `Review, commit, push, or open a PR for ${descriptor.basename}`
+            }
+          >
+            {actionLabel}
+          </button>
+          {diffMenuOpen && (
+            <div className="composer-diff-action-menu" role="menu">
+              <GitCommitControls
+                workspacePath={grant.path}
+                open={diffMenuOpen}
+                hasReviewableDiff={Boolean(hasDiff)}
+                onReviewChanges={() => onReviewChanges?.()}
+                onClose={() => setDiffMenuOpen(false)}
+                onCreatePr={() => onCreatePr?.(grant)}
+                prState={createPrState ?? { status: 'idle' }}
+              />
+            </div>
+          )}
+        </span>
       )}
       <button
         type="button"
