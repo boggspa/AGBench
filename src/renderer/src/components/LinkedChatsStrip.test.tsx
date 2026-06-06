@@ -87,7 +87,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Scratch beside parent')
     expect(html).toContain('Active')
     expect(html).toContain('Single provider')
-    expect(html).toContain('Seeded from message')
+    expect(html).toContain('Seeded from selected message')
     expect(html).toContain('Agent sub-thread')
     expect(html).toContain('Investigate tests')
     expect(html).toContain('Delegated agent')

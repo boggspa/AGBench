@@ -182,7 +182,7 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Reviewer branch')
     expect(html).toContain('Side chat')
     expect(html).toContain('Participant: Reviewer')
-    expect(html).toContain('Seeded from message')
+    expect(html).toContain('Seeded from selected message')
     expect(html).toContain('Closed')
   })
 
