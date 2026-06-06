@@ -296,7 +296,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // roster + self-label use.
   const transcript = buildTaggedTranscript(
     input.chat.messages || [],
-    input.chatContextTurns || 8,
+    input.chatContextTurns || 6, // matches DEFAULT_CONTEXT_TURNS (was a stray 8)
     participantTokens
   )
 
