@@ -161,6 +161,40 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('No parent context')
   })
 
+  it('labels participant-dedicated side chats with the selected participant', () => {
+    const parent = makeChat()
+    const participantSideChat = makeChat({
+      appChatId: 'participant-side-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'codex',
+      title: 'Reviewer branch',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'active',
+        mode: 'singleProvider',
+        transcriptVisibility: 'none'
+      },
+      providerMetadata: {
+        sideChatSelectedParticipantId: 'reviewer-codex',
+        sideChatSelectedParticipantRole: 'Reviewer'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, participantSideChat]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('Side chat')
+    expect(html).toContain('Reviewer branch')
+    expect(html).toContain('Participant: Reviewer')
+  })
+
   it('renders nothing without linked children', () => {
     const parent = makeChat()
     const html = renderToStaticMarkup(

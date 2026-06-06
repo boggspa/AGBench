@@ -520,6 +520,12 @@ function getSideChatSelectedParticipantId(chat: ChatRecord): string {
   return typeof value === 'string' ? value : ''
 }
 
+function getSideChatSelectedParticipantLabel(chat: ChatRecord): string {
+  const value = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY]
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return getSideChatSelectedParticipantId(chat) ? getProviderLabel(getChatProvider(chat)) : ''
+}
+
 function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
 }
@@ -539,6 +545,8 @@ function getSideChatModeLabel(chat: ChatRecord): string {
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return 'Parallel fan-out'
   if (mode === 'ensembleClone') return 'Ensemble clone'
+  const participantLabel = getSideChatSelectedParticipantLabel(chat)
+  if (participantLabel) return `Participant: ${participantLabel}`
   return 'Single provider'
 }
 
@@ -547,6 +555,10 @@ function getSideChatModeDescription(chat: ChatRecord): string {
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return 'Participants answer in parallel from this linked side thread.'
   if (mode === 'ensembleClone') return 'A linked ensemble clone with the parent participants.'
+  const participantLabel = getSideChatSelectedParticipantLabel(chat)
+  if (participantLabel) {
+    return `A dedicated side chat with ${participantLabel}, isolated from the parent transcript.`
+  }
   return 'A linked provider chat with isolated context.'
 }
 

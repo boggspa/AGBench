@@ -2,6 +2,9 @@ import { useState } from 'react'
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
 import { isSubThreadChat } from '../lib/chatScope'
 
+const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
+const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
+
 interface LinkedChatsStripProps {
   currentChat: ChatRecord | null
   chats: ChatRecord[]
@@ -33,9 +36,19 @@ function linkedKindLabel(chat: ChatRecord): string {
 function linkedModeLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation !== 'sideChat') return 'Delegated agent'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
-  if (chat.sideChatContext?.mode === 'singleProvider') return 'Single provider'
+  if (chat.sideChatContext?.mode === 'singleProvider') {
+    const participantLabel = linkedParticipantLabel(chat)
+    return participantLabel ? `Participant: ${participantLabel}` : 'Single provider'
+  }
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out'
   return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+}
+
+function linkedParticipantLabel(chat: ChatRecord): string {
+  const roleValue = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY]
+  if (typeof roleValue === 'string' && roleValue.trim()) return roleValue.trim()
+  const idValue = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
+  return typeof idValue === 'string' && idValue.trim() ? providerLabel(chat.provider) : ''
 }
 
 function linkedContextLabel(chat: ChatRecord): string {
