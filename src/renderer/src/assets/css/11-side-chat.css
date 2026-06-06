@@ -551,6 +551,18 @@ body.is-resizing-side-chat * {
   font-weight: 650;
 }
 
+.side-chat-welcome-context {
+  display: inline-flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.side-chat-welcome-context .side-chat-context-chip {
+  max-width: min(220px, 100%);
+}
+
 .side-chat-welcome-chain {
   display: flex;
   justify-content: center;

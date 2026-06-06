@@ -17249,6 +17249,14 @@ function App(): React.JSX.Element {
                 <span className="side-chat-welcome-parent">
                   Parent: {sidePanelParentChat?.title || 'Parent chat'}
                 </span>
+                <span className="side-chat-welcome-context">
+                  <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
+                  {sidePanelModeLabel && (
+                    <span className="side-chat-context-chip side-chat-mode-chip">
+                      {sidePanelModeLabel}
+                    </span>
+                  )}
+                </span>
                 {sideChat.chatKind === 'ensemble' && sideChat.ensemble?.participants?.length ? (
                   <div className="side-chat-welcome-chain" aria-label="Ensemble participants">
                     {[...(sideChat.ensemble.participants || [])]
