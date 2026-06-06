@@ -8775,7 +8775,10 @@ function App(): React.JSX.Element {
       sideChatId === chat.appChatId
         ? captureChatScrollState(sideTranscriptScrollRef.current)
         : undefined
-    if (sideChatId === chat.appChatId) {
+    if (sideChatId) {
+      if (sideChat?.appChatId && sideChat.appChatId !== chat.appChatId) {
+        closeSideChatPresentationRecord(sideChat)
+      }
       setSideChatId(null)
       setSideChatMenuOpen(false)
     }
