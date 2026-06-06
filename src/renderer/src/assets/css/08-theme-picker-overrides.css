@@ -8587,11 +8587,30 @@
   > * {
   margin-left: 0;
 }
+/* Three-zone layout: [branch] … [files+diff centered] … [sync · action/access · ×].
+ * Two margin-left:auto points do it — one on the files cluster (centers it in the
+ * free space) and one on the sync chip (starts the right-hand group so "no
+ * upstream / ↑N" sits next to Create PR / Read Access). */
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar
+  > .composer-above-bar-files,
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  > .composer-above-bar-files-cluster {
+  margin-left: auto;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar
+  > .git-status-push {
+  margin-left: auto;
+}
+/* Fallback when the branch is synced (no sync chip): anchor the right group on
+ * the action / access pill instead, so the files cluster still centers. */
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar:not(:has(.git-status-push))
   > .composer-diff-action-menu-wrap,
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > .composer-above-bar
+  > .composer-above-bar:not(:has(.git-status-push))
   > .composer-above-bar-secondary-access {
   margin-left: auto;
 }
