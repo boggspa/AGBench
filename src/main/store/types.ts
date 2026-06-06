@@ -808,6 +808,12 @@ export interface EnsembleConfig {
    * existing structure. */
   roundMode?: EnsembleRoundMode
   maxContinuationHops?: number
+  /**
+   * Per-ensemble shared-transcript char budget (5K–500K), set via the Turn
+   * picker. Drives how much recent panel history each participant prompt carries
+   * (buildTaggedTranscript). Undefined falls back to the default cap.
+   */
+  ensembleContextChars?: number
   participants: EnsembleParticipant[]
   sessionActivityLedger?: SessionActivityLedgerEntry[]
   activeRound?: EnsembleRoundState

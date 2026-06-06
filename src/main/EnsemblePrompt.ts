@@ -297,7 +297,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   const transcript = buildTaggedTranscript(
     input.chat.messages || [],
     input.chatContextTurns || 6, // matches DEFAULT_CONTEXT_TURNS (was a stray 8)
-    participantTokens
+    participantTokens,
+    input.config.ensembleContextChars
   )
 
   return [
@@ -659,14 +660,31 @@ export function buildParticipantTokenMap(
 function buildTaggedTranscript(
   messages: ChatMessage[],
   contextTurns: number,
-  participantTokens?: Map<string, string>
+  participantTokens?: Map<string, string>,
+  contextChars?: number
 ): string {
-  const relevant = messages
-    .filter((message) => message.role !== 'tool')
-    .slice(-Math.max(1, contextTurns * 2))
+  // Total shared-transcript char budget — user-adjustable per ensemble
+  // (5K–500K via the Turn picker); falls back to the default cap. This is the
+  // real lever: it drives BOTH how many recent messages we walk and the hard
+  // cap, so a bigger budget genuinely surfaces more panel history rather than
+  // being silently capped by the turn-count.
+  const maxChars = Math.min(500_000, Math.max(5_000, contextChars ?? MAX_TRANSCRIPT_CHARS))
+  // The default budget keeps the historical turn-window (contextTurns*2). A
+  // raised budget widens the window enough to actually fill it (~600 chars/line
+  // estimate), floored at the turn-window.
+  const baseWindow = Math.max(1, contextTurns * 2)
+  const windowSize =
+    maxChars > MAX_TRANSCRIPT_CHARS ? Math.max(baseWindow, Math.ceil(maxChars / 600)) : baseWindow
+  const relevant = messages.filter((message) => message.role !== 'tool').slice(-windowSize)
+  // Fill from the MOST RECENT message backward so the budget keeps recent
+  // context and truncation drops the OLDEST, not the newest. Output stays
+  // chronological (unshift). For a non-truncated window this is identical to the
+  // previous forward fill.
   const lines: string[] = []
   let used = 0
-  for (const message of relevant) {
+  let truncated = false
+  for (let i = relevant.length - 1; i >= 0; i--) {
+    const message = relevant[i]
     const tag = messageTag(message, participantTokens)
     // M6 (1.0.7) — thinking-ephemerality. Strip any inlined reasoning chain
     // from a message authored by an ephemeral-reasoning provider before it
@@ -686,12 +704,15 @@ function buildTaggedTranscript(
     const trace = formatToolTraceSummary(message.toolActivities)
     const body = trace ? `${trace}\n${text}` : text
     const line = `[${tag}]\n${body}`
-    used += line.length
-    if (used > MAX_TRANSCRIPT_CHARS) {
-      lines.push('[Transcript truncated to fit Ensemble V1 context budget.]')
+    if (used + line.length > maxChars && lines.length > 0) {
+      truncated = true
       break
     }
-    lines.push(line)
+    used += line.length
+    lines.unshift(line)
+  }
+  if (truncated) {
+    lines.unshift('[Transcript truncated to fit Ensemble V1 context budget.]')
   }
   return lines.join('\n\n')
 }
