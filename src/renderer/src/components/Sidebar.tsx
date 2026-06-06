@@ -103,7 +103,7 @@ interface SidebarProps {
   onNewEnsemble: () => void
   ensembleModeEnabled?: boolean
   onSelectChat: (chat: ChatRecord) => void
-  onOpenChatInSidePanel?: (chat: ChatRecord) => void
+  onOpenChatInSidePanel?: (chat: ChatRecord, presentation?: 'split' | 'drawer') => void
   onOpenSettings: () => void
   /** Live update snapshot + opener for the masthead update pill. The pill
    * renders only when an update is actionable, so the sidebar stays clean at
@@ -1910,7 +1910,13 @@ export function Sidebar({
         id: 'open-side-panel',
         label: 'Open beside parent',
         group: 'primary',
-        onSelect: () => onOpenChatInSidePanel(chat)
+        onSelect: () => onOpenChatInSidePanel(chat, 'split')
+      })
+      items.push({
+        id: 'open-side-drawer',
+        label: 'Open drawer beside parent',
+        group: 'primary',
+        onSelect: () => onOpenChatInSidePanel(chat, 'drawer')
       })
     }
     if (onDeleteChat) {

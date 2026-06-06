@@ -8965,7 +8965,10 @@ function App(): React.JSX.Element {
     openLinkedChatInSidePanel(chat, presentation)
   }
 
-  const handleOpenLinkedChatInSidePanelFromSidebar = async (chat: ChatRecord) => {
+  const handleOpenLinkedChatInSidePanelFromSidebar = async (
+    chat: ChatRecord,
+    presentation: SidePanelPresentation = 'split'
+  ) => {
     const parentChat = chat.parentChatId
       ? chatByIdRef.current.get(chat.parentChatId) ||
         chats.find((item) => item.appChatId === chat.parentChatId) ||
@@ -8975,7 +8978,7 @@ function App(): React.JSX.Element {
     if (currentChat?.appChatId !== parentChat.appChatId) {
       await handleSelectChat(parentChat)
     }
-    openLinkedChatInSidePanel(chat, 'split', parentChat)
+    openLinkedChatInSidePanel(chat, presentation, parentChat)
   }
 
   useEffect(() => {
@@ -13541,8 +13544,8 @@ function App(): React.JSX.Element {
                 onNewEnsemble={handleNewEnsemble}
                 ensembleModeEnabled={isEnsembleModeEnabled}
                 onSelectChat={handleSelectChat}
-                onOpenChatInSidePanel={(chat) =>
-                  void handleOpenLinkedChatInSidePanelFromSidebar(chat)
+                onOpenChatInSidePanel={(chat, presentation) =>
+                  void handleOpenLinkedChatInSidePanelFromSidebar(chat, presentation)
                 }
                 onOpenSettings={() => setShowSettings(true)}
                 updateSnapshot={updateStatus.snapshot}
