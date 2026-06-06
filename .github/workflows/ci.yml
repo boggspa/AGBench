@@ -113,6 +113,8 @@ jobs:
     name: Unsigned Windows Build (testing)
     runs-on: windows-latest
     if: github.event_name == 'workflow_dispatch' && inputs.windows_release_tag != ''
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
