@@ -845,12 +845,7 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  /* Wrap chips to a tidy second line when the row is too narrow (notably the
-   * Codex shell, which gives the above-bar less width) instead of overflowing /
-   * clipping. Wider shells fit on one line, so this is a no-op there. */
-  flex-wrap: wrap;
   gap: 10px;
-  row-gap: 6px;
   /* Match the bubble width so the bar reads as a paired header — like the
    * native Claude / Codex composers where status + actions span the bubble. */
   width: 100%;

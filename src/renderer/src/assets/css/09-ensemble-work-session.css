@@ -1045,8 +1045,8 @@
  * darker contrasting surface). The purple accent moves to the
  * border only, kept subtle so it doesn't fight the bright base. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) {
-  background: var(--surface-2);
-  border-color: color-mix(in srgb, #8c80ff 22%, var(--surface-border));
+  background: #e3e3e9;
+  border-color: color-mix(in srgb, #000000 12%, transparent);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 
