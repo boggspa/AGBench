@@ -133,18 +133,20 @@ describe('buildGrokCliArgs', () => {
     }
   })
 
-  it('G5c — file-write mode (non-plan): acceptEdits, Edit/Write allowed, Bash still denied', () => {
+  it('G5c — file-write mode (non-plan): acceptEdits, Edit/Write/Bash all allowed (no deny rules)', () => {
     const args = buildGrokCliArgs({ ...base, approvalMode: 'default' })
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
-    // Edit/Write are NO LONGER denied (they're applied + diff-reviewed).
+    // Edit/Write are applied + diff-reviewed; Bash is now ALSO allowed in write
+    // mode (user-enabled perms — a denied Bash hard-cancelled the turn with no
+    // answer). Nothing is denied in write mode any more.
     expect(args).not.toContain('Edit(*)')
     expect(args).not.toContain('Write(*)')
-    // Native shell stays denied — TaskWraith can't mediate Grok's Bash headless.
+    expect(args).not.toContain('Bash(*)')
     const denied = args
       .map((value, index) => (value === '--deny' ? args[index + 1] : null))
       .filter((value): value is string => value !== null)
     expect(denied).toEqual([...GROK_WRITE_MODE_DENY_RULES])
-    expect(denied).toEqual(['Bash(*)'])
+    expect(denied).toEqual([])
   })
 
   it('G5c — write mode NEVER emits --always-approve (no auto-approve escape hatch)', () => {

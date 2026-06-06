@@ -37,7 +37,12 @@ export const GROK_READ_ONLY_DENY_RULES = ['Bash(*)', 'Edit(*)', 'Write(*)'] as c
  * without an MCP server, and 0.2.8 has no per-run `--mcp-config`. Shell
  * mediation is the ACP path (G5c-ACP: TaskWraith MCP + approval ledger).
  */
-export const GROK_WRITE_MODE_DENY_RULES = ['Bash(*)'] as const
+// Write mode now allows Bash too: a write-capable Grok turn that runs a shell
+// command was hitting this deny and HARD-CANCELLING with no answer (stopReason
+// Cancelled, 0 output). Since the user opted into write permissions, Grok's Bash
+// runs unmediated in write mode (Edit/Write remain diff-reviewed via TaskWraith).
+// Was ['Bash(*)'].
+export const GROK_WRITE_MODE_DENY_RULES = [] as const
 
 /** True when the approval mode permits writes (anything other than read-only plan). */
 export function grokWriteCapable(approvalMode: string | null | undefined): boolean {

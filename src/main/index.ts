@@ -5327,7 +5327,14 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   // G6 — pass the prior session id so follow-up turns resume the same Grok
   // session (captured from the previous turn's terminal event).
   const args = buildGrokCliArgs({
-    prompt: payload.prompt,
+    // Steer a read-only Grok turn to answer directly instead of presenting a
+    // plan / attempting a denied tool, which otherwise hard-cancels the turn
+    // with no answer. No-op for write-capable turns (the preamble returns the
+    // prompt unchanged) — parity with the ACP path.
+    prompt: applyGrokReadOnlyPromptPreamble(
+      payload.prompt,
+      !grokWriteCapable(payload.approvalMode)
+    ),
     workspace: payload.workspace!,
     model: payload.model,
     reasoningEffort: payload.reasoningEffort,
