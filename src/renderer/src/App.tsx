@@ -78,7 +78,7 @@ import type { AgentApprovalAction, AgentApprovalRequest } from './lib/agentAppro
 import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeFormat'
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
-import { parseSideSlashCommand } from './lib/SideSlashCommand'
+import { parseSideSlashCommand, type SideSlashCommand } from './lib/SideSlashCommand'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
 import { IOS_REMOTE_ENABLED } from './lib/featureFlags'
 import {
@@ -10127,29 +10127,33 @@ function App(): React.JSX.Element {
     })
   }
 
-  const tryHandleSideSlashSubmit = (): boolean => {
-    const sideCommand = parseSideSlashCommand(prompt)
-    if (!sideCommand) return false
+  const openSideChatFromSlashCommand = (sideCommand: SideSlashCommand): void => {
     if (currentChat && currentChatIsLinkedChild) {
       setChatPromptDraft(currentChat.appChatId, sideCommand.seedPrompt)
       void openCurrentSideChatPresentation(sideCommand.presentation)
-    } else {
-      void ensureSideChatForCurrentChat(
-        sideCommand.seedPrompt,
-        true,
-        sideCommand.presentation === 'drawer' ? 'drawer' : 'split',
-        {},
-        undefined,
-        sideCommand.presentation !== 'popout' && sideCommand.presentation !== 'main'
-      ).then((linkedChat) => {
-        if (!linkedChat) return
-        if (sideCommand.presentation === 'popout') {
-          popOutLinkedChat(linkedChat)
-        } else if (sideCommand.presentation === 'main') {
-          void handleSelectChat(linkedChat)
-        }
-      })
+      return
     }
+    void ensureSideChatForCurrentChat(
+      sideCommand.seedPrompt,
+      true,
+      sideCommand.presentation === 'drawer' ? 'drawer' : 'split',
+      {},
+      undefined,
+      sideCommand.presentation !== 'popout' && sideCommand.presentation !== 'main'
+    ).then((linkedChat) => {
+      if (!linkedChat) return
+      if (sideCommand.presentation === 'popout') {
+        popOutLinkedChat(linkedChat)
+      } else if (sideCommand.presentation === 'main') {
+        void handleSelectChat(linkedChat)
+      }
+    })
+  }
+
+  const tryHandleSideSlashSubmit = (): boolean => {
+    const sideCommand = parseSideSlashCommand(prompt)
+    if (!sideCommand) return false
+    openSideChatFromSlashCommand(sideCommand)
     setSlashMenuOpen(false)
     setSlashQuery('')
     slashAnchorIndexRef.current = null
@@ -13334,13 +13338,52 @@ function App(): React.JSX.Element {
       description: 'Open a parallel side pane. Type /side drawer or /side popout for layout.',
       group: 'Custom',
       run: () => {
-        const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
-        if (currentChat && currentChatIsLinkedChild) {
-          setChatPromptDraft(currentChat.appChatId, sideSeedPrompt)
-          void openCurrentSideChatPresentation('split')
-        } else {
-          void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
-        }
+        openSideChatFromSlashCommand({
+          presentation: 'split',
+          seedPrompt: promptWithoutCurrentSlashToken().trim()
+        })
+      }
+    },
+    {
+      kind: 'action',
+      id: 'taskwraith-side-drawer',
+      command: '/side-drawer',
+      label: 'Open side drawer',
+      description: 'Open the linked side chat as the right drawer presentation.',
+      group: 'Custom',
+      run: () => {
+        openSideChatFromSlashCommand({
+          presentation: 'drawer',
+          seedPrompt: promptWithoutCurrentSlashToken().trim()
+        })
+      }
+    },
+    {
+      kind: 'action',
+      id: 'taskwraith-side-popout',
+      command: '/side-popout',
+      label: 'Pop out side chat',
+      description: 'Open the linked side chat in a separate chat window.',
+      group: 'Custom',
+      run: () => {
+        openSideChatFromSlashCommand({
+          presentation: 'popout',
+          seedPrompt: promptWithoutCurrentSlashToken().trim()
+        })
+      }
+    },
+    {
+      kind: 'action',
+      id: 'taskwraith-side-main',
+      command: '/side-main',
+      label: 'Open side chat as main',
+      description: 'Navigate the main pane to the linked side chat.',
+      group: 'Custom',
+      run: () => {
+        openSideChatFromSlashCommand({
+          presentation: 'main',
+          seedPrompt: promptWithoutCurrentSlashToken().trim()
+        })
       }
     },
     {

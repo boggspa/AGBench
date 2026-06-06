@@ -19,6 +19,10 @@ describe('parseSideSlashCommand', () => {
       presentation: 'popout',
       seedPrompt: ''
     })
+    expect(parseSideSlashCommand('/side pop-out review this in a window')).toEqual({
+      presentation: 'popout',
+      seedPrompt: 'review this in a window'
+    })
     expect(parseSideSlashCommand('/side main continue here')).toEqual({
       presentation: 'main',
       seedPrompt: 'continue here'
