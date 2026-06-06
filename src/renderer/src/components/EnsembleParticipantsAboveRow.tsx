@@ -32,7 +32,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatRecord, EnsembleParticipant, ProviderId } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  ConcurrentLane,
+  EnsembleParticipant,
+  ProviderId
+} from '../../../main/store/types'
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
 import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
@@ -59,6 +64,43 @@ const MIN_ENSEMBLE_PARTICIPANTS = 2
 // a second row. 7 = "more chips than fit cleanly on one row at
 // readable size".
 const ENSEMBLE_CHIPS_WRAP_THRESHOLD = 7
+
+function laneStatusToParticipantLabel(status: ConcurrentLane['status']): string {
+  switch (status) {
+    case 'pending':
+      return 'idle'
+    case 'running':
+      return 'speaking'
+    case 'completed':
+      return 'answered'
+    case 'failed':
+      return 'failed'
+    case 'cancelled':
+      return 'cancelled'
+    case 'blocked':
+      return 'failed'
+    case 'awaiting-approval':
+      return 'running'
+    default:
+      return 'idle'
+  }
+}
+
+function latestLaneForParticipant(
+  lanes: Record<string, ConcurrentLane> | undefined,
+  participantId: string
+): ConcurrentLane | undefined {
+  const matches = Object.values(lanes || {}).filter((lane) => lane.participantId === participantId)
+  return (
+    matches.find(
+      (lane) =>
+        lane.status === 'running' ||
+        lane.status === 'pending' ||
+        lane.status === 'awaiting-approval' ||
+        lane.status === 'blocked'
+    ) || matches[matches.length - 1]
+  )
+}
 
 /**
  * Monoline status icon for a participant chip (1.0.3 polish).
@@ -535,8 +577,13 @@ export function EnsembleParticipantsAboveRow({
           const state = activeRound?.participants.find(
             (item) => item.participantId === participant.id
           )
-          const active = activeRound?.activeParticipantId === participant.id
-          const statusLabel = active ? 'speaking' : state?.status || 'idle'
+          const lane = latestLaneForParticipant(activeRound?.lanes, participant.id)
+          const laneStatusLabel = lane ? laneStatusToParticipantLabel(lane.status) : null
+          const active =
+            activeRound?.activeParticipantId === participant.id ||
+            lane?.status === 'running' ||
+            lane?.status === 'awaiting-approval'
+          const statusLabel = laneStatusLabel || (active ? 'speaking' : state?.status || 'idle')
           const isSelected = participant.id === selectedParticipantId
           // 1.0.4-AD — surface the pre-flight probe's failure reason
           // (or any subsequent failure reason stamped on the round
@@ -546,7 +593,10 @@ export function EnsembleParticipantsAboveRow({
           // failure metadata so the chip falls back to the bare
           // status label.
           const statusTooltip =
-            state?.lastFailureReason || (state?.status === 'failed' ? state?.reason : '') || ''
+            lane?.reason ||
+            state?.lastFailureReason ||
+            (state?.status === 'failed' ? state?.reason : '') ||
+            ''
           const wakeupTooltip = state?.status === 'sleeping' ? state.reason || '' : ''
           // 1.0.4-AT7 — retryable when the participant's last turn
           // exited in a failure state. The Retry row in the overflow

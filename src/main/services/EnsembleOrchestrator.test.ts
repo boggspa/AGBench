@@ -3397,6 +3397,106 @@ Next action:
     expect(scoutNote).toBeUndefined()
   })
 
+  it('1.0.8: rejects requested concurrent mode when the feature gate is off', () => {
+    const previous = process.env.TASKWRAITH_CONCURRENT_LANES
+    delete process.env.TASKWRAITH_CONCURRENT_LANES
+    try {
+      const harness = makeHarness()
+      expect(() =>
+        harness.orchestrator.startRound({
+          chatId: 'ensemble-chat',
+          prompt: 'Try parallel.',
+          event: { sender: {} as Electron.WebContents },
+          concurrentMode: true
+        })
+      ).toThrow('TASKWRAITH_CONCURRENT_LANES')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_LANES = previous
+      }
+    }
+  })
+
+  it('1.0.8: fans out read-only participants in concurrent mode without a Work Session', async () => {
+    const previous = process.env.TASKWRAITH_CONCURRENT_LANES
+    process.env.TASKWRAITH_CONCURRENT_LANES = '1'
+    try {
+      const harness = makeHarness()
+      harness.chat.ensemble!.participants = [
+        {
+          id: 'claude',
+          provider: 'claude',
+          enabled: true,
+          role: 'Reviewer',
+          instructions: 'Review.',
+          order: 1,
+          permissionPresetId: 'read_only'
+        },
+        {
+          id: 'gemini',
+          provider: 'gemini',
+          enabled: true,
+          role: 'Researcher',
+          instructions: 'Research.',
+          order: 2,
+          permissionPresetId: 'read_only'
+        },
+        {
+          id: 'codex',
+          provider: 'codex',
+          enabled: true,
+          role: 'Worker',
+          instructions: 'Work.',
+          order: 3,
+          permissionPresetId: 'workspace_write'
+        }
+      ]
+
+      harness.orchestrator.startRound({
+        chatId: 'ensemble-chat',
+        prompt: 'Fan out then implement.',
+        event: { sender: {} as Electron.WebContents },
+        concurrentMode: true
+      })
+
+      await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), { timeout: 1000 })
+      expect(harness.dispatched.map((p) => p.provider).sort()).toEqual(['claude', 'gemini'])
+      expect(harness.chat.ensemble?.activeRound?.concurrentMode).toBe(true)
+      const initialLanes = Object.values(harness.chat.ensemble?.activeRound?.lanes || {})
+      expect(initialLanes).toHaveLength(2)
+      expect(initialLanes.map((lane) => lane.status).sort()).toEqual(['running', 'running'])
+      expect(harness.chat.ensemble?.activeRound?.activeParticipantId).toBeUndefined()
+      expect(harness.dispatched[0].ensembleRun?.laneId).toBeTruthy()
+      expect(harness.dispatched[1].ensembleRun?.laneId).toBeTruthy()
+
+      const claudeRun = harness.dispatched.find((p) => p.provider === 'claude')!
+      const geminiRun = harness.dispatched.find((p) => p.provider === 'gemini')!
+      harness.orchestrator.handleProviderOutput(
+        'claude',
+        { appRunId: claudeRun.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'result', status: 'success' }
+      )
+      harness.orchestrator.handleProviderOutput(
+        'gemini',
+        { appRunId: geminiRun.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'result', status: 'success' }
+      )
+
+      await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), { timeout: 1000 })
+      expect(harness.dispatched[2].provider).toBe('codex')
+      const finalLanes = Object.values(harness.chat.ensemble?.activeRound?.lanes || {})
+      expect(finalLanes.map((lane) => lane.status).sort()).toEqual(['completed', 'completed'])
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_LANES = previous
+      }
+    }
+  })
+
   it("1.0.4-AK6: threads scout briefs into the writer's prompt context after the parallel pass", async () => {
     // End-to-end: scout pass records briefs, then the serial
     // writer's prompt should include the "Scout briefs from the

@@ -585,6 +585,7 @@ const api = {
     chatId: string
     prompt: string
     mode?: string
+    concurrentMode?: boolean
     imageAttachments?: ComposerImageAttachment[]
     /** A2 (1.0.3) — DM routing: scope this "round" to a single
      * participant chip. The orchestrator's machinery still drives

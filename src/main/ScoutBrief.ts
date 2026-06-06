@@ -103,7 +103,7 @@ export function handleScoutBrief(
     return {
       ok: false,
       message:
-        'scout_brief: not currently part of an active parallel scout pass. This tool only works inside a Work Session round with `enableScoutPass: true`.',
+        'scout_brief: not currently part of an active parallel scout/fan-out pass.',
       error: 'no_active_scout_pass'
     }
   }

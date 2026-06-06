@@ -627,6 +627,7 @@ export interface SessionActivityLedgerEntry {
 export interface EnsembleRunIdentity {
   roundId: string
   participantId: string
+  laneId?: string
   provider: ProviderId
   role: string
   order: number
@@ -784,6 +785,14 @@ export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
   orchestrationMode?: EnsembleOrchestrationMode
+  /**
+   * 1.0.8 — per-chat preference for read-only concurrent fan-out.
+   * Captured onto new rounds as `EnsembleRoundState.concurrentMode`.
+   * The main process still feature-gates actual concurrent dispatch
+   * with TASKWRAITH_CONCURRENT_LANES and keeps writer-capable
+   * participants serial in the first slice.
+   */
+  concurrentModeEnabled?: boolean
   /** 1.0.4-AR13 — see `EnsembleRoundMode` for semantics. Undefined
    * reads as `'roundtable'` so all pre-AR13 chats keep their
    * existing structure. */
@@ -1800,6 +1809,8 @@ export interface ChatMessage {
     /** Phase I3.2 — whether the sub-thread is configured to return its
      * result to the parent transcript. */
     returnResultToParent?: boolean
+    /** Concurrent Ensemble lane id for lane-aware transcript rows. */
+    ensembleLaneId?: string
     [key: string]: unknown
   }
 }
@@ -1847,6 +1858,7 @@ export interface ChatRun {
   handoffSourceRunId?: string
   ensembleRoundId?: string
   ensembleParticipantId?: string
+  ensembleLaneId?: string
   ensembleRole?: string
   ensembleOrder?: number
   ensembleSleepWakeupId?: string

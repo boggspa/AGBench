@@ -10,6 +10,7 @@ import type {
   ChatMessage,
   ChatRecord,
   ChatRun,
+  ConcurrentLane,
   EffectiveRunPermissions,
   EnsembleConfig,
   EnsembleOrchestrationMode,
@@ -50,6 +51,8 @@ import {
   detectComplexityEscalation
 } from '../escalation/ComplexityEscalation'
 import type { SessionCheckpointReason } from '../checkpoints/SessionCheckpoint'
+import { buildLaneId, canStartConcurrentRound, createLane, transitionLane } from '../EnsembleLanes'
+import { concurrentLanesEnabled } from '../featureGates'
 // 1.0.7 — pure builder turning a finished participant run's stats into the
 // recordUsage payload, so ensemble runs reach usage.json (wall-clock + heatmaps
 // + provider totals). Ensemble runs complete here, not via handleProviderExit.
@@ -165,6 +168,7 @@ interface ActiveParticipantRun {
   chatId: string
   roundId: string
   runId: string
+  laneId?: string
   participant: EnsembleParticipant
   promptMessageId: string
   /**
@@ -580,6 +584,7 @@ interface ActiveRoundRuntime {
   scoutBriefs?: ScoutBriefRecord[]
   unreachableParticipantIds?: Set<string>
   orchestrationMode: EnsembleOrchestrationMode
+  concurrentMode?: boolean
   continuationHops: number
   maxContinuationHops: number
   continuationLimitNotified?: boolean
@@ -683,6 +688,12 @@ export class EnsembleOrchestrator {
      * participant only sees grants tagged for its own provider).
      */
     externalPathGrants?: ExternalPathGrant[]
+    /**
+     * 1.0.8 — request read-only concurrent fan-out for this round.
+     * The orchestrator validates this against TASKWRAITH_CONCURRENT_LANES
+     * and only dispatches read-only participants in parallel for now.
+     */
+    concurrentMode?: boolean
   }): { status: 'started' | 'queued' | 'steered' | 'ignored'; roundId?: string } {
     // 1.0.4-AF — strip a leading `/discuss` (alias `/meta`) token so
     // the slash never reaches the panel verbatim. The flag flows
@@ -706,7 +717,8 @@ export class EnsembleOrchestrator {
           imageAttachments,
           [],
           parsed.selfReflective,
-          input.externalPathGrants
+          input.externalPathGrants,
+          input.concurrentMode
         )
         this.appendRoundStatus(
           input.chatId,
@@ -755,7 +767,8 @@ export class EnsembleOrchestrator {
       imageAttachments,
       [],
       parsed.selfReflective,
-      input.externalPathGrants
+      input.externalPathGrants,
+      input.concurrentMode
     )
     return { status: 'started', roundId }
   }
@@ -767,11 +780,20 @@ export class EnsembleOrchestrator {
     runtime.queuedPrompts = []
     this.cancelWakeupsForRuntime(runtime, reason)
     const roundId = runtime.roundId
-    const active = runtime.activeRunId ? this.runsByRunId.get(runtime.activeRunId) : undefined
-    if (active) {
+    const activeRunIds = new Set<string>()
+    if (runtime.activeRunId) activeRunIds.add(runtime.activeRunId)
+    for (const runId of runtime.activeScoutRunIds || []) {
+      activeRunIds.add(runId)
+    }
+    const activeRuns = [...activeRunIds]
+      .map((runId) => this.runsByRunId.get(runId))
+      .filter((run): run is ActiveParticipantRun => Boolean(run))
+    for (const active of activeRuns) {
       this.finalizeRun(active, 'cancelled', reason)
     }
-    this.updateParticipantState(chatId, roundId, active?.participant.id, 'cancelled', reason)
+    for (const active of activeRuns) {
+      this.updateParticipantState(chatId, roundId, active.participant.id, 'cancelled', reason)
+    }
     this.updateChatRound(chatId, (round) =>
       round?.roundId === roundId
         ? {
@@ -786,7 +808,7 @@ export class EnsembleOrchestrator {
     )
     this.completeCheckpoint(chatId, roundId, 'cancelled')
     this.clearRuntimeIfCurrent(runtime)
-    if (active) {
+    for (const active of activeRuns) {
       await this.deps.cancelRun(active.participant.provider, active.runId).catch(() => undefined)
     }
     return true
@@ -1621,7 +1643,8 @@ export class EnsembleOrchestrator {
      * provider filter ensures each participant only sees grants
      * tagged for its own provider.
      */
-    externalPathGrants: ExternalPathGrant[] = []
+    externalPathGrants: ExternalPathGrant[] = [],
+    concurrentMode?: boolean
   ): string {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) throw new Error('Ensemble chat not found.')
@@ -1643,6 +1666,18 @@ export class EnsembleOrchestrator {
     const promptForParticipants = promptWithAttachmentReferences(prompt, normalizedImageAttachments)
     const orchestrationMode = resolveEnsembleOrchestrationMode(chat.ensemble)
     const maxContinuationHops = resolveMaxContinuationHops(chat.ensemble)
+    const requestedConcurrentMode = Boolean(
+      concurrentMode ?? chat.ensemble.concurrentModeEnabled ?? false
+    )
+    const concurrentCheck = canStartConcurrentRound({
+      concurrentLanesEnabled: concurrentLanesEnabled(),
+      chatIsEnsemble: true,
+      requestedConcurrentMode,
+      enabledParticipantCount: ordered.length
+    })
+    if (!concurrentCheck.ok) {
+      throw new Error(concurrentCheck.reason || 'Concurrent Ensemble dispatch is not available.')
+    }
     const round: EnsembleRoundState = {
       roundId,
       status: 'running',
@@ -1651,6 +1686,7 @@ export class EnsembleOrchestrator {
       orchestrationMode,
       continuationHops: 0,
       maxContinuationHops,
+      ...(requestedConcurrentMode ? { concurrentMode: true } : {}),
       participants: ordered.map((participant) => ({
         participantId: participant.id,
         provider: participant.provider,
@@ -1713,6 +1749,7 @@ export class EnsembleOrchestrator {
       cancelled: false,
       queuedPrompts: [...carryOverQueue],
       orchestrationMode,
+      ...(requestedConcurrentMode ? { concurrentMode: true } : {}),
       continuationHops: 0,
       maxContinuationHops,
       ...(selfReflective ? { selfReflective: true } : {}),
@@ -1781,12 +1818,14 @@ export class EnsembleOrchestrator {
     // benefit; just runs serially).
     const chatForScout = this.deps.getChat(runtime.chatId)
     const workSessionForScout = chatForScout?.ensemble?.workSession
-    if (
-      workSessionForScout?.enabled &&
-      workSessionForScout.status === 'active' &&
-      workSessionForScout.enableScoutPass &&
-      !runtime.cancelled
-    ) {
+    const shouldRunReadOnlyFanout =
+      runtime.concurrentMode ||
+      Boolean(
+        workSessionForScout?.enabled &&
+          workSessionForScout.status === 'active' &&
+          workSessionForScout.enableScoutPass
+      )
+    if (shouldRunReadOnlyFanout && !runtime.cancelled) {
       const scouts: EnsembleParticipant[] = []
       const writers: EnsembleParticipant[] = []
       for (const participant of remaining) {
@@ -1803,6 +1842,12 @@ export class EnsembleOrchestrator {
         remaining.length = 0
         remaining.push(...writers)
         await this.runParallelScoutPass(runtime, chatForScout, scouts)
+      } else if (runtime.concurrentMode && scouts.length > 0) {
+        this.appendRoundStatus(
+          runtime.chatId,
+          runtime.roundId,
+          'Parallel mode requested but fewer than two read-only participants were available; continuing serially.'
+        )
       }
     }
     // 1.0.4 — participant id of the just-promoted yield target. Set
@@ -2358,9 +2403,11 @@ export class EnsembleOrchestrator {
     // spreads its `chat` parameter to compose the next save. Using
     // the stale `chat` would clobber the status note we just
     // appended.
-    const scoutRuns: ActiveParticipantRun[] = scouts.map((scout) => {
+    const scoutRuns: ActiveParticipantRun[] = scouts.map((scout, index) => {
       const freshChat = this.deps.getChat(runtime.chatId) || chat
-      return this.seedParticipantRun(freshChat, runtime, scout)
+      return this.seedParticipantRun(freshChat, runtime, scout, {
+        laneId: buildLaneId(runtime.roundId, scout.id, index + 1)
+      })
     })
     for (const run of scoutRuns) {
       runtime.activeScoutRunIds.add(run.runId)
@@ -2402,20 +2449,20 @@ export class EnsembleOrchestrator {
         providerSessionId: scout.linkedProviderSessionId || null,
         externalPathGrants: permissions.externalPathGrants,
         effectivePermissions: permissions,
-        ensembleRun: ensembleRunIdentity(runtime.roundId, scout)
+        ensembleRun: ensembleRunIdentity(runtime.roundId, scout, run.laneId)
       }
       try {
-        await this.deps.dispatch(payload, { sender: runtime.sender })
+        const dispatched = await this.deps.dispatch(payload, { sender: runtime.sender })
+        if (!dispatched.dispatched) {
+          const note = formatDispatchFailureNote(scout, { kind: 'unknown', message: '' })
+          this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+          this.finalizeRun(run, 'failed', note)
+        }
       } catch (error) {
         const reason = classifyDispatchError(error)
-        this.appendRoundStatus(
-          runtime.chatId,
-          runtime.roundId,
-          formatDispatchFailureNote(scout, reason)
-        )
-        // Force-resolve so Promise.all doesn't hang on a scout
-        // whose dispatch never produced output events.
-        run.completion?.('failed')
+        const note = formatDispatchFailureNote(scout, reason)
+        this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+        this.finalizeRun(run, 'failed', note)
       }
       return completion
     })
@@ -2424,6 +2471,7 @@ export class EnsembleOrchestrator {
     // then wait for every completion promise to resolve.
     const completionPromises = await Promise.all(dispatchPromises)
     await Promise.all(completionPromises)
+    if (runtime.cancelled) return
 
     // Cleanup: scout pass is done, drop the tracking set so the
     // serial writer step's reads of activeScoutRunIds see no
@@ -2441,7 +2489,7 @@ export class EnsembleOrchestrator {
     chat: ChatRecord,
     runtime: ActiveRoundRuntime,
     participant: EnsembleParticipant,
-    options: { sleepResumeWarning?: string } = {}
+    options: { sleepResumeWarning?: string; laneId?: string } = {}
   ): ActiveParticipantRun {
     const startedAt = this.deps.nowIso()
     const runId = this.deps.createRunId(participant.provider)
@@ -2457,6 +2505,7 @@ export class EnsembleOrchestrator {
       status: 'running',
       ensembleRoundId: runtime.roundId,
       ensembleParticipantId: participant.id,
+      ...(options.laneId ? { ensembleLaneId: options.laneId } : {}),
       ensembleRole: participant.role,
       ensembleOrder: participant.order,
       runtimeProfileId: participant.runtimeProfileId,
@@ -2478,6 +2527,7 @@ export class EnsembleOrchestrator {
       chatId: chat.appChatId,
       roundId: runtime.roundId,
       runId,
+      ...(options.laneId ? { laneId: options.laneId } : {}),
       participant,
       promptMessageId,
       assistantMessageId,
@@ -2492,11 +2542,32 @@ export class EnsembleOrchestrator {
       runs: updatedRuns,
       ensemble: {
         ...chat.ensemble!,
-        activeRound: updateRoundParticipant(chat.ensemble!.activeRound, participant.id, {
-          status: 'running',
-          runId,
-          startedAt
-        }),
+        activeRound: addLaneToRound(
+          updateRoundParticipant(
+            chat.ensemble!.activeRound,
+            participant.id,
+            {
+              status: 'running',
+              runId,
+              startedAt
+            },
+            { setActive: !options.laneId }
+          ),
+          options.laneId
+            ? transitionLane(
+                createLane({
+                  laneId: options.laneId,
+                  participantId: participant.id,
+                  provider: participant.provider,
+                  intent: 'read',
+                  runId,
+                  providerSessionId: participant.linkedProviderSessionId || null,
+                  nowIso: startedAt
+                }),
+                { status: 'running', nowIso: startedAt }
+              )
+            : undefined
+        ),
         updatedAt: startedAt
       },
       updatedAt: this.deps.now()
@@ -2667,6 +2738,7 @@ export class EnsembleOrchestrator {
             kind: 'ensembleParticipant',
             ensembleRoundId: run.roundId,
             ensembleParticipantId: run.participant.id,
+            ...(run.laneId ? { ensembleLaneId: run.laneId } : {}),
             ensembleProvider: run.participant.provider,
             ensembleRole: run.participant.role,
             ensembleOrder: run.participant.order,
@@ -2704,6 +2776,7 @@ export class EnsembleOrchestrator {
             kind: 'ensembleParticipantTools',
             ensembleRoundId: run.roundId,
             ensembleParticipantId: run.participant.id,
+            ...(run.laneId ? { ensembleLaneId: run.laneId } : {}),
             ensembleProvider: run.participant.provider,
             ensembleRole: run.participant.role,
             ensembleOrder: run.participant.order,
@@ -2774,6 +2847,7 @@ export class EnsembleOrchestrator {
           kind: 'ensembleParticipantStatus',
           ensembleRoundId: run.roundId,
           ensembleParticipantId: run.participant.id,
+          ...(run.laneId ? { ensembleLaneId: run.laneId } : {}),
           ensembleProvider: run.participant.provider,
           ensembleRole: run.participant.role,
           ensembleOrder: run.participant.order,
@@ -2822,12 +2896,23 @@ export class EnsembleOrchestrator {
         ...(tokenTotals ? { tokenTotals } : {})
       }
     })
-    const activeRound = updateRoundParticipant(chat.ensemble.activeRound, run.participant.id, {
-      status: run.status,
-      runId: run.runId,
-      ...(reason ? { reason } : {}),
-      ...(final ? { endedAt: timestamp } : {})
-    })
+    const activeRound = updateLaneInRound(
+      updateRoundParticipant(
+        chat.ensemble.activeRound,
+        run.participant.id,
+        {
+          status: run.status,
+          runId: run.runId,
+          ...(reason ? { reason } : {}),
+          ...(final ? { endedAt: timestamp } : {})
+        },
+        { setActive: !run.laneId }
+      ),
+      run.laneId,
+      run.status,
+      timestamp,
+      reason
+    )
     this.saveChatWithCheckpoint({
       ...chat,
       messages,
@@ -3177,11 +3262,13 @@ export class EnsembleOrchestrator {
 
 function ensembleRunIdentity(
   roundId: string,
-  participant: EnsembleParticipant
+  participant: EnsembleParticipant,
+  laneId?: string
 ): EnsembleRunIdentity {
   return {
     roundId,
     participantId: participant.id,
+    ...(laneId ? { laneId } : {}),
     provider: participant.provider,
     role: participant.role,
     order: participant.order
@@ -3218,13 +3305,15 @@ function ensembleReasoningMetadata(participant: EnsembleParticipant): Record<str
 function updateRoundParticipant(
   round: EnsembleRoundState | undefined,
   participantId: string,
-  partial: Partial<EnsembleRoundState['participants'][number]>
+  partial: Partial<EnsembleRoundState['participants'][number]>,
+  options: { setActive?: boolean } = {}
 ): EnsembleRoundState | undefined {
   if (!round) return round
+  const setActive = options.setActive !== false
   return {
     ...round,
     activeParticipantId:
-      partial.status === 'running'
+      setActive && partial.status === 'running'
         ? participantId
         : round.activeParticipantId === participantId
           ? undefined
@@ -3232,6 +3321,54 @@ function updateRoundParticipant(
     participants: round.participants.map((participant) =>
       participant.participantId === participantId ? { ...participant, ...partial } : participant
     )
+  }
+}
+
+function addLaneToRound(
+  round: EnsembleRoundState | undefined,
+  lane: ConcurrentLane | undefined
+): EnsembleRoundState | undefined {
+  if (!round || !lane) return round
+  return {
+    ...round,
+    concurrentMode: true,
+    lanes: {
+      ...(round.lanes || {}),
+      [lane.laneId]: lane
+    }
+  }
+}
+
+function updateLaneInRound(
+  round: EnsembleRoundState | undefined,
+  laneId: string | undefined,
+  participantStatus: EnsembleParticipantStatus,
+  nowIso: string,
+  reason?: string
+): EnsembleRoundState | undefined {
+  if (!round || !laneId || !round.lanes?.[laneId]) return round
+  const laneStatus: ConcurrentLane['status'] =
+    participantStatus === 'answered' ||
+    participantStatus === 'yielded' ||
+    participantStatus === 'sleeping'
+      ? 'completed'
+      : participantStatus === 'skipped'
+        ? 'completed'
+        : participantStatus === 'unreachable'
+          ? 'failed'
+          : participantStatus === 'idle'
+            ? 'pending'
+            : participantStatus
+  return {
+    ...round,
+    lanes: {
+      ...round.lanes,
+      [laneId]: transitionLane(round.lanes[laneId], {
+        status: laneStatus,
+        reason,
+        nowIso
+      })
+    }
   }
 }
 

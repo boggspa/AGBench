@@ -784,6 +784,7 @@ declare global {
         chatId: string
         prompt: string
         mode?: 'normal' | 'queue' | 'steer'
+        concurrentMode?: boolean
         imageAttachments?: ComposerImageAttachment[]
         /** A2 (1.0.3) — DM routing: scope the round to a single chip. */
         dmTargetParticipantId?: string

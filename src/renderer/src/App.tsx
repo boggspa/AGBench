@@ -6937,10 +6937,14 @@ function App(): React.JSX.Element {
           runChat.ensemble?.activeRound?.status === 'running'
             ? ('queue' as const)
             : ('normal' as const)
+        const concurrentMode = Boolean(
+          runChat.ensemble?.concurrentModeEnabled && !request.dmTargetParticipantId
+        )
         await window.api.runEnsembleRound({
           chatId: runChat.appChatId,
           prompt: request.prompt,
           mode,
+          concurrentMode,
           imageAttachments: request.imageAttachments.map((attachment) => ({
             id: attachment.id,
             path: attachment.path,
@@ -7977,6 +7981,7 @@ function App(): React.JSX.Element {
         chatId: targetChatId,
         prompt: request.prompt,
         mode: targetChat.ensemble?.activeRound?.status === 'running' ? 'steer' : 'normal',
+        concurrentMode: Boolean(targetChat.ensemble?.concurrentModeEnabled),
         imageAttachments: request.imageAttachments.map((attachment) => ({
           id: attachment.id,
           path: attachment.path,
@@ -9998,6 +10003,9 @@ function App(): React.JSX.Element {
     currentEnsembleRound?.orchestrationMode === 'continuous'
       ? 'continuous'
       : currentEnsembleOrchestrationMode
+  const currentEnsembleConcurrentMode = Boolean(currentChat?.ensemble?.concurrentModeEnabled)
+  const activeEnsembleConcurrentMode =
+    currentEnsembleRound?.concurrentMode ?? currentEnsembleConcurrentMode
   const currentEnsembleContinuationHops = currentEnsembleRound?.continuationHops || 0
   const currentEnsembleMaxContinuationHops =
     currentEnsembleRound?.maxContinuationHops || currentChat?.ensemble?.maxContinuationHops || 6
@@ -10049,6 +10057,24 @@ function App(): React.JSX.Element {
                 ? source.ensemble!.maxParticipants
                 : 12,
             maxContinuationHops: source.ensemble!.maxContinuationHops || 6,
+            updatedAt: new Date().toISOString()
+          }
+        }
+        return withSessionActivityLedger(source, patched)
+      })
+    },
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
+  )
+  const updateCurrentEnsembleConcurrentMode = useCallback(
+    (enabled: boolean) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      updateChatById(currentChat.appChatId, (source) => {
+        if (!source.ensemble) return source
+        const patched: ChatRecord = {
+          ...source,
+          ensemble: {
+            ...source.ensemble,
+            concurrentModeEnabled: enabled,
             updatedAt: new Date().toISOString()
           }
         }
@@ -10839,7 +10865,8 @@ function App(): React.JSX.Element {
         void window.api.runEnsembleRound({
           chatId: chat.appChatId,
           prompt,
-          mode: 'steer'
+          mode: 'steer',
+          concurrentMode: Boolean(chat.ensemble?.concurrentModeEnabled)
         })
         return
       }
@@ -13032,6 +13059,7 @@ function App(): React.JSX.Element {
                         chatId: currentChat.appChatId,
                         prompt: retryPrompt,
                         mode: 'normal',
+                        concurrentMode: false,
                         dmTargetParticipantId: participantId
                       })
                     }}
@@ -14117,7 +14145,7 @@ function App(): React.JSX.Element {
                             aria-label="Ensemble orchestration mode"
                             title={
                               isCurrentEnsembleRoundRunning
-                                ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
+                                ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}${activeEnsembleConcurrentMode ? ' + Parallel read-only fan-out' : ''}`
                                 : 'Choose whether agents speak once per round or can hand work back and forth.'
                             }
                             data-composer-control="ensemble-mode"
@@ -14154,6 +14182,18 @@ function App(): React.JSX.Element {
                               title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
                             >
                               Work Session
+                            </button>
+                            <button
+                              type="button"
+                              className={`composer-ensemble-mode-button ${
+                                currentEnsembleConcurrentMode ? 'is-active' : ''
+                              }`}
+                              onClick={() =>
+                                updateCurrentEnsembleConcurrentMode(!currentEnsembleConcurrentMode)
+                              }
+                              title="Fan out read-only participants in parallel before any writer-capable participants run. Requires the concurrent-lanes feature flag."
+                            >
+                              Parallel
                             </button>
                             {activeEnsembleOrchestrationMode === 'continuous' && (
                               <ContinuousHopsLimitChip

@@ -15970,6 +15970,7 @@ if (isGeminiMcpBridgeProcess) {
           chatId?: string
           prompt?: string
           mode?: 'normal' | 'queue' | 'steer'
+          concurrentMode?: boolean
           imageAttachments?: Array<{ id?: string; path?: string; name?: string }>
           dmTargetParticipantId?: string
           externalPathGrants?: ExternalPathGrant[]
@@ -15999,6 +16000,9 @@ if (isGeminiMcpBridgeProcess) {
           prompt,
           event,
           mode: payload?.mode || 'normal',
+          ...(payload?.concurrentMode !== undefined
+            ? { concurrentMode: Boolean(payload.concurrentMode) }
+            : {}),
           imageAttachments: imageAttachmentSnapshots(payload?.imageAttachments),
           ...(payload?.dmTargetParticipantId
             ? { dmTargetParticipantId: payload.dmTargetParticipantId }
