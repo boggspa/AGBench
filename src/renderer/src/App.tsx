@@ -517,6 +517,21 @@ function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
 }
 
+function getLinkedChatKindLabel(chat: ChatRecord): string {
+  if (chat.parentChatRelation === 'sideChat') {
+    return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+  }
+  return 'Agent sub-thread'
+}
+
+function getLinkedChatContextLabel(chat: ChatRecord): string {
+  if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
+  if (chat.sideChatContext?.originMessageId) return 'Seeded from selected message'
+  if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
+  if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
+  return 'No parent context'
+}
+
 function applySideChatLifecycle(
   chat: ChatRecord,
   lifecycleState: SideChatLifecycleState,
@@ -1731,22 +1746,21 @@ function App(): React.JSX.Element {
         ? 'sideChat'
         : 'linkedChat'
     : null
-  const sidePanelKindLabel =
-    sidePanelRelation === 'subThread'
-      ? 'Agent sub-thread'
-      : sideChat?.chatKind === 'ensemble'
-        ? 'Side ensemble'
-        : 'Side chat'
-  const sidePanelContextLabel =
-    sidePanelRelation === 'subThread'
-      ? 'Delegation context'
-      : sideChat?.sideChatContext?.originMessageId
-        ? 'Seeded from selected message'
-        : sideChat?.sideChatContext?.originRunId
-          ? 'Seeded from run result'
-          : sideChat?.sideChatContext?.transcriptVisibility === 'summary'
-            ? 'Seeded from summary'
-            : 'No parent context'
+  const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Side chat'
+  const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
+  const currentLinkedParentChat =
+    currentChat?.parentChatId &&
+    (currentChat.parentChatRelation === 'sideChat' || isSubThreadChat(currentChat))
+      ? chatByIdRef.current.get(currentChat.parentChatId) ||
+        chats.find((chat) => chat.appChatId === currentChat.parentChatId) ||
+        null
+      : null
+  const currentLinkedKindLabel =
+    currentLinkedParentChat && currentChat ? getLinkedChatKindLabel(currentChat) : 'Linked chat'
+  const currentLinkedContextLabel =
+    currentLinkedParentChat && currentChat
+      ? getLinkedChatContextLabel(currentChat)
+      : 'No parent context'
   const sideSplitParentChatId = sideChat?.parentChatId || null
   const setSideChatSplitWidth = (nextWidth: number) => {
     const maxWidth = getSideChatMaxWidth()
@@ -5012,12 +5026,23 @@ function App(): React.JSX.Element {
   }
 
   const handleSelectChat = async (chat: ChatRecord) => {
-    if (isGlobalChat(chat)) {
-      await selectGlobalChat(chat)
+    const selectedChat =
+      chat.parentChatRelation === 'sideChat' && !chat.archived && !isTerminatedSideChat(chat)
+        ? applySideChatLifecycle(chat, 'active')
+        : chat
+    if (selectedChat !== chat) {
+      chatByIdRef.current.set(selectedChat.appChatId, selectedChat)
+      setChats((prev) =>
+        prev.map((item) => (item.appChatId === selectedChat.appChatId ? selectedChat : item))
+      )
+      void window.api.saveChat(selectedChat).catch(() => {})
+    }
+    if (isGlobalChat(selectedChat)) {
+      await selectGlobalChat(selectedChat)
       return
     }
-    const provider = getChatProvider(chat)
-    const workspaceForChat = getWorkspaceForChat(chat)
+    const provider = getChatProvider(selectedChat)
+    const workspaceForChat = getWorkspaceForChat(selectedChat)
     if (workspaceForChat && currentWorkspace?.id !== workspaceForChat.id) {
       const geminiSessionApi = window.api as any
       if (
@@ -5037,27 +5062,29 @@ function App(): React.JSX.Element {
         .then(setTrustResult)
         .catch(() => {})
     } else {
-      currentWorkspaceIdRef.current = chat.workspaceId || null
+      currentWorkspaceIdRef.current = selectedChat.workspaceId || null
     }
-    currentChatIdRef.current = chat.appChatId
-    chatByIdRef.current.set(chat.appChatId, chat)
-    setCurrentChat(chat)
-    applyChatComposerSelection(chat, provider)
+    currentChatIdRef.current = selectedChat.appChatId
+    chatByIdRef.current.set(selectedChat.appChatId, selectedChat)
+    setCurrentChat(selectedChat)
+    applyChatComposerSelection(selectedChat, provider)
     if (provider === 'codex') {
       setShowGeminiTerminal(false)
     }
-    void refreshUsageSummary(getUsageWorkspaceIdForChat(chat), provider)
+    void refreshUsageSummary(getUsageWorkspaceIdForChat(selectedChat), provider)
     setRunDiff(null)
     // Re-derive the run-complete card from this chat's PERSISTED last run
     // instead of clearing it, so the "Task complete" notice persists per
     // thread across switches. Hidden while this chat is currently running;
     // reappears/updates when its next run completes (a new run clears it at
     // start via isRunVisibleAtStart / the ensemble round effect).
-    setRunCompleteNotice(deriveRunCompleteNotice(chat, runningChatIds.has(chat.appChatId)))
-    setRawLogs(rawLogsByChatIdRef.current.get(chat.appChatId) || [])
-    hydrateThreadRawLogsFromEvents(chat.appChatId)
+    setRunCompleteNotice(
+      deriveRunCompleteNotice(selectedChat, runningChatIds.has(selectedChat.appChatId))
+    )
+    setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
     setShowFallbackUX(false)
-    setIsThinking(runningChatIds.has(chat.appChatId))
+    setIsThinking(runningChatIds.has(selectedChat.appChatId))
   }
   const handleSelectChatRef = useRef(handleSelectChat)
   useEffect(() => {
@@ -8714,23 +8741,30 @@ function App(): React.JSX.Element {
     void executeRun(request)
   }
 
-  const handleSideCancel = async () => {
-    if (!sideChat) return
-    if (sideChat.chatKind === 'ensemble') {
-      await window.api.cancelEnsembleRound(sideChat.appChatId)
+  const cancelLinkedChatRun = async (targetChat: ChatRecord) => {
+    if (targetChat.chatKind === 'ensemble') {
+      await window.api.cancelEnsembleRound(targetChat.appChatId)
       setChats(await window.api.getChats())
       return
     }
     let activeContext: ActiveRunContext | null = null
     for (const ctx of activeRunsRef.current.values()) {
-      if (ctx.chatId === sideChat.appChatId) {
+      if (ctx.chatId === targetChat.appChatId) {
         activeContext = ctx
         break
       }
     }
-    const sideRun = sideChat.runs?.[sideChat.runs.length - 1]
-    await window.api.cancelAgentRun(sideProvider, activeContext?.runId || sideRun?.runId)
+    const targetRun = targetChat.runs?.[targetChat.runs.length - 1]
+    await window.api.cancelAgentRun(
+      getChatProvider(targetChat),
+      activeContext?.runId || targetRun?.runId
+    )
     syncRunningState()
+  }
+
+  const handleSideCancel = async () => {
+    if (!sideChat) return
+    await cancelLinkedChatRun(sideChat)
   }
 
   const cancelQueuedSideChatRuns = (chatId: string) => {
@@ -8771,18 +8805,34 @@ function App(): React.JSX.Element {
     setSideChatMenuOpen(false)
   }
 
-  const handleTerminateSideChat = async () => {
-    const targetChat = sideChat
+  const handleTerminateSideChatRecord = async (targetChat: ChatRecord | null) => {
     if (!targetChat || targetChat.parentChatRelation !== 'sideChat') return
     if (isChatBusy(targetChat.appChatId)) {
-      await handleSideCancel()
+      await cancelLinkedChatRun(targetChat)
     }
     cancelQueuedSideChatRuns(targetChat.appChatId)
     updateChatById(targetChat.appChatId, (source) => ({
       ...applySideChatLifecycle(source, 'terminated', 'ended_by_user'),
       archived: true
     }))
-    hideSideChatPane()
+    if (sideChatId === targetChat.appChatId) {
+      setSideChatId(null)
+    }
+    setSideChatMenuOpen(false)
+    if (currentChat?.appChatId === targetChat.appChatId) {
+      const parentChat = targetChat.parentChatId
+        ? chatByIdRef.current.get(targetChat.parentChatId) ||
+          chats.find((chat) => chat.appChatId === targetChat.parentChatId) ||
+          null
+        : null
+      if (parentChat) {
+        await handleSelectChat(parentChat)
+      }
+    }
+  }
+
+  const handleTerminateSideChat = async () => {
+    await handleTerminateSideChatRecord(sideChat)
   }
 
   /**
@@ -13060,6 +13110,7 @@ function App(): React.JSX.Element {
       : currentChat?.chatKind === 'ensemble'
         ? 'Side ensemble'
         : 'Side chat'
+  const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
     ? `side-chat-open side-chat-layout-${sidePanelPresentation}`
@@ -13795,6 +13846,60 @@ function App(): React.JSX.Element {
               <strong>Warning:</strong> Gemini CLI version ({geminiVersion}) appears to be older
               than 0.39.1. Headless workspace-trust behavior had recent security hardening. Please
               upgrade Gemini CLI before using this app on real repositories.
+            </div>
+          )}
+
+          {showLinkedMainBanner && currentChat && currentLinkedParentChat && (
+            <div className="linked-chat-parent-banner" role="region" aria-label="Linked chat">
+              <div className="linked-chat-parent-copy">
+                <span className="linked-chat-parent-kicker">
+                  <ProviderBadgeIcon provider={currentProvider} />
+                  <span>{currentLinkedKindLabel}</span>
+                </span>
+                <strong title={currentChat.title}>{currentChat.title}</strong>
+                <span className="linked-chat-parent-line">
+                  Parent: {currentLinkedParentChat.title || 'Parent chat'}
+                </span>
+                <span className="side-chat-context-chip linked-chat-parent-context">
+                  {currentLinkedContextLabel}
+                </span>
+              </div>
+              <div className="linked-chat-parent-actions">
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => void handleSelectChat(currentLinkedParentChat)}
+                  title="Back to parent chat"
+                >
+                  Back to parent
+                </button>
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => void handleOpenLinkedChatInSidePanelFromSidebar(currentChat)}
+                  title="Show this linked chat beside its parent"
+                >
+                  Open beside
+                </button>
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => popOutLinkedChat(currentChat)}
+                  title="Pop out this linked chat"
+                >
+                  Pop out
+                </button>
+                {currentChat.parentChatRelation === 'sideChat' && (
+                  <button
+                    type="button"
+                    className="side-chat-header-btn side-chat-header-btn-danger"
+                    onClick={() => void handleTerminateSideChatRecord(currentChat)}
+                    title="End this ephemeral side chat, cancel queued work, and archive it"
+                  >
+                    End
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
