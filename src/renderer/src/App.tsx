@@ -8548,10 +8548,11 @@ function App(): React.JSX.Element {
   }
 
   const popOutLinkedChat = (chat: ChatRecord) => {
+    const wasInlinePresentation = sideChat?.appChatId === chat.appChatId
     writeChatPopoutHandoff(chat.appChatId, {
       draft: composerDraftsByChatId[chat.appChatId] || '',
       scrollState: captureChatScrollState(
-        sideChat?.appChatId === chat.appChatId
+        wasInlinePresentation
           ? sideTranscriptScrollRef.current
           : currentChat?.appChatId === chat.appChatId
             ? transcriptScrollRef.current
@@ -8563,6 +8564,10 @@ function App(): React.JSX.Element {
       chatId: chat.appChatId,
       workspacePath: chat.workspacePath
     })
+    if (wasInlinePresentation) {
+      setSideChatId(null)
+      setSideChatMenuOpen(false)
+    }
   }
 
   const openCurrentSideChatPresentation = async (
