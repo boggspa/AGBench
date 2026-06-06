@@ -262,6 +262,7 @@ import {
   type PermissionOption
 } from './components/CombinedPermissionsPicker'
 import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
+import { EnsembleModePicker } from './components/EnsembleModePicker'
 import { ComposerProviderPicker } from './components/ComposerProviderPicker'
 import { ContinuousHopsLimitChip } from './components/ContinuousHopsLimitChip'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
@@ -14372,39 +14373,26 @@ function App(): React.JSX.Element {
                             }
                             data-composer-control="ensemble-mode"
                           >
-                            <button
-                              type="button"
-                              className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
-                              onClick={() => updateCurrentEnsembleOrchestrationMode('turn_bound')}
-                            >
-                              Turn
-                            </button>
-                            <button
-                              type="button"
-                              className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'continuous' ? 'is-active' : ''}`}
-                              onClick={() => updateCurrentEnsembleOrchestrationMode('continuous')}
-                            >
-                              Continuous
-                            </button>
-                            {/* 1.0.4-AK2 — Work Session entry point. Sits
-                              alongside Turn/Continuous since Work Session
-                              is a third orchestration mode (it composes
-                              ON TOP of either turn-bound or continuous
-                              rounds, but the user picks it via the same
-                              mode group for discoverability). */}
-                            <button
-                              type="button"
-                              className={`composer-ensemble-mode-button work-session-mode-button ${
+                            {/* 1.0.x — Turn / Continuous / Work Session now live
+                              in a hierarchical picker (matching the Model /
+                              Permissions pickers) instead of a segmented toggle.
+                              Fan-out stays a separate composable toggle below. */}
+                            <EnsembleModePicker
+                              mode={
+                                currentEnsembleOrchestrationMode === 'continuous'
+                                  ? 'continuous'
+                                  : 'turn_bound'
+                              }
+                              workSessionActive={
                                 currentChat?.ensemble?.workSession?.status === 'active' ||
                                 currentChat?.ensemble?.workSession?.status === 'paused'
-                                  ? 'is-active'
-                                  : ''
-                              }`}
-                              onClick={() => setShowWorkSessionSheet(true)}
-                              title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
-                            >
-                              Work Session
-                            </button>
+                              }
+                              composerStyle={appearance.composerStyle}
+                              onSelectMode={(nextMode) =>
+                                updateCurrentEnsembleOrchestrationMode(nextMode)
+                              }
+                              onOpenWorkSession={() => setShowWorkSessionSheet(true)}
+                            />
                             <button
                               type="button"
                               className={`composer-ensemble-mode-button ${
