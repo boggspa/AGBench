@@ -485,6 +485,7 @@ type SideChatCreateMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
 type SideChatSeedContext = {
   originMessageId?: string
   originRunId?: string
+  transcriptVisibility?: NonNullable<ChatRecord['sideChatContext']>['transcriptVisibility']
 }
 type ChatScrollState = {
   scrollTop: number
@@ -8365,6 +8366,13 @@ function App(): React.JSX.Element {
                 }`
       })
       let nextSideChat = createdSideChat
+      const seedTranscriptVisibility =
+        seedContext.transcriptVisibility ||
+        (seedContext.originMessageId
+          ? 'selected'
+          : seedContext.originRunId
+            ? 'snapshot'
+            : undefined)
       if (selectedSideParticipant) {
         const participantMetadata: Record<string, unknown> = {
           selectedModelType:
@@ -8404,6 +8412,18 @@ function App(): React.JSX.Element {
           providerMetadata: {
             ...(createdSideChat.providerMetadata || {}),
             ...participantMetadata
+          },
+          updatedAt: Date.now()
+        }
+        void window.api.saveChat(nextSideChat).catch(() => {})
+      }
+      if (seedTranscriptVisibility) {
+        nextSideChat = {
+          ...nextSideChat,
+          sideChatContext: {
+            createdAt: nextSideChat.sideChatContext?.createdAt || Date.now(),
+            ...(nextSideChat.sideChatContext || {}),
+            transcriptVisibility: seedTranscriptVisibility
           },
           updatedAt: Date.now()
         }
@@ -8511,7 +8531,11 @@ function App(): React.JSX.Element {
     const existing = findReusableSideChatForCurrentChat(sideChatMode, selectedSideProvider)
     if (existing) {
       openLinkedChatInSidePanel(existing, presentation)
-      if (seedContext.originMessageId || seedContext.originRunId) {
+      if (
+        seedContext.originMessageId ||
+        seedContext.originRunId ||
+        seedContext.transcriptVisibility
+      ) {
         updateChatById(existing.appChatId, (source) => ({
           ...source,
           updatedAt: Date.now(),
@@ -8519,14 +8543,21 @@ function App(): React.JSX.Element {
             createdAt: source.sideChatContext?.createdAt || Date.now(),
             ...source.sideChatContext,
             ...(seedContext.originMessageId
-              ? { originMessageId: seedContext.originMessageId }
+              ? { originMessageId: seedContext.originMessageId, originRunId: undefined }
               : {}),
-            ...(seedContext.originRunId ? { originRunId: seedContext.originRunId } : {}),
+            ...(seedContext.originRunId
+              ? { originMessageId: undefined, originRunId: seedContext.originRunId }
+              : {}),
+            ...(seedContext.transcriptVisibility === 'summary'
+              ? { originMessageId: undefined, originRunId: undefined }
+              : {}),
             transcriptVisibility: seedContext.originMessageId
               ? 'selected'
               : seedContext.originRunId
                 ? 'snapshot'
-                : source.sideChatContext?.transcriptVisibility || 'none'
+                : seedContext.transcriptVisibility ||
+                  source.sideChatContext?.transcriptVisibility ||
+                  'none'
           }
         }))
       }
@@ -9991,6 +10022,36 @@ function App(): React.JSX.Element {
     },
     [currentChat, ensureSideChatForCurrentChat]
   )
+  const sideChatSummarySeed = useMemo(() => {
+    const ensembleSummary = currentChat?.ensemble?.lastRoundSummary?.trim()
+    if (ensembleSummary) {
+      return {
+        label: 'Latest ensemble summary',
+        content: ensembleSummary
+      }
+    }
+    const latestAssistantMessage = [...(currentChat?.messages || [])]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.content.trim())
+    if (!latestAssistantMessage?.content) return null
+    return {
+      label: 'Latest assistant response',
+      content: compactPromptPreview(latestAssistantMessage.content)
+    }
+  }, [currentChat])
+  const handleOpenSideChatFromSummary = useCallback(() => {
+    if (!currentChat || !sideChatSummarySeed?.content) return
+    const seedPrompt = [
+      `Use this ${sideChatSummarySeed.label.toLowerCase()} from the parent chat as the starting point.`,
+      'This side chat is isolated and only receives the pasted summary below, not the full parent transcript.',
+      '',
+      sideChatSummarySeed.content
+    ].join('\n')
+    void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
+      transcriptVisibility: 'summary'
+    })
+    setSideChatMenuOpen(false)
+  }, [currentChat, ensureSideChatForCurrentChat, sideChatSummarySeed])
   const selectedSideChatSeedMessage =
     sideChatSeedMessageId && currentChat?.messages
       ? currentChat.messages.find((message) => message.id === sideChatSeedMessageId) || null
@@ -13548,6 +13609,15 @@ function App(): React.JSX.Element {
                         ? `${selectedSideChatSeedMessage.role} message`
                         : 'Hover or focus a message'}
                     </small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleOpenSideChatFromSummary}
+                    disabled={!sideChatSummarySeed}
+                  >
+                    <span>Open from summary</span>
+                    <small>{sideChatSummarySeed?.label || 'No summary yet'}</small>
                   </button>
                 </div>
               )}
