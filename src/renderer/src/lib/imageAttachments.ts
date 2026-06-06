@@ -1,3 +1,10 @@
+import {
+  localPathToFileUrl,
+  pathBasename,
+  pathComparisonKey,
+  sanitizeLocalPath
+} from './pathDisplay'
+
 export type ImageAttachment = {
   id: string
   path: string
@@ -8,10 +15,10 @@ const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|avif|tiff|tif|svg|jfif)(\?.*)?
 export const MAX_IMAGE_ATTACHMENTS = 5
 
 export const sanitizeImagePath = (value: string): string =>
-  value.trim().replace(/^\s*["'`]|["'`]\s*$/g, '')
+  sanitizeLocalPath(value)
 
 export const getImageName = (value: string): string => {
-  return value.split(/[/\\]/).filter(Boolean).pop() || value
+  return pathBasename(value)
 }
 
 export const isImageAttachmentPath = (path: string): boolean => IMAGE_EXT.test(path)
@@ -21,10 +28,11 @@ export const dedupePaths = (values: string[]): string[] => {
   const next: string[] = []
   for (const item of values) {
     const normalized = sanitizeImagePath(item)
-    if (!normalized || seen.has(normalized)) {
+    const key = pathComparisonKey(normalized)
+    if (!normalized || seen.has(key)) {
       continue
     }
-    seen.add(normalized)
+    seen.add(key)
     next.push(normalized)
   }
   return next
@@ -61,30 +69,21 @@ export const collectDroppedAttachmentPaths = (dataTransfer?: DataTransfer | null
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => line.startsWith('file://'))
-    .map((line) => {
-      try {
-        return sanitizeImagePath(decodeURIComponent(line.replace(/^file:\/\//, '')))
-      } catch {
-        return sanitizeImagePath(line.replace(/^file:\/\//, ''))
-      }
-    })
+    .map((line) => sanitizeImagePath(line))
     .filter(Boolean)
 
   return dedupePaths(uriCandidates)
 }
 
 export const getImagePreviewSrc = (imagePath: string): string => {
-  const normalized = sanitizeImagePath(imagePath).replace(/\\/g, '/')
-  return /^[A-Za-z]:\//.test(normalized)
-    ? `file:///${normalized}`
-    : `file://${normalized.startsWith('/') ? '' : '/'}${normalized}`
+  return localPathToFileUrl(imagePath)
 }
 
 const dedupeAttachments = (incoming: ImageAttachment[]): ImageAttachment[] => {
   const seen = new Set<string>()
   const next: ImageAttachment[] = []
   for (const item of incoming) {
-    const key = sanitizeImagePath(item.path)
+    const key = pathComparisonKey(item.path)
     if (!seen.has(key)) {
       seen.add(key)
       next.push(item)

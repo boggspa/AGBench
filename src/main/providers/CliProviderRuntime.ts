@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { delimiter, dirname, join } from 'path'
+import { delimiter, dirname, extname, join } from 'path'
 import { promises as fs } from 'fs'
 import os from 'os'
 import { TASKWRAITH_MCP_TOOLS } from '../TaskWraithMcpTools'
@@ -23,6 +23,12 @@ export interface ResolvedProviderBinary {
   binaryPath: string | null
   source: 'runtime_profile' | 'settings' | 'path' | 'common' | 'missing'
   error?: string
+}
+
+export interface CliSpawnPlan {
+  command: string
+  args: string[]
+  shell: boolean
 }
 
 export interface CapturedProcessOutput {
@@ -96,9 +102,23 @@ export async function fileExists(candidate: string): Promise<boolean> {
 }
 
 export function getCliSearchDirs(binaryPath?: string | null): string[] {
+  const windowsDirs =
+    process.platform === 'win32'
+      ? [
+          process.env.APPDATA ? join(process.env.APPDATA, 'npm') : '',
+          process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps') : '',
+          process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs') : '',
+          process.env.USERPROFILE ? join(process.env.USERPROFILE, 'scoop', 'shims') : '',
+          process.env.ProgramFiles ? join(process.env.ProgramFiles, 'nodejs') : '',
+          process.env.ProgramData ? join(process.env.ProgramData, 'chocolatey', 'bin') : '',
+          'C:\\Program Files\\nodejs',
+          'C:\\ProgramData\\chocolatey\\bin'
+        ]
+      : []
   const dirs = [
     binaryPath ? dirname(binaryPath) : '',
     ...(process.env.PATH || '').split(delimiter),
+    ...windowsDirs,
     join(os.homedir(), '.local', 'bin'),
     join(os.homedir(), '.npm-global', 'bin'),
     join(os.homedir(), '.bun', 'bin'),
@@ -114,6 +134,27 @@ export function getCliSearchDirs(binaryPath?: string | null): string[] {
   ].filter(Boolean)
 
   return Array.from(new Set(dirs))
+}
+
+export function cliBinaryNameCandidates(binaryName: string): string[] {
+  if (process.platform !== 'win32' || extname(binaryName)) {
+    return [binaryName]
+  }
+  const pathExts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+  const candidates = [binaryName]
+  for (const ext of pathExts) {
+    candidates.push(`${binaryName}${ext}`)
+  }
+  return Array.from(new Set(candidates))
+}
+
+export function createCliSpawnPlan(command: string, args: string[]): CliSpawnPlan {
+  const ext = extname(command).toLowerCase()
+  const shell = process.platform === 'win32' && (ext === '.cmd' || ext === '.bat')
+  return { command, args, shell }
 }
 
 export function activeRuntimeProfileEnv(
@@ -244,17 +285,24 @@ export async function resolveCliProviderBinary(
     }
   }
 
-  const pathCandidates = getCliSearchDirs().map((entry) => join(entry, binaryName))
+  const binaryCandidates = cliBinaryNameCandidates(binaryName)
+  const pathCandidates = getCliSearchDirs().flatMap((entry) =>
+    binaryCandidates.map((name) => join(entry, name))
+  )
   const commonCandidates = [
     // Grok installs to ~/.grok/bin by default; check it first so the gated
     // Grok runtime resolves even in a limited-PATH (packaged) context.
-    ...(provider === 'grok' ? [join(os.homedir(), '.grok', 'bin', binaryName)] : []),
-    join(os.homedir(), '.local', 'bin', binaryName),
-    join(os.homedir(), '.npm-global', 'bin', binaryName),
-    join(os.homedir(), '.bun', 'bin', binaryName),
-    join(os.homedir(), '.cargo', 'bin', binaryName),
-    join('/opt/homebrew/bin', binaryName),
-    join('/usr/local/bin', binaryName)
+    ...(provider === 'grok'
+      ? binaryCandidates.map((name) => join(os.homedir(), '.grok', 'bin', name))
+      : []),
+    ...binaryCandidates.flatMap((name) => [
+      join(os.homedir(), '.local', 'bin', name),
+      join(os.homedir(), '.npm-global', 'bin', name),
+      join(os.homedir(), '.bun', 'bin', name),
+      join(os.homedir(), '.cargo', 'bin', name),
+      join('/opt/homebrew/bin', name),
+      join('/usr/local/bin', name)
+    ])
   ]
   const seen = new Set<string>()
   for (const candidate of [...pathCandidates, ...commonCandidates]) {
@@ -288,9 +336,10 @@ export function captureProcessOutput(
     let stdout = ''
     let stderr = ''
     let settled = false
-    const child = spawn(command, args, {
+    const plan = createCliSpawnPlan(command, args)
+    const child = spawn(plan.command, plan.args, {
       cwd,
-      shell: false,
+      shell: plan.shell,
       env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, command, deps)
     })
     const timeout = setTimeout(() => {

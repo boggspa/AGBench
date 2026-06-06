@@ -56,6 +56,7 @@ import {
   EnsembleOrchestrationMode,
   PermissionPresetId
 } from '../../main/store/types'
+import type { NativeCapabilitySnapshot } from '../../main/NativeCapabilities'
 import {
   canonicalizeExternalPathGrantMetadata,
   collectExternalPathGrantsFromMetadata,
@@ -1130,6 +1131,9 @@ function App(): React.JSX.Element {
     }
   }
   const [attachedWindow, setAttachedWindow] = useState<AttachedWindowSnapshot | null>(null)
+  const [nativeCapabilities, setNativeCapabilities] = useState<NativeCapabilitySnapshot | null>(
+    null
+  )
   // 1.0.5-AU — Track which chat owns the current attachment so we
   // can auto-detach when the user switches away. Pre-AU the
   // `attachedWindow` state was app-global: attach in Chat A, switch
@@ -1163,6 +1167,10 @@ function App(): React.JSX.Element {
     }
     wasStreaming: boolean
   } | null>(null)
+  const screenWatchUnavailableReason =
+    nativeCapabilities && !nativeCapabilities.screenWatch.available
+      ? nativeCapabilities.screenWatch.reason || 'Appwatch/Appshots are macOS-only in v1.'
+      : null
   useEffect(() => {
     if (!diffActionMenuOpen) return
     const closeFromPointer = (event: MouseEvent): void => {
@@ -1819,6 +1827,18 @@ function App(): React.JSX.Element {
       clearFxBurst()
     }
   }, [isFxEnabled, fxBurstClass])
+
+  useEffect(() => {
+    let cancelled = false
+    const nativeCapabilityLoad = window.api.getNativeCapabilities?.()
+    if (!nativeCapabilityLoad) return
+    void nativeCapabilityLoad.then((snapshot) => {
+      if (!cancelled) setNativeCapabilities(snapshot)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -4471,6 +4491,16 @@ function App(): React.JSX.Element {
 
   const handleAttachWindow = async () => {
     if (isAttachingWindow) return
+    if (screenWatchUnavailableReason) {
+      setRawLogs((prev) => [
+        ...prev,
+        {
+          type: 'info',
+          content: `Screen Watch unavailable: ${screenWatchUnavailableReason}`
+        }
+      ])
+      return
+    }
     setIsAttachingWindow(true)
     try {
       const result = await window.api.attachWindowPick()
@@ -11944,6 +11974,7 @@ function App(): React.JSX.Element {
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
     : undefined
   const interfaceStyle = appearance.composerStyle
+  const primaryModifierLabel = window.api.hostPlatform === 'darwin' ? '⌘' : 'Ctrl'
   const providerShellEnabled = interfaceStyle === 'codex' || interfaceStyle === 'claude'
   const providerShellClass = providerShellEnabled
     ? `provider-shell provider-shell-${interfaceStyle}`
@@ -14227,10 +14258,13 @@ function App(): React.JSX.Element {
                                     ? attachedWindow.streaming
                                       ? 'Stop live capture and detach'
                                       : 'Detach the picked window'
-                                    : 'Pick a running app window',
+                                    : screenWatchUnavailableReason
+                                      ? screenWatchUnavailableReason
+                                      : 'Pick a running app window',
                                   icon: <CommandSymbolIcon />,
                                   disabled:
                                     isCurrentComposerLocked ||
+                                    Boolean(screenWatchUnavailableReason) ||
                                     (!attachedWindow && isAttachingWindow),
                                   onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
                                 }
@@ -15149,10 +15183,10 @@ function App(): React.JSX.Element {
                                     ? 'Pick a workspace folder first'
                                     : !prompt.trim()
                                       ? 'Type a prompt first'
-                                      : currentProvider === 'gemini' && !geminiWorkspaceTrustReady
-                                        ? 'Trust this workspace for Gemini first'
+                                        : currentProvider === 'gemini' && !geminiWorkspaceTrustReady
+                                          ? 'Trust this workspace for Gemini first'
                                         : isCurrentEnsembleChat && effectiveSelectedParticipantId
-                                          ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
+                                          ? `Run full ensemble round  ·  ${primaryModifierLabel} click = DM the selected chip`
                                           : 'Run'
                               }
                               aria-label="Run prompt"
@@ -15253,6 +15287,7 @@ function App(): React.JSX.Element {
                   type="button"
                   className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}${!attachedWindow && resumeAppWatchSnapshot ? ' is-resumable' : ''}`}
                   onClick={() => {
+                    if (screenWatchUnavailableReason) return
                     // M11 — both "attach fresh" and "resume" route through the
                     // picker (macOS requires a gesture to re-grant a window);
                     // handleAttachWindow clears the stash on success.
@@ -15266,15 +15301,20 @@ function App(): React.JSX.Element {
                         : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
                       : resumeAppWatchSnapshot
                         ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}${resumeAppWatchSnapshot.windowMeta.title ? ` — ${resumeAppWatchSnapshot.windowMeta.title}` : ''} · click to re-pick`
-                        : 'Screen Watch — click to pick a window for the AI to see'
+                        : screenWatchUnavailableReason
+                          ? screenWatchUnavailableReason
+                          : 'Screen Watch — click to pick a window for the AI to see'
                   }
                   aria-label={
                     attachedWindow
                       ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
                       : resumeAppWatchSnapshot
                         ? `Resume watching ${resumeAppWatchSnapshot.windowMeta.applicationName || 'window'}`
-                        : 'Open Screen Watch picker'
+                        : screenWatchUnavailableReason
+                          ? 'Screen Watch unavailable'
+                          : 'Open Screen Watch picker'
                   }
+                  disabled={Boolean(screenWatchUnavailableReason)}
                   data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
                   data-resumable={!attachedWindow && resumeAppWatchSnapshot ? 'true' : 'false'}
                 >

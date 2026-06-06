@@ -21,6 +21,7 @@ type ComposerImageAttachment = {
 
 // Custom APIs for renderer
 const api = {
+  hostPlatform: process.platform,
   getRuntimeVersions: () => ({ ...(process?.versions || {}) }),
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   selectImageFiles: () => ipcRenderer.invoke('select-image-files'),
@@ -243,6 +244,18 @@ const api = {
   getHostWeather: () => ipcRenderer.invoke('get-host-weather'),
   setAppearanceMode: (payload: { mode?: string; reduceTransparency?: boolean } | string) =>
     ipcRenderer.invoke('set-appearance-mode', payload),
+  getNativeCapabilities: () =>
+    ipcRenderer.invoke('native-capabilities:snapshot') as Promise<{
+      platform: string
+      arch: string
+      osRelease: string
+      macosVersion?: string
+      bridge: { available: boolean; reason?: string }
+      screenWatch: { available: boolean; reason?: string }
+      appwatch: { available: boolean; reason?: string }
+      ocr: { available: boolean; reason?: string }
+      appleEvents: { available: boolean; reason?: string }
+    }>,
 
   // Trust and PTY
   checkTrust: (workspacePath: string) => ipcRenderer.invoke('check-trust', workspacePath),

@@ -1,12 +1,21 @@
 import { createRequire } from 'module'
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
 const {
   classifyWindowsArtifact,
+  validateWindowsUpdateFeedFile,
   validateWindowsUpdateFeedText
 }: {
   classifyWindowsArtifact: (name: string | undefined) => 'arm64' | 'x64' | 'unknown'
+  validateWindowsUpdateFeedFile: (filePath: string) => {
+    ok: boolean
+    errors: string[]
+  }
   validateWindowsUpdateFeedText: (
     feedText: string,
     options?: { fileName?: string; expectedArch?: string }
@@ -70,6 +79,56 @@ sha512: example
     expect(result.errors).toContain(
       'latest-win-arm64.yml: TaskWraith-1.0.73-win-x64-setup.exe is x64; expected arm64 for this feed.'
     )
+  })
+
+  it('requires sha512 and size metadata for file entries', () => {
+    const result = validateWindowsUpdateFeedText(
+      `
+version: 1.0.73
+files:
+  - url: TaskWraith-1.0.73-win-x64-setup.exe
+path: TaskWraith-1.0.73-win-x64-setup.exe
+sha512: example
+`,
+      { fileName: 'latest-win-x64.yml' }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      'latest-win-x64.yml: TaskWraith-1.0.73-win-x64-setup.exe is missing sha512 metadata.'
+    )
+    expect(result.errors).toContain(
+      'latest-win-x64.yml: TaskWraith-1.0.73-win-x64-setup.exe is missing positive size metadata.'
+    )
+  })
+
+  it('verifies sha512 and size against referenced installer files', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwraith-win-feed-'))
+    const installerName = 'TaskWraith-1.0.73-win-x64-setup.exe'
+    const installerPath = path.join(tempDir, installerName)
+    fs.writeFileSync(installerPath, Buffer.from('installer-bytes'))
+    const sha512 = crypto.createHash('sha512').update(fs.readFileSync(installerPath)).digest('base64')
+    const feedPath = path.join(tempDir, 'latest-win-x64.yml')
+    fs.writeFileSync(
+      feedPath,
+      `
+version: 1.0.73
+files:
+  - url: ${installerName}
+    sha512: ${sha512}
+    size: ${fs.statSync(installerPath).size}
+path: ${installerName}
+sha512: ${sha512}
+`
+    )
+
+    expect(validateWindowsUpdateFeedFile(feedPath)).toMatchObject({ ok: true })
+
+    fs.writeFileSync(installerPath, Buffer.from('changed'))
+    const changedResult = validateWindowsUpdateFeedFile(feedPath)
+    expect(changedResult.ok).toBe(false)
+    expect(changedResult.errors.some((error) => error.includes('sha512 mismatch'))).toBe(true)
+    expect(changedResult.errors.some((error) => error.includes('size mismatch'))).toBe(true)
   })
 
   it('classifies Windows artifact names', () => {

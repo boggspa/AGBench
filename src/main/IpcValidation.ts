@@ -102,6 +102,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'app-shell-stats:snapshot': [],
   'set-appearance-mode': ['any'],
   'get-host-weather': [],
+  'native-capabilities:snapshot': [],
   'fx-rates:get': [],
   'fx-rates:refresh': ['optionalBoolean'],
   'providerRates:get': [],

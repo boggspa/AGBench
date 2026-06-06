@@ -61,6 +61,7 @@ body {
 }
 
 .window-drag-strip {
+  display: none;
   position: fixed;
   top: 0;
   left: 0;
@@ -69,6 +70,10 @@ body {
   z-index: 4;
   -webkit-app-region: drag;
   user-select: none;
+}
+
+:root[data-platform='darwin'] .window-drag-strip {
+  display: block;
 }
 
 /* Header */
@@ -112,4 +117,36 @@ body {
 
 .header-spacer {
   flex: 1;
+}
+
+@media (forced-colors: active) {
+  body {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  :where(
+    button,
+    [role='button'],
+    input,
+    select,
+    textarea,
+    .composer-shell,
+    .composer-inner-module,
+    .message-content,
+    .settings-card
+  ) {
+    forced-color-adjust: auto;
+    border-color: CanvasText;
+  }
+
+  :where(button, [role='button']):disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  :where(a, button, [role='button']):focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
 }

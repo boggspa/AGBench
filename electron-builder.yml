@@ -38,7 +38,13 @@ nsis:
   artifactName: TaskWraith-${version}-win-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createStartMenuShortcut: true
   createDesktopShortcut: always
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
 mac:
   target:
     - target: dmg

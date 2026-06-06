@@ -84,6 +84,23 @@ const normalizeAppearanceDimension = (
 const normalizePaneOpacity = (value: unknown, fallback = DEFAULT_PANE_OPACITY): number =>
   normalizeAppearanceDimension(value, fallback, MIN_PANE_OPACITY, MAX_PANE_OPACITY)
 
+const hostPlatform = (): string =>
+  typeof window !== 'undefined' && typeof window.api?.hostPlatform === 'string'
+    ? window.api.hostPlatform
+    : 'unknown'
+
+const resolveWindowMaterialAttribute = (
+  next: Pick<AppearanceState, 'mode' | 'reduceTransparency'>,
+  platform: string
+): string => {
+  const materialEnabled =
+    (next.mode === 'native_glass' || next.mode === 'soft_glass') && !next.reduceTransparency
+  if (!materialEnabled) return 'solid'
+  if (platform === 'darwin') return 'mac-vibrancy'
+  if (platform === 'win32') return 'win-mica'
+  return 'css-glass'
+}
+
 function getInitialState(): AppearanceState {
   const reduceMotion =
     typeof window !== 'undefined'
@@ -224,6 +241,9 @@ export function useAppearance() {
       }, 150)
     }
     root.setAttribute('data-appearance', next.mode)
+    const platform = hostPlatform()
+    root.setAttribute('data-platform', platform)
+    root.setAttribute('data-window-material', resolveWindowMaterialAttribute(next, platform))
     root.setAttribute('data-visual-effect', next.visualEffectStyle)
     root.setAttribute('data-theme', next.themeAppearance)
     root.setAttribute('data-corners', next.themeCornerStyle)

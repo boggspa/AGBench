@@ -9,6 +9,8 @@
  * (slice 3) renders consistently for both repo and non-repo grants.
  */
 
+import { pathBasename, stripTrailingPathSeparators } from './pathDisplay'
+
 /** Subset of `ExternalPathProbeResult` consumed by the renderer. */
 export interface ExternalPathGitMetadata {
   isRepo: boolean
@@ -46,12 +48,11 @@ export function describeExternalPath(
   opts?: { gitMetadata?: ExternalPathGitMetadata | null }
 ): ExternalPathDescriptor {
   const gitMetadata = opts?.gitMetadata ?? null
-  const trimmed = (absolutePath || '').replace(/\/+$/, '')
-  const pathBasename = trimmed.split('/').filter(Boolean).pop() || trimmed || '/'
+  const trimmed = stripTrailingPathSeparators(absolutePath || '')
+  const displayBasename = pathBasename(trimmed, trimmed || '/')
 
   if (gitMetadata && gitMetadata.isRepo) {
-    const repoBasename =
-      gitMetadata.repoRoot.split('/').filter(Boolean).pop() || gitMetadata.repoRoot
+    const repoBasename = pathBasename(gitMetadata.repoRoot, gitMetadata.repoRoot)
     return {
       isRepo: true,
       repoRoot: gitMetadata.repoRoot,
@@ -64,6 +65,6 @@ export function describeExternalPath(
   return {
     isRepo: false,
     repoRoot: trimmed || absolutePath,
-    basename: pathBasename
+    basename: displayBasename
   }
 }

@@ -95,9 +95,11 @@ jobs:
               throw "Invalid Authenticode signature for $($installer.Name): $($signature.Status)"
             }
           }
-          if (!(Test-Path "dist/latest-win-x64.yml")) {
-            throw "Missing dist/latest-win-x64.yml"
-          }
-          if (!(Test-Path "dist/latest-win-arm64.yml")) {
-            throw "Missing dist/latest-win-arm64.yml"
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $feedPrefix = if ($version -match "-") { "beta" } else { "latest" }
+          foreach ($arch in @("x64", "arm64")) {
+            $feed = "dist/$feedPrefix-win-$arch.yml"
+            if (!(Test-Path $feed)) {
+              throw "Missing $feed"
+            }
           }

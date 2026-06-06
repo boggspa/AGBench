@@ -1,7 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
-import { homedir } from 'os'
-import { delimiter, join } from 'path'
 import { createInterface, type Interface as ReadlineInterface } from 'readline'
+import {
+  createCliEnv,
+  createCliSpawnPlan,
+  resolveCliProviderBinary
+} from './providers/CliProviderRuntime'
 
 /**
  * Codex's app-server only accepts UUID thread ids (optionally `urn:uuid:`-
@@ -195,28 +198,6 @@ export interface CodexMcpTaskWraithConfig {
   parentProvider: 'codex'
 }
 
-function createCliEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
-  const pathEntries = [
-    ...(process.env.PATH || '').split(delimiter),
-    join(homedir(), '.local', 'bin'),
-    join(homedir(), '.npm-global', 'bin'),
-    join(homedir(), '.bun', 'bin'),
-    join(homedir(), '.cargo', 'bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/usr/bin',
-    '/bin',
-    '/usr/sbin',
-    '/sbin'
-  ].filter(Boolean)
-
-  return {
-    ...process.env,
-    PATH: Array.from(new Set(pathEntries)).join(delimiter),
-    ...extra
-  }
-}
-
 /**
  * Format a JS string for safe embedding inside a TOML double-quoted
  * string (i.e. the value half of a `-c key="value"` Codex CLI
@@ -403,10 +384,15 @@ export class CodexAppServerClient {
     // Reset the stderr ring buffer for this start attempt so a stale error
     // from a prior failed start can't be misattributed to this one.
     this.recentStderr = ''
-    this.proc = spawn('codex', codexArgs, {
-      shell: false,
+    const resolvedCodex = await resolveCliProviderBinary('codex')
+    if (!resolvedCodex.binaryPath) {
+      throw new Error(resolvedCodex.error || 'Codex CLI was not found.')
+    }
+    const spawnPlan = createCliSpawnPlan(resolvedCodex.binaryPath, codexArgs)
+    this.proc = spawn(spawnPlan.command, spawnPlan.args, {
+      shell: spawnPlan.shell,
       stdio: 'pipe',
-      env: createCliEnv(codexEnv)
+      env: createCliEnv(codexEnv, resolvedCodex.binaryPath)
     })
 
     this.stdoutReader = createInterface({ input: this.proc.stdout })

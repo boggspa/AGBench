@@ -11,8 +11,12 @@
   position: relative;
   background: transparent;
   border-right: 1px solid color-mix(in srgb, var(--sidebar-border) 72%, transparent);
-  padding-top: 36px;
+  padding-top: 0;
   overflow: hidden;
+}
+
+:root[data-platform='darwin'] .app-sidebar {
+  padding-top: 36px;
 }
 
 .workspace-sidebar-resize-handle {

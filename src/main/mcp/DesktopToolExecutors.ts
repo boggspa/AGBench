@@ -227,8 +227,6 @@ export type DesktopMcpToolName = (typeof DESKTOP_MCP_TOOL_NAMES)[number]
 
 const DESKTOP_MCP_TOOL_NAME_SET = new Set<string>(DESKTOP_MCP_TOOL_NAMES)
 const NATIVE_BRIDGE_TOOL_NAMES = new Set<string>([
-  'creative_app_status',
-  'creative_app_capabilities',
   'creative_timeline_import',
   'creative_applescript_dispatch',
   'creative_blender_python',

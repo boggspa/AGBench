@@ -452,6 +452,7 @@ declare global {
       setAppearanceMode: (
         payload: { mode?: string; reduceTransparency?: boolean } | string
       ) => Promise<boolean>
+      getNativeCapabilities: () => Promise<NativeCapabilitySnapshot>
 
       checkTrust: (workspacePath: string) => Promise<TrustStatusResult>
 

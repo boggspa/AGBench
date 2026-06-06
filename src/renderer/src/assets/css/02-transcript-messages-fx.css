@@ -52,7 +52,7 @@
 }
 
 .app-transcript::before {
-  content: "";
+  content: none;
   position: absolute;
   top: 0;
   left: 0;
@@ -61,6 +61,10 @@
   z-index: 3;
   -webkit-app-region: drag;
   user-select: none;
+}
+
+:root[data-platform='darwin'] .app-transcript::before {
+  content: "";
 }
 
 .app-transcript::after {

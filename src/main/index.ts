@@ -14,7 +14,7 @@ import type {
   MenuItemConstructorOptions
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
@@ -303,6 +303,7 @@ import {
   applyRuntimeProfileToPayload as applyRuntimeProfileToPayloadViaCliRuntime,
   captureProcessOutput,
   createCliEnv,
+  createCliSpawnPlan,
   expandHomePath,
   getAgentMcpStatusSnapshotDirect as getAgentMcpStatusSnapshotDirectViaCliRuntime,
   getAgentStatusSnapshotDirect as getAgentStatusSnapshotDirectViaCliRuntime,
@@ -8189,7 +8190,7 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   )
 }
 
-function runCodexExecFallback(
+async function runCodexExecFallback(
   event: Electron.IpcMainInvokeEvent,
   payload: AgentRunPayload,
   reason: string
@@ -8274,9 +8275,12 @@ function runCodexExecFallback(
     route
   )
 
-  const child = spawn('codex', args, {
+  const resolvedCodex = await resolveCliProviderBinary('codex')
+  const codexCommand = resolvedCodex.binaryPath || 'codex'
+  const codexSpawnPlan = createCliSpawnPlan(codexCommand, args)
+  const child = spawn(codexSpawnPlan.command, codexSpawnPlan.args, {
     cwd: payload.workspace!,
-    shell: false,
+    shell: codexSpawnPlan.shell,
     env: createCliEnv({
       FORCE_COLOR: '0',
       NO_COLOR: '1',
@@ -8443,7 +8447,7 @@ async function runCodexProvider(
       const route = routeWithRunId('codex', payload)
       sendAgentCompatError(event.sender, 'codex', codexConfigParseUserMessage(stderr), route)
     }
-    runCodexExecFallback(event, payload, message)
+    await runCodexExecFallback(event, payload, message)
   }
 }
 
@@ -9886,6 +9890,39 @@ function mcpStructuredJsonResult(
   }
 }
 
+function unsupportedNativeMcpToolResult(toolName: TaskWraithMcpToolName): McpToolExecutionResult | null {
+  const capabilities = getNativeCapabilitySnapshot()
+  const feature = toolName.startsWith('attached_window_')
+    ? capabilities.screenWatch
+    : toolName.startsWith('appwatch_')
+      ? capabilities.appwatch
+      : toolName === 'creative_applescript_dispatch'
+        ? capabilities.appleEvents
+        : toolName === 'creative_timeline_import' ||
+            toolName === 'creative_blender_python' ||
+            toolName === 'creative_midi_dispatch'
+          ? capabilities.bridge
+          : toolName === 'open_in_ide' ||
+              toolName === 'open_in_ide_at_position' ||
+              toolName === 'reveal_in_finder' ||
+              toolName === 'ide_app_status' ||
+              toolName === 'ide_app_capabilities' ||
+              toolName === 'list_running_ides'
+            ? capabilities.bridge
+            : { available: true }
+  if (feature.available) return null
+  return {
+    ...mcpStructuredJsonResult({
+      ok: false,
+      tool: toolName,
+      unsupported: true,
+      error: feature.reason || 'This native bridge feature is unavailable on this host.',
+      nativeCapabilities: capabilities
+    }),
+    isError: true
+  }
+}
+
 function mcpToolCallResponseFromBrokerResult(result: unknown) {
   return mcpBridgeToolCallResponseFromBrokerResult(result)
 }
@@ -10231,6 +10268,12 @@ async function executeGeminiMcpTool(
     workspacePath,
     String(args.cwd || args.working_directory || args.workdir || '')
   )
+  if (isDesktopMcpToolName(toolName)) {
+    const unsupportedResult = unsupportedNativeMcpToolResult(toolName)
+    if (unsupportedResult) {
+      return unsupportedResult
+    }
+  }
   // 1.0.4-AC — pass parentProvider so titles read "Approve Codex /
   // Claude / Kimi tool call" instead of always "Approve Gemini …"
   // when a non-Gemini participant invokes a shared MCP tool.
@@ -12777,15 +12820,23 @@ function appendGeminiCliSessionArgs(
 
 const applyNativeGlassToWindow = (targetWindow: BrowserWindow, settings: AppSettings): void => {
   const isMac = process.platform === 'darwin'
-  const useGlassWindow =
-    isMac &&
+  const isWindows = process.platform === 'win32'
+  const useMaterialWindow =
     (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
     !settings.reduceTransparency
-  const nextState = `${useGlassWindow ? NATIVE_GLASS_VIBRANCY : 'off'}:${settings.appearanceMode}:${settings.reduceTransparency ? 'reduced' : 'normal'}`
+  const useGlassWindow =
+    isMac && useMaterialWindow
+  const windowsMaterial: BrowserWindowConstructorOptions['backgroundMaterial'] =
+    isWindows && useMaterialWindow ? (targetWindow === mainWindow ? 'mica' : 'tabbed') : undefined
+  const nextState = `${useGlassWindow ? NATIVE_GLASS_VIBRANCY : windowsMaterial || 'off'}:${settings.appearanceMode}:${settings.reduceTransparency ? 'reduced' : 'normal'}`
   if (targetWindow === mainWindow && appliedNativeGlassState === nextState) {
     return
   }
-  if (useGlassWindow) {
+  if (isWindows) {
+    targetWindow.setVibrancy(null)
+    targetWindow.setBackgroundMaterial?.(windowsMaterial || 'none')
+    targetWindow.setBackgroundColor(windowsMaterial ? '#00000000' : '#1e1e1e')
+  } else if (useGlassWindow) {
     targetWindow.setVibrancy(NATIVE_GLASS_VIBRANCY)
     targetWindow.setBackgroundColor('#00000000')
   } else {
@@ -12860,10 +12911,11 @@ function updateAppShellStatsPollingMode(): void {
 function createWindow(): void {
   const isMac = process.platform === 'darwin'
   const settings = AppStore.getSettings()
-  const useGlassWindow =
-    isMac &&
+  const useMaterialWindow =
     (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
     !settings.reduceTransparency
+  const useGlassWindow =
+    isMac && useMaterialWindow
   const nativeVibrancy = resolveNativeVibrancy(useGlassWindow)
   const initialPlacement = resolveInitialWindowPlacement(settings)
 
@@ -12876,17 +12928,13 @@ function createWindow(): void {
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
+    title: 'TaskWraith',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     vibrancy: nativeVibrancy,
-    backgroundMaterial:
-      !isMac &&
-      (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
-      !settings.reduceTransparency
-        ? 'acrylic'
-        : undefined,
+    backgroundMaterial: !isMac && useMaterialWindow ? 'mica' : undefined,
     visualEffectState: 'active',
     transparent: false,
-    backgroundColor: useGlassWindow ? '#00000000' : '#1e1e1e',
+    backgroundColor: useGlassWindow || (!isMac && useMaterialWindow) ? '#00000000' : '#1e1e1e',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -13063,10 +13111,11 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
 
   const isMac = process.platform === 'darwin'
   const settings = AppStore.getSettings()
-  const useGlassWindow =
-    isMac &&
+  const useMaterialWindow =
     (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
     !settings.reduceTransparency
+  const useGlassWindow =
+    isMac && useMaterialWindow
   const title =
     kind === 'file-editor'
       ? 'TaskWraith File Editor'
@@ -13083,15 +13132,13 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
     title,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     vibrancy: resolveNativeVibrancy(useGlassWindow),
-    backgroundMaterial:
-      !isMac &&
-      (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
-      !settings.reduceTransparency
-        ? 'acrylic'
-        : undefined,
+    backgroundMaterial: !isMac && useMaterialWindow ? 'tabbed' : undefined,
     visualEffectState: 'active',
     transparent: false,
-    backgroundColor: resolvePopoutBackgroundColor(useGlassWindow),
+    backgroundColor:
+      useGlassWindow || (!isMac && useMaterialWindow)
+        ? '#00000000'
+        : resolvePopoutBackgroundColor(false),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -14619,28 +14666,34 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'set-appearance-mode',
       (_, payload: { mode?: string; reduceTransparency?: boolean } | string) => {
-        const isMac = process.platform === 'darwin'
-        if (isMac && mainWindow) {
-          const settings = AppStore.getSettings()
-          const requestMode = typeof payload === 'string' ? payload : payload?.mode
-          const requestReduce =
-            typeof payload === 'string'
-              ? settings.reduceTransparency
-              : (payload?.reduceTransparency ?? settings.reduceTransparency)
-          const nextMode: AppearanceMode = isAppearanceMode(requestMode)
-            ? requestMode
-            : settings.appearanceMode || 'soft_glass'
-          applyNativeGlassToWindow(mainWindow, {
-            ...settings,
-            appearanceMode: nextMode,
-            reduceTransparency: requestReduce
-          })
+        const settings = AppStore.getSettings()
+        const requestMode = typeof payload === 'string' ? payload : payload?.mode
+        const requestReduce =
+          typeof payload === 'string'
+            ? settings.reduceTransparency
+            : (payload?.reduceTransparency ?? settings.reduceTransparency)
+        const nextMode: AppearanceMode = isAppearanceMode(requestMode)
+          ? requestMode
+          : settings.appearanceMode || 'soft_glass'
+        const nextSettings = {
+          ...settings,
+          appearanceMode: nextMode,
+          reduceTransparency: requestReduce
+        }
+        if (mainWindow) {
+          applyNativeGlassToWindow(mainWindow, nextSettings)
+        }
+        for (const win of workspacePopoutWindows.values()) {
+          if (!win.isDestroyed()) {
+            applyNativeGlassToWindow(win, nextSettings)
+          }
         }
         return true
       }
     )
 
     ipcMain.handle('get-host-weather', async () => getCachedHostWeather())
+    ipcMain.handle('native-capabilities:snapshot', () => getNativeCapabilitySnapshot())
 
     ipcMain.handle('get-file-icon', async (_, requestedPath: string) => {
       if (typeof requestedPath !== 'string') {
@@ -15645,36 +15698,67 @@ if (isGeminiMcpBridgeProcess) {
       action: 'login' | 'logout'
     ): Promise<{ ok: boolean; error?: string }> => {
       const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
+      const psQuote = (s: string): string => `'${s.replace(/'/g, "''")}'`
       try {
-        let command: string
+        let commandParts: string[]
         let label: string
         let postscript = `${action === 'login' ? 'Sign-in' : 'Sign-out'} finished (exit $status). Close this window and return to TaskWraith.`
         if (provider === 'codex') {
           label = 'Codex'
           const resolved = await resolveCliProviderBinary('codex')
-          command = `${shQuote(resolved.binaryPath || 'codex')} ${action}`
+          commandParts = [resolved.binaryPath || 'codex', action]
         } else if (provider === 'claude') {
           label = 'Claude'
           const resolved = await resolveCliProviderBinary('claude')
-          command = `${shQuote(resolved.binaryPath || 'claude')} auth ${action}`
+          commandParts = [resolved.binaryPath || 'claude', 'auth', action]
         } else if (provider === 'kimi') {
           label = 'Kimi'
           const resolved = await resolveCliProviderBinary('kimi')
-          command = `${shQuote(resolved.binaryPath || 'kimi')} ${action}`
+          commandParts = [resolved.binaryPath || 'kimi', action]
         } else if (provider === 'cursor') {
           label = 'Cursor'
           const resolved = await resolveCliProviderBinary('cursor')
-          command = `${shQuote(resolved.binaryPath || 'cursor-agent')} ${action}`
+          commandParts = [resolved.binaryPath || 'cursor-agent', action]
         } else if (provider === 'grok') {
           label = 'Grok'
           const resolved = await resolveCliProviderBinary('grok')
-          command = shQuote(resolved.binaryPath || 'grok')
+          commandParts = [resolved.binaryPath || 'grok']
           if (action === 'logout') {
             postscript =
               'Grok CLI does not expose a logout subcommand yet. Use the opened Grok session to manage account state, then close this window.'
           }
         } else {
           return { ok: false, error: `No terminal ${action} for ${provider}.` }
+        }
+        const command =
+          process.platform === 'win32'
+            ? commandParts.map(psQuote).join(' ')
+            : commandParts.map(shQuote).join(' ')
+        const dir = join(app.getPath('userData'), 'login')
+        fsSync.mkdirSync(dir, { recursive: true })
+        if (process.platform === 'win32') {
+          const psFile = join(dir, `${provider}-${action}.ps1`)
+          const cmdFile = join(dir, `${provider}-${action}.cmd`)
+          const psScript =
+            [
+              `# Generated by TaskWraith - interactive provider ${action}.`,
+              '$ErrorActionPreference = "Continue"',
+              `Write-Host "${action === 'login' ? 'Signing in to' : 'Signing out of'} ${label} for TaskWraith..."`,
+              `Write-Host "> ${command.replace(/"/g, '`"')}"`,
+              'Write-Host ""',
+              `& ${command}`,
+              '$status = if ($LASTEXITCODE -ne $null) { $LASTEXITCODE } else { 0 }',
+              'Write-Host ""',
+              `Write-Host "${postscript.replace(/"/g, '`"').replace('$status', '$status')}"`
+            ].join('\r\n') + '\r\n'
+          fsSync.writeFileSync(psFile, psScript)
+          fsSync.writeFileSync(
+            cmdFile,
+            `@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "%~dp0${basename(psFile)}"\r\n`
+          )
+          const err = await shell.openPath(cmdFile)
+          if (err) return { ok: false, error: err }
+          return { ok: true }
         }
         const script =
           [
@@ -15690,8 +15774,6 @@ if (isGeminiMcpBridgeProcess) {
             'echo ""',
             `echo "${postscript}"`
           ].join('\n') + '\n'
-        const dir = join(app.getPath('userData'), 'login')
-        fsSync.mkdirSync(dir, { recursive: true })
         const file = join(dir, `${provider}-${action}.command`)
         fsSync.writeFileSync(file, script, { mode: 0o755 })
         fsSync.chmodSync(file, 0o755)
