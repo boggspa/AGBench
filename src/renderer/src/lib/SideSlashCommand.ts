@@ -17,11 +17,15 @@ const PRESENTATION_ALIASES: Record<string, SideSlashPresentation> = {
 
 export function parseSideSlashCommand(value: string): SideSlashCommand | null {
   const withoutLeadingWhitespace = value.replace(/^\s+/, '')
-  if (!withoutLeadingWhitespace.startsWith('/side')) return null
-  const afterCommand = withoutLeadingWhitespace.slice('/side'.length)
-  if (afterCommand && !/^\s/.test(afterCommand)) return null
+  const commandMatch = withoutLeadingWhitespace.match(/^\/side(?:-([a-z-]+))?(?=\s|$)/i)
+  if (!commandMatch) return null
+  const directPresentation = commandMatch[1]
+    ? PRESENTATION_ALIASES[commandMatch[1].toLowerCase()]
+    : undefined
+  if (commandMatch[1] && !directPresentation) return null
 
-  const args = afterCommand.trim()
+  const args = withoutLeadingWhitespace.slice(commandMatch[0].length).trim()
+  if (directPresentation) return { presentation: directPresentation, seedPrompt: args }
   if (!args) return { presentation: 'split', seedPrompt: '' }
 
   const firstSpace = args.search(/\s/)

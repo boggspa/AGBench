@@ -29,8 +29,24 @@ describe('parseSideSlashCommand', () => {
     })
   })
 
+  it('parses direct side layout slash commands', () => {
+    expect(parseSideSlashCommand('/side-drawer inspect this')).toEqual({
+      presentation: 'drawer',
+      seedPrompt: 'inspect this'
+    })
+    expect(parseSideSlashCommand('/side-popout')).toEqual({
+      presentation: 'popout',
+      seedPrompt: ''
+    })
+    expect(parseSideSlashCommand('/side-main continue here')).toEqual({
+      presentation: 'main',
+      seedPrompt: 'continue here'
+    })
+  })
+
   it('rejects non-side slash commands and side-looking prefixes', () => {
     expect(parseSideSlashCommand('/sidecar')).toBeNull()
+    expect(parseSideSlashCommand('/side-unknown')).toBeNull()
     expect(parseSideSlashCommand('/clear')).toBeNull()
   })
 })
