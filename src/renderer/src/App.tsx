@@ -11936,6 +11936,13 @@ function App(): React.JSX.Element {
         )
     applyAgenticWorkspaceGrantSettings(nextSettings)
   }
+  const sideComposerRunTimecodeStartedAt = isSideChatRunning
+    ? sideChat?.ensemble?.activeRound?.startedAt || sideRun?.startedAt || null
+    : null
+  const sideCumulativeRunBaseMs = useMemo(
+    () => computeCumulativeRunBaseMs(sideChat?.runs),
+    [sideChat?.runs]
+  )
   const composerRunTimecodeStartedAt = isCurrentChatRunning
     ? currentEnsembleRound?.startedAt || currentRun?.startedAt || null
     : null
@@ -17437,6 +17444,20 @@ function App(): React.JSX.Element {
                           </button>
                         </span>
                       </div>
+                    </div>
+                    <div
+                      className="composer-telemetry-row side-chat-telemetry-row"
+                      data-has-token-tally="false"
+                    >
+                      <ComposerRunTimecode
+                        running={isSideChatRunning}
+                        startedAt={sideComposerRunTimecodeStartedAt}
+                      />
+                      <ComposerCumulativeTimecode
+                        running={isSideChatRunning}
+                        startedAt={sideComposerRunTimecodeStartedAt}
+                        cumulativeBaseMs={sideCumulativeRunBaseMs}
+                      />
                     </div>
                   </div>
                 </div>
