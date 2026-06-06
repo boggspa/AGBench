@@ -52,7 +52,7 @@ import {
 } from '../escalation/ComplexityEscalation'
 import type { SessionCheckpointReason } from '../checkpoints/SessionCheckpoint'
 import { buildLaneId, canStartConcurrentRound, createLane, transitionLane } from '../EnsembleLanes'
-import { concurrentLanesEnabled } from '../featureGates'
+import { concurrentLanesEnabled, concurrentWriteLanesEnabled } from '../featureGates'
 // 1.0.7 — pure builder turning a finished participant run's stats into the
 // recordUsage payload, so ensemble runs reach usage.json (wall-clock + heatmaps
 // + provider totals). Ensemble runs complete here, not via handleProviderExit.
@@ -141,6 +141,7 @@ export interface EnsembleOrchestratorDeps {
     roundId: string,
     status: Extract<EnsembleRoundState['status'], 'completed' | 'cancelled' | 'failed'>
   ) => void
+  releaseWriteIntentsForLane?: (laneId: string) => unknown
 }
 
 /**
@@ -220,6 +221,47 @@ export interface CancelWakeupInput {
   wakeupId?: string
 }
 
+export type EnsembleFanoutMode = 'read_only' | 'locked_writers'
+
+export interface EnsembleFanoutInput {
+  targets?: unknown
+  prompt?: string
+  reason?: string
+  mode?: EnsembleFanoutMode
+}
+
+export interface EnsembleFanoutResult {
+  ok: boolean
+  tool: 'ensemble_fanout'
+  mode: EnsembleFanoutMode
+  message: string
+  laneIds?: string[]
+  participantIds?: string[]
+  error?:
+    | 'no_active_run'
+    | 'not_ensemble'
+    | 'missing_prompt'
+    | 'invalid_mode'
+    | 'invalid_target'
+    | 'no_eligible_targets'
+    | 'write_lanes_disabled'
+    | 'dispatch_failed'
+}
+
+export interface EnsembleSideMessageInput {
+  to?: unknown
+  message?: string
+  reason?: string
+}
+
+export interface EnsembleSideMessageResult {
+  ok: boolean
+  tool: 'ensemble_send'
+  message: string
+  toParticipantIds?: string[]
+  error?: 'no_active_run' | 'not_ensemble' | 'missing_message' | 'invalid_target'
+}
+
 /** Stable per-timeline-entry message id. Includes the runId + the
  * entry's ordinal so the same entry always resolves to the same id
  * across flush passes, letting `flushRun` replace-in-place rather
@@ -263,6 +305,37 @@ function stripPseudoSystemYieldLines(text: string): string {
     .join(newline)
     .replace(/\n{3,}/g, '\n\n')
   return hadTrailingNewline && filtered ? `${filtered}${newline}` : filtered
+}
+
+function normalizeFanoutMode(value: unknown): EnsembleFanoutMode | null {
+  if (value === undefined || value === null || value === '') return 'read_only'
+  return value === 'read_only' || value === 'locked_writers' ? value : null
+}
+
+function stripLeadingAt(value: string): string {
+  return value.trim().replace(/^@+/, '').trim()
+}
+
+function normalizeTargetList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 12)
+  }
+  if (typeof value === 'string' && value.trim()) return [value.trim()]
+  return []
+}
+
+function dedupeParticipants(participants: EnsembleParticipant[]): EnsembleParticipant[] {
+  const seen = new Set<string>()
+  const out: EnsembleParticipant[] = []
+  for (const participant of participants) {
+    if (!participant?.id || seen.has(participant.id)) continue
+    seen.add(participant.id)
+    out.push(participant)
+  }
+  return out
 }
 
 /**
@@ -565,18 +638,18 @@ interface ActiveRoundRuntime {
   activeRunId?: string
   /**
    * 1.0.4-AK5 — set of run ids currently in flight for a parallel
-   * scout pass. Distinct from `activeRunId` (the serial writer's
+   * fan-out pass. Distinct from `activeRunId` (the serial writer's
    * single in-flight run) so the existing reads of `activeRunId`
-   * keep their single-run semantics unchanged; the scout set only
+   * keep their single-run semantics unchanged; the fan-out set only
    * has entries during the brief Promise.all window when the
-   * pre-writer scout pass is running.
+   * pre-writer fan-out pass is running.
    */
   activeScoutRunIds?: Set<string>
   /**
    * 1.0.4-AK6 — structured briefs recorded by participants during
-   * the parallel scout pass via the `scout_brief` MCP tool. After
-   * the scout pass closes, the serial writer's prompt builder
-   * reads these and injects them as a "Scout briefs from the
+   * the parallel fan-out pass via the `scout_brief` MCP tool. After
+   * the fan-out pass closes, the serial writer's prompt builder
+   * reads these and injects them as a "Fan-out briefs from the
    * parallel pass:" context block. Cleared at round-end so a
    * subsequent serial round doesn't accidentally re-use stale
    * briefs.
@@ -918,11 +991,252 @@ export class EnsembleOrchestrator {
     return true
   }
 
+  async fanoutForRun(runId: string | undefined, input: EnsembleFanoutInput): Promise<EnsembleFanoutResult> {
+    const mode = normalizeFanoutMode(input.mode)
+    if (!mode) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode: 'read_only',
+        message: 'ensemble_fanout: mode must be read_only or locked_writers.',
+        error: 'invalid_mode'
+      }
+    }
+    const prompt = (input.prompt || '').trim()
+    if (!prompt) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message: 'ensemble_fanout: prompt is required.',
+        error: 'missing_prompt'
+      }
+    }
+    if (!runId) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message: 'ensemble_fanout requires an active Ensemble participant run.',
+        error: 'no_active_run'
+      }
+    }
+    const run = this.runsByRunId.get(runId)
+    if (!run) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message: 'ensemble_fanout: no active Ensemble participant run matches this tool call.',
+        error: 'no_active_run'
+      }
+    }
+    const runtime = this.roundsByChatId.get(run.chatId)
+    const chat = this.deps.getChat(run.chatId)
+    if (!runtime || runtime.cancelled || !chat?.ensemble) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message: 'ensemble_fanout: the active chat is not an Ensemble round.',
+        error: 'not_ensemble'
+      }
+    }
+    if (mode === 'locked_writers' && !concurrentWriteLanesEnabled()) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message:
+          'ensemble_fanout: locked writer lanes require TASKWRAITH_CONCURRENT_WRITE_LANES.',
+        error: 'write_lanes_disabled'
+      }
+    }
+
+    const resolvedTargets = this.resolveFanoutTargets(chat, runtime, run, input.targets, mode)
+    if (!resolvedTargets.ok) {
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message: resolvedTargets.message,
+        error: resolvedTargets.error
+      }
+    }
+
+    const label = mode === 'locked_writers' ? 'Locked writer fan-out' : 'Parallel fan-out'
+    this.appendRoundStatus(
+      run.chatId,
+      run.roundId,
+      `${label}: ${run.participant.role || run.participant.provider} requested ${resolvedTargets.targets.length} lane(s).${input.reason ? ` ${input.reason}` : ''}`
+    )
+    try {
+      const laneIds = await this.runParallelFanoutPass(runtime, chat, resolvedTargets.targets, {
+        prompt,
+        reason: input.reason,
+        mode,
+        sourceRunId: runId
+      })
+      return {
+        ok: true,
+        tool: 'ensemble_fanout',
+        mode,
+        laneIds,
+        participantIds: resolvedTargets.targets.map((participant) => participant.id),
+        message: `${label} complete: ${laneIds.length} lane(s) returned.`
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'ensemble_fanout: dispatch failed.'
+      this.appendRoundStatus(run.chatId, run.roundId, `${label} failed: ${message}`)
+      return {
+        ok: false,
+        tool: 'ensemble_fanout',
+        mode,
+        message,
+        error: 'dispatch_failed'
+      }
+    }
+  }
+
+  sendSideMessageForRun(
+    runId: string | undefined,
+    input: EnsembleSideMessageInput
+  ): EnsembleSideMessageResult {
+    if (!runId) {
+      return {
+        ok: false,
+        tool: 'ensemble_send',
+        message: 'ensemble_send requires an active Ensemble participant run.',
+        error: 'no_active_run'
+      }
+    }
+    const run = this.runsByRunId.get(runId)
+    if (!run) {
+      return {
+        ok: false,
+        tool: 'ensemble_send',
+        message: 'ensemble_send: no active Ensemble participant run matches this tool call.',
+        error: 'no_active_run'
+      }
+    }
+    const chat = this.deps.getChat(run.chatId)
+    if (!chat?.ensemble) {
+      return {
+        ok: false,
+        tool: 'ensemble_send',
+        message: 'ensemble_send: the active chat is not an Ensemble chat.',
+        error: 'not_ensemble'
+      }
+    }
+    const message = (input.message || '').trim()
+    if (!message) {
+      return {
+        ok: false,
+        tool: 'ensemble_send',
+        message: 'ensemble_send: message is required.',
+        error: 'missing_message'
+      }
+    }
+    const targets = normalizeTargetList(input.to)
+    const participants = chat.ensemble.participants || []
+    const recipients =
+      targets.length === 0
+        ? []
+        : dedupeParticipants(
+            targets
+              .map((target) =>
+                resolvePhraseToParticipant(stripLeadingAt(target), participants, new Set([run.participant.id]))
+              )
+              .filter((participant): participant is EnsembleParticipant =>
+                Boolean(participant?.enabled)
+              )
+          )
+    if (recipients.length === 0) {
+      return {
+        ok: false,
+        tool: 'ensemble_send',
+        message:
+          'ensemble_send: target did not resolve to an enabled participant. Use list_ensemble_participants first.',
+        error: 'invalid_target'
+      }
+    }
+    const timestamp = this.deps.nowIso()
+    const senderLabel = run.participant.role || providerLabel(run.participant.provider)
+    const recipientLabels = recipients.map((participant) => participant.role || providerLabel(participant.provider))
+    const content = `↪ ${senderLabel} to ${recipientLabels.join(', ')}: ${message}${
+      input.reason ? `\nReason: ${input.reason}` : ''
+    }`
+    const sideMessage: ChatMessage = {
+      id: `ensemble-side-message-${run.roundId}-${this.deps.now()}-${this.nextStatusSeq()}`,
+      role: 'system',
+      content,
+      timestamp,
+      runId: run.runId,
+      metadata: {
+        kind: 'ensembleSideMessage',
+        ensembleRoundId: run.roundId,
+        ensembleParticipantId: run.participant.id,
+        ensembleProvider: run.participant.provider,
+        ensembleRole: run.participant.role,
+        ensembleOrder: run.participant.order,
+        fromParticipantId: run.participant.id,
+        fromProvider: run.participant.provider,
+        fromRole: run.participant.role,
+        toParticipantIds: recipients.map((participant) => participant.id),
+        toProviders: recipients.map((participant) => participant.provider),
+        toRoles: recipients.map((participant) => participant.role),
+        ...(run.laneId ? { ensembleLaneId: run.laneId } : {}),
+        ...(input.reason ? { reason: input.reason } : {})
+      }
+    }
+    this.saveChatWithCheckpoint(
+      {
+        ...chat,
+        messages: [...chat.messages, sideMessage],
+        updatedAt: this.deps.now()
+      },
+      'round-updated'
+    )
+    return {
+      ok: true,
+      tool: 'ensemble_send',
+      toParticipantIds: recipients.map((participant) => participant.id),
+      message: `ensemble_send: delivered visible side message to ${recipientLabels.join(', ')}.`
+    }
+  }
+
+  markLaneBlockedForRun(runId: string | undefined, reason: string): boolean {
+    if (!runId) return false
+    const run = this.runsByRunId.get(runId)
+    if (!run?.laneId) return false
+    const nowIso = this.deps.nowIso()
+    this.updateChatRound(run.chatId, (round) => {
+      if (!round?.lanes?.[run.laneId!]) return round
+      return {
+        ...round,
+        lanes: {
+          ...round.lanes,
+          [run.laneId!]: transitionLane(round.lanes[run.laneId!], {
+            status: 'blocked',
+            reason,
+            nowIso
+          })
+        }
+      }
+    })
+    this.appendRoundStatus(
+      run.chatId,
+      run.roundId,
+      `${run.participant.role || providerLabel(run.participant.provider)} lane blocked: ${reason}`
+    )
+    return true
+  }
+
   /**
-   * 1.0.4-AK6 — public lookup for scout-pass membership. The
+   * 1.0.4-AK6 — public lookup for fan-out membership. The
    * `scout_brief` dispatcher in `index.ts` uses this to refuse
-   * briefs from outside an active parallel scout pass (writer
-   * step calls, non-Work-Session rounds).
+   * briefs from outside an active parallel fan-out pass.
    */
   isParticipantInScoutPass(runId: string): boolean {
     if (!runId) return false
@@ -951,7 +1265,7 @@ export class EnsembleOrchestrator {
   /**
    * 1.0.4-AK6 — record a scout brief into the round runtime. Called
    * by the `scout_brief` MCP tool dispatcher after handler
-   * validation. The brief is read after the parallel scout pass
+   * validation. The brief is read after the parallel fan-out pass
    * closes and threaded into the serial writer's prompt via
    * `formatScoutBriefsForPrompt`.
    *
@@ -1033,7 +1347,7 @@ export class EnsembleOrchestrator {
     if (runtime.activeScoutRunIds?.has(runId)) {
       return {
         ok: false,
-        error: 'schedule_wakeup is not available from parallel scout-pass lanes.'
+        error: 'schedule_wakeup is not available from parallel fan-out lanes.'
       }
     }
     const chat = this.deps.getChat(run.chatId)
@@ -1793,56 +2107,61 @@ export class EnsembleOrchestrator {
       }
     }
 
-    // 1.0.4-AK5 — Parallel Scout Pass.
-    //
-    // When the active Work Session has `enableScoutPass: true` AND
-    // the round contains 2+ read-only participants, fan them out
-    // concurrently as a pre-writer "scout pass" before the serial
-    // writer step begins. Read-only-only is enforced explicitly:
-    // we never let a write-capable participant into the parallel
-    // lane because the existing approval / file-lock infrastructure
-    // is single-writer-safe but multi-writer-unsafe.
-    //
-    // The scout pass:
-    //   1. Pulls the scout participants out of `remaining` so the
-    //      while-loop below doesn't dispatch them again.
-    //   2. Seeds each scout's run synchronously (no collision risk —
-    //      UUIDs).
-    //   3. Dispatches all scouts concurrently via Promise.all, then
-    //      awaits all their completion promises.
-    //   4. Returns control to `runRound` which continues serially
-    //      with the writer participants.
-    //
-    // Skipped entirely when scout pass is off (default) or there's
-    // < 2 read-only scouts (single-scout case offers no parallelism
-    // benefit; just runs serially).
-    const chatForScout = this.deps.getChat(runtime.chatId)
-    const workSessionForScout = chatForScout?.ensemble?.workSession
+    // Parallel fan-out. Default/safe path: fan out read-only
+    // participants first, then continue with writer-capable
+    // participants serially. When the explicit writer-lane feature
+    // gate is enabled, a concurrent round can dispatch all remaining
+    // participants in locked lanes and rely on the workspace write-
+    // intent registry to serialize actual mutations.
+    const chatForFanout = this.deps.getChat(runtime.chatId)
+    const workSessionForFanout = chatForFanout?.ensemble?.workSession
     const shouldRunReadOnlyFanout =
       runtime.concurrentMode ||
       Boolean(
-        workSessionForScout?.enabled &&
-          workSessionForScout.status === 'active' &&
-          workSessionForScout.enableScoutPass
+        workSessionForFanout?.enabled &&
+          workSessionForFanout.status === 'active' &&
+          workSessionForFanout.enableScoutPass
       )
-    if (shouldRunReadOnlyFanout && !runtime.cancelled) {
-      const scouts: EnsembleParticipant[] = []
+    if (
+      runtime.concurrentMode &&
+      concurrentWriteLanesEnabled() &&
+      chatForFanout &&
+      remaining.length > 1 &&
+      !runtime.cancelled
+    ) {
+      const allLanes = [...remaining]
+      remaining.length = 0
+      await this.runParallelFanoutPass(runtime, chatForFanout, allLanes, {
+        mode: 'locked_writers'
+      })
+    } else if (shouldRunReadOnlyFanout && !runtime.cancelled) {
+      const readers: EnsembleParticipant[] = []
       const writers: EnsembleParticipant[] = []
       for (const participant of remaining) {
-        if ((participant.permissionPresetId || 'default') === 'read_only') {
-          scouts.push(participant)
+        const permissions = chatForFanout
+          ? this.resolveParticipantPermissions(
+              chatForFanout,
+              participant,
+              runtime.externalPathGrants,
+              { ignoreWorkSessionOverride: true }
+            )
+          : null
+        if (permissions?.readOnly) {
+          readers.push(participant)
         } else {
           writers.push(participant)
         }
       }
-      if (scouts.length >= 2 && chatForScout) {
+      if (readers.length >= 2 && chatForFanout) {
         // Replace `remaining` with the writers-only subset so the
         // serial while-loop below processes them in original order
-        // after the scouts complete.
+        // after the read-only fan-out completes.
         remaining.length = 0
         remaining.push(...writers)
-        await this.runParallelScoutPass(runtime, chatForScout, scouts)
-      } else if (runtime.concurrentMode && scouts.length > 0) {
+        await this.runParallelFanoutPass(runtime, chatForFanout, readers, {
+          mode: 'read_only'
+        })
+      } else if (runtime.concurrentMode && readers.length > 0) {
         this.appendRoundStatus(
           runtime.chatId,
           runtime.roundId,
@@ -1909,8 +2228,8 @@ export class EnsembleOrchestrator {
           : runtime.prompt,
         roundId: runtime.roundId,
         chatContextTurns: this.deps.getSettings().chatContextTurns,
-        // 1.0.4-AK6 — thread scout briefs into the writer's prompt
-        // when a parallel scout pass just completed. Empty array
+        // 1.0.4-AK6 — thread fan-out briefs into the writer's prompt
+        // when a parallel fan-out pass just completed. Empty array
         // (or undefined) skips the section entirely.
         scoutBriefs: runtime.scoutBriefs
       })
@@ -2339,22 +2658,113 @@ export class EnsembleOrchestrator {
     }
   }
 
+  private resolveFanoutTargets(
+    chat: ChatRecord,
+    runtime: ActiveRoundRuntime,
+    run: ActiveParticipantRun,
+    rawTargets: unknown,
+    mode: EnsembleFanoutMode
+  ):
+    | { ok: true; targets: EnsembleParticipant[] }
+    | {
+        ok: false
+        message: string
+        error: Exclude<EnsembleFanoutResult['error'], undefined>
+      } {
+    const explicitTargets = normalizeTargetList(rawTargets)
+    const participants = chat.ensemble?.participants || []
+    const activeParticipantIds = new Set<string>()
+    for (const active of this.runsByRunId.values()) {
+      if (active.chatId === runtime.chatId && active.roundId === runtime.roundId) {
+        activeParticipantIds.add(active.participant.id)
+      }
+    }
+    const isEligible = (participant: EnsembleParticipant): boolean => {
+      if (!participant.enabled) return false
+      if (participant.id === run.participant.id) return false
+      if (activeParticipantIds.has(participant.id)) return false
+      if (mode === 'locked_writers') return true
+      return this.resolveParticipantPermissions(chat, participant, runtime.externalPathGrants, {
+        ignoreWorkSessionOverride: true
+      }).readOnly
+    }
+    if (explicitTargets.length === 0 || explicitTargets.some((target) => /^@?all$/i.test(target))) {
+      const targets = participants.filter(isEligible)
+      if (targets.length === 0) {
+        return {
+          ok: false,
+          message:
+            mode === 'locked_writers'
+              ? 'ensemble_fanout: no enabled, idle peer participants are available.'
+              : 'ensemble_fanout: no enabled, idle read-only peer participants are available.',
+          error: 'no_eligible_targets'
+        }
+      }
+      return { ok: true, targets }
+    }
+
+    const targets: EnsembleParticipant[] = []
+    for (const rawTarget of explicitTargets) {
+      const target = stripLeadingAt(rawTarget)
+      const participant = resolvePhraseToParticipant(target, participants, new Set([run.participant.id]))
+      if (!participant || !participant.enabled) {
+        return {
+          ok: false,
+          message: `ensemble_fanout: target "${rawTarget}" did not resolve to an enabled participant.`,
+          error: 'invalid_target'
+        }
+      }
+      if (activeParticipantIds.has(participant.id)) {
+        return {
+          ok: false,
+          message: `ensemble_fanout: target "${rawTarget}" is already active in this round.`,
+          error: 'invalid_target'
+        }
+      }
+      if (mode === 'read_only') {
+        const permissions = this.resolveParticipantPermissions(
+          chat,
+          participant,
+          runtime.externalPathGrants,
+          { ignoreWorkSessionOverride: true }
+        )
+        if (!permissions.readOnly) {
+          return {
+            ok: false,
+            message: `ensemble_fanout: target "${rawTarget}" is not read-only. Use mode=locked_writers with TASKWRAITH_CONCURRENT_WRITE_LANES enabled for writer-capable lanes.`,
+            error: 'invalid_target'
+          }
+        }
+      }
+      targets.push(participant)
+    }
+    const deduped = dedupeParticipants(targets)
+    if (deduped.length === 0) {
+      return {
+        ok: false,
+        message: 'ensemble_fanout: no eligible targets resolved.',
+        error: 'no_eligible_targets'
+      }
+    }
+    return { ok: true, targets: deduped }
+  }
+
   /**
-   * 1.0.4-AK5 — Parallel Scout Pass executor.
+   * 1.0.4-AK5 — Parallel fan-out executor.
    *
-   * Dispatches N read-only scouts concurrently via Promise.all,
+   * Dispatches N participants concurrently via Promise.all,
    * then awaits all their completion promises before returning to
    * `runRound`. The orchestrator emits a transcript status row at
    * the start ("Parallel pass · N scouts dispatched.") so the user
    * sees the fan-out as it happens.
    *
    * Critical invariants:
-   *   - Every scout MUST be read-only (the caller in `runRound`
-   *     enforces this). We assert defensively here too.
-   *   - Each scout gets its own `runId` (UUID, collision-free).
-   *   - Dispatch failures for individual scouts are NOT round-fatal
-   *     — the existing typed-error path runs per-scout, marks that
-   *     scout as `failed` or `unreachable`, but the other scouts
+   *   - Read-only mode requires every participant to resolve as
+   *     read-only. Locked-writer mode requires the writer-lane flag.
+   *   - Each lane gets its own `runId` (UUID, collision-free).
+   *   - Dispatch failures for individual lanes are NOT round-fatal
+   *     — the existing typed-error path runs per-lane, marks that
+   *     lane as `failed` or `unreachable`, but the other lanes
    *     continue. After `Promise.all` settles we return to the
    *     serial writer step as normal.
    *
@@ -2367,33 +2777,60 @@ export class EnsembleOrchestrator {
    * which is the right behaviour — tool calls MUST carry their
    * runId binding to dispatch correctly.
    */
-  private async runParallelScoutPass(
+  private async runParallelFanoutPass(
     runtime: ActiveRoundRuntime,
     chat: ChatRecord,
-    scouts: EnsembleParticipant[]
-  ): Promise<void> {
-    if (scouts.length === 0) return
-    // Defensive — caller in runRound already filters, but the
-    // invariant matters enough to assert at the entry of this
-    // method too.
-    for (const scout of scouts) {
-      if ((scout.permissionPresetId || 'default') !== 'read_only') {
+    participants: EnsembleParticipant[],
+    options: {
+      prompt?: string
+      reason?: string
+      mode?: EnsembleFanoutMode
+      sourceRunId?: string
+    } = {}
+  ): Promise<string[]> {
+    if (participants.length === 0) return []
+    const mode = options.mode || 'read_only'
+    if (mode === 'locked_writers' && !concurrentWriteLanesEnabled()) {
+      throw new Error('Locked writer fan-out requires TASKWRAITH_CONCURRENT_WRITE_LANES.')
+    }
+    for (const participant of participants) {
+      const permissions = this.resolveParticipantPermissions(
+        chat,
+        participant,
+        runtime.externalPathGrants,
+        mode === 'read_only' ? { ignoreWorkSessionOverride: true } : {}
+      )
+      if (mode === 'read_only' && !permissions.readOnly) {
         throw new Error(
-          `runParallelScoutPass: non-read-only participant ${scout.id} (${scout.permissionPresetId}) — parallel writes are not supported.`
+          `runParallelFanoutPass: non-read-only participant ${participant.id} cannot run in read_only fan-out.`
         )
       }
     }
 
-    // Initialise the active-scout-runs tracking set.
-    runtime.activeScoutRunIds = new Set<string>()
+    if (!runtime.activeScoutRunIds) runtime.activeScoutRunIds = new Set<string>()
 
+    const readOnlyCount = participants.filter((participant) =>
+      this.resolveParticipantPermissions(
+        chat,
+        participant,
+        runtime.externalPathGrants,
+        mode === 'read_only' ? { ignoreWorkSessionOverride: true } : {}
+      ).readOnly
+    ).length
+    const writeCount = participants.length - readOnlyCount
+    const label =
+      mode === 'locked_writers'
+        ? 'Locked writer fan-out'
+        : 'Parallel fan-out'
     this.appendRoundStatus(
       runtime.chatId,
       runtime.roundId,
-      `Parallel scout pass · ${scouts.length} read-only participants dispatched concurrently.`
+      writeCount > 0
+        ? `${label} · ${participants.length} participant(s) dispatched concurrently (${readOnlyCount} read / ${writeCount} write-intent).`
+        : `${label} · ${participants.length} read-only participants dispatched concurrently.`
     )
 
-    // Seed each scout's run synchronously. UUIDs don't collide.
+    // Seed each lane's run synchronously. UUIDs don't collide.
     // The seedParticipantRun helper takes care of building the
     // ChatRun + ActiveParticipantRun + registry entry + chat save.
     //
@@ -2403,64 +2840,79 @@ export class EnsembleOrchestrator {
     // spreads its `chat` parameter to compose the next save. Using
     // the stale `chat` would clobber the status note we just
     // appended.
-    const scoutRuns: ActiveParticipantRun[] = scouts.map((scout, index) => {
+    const laneRuns: ActiveParticipantRun[] = participants.map((participant, index) => {
       const freshChat = this.deps.getChat(runtime.chatId) || chat
-      return this.seedParticipantRun(freshChat, runtime, scout, {
-        laneId: buildLaneId(runtime.roundId, scout.id, index + 1)
+      const permissions = this.resolveParticipantPermissions(
+        chat,
+        participant,
+        runtime.externalPathGrants,
+        mode === 'read_only'
+          ? { presetId: 'read_only', ignoreWorkSessionOverride: true, ignoreOverrides: true }
+          : {}
+      )
+      return this.seedParticipantRun(freshChat, runtime, participant, {
+        laneId: buildLaneId(runtime.roundId, participant.id, index + 1),
+        laneIntent: permissions.readOnly ? 'read' : 'write'
       })
     })
-    for (const run of scoutRuns) {
+    for (const run of laneRuns) {
       runtime.activeScoutRunIds.add(run.runId)
     }
 
-    // Build the per-scout dispatch payload + completion promise
+    // Build the per-lane dispatch payload + completion promise
     // pair. Dispatch concurrently via Promise.all so the round is
-    // bounded by the SLOWEST scout, not the sum of scout durations.
-    const dispatchPromises = scoutRuns.map(async (run) => {
-      const scout = run.participant
+    // bounded by the SLOWEST lane, not the sum of lane durations.
+    const dispatchPromises = laneRuns.map(async (run) => {
+      const participant = run.participant
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
       })
       const permissions = this.resolveParticipantPermissions(
         chat,
-        scout,
+        participant,
         runtime.externalPathGrants
       )
+      const promptForLane = options.prompt?.trim()
+        ? `Parallel fan-out request from ${options.sourceRunId ? 'another participant' : 'the orchestrator'}:\n${options.prompt.trim()}${
+            options.reason ? `\n\nReason: ${options.reason}` : ''
+          }`
+        : runtime.prompt
       const promptText = buildEnsembleParticipantPrompt({
         chat,
         config: chat.ensemble!,
-        participant: scout,
-        currentPrompt: runtime.prompt,
+        participant,
+        currentPrompt: promptForLane,
         roundId: runtime.roundId,
         chatContextTurns: this.deps.getSettings().chatContextTurns
       })
       const payload: AgentRunPayload = {
-        provider: scout.provider,
+        provider: participant.provider,
         scope: chat.scope === 'global' ? 'global' : 'workspace',
         ...(chat.scope === 'global' ? {} : { workspace: chat.workspacePath || '' }),
         prompt: promptText,
         imagePaths: runtime.imageAttachments.map((attachment) => attachment.path),
         appRunId: run.runId,
         appChatId: chat.appChatId,
-        model: scout.model || 'cli-default',
+        model: participant.model || 'cli-default',
         approvalMode: permissions.approvalMode,
-        runtimeProfileId: scout.runtimeProfileId,
-        geminiAuthProfileId: scout.provider === 'gemini' ? scout.geminiAuthProfileId || null : null,
-        providerSessionId: scout.linkedProviderSessionId || null,
+        runtimeProfileId: participant.runtimeProfileId,
+        geminiAuthProfileId:
+          participant.provider === 'gemini' ? participant.geminiAuthProfileId || null : null,
+        providerSessionId: participant.linkedProviderSessionId || null,
         externalPathGrants: permissions.externalPathGrants,
         effectivePermissions: permissions,
-        ensembleRun: ensembleRunIdentity(runtime.roundId, scout, run.laneId)
+        ensembleRun: ensembleRunIdentity(runtime.roundId, participant, run.laneId)
       }
       try {
         const dispatched = await this.deps.dispatch(payload, { sender: runtime.sender })
         if (!dispatched.dispatched) {
-          const note = formatDispatchFailureNote(scout, { kind: 'unknown', message: '' })
+          const note = formatDispatchFailureNote(participant, { kind: 'unknown', message: '' })
           this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
           this.finalizeRun(run, 'failed', note)
         }
       } catch (error) {
         const reason = classifyDispatchError(error)
-        const note = formatDispatchFailureNote(scout, reason)
+        const note = formatDispatchFailureNote(participant, reason)
         this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
         this.finalizeRun(run, 'failed', note)
       }
@@ -2471,25 +2923,34 @@ export class EnsembleOrchestrator {
     // then wait for every completion promise to resolve.
     const completionPromises = await Promise.all(dispatchPromises)
     await Promise.all(completionPromises)
-    if (runtime.cancelled) return
+    if (runtime.cancelled) return []
 
-    // Cleanup: scout pass is done, drop the tracking set so the
-    // serial writer step's reads of activeScoutRunIds see no
-    // stale entries.
-    runtime.activeScoutRunIds = undefined
+    for (const run of laneRuns) {
+      runtime.activeScoutRunIds?.delete(run.runId)
+    }
+    if (runtime.activeScoutRunIds?.size === 0) {
+      runtime.activeScoutRunIds = undefined
+    }
 
     this.appendRoundStatus(
       runtime.chatId,
       runtime.roundId,
-      `Parallel scout pass complete · returning to serial writer step.`
+      options.sourceRunId
+        ? `${label} complete · ${laneRuns.length} lane(s) returned to the caller.`
+        : `${label} complete · returning to serial writer step.`
     )
+    return laneRuns.map((run) => run.laneId).filter((laneId): laneId is string => Boolean(laneId))
   }
 
   private seedParticipantRun(
     chat: ChatRecord,
     runtime: ActiveRoundRuntime,
     participant: EnsembleParticipant,
-    options: { sleepResumeWarning?: string; laneId?: string } = {}
+    options: {
+      sleepResumeWarning?: string
+      laneId?: string
+      laneIntent?: ConcurrentLane['intent']
+    } = {}
   ): ActiveParticipantRun {
     const startedAt = this.deps.nowIso()
     const runId = this.deps.createRunId(participant.provider)
@@ -2559,7 +3020,7 @@ export class EnsembleOrchestrator {
                   laneId: options.laneId,
                   participantId: participant.id,
                   provider: participant.provider,
-                  intent: 'read',
+                  intent: options.laneIntent || 'read',
                   runId,
                   providerSessionId: participant.linkedProviderSessionId || null,
                   nowIso: startedAt
@@ -2692,6 +3153,13 @@ export class EnsembleOrchestrator {
     run.status = status
     this.flushRun(run, true, reason)
     run.completion?.(status)
+    if (run.laneId) {
+      try {
+        this.deps.releaseWriteIntentsForLane?.(run.laneId)
+      } catch {
+        // Lock cleanup is best-effort; the in-memory registry is defensive.
+      }
+    }
     this.runsByRunId.delete(run.runId)
   }
 
@@ -3220,7 +3688,12 @@ export class EnsembleOrchestrator {
   private resolveParticipantPermissions(
     chat: ChatRecord,
     participant: EnsembleParticipant,
-    explicitExternalPathGrants?: ExternalPathGrant[]
+    explicitExternalPathGrants?: ExternalPathGrant[],
+    options: {
+      ignoreWorkSessionOverride?: boolean
+      ignoreOverrides?: boolean
+      presetId?: string | null
+    } = {}
   ): EffectiveRunPermissions {
     // 1.0.4-AK3 — Work Session permission clamp. When an active
     // Work Session is in flight, the session-wide
@@ -3241,14 +3714,18 @@ export class EnsembleOrchestrator {
     // presets so the user can resume an interactive round without
     // the session config lingering.
     const workSession = chat.ensemble?.workSession
-    const sessionActive = workSession?.enabled && workSession?.status === 'active'
-    const presetId = sessionActive ? workSession.permissionPresetId : participant.permissionPresetId
+    const sessionActive =
+      workSession?.enabled &&
+      workSession?.status === 'active' &&
+      !options.ignoreWorkSessionOverride &&
+      !options.presetId
+    const presetId = options.presetId || (sessionActive ? workSession.permissionPresetId : participant.permissionPresetId)
     return resolveEffectiveRunPermissions({
       provider: participant.provider,
       workspacePath: chat.scope === 'global' ? undefined : chat.workspacePath,
       settings: this.deps.getSettings(),
       presetId,
-      overrides: participant.permissionOverrides || null,
+      overrides: options.ignoreOverrides ? null : participant.permissionOverrides || null,
       // 1.0.4-AT4 — composer-level grants merge in here. The
       // resolver dedupes across (`explicit` ∪ `overrides.externalPathGrants`)
       // and provider-filters before returning, so each
@@ -3529,6 +4006,8 @@ function promptWithAttachmentReferences(
  *   1. exact participant.id ('ensemble-codex')
  *   2. case-insensitive provider name ('codex')
  *   3. case-insensitive role ('Worker')
+ *   4. canonical mention aliases, including model-name aliases
+ *      ('Sonnet 4.7', 'GPT 5.5', 'Flash Lite')
  *
  * Only consults the `remaining` array — yielding to a participant
  * who has already spoken in this round is a no-op (the round won't
@@ -3565,6 +4044,10 @@ export function resolveYieldTargetIndex(remaining: EnsembleParticipant[], target
   if (byProvider !== -1) return byProvider
   const byRole = remaining.findIndex((p) => (p.role || '').toLowerCase() === lc)
   if (byRole !== -1) return byRole
+  const byAlias = resolvePhraseToParticipant(trimmed, remaining)
+  if (byAlias) {
+    return remaining.findIndex((p) => p.id === byAlias.id)
+  }
   return -1
 }
 

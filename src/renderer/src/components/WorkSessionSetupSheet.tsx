@@ -355,10 +355,10 @@ export function WorkSessionSetupSheet({
           {/*
             1.0.4-AT9 — preset picker. Five named shapes the panel
             review identified as the most useful starting points
-            (One-shot review, Architecture panel, Scout pass,
+            (One-shot review, Architecture panel, Parallel fan-out,
             Implementation review, Long-running). Selecting one
             patches permission preset + round/duration budgets +
-            scout-pass toggle + acceptance-criteria seed. The user
+            fan-out toggle + acceptance-criteria seed. The user
             can still tweak each field afterwards; presets are a
             fast path, not a lock-in.
           */}
@@ -571,9 +571,8 @@ export function WorkSessionSetupSheet({
               onChange={(e) => setEnableScoutPass(e.target.checked)}
             />
             <span>
-              <strong>Enable Parallel Scout Pass</strong> — read-only participants can run
-              concurrently within a round. Disabled by default while parallel dispatch is in early
-              shake-out.
+              <strong>Enable Parallel fan-out</strong> — read-only participants can run
+              concurrently within a round before writer-capable participants continue.
             </span>
           </label>
           {errors.length > 0 && (

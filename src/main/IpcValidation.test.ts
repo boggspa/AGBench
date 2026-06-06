@@ -133,6 +133,12 @@ describe('IpcValidation', () => {
 
   it('validates approval actions and external grant access', () => {
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'accept'])).not.toThrow()
+    expect(() =>
+      validateIpcArgs('respond-agent-approval', ['approval-1', 'useProviderNative'])
+    ).not.toThrow()
+    expect(() =>
+      validateIpcArgs('respond-agent-approval', ['approval-1', 'useTaskWraithSubthread'])
+    ).not.toThrow()
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'maybe'])).toThrow(
       /approval action/
     )

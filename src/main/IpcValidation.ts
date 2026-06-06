@@ -35,6 +35,8 @@ const APPROVAL_ACTIONS = new Set([
   'acceptForWorkspace',
   'decline',
   'cancel',
+  'useProviderNative',
+  'useTaskWraithSubthread',
   // Slice 4 of the external-path-redesign arc — see
   // AgentApprovalAction in store/types.ts.
   'grantExternalPathRead',

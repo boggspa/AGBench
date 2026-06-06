@@ -1,8 +1,8 @@
 /**
  * 1.0.4-AK6 — `scout_brief` MCP tool handler.
  *
- * Called by a participant at the end of their parallel scout-pass
- * lane (see `runParallelScoutPass` in `EnsembleOrchestrator.ts`)
+ * Called by a participant at the end of their parallel fan-out
+ * lane (see `runParallelFanoutPass` in `EnsembleOrchestrator.ts`)
  * to emit a structured summary of what they found. The serial
  * writer step that follows the parallel pass ingests these briefs
  * via the system prompt so the writer has a coherent picture of
@@ -15,8 +15,8 @@
  * unit-testable.
  *
  * Critical safety: this tool is a NO-OP outside an active parallel
- * scout pass. Calling it from a serial round, or from a writer
- * participant inside a scout pass, returns a structured error
+ * fan-out pass. Calling it from a serial round, or from a writer
+ * participant inside a read-only fan-out pass, returns a structured error
  * rather than silently logging — the agents need to know when
  * they're outside the intended call site so they don't waste a
  * turn on a no-op.
@@ -58,13 +58,13 @@ export interface ScoutBriefDeps {
   /** Lookup the participant's role + provider via the runtime. */
   getParticipantMeta(runId: string): { role: string; provider: ProviderId } | null
   /** Returns `true` when the run is currently part of a parallel
-   * scout pass (orchestrator's `activeScoutRunIds` set contains
+   * fan-out pass (orchestrator's active fan-out set contains
    * the runId). The handler refuses to record briefs outside this
    * window so writers can't accidentally call it. */
   isParticipantInScoutPass(runId: string): boolean
   /** Record the brief into runtime state. The orchestrator threads
    * recorded briefs into the writer's prompt context after the
-   * scout pass closes. */
+   * fan-out pass closes. */
   recordScoutBrief(runId: string, brief: ScoutBriefRecord): void
 }
 
@@ -103,7 +103,7 @@ export function handleScoutBrief(
     return {
       ok: false,
       message:
-        'scout_brief: not currently part of an active parallel scout/fan-out pass.',
+        'scout_brief: not currently part of an active parallel fan-out pass.',
       error: 'no_active_scout_pass'
     }
   }
@@ -159,18 +159,18 @@ export function handleScoutBrief(
   deps.recordScoutBrief(runId, brief)
   return {
     ok: true,
-    message: `Scout brief recorded · ${meta.role} (${meta.provider}) · confidence ${confidence}.`
+    message: `Fan-out brief recorded · ${meta.role} (${meta.provider}) · confidence ${confidence}.`
   }
 }
 
 /**
- * Format a collection of scout briefs as a markdown-like context
+ * Format a collection of fan-out briefs as a markdown-like context
  * block for the serial writer's prompt. Used by
  * `EnsemblePrompt.buildEnsembleParticipantPrompt` when the writer's
- * round has scout briefs available.
+ * round has fan-out briefs available.
  *
  * Sample output:
- *   Scout briefs from the parallel pass:
+ *   Fan-out briefs from the parallel pass:
  *     [Claude / Reviewer] (high) — Module X has 3 invariants ...
  *       Blockers:
  *         - shared mutable state in Y
@@ -180,7 +180,7 @@ export function handleScoutBrief(
  */
 export function formatScoutBriefsForPrompt(briefs: ScoutBriefRecord[]): string {
   if (briefs.length === 0) return ''
-  const lines: string[] = ['Scout briefs from the parallel pass:']
+  const lines: string[] = ['Fan-out briefs from the parallel pass:']
   for (const brief of briefs) {
     lines.push(
       `  [${brief.participantRole} (${brief.provider})] (${brief.confidence}) — ${brief.findings}`

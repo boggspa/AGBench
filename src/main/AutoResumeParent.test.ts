@@ -11,7 +11,8 @@ describe('shouldAutoResumeParent', () => {
     returnResultToParent: true,
     parentChatExists: true,
     parentChatIsRunning: false,
-    parentChatHasProvider: true
+    parentChatHasProvider: true,
+    parentChatIsEnsemble: false
   }
 
   it('returns true when all conditions hold (happy path)', () => {
@@ -38,6 +39,10 @@ describe('shouldAutoResumeParent', () => {
     expect(shouldAutoResumeParent({ ...happyPath, parentChatHasProvider: false })).toBe(false)
   })
 
+  it('returns false when the parent chat is an ensemble chat', () => {
+    expect(shouldAutoResumeParent({ ...happyPath, parentChatIsEnsemble: true })).toBe(false)
+  })
+
   it('returns false when every condition is negated at once', () => {
     expect(
       shouldAutoResumeParent({
@@ -45,7 +50,8 @@ describe('shouldAutoResumeParent', () => {
         returnResultToParent: false,
         parentChatExists: false,
         parentChatIsRunning: true,
-        parentChatHasProvider: false
+        parentChatHasProvider: false,
+        parentChatIsEnsemble: true
       })
     ).toBe(false)
   })

@@ -7,7 +7,14 @@ import {
   SOLO_MAX_WAKEUP_DELAY_MS,
   SoloChatWakeupService
 } from './SoloChatWakeupService'
-import type { ChatMessage, ChatRecord, SoloChatWakeupRecord } from './store/types'
+import type { AgentRunPayload } from './run/AgentRunTypes'
+import type {
+  ChatMessage,
+  ChatRecord,
+  EffectiveRunPermissions,
+  ExternalPathGrant,
+  SoloChatWakeupRecord
+} from './store/types'
 
 /**
  * 1.0.5-EW37 — Tests for the solo-chat wakeup service.
@@ -31,6 +38,50 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
     messages: [],
     runs: [],
     ...overrides
+  }
+}
+
+function makeExternalPathGrant(overrides: Partial<ExternalPathGrant> = {}): ExternalPathGrant {
+  return {
+    id: 'grant-1',
+    provider: 'codex',
+    path: '/Users/test/extra',
+    kind: 'directory',
+    access: 'read',
+    duration: 'thisThread',
+    createdAt: '2026-05-27T10:00:00.000Z',
+    ...overrides
+  }
+}
+
+function makeEffectivePermissions(
+  overrides: Partial<EffectiveRunPermissions> = {}
+): EffectiveRunPermissions {
+  const externalPathGrants = overrides.externalPathGrants || [makeExternalPathGrant()]
+  const base: EffectiveRunPermissions = {
+    presetId: 'read_only',
+    approvalMode: 'plan',
+    agenticServices: {
+      shellCommands: 'deny',
+      fileChanges: 'deny',
+      mcpTools: 'ask',
+      subThreadDelegation: 'deny'
+    },
+    networkAccess: 'deny',
+    externalPathGrants,
+    workspaceGrantServiceIds: ['mcpTools'],
+    readOnly: true
+  }
+  return {
+    ...base,
+    ...overrides,
+    presetId: overrides.presetId ?? base.presetId,
+    approvalMode: overrides.approvalMode ?? base.approvalMode,
+    agenticServices: overrides.agenticServices ?? base.agenticServices,
+    networkAccess: overrides.networkAccess ?? base.networkAccess,
+    externalPathGrants,
+    workspaceGrantServiceIds: overrides.workspaceGrantServiceIds ?? base.workspaceGrantServiceIds,
+    readOnly: overrides.readOnly ?? base.readOnly
   }
 }
 
@@ -118,6 +169,31 @@ describe('buildSoloWakeupResumePayload', () => {
     }
     const payload = buildSoloWakeupResumePayload(chat, wakeup, 'run-1', '2026-05-27T11:00:00Z')
     expect(payload.providerSessionId).toBe('codex-session-abc')
+  })
+
+  it('replays the captured permission posture into the resume payload', () => {
+    const chat = makeChat({ workspacePath: '/Users/test/workspace' })
+    const grant = makeExternalPathGrant({ path: '/Users/test/extra' })
+    const effectivePermissions = makeEffectivePermissions({ externalPathGrants: [grant] })
+    const wakeup: SoloChatWakeupRecord = {
+      wakeupId: 'w',
+      chatId: chat.appChatId,
+      provider: 'codex',
+      scheduledAt: '2026-05-27T10:00:00Z',
+      wakeAt: '2026-05-27T11:00:00Z',
+      status: 'fired',
+      resumePermissions: {
+        approvalMode: 'plan',
+        sessionTrust: false,
+        externalPathGrants: [grant],
+        effectivePermissions
+      }
+    }
+    const payload = buildSoloWakeupResumePayload(chat, wakeup, 'run-1', '2026-05-27T11:00:00Z')
+    expect(payload.approvalMode).toBe('plan')
+    expect(payload.sessionTrust).toBe(false)
+    expect(payload.externalPathGrants).toEqual([grant])
+    expect(payload.effectivePermissions).toEqual(effectivePermissions)
   })
 
   it('produces a prompt without reason line when no reason was provided', () => {
@@ -333,6 +409,29 @@ describe('SoloChatWakeupService — scheduleWakeup', () => {
     expect(scheduledTimers).toHaveLength(1)
   })
 
+  it('persists the active run permission posture on the wakeup', () => {
+    const grant = makeExternalPathGrant()
+    const effectivePermissions = makeEffectivePermissions({ externalPathGrants: [grant] })
+    const result = service.scheduleWakeup(
+      'chat-solo-1',
+      'codex',
+      'run-1',
+      { delayMs: 60_000 },
+      {
+        approvalMode: 'plan',
+        sessionTrust: false,
+        externalPathGrants: [grant],
+        effectivePermissions
+      }
+    )
+    expect(result.ok).toBe(true)
+    const wakeup = saved[0].soloWakeups?.[result.wakeup!.wakeupId]
+    expect(wakeup?.resumePermissions?.approvalMode).toBe('plan')
+    expect(wakeup?.resumePermissions?.sessionTrust).toBe(false)
+    expect(wakeup?.resumePermissions?.externalPathGrants).toEqual([grant])
+    expect(wakeup?.resumePermissions?.effectivePermissions).toEqual(effectivePermissions)
+  })
+
   it('rejects when chat already has a pending wakeup', () => {
     service.scheduleWakeup('chat-solo-1', 'codex', 'run-1', { delayMs: 60_000 })
     const result = service.scheduleWakeup('chat-solo-1', 'codex', 'run-2', { delayMs: 60_000 })
@@ -410,17 +509,20 @@ describe('SoloChatWakeupService — cancelWakeup', () => {
 describe('SoloChatWakeupService — handleWakeupFired', () => {
   let chats: Map<string, ChatRecord>
   let dispatchCalls: number
+  let dispatchPayloads: AgentRunPayload[]
   let service: SoloChatWakeupService
 
   beforeEach(() => {
     chats = new Map<string, ChatRecord>()
     dispatchCalls = 0
+    dispatchPayloads = []
     service = new SoloChatWakeupService({
       getChat: (id) => chats.get(id),
       saveChat: (chat) => chats.set(chat.appChatId, chat),
       listChats: () => Array.from(chats.values()),
-      dispatchRun: async () => {
+      dispatchRun: async (payload) => {
         dispatchCalls++
+        dispatchPayloads.push(payload)
         return { dispatched: true, appRunId: 'r' }
       },
       scheduleWakeupTimer: () => {},
@@ -454,6 +556,29 @@ describe('SoloChatWakeupService — handleWakeupFired', () => {
     const chat = chats.get('chat-solo-1')!
     expect(chat.soloWakeups?.[id].status).toBe('fired')
     expect(chat.soloWakeups?.[id].firedAt).toBeDefined()
+  })
+
+  it('dispatches the resumed run with the stored permission posture', async () => {
+    const grant = makeExternalPathGrant()
+    const effectivePermissions = makeEffectivePermissions({ externalPathGrants: [grant] })
+    const scheduled = service.scheduleWakeup(
+      'chat-solo-1',
+      'codex',
+      'run-1',
+      { delayMs: 60_000 },
+      {
+        approvalMode: 'plan',
+        sessionTrust: false,
+        externalPathGrants: [grant],
+        effectivePermissions
+      }
+    )
+    await service.handleWakeupFired(scheduled.wakeup!.wakeupId)
+    expect(dispatchPayloads).toHaveLength(1)
+    expect(dispatchPayloads[0].approvalMode).toBe('plan')
+    expect(dispatchPayloads[0].sessionTrust).toBe(false)
+    expect(dispatchPayloads[0].externalPathGrants).toEqual([grant])
+    expect(dispatchPayloads[0].effectivePermissions).toEqual(effectivePermissions)
   })
 
   it('does not double-fire a non-pending record', async () => {

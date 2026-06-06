@@ -55,13 +55,13 @@ export interface BuildEnsemblePromptInput {
   chatContextTurns?: number
   /**
    * 1.0.4-AK6 — structured briefs recorded by participants during
-   * a just-completed parallel scout pass. When present, the
-   * prompt builder injects a "Scout briefs from the parallel pass:"
+   * a just-completed parallel fan-out pass. When present, the
+   * prompt builder injects a "Fan-out briefs from the parallel pass:"
    * block above the recent-transcript section so the writer has
    * a coherent picture of the panel's read-only findings.
    *
    * Empty array (or undefined) skips the section entirely. The
-   * orchestrator clears scout briefs at round-end so a subsequent
+   * orchestrator clears fan-out briefs at round-end so a subsequent
    * serial round doesn't re-use stale briefs.
    */
   scoutBriefs?: ScoutBriefRecord[]
@@ -163,6 +163,11 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   }`
   const orchestrationMode =
     input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
+  const activeConcurrentMode = Boolean(input.config.activeRound?.concurrentMode)
+  const hasWriteIntentLane = Boolean(
+    input.config.activeRound?.lanes &&
+      Object.values(input.config.activeRound.lanes).some((lane) => lane.intent === 'write')
+  )
   const maxContinuationHops = input.config.maxContinuationHops || 6
   const continuationHops = input.config.activeRound?.continuationHops || 0
   // 1.0.4 — speaker-position awareness. First + last participants
@@ -298,13 +303,20 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   return [
     'TaskWraith Ensemble Mode',
     '',
-    `You are ${participantLabel} in a serial moderated panel. One participant speaks at a time.`,
+    activeConcurrentMode
+      ? `You are ${participantLabel} in an Ensemble round with parallel fan-out lanes. Multiple participants may run at the same time.`
+      : `You are ${participantLabel} in a moderated Ensemble panel. Participants normally speak one at a time unless fan-out is requested.`,
     `Round id: ${input.roundId}`,
     `Round policy: ${
       orchestrationMode === 'continuous'
         ? `Continuous. You may hand work to another participant with @mentions or ensemble_yield(target), capped at ${continuationHops}/${maxContinuationHops} extra handoffs this round.`
         : 'Turn-bound. Each participant speaks at most once; @mentions and ensemble_yield(target) only reorder participants who have not spoken yet.'
     }`,
+    activeConcurrentMode
+      ? hasWriteIntentLane
+        ? 'Parallel policy: writer-capable lanes may run concurrently, but workspace-mutating tools acquire TaskWraith write locks before executing. If a lock conflict blocks your lane, report the conflict and do not retry blindly.'
+        : 'Parallel policy: read-only fan-out lanes may run concurrently. Writer-capable participants still run serially unless locked writer lanes are explicitly enabled.'
+      : 'Parallel policy: use ensemble_fanout for targeted read-only fan-out when another participant can investigate in parallel.',
     ...(workspaceStanza ? [workspaceStanza] : []),
     ...(sessionEventsStanza ? [sessionEventsStanza] : []),
     '',
@@ -318,7 +330,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     ),
     '',
     'Rules:',
-    '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages.',
+    '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages. For visible participant-to-participant notes, call ensemble_send; those messages appear inline for the user and become context for later turns.',
     // 1.0.5-EW18 — Strong tagging-form directive. The roster lines
     // above now carry "address with @Role or @Model" hints; this
     // rule reinforces them. Pre-EW18 agents reached for `@codex`
@@ -332,6 +344,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // it's banned, just deprecated.
     '- When tagging another participant, prefer the **role name** (e.g. `@Farmer`, `@Merchant`) or the **model name** (e.g. `@Sonnet 4.6`, `@Flash Lite`) shown in the roster — both forms route deterministically to the specific participant you mean. Use the bare provider name (`@gemini`, `@claude`) only when the panel has just one participant from that provider; with multiple same-provider participants the bare provider name resolves non-deterministically and your message may reach the wrong panelist.',
     '- If another participant should handle this turn, call ensemble_yield with a short reason and optional target.',
+    '- Use ensemble_fanout when multiple peers should work in parallel. Default read_only fan-out only targets read-only participants; locked_writers fan-out is feature-gated and relies on workspace write locks.',
+    '- Use blackboard_post only for durable shared facts, decisions, risks, or do-not-repeat notes. Do not use the blackboard for conversational side messages.',
     '- In Continuous mode, only request another handoff when more agent work is genuinely useful; otherwise return control to the user.',
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
@@ -440,10 +454,10 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
           } remain before this round must return to user. Prefer closing cleanly to chaining another \`ensemble_yield()\` unless the work genuinely needs another agent turn.`
         ]
       : []),
-    // 1.0.4-AK6 — scout briefs from a just-completed parallel pass
+    // 1.0.4-AK6 — fan-out briefs from a just-completed parallel pass
     // are surfaced above the recent transcript so the serial writer
     // can synthesise findings before responding. Skipped when no
-    // briefs are available (non-Work-Session rounds, no scout pass,
+    // briefs are available (non-Work-Session rounds, no fan-out pass,
     // empty pass with no briefs emitted).
     ...(input.scoutBriefs && input.scoutBriefs.length > 0
       ? ['', formatScoutBriefsForPrompt(input.scoutBriefs)]

@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: () => '/tmp/taskwraith-codex-app-server-client-test',
+    getVersion: () => 'test'
+  }
+}))
+
 import {
   buildCodexTaskWraithMcpArgs,
   codexConfigParseUserMessage,

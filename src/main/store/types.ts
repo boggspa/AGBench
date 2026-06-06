@@ -715,6 +715,15 @@ export interface SoloChatWakeupRecord {
   status: EnsembleWakeupStatus
   reason?: string
   cancelOnUserInput?: boolean
+  /** Permission posture captured from the run that scheduled the
+   * wakeup. Replayed into the continuation run so a constrained
+   * agent cannot resume later with broader defaults. */
+  resumePermissions?: {
+    approvalMode?: string
+    sessionTrust?: boolean
+    externalPathGrants?: ExternalPathGrant[]
+    effectivePermissions?: EffectiveRunPermissions
+  }
   firedAt?: string
   cancelledAt?: string
   expiredAt?: string
@@ -934,7 +943,8 @@ export interface WorkSessionConfig {
   maxRoundsPerProvider: number
   maxDurationMs: number
   maxTokenBudget?: number
-  /** Parallel Scout Pass opt-in (1.0.4-AK5/AK6). When false the
+  /** Parallel fan-out opt-in (legacy field name: Scout Pass, 1.0.4-AK5/AK6).
+   * When false the
    * session stays pure-serial regardless of participant count. */
   enableScoutPass: boolean
   startedAt?: string

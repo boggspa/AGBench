@@ -58,7 +58,7 @@ function stripToolNamespace(toolName: string): string {
 
 /**
  * Inspect a params object for the conventional path-bearing fields.
- * Returns the first non-empty absolute path found, or undefined.
+ * Returns every non-empty absolute path found, in wire-order.
  *
  * Covers three param-shape families TaskWraith's detectors see in the wild:
  *  1. Flat path fields used by most tool-call params (path, filePath,
@@ -69,9 +69,10 @@ function stripToolNamespace(toolName: string): string {
  *     execute a command in a `cwd` — useful when the command would
  *     work against a directory outside the workspace.
  */
-function extractPathFromParams(params: unknown): string | undefined {
-  if (!params || typeof params !== 'object') return undefined
+function extractPathsFromParams(params: unknown): string[] {
+  if (!params || typeof params !== 'object') return []
   const record = params as Record<string, unknown>
+  const paths: string[] = []
   // (1) Flat fields. ToolParser's `getPathFromRecord` covers the same
   // set on the renderer side.
   const flatCandidates = [
@@ -89,7 +90,7 @@ function extractPathFromParams(params: unknown): string | undefined {
   for (const candidate of flatCandidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
       const trimmed = candidate.trim()
-      if (path.isAbsolute(trimmed)) return trimmed
+      if (path.isAbsolute(trimmed)) paths.push(trimmed)
     }
   }
   // (2) Codex `item/fileChange/requestApproval` shape.
@@ -98,7 +99,7 @@ function extractPathFromParams(params: unknown): string | undefined {
     for (const change of changes) {
       const p = change?.path
       if (typeof p === 'string' && p.trim() && path.isAbsolute(p.trim())) {
-        return p.trim()
+        paths.push(p.trim())
       }
     }
   }
@@ -106,9 +107,9 @@ function extractPathFromParams(params: unknown): string | undefined {
   // in an `item` object for some methods).
   const item = record.item as Record<string, unknown> | undefined
   if (item && typeof item === 'object') {
-    return extractPathFromParams(item)
+    paths.push(...extractPathsFromParams(item))
   }
-  return undefined
+  return paths
 }
 
 /**
@@ -166,7 +167,7 @@ export function detectExternalPath(input: {
    * detector returns `needsPrompt: false` so the agent proceeds
    * without re-prompting.
    */
-  existingGrants?: Array<{ path: string; access: 'read' | 'write' }>
+  existingGrants?: Array<{ path: string; access: 'read' | 'write'; kind?: 'file' | 'directory' }>
 }): ExternalPathDetection {
   let category = FILE_IO_TOOL_CATEGORY[stripToolNamespace(input.toolName)]
   // Method-based fallback: when the wire protocol doesn't expose a
@@ -178,35 +179,39 @@ export function detectExternalPath(input: {
   }
   if (!category) return { needsPrompt: false }
 
-  const detectedPath = extractPathFromParams(input.params)
-  if (!detectedPath) return { needsPrompt: false }
+  const detectedPaths = extractPathsFromParams(input.params)
+  if (!detectedPaths.length) return { needsPrompt: false }
 
-  if (!isOutsideWorkspace(detectedPath, input.workspacePath)) {
-    return { needsPrompt: false }
-  }
+  for (const detectedPath of detectedPaths) {
+    if (!isOutsideWorkspace(detectedPath, input.workspacePath)) {
+      continue
+    }
 
-  // Honour existing grants — skip-prompt when the path is already
-  // covered. A write-access grant covers read needs too; a read
-  // grant doesn't cover write needs.
-  if (input.existingGrants?.length) {
-    const matching = input.existingGrants.find((grant) => {
-      if (!grant?.path) return false
-      const normalisedGrantPath = path.resolve(grant.path).replace(/\/+$/, '')
-      const normalisedDetectedPath = path.resolve(detectedPath).replace(/\/+$/, '')
-      if (normalisedGrantPath === normalisedDetectedPath) return true
-      return normalisedDetectedPath.startsWith(normalisedGrantPath + path.sep)
-    })
-    if (matching) {
-      if (category === 'read' || matching.access === 'write') {
-        return { needsPrompt: false }
-      }
+    // Honour existing grants — skip-prompt when the path is already
+    // covered. A write-access grant covers read needs too; a read
+    // grant doesn't cover write needs. `kind: file` is exact-only;
+    // omitted kind is treated as directory for older grant-shaped tests.
+    if (input.existingGrants?.length) {
+      const matching = input.existingGrants.find((grant) => {
+        if (!grant?.path) return false
+        const normalisedGrantPath = path.resolve(grant.path).replace(/\/+$/, '')
+        const normalisedDetectedPath = path.resolve(detectedPath).replace(/\/+$/, '')
+        const coversPath =
+          normalisedGrantPath === normalisedDetectedPath ||
+          (grant.kind !== 'file' && normalisedDetectedPath.startsWith(normalisedGrantPath + path.sep))
+        if (!coversPath) return false
+        return category === 'read' || grant.access === 'write'
+      })
+      if (matching) continue
+    }
+
+    return {
+      needsPrompt: true,
+      path: detectedPath,
+      access: category,
+      basename: path.basename(detectedPath)
     }
   }
 
-  return {
-    needsPrompt: true,
-    path: detectedPath,
-    access: category,
-    basename: path.basename(detectedPath)
-  }
+  return { needsPrompt: false }
 }

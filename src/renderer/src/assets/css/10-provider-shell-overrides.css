@@ -78,7 +78,7 @@
 }
 /* 1.0.4-AT9 — preset chip row at the top of the Work Session setup
  * sheet. Each chip is a one-click apply of the named preset's
- * permission preset + budgets + scout-pass toggle (etc.). Chip
+ * permission preset + budgets + fan-out toggle (etc.). Chip
  * styling mirrors the other inline picker chips in the sheet —
  * subtle neutral background, accent border on hover. */
 .work-session-preset-row {

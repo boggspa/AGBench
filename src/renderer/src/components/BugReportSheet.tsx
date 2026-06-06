@@ -119,7 +119,7 @@ const SURFACE_OPTIONS = [
   // out of the generic 'Ensemble' bucket so testers can target
   // bug reports at the specific subsurface they were using.
   'Work Session',
-  'Scout Pass',
+  'Parallel fan-out',
   'Screen Watch',
   'Inspector',
   'Settings',

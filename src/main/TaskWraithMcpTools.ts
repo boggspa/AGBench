@@ -76,6 +76,8 @@ export const TASKWRAITH_MCP_TOOLS = [
   'switch_auth_profile',
   'agent_delegation_role',
   'ensemble_yield',
+  'ensemble_send',
+  'ensemble_fanout',
   'list_ensemble_participants',
   'schedule_wakeup',
   'cancel_wakeup',
@@ -96,12 +98,16 @@ export const TASKWRAITH_MCP_TOOLS = [
   // dispatched in `src/main/EnsembleContinue.ts`.
   'ensemble_continue',
   // 1.0.4-AK6 — structured brief emitted by a participant at the
-  // end of their parallel-scout-pass lane. Threaded into the
+  // end of their parallel fan-out lane. Threaded into the
   // serial writer's prompt context so the writer can synthesize
   // the panel's read-only findings before acting. Validated +
   // recorded in `src/main/ScoutBrief.ts`. No-op outside an active
-  // parallel scout pass.
-  'scout_brief'
+  // parallel fan-out pass.
+  'scout_brief',
+  // M4 — explicit shared scratchpad writes. Participants use this
+  // for durable agreed facts / risks / decisions; conversational
+  // participant-to-participant messages use `ensemble_send`.
+  'blackboard_post'
 ] as const
 
 export type TaskWraithMcpToolName = (typeof TASKWRAITH_MCP_TOOLS)[number]

@@ -42,7 +42,14 @@
  *     boot and either fire or expire normally.
  */
 
-import type { ChatMessage, ChatRecord, ProviderId, SoloChatWakeupRecord } from './store/types'
+import type {
+  ChatMessage,
+  ChatRecord,
+  EffectiveRunPermissions,
+  ExternalPathGrant,
+  ProviderId,
+  SoloChatWakeupRecord
+} from './store/types'
 import type { AgentRunPayload } from './run/AgentRunTypes'
 
 /**
@@ -60,6 +67,13 @@ export interface ScheduleWakeupInput {
   delaySeconds?: number
   reason?: string
   cancelOnUserInput?: boolean
+}
+
+export interface SoloWakeupRunContext {
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  effectivePermissions?: EffectiveRunPermissions
 }
 
 /** Same 7-day cap as the ensemble path (`MAX_WAKEUP_DELAY_MS` in
@@ -145,6 +159,37 @@ export function buildSoloScratchpadRecall(chat: ChatRecord): string {
   return lines.join('\n')
 }
 
+function cloneExternalPathGrants(grants: ExternalPathGrant[] | undefined): ExternalPathGrant[] | undefined {
+  if (!Array.isArray(grants)) return undefined
+  return grants.map((grant) => ({ ...grant }))
+}
+
+function cloneEffectiveRunPermissions(
+  permissions: EffectiveRunPermissions | undefined
+): EffectiveRunPermissions | undefined {
+  if (!permissions) return undefined
+  return {
+    ...permissions,
+    agenticServices: { ...permissions.agenticServices },
+    externalPathGrants: cloneExternalPathGrants(permissions.externalPathGrants) || [],
+    workspaceGrantServiceIds: [...permissions.workspaceGrantServiceIds]
+  }
+}
+
+function buildResumePermissionSnapshot(
+  runContext: SoloWakeupRunContext | undefined
+): SoloChatWakeupRecord['resumePermissions'] | undefined {
+  if (!runContext) return undefined
+  const snapshot: SoloChatWakeupRecord['resumePermissions'] = {}
+  if (typeof runContext.approvalMode === 'string') snapshot.approvalMode = runContext.approvalMode
+  if (runContext.sessionTrust !== undefined) snapshot.sessionTrust = runContext.sessionTrust
+  const externalPathGrants = cloneExternalPathGrants(runContext.externalPathGrants)
+  if (externalPathGrants?.length) snapshot.externalPathGrants = externalPathGrants
+  const effectivePermissions = cloneEffectiveRunPermissions(runContext.effectivePermissions)
+  if (effectivePermissions) snapshot.effectivePermissions = effectivePermissions
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined
+}
+
 /**
  * Build the continuation `AgentRunPayload` we dispatch when a solo
  * wakeup fires. Pure — exported for tests so we can pin the prompt
@@ -173,6 +218,7 @@ export function buildSoloWakeupResumePayload(
   // continuation runs in the same context the original turn did.
   // `linkedProviderSessionId` is used by the adapter to resume the
   // provider's own session where supported (Codex, Claude).
+  const resumePermissions = wakeup.resumePermissions
   return {
     provider: wakeup.provider,
     scope: chat.workspacePath ? 'workspace' : 'global',
@@ -180,7 +226,17 @@ export function buildSoloWakeupResumePayload(
     prompt,
     appRunId,
     appChatId: chat.appChatId,
-    providerSessionId: chat.linkedProviderSessionId ?? null
+    providerSessionId: chat.linkedProviderSessionId ?? null,
+    ...(resumePermissions?.approvalMode ? { approvalMode: resumePermissions.approvalMode } : {}),
+    ...(resumePermissions?.sessionTrust !== undefined
+      ? { sessionTrust: resumePermissions.sessionTrust }
+      : {}),
+    ...(resumePermissions?.externalPathGrants?.length
+      ? { externalPathGrants: cloneExternalPathGrants(resumePermissions.externalPathGrants) }
+      : {}),
+    ...(resumePermissions?.effectivePermissions
+      ? { effectivePermissions: cloneEffectiveRunPermissions(resumePermissions.effectivePermissions) }
+      : {})
   }
 }
 
@@ -238,7 +294,8 @@ export class SoloChatWakeupService {
     chatId: string,
     provider: ProviderId,
     runId: string | undefined,
-    input: ScheduleWakeupInput
+    input: ScheduleWakeupInput,
+    runContext?: SoloWakeupRunContext
   ): ScheduleWakeupResult {
     if (!chatId) return { ok: false, error: 'schedule_wakeup requires an active chat id.' }
     const chat = this.deps.getChat(chatId)
@@ -273,6 +330,7 @@ export class SoloChatWakeupService {
       }
     }
     const nowIso = this.deps.nowIso()
+    const resumePermissions = buildResumePermissionSnapshot(runContext)
     const wakeup: SoloChatWakeupRecord = {
       wakeupId: `solo-wakeup-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       chatId,
@@ -282,7 +340,8 @@ export class SoloChatWakeupService {
       wakeAt: new Date(wakeAtMs).toISOString(),
       status: 'pending',
       reason: input.reason,
-      cancelOnUserInput: input.cancelOnUserInput !== false
+      cancelOnUserInput: input.cancelOnUserInput !== false,
+      ...(resumePermissions ? { resumePermissions } : {})
     }
     this.persistWakeup(chat, wakeup)
     this.deps.scheduleWakeupTimer(wakeup)

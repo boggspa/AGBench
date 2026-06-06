@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest'
+import {
+  canonicalTaskWraithToolName,
+  effectiveAgenticSettings,
+  resolveNativeApprovalPreflightDecision,
+  taskWraithToolServiceIfKnown
+} from './NativeApprovalPolicy'
+import type {
+  AgenticServiceId,
+  AgenticServicePolicy,
+  AppSettings,
+  EffectiveRunPermissions
+} from './store/types'
+
+const resolution = (
+  decision: 'allow' | 'ask' | 'deny',
+  policy: AgenticServicePolicy = decision === 'deny' ? 'deny' : 'ask',
+  grants: Partial<{ workspaceGrantAllowed: boolean; sessionGrantAllowed: boolean }> = {}
+) => ({
+  policy,
+  workspaceGrantAllowed: Boolean(grants.workspaceGrantAllowed),
+  sessionGrantAllowed: Boolean(grants.sessionGrantAllowed),
+  decision
+})
+
+const effectivePermissions = (
+  readOnly: boolean,
+  agenticServices: Record<AgenticServiceId, AgenticServicePolicy> = {
+    shellCommands: 'deny',
+    fileChanges: 'deny',
+    mcpTools: 'ask',
+    subThreadDelegation: 'ask'
+  }
+): EffectiveRunPermissions => ({
+  presetId: readOnly ? 'read_only' : 'default',
+  approvalMode: 'default',
+  agenticServices,
+  networkAccess: 'deny',
+  externalPathGrants: [],
+  workspaceGrantServiceIds: [],
+  readOnly
+})
+
+describe('canonicalTaskWraithToolName', () => {
+  it('normalizes provider-native MCP wrappers to TaskWraith tool names', () => {
+    expect(canonicalTaskWraithToolName('mcp__taskwraith__write_file')).toBe('write_file')
+    expect(canonicalTaskWraithToolName('taskwraith__delegate_to_subthread')).toBe(
+      'delegate_to_subthread'
+    )
+    expect(canonicalTaskWraithToolName('mcp__TaskWraith__RUN_SHELL_COMMAND')).toBe(
+      'run_shell_command'
+    )
+  })
+})
+
+describe('taskWraithToolServiceIfKnown', () => {
+  it('maps native TaskWraith MCP approvals to their real agentic service', () => {
+    expect(taskWraithToolServiceIfKnown('mcp__taskwraith__run_shell_command')).toBe(
+      'shellCommands'
+    )
+    expect(taskWraithToolServiceIfKnown('mcp__other_server__write_file')).toBe('fileChanges')
+    expect(taskWraithToolServiceIfKnown('taskwraith__write_file')).toBe('fileChanges')
+    expect(taskWraithToolServiceIfKnown('delegate_to_subthread')).toBe('subThreadDelegation')
+    expect(taskWraithToolServiceIfKnown('ensemble_yield')).toBe('mcpTools')
+  })
+
+  it('leaves non-TaskWraith tool names unclassified', () => {
+    expect(taskWraithToolServiceIfKnown('mcp__other_server__totally_unknown')).toBeNull()
+    expect(taskWraithToolServiceIfKnown('totally_unknown')).toBeNull()
+  })
+})
+
+describe('resolveNativeApprovalPreflightDecision', () => {
+  it('keeps deny as the strongest decision', () => {
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('deny'),
+        externalPathDetected: true,
+        sessionYoloEnabled: true,
+        readOnly: false
+      })
+    ).toMatchObject({ kind: 'deny', policy: 'deny' })
+  })
+
+  it('forces a prompt for external paths before automatic allows', () => {
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('allow', 'allow'),
+        externalPathDetected: true,
+        sessionYoloEnabled: true,
+        readOnly: false
+      })
+    ).toMatchObject({ kind: 'ask', policy: 'allow' })
+  })
+
+  it('does not let YOLO weaken read-only posture', () => {
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('ask'),
+        sessionYoloEnabled: true,
+        readOnly: true,
+        effectivePermissions: effectivePermissions(true)
+      })
+    ).toMatchObject({ kind: 'ask', policy: 'ask' })
+  })
+
+  it('auto-allows YOLO only when the run is not read-only', () => {
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('ask'),
+        sessionYoloEnabled: true,
+        readOnly: false
+      })
+    ).toMatchObject({ kind: 'allow', reason: 'session_yolo', scope: 'session' })
+  })
+
+  it('preserves the reason and scope for policy, session, and workspace allows', () => {
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('allow', 'allow')
+      })
+    ).toMatchObject({ kind: 'allow', reason: 'policy', scope: 'request' })
+
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('allow', 'ask', { sessionGrantAllowed: true })
+      })
+    ).toMatchObject({ kind: 'allow', reason: 'session_grant', scope: 'session' })
+
+    expect(
+      resolveNativeApprovalPreflightDecision({
+        resolution: resolution('allow', 'workspace', { workspaceGrantAllowed: true })
+      })
+    ).toMatchObject({ kind: 'allow', reason: 'workspace_grant', scope: 'workspace' })
+  })
+})
+
+describe('effectiveAgenticSettings', () => {
+  it('overlays effective run permissions onto global settings', () => {
+    const settings = {
+      agenticServices: {
+        shellCommands: 'allow',
+        fileChanges: 'allow',
+        mcpTools: 'allow',
+        subThreadDelegation: 'allow',
+        networkAccess: 'allow'
+      }
+    } as AppSettings
+    const effective = effectivePermissions(true)
+
+    const merged = effectiveAgenticSettings(settings, effective)
+
+    expect(merged.agenticServices.shellCommands).toBe('deny')
+    expect(merged.agenticServices.fileChanges).toBe('deny')
+    expect(merged.agenticServices.mcpTools).toBe('ask')
+    expect(merged.agenticServices.networkAccess).toBe('deny')
+  })
+})

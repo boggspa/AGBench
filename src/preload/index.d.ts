@@ -506,6 +506,8 @@ declare global {
       stopGeminiSession: () => Promise<void>
       writeGeminiSession: (data: string) => Promise<void>
       resizeGeminiSession: (cols: number, rows: number) => Promise<void>
+      discoverGeminiCommands: (workspace: string) => Promise<any>
+      discoverGeminiMemory: (workspace: string) => Promise<any>
       getFileIconDataUrl: (path: string) => Promise<string | null>
       onPtyData: (callback: (data: string, sessionId?: string) => void) => void
       onPtyExit: (callback: (code: number | null, sessionId?: string) => void) => void

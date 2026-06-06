@@ -77,13 +77,21 @@ import {
   assertAgenticServiceId,
   approvalActionsForPolicy
 } from './AgenticServiceMessages'
+import {
+  canonicalTaskWraithToolName,
+  effectiveAgenticSettings,
+  resolveNativeApprovalPreflightDecision,
+  taskWraithToolAgenticService,
+  taskWraithToolServiceIfKnown,
+  type NativeApprovalPreflight
+} from './NativeApprovalPolicy'
 import { normalizeRunRoute, createFallbackRunId, routeWithRunId } from './run/RunRoute'
 import {
   codexSandboxForMode,
   buildCodexUserInput,
   normalizeCodexTurnStatus
 } from './codex/CodexRunPolicy'
-import { ensembleWakeupsEnabled } from './featureGates'
+import { concurrentWriteLanesEnabled, ensembleWakeupsEnabled } from './featureGates'
 import {
   GEMINI_MCP_SERVER_NAME,
   GEMINI_MCP_BRIDGE_ARG_SUFFIX,
@@ -477,6 +485,8 @@ import {
 import { tryRunGeminiApi } from './GeminiApiProvider'
 import { handleEnsembleContinue } from './EnsembleContinue'
 import { handleScoutBrief, type ScoutBriefConfidence } from './ScoutBrief'
+import { makeBlackboardEntry, upsertBlackboardEntry } from './blackboard/Blackboard'
+import { WorkspaceWriteIntentRegistry, type WriteIntentToken } from './WorkspaceWriteIntentRegistry'
 import { CreativeApprovalGate } from './CreativeApprovalGate'
 
 let mainWindow: BrowserWindow | null = null
@@ -1381,6 +1391,8 @@ appShellStatsService.onChange((snapshot) => {
   safeSendToWebContents(mainWindow, 'app-shell-stats-changed', snapshot)
 })
 
+const workspaceWriteIntentRegistry = new WorkspaceWriteIntentRegistry()
+
 function getRunRepository(): RunRepository {
   if (!runRepository) {
     runRepository = new RunRepository({
@@ -1674,7 +1686,8 @@ async function maybeAutoResumeParentAgent(args: {
     returnResultToParent: Boolean(subThread.delegationContext?.returnResultToParent),
     parentChatExists: true, // we already loaded the parent above
     parentChatIsRunning,
-    parentChatHasProvider: Boolean(parent.provider)
+    parentChatHasProvider: Boolean(parent.provider),
+    parentChatIsEnsemble: parent.chatKind === 'ensemble'
   })
   if (!decision) return
 
@@ -2628,15 +2641,35 @@ function getAgenticServicePolicy(
   return permissionService.getServicePolicy(service, settings)
 }
 
-function hasAgenticWorkspaceGrant(
-  settings: AppSettings,
-  provider: ProviderId,
-  workspacePath: string | undefined,
-  service: AgenticServiceId
-): boolean {
-  return permissionService.hasWorkspaceGrant(settings, provider, workspacePath, service)
+function resolveNativeApprovalPreflight(args: {
+  provider: ProviderId
+  service: AgenticServiceId | undefined
+  workspacePath?: string
+  runId?: string
+  externalPathDetection?: PendingExternalPathDetection
+}): NativeApprovalPreflight {
+  if (!args.service) return { kind: 'none' }
+  const settings = AppStore.getSettings()
+  const session = runManager.get(args.runId)
+  const effectivePermissions = session?.state?.effectivePermissions as
+    | EffectiveRunPermissions
+    | undefined
+  const effectiveSettings = effectiveAgenticSettings(settings, effectivePermissions)
+  const resolution = permissionService.resolvePermission(
+    args.provider,
+    args.service,
+    args.workspacePath,
+    args.runId,
+    effectiveSettings
+  )
+  return resolveNativeApprovalPreflightDecision({
+    resolution,
+    externalPathDetected: Boolean(args.externalPathDetection),
+    sessionYoloEnabled: sessionYoloState.enabled,
+    readOnly: Boolean(effectivePermissions?.readOnly),
+    effectivePermissions
+  })
 }
-
 
 function ensembleApprovalContext(
   identity: EnsembleRunIdentity | undefined,
@@ -3017,7 +3050,8 @@ function hasExternalPathGrantForTarget(
   const target = resolve(targetPath).replace(/\/+$/, '')
   return grants.some((grant) => {
     const grantPath = resolve(grant.path).replace(/\/+$/, '')
-    const coversPath = target === grantPath || target.startsWith(grantPath + sep)
+    const coversPath =
+      target === grantPath || (grant.kind === 'directory' && target.startsWith(grantPath + sep))
     if (!coversPath) return false
     return access === 'read' || grant.access === 'write'
   })
@@ -3075,6 +3109,115 @@ function formatScopedPath(context: GeminiToolContext, targetPath: string): strin
   return isPathInsideWorkspace(workspaceRoot, targetPath)
     ? toWorkspaceRelativePath(workspaceRoot, targetPath)
     : resolve(targetPath)
+}
+
+const WORKSPACE_WIDE_WRITE_LOCK_TOOLS = new Set<string>([
+  'run_shell_command',
+  'apply_patch',
+  'run_task',
+  'git_stage',
+  'git_commit'
+])
+
+function mcpWriteLockApprovalContext(
+  context: GeminiToolContext,
+  toolName: TaskWraithMcpToolName,
+  args: Record<string, any>,
+  cwd: string
+): { note: string; laneId: string; lockTarget: string } | null {
+  const laneId = context.ensembleRun?.laneId
+  if (!laneId || !concurrentWriteLanesEnabled() || context.scope === 'global') return null
+  const workspacePath = resolve(context.workspacePath || context.cwd || cwd)
+  let lockTarget = workspacePath
+  if (toolName === 'write_file' || toolName === 'replace') {
+    const rawPath = String(args.path || args.file_path || '')
+    lockTarget = rawPath ? previewGeminiMcpPath(context, rawPath) : workspacePath
+  }
+  const kind = WORKSPACE_WIDE_WRITE_LOCK_TOOLS.has(toolName) ? 'workspace-wide' : 'path'
+  return {
+    laneId,
+    lockTarget,
+    note: `Ensemble lane ${laneId} will request a ${kind} write lock for ${lockTarget}.`
+  }
+}
+
+function applyMcpWriteLockApprovalContext(
+  approvalPreview: {
+    body: string
+    preview: Record<string, unknown>
+  },
+  context: GeminiToolContext,
+  toolName: TaskWraithMcpToolName,
+  args: Record<string, any>,
+  cwd: string
+): void {
+  const lockContext = mcpWriteLockApprovalContext(context, toolName, args, cwd)
+  if (!lockContext) return
+  approvalPreview.body = `${approvalPreview.body}\n\n${lockContext.note}`
+  approvalPreview.preview = {
+    ...approvalPreview.preview,
+    ensembleLaneId: lockContext.laneId,
+    writeLockTarget: lockContext.lockTarget
+  }
+}
+
+function acquireMcpWorkspaceWriteLocks(input: {
+  context: GeminiToolContext
+  toolName: TaskWraithMcpToolName
+  cwd: string
+  resourcePath?: string
+}):
+  | { ok: true; tokens: WriteIntentToken[] }
+  | { ok: false; text: string; reason: string } {
+  const laneId = input.context.ensembleRun?.laneId
+  if (!laneId || !concurrentWriteLanesEnabled() || input.context.scope === 'global') {
+    return { ok: true, tokens: [] }
+  }
+  const workspacePath = resolve(input.context.workspacePath || input.context.cwd || input.cwd)
+  const workspaceResource = workspacePath
+  const acquired: WriteIntentToken[] = []
+  const nowIso = new Date().toISOString()
+  const requests =
+    input.resourcePath && !WORKSPACE_WIDE_WRITE_LOCK_TOOLS.has(input.toolName)
+      ? [
+          { resourcePath: workspaceResource, mode: 'read' as const },
+          { resourcePath: resolve(input.resourcePath), mode: 'write' as const }
+        ]
+      : [{ resourcePath: workspaceResource, mode: 'write' as const }]
+
+  for (const request of requests) {
+    const result = workspaceWriteIntentRegistry.acquire({
+      workspacePath,
+      resourcePath: request.resourcePath,
+      laneId,
+      mode: request.mode,
+      nowIso
+    })
+    if (!result.ok || !result.token) {
+      for (const token of acquired.reverse()) {
+        workspaceWriteIntentRegistry.release(token)
+      }
+      const holders = result.conflict?.holders || []
+      const reason = result.conflict?.reason || `Write lock conflict on ${request.resourcePath}.`
+      const holderSummary = holders.length
+        ? ` Holders: ${holders.map((holder) => `${holder.laneId}:${holder.mode}`).join(', ')}.`
+        : ''
+      const text = mcpJson({
+        ok: false,
+        tool: input.toolName,
+        error: `${reason}${holderSummary}`,
+        laneId,
+        lockTarget: request.resourcePath
+      })
+      ensembleOrchestratorRef?.markLaneBlockedForRun(
+        input.context.appRunId,
+        `${reason}${holderSummary}`
+      )
+      return { ok: false, text, reason: `${reason}${holderSummary}` }
+    }
+    acquired.push(result.token)
+  }
+  return { ok: true, tokens: acquired }
 }
 
 /**
@@ -4577,6 +4720,8 @@ function kimiAgenticServiceForTool(toolName: string): AgenticServiceId | null {
   // TaskWraith MCP surface (e.g. `taskwraith__ensemble_yield`,
   // `taskwraith__create_handoff_card`) and the same generic
   // shell/file-edit tool names as Claude.
+  const taskWraithService = taskWraithToolServiceIfKnown(toolName)
+  if (taskWraithService) return taskWraithService
   return claudeAgenticServiceForTool(toolName)
 }
 
@@ -6082,6 +6227,7 @@ async function runKimiWireProvider(
               const kimiToolName = String(
                 message.params?.payload?.sender || message.params?.payload?.action || 'kimi_action'
               )
+              const kimiCanonicalToolName = canonicalTaskWraithToolName(kimiToolName)
               // Auto-approve side-effect-free tools at the Kimi wire-
               // protocol layer. The generic MCP-level gate (line ~14078)
               // already skips these for the dispatch path, but Kimi
@@ -6094,8 +6240,8 @@ async function runKimiWireProvider(
               // `MCP_AUTO_ALLOWED_TOOLS` set so the two layers stay in
               // sync as we expand or contract the allowlist.
               if (
-                isTaskWraithMcpToolName(kimiToolName) &&
-                MCP_AUTO_ALLOWED_TOOLS.has(kimiToolName as TaskWraithMcpToolName)
+                isTaskWraithMcpToolName(kimiCanonicalToolName) &&
+                MCP_AUTO_ALLOWED_TOOLS.has(kimiCanonicalToolName as TaskWraithMcpToolName)
               ) {
                 respondToKimiWireRequest(child, message.id, {
                   request_id: message.params?.payload?.id || message.id,
@@ -6111,9 +6257,26 @@ async function runKimiWireProvider(
                 params: message.params?.payload,
                 workspacePath: payload.scope === 'global' ? undefined : payload.workspace
               })
+              const kimiResolvedService = kimiAgenticServiceForTool(kimiToolName)
+              const kimiGateService =
+                kimiResolvedService === 'mcpTools' &&
+                isReadOnlyBlockedTool(kimiCanonicalToolName, state.effectivePermissions)
+                  ? ('shellCommands' as AgenticServiceId)
+                  : kimiResolvedService
+              const workspacePathForKimiApproval =
+                payload.scope === 'global' ? undefined : payload.workspace
+              const nativePreflight = resolveNativeApprovalPreflight({
+                provider: 'kimi',
+                service: kimiGateService || undefined,
+                workspacePath: workspacePathForKimiApproval,
+                runId: route.appRunId,
+                externalPathDetection
+              })
               const actions: AgentApprovalAction[] = externalPathDetection
                 ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
-                : ['accept', 'acceptForSession', 'decline', 'cancel']
+                : nativePreflight.kind === 'ask'
+                  ? approvalActionsForPolicy(nativePreflight.policy, workspacePathForKimiApproval)
+                  : ['accept', 'acceptForSession', 'decline', 'cancel']
               const approvalTitle = externalPathDetection
                 ? externalPathApprovalTitle()
                 : 'Approve Kimi action'
@@ -6122,6 +6285,75 @@ async function runKimiWireProvider(
                 : message.params?.payload?.description ||
                   message.params?.payload?.action ||
                   'Kimi is requesting permission to continue.'
+              const approvalPreview = {
+                kind: 'tool',
+                toolName: kimiToolName,
+                params: message.params?.payload,
+                actions,
+                ...(externalPathDetection
+                  ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
+                  : {})
+              }
+              if (kimiGateService && nativePreflight.kind === 'deny') {
+                auditService.recordAutomaticApprovalDecision(
+                  'kimi',
+                  route,
+                  kimiGateService,
+                  workspacePathForKimiApproval,
+                  {
+                    method: 'request/ApprovalRequest',
+                    title: approvalTitle,
+                    body: approvalBody,
+                    preview: approvalPreview
+                  },
+                  'autoDeny',
+                  'policy',
+                  'request',
+                  {
+                    policy: nativePreflight.policy,
+                    transport: 'kimi-wire',
+                    ...(externalPathDetection ? { externalPathDetected: true } : {})
+                  }
+                )
+                respondToKimiWireRequest(child, message.id, {
+                  request_id: message.params?.payload?.id || message.id,
+                  response: 'reject',
+                  feedback: agenticServiceDisabledMessage(kimiGateService)
+                })
+                sendAgentCompatError(
+                  event.sender,
+                  'kimi',
+                  agenticServiceBlockedMessage(kimiGateService),
+                  state
+                )
+                continue
+              }
+              if (kimiGateService && nativePreflight.kind === 'allow') {
+                auditService.recordAutomaticApprovalDecision(
+                  'kimi',
+                  route,
+                  kimiGateService,
+                  workspacePathForKimiApproval,
+                  {
+                    method: 'request/ApprovalRequest',
+                    title: approvalTitle,
+                    body: approvalBody,
+                    preview: approvalPreview
+                  },
+                  'autoAllow',
+                  nativePreflight.reason,
+                  nativePreflight.scope,
+                  { policy: nativePreflight.policy, transport: 'kimi-wire' }
+                )
+                respondToKimiWireRequest(child, message.id, {
+                  request_id: message.params?.payload?.id || message.id,
+                  response:
+                    nativePreflight.scope === 'session' || nativePreflight.scope === 'workspace'
+                      ? 'approve_for_session'
+                      : 'approve'
+                })
+                continue
+              }
               approvalService?.registerKimi(approvalId, {
                 child,
                 rpcId: message.id,
@@ -6148,15 +6380,7 @@ async function runKimiWireProvider(
                 title: approvalTitle,
                 body: approvalBody,
                 actions,
-                preview: {
-                  kind: 'tool',
-                  toolName: kimiToolName,
-                  params: message.params?.payload,
-                  actions,
-                  ...(externalPathDetection
-                    ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
-                    : {})
-                }
+                preview: approvalPreview
               }
               appendDurableRunEventForRoute(
                 'kimi',
@@ -6171,10 +6395,13 @@ async function runKimiWireProvider(
               // service (shellCommands / fileChanges / mcpTools).
               // `null` from the classifier falls through to undefined,
               // matching pre-AR3 behavior for unknown tools.
-              const kimiResolvedService = kimiAgenticServiceForTool(kimiToolName)
               recordApprovalLedgerRequest('kimi', route, approvalPayload, {
-                ...(kimiResolvedService ? { service: kimiResolvedService } : {}),
-                metadata: { requestType, transport: 'kimi-wire' }
+                ...(kimiGateService ? { service: kimiGateService } : {}),
+                metadata: {
+                  requestType,
+                  transport: 'kimi-wire',
+                  ...(nativePreflight.kind === 'ask' ? { policy: nativePreflight.policy } : {})
+                }
               })
               event.sender.send('agent-approval-request', approvalPayload)
               // Fan out a wake-push to any paired iOS device. Kimi's
@@ -6874,6 +7101,7 @@ function detectExternalPathForProviderApproval(input: {
     workspacePath: input.workspacePath,
     existingGrants: externalPathGrantsForProvider(input.appChatId, input.provider).map((grant) => ({
       path: grant.path,
+      kind: grant.kind,
       access: grant.access
     }))
   })
@@ -7515,9 +7743,10 @@ function formatCodexApprovalRequest(method: string, params: any, state?: CodexRu
     // Codex pre-flight too. Without this mapping the elicitation reads
     // out under the generic `mcpTools` policy and re-prompts every call
     // even after the user has clearly authorised cross-provider work.
+    const canonicalToolName = canonicalTaskWraithToolName(String(toolName || ''))
     const resolvedService: AgenticServiceId =
-      String(toolName) === 'delegate_to_subthread'
-        ? ('subThreadDelegation' as AgenticServiceId)
+      canonicalToolName && isTaskWraithMcpToolName(canonicalToolName)
+        ? taskWraithToolAgenticService(canonicalToolName)
         : ('mcpTools' as AgenticServiceId)
     return {
       service: resolvedService,
@@ -7555,164 +7784,8 @@ function handleCodexServerRequest(message: any) {
   const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
   const formatted = formatCodexApprovalRequest(method, params, state)
   const service = formatted.service
-  const settings = AppStore.getSettings()
-  const policy = service ? getAgenticServicePolicy(service, settings) : 'ask'
   const isGlobalScope = state.scope === 'global'
-
-  // Phase J3: session-scoped YOLO short-circuit. When enabled, every
-  // Codex approval auto-accepts using the response shape appropriate
-  // for the request's method. Sits BEFORE the deny check so an
-  // explicitly-denied service still wins (defense in depth).
-  if (sessionYoloState.enabled && service && policy !== 'deny') {
-    auditService.recordAutomaticApprovalDecision(
-      'codex',
-      { appRunId: state.appRunId, appChatId: state.appChatId },
-      service,
-      isGlobalScope ? undefined : state.workspacePath,
-      {
-        method,
-        title: formatted.title,
-        body: formatted.body,
-        preview: formatted.preview
-      },
-      'autoAllow',
-      'session_yolo',
-      'session',
-      { policy, yoloEnabledAt: sessionYoloState.enabledAt }
-    )
-    if (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request') {
-      codexClient.respond(message.id, { action: 'accept', content: null, _meta: null })
-    } else if (method === 'item/permissions/requestApproval') {
-      codexClient.respond(message.id, { permissions: params?.permissions || {}, scope: 'session' })
-    } else if (method === 'tool/requestUserInput') {
-      // YOLO can't synthesize user-typed answers; surface a brief accept
-      // with empty answers so Codex can move on. Tools requiring real
-      // user input should not be wired into YOLO scope anyway.
-      codexClient.respond(message.id, { answers: {} })
-    } else {
-      codexClient.respond(message.id, { decision: 'accept' })
-    }
-    return
-  }
-
-  if (service && policy === 'deny') {
-    auditService.recordAutomaticApprovalDecision(
-      'codex',
-      { appRunId: state.appRunId, appChatId: state.appChatId },
-      service,
-      state.workspacePath,
-      {
-        method,
-        title: formatted.title,
-        body: formatted.body,
-        preview: formatted.preview
-      },
-      'autoDeny',
-      'policy',
-      'request',
-      { policy }
-    )
-    codexClient.reject(message.id, agenticServiceDisabledMessage(service))
-    sendAgentCompatError(state.sender, 'codex', agenticServiceBlockedMessage(service), state)
-    return
-  }
-
-  if (service && method === 'item/permissions/requestApproval') {
-    const hasSessionGrant = permissionService.hasSessionGrant(
-      'codex',
-      isGlobalScope ? undefined : state.workspacePath,
-      service,
-      state.appRunId
-    )
-    const hasWorkspaceGrant =
-      !isGlobalScope &&
-      policy === 'workspace' &&
-      hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
-    if (hasSessionGrant || (!isGlobalScope && policy === 'allow') || hasWorkspaceGrant) {
-      auditService.recordAutomaticApprovalDecision(
-        'codex',
-        { appRunId: state.appRunId, appChatId: state.appChatId },
-        service,
-        isGlobalScope ? undefined : state.workspacePath,
-        {
-          method,
-          title: formatted.title,
-          body: formatted.body,
-          preview: formatted.preview
-        },
-        'autoAllow',
-        hasSessionGrant ? 'session_grant' : hasWorkspaceGrant ? 'workspace_grant' : 'policy',
-        hasSessionGrant ? 'session' : hasWorkspaceGrant ? 'workspace' : 'request',
-        { policy }
-      )
-      codexClient.respond(message.id, {
-        permissions: params?.permissions || {},
-        scope: hasSessionGrant || hasWorkspaceGrant ? 'session' : 'turn'
-      })
-      return
-    }
-  }
-
-  // Phase J3: Codex's MCP elicitation pre-flight (mcpServer/elicitation/request
-  // and the older mcp/elicitation/request) also honors session + workspace
-  // grants and the global `allow` policy. Without this branch a user who
-  // clicked "Allow for session" on the TaskWraith subThreadDelegation modal
-  // would STILL be prompted by Codex's elicitation modal on every later
-  // delegate_to_subthread call — leading to the "I have to manually
-  // approve every single permission" frustration. The response shape is
-  // the McpServerElicitationRequestResponse `{ action, content, _meta }`,
-  // not the `{ permissions, scope }` shape used by item/permissions.
-  if (
-    service &&
-    (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request')
-  ) {
-    const hasSessionGrant = permissionService.hasSessionGrant(
-      'codex',
-      isGlobalScope ? undefined : state.workspacePath,
-      service,
-      state.appRunId
-    )
-    const hasWorkspaceGrant =
-      !isGlobalScope &&
-      policy === 'workspace' &&
-      hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
-    if (hasSessionGrant || (!isGlobalScope && policy === 'allow') || hasWorkspaceGrant) {
-      auditService.recordAutomaticApprovalDecision(
-        'codex',
-        { appRunId: state.appRunId, appChatId: state.appChatId },
-        service,
-        isGlobalScope ? undefined : state.workspacePath,
-        {
-          method,
-          title: formatted.title,
-          body: formatted.body,
-          preview: formatted.preview
-        },
-        'autoAllow',
-        hasSessionGrant ? 'session_grant' : hasWorkspaceGrant ? 'workspace_grant' : 'policy',
-        hasSessionGrant ? 'session' : hasWorkspaceGrant ? 'workspace' : 'request',
-        { policy }
-      )
-      codexClient.respond(message.id, {
-        action: 'accept',
-        content: null,
-        _meta: null
-      })
-      return
-    }
-  }
-
-  let actions: AgentApprovalAction[] = ['accept']
-  if (
-    service &&
-    method === 'item/permissions/requestApproval' &&
-    !isGlobalScope &&
-    state.workspacePath &&
-    policy === 'workspace'
-  ) {
-    actions.push('acceptForWorkspace')
-  }
-  actions.push('acceptForSession', 'decline', 'cancel')
+  const workspacePathForCodexApproval = isGlobalScope ? undefined : state.workspacePath
 
   // Slice 5 of the external-path-redesign arc. Detect tool calls
   // referencing paths outside the workspace and override the generic
@@ -7722,25 +7795,34 @@ function handleCodexServerRequest(message: any) {
   //
   // Provider-specific registration sites share the same external-path
   // prompt shape so the renderer can issue signed grants consistently.
+  const probedToolName =
+    typeof (params as Record<string, unknown>)?.toolName === 'string'
+      ? ((params as Record<string, unknown>).toolName as string)
+      : typeof (params as Record<string, unknown>)?.tool_name === 'string'
+        ? ((params as Record<string, unknown>).tool_name as string)
+        : typeof (params as Record<string, unknown>)?.mcpToolName === 'string'
+          ? ((params as Record<string, unknown>).mcpToolName as string)
+          : typeof (params as Record<string, unknown>)?.tool === 'string'
+            ? ((params as Record<string, unknown>).tool as string)
+            : typeof (params as Record<string, unknown>)?.name === 'string'
+              ? ((params as Record<string, unknown>).name as string)
+              : typeof (formatted.preview as Record<string, unknown> | undefined)?.toolName ===
+                  'string'
+                ? ((formatted.preview as Record<string, unknown>).toolName as string)
+                : ''
+  const codexCanonicalToolName = canonicalTaskWraithToolName(probedToolName)
   let externalPathDetection: PendingExternalPathDetection | undefined
   try {
-    const probedToolName =
-      typeof (params as Record<string, unknown>)?.toolName === 'string'
-        ? ((params as Record<string, unknown>).toolName as string)
-        : typeof (params as Record<string, unknown>)?.tool === 'string'
-          ? ((params as Record<string, unknown>).tool as string)
-          : ''
     const detection = detectExternalPathForProviderApproval({
       provider: 'codex',
       appChatId: state.appChatId,
       toolName: probedToolName,
       method,
       params,
-      workspacePath: isGlobalScope ? undefined : state.workspacePath
+      workspacePath: workspacePathForCodexApproval
     })
     if (detection) {
       externalPathDetection = detection
-      actions = ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
       formatted.title = externalPathApprovalTitle()
       formatted.body = externalPathApprovalBody(detection)
     }
@@ -7750,8 +7832,25 @@ function handleCodexServerRequest(message: any) {
     // accept/decline buttons.
     console.warn('[ExternalPathDetector] codex registration probe failed', err)
   }
-
-  formatted.preview = {
+  const gateService =
+    service === 'mcpTools' &&
+    isReadOnlyBlockedTool(codexCanonicalToolName, state.effectivePermissions)
+      ? ('shellCommands' as AgenticServiceId)
+      : service
+  const nativePreflight = resolveNativeApprovalPreflight({
+    provider: 'codex',
+    service: gateService,
+    workspacePath: workspacePathForCodexApproval,
+    runId: state.appRunId,
+    externalPathDetection
+  })
+  const policy = nativePreflight.kind === 'none' ? 'ask' : nativePreflight.policy
+  const actions: AgentApprovalAction[] = externalPathDetection
+    ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
+    : nativePreflight.kind === 'ask'
+      ? approvalActionsForPolicy(nativePreflight.policy, workspacePathForCodexApproval)
+      : ['accept', 'acceptForSession', 'decline', 'cancel']
+  const previewForDecision = {
     ...(formatted.preview || {}),
     actions,
     ...(externalPathDetection && externalPathDetection.path
@@ -7760,13 +7859,78 @@ function handleCodexServerRequest(message: any) {
         }
       : {})
   }
+  if (gateService && nativePreflight.kind === 'deny') {
+    auditService.recordAutomaticApprovalDecision(
+      'codex',
+      { appRunId: state.appRunId, appChatId: state.appChatId },
+      gateService,
+      workspacePathForCodexApproval,
+      {
+        method,
+        title: formatted.title,
+        body: formatted.body,
+        preview: previewForDecision
+      },
+      'autoDeny',
+      'policy',
+      'request',
+      {
+        policy: nativePreflight.policy,
+        ...(externalPathDetection ? { externalPathDetected: true } : {})
+      }
+    )
+    codexClient.reject(message.id, agenticServiceDisabledMessage(gateService))
+    sendAgentCompatError(state.sender, 'codex', agenticServiceBlockedMessage(gateService), state)
+    return
+  }
+  if (gateService && nativePreflight.kind === 'allow') {
+    auditService.recordAutomaticApprovalDecision(
+      'codex',
+      { appRunId: state.appRunId, appChatId: state.appChatId },
+      gateService,
+      workspacePathForCodexApproval,
+      {
+        method,
+        title: formatted.title,
+        body: formatted.body,
+        preview: previewForDecision
+      },
+      'autoAllow',
+      nativePreflight.reason,
+      nativePreflight.scope,
+      {
+        policy: nativePreflight.policy,
+        ...(nativePreflight.reason === 'session_yolo'
+          ? { yoloEnabledAt: sessionYoloState.enabledAt }
+          : {})
+      }
+    )
+    if (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request') {
+      codexClient.respond(message.id, { action: 'accept', content: null, _meta: null })
+    } else if (method === 'item/permissions/requestApproval') {
+      codexClient.respond(message.id, {
+        permissions: params?.permissions || {},
+        scope:
+          nativePreflight.scope === 'session' || nativePreflight.scope === 'workspace'
+            ? 'session'
+            : 'turn'
+      })
+    } else if (method === 'tool/requestUserInput') {
+      codexClient.respond(message.id, { answers: {} })
+    } else {
+      codexClient.respond(message.id, { decision: 'accept' })
+    }
+    return
+  }
+
+  formatted.preview = previewForDecision
 
   approvalService?.registerCodex(approvalId, {
     rpcId: message.id,
     method,
     params,
-    service,
-    workspacePath: isGlobalScope ? undefined : state.workspacePath,
+    service: gateService,
+    workspacePath: workspacePathForCodexApproval,
     runId: state.appRunId,
     externalPathDetection
   })
@@ -7804,8 +7968,8 @@ function handleCodexServerRequest(message: any) {
     { appRunId: state.appRunId, appChatId: state.appChatId },
     approvalPayload,
     {
-      service,
-      workspacePath: isGlobalScope ? undefined : state.workspacePath,
+      service: gateService,
+      workspacePath: workspacePathForCodexApproval,
       metadata: { policy }
     }
   )
@@ -7815,7 +7979,7 @@ function handleCodexServerRequest(message: any) {
   // modal); falls back to `method` for unfamiliar Codex shapes.
   notifyPairedDevicesOfApproval({
     approvalId,
-    workspaceId: workspaceIdForApprovalPush(isGlobalScope ? undefined : state.workspacePath),
+    workspaceId: workspaceIdForApprovalPush(workspacePathForCodexApproval),
     threadId: state.threadId ?? state.appChatId,
     summary: formatted.title || `Codex approval: ${method}`
   })
@@ -10278,6 +10442,7 @@ async function executeGeminiMcpTool(
   // Claude / Kimi tool call" instead of always "Approve Gemini …"
   // when a non-Gemini participant invokes a shared MCP tool.
   const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context, parentProvider)
+  applyMcpWriteLockApprovalContext(approvalPreview, context, toolName, args, cwd)
   const externalPathDetection = detectExternalPathForProviderApproval({
     provider: parentProvider,
     appChatId: context.appChatId,
@@ -10386,6 +10551,19 @@ async function executeGeminiMcpTool(
     if (toolName === 'run_shell_command') {
       const command = String(args.command || '').trim()
       if (!command) throw new Error('command is required.')
+      const lock = acquireMcpWorkspaceWriteLocks({ context, toolName, cwd })
+      if (!lock.ok) {
+        emitMcpToolTranscriptEvent({
+          type: 'tool_result',
+          tool_id: toolId,
+          tool_name: toolName,
+          status: 'error',
+          output: lock.text,
+          provider: parentProvider,
+          server: GEMINI_MCP_SERVER_NAME
+        })
+        return { text: lock.text, isError: true }
+      }
       const result = await runHostCommand(command, cwd)
       text = formatHostCommandResult(result)
       const isError = Boolean(
@@ -10405,9 +10583,26 @@ async function executeGeminiMcpTool(
     }
 
     if (isWorkspaceMcpToolName(toolName)) {
+      if (WORKSPACE_WIDE_WRITE_LOCK_TOOLS.has(toolName)) {
+        const lock = acquireMcpWorkspaceWriteLocks({ context, toolName, cwd })
+        if (!lock.ok) {
+          toolIsError = true
+          text = lock.text
+        } else {
+          const result = await workspaceToolExecutors.executeWorkspaceMcpTool(
+            toolName,
+            args,
+            context,
+            cwd
+          )
+          toolIsError = result.isError
+          text = mcpJson(result.result)
+        }
+      } else {
       const result = await workspaceToolExecutors.executeWorkspaceMcpTool(toolName, args, context, cwd)
       toolIsError = result.isError
       text = mcpJson(result.result)
+      }
     } else if (toolName === 'test_result_summary') {
       const runId = optionalString(args.runId)
       const sourceOutput =
@@ -10450,6 +10645,34 @@ async function executeGeminiMcpTool(
         reason: optionalString(args.reason),
         target: optionalString(args.target)
       })
+    } else if (toolName === 'ensemble_send') {
+      const result = ensembleOrchestratorRef?.sendSideMessageForRun(context.appRunId, {
+        to: args.to,
+        message: optionalString(args.message),
+        reason: optionalString(args.reason)
+      }) || {
+        ok: false,
+        tool: 'ensemble_send',
+        message: 'Ensemble orchestrator is not available.',
+        error: 'no_active_run'
+      }
+      toolIsError = result.ok === false
+      text = mcpJson(result)
+    } else if (toolName === 'ensemble_fanout') {
+      const result = await (ensembleOrchestratorRef?.fanoutForRun(context.appRunId, {
+        targets: args.targets,
+        prompt: optionalString(args.prompt),
+        reason: optionalString(args.reason),
+        mode: args.mode === 'locked_writers' ? 'locked_writers' : args.mode === 'read_only' ? 'read_only' : undefined
+      }) ?? Promise.resolve({
+        ok: false,
+        tool: 'ensemble_fanout' as const,
+        mode: 'read_only' as const,
+        message: 'Ensemble orchestrator is not available.',
+        error: 'no_active_run' as const
+      }))
+      toolIsError = result.ok === false
+      text = mcpJson(result)
     } else if (toolName === 'list_ensemble_participants') {
       const result = ensembleOrchestratorRef?.listParticipantsForRun(context.appRunId) || {
         ok: false,
@@ -10498,7 +10721,13 @@ async function executeGeminiMcpTool(
             callingChat.appChatId,
             parentProvider,
             context.appRunId,
-            wakeupInput
+            wakeupInput,
+            {
+              approvalMode: context.approvalMode,
+              sessionTrust: context.sessionTrust,
+              externalPathGrants: context.externalPathGrants,
+              effectivePermissions: context.effectivePermissions
+            }
           )
         } else {
           result = {
@@ -10597,11 +10826,10 @@ async function executeGeminiMcpTool(
         ...(continuation.error ? { error: continuation.error } : {})
       })
     } else if (toolName === 'scout_brief') {
-      // 1.0.4-AK6 — Parallel Scout Pass brief tool. Validated +
+      // 1.0.4-AK6 — Parallel fan-out brief tool. Validated +
       // recorded via `src/main/ScoutBrief.ts`. No-op outside an
-      // active scout pass (writer step calls, non-Work-Session
-      // rounds, etc.) — the handler returns a structured error in
-      // that case rather than silently logging.
+      // active fan-out pass — the handler returns a structured
+      // error in that case rather than silently logging.
       const runId = context.appRunId || ''
       const briefResult = handleScoutBrief(
         runId,
@@ -10639,6 +10867,63 @@ async function executeGeminiMcpTool(
         message: briefResult.message,
         ...(briefResult.error ? { error: briefResult.error } : {})
       })
+    } else if (toolName === 'blackboard_post') {
+      const chatId = context.appChatId || ''
+      const chat = chatId ? AppStore.getChat(chatId) : null
+      const activeRound = chat?.ensemble?.activeRound
+      const participantId =
+        ensembleOrchestratorRef?.getParticipantIdForRun(context.appRunId) || 'system'
+      if (!chat?.ensemble || !activeRound) {
+        toolIsError = true
+        text = mcpJson({
+          ok: false,
+          tool: 'blackboard_post',
+          error: 'blackboard_post requires an active Ensemble round.'
+        })
+      } else {
+        const createdAt = new Date().toISOString()
+        const entry = makeBlackboardEntry({
+          id: `blackboard-${context.appRunId || 'run'}-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+          chatId: chat.appChatId,
+          roundId: activeRound.roundId,
+          participantId,
+          key: optionalString(args.key) || '',
+          value: optionalString(args.value) || '',
+          category: args.category,
+          scope: args.scope,
+          createdAt
+        })
+        if (!entry) {
+          toolIsError = true
+          text = mcpJson({
+            ok: false,
+            tool: 'blackboard_post',
+            error: 'blackboard_post requires non-empty key and value.'
+          })
+        } else {
+          const updated: ChatRecord = {
+            ...chat,
+            ensemble: {
+              ...chat.ensemble,
+              blackboard: upsertBlackboardEntry(chat.ensemble.blackboard || [], entry),
+              updatedAt: createdAt
+            },
+            updatedAt: Date.now()
+          }
+          saveAndBroadcastChat(updated)
+          ensembleOrchestratorRef?.appendStatusForRun(
+            context.appRunId || '',
+            `Blackboard updated: ${entry.category} / ${entry.key}.`
+          )
+          text = mcpJson({
+            ok: true,
+            tool: 'blackboard_post',
+            entry
+          })
+        }
+      }
     } else if (toolName === 'ask_user_question') {
       // QMOD (1.0.3) — pause the agent on a modal question and resume
       // it with the user's answer as the tool result. The renderer
@@ -10748,10 +11033,16 @@ async function executeGeminiMcpTool(
         String(args.path || args.file_path || ''),
         'write'
       )
+      const lock = acquireMcpWorkspaceWriteLocks({ context, toolName, cwd, resourcePath: targetPath })
+      if (!lock.ok) {
+        toolIsError = true
+        text = lock.text
+      } else {
       const content = String(args.content ?? '')
       await fs.mkdir(dirname(targetPath), { recursive: true })
       await fs.writeFile(targetPath, content, 'utf8')
       text = `Wrote ${formatScopedPath(context, targetPath)} (${content.length} chars).`
+      }
     } else if (toolName === 'replace') {
       const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
@@ -10759,6 +11050,11 @@ async function executeGeminiMcpTool(
         String(args.path || args.file_path || ''),
         'write'
       )
+      const lock = acquireMcpWorkspaceWriteLocks({ context, toolName, cwd, resourcePath: targetPath })
+      if (!lock.ok) {
+        toolIsError = true
+        text = lock.text
+      } else {
       const oldString = String(args.old_string ?? args.oldString ?? '')
       const newString = String(args.new_string ?? args.newString ?? '')
       if (!oldString) throw new Error('old_string is required.')
@@ -10771,6 +11067,7 @@ async function executeGeminiMcpTool(
           : original.replace(oldString, newString)
       await fs.writeFile(targetPath, updated, 'utf8')
       text = `Edited ${formatScopedPath(context, targetPath)}.`
+      }
     } else if (toolName === 'delegate_to_subthread') {
       // Phase F3: agent-driven sub-thread delegation. Spawns a
       // sub-thread under the active parent (context.appChatId), then
@@ -10831,6 +11128,22 @@ async function executeGeminiMcpTool(
       }
       const isRecall = recallResolution.mode === 'recall'
       const recalledChat = recallResolution.mode === 'recall' ? recallResolution.chat : null
+      if (!isRecall) {
+        const parentChatForDelegation = AppStore.getChat(parentChatId)
+        if (!parentChatForDelegation) {
+          throw new Error(`delegate_to_subthread: parent chat "${parentChatId}" was not found.`)
+        }
+        const parentChatRelation = (parentChatForDelegation as { parentChatRelation?: unknown })
+          .parentChatRelation
+        if (
+          parentChatForDelegation.parentChatId &&
+          (parentChatRelation === undefined || parentChatRelation === 'subThread')
+        ) {
+          throw new Error(
+            `delegate_to_subthread: parent "${parentChatId}" is itself a sub-thread (max depth 1 in v1).`
+          )
+        }
+      }
       // Phase I1.b + I2: approval gate. Every delegation prompts the
       // user (or auto-allows/declines per workspace/session policy)
       // before any sub-thread is created. The 'ask' default means an
@@ -12355,6 +12668,74 @@ function mcpToolDefinitions() {
       }
     },
     {
+      name: 'ensemble_send',
+      description:
+        'In Ensemble Mode, send a visible participant-to-participant note into the main transcript. Use this for agent-to-agent side communication that should become context for later participants. The message is not private or hidden from the user.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          to: {
+            oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+            description:
+              'Target participant role/provider/model alias, or an array of aliases. Use list_ensemble_participants if unsure.'
+          },
+          message: {
+            type: 'string',
+            description: 'The note to show visibly in the transcript.'
+          },
+          reason: {
+            type: 'string',
+            description: 'Optional reason for the side message.'
+          }
+        },
+        required: ['to', 'message']
+      }
+    },
+    {
+      name: 'ensemble_fanout',
+      description:
+        'In Ensemble Mode, ask multiple participants to run in parallel lanes and wait for their results. Default mode is read_only: targets must resolve to read-only participants. mode=locked_writers requires TASKWRAITH_CONCURRENT_WRITE_LANES and routes writer-capable lanes through workspace write locks.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          targets: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Optional participant aliases. Omit to fan out to all eligible peers except the caller.'
+          },
+          prompt: {
+            type: 'string',
+            description:
+              'Focused prompt for the fan-out lanes. Include exactly what each target should investigate or do.'
+          },
+          reason: {
+            type: 'string',
+            description: 'Optional reason shown in the transcript.'
+          },
+          mode: {
+            type: 'string',
+            enum: ['read_only', 'locked_writers'],
+            description:
+              'Default read_only. locked_writers is feature-gated and allows writer-capable targets only when write-locking is enabled.'
+          }
+        },
+        required: ['prompt']
+      }
+    },
+    {
       name: 'list_ensemble_participants',
       description:
         'In Ensemble Mode, list the current participants, providers, roles, models, and per-round statuses for the active round.',
@@ -12372,7 +12753,7 @@ function mcpToolDefinitions() {
     {
       name: 'schedule_wakeup',
       description:
-        'In Ensemble Mode, pause this participant and schedule it to resume later in the same active round. Active participant runs only; unavailable from parallel scout-pass lanes. Provide wakeAt (ISO), delayMs, or delaySeconds. Maximum delay 7 days — schedule sequential wakeups (one now, another on resume) for longer horizons.',
+        'In Ensemble Mode, pause this participant and schedule it to resume later in the same active round. Active participant runs only; unavailable from parallel fan-out lanes. Provide wakeAt (ISO), delayMs, or delaySeconds. Maximum delay 7 days — schedule sequential wakeups (one now, another on resume) for longer horizons.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -12524,6 +12905,86 @@ function mcpToolDefinitions() {
           }
         },
         required: ['provider', 'prompt']
+      }
+    },
+    {
+      name: 'ensemble_continue',
+      description:
+        'In an active Ensemble Work Session, queue one follow-up round, mark the session complete, or pause it as blocked. Does not bypass participant permissions; each queued round still uses the normal approval and permission path.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          nextPrompt: {
+            type: 'string',
+            description: 'Required when acceptanceStatus is inProgress.'
+          },
+          target: {
+            type: 'string',
+            description:
+              'Optional participant alias to include in the follow-up prompt for normal @mention routing.'
+          },
+          reason: { type: 'string' },
+          acceptanceStatus: {
+            type: 'string',
+            enum: ['inProgress', 'complete', 'blocked']
+          }
+        }
+      }
+    },
+    {
+      name: 'scout_brief',
+      description:
+        'Emit a structured brief from a parallel fan-out lane. The next serial writer/synthesizer receives the collected briefs in its prompt. Returns an error outside an active fan-out lane.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          findings: { type: 'string' },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          blockers: { type: 'array', items: { type: 'string' } },
+          recommendations: { type: 'array', items: { type: 'string' } },
+          tags: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['findings', 'confidence']
+      }
+    },
+    {
+      name: 'blackboard_post',
+      description:
+        'Post a durable shared-memory entry for the Ensemble. Use for agreed facts, decisions, risks, do-not-repeat notes, or concise session notes. Do not use this for conversational side messages; use ensemble_send instead.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' },
+          value: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['decision', 'fact', 'risk', 'do-not-repeat', 'note']
+          },
+          scope: {
+            type: 'string',
+            enum: ['round', 'session', 'chat']
+          }
+        },
+        required: ['key', 'value']
       }
     }
   ]
@@ -16024,6 +16485,7 @@ if (isGeminiMcpBridgeProcess) {
         sessionCheckpointStoreRef?.upsertFromChat(chat, reason),
       completeSessionCheckpoint: (chatId, roundId, status) =>
         sessionCheckpointStoreRef?.completeRound(chatId, roundId, status),
+      releaseWriteIntentsForLane: (laneId) => workspaceWriteIntentRegistry.releaseAllForLane(laneId),
       // 1.0.7 — persist ensemble participant usage so ensemble runs reach
       // usage.json (welcome wall-clock + activity heatmaps + Providers-tab
       // token totals). Solo runs record via the renderer's handleProviderExit;

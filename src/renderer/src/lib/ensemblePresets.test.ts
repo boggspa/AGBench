@@ -40,7 +40,7 @@ describe('ENSEMBLE_PRESETS (AT9)', () => {
   })
 
   it('budget escalates monotonically with session ambition', () => {
-    // One-shot < Scout < Architecture/Implementation < Long-running
+    // One-shot < Fan-out < Architecture/Implementation < Long-running
     const oneShot = findEnsemblePreset('one-shot-review')!.overrides
     const scout = findEnsemblePreset('scout-pass')!.overrides
     const arch = findEnsemblePreset('architecture-panel')!.overrides
@@ -62,7 +62,7 @@ describe('ENSEMBLE_PRESETS (AT9)', () => {
     }
   })
 
-  it('Scout-pass + Architecture-panel enable parallel scouts; others do not', () => {
+  it('Parallel fan-out + Architecture-panel enable fan-out; others do not', () => {
     expect(findEnsemblePreset('scout-pass')!.overrides.enableScoutPass).toBe(true)
     expect(findEnsemblePreset('architecture-panel')!.overrides.enableScoutPass).toBe(true)
     expect(findEnsemblePreset('one-shot-review')!.overrides.enableScoutPass).toBe(false)

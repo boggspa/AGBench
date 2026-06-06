@@ -8,6 +8,11 @@ export function concurrentLanesEnabled(): boolean {
   return value === '1' || value === 'true' || value === 'yes'
 }
 
+export function concurrentWriteLanesEnabled(): boolean {
+  const value = process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
 export function permissionEnvelopesEnabled(): boolean {
   const value = process.env.TASKWRAITH_PERMISSION_ENVELOPES
   return value === '1' || value === 'true' || value === 'yes'

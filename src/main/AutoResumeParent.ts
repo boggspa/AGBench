@@ -53,6 +53,10 @@ import { truncateOpaqueMarkdown, wrapOpaqueMarkdownBlock } from './MarkdownFence
  *   field. Without it we can't build an `AgentRunPayload` (the dispatch
  *   requires a provider id). Global chats with no provider would fall
  *   through here too — that's fine, manual nudge is the fallback.
+ * - `parentChatIsEnsemble`: ensemble chats have their own participant
+ *   order, roles, and round semantics. A sub-thread result may still be
+ *   returned to the transcript, but it must not trigger a solo-provider
+ *   continuation.
  */
 export interface AutoResumeParentGateArgs {
   setting: boolean
@@ -60,6 +64,7 @@ export interface AutoResumeParentGateArgs {
   parentChatExists: boolean
   parentChatIsRunning: boolean
   parentChatHasProvider: boolean
+  parentChatIsEnsemble?: boolean
 }
 
 /**
@@ -74,6 +79,7 @@ export function shouldAutoResumeParent(args: AutoResumeParentGateArgs): boolean 
   if (!args.parentChatExists) return false
   if (args.parentChatIsRunning) return false
   if (!args.parentChatHasProvider) return false
+  if (args.parentChatIsEnsemble) return false
   return true
 }
 

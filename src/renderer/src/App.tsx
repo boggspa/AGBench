@@ -998,7 +998,7 @@ function App(): React.JSX.Element {
    * 1.0.4-AK4 — approval queue tail per chat. Holds extra
    * approvals that arrived while another was already pending for
    * the same chat. Pre-AK4 the second arrival would overwrite the
-   * first; with parallel scouts (AK5/AK6) N concurrent runs each
+   * first; with parallel fan-out (AK5/AK6) N concurrent runs each
    * blocking on their own approval is the normal case, so we now
    * keep them in a FIFO and surface the depth via a "+N more"
    * badge in the modal.
@@ -6212,7 +6212,7 @@ function App(): React.JSX.Element {
         // 1.0.4-AK4 — queue when an approval is already pending for
         // this chat. Pre-AK4 the second arrival would overwrite the
         // first (losing the user's chance to act on it). With AK5/AK6
-        // parallel scouts each can produce its own approval gate
+        // parallel fan-out lanes each can produce their own approval gate
         // simultaneously; queueing keeps them all addressable.
         handlers.setPendingAgentApprovalForChat(targetChatId, (previous) => {
           if (previous && targetChatId) {
@@ -14359,7 +14359,7 @@ function App(): React.JSX.Element {
                             aria-label="Ensemble orchestration mode"
                             title={
                               isCurrentEnsembleRoundRunning
-                                ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}${activeEnsembleConcurrentMode ? ' + Parallel read-only fan-out' : ''}`
+                                ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}${activeEnsembleConcurrentMode ? ' + Parallel fan-out' : ''}`
                                 : 'Choose whether agents speak once per round or can hand work back and forth.'
                             }
                             data-composer-control="ensemble-mode"
@@ -14405,9 +14405,9 @@ function App(): React.JSX.Element {
                               onClick={() =>
                                 updateCurrentEnsembleConcurrentMode(!currentEnsembleConcurrentMode)
                               }
-                              title="Fan out read-only participants in parallel before any writer-capable participants run. Requires the concurrent-lanes feature flag."
+                              title="Fan out read-only participants in parallel before any writer-capable participants run. Locked writer lanes require their separate feature flag."
                             >
-                              Parallel
+                              Fan-out
                             </button>
                             {activeEnsembleOrchestrationMode === 'continuous' && (
                               <ContinuousHopsLimitChip

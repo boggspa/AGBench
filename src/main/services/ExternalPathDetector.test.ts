@@ -114,6 +114,33 @@ describe('detectExternalPath', () => {
     ).toEqual({ needsPrompt: false })
   })
 
+  it('treats file grants as exact-only', () => {
+    expect(
+      detectExternalPath({
+        toolName: 'read_file',
+        params: { path: '/Users/me/Other/proj/src/foo.ts' },
+        workspacePath: '/Users/me/code/proj',
+        existingGrants: [{ path: '/Users/me/Other/proj', kind: 'file', access: 'read' }]
+      })
+    ).toEqual({
+      needsPrompt: true,
+      path: '/Users/me/Other/proj/src/foo.ts',
+      access: 'read',
+      basename: 'foo.ts'
+    })
+  })
+
+  it('treats directory grants as covering descendants', () => {
+    expect(
+      detectExternalPath({
+        toolName: 'read_file',
+        params: { path: '/Users/me/Other/proj/src/foo.ts' },
+        workspacePath: '/Users/me/code/proj',
+        existingGrants: [{ path: '/Users/me/Other/proj', kind: 'directory', access: 'read' }]
+      })
+    ).toEqual({ needsPrompt: false })
+  })
+
   it('strips mcp__server__ tool prefix before category lookup', () => {
     expect(
       detectExternalPath({
@@ -179,6 +206,49 @@ describe('detectExternalPath', () => {
       path: '/Users/me/Other/proj/src/bar.ts',
       access: 'write',
       basename: 'bar.ts'
+    })
+  })
+
+  it('checks all Codex fileChange paths when an inside path appears first', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/fileChange/requestApproval',
+        params: {
+          changes: [
+            { path: '/Users/me/code/proj/src/internal.ts', kind: 'edit' },
+            { path: '/Users/me/Other/proj/src/bar.ts', kind: 'edit' }
+          ]
+        },
+        workspacePath: '/Users/me/code/proj'
+      })
+    ).toEqual({
+      needsPrompt: true,
+      path: '/Users/me/Other/proj/src/bar.ts',
+      access: 'write',
+      basename: 'bar.ts'
+    })
+  })
+
+  it('checks later Codex fileChange paths after an earlier external path is already granted', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/fileChange/requestApproval',
+        params: {
+          changes: [
+            { path: '/Users/me/Other/granted.ts', kind: 'edit' },
+            { path: '/Users/me/Other/ungranted.ts', kind: 'edit' }
+          ]
+        },
+        workspacePath: '/Users/me/code/proj',
+        existingGrants: [{ path: '/Users/me/Other/granted.ts', kind: 'file', access: 'write' }]
+      })
+    ).toEqual({
+      needsPrompt: true,
+      path: '/Users/me/Other/ungranted.ts',
+      access: 'write',
+      basename: 'ungranted.ts'
     })
   })
 

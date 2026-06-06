@@ -9,7 +9,7 @@ import {
 /*
  * 1.0.4-AK6 regression coverage for the `scout_brief` MCP tool.
  *
- * Pins every validation gate (no active scout pass, unknown
+ * Pins every validation gate (no active fan-out pass, unknown
  * participant, missing/invalid args) + the happy path that
  * records a structured brief. Also covers the prompt-formatting
  * helper used by the writer's system prompt.
@@ -101,7 +101,7 @@ describe('handleScoutBrief', () => {
   })
 
   describe('error gates', () => {
-    it('rejects when run is not in an active scout pass', () => {
+    it('rejects when run is not in an active fan-out pass', () => {
       const result = handleScoutBrief(
         'run-1',
         { findings: 'x', confidence: 'high' },
@@ -174,7 +174,7 @@ describe('formatScoutBriefsForPrompt', () => {
         emittedAt: '2026-05-26T00:00:00.000Z'
       }
     ])
-    expect(result).toContain('Scout briefs from the parallel pass:')
+    expect(result).toContain('Fan-out briefs from the parallel pass:')
     expect(result).toContain('[Reviewer (claude)] (high) — Module X has 3 invariants.')
     expect(result).toContain('Blockers:')
     expect(result).toContain('- shared lock')

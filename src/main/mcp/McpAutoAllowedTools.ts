@@ -47,9 +47,12 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   'ide_app_capabilities',
   'list_running_ides',
   'ensemble_yield',
+  'ensemble_send',
+  'ensemble_fanout',
   'list_ensemble_participants',
   'schedule_wakeup',
   'cancel_wakeup',
+  'blackboard_post',
   // QMOD (1.0.3): asking the user a question is the inverse of the
   // user prompting the agent — it's a focus-shift, not a state mutation.
   // The renderer modal IS the approval surface, so a second confirm

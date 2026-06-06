@@ -5,14 +5,14 @@ import type { PermissionPresetId } from '../../../main/store/types'
  *
  * Closing the AT sprint: instead of asking the user to tune
  * objective + acceptance criteria + budget + permission preset
- * + scout-pass toggle every time they open a Work Session, the
+ * + fan-out toggle every time they open a Work Session, the
  * setup sheet now offers a small set of named presets that
  * configure those fields together for the most common shapes
  * the panel review identified as valuable:
  *
  *   - One-shot review
  *   - Architecture panel
- *   - Scout pass
+ *   - Parallel fan-out
  *   - Implementation review
  *   - Long-running work session
  *
@@ -70,7 +70,7 @@ export const ENSEMBLE_PRESETS: EnsemblePresetDescriptor[] = [
     id: 'architecture-panel',
     label: 'Architecture panel',
     description:
-      'Deep architectural discussion with multiple perspectives. Read-only, longer budget, parallel scouts on.',
+      'Deep architectural discussion with multiple perspectives. Read-only, longer budget, parallel fan-out on.',
     overrides: {
       permissionPresetId: 'read_only',
       maxRoundsPerProvider: 4,
@@ -83,9 +83,9 @@ export const ENSEMBLE_PRESETS: EnsemblePresetDescriptor[] = [
   },
   {
     id: 'scout-pass',
-    label: 'Scout pass',
+    label: 'Parallel fan-out',
     description:
-      'Read-only fanout — every participant scouts the workspace in parallel and emits a brief, then one writer synthesises.',
+      'Read-only fan-out — every participant inspects the workspace in parallel and emits a brief, then one writer synthesises.',
     overrides: {
       permissionPresetId: 'read_only',
       maxRoundsPerProvider: 2,

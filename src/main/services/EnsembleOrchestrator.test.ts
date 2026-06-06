@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   EnsembleOrchestrator,
   parseSelfReflectivePrefix,
+  resolveYieldTargetIndex,
   type ParticipantProbeResult
 } from './EnsembleOrchestrator'
 import type { AgentRunPayload } from '../run/AgentRunTypes'
@@ -2403,6 +2404,34 @@ Next action:
     expect(harness.dispatched[2].provider).toBe('codex')
   })
 
+  it('resolves turn-bound yield targets by model alias', () => {
+    const remaining: EnsembleParticipant[] = [
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 1,
+        model: 'gpt-5.5',
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 2,
+        model: 'claude-sonnet-4-7',
+        permissionPresetId: 'read_only'
+      }
+    ]
+
+    expect(resolveYieldTargetIndex(remaining, 'Sonnet 4.7')).toBe(1)
+    expect(resolveYieldTargetIndex(remaining, 'GPT-5.5')).toBe(0)
+  })
+
   it('appends an extra turn when @-tagging a participant who already spoke', async () => {
     // After-round agent-loop: Claude speaks first, then Codex speaks
     // and mentions @Planner — Claude (role 'Planner') gets an extra
@@ -3227,16 +3256,16 @@ Next action:
     expect(harness.dispatched[1].prompt).toContain('continue-please')
   })
 
-  // 1.0.4-AK5 — Parallel Scout Pass.
+  // 1.0.4-AK5 — Parallel fan-out.
   // Gated behind workSession.enableScoutPass + 2+ read-only
   // participants. When triggered, the orchestrator dispatches all
   // read-only scouts concurrently via Promise.all BEFORE the
   // serial writer step begins.
 
-  it('1.0.4-AK5: dispatches all read-only scouts concurrently when scout pass is enabled', async () => {
+  it('1.0.4-AK5: dispatches all read-only participants concurrently when fan-out is enabled', async () => {
     const harness = makeHarness()
     // 3-participant ensemble — 2 read-only scouts (Claude/Reviewer,
-    // Gemini/Researcher) + 1 writer (Codex/Worker). Scout pass
+    // Gemini/Researcher) + 1 writer (Codex/Worker). Fan-out
     // should fan the two scouts out concurrently.
     harness.chat.ensemble!.participants = [
       {
@@ -3273,7 +3302,7 @@ Next action:
     harness.chat.ensemble!.workSession = {
       enabled: true,
       status: 'active',
-      objective: 'Scout pass demo',
+      objective: 'Fan-out demo',
       acceptanceCriteria: 'Scouts ran in parallel.',
       allowedParticipantIds: null,
       permissionPresetId: 'workspace_write',
@@ -3329,18 +3358,18 @@ Next action:
     })
     expect(harness.dispatched[2].provider).toBe('codex')
 
-    // Transcript has the scout-pass open/close status notes.
-    const scoutOpenNote = harness.chat.messages.find(
+    // Transcript has the fan-out open/close status notes.
+    const fanoutOpenNote = harness.chat.messages.find(
       (m) =>
         m.role === 'system' &&
         typeof m.content === 'string' &&
-        m.content.includes('Parallel scout pass · 2 read-only')
+        m.content.includes('Parallel fan-out · 2 read-only')
     )
-    expect(scoutOpenNote).toBeDefined()
+    expect(fanoutOpenNote).toBeDefined()
   })
 
-  it('1.0.4-AK5: serial path unchanged when scout pass is disabled', async () => {
-    // Same fixture as above but scout pass OFF. Verify the
+  it('1.0.4-AK5: serial path unchanged when fan-out is disabled', async () => {
+    // Same fixture as above but fan-out OFF. Verify the
     // existing serial dispatch path stays byte-identical: scouts
     // dispatch one at a time in roster order.
     const harness = makeHarness()
@@ -3373,7 +3402,7 @@ Next action:
       permissionPresetId: 'read_only',
       maxRoundsPerProvider: 38,
       maxDurationMs: 6 * 60 * 60 * 1000,
-      // Scout pass OFF — serial dispatch should run.
+      // Fan-out OFF — serial dispatch should run.
       enableScoutPass: false,
       startedAt: new Date().toISOString(),
       roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
@@ -3392,9 +3421,140 @@ Next action:
       (m) =>
         m.role === 'system' &&
         typeof m.content === 'string' &&
-        m.content.includes('Parallel scout pass')
+        m.content.includes('Parallel fan-out')
     )
     expect(scoutNote).toBeUndefined()
+  })
+
+  it('1.0.8: ensemble_send appends a visible side message with routing metadata', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Coordinate visibly.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const result = harness.orchestrator.sendSideMessageForRun(harness.dispatched[0].appRunId, {
+      to: 'Worker',
+      message: 'Please check the write path after my review.',
+      reason: 'handoff context'
+    })
+
+    expect(result.ok).toBe(true)
+    const sideMessage = harness.chat.messages.find(
+      (message) => message.metadata?.kind === 'ensembleSideMessage'
+    )
+    expect(sideMessage?.content).toContain('Reviewer to Worker')
+    expect(sideMessage?.metadata?.toParticipantIds).toEqual(['codex'])
+  })
+
+  it('1.0.8: ensemble_fanout rejects invalid targets without dispatching lanes', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Try a bad target.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const result = await harness.orchestrator.fanoutForRun(harness.dispatched[0].appRunId, {
+      targets: ['MissingRole'],
+      prompt: 'Please inspect this.'
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('invalid_target')
+    expect(harness.dispatched).toHaveLength(1)
+  })
+
+  it('1.0.8: ensemble_fanout dispatches explicit read-only targets in lanes', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 1,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 3,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Worker starts, peers fan out.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const fanout = harness.orchestrator.fanoutForRun(harness.dispatched[0].appRunId, {
+      targets: ['Reviewer', 'Researcher'],
+      prompt: 'Inspect the workspace and emit a brief.',
+      reason: 'parallel review'
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), { timeout: 1000 })
+    const laneRuns = harness.dispatched.slice(1)
+    expect(laneRuns.map((payload) => payload.provider).sort()).toEqual(['claude', 'gemini'])
+    expect(laneRuns.every((payload) => Boolean(payload.ensembleRun?.laneId))).toBe(true)
+
+    for (const payload of laneRuns) {
+      harness.orchestrator.handleProviderOutput(
+        payload.provider,
+        { appRunId: payload.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'result', status: 'success' }
+      )
+    }
+    const result = await fanout
+    expect(result.ok).toBe(true)
+    expect(result.laneIds).toHaveLength(2)
+  })
+
+  it('1.0.8: ensemble_fanout locked_writers mode is feature-gated', async () => {
+    const previous = process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+    delete process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+    try {
+      const harness = makeHarness()
+      harness.orchestrator.startRound({
+        chatId: 'ensemble-chat',
+        prompt: 'Try writer fan-out.',
+        event: { sender: {} as Electron.WebContents }
+      })
+      await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+      const result = await harness.orchestrator.fanoutForRun(harness.dispatched[0].appRunId, {
+        targets: ['Worker'],
+        prompt: 'Please edit in parallel.',
+        mode: 'locked_writers'
+      })
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toBe('write_lanes_disabled')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_WRITE_LANES = previous
+      }
+    }
   })
 
   it('1.0.8: rejects requested concurrent mode when the feature gate is off', () => {
@@ -3497,9 +3657,56 @@ Next action:
     }
   })
 
-  it("1.0.4-AK6: threads scout briefs into the writer's prompt context after the parallel pass", async () => {
-    // End-to-end: scout pass records briefs, then the serial
-    // writer's prompt should include the "Scout briefs from the
+  it('1.0.8: concurrent mode dispatches locked writer lanes when the write-lane gate is on', async () => {
+    const previousConcurrent = process.env.TASKWRAITH_CONCURRENT_LANES
+    const previousWrite = process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+    process.env.TASKWRAITH_CONCURRENT_LANES = '1'
+    process.env.TASKWRAITH_CONCURRENT_WRITE_LANES = '1'
+    try {
+      const harness = makeHarness()
+      harness.orchestrator.startRound({
+        chatId: 'ensemble-chat',
+        prompt: 'Run both lanes.',
+        event: { sender: {} as Electron.WebContents },
+        concurrentMode: true
+      })
+
+      await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), { timeout: 1000 })
+      const lanes = Object.values(harness.chat.ensemble?.activeRound?.lanes || {})
+      expect(lanes.map((lane) => lane.intent).sort()).toEqual(['read', 'write'])
+      expect(lanes.map((lane) => lane.status).sort()).toEqual(['running', 'running'])
+
+      for (const payload of harness.dispatched) {
+        harness.orchestrator.handleProviderOutput(
+          payload.provider,
+          { appRunId: payload.appRunId, appChatId: 'ensemble-chat' },
+          { type: 'result', status: 'success' }
+        )
+      }
+      await vi.waitFor(() =>
+        expect(
+          Object.values(harness.chat.ensemble?.activeRound?.lanes || {})
+            .map((lane) => lane.status)
+            .sort()
+        ).toEqual(['completed', 'completed'])
+      )
+    } finally {
+      if (previousConcurrent === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_LANES = previousConcurrent
+      }
+      if (previousWrite === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_WRITE_LANES = previousWrite
+      }
+    }
+  })
+
+  it("1.0.4-AK6: threads fan-out briefs into the writer's prompt context after the parallel pass", async () => {
+    // End-to-end: fan-out records briefs, then the serial
+    // writer's prompt should include the "Fan-out briefs from the
     // parallel pass:" section with each scout's findings.
     const harness = makeHarness()
     harness.chat.ensemble!.participants = [
@@ -3592,13 +3799,13 @@ Next action:
       )
     }
     // Codex's writer dispatch happens — its prompt should now
-    // contain the scout briefs section.
+    // contain the fan-out briefs section.
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), {
       timeout: 1000
     })
     expect(harness.dispatched[2].provider).toBe('codex')
     const writerPrompt = harness.dispatched[2].prompt
-    expect(writerPrompt).toContain('Scout briefs from the parallel pass:')
+    expect(writerPrompt).toContain('Fan-out briefs from the parallel pass:')
     expect(writerPrompt).toContain('[Reviewer (claude)] (high)')
     expect(writerPrompt).toContain('Module X locks shared state.')
     expect(writerPrompt).toContain('[Researcher (gemini)] (medium)')
@@ -3611,7 +3818,7 @@ Next action:
   it('1.0.4-AK6: isParticipantInScoutPass returns false outside scout window', async () => {
     // Defensive coverage: the scout_brief handler relies on
     // isParticipantInScoutPass to gate writes. Outside a Work
-    // Session (or before/after a scout pass) this MUST return
+    // Session (or before/after a fan-out pass) this MUST return
     // false so writer-step calls can't smuggle briefs in.
     const harness = makeHarness()
     harness.orchestrator.startRound({
@@ -3621,12 +3828,12 @@ Next action:
     })
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
     const runId = harness.dispatched[0].appRunId!
-    // No Work Session, no scout pass — must be false.
+    // No Work Session, no fan-out pass — must be false.
     expect(harness.orchestrator.isParticipantInScoutPass(runId)).toBe(false)
   })
 
-  it('1.0.4-AK5: skips scout pass when only one read-only participant is present', async () => {
-    // Edge case: scout pass requires 2+ read-only participants
+  it('1.0.4-AK5: skips fan-out when only one read-only participant is present', async () => {
+    // Edge case: fan-out requires 2+ read-only participants
     // to actually parallelise. A single scout falls through to
     // the normal serial loop.
     const harness = makeHarness()
@@ -3677,7 +3884,7 @@ Next action:
       (m) =>
         m.role === 'system' &&
         typeof m.content === 'string' &&
-        m.content.includes('Parallel scout pass')
+        m.content.includes('Parallel fan-out')
     )
     expect(scoutNote).toBeUndefined()
   })

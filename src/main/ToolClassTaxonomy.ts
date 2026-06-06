@@ -67,6 +67,8 @@ const ORCHESTRATION_TOOLS = new Set<string>([
   'ide_app_capabilities',
   'list_running_ides',
   'ensemble_yield',
+  'ensemble_send',
+  'ensemble_fanout',
   'list_ensemble_participants',
   'schedule_wakeup',
   'cancel_wakeup',
@@ -94,7 +96,8 @@ const ORCHESTRATION_TOOLS = new Set<string>([
   'create_handoff_card',
   'agent_delegation_role',
   'ensemble_continue',
-  'scout_brief'
+  'scout_brief',
+  'blackboard_post'
 ])
 
 /** Bucket a single tool name. Unknown → workspace_write (safe default). */
