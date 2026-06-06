@@ -1,6 +1,9 @@
 const DEFAULT_FILE_EDITOR_WIDTH = 390
 const MIN_RIGHT_PANEL_WIDTH = 300
 const MAX_RIGHT_PANEL_WIDTH = 720
+const DEFAULT_SIDE_CHAT_WIDTH = 460
+const MIN_SIDE_CHAT_WIDTH = 340
+const MAX_SIDE_CHAT_WIDTH = 720
 // 340 is the comfortable floor (the workspace/model-usage rows read cleanly at
 // this width). It's also the default, so a fresh launch — or one where the
 // stored width was lost (e.g. the rebrand moved userData/localStorage) — never
@@ -12,6 +15,10 @@ const MAX_WORKSPACE_SIDEBAR_WIDTH = 560
 
 const clampPanelWidth = (value: number): number => {
   return Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(MAX_RIGHT_PANEL_WIDTH, Math.round(value)))
+}
+
+const clampSideChatWidth = (value: number): number => {
+  return Math.max(MIN_SIDE_CHAT_WIDTH, Math.min(MAX_SIDE_CHAT_WIDTH, Math.round(value)))
 }
 
 const clampWorkspaceSidebarWidth = (value: number): number => {
@@ -43,15 +50,46 @@ const getStoredWorkspaceSidebarWidth = (): number => {
   }
 }
 
+const sideChatWidthStorageKey = (parentChatId: string): string =>
+  `taskwraith.sideChatWidth.${parentChatId}`
+
+const getStoredSideChatWidth = (parentChatId?: string | null): number => {
+  if (!parentChatId) return DEFAULT_SIDE_CHAT_WIDTH
+  try {
+    const stored = window.localStorage.getItem(sideChatWidthStorageKey(parentChatId))
+    const parsed = stored ? Number(stored) : DEFAULT_SIDE_CHAT_WIDTH
+    return Number.isFinite(parsed) ? clampSideChatWidth(parsed) : DEFAULT_SIDE_CHAT_WIDTH
+  } catch {
+    return DEFAULT_SIDE_CHAT_WIDTH
+  }
+}
+
+const setStoredSideChatWidth = (parentChatId: string, width: number): void => {
+  try {
+    window.localStorage.setItem(
+      sideChatWidthStorageKey(parentChatId),
+      String(clampSideChatWidth(width))
+    )
+  } catch {
+    // Local persistence is best-effort only.
+  }
+}
+
 export {
   DEFAULT_FILE_EDITOR_WIDTH,
   MIN_RIGHT_PANEL_WIDTH,
   MAX_RIGHT_PANEL_WIDTH,
+  DEFAULT_SIDE_CHAT_WIDTH,
+  MIN_SIDE_CHAT_WIDTH,
+  MAX_SIDE_CHAT_WIDTH,
   DEFAULT_WORKSPACE_SIDEBAR_WIDTH,
   MIN_WORKSPACE_SIDEBAR_WIDTH,
   MAX_WORKSPACE_SIDEBAR_WIDTH,
   clampPanelWidth,
+  clampSideChatWidth,
   clampWorkspaceSidebarWidth,
   getStoredFileEditorWidth,
+  getStoredSideChatWidth,
+  setStoredSideChatWidth,
   getStoredWorkspaceSidebarWidth
 }

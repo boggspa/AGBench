@@ -87,11 +87,17 @@ import {
 import {
   MIN_RIGHT_PANEL_WIDTH,
   MAX_RIGHT_PANEL_WIDTH,
+  DEFAULT_SIDE_CHAT_WIDTH,
+  MIN_SIDE_CHAT_WIDTH,
+  MAX_SIDE_CHAT_WIDTH,
   MIN_WORKSPACE_SIDEBAR_WIDTH,
   MAX_WORKSPACE_SIDEBAR_WIDTH,
   clampPanelWidth,
+  clampSideChatWidth,
   clampWorkspaceSidebarWidth,
   getStoredFileEditorWidth,
+  getStoredSideChatWidth,
+  setStoredSideChatWidth,
   getStoredWorkspaceSidebarWidth
 } from './lib/panelWidths'
 import { getProviderLabel } from './lib/providerLabels'
@@ -953,6 +959,7 @@ function App(): React.JSX.Element {
   const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
   const [fxBurstClass, setFxBurstClass] = useState('')
   const [fileEditorWidth, setFileEditorWidth] = useState(getStoredFileEditorWidth)
+  const [sideChatWidth, setSideChatWidth] = useState(DEFAULT_SIDE_CHAT_WIDTH)
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
   const [chatContextNotice, setChatContextNotice] = useState<{
     id: string
@@ -1251,12 +1258,21 @@ function App(): React.JSX.Element {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const rawLogsEndRef = useRef<HTMLDivElement>(null)
   const geminiTerminalEndRef = useRef<HTMLDivElement>(null)
+  const chatSplitRegionRef = useRef<HTMLDivElement>(null)
   const appTranscriptRef = useRef<HTMLDivElement>(null)
   const transcriptScrollRef = useRef<HTMLDivElement>(null)
   const sideTranscriptScrollRef = useRef<HTMLDivElement>(null)
   const sideTranscriptContentRef = useRef<HTMLDivElement>(null)
   const sideLogsEndRef = useRef<HTMLDivElement>(null)
   const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const getSideChatMaxWidth = useCallback((): number => {
+    const regionWidth =
+      chatSplitRegionRef.current?.getBoundingClientRect().width || window.innerWidth
+    return Math.min(
+      MAX_SIDE_CHAT_WIDTH,
+      Math.max(MIN_SIDE_CHAT_WIDTH, Math.floor(regionWidth * 0.62))
+    )
+  }, [])
   // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
   // (rendered as `.transcript-inner` in `TranscriptPanel`). A single
   // `ResizeObserver` watches this node and dispatches a coalesced rAF
@@ -1525,6 +1541,17 @@ function App(): React.JSX.Element {
   }, [sideChatId, chats])
   const sideProvider = sideChat ? getChatProvider(sideChat) : currentProvider
   const sidePrompt = sideChat ? composerDraftsByChatId[sideChat.appChatId] || '' : ''
+  const sideSplitParentChatId = sideChat?.parentChatId || null
+  const setSideChatSplitWidth = (nextWidth: number) => {
+    const maxWidth = getSideChatMaxWidth()
+    const clampedWidth = clampSideChatWidth(
+      Math.max(MIN_SIDE_CHAT_WIDTH, Math.min(maxWidth, nextWidth))
+    )
+    setSideChatWidth(clampedWidth)
+    if (sideSplitParentChatId) {
+      setStoredSideChatWidth(sideSplitParentChatId, clampedWidth)
+    }
+  }
   useEffect(() => {
     if (!sideChatId) return
     const liveSideChat =
@@ -1533,6 +1560,14 @@ function App(): React.JSX.Element {
       setSideChatId(null)
     }
   }, [sideChatId, chats, currentChat?.appChatId])
+  useEffect(() => {
+    if (!sideSplitParentChatId) return
+    const storedWidth = getStoredSideChatWidth(sideSplitParentChatId)
+    const maxWidth = getSideChatMaxWidth()
+    setSideChatWidth(
+      clampSideChatWidth(Math.max(MIN_SIDE_CHAT_WIDTH, Math.min(maxWidth, storedWidth)))
+    )
+  }, [getSideChatMaxWidth, sideSplitParentChatId])
   useLayoutEffect(() => {
     if (!sideChat || !sideAutoFollowRef.current) return
     const scroller = sideTranscriptScrollRef.current
@@ -8054,6 +8089,9 @@ function App(): React.JSX.Element {
         ...prev.filter((chat) => chat.appChatId !== createdSideChat.appChatId)
       ])
       setSideChatId(createdSideChat.appChatId)
+      setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
+      setShowFileEditor(false)
+      appearance.update({ showInspector: false })
       setChatPromptDraft(createdSideChat.appChatId, seedPrompt)
       if (clearParentDraft) {
         setChatPromptDraft(parentChat.appChatId, '')
@@ -9882,6 +9920,49 @@ function App(): React.JSX.Element {
     } else {
       appearance.update({ inspectorWidth: clampPanelWidth(clampedWidth) })
     }
+  }
+
+  const startSideChatResize = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = sideChatWidth
+    const maxWidth = getSideChatMaxWidth()
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const nextWidth = Math.max(
+        MIN_SIDE_CHAT_WIDTH,
+        Math.min(maxWidth, startWidth - (moveEvent.clientX - startX))
+      )
+      setSideChatSplitWidth(nextWidth)
+    }
+
+    const handleMouseUp = () => {
+      document.body.classList.remove('is-resizing-side-chat')
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.body.classList.add('is-resizing-side-chat')
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleSideChatResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      return
+    }
+
+    event.preventDefault()
+    const maxWidth = getSideChatMaxWidth()
+    const step = event.shiftKey ? 40 : 16
+    let nextWidth = sideChatWidth
+
+    if (event.key === 'ArrowLeft') nextWidth = sideChatWidth + step
+    if (event.key === 'ArrowRight') nextWidth = sideChatWidth - step
+    if (event.key === 'Home') nextWidth = MIN_SIDE_CHAT_WIDTH
+    if (event.key === 'End') nextWidth = maxWidth
+
+    setSideChatSplitWidth(nextWidth)
   }
 
   const openWorkspacePopoutWindow = useCallback(
@@ -12003,8 +12084,12 @@ function App(): React.JSX.Element {
     'Inspectors',
     'Custom'
   ]
+  const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const appMainStyle = showWorkspaceSidebar && !isChatPopoutWindow
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
+    : undefined
+  const chatSplitStyle = isSideSplitOpen
+    ? ({ '--side-chat-width': `${sideChatWidth}px` } as CSSProperties)
     : undefined
   const interfaceStyle = appearance.composerStyle
   const primaryModifierLabel = window.api.hostPlatform === 'darwin' ? '⌘' : 'Ctrl'
@@ -12029,7 +12114,7 @@ function App(): React.JSX.Element {
       <div
         className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass} ${
           isChatPopoutWindow ? 'chat-popout-main' : ''
-        } ${sideChat && !showSettings && !isChatPopoutWindow ? 'side-chat-open' : ''}`}
+        } ${isSideSplitOpen ? 'side-chat-open' : ''}`}
         style={appMainStyle}
       >
         {showWorkspaceSidebar && !isChatPopoutWindow && (
@@ -12261,10 +12346,18 @@ function App(): React.JSX.Element {
         )}
 
         <div
-          ref={appTranscriptRef}
-          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
-          style={transcriptStyle}
+          ref={chatSplitRegionRef}
+          className={`chat-split-region ${isSideSplitOpen ? 'side-chat-open' : ''} ${
+            showSettings ? 'chat-split-hidden-for-settings' : ''
+          }`}
+          style={chatSplitStyle}
         >
+          <div className="chat-split-main">
+            <div
+              ref={appTranscriptRef}
+              className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
+              style={transcriptStyle}
+            >
           {chatContextNotice && (
             <div className="chat-context-application-pill" role="status">
               <span>{chatContextNotice.message}</span>
@@ -15489,15 +15582,30 @@ function App(): React.JSX.Element {
               <WelcomeHeatmaps slots={welcomeHeatmapSlots} layout={welcomeHeatmapLayout} />
             )}
           </div>
-        </div>
+            </div>
+          </div>
 
-        {sideChat && !isChatPopoutWindow && !showSettings && (
-          <aside
-            className={`side-chat-pane app-transcript provider-${sideProvider} interface-${interfaceStyle} ${
-              sideChat.chatKind === 'ensemble' ? 'chat-kind-ensemble' : ''
-            }`}
-            aria-label="Side chat"
-          >
+          {sideChat && isSideSplitOpen && (
+            <>
+              <div
+                className="side-chat-resize-handle"
+                role="separator"
+                tabIndex={0}
+                aria-orientation="vertical"
+                aria-label="Resize side chat split"
+                aria-valuemin={MIN_SIDE_CHAT_WIDTH}
+                aria-valuemax={getSideChatMaxWidth()}
+                aria-valuenow={sideChatWidth}
+                onMouseDown={startSideChatResize}
+                onKeyDown={handleSideChatResizeKeyDown}
+                title="Resize side chat split"
+              />
+              <aside
+                className={`side-chat-pane app-transcript provider-${sideProvider} interface-${interfaceStyle} ${
+                  sideChat.chatKind === 'ensemble' ? 'chat-kind-ensemble' : ''
+                }`}
+                aria-label="Side chat"
+              >
             <div className="side-chat-header">
               <div className="side-chat-title-wrap">
                 <span className="side-chat-kicker">
@@ -15632,8 +15740,10 @@ function App(): React.JSX.Element {
                 </div>
               </div>
             </form>
-          </aside>
-        )}
+              </aside>
+            </>
+          )}
+        </div>
 
         {!isChatPopoutWindow && showFileEditor && hasWorkspaceContext && (
           <>
