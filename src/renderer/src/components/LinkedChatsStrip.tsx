@@ -12,6 +12,7 @@ interface LinkedChatsStripProps {
   chats: ChatRecord[]
   runningChatIds: string[]
   onOpenBeside?: (chatId: string) => void
+  onOpenDrawer?: (chatId: string) => void
   onOpenMain?: (chatId: string) => void
   onPopOut?: (chatId: string) => void
   defaultCollapsed?: boolean
@@ -111,6 +112,7 @@ export function LinkedChatsStrip({
   chats,
   runningChatIds,
   onOpenBeside,
+  onOpenDrawer,
   onOpenMain,
   onPopOut,
   defaultCollapsed = false
@@ -221,6 +223,16 @@ export function LinkedChatsStrip({
                     )}
                   </span>
                 </button>
+                {onOpenDrawer && (
+                  <button
+                    type="button"
+                    className="linked-chats-strip-main"
+                    onClick={() => onOpenDrawer(chat.appChatId)}
+                    title={`Open in side drawer: ${title}`}
+                  >
+                    Open drawer
+                  </button>
+                )}
                 {onOpenMain && (
                   <button
                     type="button"

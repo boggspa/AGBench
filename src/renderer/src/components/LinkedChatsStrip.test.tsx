@@ -76,6 +76,7 @@ describe('LinkedChatsStrip', () => {
         chats={[parent, sideChat, subThread, archived, terminated, unrelated]}
         runningChatIds={['sub-1']}
         onOpenBeside={() => {}}
+        onOpenDrawer={() => {}}
         onOpenMain={() => {}}
         onPopOut={() => {}}
       />
@@ -97,6 +98,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Gemini delegated to Claude')
     expect(html).toContain(subThreadIdentity.name)
     expect(html).toContain('linked-chats-strip-agent-icon')
+    expect(html).toContain('Open drawer')
     expect(html).toContain('Open as main')
     expect(html).toContain('Pop out')
     expect(html).toContain('is-running')

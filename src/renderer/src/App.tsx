@@ -14349,6 +14349,7 @@ function App(): React.JSX.Element {
             chats={chats}
             runningChatIds={runningChatIdsArray}
             onOpenBeside={handleOpenLinkedChatInSidePanelById}
+            onOpenDrawer={(chatId) => handleOpenLinkedChatInSidePanelById(chatId, 'drawer')}
             onOpenMain={handleOpenCockpitThread}
             onPopOut={(chatId) => {
               const linkedChat =
