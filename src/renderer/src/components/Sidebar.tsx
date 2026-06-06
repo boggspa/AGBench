@@ -161,6 +161,13 @@ interface SidebarProps {
 const isSideChatRecord = (chat: ChatRecord): boolean => chat.parentChatRelation === 'sideChat'
 const isLinkedChildChat = (chat: ChatRecord): boolean => isSubThreadChat(chat) || isSideChatRecord(chat)
 
+const getSideChatChildKindLabel = (chat: ChatRecord): string => {
+  if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
+  if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
+  if (chat.sideChatContext?.mode === 'singleProvider') return 'Side chat'
+  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+}
+
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sub-thread-parent-ids'
 /**
@@ -1916,11 +1923,7 @@ export function Sidebar({
     const subRunning = runningChatIdSet.has(subChat.appChatId)
     const subLastStatus = getLastRunStatus(subChat)
     const subIsSideChat = isSideChatRecord(subChat)
-    const subKindLabel = subIsSideChat
-      ? subChat.chatKind === 'ensemble'
-        ? 'Side ensemble'
-        : 'Side chat'
-      : 'Agent sub-thread'
+    const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Agent sub-thread'
     const subProviderColor = `var(--provider-${subChat.provider || 'gemini'}-color)`
     return (
       <button

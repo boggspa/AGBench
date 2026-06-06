@@ -113,6 +113,36 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('sidebar-chat-children')
   })
 
+  it('labels fan-out side-chat children distinctly in the sidebar', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar([
+      makeChat(),
+      makeChat({
+        appChatId: 'fan-out-side-1',
+        provider: 'gemini',
+        chatKind: 'ensemble',
+        title: 'Parallel side branch',
+        parentChatId: 'parent-1',
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          mode: 'fanOut',
+          lifecycleState: 'active',
+          transcriptVisibility: 'none'
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    ])
+
+    expect(html).toContain('Parallel side branch')
+    expect(html).toContain('Fan-out side chat')
+  })
+
   it('hides sub-thread children when the parent is persisted as collapsed', () => {
     stubSidebarStorage({
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
