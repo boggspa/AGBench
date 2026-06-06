@@ -8565,7 +8565,8 @@ function App(): React.JSX.Element {
     presentation: SidePanelPresentation = 'split',
     seedContext: SideChatSeedContext = {},
     mode?: SideChatCreateMode,
-    presentInline = true
+    presentInline = true,
+    participantOverride?: EnsembleParticipant | null
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
@@ -8575,7 +8576,8 @@ function App(): React.JSX.Element {
         mode || (parentChat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider')
       const selectedSideParticipant =
         sideChatMode === 'singleProvider' && parentChat.chatKind === 'ensemble'
-          ? selectedParticipant ||
+          ? participantOverride ||
+            selectedParticipant ||
             parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
             parentChat.ensemble?.participants[0] ||
             null
@@ -8765,7 +8767,8 @@ function App(): React.JSX.Element {
     presentation: SidePanelPresentation = 'split',
     seedContext: SideChatSeedContext = {},
     mode?: SideChatCreateMode,
-    presentInline = true
+    presentInline = true,
+    participantOverride?: EnsembleParticipant | null
   ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
     if (!parentChat) return null
@@ -8773,7 +8776,8 @@ function App(): React.JSX.Element {
       mode || (parentChat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider')
     const selectedSideParticipant =
       sideChatMode === 'singleProvider' && parentChat.chatKind === 'ensemble'
-        ? selectedParticipant ||
+        ? participantOverride ||
+          selectedParticipant ||
           parentChat.ensemble?.participants.find((participant) => participant.enabled) ||
           parentChat.ensemble?.participants[0] ||
           null
@@ -8833,7 +8837,8 @@ function App(): React.JSX.Element {
       presentation,
       seedContext,
       sideChatMode,
-      presentInline
+      presentInline,
+      participantOverride
     )
   }
 
@@ -8886,7 +8891,8 @@ function App(): React.JSX.Element {
 
   const openCurrentSideChatPresentation = async (
     presentation: SidePanelPresentation | 'popout' | 'main',
-    mode?: SideChatCreateMode
+    mode?: SideChatCreateMode,
+    participantOverride?: EnsembleParticipant | null
   ) => {
     setSideChatMenuOpen(false)
     if (currentChat && currentChatIsLinkedChild) {
@@ -8937,7 +8943,8 @@ function App(): React.JSX.Element {
       presentation === 'drawer' ? 'drawer' : 'split',
       {},
       mode,
-      presentation !== 'popout' && presentation !== 'main'
+      presentation !== 'popout' && presentation !== 'main',
+      participantOverride
     )
     if (!linkedChat) return
     if (presentation === 'popout') {
@@ -14027,6 +14034,27 @@ function App(): React.JSX.Element {
                             : 'Selected provider'}
                         </small>
                       </button>
+                      {ensembleEnabledParticipantsForCurrent.map((participant) => {
+                        const participantLabel =
+                          participant.role || getProviderLabel(participant.provider)
+                        return (
+                          <button
+                            key={`side-chat-participant-${participant.id}`}
+                            type="button"
+                            role="menuitem"
+                            onClick={() =>
+                              void openCurrentSideChatPresentation(
+                                'split',
+                                'singleProvider',
+                                participant
+                              )
+                            }
+                          >
+                            <span>Open {participantLabel} side chat</span>
+                            <small>{getProviderLabel(participant.provider)}</small>
+                          </button>
+                        )
+                      })}
                       <button
                         type="button"
                         role="menuitem"
