@@ -11117,7 +11117,7 @@ function App(): React.JSX.Element {
       chatId: currentChat.appChatId,
       workspacePath: currentChat.workspacePath
     })
-  }, [currentChat?.appChatId, currentChat?.workspacePath])
+  }, [currentChat?.appChatId, currentChat?.workspacePath, prompt])
 
   const dockChatPopoutWindow = useCallback(
     (presentation: SidePanelPresentation) => {
