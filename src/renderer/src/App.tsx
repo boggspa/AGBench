@@ -79,6 +79,7 @@ import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeForm
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
 import { parseSideSlashCommand, type SideSlashCommand } from './lib/SideSlashCommand'
+import { buildSideChatRunResultSeedPrompt } from './lib/SideChatRunSeed'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
 import { IOS_REMOTE_ENABLED } from './lib/featureFlags'
 import {
@@ -10374,24 +10375,7 @@ function App(): React.JSX.Element {
   const handleOpenSideChatFromRunResult = useCallback(
     (runId: string) => {
       if (!canCreateSideChatFromCurrent || !currentChat || !runId) return
-      const sourceRun = (currentChat.runs || []).find((run) => run.runId === runId)
-      const latestAssistantMessage = [...(currentChat.messages || [])]
-        .reverse()
-        .find((message) => message.role === 'assistant')
-      const seedPrompt = [
-        'Use this parent run result as the starting point.',
-        'This side chat is isolated and does not have the full parent transcript unless I paste it here.',
-        '',
-        `Run ID: ${runId}`,
-        sourceRun?.status ? `Run status: ${sourceRun.status}` : '',
-        sourceRun?.startedAt ? `Started: ${sourceRun.startedAt}` : '',
-        sourceRun?.endedAt ? `Ended: ${sourceRun.endedAt}` : '',
-        latestAssistantMessage?.content?.trim()
-          ? `Latest assistant response:\n\n${latestAssistantMessage.content.trim()}`
-          : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
+      const seedPrompt = buildSideChatRunResultSeedPrompt(currentChat, runId)
       void ensureSideChatForCurrentChat(seedPrompt, false, 'split', {
         originRunId: runId
       })
