@@ -276,9 +276,9 @@
   -webkit-appearance: none;
   border: 0;
   margin: 0;
-  padding: 3px;
-  width: 24px;
-  height: 24px;
+  padding: 4px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -302,16 +302,25 @@
 }
 
 .chat-corner-symbol {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .chat-corner-symbol svg {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
+}
+
+/* Direct SVG icons (ChatMedia / FileMenu / ChatPopout / terminal / inspector)
+ * sit straight inside the button, not in a .chat-corner-symbol span — size them
+ * here so they scale with the 1.6x-larger corner buttons. */
+.chat-corner-btn svg {
+  width: 26px;
+  height: 26px;
 }
 
 .chat-corner-count {
@@ -334,8 +343,8 @@
 
 .chat-corner-controls {
   z-index: 9;
-  gap: 2px;
-  padding: 3px;
+  gap: 3px;
+  padding: 5px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 999px;
   background:
@@ -344,11 +353,15 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.11),
     0 10px 24px rgba(0, 0, 0, 0.14);
-  /* GPU: dropped — pill-sized chrome, blur is invisible at this scale. */
+  /* Frosted glass — now that the pill is 1.6x larger the blur reads, so blur the
+   * transcript content behind it (re-added; previously dropped as invisible at
+   * the old small size). */
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 
 .chat-corner-controls-right {
-  gap: 5px;
+  gap: 8px;
 }
 
 .chat-corner-controls .chat-corner-btn {
