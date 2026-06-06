@@ -8909,6 +8909,10 @@ function App(): React.JSX.Element {
       if (typeof draftOverride === 'string') {
         setChatPromptDraft(currentChat.appChatId, draftOverride)
       }
+      const linkedMainScrollState =
+        presentation === 'split' || presentation === 'drawer'
+          ? captureChatScrollState(transcriptScrollRef.current)
+          : undefined
       const linkedParentChat = await resolveCurrentLinkedParentChat()
       if (!linkedParentChat) return
       if (presentation === 'popout') {
@@ -8924,6 +8928,10 @@ function App(): React.JSX.Element {
         await handleSelectChat(linkedParentChat)
       }
       openLinkedChatInSidePanel(currentChat, presentation, linkedParentChat)
+      if (linkedMainScrollState) {
+        sideAutoFollowRef.current = linkedMainScrollState.atBottom
+        restoreChatScrollStateWhenReady(() => sideTranscriptScrollRef.current, linkedMainScrollState)
+      }
       return
     }
     const activeLinkedChatForParent =
@@ -8982,6 +8990,10 @@ function App(): React.JSX.Element {
     chat: ChatRecord,
     presentation: SidePanelPresentation = 'split'
   ) => {
+    const linkedMainScrollState =
+      currentChat?.appChatId === chat.appChatId
+        ? captureChatScrollState(transcriptScrollRef.current)
+        : undefined
     const parentChat = chat.parentChatId
       ? chatByIdRef.current.get(chat.parentChatId) ||
         chats.find((item) => item.appChatId === chat.parentChatId) ||
@@ -8992,6 +9004,10 @@ function App(): React.JSX.Element {
       await handleSelectChat(parentChat)
     }
     openLinkedChatInSidePanel(chat, presentation, parentChat)
+    if (linkedMainScrollState) {
+      sideAutoFollowRef.current = linkedMainScrollState.atBottom
+      restoreChatScrollStateWhenReady(() => sideTranscriptScrollRef.current, linkedMainScrollState)
+    }
   }
 
   useEffect(() => {
