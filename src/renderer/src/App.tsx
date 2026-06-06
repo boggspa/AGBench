@@ -8861,6 +8861,30 @@ function App(): React.JSX.Element {
       openLinkedChatInSidePanel(currentChat, presentation, linkedParentChat)
       return
     }
+    const activeSideChatForParent =
+      !mode &&
+      currentChat?.appChatId &&
+      sideChat?.parentChatId === currentChat.appChatId &&
+      sideChat.parentChatRelation === 'sideChat' &&
+      !sideChat.archived &&
+      !isTerminatedSideChat(sideChat)
+        ? sideChat
+        : null
+    if (activeSideChatForParent) {
+      if (presentation === 'popout') {
+        popOutLinkedChat(activeSideChatForParent)
+        return
+      }
+      if (presentation === 'main') {
+        void handleSelectChat(activeSideChatForParent)
+        return
+      }
+      openLinkedChatInSidePanel(
+        activeSideChatForParent,
+        presentation === 'drawer' ? 'drawer' : 'split'
+      )
+      return
+    }
     const linkedChat = await ensureSideChatForCurrentChat(
       '',
       false,
