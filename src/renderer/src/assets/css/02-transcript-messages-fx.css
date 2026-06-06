@@ -3461,7 +3461,16 @@
   white-space: nowrap;
 }
 
-.subthread-return-open {
+.subthread-return-actions,
+.subthread-delegation-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.subthread-return-open,
+.subthread-delegation-open {
   flex: 0 0 auto;
   border: 1px solid rgb(var(--agent-accent-rgb) / 0.26);
   border-radius: 7px;
@@ -3474,7 +3483,8 @@
   padding: 0.46rem 0.58rem;
 }
 
-.subthread-return-open:hover {
+.subthread-return-open:hover,
+.subthread-delegation-open:hover {
   border-color: rgb(var(--agent-accent-rgb) / 0.42);
   background: rgb(var(--agent-accent-rgb) / 0.12);
 }

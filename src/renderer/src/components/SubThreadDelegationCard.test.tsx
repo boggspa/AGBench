@@ -161,4 +161,31 @@ describe('SubThreadDelegationCard', () => {
     expect(html).toContain('opens as linked chat')
     expect(html).toContain('Review helper')
   })
+
+  it('labels side-panel-enabled sub-thread cards as opening beside the parent', () => {
+    const msg: ChatMessage = {
+      id: 'm',
+      role: 'system',
+      content: '↪ Delegated to Kimi sub-thread.',
+      timestamp: 't',
+      metadata: {
+        kind: 'subThreadDelegation',
+        subThreadId: 'sub-1',
+        parentProvider: 'claude',
+        subThreadProvider: 'kimi',
+        subThreadTitle: 'Review helper'
+      }
+    }
+    const html = renderToStaticMarkup(
+      <SubThreadDelegationCard
+        message={msg}
+        chats={[makeChat()]}
+        onOpenSubThread={() => {}}
+        onOpenSubThreadInSidePanel={() => {}}
+      />
+    )
+
+    expect(html).toContain('opens beside parent')
+    expect(html).toContain('Open main')
+  })
 })

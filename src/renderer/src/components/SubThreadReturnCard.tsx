@@ -14,13 +14,19 @@ interface SubThreadReturnCardProps {
   message: ChatMessage
   chat?: ChatRecord
   onOpenSubThread?: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string) => void
 }
 
 function textValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThreadReturnCardProps) {
+export function SubThreadReturnCard({
+  message,
+  chat,
+  onOpenSubThread,
+  onOpenSubThreadInSidePanel
+}: SubThreadReturnCardProps) {
   const metadata = message.metadata || {}
   const provider = metadata.subThreadProvider
   const providerName = providerDisplayName(typeof provider === 'string' ? provider : undefined)
@@ -65,14 +71,27 @@ export function SubThreadReturnCard({ message, chat, onOpenSubThread }: SubThrea
           </span>
           <strong className="subthread-return-title">{title}</strong>
         </div>
-        {subThreadId && onOpenSubThread && (
-          <button
-            type="button"
-            className="subthread-return-open"
-            onClick={() => onOpenSubThread(subThreadId)}
-          >
-            Open sub-thread
-          </button>
+        {subThreadId && (onOpenSubThread || onOpenSubThreadInSidePanel) && (
+          <div className="subthread-return-actions">
+            {onOpenSubThreadInSidePanel && (
+              <button
+                type="button"
+                className="subthread-return-open"
+                onClick={() => onOpenSubThreadInSidePanel(subThreadId)}
+              >
+                Open beside
+              </button>
+            )}
+            {onOpenSubThread && (
+              <button
+                type="button"
+                className="subthread-return-open"
+                onClick={() => onOpenSubThread(subThreadId)}
+              >
+                Open sub-thread
+              </button>
+            )}
+          </div>
         )}
       </header>
       <div className="subthread-return-body">

@@ -106,6 +106,7 @@ import {
   getChatProvider,
   getChatScope,
   isGlobalChat,
+  isSubThreadChat,
   getUsageWorkspaceIdForChat
 } from './lib/chatScope'
 import { renderAgentApprovalPreview } from './lib/agentApprovalPreview'
@@ -209,6 +210,7 @@ import {
   ScreenWatchSymbolIcon,
   SidebarCornerIcon,
   SkyWeatherIcon,
+  SplitChatIcon,
   SteerSymbolIcon,
   StopSymbolIcon,
   TrustSymbolIcon,
@@ -476,6 +478,8 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
   'active',
   'cancelling'
 ])
+
+type SidePanelPresentation = 'split' | 'drawer'
 
 /**
  * Derive the per-thread run-complete card from a chat's PERSISTED last run
@@ -1239,6 +1243,9 @@ function App(): React.JSX.Element {
   // chats. The composer stays mounted below either way.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
   const [sideChatId, setSideChatId] = useState<string | null>(null)
+  const [sidePanelPresentation, setSidePanelPresentation] =
+    useState<SidePanelPresentation>('split')
+  const [sideChatMenuOpen, setSideChatMenuOpen] = useState(false)
 
   // Reset inspector when the user navigates to a chat that doesn't own
   // the currently-inspected run. Conditional (not unconditional) because
@@ -1267,6 +1274,7 @@ function App(): React.JSX.Element {
   const sideTranscriptContentRef = useRef<HTMLDivElement>(null)
   const sideLogsEndRef = useRef<HTMLDivElement>(null)
   const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const sideChatMenuRef = useRef<HTMLDivElement | null>(null)
   const getSideChatMaxWidth = useCallback((): number => {
     const regionWidth =
       chatSplitRegionRef.current?.getBoundingClientRect().width || window.innerWidth
@@ -1543,6 +1551,34 @@ function App(): React.JSX.Element {
   }, [sideChatId, chats])
   const sideProvider = sideChat ? getChatProvider(sideChat) : currentProvider
   const sidePrompt = sideChat ? composerDraftsByChatId[sideChat.appChatId] || '' : ''
+  const sidePanelParentChat = sideChat?.parentChatId
+    ? chatByIdRef.current.get(sideChat.parentChatId) ||
+      chats.find((chat) => chat.appChatId === sideChat.parentChatId) ||
+      null
+    : null
+  const sidePanelRelation = sideChat
+    ? isSubThreadChat(sideChat)
+      ? 'subThread'
+      : sideChat.parentChatRelation === 'sideChat'
+        ? 'sideChat'
+        : 'linkedChat'
+    : null
+  const sidePanelKindLabel =
+    sidePanelRelation === 'subThread'
+      ? 'Agent sub-thread'
+      : sideChat?.chatKind === 'ensemble'
+        ? 'Side ensemble'
+        : 'Side chat'
+  const sidePanelContextLabel =
+    sidePanelRelation === 'subThread'
+      ? 'Delegation context'
+      : sideChat?.sideChatContext?.originMessageId
+        ? 'Seeded from selected message'
+        : sideChat?.sideChatContext?.originRunId
+          ? 'Seeded from run result'
+          : sideChat?.sideChatContext?.transcriptVisibility === 'summary'
+            ? 'Seeded from summary'
+            : 'No parent context'
   const sideSplitParentChatId = sideChat?.parentChatId || null
   const setSideChatSplitWidth = (nextWidth: number) => {
     const maxWidth = getSideChatMaxWidth()
@@ -1578,6 +1614,18 @@ function App(): React.JSX.Element {
       scroller.scrollTop = scroller.scrollHeight
     })
   }, [sideChat?.appChatId, sideChat?.messages?.length, sideChat?.updatedAt])
+  useEffect(() => {
+    if (!sideChatMenuOpen) return
+    const handlePointerDown = (event: MouseEvent) => {
+      if (sideChatMenuRef.current?.contains(event.target as Node)) return
+      setSideChatMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [sideChatMenuOpen])
+  useEffect(() => {
+    setSideChatMenuOpen(false)
+  }, [currentChat?.appChatId])
   const permissionRequestState = currentComposerChatId
     ? permissionRequestByChatId[currentComposerChatId] || EMPTY_PERMISSION_STATE
     : EMPTY_PERMISSION_STATE
@@ -8071,9 +8119,13 @@ function App(): React.JSX.Element {
     void executeRun(request)
   }
 
-  const createSideChatFromCurrentChat = async (seedPrompt = '', clearParentDraft = false) => {
+  const createSideChatFromCurrentChat = async (
+    seedPrompt = '',
+    clearParentDraft = false,
+    presentation: SidePanelPresentation = 'split'
+  ): Promise<ChatRecord | null> => {
     const parentChat = currentChat
-    if (!parentChat) return
+    if (!parentChat) return null
     try {
       const parentProvider = getChatProvider(parentChat)
       const createdSideChat = await window.api.createSideChat({
@@ -8090,6 +8142,7 @@ function App(): React.JSX.Element {
         createdSideChat,
         ...prev.filter((chat) => chat.appChatId !== createdSideChat.appChatId)
       ])
+      setSidePanelPresentation(presentation)
       setSideChatId(createdSideChat.appChatId)
       setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
       setShowFileEditor(false)
@@ -8101,12 +8154,115 @@ function App(): React.JSX.Element {
       requestAnimationFrame(() => {
         sideComposerTextareaRef.current?.focus()
       })
+      return createdSideChat
     } catch (error) {
       appendThreadRawLog(parentChat.appChatId, {
         type: 'stderr',
         content: `Failed to create side chat: ${redactLog(String(error))}`
       })
+      return null
     }
+  }
+
+  const findReusableSideChatForCurrentChat = (): ChatRecord | null => {
+    if (!currentChat?.appChatId) return null
+    const linked = chats
+      .filter(
+        (chat) =>
+          !chat.archived &&
+          chat.parentChatId === currentChat.appChatId &&
+          chat.parentChatRelation === 'sideChat'
+      )
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
+    return linked[0] || null
+  }
+
+  const openLinkedChatInSidePanel = (
+    chat: ChatRecord,
+    presentation: SidePanelPresentation = 'split',
+    parentOverride?: ChatRecord | null
+  ) => {
+    const parentChat = parentOverride || currentChat
+    if (!parentChat?.appChatId || chat.parentChatId !== parentChat.appChatId) return
+    chatByIdRef.current.set(chat.appChatId, chat)
+    setSidePanelPresentation(presentation)
+    setSideChatId(chat.appChatId)
+    setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
+    setShowFileEditor(false)
+    appearance.update({ showInspector: false })
+    setSideChatMenuOpen(false)
+    requestAnimationFrame(() => {
+      sideComposerTextareaRef.current?.focus()
+    })
+  }
+
+  const ensureSideChatForCurrentChat = async (
+    seedPrompt = '',
+    clearParentDraft = false,
+    presentation: SidePanelPresentation = 'split'
+  ): Promise<ChatRecord | null> => {
+    const parentChat = currentChat
+    if (!parentChat) return null
+    const existing = findReusableSideChatForCurrentChat()
+    if (existing) {
+      openLinkedChatInSidePanel(existing, presentation)
+      if (seedPrompt) {
+        setChatPromptDraft(existing.appChatId, seedPrompt)
+      }
+      if (clearParentDraft) {
+        setChatPromptDraft(parentChat.appChatId, '')
+      }
+      return existing
+    }
+    return createSideChatFromCurrentChat(seedPrompt, clearParentDraft, presentation)
+  }
+
+  const popOutLinkedChat = (chat: ChatRecord) => {
+    void window.api.openWorkspacePopout({
+      kind: 'chat',
+      chatId: chat.appChatId,
+      workspacePath: chat.workspacePath
+    })
+  }
+
+  const openCurrentSideChatPresentation = async (
+    presentation: SidePanelPresentation | 'popout' | 'main'
+  ) => {
+    const linkedChat = await ensureSideChatForCurrentChat(
+      '',
+      false,
+      presentation === 'drawer' ? 'drawer' : 'split'
+    )
+    if (!linkedChat) return
+    if (presentation === 'popout') {
+      popOutLinkedChat(linkedChat)
+      return
+    }
+    if (presentation === 'main') {
+      void handleSelectChat(linkedChat)
+    }
+  }
+
+  const handleOpenLinkedChatInSidePanelById = (
+    chatId: string,
+    presentation: SidePanelPresentation = 'split'
+  ) => {
+    const chat = chatByIdRef.current.get(chatId) || chats.find((item) => item.appChatId === chatId)
+    if (!chat) return
+    openLinkedChatInSidePanel(chat, presentation)
+  }
+
+  const handleOpenLinkedChatInSidePanelFromSidebar = async (chat: ChatRecord) => {
+    const parentChat = chat.parentChatId
+      ? chatByIdRef.current.get(chat.parentChatId) ||
+        chats.find((item) => item.appChatId === chat.parentChatId) ||
+        null
+      : null
+    if (!parentChat) return
+    if (currentChat?.appChatId !== parentChat.appChatId) {
+      await handleSelectChat(parentChat)
+    }
+    openLinkedChatInSidePanel(chat, 'split', parentChat)
   }
 
   const handleSideRun = () => {
@@ -9136,7 +9292,7 @@ function App(): React.JSX.Element {
   const tryHandleSideSlashSubmit = (): boolean => {
     const sideSeedPrompt = parseSideSlashPrompt(prompt)
     if (sideSeedPrompt === null) return false
-    void createSideChatFromCurrentChat(sideSeedPrompt, true)
+    void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
     setSlashMenuOpen(false)
     setSlashQuery('')
     slashAnchorIndexRef.current = null
@@ -11941,7 +12097,7 @@ function App(): React.JSX.Element {
       group: 'Custom',
       run: () => {
         const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
-        void createSideChatFromCurrentChat(sideSeedPrompt, true)
+        void ensureSideChatForCurrentChat(sideSeedPrompt, true, 'split')
       }
     },
     {
@@ -12054,6 +12210,9 @@ function App(): React.JSX.Element {
     'Custom'
   ]
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
+  const sidePanelLayoutClass = isSideSplitOpen
+    ? `side-chat-open side-chat-layout-${sidePanelPresentation}`
+    : ''
   const appMainStyle = showWorkspaceSidebar && !isChatPopoutWindow
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
     : undefined
@@ -12122,6 +12281,9 @@ function App(): React.JSX.Element {
                 onNewEnsemble={handleNewEnsemble}
                 ensembleModeEnabled={isEnsembleModeEnabled}
                 onSelectChat={handleSelectChat}
+                onOpenChatInSidePanel={(chat) =>
+                  void handleOpenLinkedChatInSidePanelFromSidebar(chat)
+                }
                 onOpenSettings={() => setShowSettings(true)}
                 updateSnapshot={updateStatus.snapshot}
                 onOpenChangelog={handleOpenChangelogSheet}
@@ -12316,7 +12478,7 @@ function App(): React.JSX.Element {
 
         <div
           ref={chatSplitRegionRef}
-          className={`chat-split-region ${isSideSplitOpen ? 'side-chat-open' : ''} ${
+          className={`chat-split-region ${sidePanelLayoutClass} ${
             showSettings ? 'chat-split-hidden-for-settings' : ''
           }`}
           style={chatSplitStyle}
@@ -12449,6 +12611,60 @@ function App(): React.JSX.Element {
             >
               <ChatPopoutIcon />
             </button>
+            <div className="side-chat-menu-wrap" ref={sideChatMenuRef}>
+              <button
+                className={`chat-corner-btn ${isSideSplitOpen ? 'active' : ''}`}
+                type="button"
+                onClick={() => setSideChatMenuOpen((open) => !open)}
+                title="Side chat layouts"
+                aria-label="Side chat layouts"
+                aria-haspopup="menu"
+                aria-expanded={sideChatMenuOpen}
+                disabled={!currentChat}
+              >
+                <SplitChatIcon />
+              </button>
+              {sideChatMenuOpen && (
+                <div className="side-chat-layout-menu" role="menu" aria-label="Side chat layouts">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void openCurrentSideChatPresentation('split')}
+                  >
+                    <span>Open side split</span>
+                    <small>Main pane divider</small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void openCurrentSideChatPresentation('drawer')}
+                  >
+                    <span>Open side drawer</span>
+                    <small>Right overlay</small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void openCurrentSideChatPresentation('popout')}
+                  >
+                    <span>Pop out side chat</span>
+                    <small>Separate chat window</small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void openCurrentSideChatPresentation('main')}
+                  >
+                    <span>Open as main chat</span>
+                    <small>Navigate to linked chat</small>
+                  </button>
+                  <button type="button" role="menuitem" disabled>
+                    <span>Open from selected message</span>
+                    <small>Select-message seeding</small>
+                  </button>
+                </div>
+              )}
+            </div>
             </div>
           )}
 
@@ -12688,6 +12904,7 @@ function App(): React.JSX.Element {
                 onPlanChoiceSubmit={handlePlanChoiceSubmit}
                 onRunFallback={handleRunFallback}
                 onOpenSubThread={handleOpenCockpitThread}
+                onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
                 onInspectRun={(runId) => setInspectingRunId(runId)}
                 compactDensity={appearance.compactDensity}
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
@@ -15579,18 +15796,40 @@ function App(): React.JSX.Element {
               <div className="side-chat-title-wrap">
                 <span className="side-chat-kicker">
                   <ProviderBadgeIcon provider={sideProvider} />
-                  <span>{sideChat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'}</span>
+                  <span>{sidePanelKindLabel}</span>
+                </span>
+                <span className="side-chat-parent-link">
+                  Parent: {sidePanelParentChat?.title || 'current chat'}
                 </span>
                 <strong title={sideChat.title}>{sideChat.title}</strong>
+                <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
               </div>
               <div className="side-chat-actions">
+                {sidePanelParentChat && (
+                  <button
+                    type="button"
+                    className="side-chat-header-btn"
+                    onClick={() => void handleSelectChat(sidePanelParentChat)}
+                    title="Back to parent chat"
+                  >
+                    Back
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => popOutLinkedChat(sideChat)}
+                  title="Pop out this linked chat"
+                >
+                  Pop out
+                </button>
                 <button
                   type="button"
                   className="side-chat-header-btn"
                   onClick={() => void handleSelectChat(sideChat)}
                   title="Open side chat as the main thread"
                 >
-                  Open
+                  Open main
                 </button>
                 <button
                   type="button"
@@ -15636,6 +15875,7 @@ function App(): React.JSX.Element {
               onPlanChoiceSubmit={() => {}}
               onRunFallback={() => {}}
               onOpenSubThread={handleOpenCockpitThread}
+              onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
               onInspectRun={(runId) => {
                 void handleSelectChat(sideChat)
                 setInspectingRunId(runId)
@@ -15653,29 +15893,35 @@ function App(): React.JSX.Element {
               providerRates={providerRates}
             />
             <form
-              className="side-chat-composer"
+              className={`side-chat-composer composer-surface side-chat-compact-composer interface-${interfaceStyle}`}
               onSubmit={(event) => {
                 event.preventDefault()
                 handleSideRun()
               }}
             >
-              <textarea
-                ref={sideComposerTextareaRef}
-                className="side-chat-textarea"
-                value={sidePrompt}
-                onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault()
-                    handleSideRun()
-                  }
-                }}
-                placeholder="Prompt this side chat"
-                aria-label="Side chat prompt"
-                rows={3}
-                disabled={!sideCanRun}
-              />
-              <div className="side-chat-composer-footer">
+              <div className="composer-textarea-wrap side-chat-textarea-wrap">
+                <textarea
+                  ref={sideComposerTextareaRef}
+                  className="composer-textarea side-chat-textarea"
+                  value={sidePrompt}
+                  onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault()
+                      handleSideRun()
+                    }
+                  }}
+                  placeholder={`Ask ${sidePanelKindLabel.toLowerCase()}`}
+                  aria-label="Side chat prompt"
+                  rows={3}
+                  disabled={!sideCanRun}
+                />
+              </div>
+              <div className="side-chat-composer-footer composer-footer">
                 <span className="side-chat-status" aria-live="polite">
                   {isSideChatRunning ? 'Running' : 'Ready'}
                 </span>

@@ -20,6 +20,7 @@ interface SubThreadDelegationCardProps {
    * this set. */
   runningChatIds?: string[]
   onOpenSubThread?: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string) => void
 }
 
 function textValue(value: unknown): string | undefined {
@@ -70,7 +71,8 @@ export function SubThreadDelegationCard({
   message,
   chats,
   runningChatIds = [],
-  onOpenSubThread
+  onOpenSubThread,
+  onOpenSubThreadInSidePanel
 }: SubThreadDelegationCardProps) {
   const metadata = message.metadata || {}
   const subThreadId = textValue(metadata.subThreadId)
@@ -99,10 +101,15 @@ export function SubThreadDelegationCard({
   const targetColorVar = `var(--provider-${targetProvider || 'gemini'}-color)`
 
   const handleOpen = () => {
-    if (subThreadId && onOpenSubThread) onOpenSubThread(subThreadId)
+    if (!subThreadId) return
+    if (onOpenSubThreadInSidePanel) {
+      onOpenSubThreadInSidePanel(subThreadId)
+      return
+    }
+    if (onOpenSubThread) onOpenSubThread(subThreadId)
   }
 
-  const isClickable = Boolean(subThreadId && onOpenSubThread)
+  const isClickable = Boolean(subThreadId && (onOpenSubThreadInSidePanel || onOpenSubThread))
   const resultReturned = returnResultToParent && status.kind === 'returned'
 
   return (
@@ -173,9 +180,27 @@ export function SubThreadDelegationCard({
         )}
         <div className="agent-invocation-route-note">
           {agentInvocationRouteLabel('taskwraith-subthread')}
-          {isClickable ? ' · opens as linked chat' : ''}
+          {isClickable
+            ? onOpenSubThreadInSidePanel
+              ? ' · opens beside parent'
+              : ' · opens as linked chat'
+            : ''}
         </div>
       </div>
+      {subThreadId && onOpenSubThread && onOpenSubThreadInSidePanel && (
+        <div className="subthread-delegation-footer subthread-delegation-actions">
+          <button
+            type="button"
+            className="subthread-delegation-open"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenSubThread(subThreadId)
+            }}
+          >
+            Open main
+          </button>
+        </div>
+      )}
       {resultReturned && (
         <div className="subthread-delegation-footer">
           <span aria-hidden="true">↩</span>

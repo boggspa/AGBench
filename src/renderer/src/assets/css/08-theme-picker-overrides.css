@@ -1197,6 +1197,9 @@
 .sidebar-sub-thread:hover {
   opacity: 1;
 }
+.sidebar-side-chat-child {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
 .sidebar-sub-thread-prefix {
   display: inline-block;
   margin-right: 6px;

@@ -129,6 +129,7 @@ type TranscriptPanelProps = {
   onPlanChoiceSubmit: (messageId: string, option: string) => void
   onRunFallback: (model: string) => void
   onOpenSubThread: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string) => void
   /** Phase K1B: when set, RunCard's "Inspect →" affordance enters Run
    * mode for the clicked run. Plumbed from App.tsx down. */
   onInspectRun?: (runId: string) => void
@@ -666,6 +667,7 @@ export const TranscriptPanel = memo(
     onPlanChoiceSubmit,
     onRunFallback,
     onOpenSubThread,
+    onOpenSubThreadInSidePanel,
     onInspectRun,
     compactDensity,
     pendingQueuedAppRunIds,
@@ -880,12 +882,14 @@ export const TranscriptPanel = memo(
                         chats={chats}
                         runningChatIds={runningChatIds}
                         onOpenSubThread={onOpenSubThread}
+                        onOpenSubThreadInSidePanel={onOpenSubThreadInSidePanel}
                       />
                     ) : (
                       <SubThreadReturnCard
                         message={msg}
                         chat={currentChat || undefined}
                         onOpenSubThread={onOpenSubThread}
+                        onOpenSubThreadInSidePanel={onOpenSubThreadInSidePanel}
                       />
                     )}
                   </div>
