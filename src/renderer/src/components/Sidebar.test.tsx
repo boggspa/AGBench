@@ -186,6 +186,36 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Closed')
   })
 
+  it('labels run-result seeded side-chat children explicitly', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar([
+      makeChat(),
+      makeChat({
+        appChatId: 'run-seeded-side-1',
+        provider: 'claude',
+        title: 'Run follow-up',
+        parentChatId: 'parent-1',
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          mode: 'singleProvider',
+          lifecycleState: 'active',
+          originRunId: 'run-1',
+          transcriptVisibility: 'snapshot'
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    ])
+
+    expect(html).toContain('Run follow-up')
+    expect(html).toContain('Seeded from run result')
+  })
+
   it('hides sub-thread children when the parent is persisted as collapsed', () => {
     stubSidebarStorage({
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),

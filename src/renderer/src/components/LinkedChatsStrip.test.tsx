@@ -200,6 +200,36 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Participant: Reviewer')
   })
 
+  it('labels run-result seeded side chats explicitly', () => {
+    const parent = makeChat()
+    const runSeededSideChat = makeChat({
+      appChatId: 'run-seeded-side-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'claude',
+      title: 'Run follow-up',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'active',
+        originRunId: 'run-1',
+        mode: 'singleProvider',
+        transcriptVisibility: 'snapshot'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, runSeededSideChat]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('Run follow-up')
+    expect(html).toContain('Seeded from run result')
+  })
+
   it('renders nothing without linked children', () => {
     const parent = makeChat()
     const html = renderToStaticMarkup(

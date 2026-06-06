@@ -60,7 +60,7 @@ function delegatedAgentIdentity(chat: ChatRecord) {
 function linkedContextLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
   if (chat.sideChatContext?.originMessageId) return 'Seeded from message'
-  if (chat.sideChatContext?.originRunId) return 'Seeded from run'
+  if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
   if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
   return 'No parent context'
 }
