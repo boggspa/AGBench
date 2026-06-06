@@ -9127,6 +9127,13 @@ function App(): React.JSX.Element {
     setSideChatMenuOpen(false)
   }
 
+  const handleReturnToSideChatParent = () => {
+    if (sidePanelParentChat && currentChat?.appChatId !== sidePanelParentChat.appChatId) {
+      void handleSelectChat(sidePanelParentChat)
+    }
+    hideSideChatPane()
+  }
+
   const handleTerminateSideChatRecord = async (targetChat: ChatRecord | null) => {
     if (!targetChat || targetChat.parentChatRelation !== 'sideChat') return
     if (isChatBusy(targetChat.appChatId)) {
@@ -17459,8 +17466,8 @@ function App(): React.JSX.Element {
                   <button
                     type="button"
                     className="side-chat-header-btn"
-                    onClick={() => void handleSelectChat(sidePanelParentChat)}
-                    title="Back to parent chat"
+                    onClick={handleReturnToSideChatParent}
+                    title="Close this side view and return focus to the parent chat"
                   >
                     Back to parent
                   </button>
