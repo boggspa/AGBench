@@ -8485,6 +8485,7 @@ function App(): React.JSX.Element {
     presentation: SidePanelPresentation | 'popout' | 'main',
     mode?: SideChatCreateMode
   ) => {
+    setSideChatMenuOpen(false)
     const linkedChat = await ensureSideChatForCurrentChat(
       '',
       false,
@@ -13285,22 +13286,35 @@ function App(): React.JSX.Element {
             </button>
             <div className="side-chat-menu-wrap" ref={sideChatMenuRef}>
               <button
-                className={`chat-corner-btn ${isSideSplitOpen ? 'active' : ''}`}
+                className={`chat-corner-btn side-chat-primary-btn ${isSideSplitOpen ? 'active' : ''}`}
                 type="button"
                 onClick={() => {
+                  setSideChatMenuOpen(false)
                   if (isSideSplitOpen) {
                     hideSideChatPane()
                     return
                   }
-                  setSideChatMenuOpen((open) => !open)
+                  void openCurrentSideChatPresentation('split')
                 }}
-                title={isSideSplitOpen ? 'Hide side chat pane' : 'Side chat layouts'}
-                aria-label={isSideSplitOpen ? 'Hide side chat pane' : 'Side chat layouts'}
+                title={isSideSplitOpen ? 'Hide side chat pane' : 'Open side split'}
+                aria-label={isSideSplitOpen ? 'Hide side chat pane' : 'Open side split'}
+                disabled={!currentChat}
+              >
+                <SplitChatIcon />
+              </button>
+              <button
+                className={`chat-corner-btn side-chat-menu-trigger ${sideChatMenuOpen ? 'active' : ''}`}
+                type="button"
+                onClick={() => setSideChatMenuOpen((open) => !open)}
+                title="Choose side chat layout"
+                aria-label="Choose side chat layout"
                 aria-haspopup="menu"
                 aria-expanded={sideChatMenuOpen}
                 disabled={!currentChat}
               >
-                <SplitChatIcon />
+                <span className="side-chat-menu-chevron" aria-hidden>
+                  ▾
+                </span>
               </button>
               {sideChatMenuOpen && (
                 <div className="side-chat-layout-menu" role="menu" aria-label="Side chat layouts">
