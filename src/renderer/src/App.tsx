@@ -5040,6 +5040,30 @@ function App(): React.JSX.Element {
   }
 
   useEffect(() => {
+    if (!sideChatId) return
+
+    const markInlineSideChatClosed = () => {
+      const liveChat = chatByIdRef.current.get(sideChatId)
+      if (
+        !liveChat ||
+        liveChat.parentChatRelation !== 'sideChat' ||
+        liveChat.archived ||
+        isTerminatedSideChat(liveChat)
+      ) {
+        return
+      }
+      const closedChat = applySideChatLifecycle(liveChat, 'closed')
+      chatByIdRef.current.set(closedChat.appChatId, closedChat)
+      void window.api.saveChat(closedChat).catch(() => {})
+    }
+
+    window.addEventListener('beforeunload', markInlineSideChatClosed)
+    return () => {
+      window.removeEventListener('beforeunload', markInlineSideChatClosed)
+    }
+  }, [sideChatId])
+
+  useEffect(() => {
     if (!popoutSideChatLifecycleId) return
 
     const markPopoutSideChatClosed = () => {
@@ -8526,6 +8550,9 @@ function App(): React.JSX.Element {
         nextSideChat,
         ...prev.filter((chat) => chat.appChatId !== nextSideChat.appChatId)
       ])
+      if (sideChat?.appChatId && sideChat.appChatId !== nextSideChat.appChatId) {
+        closeSideChatPresentationRecord(sideChat)
+      }
       setSidePanelPresentation(presentation)
       setSideChatId(nextSideChat.appChatId)
       setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
@@ -8584,6 +8611,9 @@ function App(): React.JSX.Element {
         return prev.map((item) => (item.appChatId === nextChat.appChatId ? nextChat : item))
       })
       void window.api.saveChat(nextChat).catch(() => {})
+    }
+    if (sideChat?.appChatId && sideChat.appChatId !== nextChat.appChatId) {
+      closeSideChatPresentationRecord(sideChat)
     }
     setSidePanelPresentation(presentation)
     setSideChatId(nextChat.appChatId)
