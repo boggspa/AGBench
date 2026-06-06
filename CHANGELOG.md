@@ -4,7 +4,7 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
-## 1.0.8 — 2026-06-06
+## 1.1.0 — 2026-06-06
 
 ### Added
 - **First-class workspace rows.** Every connected workspace row (primary and
