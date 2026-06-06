@@ -701,6 +701,7 @@ function App(): React.JSX.Element {
   const chatPopoutChatIdRef = useRef(getInitialChatPopoutChatId())
   const isChatPopoutWindow = Boolean(chatPopoutChatIdRef.current)
   const isDockingChatPopoutRef = useRef(false)
+  const skipCloseSideChatPresentationIdRef = useRef<string | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   // 1.0.7 — per-provider rate table (USD per 1M tokens) for the ensemble
   // run-complete card's projected cost estimate. Hydrated once at mount from
@@ -5080,7 +5081,11 @@ function App(): React.JSX.Element {
           chats.find((item) => item.appChatId === currentChatIdRef.current)
         : currentChat) || null
     if (currentMainChat?.appChatId && currentMainChat.appChatId !== chat.appChatId) {
-      closeSideChatPresentationRecord(currentMainChat)
+      if (skipCloseSideChatPresentationIdRef.current === currentMainChat.appChatId) {
+        skipCloseSideChatPresentationIdRef.current = null
+      } else {
+        closeSideChatPresentationRecord(currentMainChat)
+      }
     }
     const selectedChat =
       chat.parentChatRelation === 'sideChat' && !chat.archived && !isTerminatedSideChat(chat)
@@ -8692,6 +8697,7 @@ function App(): React.JSX.Element {
     setSideChatMenuOpen(false)
     if (currentChat && currentLinkedParentChat) {
       if (presentation === 'popout') {
+        skipCloseSideChatPresentationIdRef.current = currentChat.appChatId
         popOutLinkedChat(currentChat)
         await handleSelectChat(currentLinkedParentChat)
         return
