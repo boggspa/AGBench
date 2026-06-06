@@ -1,4 +1,5 @@
 import type { ChatRecord } from '../../../main/store/types'
+import { isSubThreadChat } from './chatScope'
 
 /** Phase I3.3 — node in the rendered delegation tree. */
 export interface DelegationTimelineNode {
@@ -17,7 +18,7 @@ export function buildDelegationTree(
   const byId = new Map(chats.map((chat) => [chat.appChatId, chat]))
   const childrenByParent = new Map<string, ChatRecord[]>()
   for (const chat of chats) {
-    if (!chat.parentChatId) continue
+    if (!isSubThreadChat(chat) || !chat.parentChatId) continue
     const bucket = childrenByParent.get(chat.parentChatId)
     if (bucket) bucket.push(chat)
     else childrenByParent.set(chat.parentChatId, [chat])
@@ -28,7 +29,7 @@ export function buildDelegationTree(
 
   let root = focusChatId ? byId.get(focusChatId) : undefined
   if (!root) return null
-  while (root.parentChatId && byId.has(root.parentChatId)) {
+  while (isSubThreadChat(root) && root.parentChatId && byId.has(root.parentChatId)) {
     root = byId.get(root.parentChatId)!
   }
 

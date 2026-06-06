@@ -637,6 +637,15 @@ const api = {
     workspacePath?: string
   }) => ipcRenderer.invoke('create-sub-thread', args),
   getSubThreads: (parentChatId: string) => ipcRenderer.invoke('get-sub-threads', parentChatId),
+  createSideChat: (args: {
+    parentChatId: string
+    chatKind?: 'single' | 'ensemble'
+    provider?: string
+    title?: string
+    originMessageId?: string
+    originRunId?: string
+  }) => ipcRenderer.invoke('create-side-chat', args),
+  getSideChats: (parentChatId: string) => ipcRenderer.invoke('get-side-chats', parentChatId),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),
   deleteChat: (chatId: string) => ipcRenderer.invoke('delete-chat', chatId),
   /** Slash-picker `/clear` — wipes the chat's messages + runs while

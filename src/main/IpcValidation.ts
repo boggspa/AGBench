@@ -75,6 +75,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'session-checkpoints:dismiss': ['nonEmptyString'],
   'create-sub-thread': ['object'],
   'get-sub-threads': ['chatId'],
+  'create-side-chat': ['object'],
+  'get-side-chats': ['chatId'],
   'save-chat': ['object'],
   'delete-chat': ['string'],
   'clear-chats': ['optionalString'],

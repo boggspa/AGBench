@@ -319,6 +319,8 @@ export function classifyForInspector(event: RunEventRecord): InspectorRow {
         raw: event
       }
     }
+    case 'side_chat_created':
+      return { kind: 'delegation', raw: event }
     case 'delegation':
       return { kind: 'delegation', raw: event }
     case 'final_message': {

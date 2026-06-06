@@ -239,6 +239,7 @@ interface AgentApprovalRequest {
 declare global {
   interface Window {
     api: {
+      hostPlatform: NodeJS.Platform
       getRuntimeVersions: () => NodeJS.ProcessVersions
       selectWorkspace: () => Promise<WorkspaceRecord | null>
       selectImageFiles: () => Promise<string[]>
@@ -817,6 +818,15 @@ declare global {
         workspacePath?: string
       }) => Promise<ChatRecord>
       getSubThreads: (parentChatId: string) => Promise<ChatRecord[]>
+      createSideChat: (args: {
+        parentChatId: string
+        chatKind?: 'single' | 'ensemble'
+        provider?: ProviderId
+        title?: string
+        originMessageId?: string
+        originRunId?: string
+      }) => Promise<ChatRecord>
+      getSideChats: (parentChatId: string) => Promise<ChatRecord[]>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
       truncateChat: (chatId: string) => Promise<ChatRecord | null>

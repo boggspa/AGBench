@@ -14,6 +14,15 @@ export interface CreateSubThreadInput {
   workspacePath?: string
 }
 
+export interface CreateSideChatInput {
+  parentChatId: string
+  chatKind?: ChatRecord['chatKind']
+  provider?: ProviderId
+  title?: string
+  originMessageId?: string
+  originRunId?: string
+}
+
 export interface ChatServiceStore {
   getChats: (workspaceId?: string) => ChatRecord[]
   getChat: (chatId: string) => ChatRecord | null
@@ -21,7 +30,9 @@ export interface ChatServiceStore {
   createGlobalChat: () => ChatRecord
   createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }) => ChatRecord
   createSubThread: (args: CreateSubThreadInput) => ChatRecord
+  createSideChat: (args: CreateSideChatInput) => ChatRecord
   getChildChats: (parentChatId: string) => ChatRecord[]
+  getSideChats: (parentChatId: string) => ChatRecord[]
   saveChat: (chat: ChatRecord) => void
   deleteChat: (chatId: string) => void
   clearChats: (workspaceId?: string) => void
@@ -124,8 +135,48 @@ export class ChatService {
     return subThread
   }
 
+  createSideChat(args: CreateSideChatInput | undefined): ChatRecord {
+    const parentChatId = requireNonEmptyString(args?.parentChatId, 'Parent chat id')
+    const provider = args?.provider === undefined ? undefined : assertProviderId(args.provider)
+    const sideChat = this.deps.appStore.createSideChat({
+      parentChatId,
+      chatKind: args?.chatKind === 'ensemble' ? 'ensemble' : args?.chatKind === 'single' ? 'single' : undefined,
+      provider,
+      title: typeof args?.title === 'string' ? args.title : undefined,
+      originMessageId:
+        typeof args?.originMessageId === 'string' && args.originMessageId.trim()
+          ? args.originMessageId
+          : undefined,
+      originRunId:
+        typeof args?.originRunId === 'string' && args.originRunId.trim() ? args.originRunId : undefined
+    })
+
+    try {
+      this.deps.appendDurableRunEventForRoute(
+        this.deps.appStore.getChat(parentChatId)?.provider ?? 'gemini',
+        { appChatId: parentChatId },
+        'side_chat_created',
+        'control',
+        `Opened side chat`,
+        {
+          sideChatId: sideChat.appChatId,
+          chatKind: sideChat.chatKind || 'single',
+          provider: sideChat.provider
+        }
+      )
+    } catch {
+      // Parent run may not be active — durable trace is best-effort.
+    }
+
+    return sideChat
+  }
+
   getSubThreads(parentChatId: string): ChatRecord[] {
     return this.deps.appStore.getChildChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
+  }
+
+  getSideChats(parentChatId: string): ChatRecord[] {
+    return this.deps.appStore.getSideChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
   }
 
   saveChat(chat: ChatRecord): void {

@@ -53,6 +53,13 @@ function isActiveRunStatus(status: unknown): boolean {
   )
 }
 
+function isSubThreadChat(chat: ChatRecord): boolean {
+  return Boolean(
+    chat.parentChatId &&
+      (chat.parentChatRelation === undefined || chat.parentChatRelation === 'subThread')
+  )
+}
+
 export function getSubThreadResumeSessionId(chat: ChatRecord): string | undefined {
   const value =
     chat.provider === 'gemini'
@@ -87,7 +94,7 @@ export function resolveSubThreadRecall(
         `Spawn a new sub-thread (omit subThreadId) or unarchive the existing one in TaskWraith.`
     }
   }
-  if (!chat.parentChatId || chat.parentChatId !== request.parentChatId) {
+  if (!isSubThreadChat(chat) || !chat.parentChatId || chat.parentChatId !== request.parentChatId) {
     return {
       mode: 'error',
       message:

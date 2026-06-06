@@ -1220,6 +1220,7 @@ function App(): React.JSX.Element {
   // affordance; cleared via the inspector's close button or by switching
   // chats. The composer stays mounted below either way.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
+  const [sideChatId, setSideChatId] = useState<string | null>(null)
 
   // Reset inspector when the user navigates to a chat that doesn't own
   // the currently-inspected run. Conditional (not unconditional) because
@@ -1243,6 +1244,10 @@ function App(): React.JSX.Element {
   const geminiTerminalEndRef = useRef<HTMLDivElement>(null)
   const appTranscriptRef = useRef<HTMLDivElement>(null)
   const transcriptScrollRef = useRef<HTMLDivElement>(null)
+  const sideTranscriptScrollRef = useRef<HTMLDivElement>(null)
+  const sideTranscriptContentRef = useRef<HTMLDivElement>(null)
+  const sideLogsEndRef = useRef<HTMLDivElement>(null)
+  const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
   // (rendered as `.transcript-inner` in `TranscriptPanel`). A single
   // `ResizeObserver` watches this node and dispatches a coalesced rAF
@@ -1260,6 +1265,7 @@ function App(): React.JSX.Element {
   // `lib/TranscriptScroll` so they can be unit-tested. Stored in a ref to
   // avoid re-renders.
   const autoFollowRef = useRef(true)
+  const sideAutoFollowRef = useRef(true)
   // Tracks whether the user has initiated a real upward scroll (wheel,
   // touchmove, page-up/arrow-up) since the last paint. The post-frame
   // re-pin in the messages-update layoutEffect is suppressed when this is
@@ -1500,6 +1506,32 @@ function App(): React.JSX.Element {
     () => collectChatMediaRefs(currentChat, imageAttachments, externalPathGrants),
     [currentChat, imageAttachments, externalPathGrants]
   )
+  const sideChat = useMemo(() => {
+    if (!sideChatId) return null
+    return (
+      chatByIdRef.current.get(sideChatId) ||
+      chats.find((chat) => chat.appChatId === sideChatId) ||
+      null
+    )
+  }, [sideChatId, chats])
+  const sideProvider = sideChat ? getChatProvider(sideChat) : currentProvider
+  const sidePrompt = sideChat ? composerDraftsByChatId[sideChat.appChatId] || '' : ''
+  useEffect(() => {
+    if (!sideChatId) return
+    const liveSideChat =
+      chatByIdRef.current.get(sideChatId) || chats.find((chat) => chat.appChatId === sideChatId)
+    if (!liveSideChat || liveSideChat.parentChatId !== currentChat?.appChatId) {
+      setSideChatId(null)
+    }
+  }, [sideChatId, chats, currentChat?.appChatId])
+  useLayoutEffect(() => {
+    if (!sideChat || !sideAutoFollowRef.current) return
+    const scroller = sideTranscriptScrollRef.current
+    if (!scroller) return
+    requestAnimationFrame(() => {
+      scroller.scrollTop = scroller.scrollHeight
+    })
+  }, [sideChat?.appChatId, sideChat?.messages?.length, sideChat?.updatedAt])
   const permissionRequestState = currentComposerChatId
     ? permissionRequestByChatId[currentComposerChatId] || EMPTY_PERMISSION_STATE
     : EMPTY_PERMISSION_STATE
@@ -2194,6 +2226,7 @@ function App(): React.JSX.Element {
       pinned: false
     }
   }
+  const sideWorkspace = sideChat ? getWorkspaceForChat(sideChat) : null
 
   const refreshProviderMetadata = async (
     provider: ProviderId,
@@ -4407,7 +4440,9 @@ function App(): React.JSX.Element {
     if (request.existingPrompt) {
       return
     }
-    setImageAttachments([])
+    const targetChatId = request.chatRecord?.appChatId || getCurrentComposerStateChatId()
+    if (!targetChatId) return
+    setImageAttachmentsByChatId((prev) => ({ ...prev, [targetChatId]: [] }))
   }
 
   const addImageAttachments = (paths: string[]) => {
@@ -6722,8 +6757,17 @@ function App(): React.JSX.Element {
     }
   }
 
-  const buildRunRequest = (overrideModel?: string, existingPrompt?: string): QueuedRunRequest => {
+  const buildRunRequest = (
+    overrideModel?: string,
+    existingPrompt?: string,
+    target?: {
+      chat?: ChatRecord | null
+      prompt?: string
+      imageAttachments?: ImageAttachment[]
+    }
+  ): QueuedRunRequest => {
     const selectedChat =
+      target?.chat ||
       (currentChatIdRef.current ? chatByIdRef.current.get(currentChatIdRef.current) : null) ||
       currentChat
     const scope = getChatScope(selectedChat)
@@ -6768,14 +6812,14 @@ function App(): React.JSX.Element {
       appRunId: createAppRunId(),
       scope,
       provider,
-      prompt: existingPrompt || prompt,
+      prompt: target?.prompt !== undefined ? target.prompt : existingPrompt || prompt,
       overrideModel,
       existingPrompt,
       selectedModelType: requestModel,
       customModel: requestCustomModel,
       approvalMode: requestApprovalMode,
       sessionTrust,
-      imageAttachments,
+      imageAttachments: target?.imageAttachments ?? imageAttachments,
       externalPathGrants,
       geminiWorktree:
         scope === 'global' ? undefined : resolveGeminiWorktreeConfig(selectedWorkspace),
@@ -7951,6 +7995,75 @@ function App(): React.JSX.Element {
     void executeRun(request)
   }
 
+  const createSideChatFromCurrentChat = async (seedPrompt = '', clearParentDraft = false) => {
+    const parentChat = currentChat
+    if (!parentChat) return
+    try {
+      const parentProvider = getChatProvider(parentChat)
+      const createdSideChat = await window.api.createSideChat({
+        parentChatId: parentChat.appChatId,
+        chatKind: parentChat.chatKind === 'ensemble' ? 'ensemble' : 'single',
+        provider: parentProvider,
+        title:
+          parentChat.chatKind === 'ensemble'
+            ? `Side ensemble from ${parentChat.title || 'ensemble chat'}`
+            : `Side chat from ${parentChat.title || getProviderLabel(parentProvider)}`
+      })
+      chatByIdRef.current.set(createdSideChat.appChatId, createdSideChat)
+      setChats((prev) => [
+        createdSideChat,
+        ...prev.filter((chat) => chat.appChatId !== createdSideChat.appChatId)
+      ])
+      setSideChatId(createdSideChat.appChatId)
+      setChatPromptDraft(createdSideChat.appChatId, seedPrompt)
+      if (clearParentDraft) {
+        setChatPromptDraft(parentChat.appChatId, '')
+      }
+      requestAnimationFrame(() => {
+        sideComposerTextareaRef.current?.focus()
+      })
+    } catch (error) {
+      appendThreadRawLog(parentChat.appChatId, {
+        type: 'stderr',
+        content: `Failed to create side chat: ${redactLog(String(error))}`
+      })
+    }
+  }
+
+  const handleSideRun = () => {
+    if (!sideChat || !sidePrompt.trim()) return
+    const request = buildRunRequest(undefined, undefined, {
+      chat: sideChat,
+      prompt: sidePrompt,
+      imageAttachments: []
+    })
+    if (isChatBusy(sideChat.appChatId)) {
+      queueRunRequest(request)
+      setChatPromptDraft(sideChat.appChatId, '')
+      return
+    }
+    void executeRun(request)
+  }
+
+  const handleSideCancel = async () => {
+    if (!sideChat) return
+    if (sideChat.chatKind === 'ensemble') {
+      await window.api.cancelEnsembleRound(sideChat.appChatId)
+      setChats(await window.api.getChats())
+      return
+    }
+    let activeContext: ActiveRunContext | null = null
+    for (const ctx of activeRunsRef.current.values()) {
+      if (ctx.chatId === sideChat.appChatId) {
+        activeContext = ctx
+        break
+      }
+    }
+    const sideRun = sideChat.runs?.[sideChat.runs.length - 1]
+    await window.api.cancelAgentRun(sideProvider, activeContext?.runId || sideRun?.runId)
+    syncRunningState()
+  }
+
   /**
    * Phase J3 (steer): Codex-CLI-style "interrupt + dispatch this prompt".
    *
@@ -8922,13 +9035,20 @@ function App(): React.JSX.Element {
    * the slash used to be. Used after a slash-command dispatches so the
    * picker's trigger character doesn't end up sent to the provider.
    */
-  const consumeSlashTokenFromPrompt = (): void => {
+  const promptWithoutCurrentSlashToken = (): string => {
     const anchor = slashAnchorIndexRef.current
-    if (anchor === null) return
+    if (anchor === null) return prompt
     const tokenLength = 1 + slashQuery.length // `/` + query chars
     const before = prompt.slice(0, anchor)
     const after = prompt.slice(anchor + tokenLength)
-    const next = `${before}${after}`
+    return `${before}${after}`
+  }
+
+  const consumeSlashTokenFromPrompt = (): void => {
+    const anchor = slashAnchorIndexRef.current
+    if (anchor === null) return
+    const before = prompt.slice(0, anchor)
+    const next = promptWithoutCurrentSlashToken()
     setPrompt(next)
     requestAnimationFrame(() => {
       const ta = composerTextareaRef.current
@@ -8936,6 +9056,24 @@ function App(): React.JSX.Element {
       ta.focus()
       ta.setSelectionRange(before.length, before.length)
     })
+  }
+
+  const parseSideSlashPrompt = (value: string): string | null => {
+    const withoutLeadingWhitespace = value.replace(/^\s+/, '')
+    if (!withoutLeadingWhitespace.startsWith('/side')) return null
+    const afterCommand = withoutLeadingWhitespace.slice('/side'.length)
+    if (afterCommand && !/^\s/.test(afterCommand)) return null
+    return afterCommand.trim()
+  }
+
+  const tryHandleSideSlashSubmit = (): boolean => {
+    const sideSeedPrompt = parseSideSlashPrompt(prompt)
+    if (sideSeedPrompt === null) return false
+    void createSideChatFromCurrentChat(sideSeedPrompt, true)
+    setSlashMenuOpen(false)
+    setSlashQuery('')
+    slashAnchorIndexRef.current = null
+    return true
   }
 
   /**
@@ -9075,20 +9213,12 @@ function App(): React.JSX.Element {
     [copy]
   )
 
-  // 1.0.4-AQ4 — Delete a single message from the current chat's
-  // transcript. Gates on `confirm()` because the action is
-  // destructive and the user can't undo from the UI (no
-  // tombstone). The orphan-pending guard below blocks deleting a
-  // message that's currently the anchor of an in-flight
-  // `pendingAgentQuestion` / `pendingPlanChoice` — deleting it
-  // would strand the modal (its messageId would point at a row
-  // that no longer exists in the transcript).
-  const handleDeleteMessage = useCallback(
-    (messageId: string) => {
-      if (!currentChat || !messageId) return
-      const target = currentChat.messages.find((m) => m.id === messageId)
+  const deleteMessageFromChat = useCallback(
+    (chat: ChatRecord | null | undefined, messageId: string) => {
+      if (!chat || !messageId) return
+      const target = chat.messages.find((m) => m.id === messageId)
       if (!target) return
-      const chatId = currentChat.appChatId
+      const chatId = chat.appChatId
       if (
         messageAnchorsActivePrompt(
           messageId,
@@ -9112,12 +9242,27 @@ function App(): React.JSX.Element {
           ? window.confirm(`Delete this message from the transcript?\n\n${preview}`)
           : true
       if (!ok) return
-      updateChatById(currentChat.appChatId, (source) => ({
+      updateChatById(chat.appChatId, (source) => ({
         ...source,
         messages: source.messages.filter((m) => m.id !== messageId)
       }))
     },
-    [currentChat, updateChatById, pendingAgentQuestionByChatId, pendingPlanChoiceByChatId]
+    [updateChatById, pendingAgentQuestionByChatId, pendingPlanChoiceByChatId]
+  )
+
+  // 1.0.4-AQ4 — Delete a single message from the current chat's
+  // transcript. Gates on `confirm()` because the action is
+  // destructive and the user can't undo from the UI (no
+  // tombstone). The orphan-pending guard below blocks deleting a
+  // message that's currently the anchor of an in-flight
+  // `pendingAgentQuestion` / `pendingPlanChoice` — deleting it
+  // would strand the modal (its messageId would point at a row
+  // that no longer exists in the transcript).
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      deleteMessageFromChat(currentChat, messageId)
+    },
+    [currentChat, deleteMessageFromChat]
   )
 
   const handlePlanChoiceSubmit = (messageId: string, option: string) => {
@@ -10405,6 +10550,26 @@ function App(): React.JSX.Element {
   const effectiveIsThinking =
     isThinking && ensembleRoundStatus !== 'completed' && ensembleRoundStatus !== 'cancelled'
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
+  const sideRun = sideChat?.runs?.[sideChat.runs.length - 1]
+  const hasSideChatActiveRunQueueJob = Boolean(
+    sideChat?.appChatId &&
+      runQueueJobs.some(
+        (job) => job.chatId === sideChat.appChatId && ACTIVE_RUN_QUEUE_STATUSES.has(job.status)
+      )
+  )
+  const isSideChatRunning = Boolean(
+    sideChat?.appChatId &&
+      (runningChatIds.has(sideChat.appChatId) ||
+        hasSideChatActiveRunQueueJob ||
+        sideChat.ensemble?.activeRound?.status === 'running')
+  )
+  const sideRunCompleteNotice = sideChat
+    ? deriveRunCompleteNotice(sideChat, isSideChatRunning)
+    : null
+  const sideThinkingProviderLabel =
+    sideChat?.chatKind === 'ensemble' ? 'Ensemble' : getProviderLabel(sideProvider)
+  const sideThinkingProvider = sideChat?.chatKind === 'ensemble' ? null : sideProvider
+  const sideCanRun = Boolean(sideChat && (getChatScope(sideChat) === 'global' || sideWorkspace))
   const composerRunTimecodeStartedAt = isCurrentChatRunning
     ? currentEnsembleRound?.startedAt || currentRun?.startedAt || null
     : null
@@ -11656,6 +11821,18 @@ function App(): React.JSX.Element {
     },
     {
       kind: 'action',
+      id: 'taskwraith-side',
+      command: '/side',
+      label: 'Open side chat',
+      description: 'Open a parallel side pane for this chat.',
+      group: 'Custom',
+      run: () => {
+        const sideSeedPrompt = promptWithoutCurrentSlashToken().trim()
+        void createSideChatFromCurrentChat(sideSeedPrompt, true)
+      }
+    },
+    {
+      kind: 'action',
       id: 'taskwraith-help',
       command: '/help',
       label: 'Open Help',
@@ -11788,7 +11965,7 @@ function App(): React.JSX.Element {
       <div
         className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass} ${
           isChatPopoutWindow ? 'chat-popout-main' : ''
-        }`}
+        } ${sideChat && !showSettings && !isChatPopoutWindow ? 'side-chat-open' : ''}`}
         style={appMainStyle}
       >
         {showWorkspaceSidebar && !isChatPopoutWindow && (
@@ -13360,6 +13537,9 @@ function App(): React.JSX.Element {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                             e.preventDefault()
+                            if (tryHandleSideSlashSubmit()) {
+                              return
+                            }
                             triggerSendConfirmation()
                             // DM target resolution order (first match wins):
                             //   1. An explicit `@participant` mention in the
@@ -14871,6 +15051,9 @@ function App(): React.JSX.Element {
                               <button
                                 className={`composer-action-btn run-btn queue ${isSendConfirming ? 'send-confirming' : ''}`}
                                 onClick={() => {
+                                  if (tryHandleSideSlashSubmit()) {
+                                    return
+                                  }
                                   triggerSendConfirmation()
                                   handleRun()
                                 }}
@@ -14929,6 +15112,9 @@ function App(): React.JSX.Element {
                             <button
                               className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
                               onClick={(event) => {
+                                if (tryHandleSideSlashSubmit()) {
+                                  return
+                                }
                                 triggerSendConfirmation()
                                 // DM target resolution (same precedence as
                                 // the Enter handler above): explicit
@@ -15229,6 +15415,150 @@ function App(): React.JSX.Element {
             )}
           </div>
         </div>
+
+        {sideChat && !isChatPopoutWindow && !showSettings && (
+          <aside
+            className={`side-chat-pane app-transcript provider-${sideProvider} interface-${interfaceStyle} ${
+              sideChat.chatKind === 'ensemble' ? 'chat-kind-ensemble' : ''
+            }`}
+            aria-label="Side chat"
+          >
+            <div className="side-chat-header">
+              <div className="side-chat-title-wrap">
+                <span className="side-chat-kicker">
+                  <ProviderBadgeIcon provider={sideProvider} />
+                  <span>{sideChat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'}</span>
+                </span>
+                <strong title={sideChat.title}>{sideChat.title}</strong>
+              </div>
+              <div className="side-chat-actions">
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
+                  onClick={() => void handleSelectChat(sideChat)}
+                  title="Open side chat as the main thread"
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  className="side-chat-icon-btn"
+                  onClick={() => setSideChatId(null)}
+                  title="Close side pane"
+                  aria-label="Close side pane"
+                >
+                  <XSymbolIcon />
+                </button>
+              </div>
+            </div>
+            <TranscriptPanel
+              key={`side-${sideChat.appChatId}`}
+              scrollRef={sideTranscriptScrollRef}
+              contentRef={sideTranscriptContentRef}
+              endRef={sideLogsEndRef}
+              messages={sideChat.messages || EMPTY_CHAT_MESSAGES}
+              isWelcomeChat={false}
+              isThinking={isSideChatRunning}
+              showFallbackUX={false}
+              pendingPlanChoice={null}
+              pendingAgentQuestion={null}
+              onAgentQuestionSubmit={() => {}}
+              onAgentQuestionDismiss={() => {}}
+              runCompleteNotice={sideRunCompleteNotice}
+              runCompleteDurationText={null}
+              currentChat={sideChat}
+              currentRun={sideRun}
+              currentWorkspacePath={sideWorkspace?.path}
+              currentProviderLabel={getProviderLabel(sideProvider)}
+              currentProvider={sideProvider}
+              thinkingProviderLabel={sideThinkingProviderLabel}
+              thinkingProvider={sideThinkingProvider}
+              thinkingModelBadge={null}
+              displayFileChangeSummaries={[]}
+              fileChangeSummaryText=""
+              fileChangeShouldShowStats={false}
+              fileChangeDisplayAdds={0}
+              fileChangeDisplayDels={0}
+              chats={chats}
+              runningChatIds={runningChatIdsArray}
+              onPlanChoiceSubmit={() => {}}
+              onRunFallback={() => {}}
+              onOpenSubThread={handleOpenCockpitThread}
+              onInspectRun={(runId) => {
+                void handleSelectChat(sideChat)
+                setInspectingRunId(runId)
+              }}
+              compactDensity={appearance.compactDensity}
+              pendingQueuedAppRunIds={pendingQueuedAppRunIds}
+              onCopyMessage={handleCopyMessage}
+              onDeleteMessage={(messageId) => deleteMessageFromChat(sideChat, messageId)}
+              onPreviewImage={setPreviewChatMediaRef}
+              copiedId={copiedId}
+              copy={copy}
+              autoFollowRef={sideAutoFollowRef}
+              currency={displayCurrency}
+              currencyOverestimatePercent={overestimatePercent}
+              providerRates={providerRates}
+            />
+            <form
+              className="side-chat-composer"
+              onSubmit={(event) => {
+                event.preventDefault()
+                handleSideRun()
+              }}
+            >
+              <textarea
+                ref={sideComposerTextareaRef}
+                className="side-chat-textarea"
+                value={sidePrompt}
+                onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    handleSideRun()
+                  }
+                }}
+                placeholder="Prompt this side chat"
+                aria-label="Side chat prompt"
+                rows={3}
+                disabled={!sideCanRun}
+              />
+              <div className="side-chat-composer-footer">
+                <span className="side-chat-status" aria-live="polite">
+                  {isSideChatRunning ? 'Running' : 'Ready'}
+                </span>
+                <div className="side-chat-send-cluster">
+                  {isSideChatRunning && (
+                    <button
+                      type="button"
+                      className="composer-action-btn stop-btn"
+                      onClick={() => void handleSideCancel()}
+                      title="Stop side chat run"
+                      aria-label="Stop side chat run"
+                    >
+                      <StopSymbolIcon />
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="composer-action-btn run-btn"
+                    disabled={!sideCanRun || !sidePrompt.trim()}
+                    title={
+                      sideCanRun
+                        ? isSideChatRunning
+                          ? 'Queue side chat prompt'
+                          : 'Run side chat prompt'
+                        : 'Side chat workspace is unavailable'
+                    }
+                    aria-label={isSideChatRunning ? 'Queue side chat prompt' : 'Run side chat prompt'}
+                  >
+                    <ArrowUpSendIcon />
+                  </button>
+                </div>
+              </div>
+            </form>
+          </aside>
+        )}
 
         {!isChatPopoutWindow && showFileEditor && hasWorkspaceContext && (
           <>

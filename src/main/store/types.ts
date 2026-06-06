@@ -157,6 +157,7 @@ export type ComposerStyle =
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok' | 'cursor'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
+export type ChatParentRelation = 'subThread' | 'sideChat'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
@@ -1918,23 +1919,30 @@ export interface ChatRecord {
     approvalMode: string
     sandboxEnabled: boolean
   }
-  /** Phase F1 — Multi-Provider Sub-Threads. When set, this chat was
-   * spawned as a sub-thread of `parentChatId`. The parent and child
-   * are context-isolated (each has its own provider session, message
-   * history, and run state) but topologically linked so the sidebar
-   * can show parent-child nesting and the user can navigate between
-   * them. Sub-threads inherit the parent's workspaceId/workspacePath
-   * by default but can pick a different provider — that's the entire
-   * point of the feature: hand off CLI work to Codex while Claude
-   * runs the parent plan, etc.
+  /** Phase F1 — linked child chats. Legacy records with `parentChatId`
+   * and no `parentChatRelation` are sub-threads. Newer records use the
+   * discriminator below so user-opened side chats can stay linked to a
+   * source chat without inheriting delegation / result-return semantics.
    *
-   * v1 constraint: max depth 1. A sub-thread cannot itself spawn a
+   * v1 sub-thread constraint: max depth 1. A sub-thread cannot itself spawn a
    * sub-thread (UI affordance disabled when `parentChatId` is set).
    * Future revs can lift this. */
   parentChatId?: string
+  parentChatRelation?: ChatParentRelation
+  /** User-owned split-view chat metadata. A side chat is context-isolated
+   * like a normal chat but keeps a back-pointer to the chat it was opened
+   * beside. It must not use `delegationContext`, auto-return, or parent
+   * auto-resume. */
+  sideChatContext?: {
+    createdAt: number
+    originMessageId?: string
+    originRunId?: string
+    transcriptVisibility?: 'none' | 'summary' | 'selected' | 'snapshot'
+  }
   /** Phase F1 — delegation metadata, present only when `parentChatId`
-   * is set. Records WHY this sub-thread exists so the audit trail +
-   * future auto-orchestration can reconstruct intent. */
+   * is set for a `parentChatRelation: 'subThread'` record. Records WHY
+   * this sub-thread exists so the audit trail + future auto-orchestration
+   * can reconstruct intent. */
   delegationContext?: {
     /** When the delegation was created (ms since epoch). */
     createdAt: number
@@ -1986,6 +1994,7 @@ export type RunEventKind =
   | 'subthread_returned'
   | 'subthread_dispatch_failed'
   | 'subthread_autoresume_dispatched'
+  | 'side_chat_created'
   | 'diff'
   | 'final_message'
   | 'lifecycle'

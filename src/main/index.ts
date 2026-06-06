@@ -1499,6 +1499,9 @@ async function maybePropagateSubThreadResult(chatId: string | undefined): Promis
   const subThread = AppStore.getChat(chatId)
   if (!subThread) return
   if (!subThread.parentChatId) return
+  if (subThread.parentChatRelation !== undefined && subThread.parentChatRelation !== 'subThread') {
+    return
+  }
   if (!subThread.delegationContext?.returnResultToParent) return
   // Find the sub-thread's final assistant message — that's the
   // "answer" the parent wants surfaced.
@@ -14435,6 +14438,27 @@ if (isGeminiMcpBridgeProcess) {
     )
     ipcMain.handle('get-sub-threads', (_, parentChatId: string) =>
       chatService.getSubThreads(parentChatId)
+    )
+    ipcMain.handle(
+      'create-side-chat',
+      (
+        _,
+        args: {
+          parentChatId: string
+          chatKind?: ChatRecord['chatKind']
+          provider?: ProviderId
+          title?: string
+          originMessageId?: string
+          originRunId?: string
+        }
+      ) => {
+        const chat = chatService.createSideChat(args)
+        broadcastThreadUpdate(chat?.appChatId)
+        return chat
+      }
+    )
+    ipcMain.handle('get-side-chats', (_, parentChatId: string) =>
+      chatService.getSideChats(parentChatId)
     )
     ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
       chatService.saveChat(chat)

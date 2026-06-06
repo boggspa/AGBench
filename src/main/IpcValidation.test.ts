@@ -210,6 +210,17 @@ describe('IpcValidation', () => {
       ])
     ).not.toThrow()
     expect(() => validateIpcArgs('get-sub-threads', ['parent-1'])).not.toThrow()
+    expect(() =>
+      validateIpcArgs('create-side-chat', [
+        {
+          parentChatId: 'parent-1',
+          chatKind: 'ensemble',
+          provider: 'codex',
+          title: 'Side chat'
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('get-side-chats', ['parent-1'])).not.toThrow()
     expect(() => validateIpcArgs('cancel-ensemble-round', [''])).toThrow(/non-empty/)
   })
 

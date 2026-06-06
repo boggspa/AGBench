@@ -1,4 +1,5 @@
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
+import { isSubThreadChat } from '../lib/chatScope'
 
 interface SubThreadStatusTickerProps {
   /** The currently-active chat. The ticker only renders when at least
@@ -35,7 +36,10 @@ export function SubThreadStatusTicker({
   if (!currentChat) return null
   const runningSet = new Set(runningChatIds)
   const activeSubThreads = chats.filter(
-    (chat) => chat.parentChatId === currentChat.appChatId && runningSet.has(chat.appChatId)
+    (chat) =>
+      isSubThreadChat(chat) &&
+      chat.parentChatId === currentChat.appChatId &&
+      runningSet.has(chat.appChatId)
   )
   if (activeSubThreads.length === 0) return null
 

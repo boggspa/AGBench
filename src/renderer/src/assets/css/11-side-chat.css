@@ -1,0 +1,181 @@
+.app-main.side-chat-open > .app-transcript:not(.side-chat-pane) {
+  min-width: 0;
+}
+
+.side-chat-pane.app-transcript {
+  position: relative;
+  flex: 0 0 clamp(340px, 38vw, 520px);
+  min-width: 340px;
+  max-width: 520px;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-left: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  box-shadow: -14px 0 32px color-mix(in srgb, #000 12%, transparent);
+  isolation: isolate;
+}
+
+.side-chat-header {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.side-chat-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.side-chat-title-wrap strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+}
+
+.side-chat-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.side-chat-kicker .sidebar-provider-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.side-chat-actions,
+.side-chat-send-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.side-chat-header-btn,
+.side-chat-icon-btn {
+  border: 1px solid color-mix(in srgb, var(--panel-border) 76%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 76%, transparent);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.side-chat-header-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.side-chat-icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+}
+
+.side-chat-header-btn:hover,
+.side-chat-icon-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--panel-border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-elevated));
+}
+
+.side-chat-pane .transcript-scroll {
+  padding: 78px 16px 178px;
+}
+
+.side-chat-pane .transcript-inner {
+  max-width: 100%;
+}
+
+.side-chat-composer {
+  position: absolute;
+  z-index: 9;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: 0 16px 34px color-mix(in srgb, #000 16%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.side-chat-textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 180px;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  border-radius: 6px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--content-bg) 72%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.side-chat-textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--panel-border));
+}
+
+.side-chat-textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.side-chat-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.side-chat-status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+@media (max-width: 1120px) {
+  .side-chat-pane.app-transcript {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 460px);
+    max-width: none;
+    border-left-color: color-mix(in srgb, var(--accent) 24%, var(--panel-border));
+  }
+}

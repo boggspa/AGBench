@@ -56,6 +56,7 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
         appChatId: 'sub-thread-1',
         provider: args.provider,
         parentChatId: args.parentChatId,
+        parentChatRelation: 'subThread',
         delegationContext: {
           createdAt: 2,
           parentProvider: 'gemini',
@@ -64,7 +65,36 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
         }
       })
     ),
-    getChildChats: vi.fn(() => [makeChat({ appChatId: 'sub-thread-1', parentChatId: 'chat-1' })]),
+    createSideChat: vi.fn((args) =>
+      makeChat({
+        appChatId: 'side-chat-1',
+        chatKind: args.chatKind || 'single',
+        provider: args.provider || 'gemini',
+        title: args.title || 'Side chat',
+        parentChatId: args.parentChatId,
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          originMessageId: args.originMessageId,
+          originRunId: args.originRunId,
+          transcriptVisibility: 'none'
+        }
+      })
+    ),
+    getChildChats: vi.fn(() => [
+      makeChat({
+        appChatId: 'sub-thread-1',
+        parentChatId: 'chat-1',
+        parentChatRelation: 'subThread'
+      })
+    ]),
+    getSideChats: vi.fn(() => [
+      makeChat({
+        appChatId: 'side-chat-1',
+        parentChatId: 'chat-1',
+        parentChatRelation: 'sideChat'
+      })
+    ]),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
     clearChats: vi.fn(),
@@ -169,6 +199,40 @@ describe('ChatService', () => {
     })
   })
 
+  it('creates side chats and writes a side-chat audit event', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    const sideChat = service.createSideChat({
+      parentChatId: 'chat-1',
+      chatKind: 'ensemble',
+      provider: 'codex',
+      title: 'Scratch beside main',
+      originMessageId: 'msg-1'
+    })
+    expect(sideChat.appChatId).toBe('side-chat-1')
+    expect(sideChat.parentChatRelation).toBe('sideChat')
+    expect(store.createSideChat).toHaveBeenCalledWith({
+      parentChatId: 'chat-1',
+      chatKind: 'ensemble',
+      provider: 'codex',
+      title: 'Scratch beside main',
+      originMessageId: 'msg-1',
+      originRunId: undefined
+    })
+    expect(deps.appendDurableRunEventForRoute).toHaveBeenCalledWith(
+      'gemini',
+      { appChatId: 'chat-1' },
+      'side_chat_created',
+      'control',
+      'Opened side chat',
+      {
+        sideChatId: 'side-chat-1',
+        chatKind: 'ensemble',
+        provider: 'codex'
+      }
+    )
+  })
+
   it('lets AppStore max-depth validation errors propagate without auditing', () => {
     const maxDepthError = new Error(
       'Cannot create sub-thread: parent chat-1 is itself a sub-thread (max depth 1 in v1)'
@@ -237,5 +301,14 @@ describe('ChatService', () => {
     expect(store.getChildChats).not.toHaveBeenCalled()
     service.getSubThreads('chat-1')
     expect(store.getChildChats).toHaveBeenCalledWith('chat-1')
+  })
+
+  it('validates getSideChats parent id before reading linked side chats', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    expect(() => service.getSideChats('')).toThrow('Parent chat id is required.')
+    expect(store.getSideChats).not.toHaveBeenCalled()
+    service.getSideChats('chat-1')
+    expect(store.getSideChats).toHaveBeenCalledWith('chat-1')
   })
 })

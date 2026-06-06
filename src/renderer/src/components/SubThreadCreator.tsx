@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
+import { isSubThreadChat } from '../lib/chatScope'
 
 /**
  * SubThreadCreator — Phase F1 modal for delegating to a sub-thread.
@@ -73,7 +74,7 @@ export function SubThreadCreator({
       setError('Delegation prompt is required.')
       return
     }
-    if (parentChat.parentChatId) {
+    if (isSubThreadChat(parentChat)) {
       setError("Sub-threads can't themselves be delegated from (v1: max depth 1).")
       return
     }
@@ -94,7 +95,7 @@ export function SubThreadCreator({
     }
   }
 
-  const isParentItselfSubThread = Boolean(parentChat.parentChatId)
+  const isParentItselfSubThread = isSubThreadChat(parentChat)
 
   return (
     <div className="sub-thread-creator-backdrop" onClick={onCancel} role="presentation">

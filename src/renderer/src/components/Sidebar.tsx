@@ -27,6 +27,7 @@ import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
 import { ProviderGlyph } from './icons/ProviderGlyph'
+import { isSubThreadChat } from '../lib/chatScope'
 
 const ageTickListeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -1492,7 +1493,7 @@ export function Sidebar({
   const subThreadsByParentId = useMemo(() => {
     const grouped = new Map<string, ChatRecord[]>()
     for (const chat of chats) {
-      if (!chat.parentChatId) continue
+      if (!isSubThreadChat(chat) || !chat.parentChatId) continue
       const bucket = grouped.get(chat.parentChatId)
       if (bucket) bucket.push(chat)
       else grouped.set(chat.parentChatId, [chat])
@@ -1743,7 +1744,7 @@ export function Sidebar({
     for (const chat of chats) {
       if (seenChatIdsRef.current.has(chat.appChatId)) continue
       seenChatIdsRef.current.add(chat.appChatId)
-      if (!chat.parentChatId) continue
+      if (!isSubThreadChat(chat) || !chat.parentChatId) continue
       if (chat.archived) continue
       parentChatIdsToExpand.add(chat.parentChatId)
       if (!chat.workspaceId) continue
@@ -2543,7 +2544,7 @@ export function Sidebar({
                           {visibleChats
                             // Phase F1: hide sub-threads here — they render
                             // nested under their parent below.
-                            .filter((chat) => !chat.parentChatId)
+                            .filter((chat) => !isSubThreadChat(chat))
                             .map((chat) => {
                               const chatAgeTimestamp = chat.updatedAt || chat.createdAt
                               const isChatRunning = runningChatIdSet.has(chat.appChatId)

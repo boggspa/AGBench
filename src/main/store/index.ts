@@ -71,6 +71,27 @@ import {
 } from '../WorkspaceChangeModel'
 import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
 
+function cloneEnsembleForSideChat(parent: ChatRecord, provider: ProviderId) {
+  const source = parent.ensemble || createDefaultEnsembleConfig(provider)
+  return {
+    ...source,
+    participants: (source.participants || []).map((participant) => ({
+      ...participant,
+      linkedProviderSessionId: null,
+      tokenTotals: undefined
+    })),
+    activeRound: undefined,
+    sessionActivityLedger: [],
+    workSession: undefined,
+    lastRoundSummary: undefined,
+    roundSummaries: undefined,
+    wakeups: undefined,
+    blackboard: undefined,
+    escalationSignals: undefined,
+    updatedAt: new Date().toISOString()
+  }
+}
+
 const userDataPath = app.getPath('userData')
 const settingsPath = path.join(userDataPath, 'settings.json')
 const workspacesPath = path.join(userDataPath, 'workspaces.json')
@@ -768,6 +789,11 @@ export class AppStore {
   static normalizeChatRecord(chat: ChatRecord): ChatRecord {
     const scope = chat.scope === 'global' ? 'global' : 'workspace'
     const chatKind = chat.chatKind === 'ensemble' ? 'ensemble' : 'single'
+    const parentChatRelation = chat.parentChatId
+      ? chat.parentChatRelation === 'sideChat'
+        ? 'sideChat'
+        : 'subThread'
+      : undefined
     const providerMetadata = chat.providerMetadata
       ? canonicalizeExternalPathGrantMetadata(chat.providerMetadata)
       : chat.providerMetadata
@@ -789,6 +815,7 @@ export class AppStore {
         ...rest,
         scope,
         chatKind,
+        parentChatRelation,
         ...(ensemble ? { ensemble } : {}),
         providerMetadata
       }
@@ -797,6 +824,7 @@ export class AppStore {
       ...chat,
       scope,
       chatKind,
+      parentChatRelation,
       ...(ensemble ? { ensemble } : {}),
       providerMetadata,
       workspaceId: chat.workspaceId || '',
@@ -897,6 +925,70 @@ export class AppStore {
     return chat
   }
 
+  static createSideChat(args: {
+    parentChatId: string
+    chatKind?: ChatRecord['chatKind']
+    provider?: ProviderId
+    title?: string
+    originMessageId?: string
+    originRunId?: string
+  }): ChatRecord {
+    const parent = this.getChat(args.parentChatId)
+    if (!parent) {
+      throw new Error(`Cannot create side chat: parent chat ${args.parentChatId} not found`)
+    }
+
+    const settings = this.getSettings()
+    const now = Date.now()
+    const chatKind = args.chatKind === 'ensemble' || parent.chatKind === 'ensemble' ? 'ensemble' : 'single'
+    const provider = args.provider || parent.provider || settings.activeProvider || 'gemini'
+    const scope = parent.scope ?? 'workspace'
+    const title =
+      args.title?.trim() ||
+      `Side chat${parent.title && parent.title !== 'New Chat' ? ` from ${parent.title}` : ''}`
+
+    const base: ChatRecord = {
+      appChatId: randomUUID(),
+      scope,
+      chatKind,
+      provider,
+      title,
+      ...(scope === 'workspace'
+        ? { workspaceId: parent.workspaceId, workspacePath: parent.workspacePath }
+        : {}),
+      createdAt: now,
+      updatedAt: now,
+      archived: false,
+      messages: [],
+      runs: [],
+      parentChatId: parent.appChatId,
+      parentChatRelation: 'sideChat',
+      sideChatContext: {
+        createdAt: now,
+        ...(args.originMessageId ? { originMessageId: args.originMessageId } : {}),
+        ...(args.originRunId ? { originRunId: args.originRunId } : {}),
+        transcriptVisibility: 'none'
+      },
+      providerMetadata: parent.providerMetadata
+        ? canonicalizeExternalPathGrantMetadata({ ...parent.providerMetadata })
+        : undefined
+    }
+
+    const chat: ChatRecord =
+      chatKind === 'ensemble'
+        ? {
+            ...base,
+            title: args.title?.trim() || `Side ensemble from ${parent.title || 'chat'}`,
+            ensemble: cloneEnsembleForSideChat(parent, provider)
+          }
+        : base
+
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat)
+    }
+    return chat
+  }
+
   /** Phase F1: spawn a sub-thread under an existing parent chat.
    *
    * The sub-thread inherits the parent's workspace by default (the
@@ -924,7 +1016,7 @@ export class AppStore {
     if (!parent) {
       throw new Error(`Cannot create sub-thread: parent chat ${args.parentChatId} not found`)
     }
-    if (parent.parentChatId) {
+    if (this.isSubThreadChat(parent)) {
       throw new Error(
         `Cannot create sub-thread: parent ${args.parentChatId} is itself a sub-thread (max depth 1 in v1)`
       )
@@ -950,6 +1042,7 @@ export class AppStore {
       messages: [],
       runs: [],
       parentChatId: parent.appChatId,
+      parentChatRelation: 'subThread',
       delegationContext: {
         createdAt: Date.now(),
         parentProvider: parent.provider ?? settings.activeProvider ?? 'gemini',
@@ -969,7 +1062,13 @@ export class AppStore {
    * fanout per parent), no index needed yet. */
   static getChildChats(parentChatId: string): ChatRecord[] {
     return this.getChats()
-      .filter((chat) => chat.parentChatId === parentChatId)
+      .filter((chat) => chat.parentChatId === parentChatId && this.isSubThreadChat(chat))
+      .sort((a, b) => a.createdAt - b.createdAt)
+  }
+
+  static getSideChats(parentChatId: string): ChatRecord[] {
+    return this.getChats()
+      .filter((chat) => chat.parentChatId === parentChatId && chat.parentChatRelation === 'sideChat')
       .sort((a, b) => a.createdAt - b.createdAt)
   }
 
@@ -980,7 +1079,7 @@ export class AppStore {
   static getRootChat(chatId: string): ChatRecord | null {
     let current = this.getChat(chatId)
     const visited = new Set<string>()
-    while (current?.parentChatId) {
+    while (current?.parentChatId && this.isSubThreadChat(current)) {
       if (visited.has(current.appChatId)) {
         // Defensive: malformed data with a cycle. Treat as root.
         return current
@@ -991,6 +1090,12 @@ export class AppStore {
       current = parent
     }
     return current
+  }
+
+  static isSubThreadChat(chat: ChatRecord | null | undefined): boolean {
+    return Boolean(
+      chat?.parentChatId && (chat.parentChatRelation === undefined || chat.parentChatRelation === 'subThread')
+    )
   }
 
   static saveChat(chat: ChatRecord) {
