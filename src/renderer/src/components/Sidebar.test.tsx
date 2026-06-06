@@ -141,6 +141,45 @@ describe('Sidebar sub-thread collapse', () => {
 
     expect(html).toContain('Parallel side branch')
     expect(html).toContain('Fan-out side chat')
+    expect(html).toContain('Parallel fan-out')
+    expect(html).toContain('No parent context')
+  })
+
+  it('shows participant and context metadata for side-chat children', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar([
+      makeChat(),
+      makeChat({
+        appChatId: 'reviewer-side-1',
+        provider: 'codex',
+        title: 'Reviewer branch',
+        parentChatId: 'parent-1',
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          mode: 'singleProvider',
+          lifecycleState: 'closed',
+          originMessageId: 'message-1',
+          transcriptVisibility: 'selected'
+        },
+        providerMetadata: {
+          sideChatSelectedParticipantId: 'reviewer-codex',
+          sideChatSelectedParticipantRole: 'Reviewer'
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    ])
+
+    expect(html).toContain('Reviewer branch')
+    expect(html).toContain('Side chat')
+    expect(html).toContain('Participant: Reviewer')
+    expect(html).toContain('Seeded from message')
+    expect(html).toContain('Closed')
   })
 
   it('hides sub-thread children when the parent is persisted as collapsed', () => {

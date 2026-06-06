@@ -161,11 +161,44 @@ interface SidebarProps {
 const isSideChatRecord = (chat: ChatRecord): boolean => chat.parentChatRelation === 'sideChat'
 const isLinkedChildChat = (chat: ChatRecord): boolean => isSubThreadChat(chat) || isSideChatRecord(chat)
 
+const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
+const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
+
 const getSideChatChildKindLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
   if (chat.sideChatContext?.mode === 'singleProvider') return 'Side chat'
   return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+}
+
+const getSideChatChildParticipantLabel = (chat: ChatRecord): string => {
+  const roleValue = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY]
+  if (typeof roleValue === 'string' && roleValue.trim()) return roleValue.trim()
+  const idValue = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
+  if (typeof idValue === 'string' && idValue.trim()) return getProviderName(chat.provider)
+  return ''
+}
+
+const getSideChatChildModeLabel = (chat: ChatRecord): string => {
+  if (chat.sideChatContext?.mode === 'fanOut') return 'Parallel fan-out'
+  if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
+  if (chat.sideChatContext?.mode === 'singleProvider') {
+    const participantLabel = getSideChatChildParticipantLabel(chat)
+    return participantLabel ? `Participant: ${participantLabel}` : 'Single provider'
+  }
+  return chat.chatKind === 'ensemble' ? 'Ensemble clone' : 'Single provider'
+}
+
+const getSideChatChildContextLabel = (chat: ChatRecord): string => {
+  if (chat.sideChatContext?.originMessageId) return 'Seeded from message'
+  if (chat.sideChatContext?.originRunId) return 'Seeded from run'
+  if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
+  return 'No parent context'
+}
+
+const getSideChatChildLifecycleLabel = (chat: ChatRecord): string => {
+  if (chat.sideChatContext?.lifecycleState === 'closed') return 'Closed'
+  return ''
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'taskwraith-sidebar-expanded-workspace-ids'
@@ -1924,6 +1957,13 @@ export function Sidebar({
     const subLastStatus = getLastRunStatus(subChat)
     const subIsSideChat = isSideChatRecord(subChat)
     const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Agent sub-thread'
+    const subSideChatMetaLabels = subIsSideChat
+      ? [
+          getSideChatChildModeLabel(subChat),
+          getSideChatChildContextLabel(subChat),
+          getSideChatChildLifecycleLabel(subChat)
+        ].filter(Boolean)
+      : []
     const subProviderColor = `var(--provider-${subChat.provider || 'gemini'}-color)`
     return (
       <button
@@ -1956,6 +1996,11 @@ export function Sidebar({
           </span>
           <span className="sidebar-chat-subline">
             <span className="sidebar-run-status tone-muted">{subKindLabel}</span>
+            {subSideChatMetaLabels.map((label) => (
+              <span key={label} className="sidebar-run-status tone-muted">
+                {label}
+              </span>
+            ))}
             {(subRunning ||
               (subLastStatus &&
                 subLastStatus.tone !== 'success' &&
