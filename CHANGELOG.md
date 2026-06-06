@@ -4,6 +4,42 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.0.8 — 2026-06-06
+
+### Added
+- **First-class workspace rows.** Every connected workspace row (primary and
+  additional) now carries the full action set — Review changes → Push → Create PR
+  + commit — scoped to that folder, with a compact read/edit access icon.
+- **Adjustable ensemble history.** A shared-history budget slider (5K–500K
+  characters) in the ensemble Turn picker controls how much recent panel context
+  each agent sees.
+- **Ensemble mode picker.** Turn / Continuous / Work Session moved into a
+  hierarchical picker (matching the model picker); Fan-out (parallel read-only
+  lanes) stays a separate toggle beside it.
+- **Resizable side chat.** The side-chat split view resizes by drag or keyboard,
+  with per-chat width persistence.
+- **Top-center pop-out controls.** Diff Studio / File Editor / pop-out chat sit
+  in their own glass pill row; the corner control pills are larger (1.6×) with a
+  blurred backdrop.
+
+### Changed
+- **Provider-tinted composer pills.** Gemini (blue) and Kimi (olive) controls now
+  carry the provider highlight; the native and other shells drop the redundant
+  outer pill chrome for a cleaner row.
+- **More transcript breathing room.** The clearance below the last message scales
+  with the live composer height, so dense ensemble / multi-workspace composers
+  never overlap the most recent message.
+
+### Fixed
+- **Grok no longer stalls.** A write-enabled Grok turn that ran a shell command
+  was cancelling with no output; write mode now allows Bash, and read-only turns
+  get a steer so they answer directly instead of dead-ending.
+- **Ensemble context.** The shared transcript now keeps the most-recent messages
+  when it has to truncate, and the default turn count is consistent.
+- **Live usage meters.** Sidebar and settings usage totals refresh the moment a
+  run finishes instead of going stale.
+- **Kimi light mode + changelog rendering polish.**
+
 ## 1.0.75 — 2026-06-05
 
 ### Fixed
