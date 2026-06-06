@@ -3087,6 +3087,28 @@ function App(): React.JSX.Element {
     }
   }
   loadInitialDataRef.current = loadInitialData
+  useEffect(() => {
+    if (!isChatPopoutWindow || !currentChat?.appChatId) return
+    const chatId = currentChat.appChatId
+    const handoffKey = chatPopoutHandoffKey(chatId)
+    const applyIncomingHandoff = () => {
+      const popoutHandoff = readChatPopoutHandoff(chatId)
+      if (typeof popoutHandoff?.draft === 'string') {
+        setChatPromptDraft(chatId, popoutHandoff.draft)
+      }
+      if (popoutHandoff?.scrollState) {
+        autoFollowRef.current = popoutHandoff.scrollState.atBottom
+        restoreChatScrollState(transcriptScrollRef.current, popoutHandoff.scrollState)
+      }
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea && event.storageArea !== window.localStorage) return
+      if (event.key !== handoffKey || event.newValue === null) return
+      applyIncomingHandoff()
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [currentChat?.appChatId, isChatPopoutWindow, setChatPromptDraft])
 
   const handleSettingsChange = (next: SettingsPanelUpdate) => {
     const nextChatContextTurns =
