@@ -1938,8 +1938,15 @@ function App(): React.JSX.Element {
       if (sideChatMenuRef.current?.contains(event.target as Node)) return
       setSideChatMenuOpen(false)
     }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSideChatMenuOpen(false)
+    }
     document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [sideChatMenuOpen])
   useEffect(() => {
     setSideChatMenuOpen(false)
