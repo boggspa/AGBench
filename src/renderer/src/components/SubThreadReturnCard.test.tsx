@@ -38,9 +38,13 @@ describe('SubThreadReturnCard', () => {
     expect(subThreadReturnBody('plain body')).toBe('plain body')
   })
 
-  it('renders provider, title, markdown body, and open control', () => {
+  it('renders provider, title, markdown body, and open controls', () => {
     const html = renderToStaticMarkup(
-      <SubThreadReturnCard message={subThreadMessage()} onOpenSubThread={() => {}} />
+      <SubThreadReturnCard
+        message={subThreadMessage()}
+        onOpenSubThread={() => {}}
+        onOpenSubThreadInSidePanel={() => {}}
+      />
     )
 
     expect(html).toContain('subthread-return-card')
@@ -49,6 +53,8 @@ describe('SubThreadReturnCard', () => {
     expect(html).toContain('Codex')
     expect(html).toContain('Build agent')
     expect(html).toContain('<strong>Done</strong>')
+    expect(html).toContain('Open beside')
+    expect(html).toContain('Open drawer')
     expect(html).toContain('Open sub-thread')
   })
 })

@@ -20,7 +20,7 @@ interface SubThreadDelegationCardProps {
    * this set. */
   runningChatIds?: string[]
   onOpenSubThread?: (chatId: string) => void
-  onOpenSubThreadInSidePanel?: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string, presentation?: 'split' | 'drawer') => void
 }
 
 function textValue(value: unknown): string | undefined {
@@ -198,6 +198,16 @@ export function SubThreadDelegationCard({
             }}
           >
             Open beside
+          </button>
+          <button
+            type="button"
+            className="subthread-delegation-open"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenSubThreadInSidePanel(subThreadId, 'drawer')
+            }}
+          >
+            Open drawer
           </button>
           <button
             type="button"

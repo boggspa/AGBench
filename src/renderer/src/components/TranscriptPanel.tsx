@@ -129,7 +129,7 @@ type TranscriptPanelProps = {
   onPlanChoiceSubmit: (messageId: string, option: string) => void
   onRunFallback: (model: string) => void
   onOpenSubThread: (chatId: string) => void
-  onOpenSubThreadInSidePanel?: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string, presentation?: 'split' | 'drawer') => void
   /** Phase K1B: when set, RunCard's "Inspect →" affordance enters Run
    * mode for the clicked run. Plumbed from App.tsx down. */
   onInspectRun?: (runId: string) => void

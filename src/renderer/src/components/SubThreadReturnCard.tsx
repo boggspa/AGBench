@@ -14,7 +14,7 @@ interface SubThreadReturnCardProps {
   message: ChatMessage
   chat?: ChatRecord
   onOpenSubThread?: (chatId: string) => void
-  onOpenSubThreadInSidePanel?: (chatId: string) => void
+  onOpenSubThreadInSidePanel?: (chatId: string, presentation?: 'split' | 'drawer') => void
 }
 
 function textValue(value: unknown): string | undefined {
@@ -80,6 +80,15 @@ export function SubThreadReturnCard({
                 onClick={() => onOpenSubThreadInSidePanel(subThreadId)}
               >
                 Open beside
+              </button>
+            )}
+            {onOpenSubThreadInSidePanel && (
+              <button
+                type="button"
+                className="subthread-return-open"
+                onClick={() => onOpenSubThreadInSidePanel(subThreadId, 'drawer')}
+              >
+                Open drawer
               </button>
             )}
             {onOpenSubThread && (

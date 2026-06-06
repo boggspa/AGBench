@@ -14371,6 +14371,16 @@ function App(): React.JSX.Element {
                 <button
                   type="button"
                   className="side-chat-header-btn"
+                  onClick={() =>
+                    void handleOpenLinkedChatInSidePanelFromSidebar(currentChat, 'drawer')
+                  }
+                  title="Show this linked chat in the side drawer"
+                >
+                  Open drawer
+                </button>
+                <button
+                  type="button"
+                  className="side-chat-header-btn"
                   onClick={() => void openCurrentSideChatPresentation('popout')}
                   title="Pop out this linked chat"
                 >
