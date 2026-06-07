@@ -750,6 +750,22 @@ function scheduleAfterPaint(callback: () => void, timeout = 700): () => void {
   }
 }
 
+function scheduleAfterNextPaint(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  let cancelled = false
+  let timeoutHandle: number | null = null
+  const rafHandle = window.requestAnimationFrame(() => {
+    timeoutHandle = window.setTimeout(() => {
+      if (!cancelled) callback()
+    }, 0)
+  })
+  return () => {
+    cancelled = true
+    window.cancelAnimationFrame(rafHandle)
+    if (timeoutHandle !== null) window.clearTimeout(timeoutHandle)
+  }
+}
+
 function isChatSummaryRecord(chat: ChatRecord | null | undefined): chat is ChatListItem {
   return Boolean((chat as ChatListItem | null | undefined)?.summaryOnly === true)
 }
@@ -2789,7 +2805,7 @@ function App(): React.JSX.Element {
 
   const hydrateSelectedChatAfterPaint = (chat: ChatRecord) => {
     if (!isChatSummaryRecord(chat)) return
-    scheduleAfterPaint(() => {
+    scheduleAfterNextPaint(() => {
       void window.api
         .getChat(chat.appChatId)
         .then((hydrated) => {
