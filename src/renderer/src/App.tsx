@@ -14912,8 +14912,8 @@ function App(): React.JSX.Element {
                   regardless of run state.
 
                   Wrapped in `.composer-above-bar-files-cluster` so
-                  the Codex shell can place files+diff as ONE grid
-                  cell and centre it cleanly. Other shells get
+                  the Codex shell can place files+diff as ONE layout
+                  unit without splitting the status chips. Other shells get
                   `display: contents` on the wrapper (declared in
                   main.css) so files + stats still behave as direct
                   flex children of `.composer-above-bar` — no

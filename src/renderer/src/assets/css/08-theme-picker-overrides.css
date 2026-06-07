@@ -7171,15 +7171,18 @@
    * continuous extension of the composer. */
   background: color-mix(in srgb, #0f0f0f 92%, #756af4 8%);
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
-  /* CX1 (refined): three-column grid for guaranteed centering of
-   * the files+diff cluster. The two `1fr` outer tracks absorb
-   * equal slack regardless of the branch label or action button
-   * widths, so the middle column lands at the true geometric
-   * centre of the above-row. */
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* CX1 (refined): keep the tucked tab as one flex row. The live
+   * row can include sync/CI chips between the files+diff cluster and
+   * the action; a fixed three-column grid auto-places those extra
+   * children into implicit cells and can push the action onto a
+   * second row. Flex keeps the source order intact and lets only the
+   * branch label absorb reduced-width pressure. */
+  display: flex;
   align-items: center;
-  column-gap: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
 }
 
 /* Drop the navy ::before overlay on the tucked tab so the fill
@@ -7189,21 +7192,35 @@
   display: none;
 }
 
-/* CX1 (refined): explicit grid column placement for the three
- * logical groups. Branch goes left, files+diff cluster centred,
- * action right. The cluster is a `display: inline-flex` wrapper
- * that holds files + stats side-by-side. */
+/* CX1 (refined): branch is the only flexible region in the Codex tab.
+ * The files+diff cluster, sync chip, and action stay fixed-size so they
+ * remain readable and never wrap; the branch text ellipsizes instead. */
 [data-composer-style="codex"] .composer-above-bar > .composer-above-bar-branch {
-  grid-column: 1;
-  justify-self: start;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 [data-composer-style="codex"] .composer-above-bar > .composer-above-bar-files-cluster {
-  grid-column: 2;
-  justify-self: center;
+  flex: 0 0 auto;
   display: inline-flex !important;
   flex-direction: row !important;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+[data-composer-style="codex"] .composer-above-bar > .git-status-push,
+[data-composer-style="codex"] .composer-above-bar > .git-status-ci {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+[data-composer-style="codex"] .composer-above-bar > .composer-above-bar-branch > svg {
+  flex: 0 0 auto;
+}
+[data-composer-style="codex"] .composer-above-bar > .composer-above-bar-branch > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Enforce files-first ordering inside the Codex cluster. `!important`
@@ -7222,8 +7239,7 @@
 }
 [data-composer-style="codex"] .composer-above-bar > .composer-above-bar-action,
 [data-composer-style="codex"] .composer-above-bar > .composer-diff-action-menu-wrap {
-  grid-column: 3;
-  justify-self: end;
+  flex: 0 0 auto;
   margin-left: 0;
 }
 /* WorkspaceAccessControls renders an empty div for non-Gemini
