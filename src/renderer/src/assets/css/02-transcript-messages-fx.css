@@ -264,7 +264,7 @@
 }
 
 .chat-corner-controls-workspace-hidden {
-  left: calc(var(--space-sm) * 10);
+  left: calc(var(--space-sm) * 2);
 }
 
 .chat-corner-controls-right {
@@ -274,7 +274,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
+  max-width: calc(100% - 360px);
+  overflow-x: auto;
+  scrollbar-width: none;
   -webkit-app-region: no-drag;
+}
+
+.chat-corner-controls-right::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-corner-btn {
@@ -349,6 +356,19 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
 }
 
+.chat-corner-thread-title {
+  min-width: 0;
+  max-width: min(280px, 34vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 10px 0 2px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
 .chat-corner-controls {
   z-index: 9;
   gap: 3px;
@@ -369,19 +389,12 @@
 }
 
 .chat-corner-controls-right {
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
-/* Top-center glass pill housing the pop-out buttons (file editor / Diff Studio /
- * pop-out chat). Centered WITHOUT transform (left:0 + right:0 + auto margins +
- * fit-content width) so the inherited backdrop-filter blur keeps working. */
 .chat-corner-controls-center {
-  left: 0;
-  right: 0;
-  width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
-  gap: 8px;
+  display: none;
 }
 
 .chat-corner-controls .chat-corner-btn {

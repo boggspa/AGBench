@@ -13896,9 +13896,7 @@ function App(): React.JSX.Element {
             </div>
           )}
           {!isChatPopoutWindow && (
-            <div
-              className={`chat-corner-controls chat-corner-controls-left ${showWorkspaceSidebar ? '' : 'chat-corner-controls-workspace-hidden'}`}
-            >
+            <div className="chat-corner-controls chat-corner-controls-left">
               <button
                 className="chat-corner-btn"
                 type="button"
@@ -13908,6 +13906,17 @@ function App(): React.JSX.Element {
               >
                 <SidebarCornerIcon direction="left" isOpen={showWorkspaceSidebar} />
               </button>
+              <span
+                className="chat-corner-thread-title"
+                title={currentChat?.title || currentWorkspace?.displayName || 'New chat'}
+              >
+                {currentChat?.title || currentWorkspace?.displayName || 'New chat'}
+              </span>
+            </div>
+          )}
+
+          {!isChatPopoutWindow && (
+            <div className="chat-corner-controls chat-corner-controls-right">
             <button
               className={`chat-corner-btn ${shouldShowSkyVisualFxInFxMode ? 'active' : ''}`}
               type="button"
@@ -13940,15 +13949,6 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">i</span>
             </button>
-            {/*
-              First-launch onboarding sheet re-opener. The sheet
-              auto-shows on a fresh install and stays available
-              from this button so existing users / testers can
-              flip it back on at any time. Toggles purely the
-              visibility state — does NOT touch the persisted
-              dismissal flag, so closing the sheet again doesn't
-              cause it to auto-show next launch.
-            */}
             <button
               className={`chat-corner-btn ${showFirstLaunchSheet ? 'active' : ''}`}
               type="button"
@@ -13959,14 +13959,6 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">?</span>
             </button>
-            {/*
-              Bug-report sheet trigger. Mirrors the `?` button's shape
-              but uses a subtle amber "!" glyph that reads as "report
-              a bug" without being alarming red. Lets a tester type a
-              one-liner + description inline as he hits issues during
-              the 1.0.1 test session — the main process appends the
-              report to `<userData>/TaskWraith/bug-reports.md` for review.
-            */}
             <button
               className={`chat-corner-btn chat-corner-btn-bug-report ${showBugReportSheet ? 'active' : ''}`}
               type="button"
@@ -13977,11 +13969,6 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">!</span>
             </button>
-            </div>
-          )}
-
-          {!isChatPopoutWindow && (
-            <div className="chat-corner-controls chat-corner-controls-center">
             <button
               className="chat-corner-btn"
               type="button"
@@ -14179,11 +14166,6 @@ function App(): React.JSX.Element {
                 </div>
               )}
             </div>
-            </div>
-          )}
-
-          {!isChatPopoutWindow && (
-            <div className="chat-corner-controls chat-corner-controls-right">
             <button
               className={`chat-corner-btn ${showCockpit ? 'active' : ''}`}
               type="button"
