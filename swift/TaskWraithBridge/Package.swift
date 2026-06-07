@@ -24,7 +24,10 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "TaskWraithBridgeDaemon"
+            name: "TaskWraithBridgeDaemon",
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         ),
         .testTarget(
             name: "TaskWraithBridgeDaemonTests",
