@@ -1541,7 +1541,7 @@ export function SettingsPanel({
         ? null
         : provider === 'cursor'
           ? {
-              state: 'available' as const,
+              state: 'delegated' as const,
               source: 'taskwraith web bridge',
               serverName: 'taskwraith',
               toolCount: 2,

@@ -366,7 +366,10 @@ function providerManagedMcpCapability(provider: ProviderId): ProviderMcpCapabili
  * "installed" positive (see the HARD RULE in the MCP-status fix). */
 function cursorMcpCapability(): ProviderMcpCapability {
   return {
-    state: 'available',
+    // 'delegated' (not 'available') so the pill reads calm: the web bridge is
+    // activatable, not auto-active (it needs the global taskwraith registration).
+    // The tools + message still convey what's on offer; never a false "installed".
+    state: 'delegated',
     source: 'taskwraith web bridge',
     available: true,
     // Not asserting installed/enabled: the global ~/.cursor registration + env
