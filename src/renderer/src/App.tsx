@@ -18126,36 +18126,44 @@ function App(): React.JSX.Element {
           // Cancel = stay at the lower, safer mode; the deferred apply never runs.
           onCancel={() => setPendingElevation(null)}
           onConfirm={() => {
-            pendingElevation.apply()
-            // Best-effort audit trail: log the acknowledgement to the
-            // ApprovalLedger for BOTH tiers (the entry is meaningful for the
-            // always-re-warn Tier 2 too, so this runs regardless of
-            // persistAck). Must not block or throw out of confirm.
-            window.api
-              .recordApprovalElevationAck({
-                provider: pendingElevation.provider,
-                workspacePath: currentWorkspacePath ?? null,
-                toMode: pendingElevation.toMode,
-                tier: pendingElevation.tier
-              })
-              .catch(() => {})
-            // Tier 1 records a "seen once" ack for this (workspace, provider);
-            // Tier 2 (persistAck === false) always re-warns, so we never persist.
-            if (pendingElevation.persistAck) {
-              const nextAcks = {
-                ...(settings?.approvalModeElevationAcknowledgements ?? {}),
-                [pendingElevation.ackKey]: true
-              }
-              window.api
-                .updateSettings({ approvalModeElevationAcknowledgements: nextAcks })
-                .catch(() => {})
-              setSettings((prev) =>
-                prev
-                  ? { ...prev, approvalModeElevationAcknowledgements: nextAcks }
-                  : prev
-              )
-            }
+            // Dismiss FIRST so nothing below can leave the sheet stuck open.
+            // (Previously a throw before the trailing setPendingElevation(null)
+            // — e.g. an old preload missing recordApprovalElevationAck, which
+            // makes the call-on-undefined throw past the .catch — forced the
+            // user to press Esc.) The picker already captured `pendingElevation`,
+            // so apply() + the ack still run after this.
             setPendingElevation(null)
+            try {
+              pendingElevation.apply()
+              // Best-effort audit trail for BOTH tiers; optional-chained so an
+              // old/missing preload method can never throw out of confirm.
+              window.api
+                ?.recordApprovalElevationAck?.({
+                  provider: pendingElevation.provider,
+                  workspacePath: currentWorkspacePath ?? null,
+                  toMode: pendingElevation.toMode,
+                  tier: pendingElevation.tier
+                })
+                ?.catch(() => {})
+              // Tier 1 records a "seen once" ack for this (workspace, provider);
+              // Tier 2 (persistAck === false) always re-warns, so we never persist.
+              if (pendingElevation.persistAck) {
+                const nextAcks = {
+                  ...(settings?.approvalModeElevationAcknowledgements ?? {}),
+                  [pendingElevation.ackKey]: true
+                }
+                window.api
+                  .updateSettings({ approvalModeElevationAcknowledgements: nextAcks })
+                  .catch(() => {})
+                setSettings((prev) =>
+                  prev
+                    ? { ...prev, approvalModeElevationAcknowledgements: nextAcks }
+                    : prev
+                )
+              }
+            } catch (err) {
+              console.error('approval elevation confirm side-effect failed', err)
+            }
           }}
         />
       )}

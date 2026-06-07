@@ -497,7 +497,11 @@
 }
 .creative-approval-modal {
   width: min(640px, 100%);
-  background: var(--panel-elevated-bg);
+  /* Opaque surface — a decision modal must not let the transcript bleed
+     through. --panel-elevated-bg is very translucent in some themes
+     (e.g. rgba(0,0,0,.035)), so composite the theme tint over a solid base.
+     Light themes override the base below. */
+  background: linear-gradient(var(--panel-elevated-bg), var(--panel-elevated-bg)), #181818;
   border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
   border-radius: 14px;
   padding: 24px 26px;
@@ -513,7 +517,7 @@
  * Force an opaque surface for approval-class modals where decision
  * legibility matters more than the glass effect. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .creative-approval-modal {
-  background: color-mix(in srgb, var(--panel-elevated-bg) 98%, #ffffff);
+  background: linear-gradient(var(--panel-elevated-bg), var(--panel-elevated-bg)), #fbfaf7;
   border-color: color-mix(in srgb, var(--panel-border) 92%, transparent);
   box-shadow:
     0 30px 80px rgba(15, 23, 42, 0.18),
