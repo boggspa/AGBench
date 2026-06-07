@@ -1004,6 +1004,7 @@ function ActivityCompactGroup({
         ) : visibleFamilies.length === 1 ? (
           <ToolFamilyIcon
             family={visibleFamilies[0] as Parameters<typeof ToolFamilyIcon>[0]['family']}
+            size={34}
             className="activity-category-icon"
           />
         ) : (

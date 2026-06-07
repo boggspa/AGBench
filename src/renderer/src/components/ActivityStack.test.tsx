@@ -197,6 +197,40 @@ function makeWriteActivity(overrides: Partial<ToolActivity> = {}): ToolActivity 
   }
 }
 
+function makeReadActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
+  return {
+    id: 'tool-read-1',
+    toolName: 'read_file',
+    displayName: 'Read file',
+    category: 'read',
+    status: 'success',
+    startedAt: '2026-05-26T17:00:00Z',
+    endedAt: '2026-05-26T17:00:00.250Z',
+    durationMs: 250,
+    parameters: { file_path: '/repo/src/foo.ts' },
+    resultSummary: 'read file',
+    ...overrides
+  }
+}
+
+describe('ActivityStack compact tool groups', () => {
+  it('uses the full-size tool-family icon in same-family group headers', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeReadActivity({ id: 'tool-read-1', parameters: { file_path: '/repo/src/foo.ts' } }),
+          makeReadActivity({ id: 'tool-read-2', parameters: { file_path: '/repo/src/bar.ts' } })
+        ]}
+        provider="codex"
+      />
+    )
+
+    expect(html).toContain('activity-compact-group')
+    expect(html).toContain('Read 2 files')
+    expect(html).toContain('class="activity-category-icon" width="34" height="34"')
+  })
+})
+
 describe('ActivityStack compactDensity routing', () => {
   it('routes individual tool activities through CompactToolTrace when compactDensity is true', () => {
     const html = renderToStaticMarkup(
