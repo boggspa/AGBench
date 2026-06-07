@@ -1529,55 +1529,64 @@ export function SettingsPanel({
             message: geminiMcpBridgeStatus?.message || geminiMcpBridgeStatus?.error
           }
         : null
-    // 1.0.6-CRUX41 — Cursor's MCP surface is the TaskWraith web bridge (web_fetch +
-    // web_search), opt-in per workspace; it has no provider-reported MCP status,
-    // so describe it honestly instead of letting it read "not available yet".
-    const cursorWebBridge =
-      provider === 'cursor'
-        ? {
-            source: 'taskwraith web bridge',
-            serverName: 'taskwraith',
-            toolCount: 2,
-            message:
-              'TaskWraith web bridge — web_fetch + web_search for write-mode runs. Register it once in Cursor → Tools & MCPs → Add Custom MCP to enable.'
-          }
-        : null
-    // 1.0.6 — Grok is a first-class provider whose tools are provider-managed
-    // (resolved by the Grok agent CLI), not surfaced through an TaskWraith MCP
-    // server. Describe that plainly rather than letting it fall through to the
-    // generic "MCP status is not available yet" + a `gated` pill, which read as
-    // second-class. No bridge to install — its tools come with the CLI.
-    const grokProviderManaged =
-      provider === 'grok'
-        ? {
-            source: 'provider-managed',
-            serverName: 'Grok CLI',
-            message:
-              'Grok resolves its own tools through the Grok agent CLI — no TaskWraith MCP server to install. First-class provider; tools ship with the CLI.'
-          }
-        : null
+    // Cursor + Grok are provider-managed: the provider resolves its own tools and
+    // TaskWraith does not inject host tools (Grok), or injects only the read-only
+    // web bridge gated on a global registration (Cursor). The accurate per-provider
+    // state/source/tools/message now come from the capability contract (see
+    // ProviderCapabilities cursorMcpCapability / grokMcpCapability) — the single
+    // source of truth. These minimal blocks only seed the card BEFORE the contract
+    // has loaded, so it never momentarily reads "not available yet" / "unsupported".
+    const provisionalFallback =
+      contract?.mcp
+        ? null
+        : provider === 'cursor'
+          ? {
+              state: 'available' as const,
+              source: 'taskwraith web bridge',
+              serverName: 'taskwraith',
+              toolCount: 2,
+              providerManaged: true,
+              message:
+                'TaskWraith web bridge for Cursor — web_fetch + web_search for write-mode runs. ' +
+                'Register the taskwraith server once in Cursor → Tools & MCPs → Add Custom MCP to activate it.'
+            }
+          : provider === 'grok'
+            ? {
+                state: 'delegated' as const,
+                source: 'provider-managed',
+                serverName: 'Grok CLI',
+                toolCount: 0,
+                providerManaged: true,
+                message:
+                  'Grok MCP is provider-managed (tools resolve through the Grok agent CLI). ' +
+                  'A TaskWraith read-only host-tool bridge is available behind a flag (off by default).'
+              }
+            : null
     const mcp = contract?.mcp
+    // A provider-managed surface (Grok CLI, or Cursor's host web bridge) is NOT a
+    // structured TaskWraith MCP server: it must never read as an error
+    // ("unsupported" / "not installed"). Detect it from the contract source so the
+    // card can show a calm "Provider-managed MCP" tag instead.
+    const providerManaged =
+      mcp?.source === 'provider-managed' ||
+      mcp?.source === 'taskwraith web bridge' ||
+      mcp?.source === 'unsupported' ||
+      Boolean(provisionalFallback?.providerManaged)
     const available = Boolean(mcp?.available ?? status?.available ?? bridge?.available)
     const enabled = Boolean(mcp?.enabled ?? bridge?.enabled ?? available)
-    const installed = Boolean(mcp?.installed ?? bridge?.installed ?? available)
-    // First-class state mapping. Cursor's web bridge IS its connected surface →
-    // `available`. Grok is provider-managed → `available` too (it's connected via
-    // the CLI; the tools just aren't TaskWraith-hosted). Neither should read `gated`.
-    const state =
-      mcp?.state ??
-      (cursorWebBridge || grokProviderManaged
-        ? 'available'
-        : available
-          ? 'available'
-          : enabled || installed
-            ? 'gated'
-            : 'unavailable')
+    // HARD RULE: never fabricate "installed" from mere availability for a
+    // provider-managed/bridge surface — the global registration + flag state is not
+    // known here. Only report installed when an actual bridge status says so.
+    const installed = providerManaged
+      ? Boolean(mcp?.installed ?? bridge?.installed)
+      : Boolean(mcp?.installed ?? bridge?.installed ?? available)
+    const state = mcp?.state ?? provisionalFallback?.state ?? (available ? 'available' : 'gated')
     const rawToolCount = countMcpStatusTools(status)
     const toolCount = Math.max(
       rawToolCount,
       Array.isArray(mcp?.tools) ? mcp.tools.length : 0,
       provider === 'gemini' && available ? TASKWRAITH_MCP_TOOLS.length : 0,
-      cursorWebBridge?.toolCount ?? 0
+      provisionalFallback?.toolCount ?? 0
     )
     return {
       provider,
@@ -1585,24 +1594,22 @@ export function SettingsPanel({
       available,
       enabled,
       installed,
+      providerManaged,
       state,
       source:
         mcp?.source ||
-        cursorWebBridge?.source ||
-        grokProviderManaged?.source ||
+        provisionalFallback?.source ||
         (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'taskwraith'),
       serverName:
         mcp?.serverName ||
         bridge?.serverName ||
-        cursorWebBridge?.serverName ||
-        grokProviderManaged?.serverName ||
+        provisionalFallback?.serverName ||
         (available ? 'TaskWraith' : 'not connected'),
       toolCount,
       message:
         mcp?.message ||
         bridge?.message ||
-        cursorWebBridge?.message ||
-        grokProviderManaged?.message ||
+        provisionalFallback?.message ||
         status?.message ||
         status?.error ||
         (available
@@ -4337,9 +4344,23 @@ export function SettingsPanel({
                     <div className="settings-mcp-server-meta">
                       <span>{entry.source}</span>
                       <span>
-                        {entry.toolCount > 0 ? pluralizeCount(entry.toolCount, 'tool') : 'No tools'}
+                        {entry.toolCount > 0
+                          ? pluralizeCount(entry.toolCount, 'tool')
+                          : entry.providerManaged
+                            ? 'host tools not injected'
+                            : 'No tools'}
                       </span>
-                      <span>{entry.installed ? 'installed' : 'not installed'}</span>
+                      {/* Provider-managed surfaces (Grok CLI, Cursor host web
+                          bridge) are not installable TaskWraith MCP servers, so
+                          "not installed" would read as an error. Show a calm tag
+                          instead; only the actual bridges report installed state. */}
+                      <span>
+                        {entry.providerManaged
+                          ? 'Provider-managed MCP'
+                          : entry.installed
+                            ? 'installed'
+                            : 'not installed'}
+                      </span>
                     </div>
                     <p className="settings-hint">{entry.message}</p>
                     <button

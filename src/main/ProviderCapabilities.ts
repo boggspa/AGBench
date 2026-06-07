@@ -18,6 +18,15 @@ import { providerLabel } from './ProviderAdapters'
 
 export const TASKWRAITH_GEMINI_MCP_TOOLS = TASKWRAITH_MCP_TOOLS
 
+/** The two read-only web tools TaskWraith injects into Cursor via its host MCP
+ * web bridge (see CursorMcpBridge `web_fetch` / `web_search`). Listed as Cursor's
+ * TaskWraith-side tool set so the MCP panel reflects what the bridge provides
+ * rather than reading as "No tools". Their live activation (env opt-out +
+ * global `~/.cursor/mcp.json` registration) is provider/runtime state not
+ * available at this pure contract layer, so the panel describes them as the
+ * available bridge tools, never as "installed" (see the Cursor MCP card copy). */
+export const TASKWRAITH_CURSOR_WEB_BRIDGE_TOOLS: readonly string[] = ['web_fetch', 'web_search']
+
 const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
@@ -332,13 +341,60 @@ function geminiMcpUnavailableTitle(status: GeminiMcpBridgeStatus | null | undefi
   return 'Gemini MCP bridge unavailable'
 }
 
-function unsupportedMcpCapability(provider: ProviderId): ProviderMcpCapability {
+/** Provider-managed MCP fallback: the provider resolves its own tools (no
+ * structured TaskWraith MCP surface to report), and TaskWraith does not inject
+ * host tools here. Factual/calm copy — NOT an error. Used for any provider
+ * without a dedicated capability builder; cursor/grok have their own below. */
+function providerManagedMcpCapability(provider: ProviderId): ProviderMcpCapability {
   return {
     state: 'delegated',
-    source: 'unsupported',
+    source: 'provider-managed',
     available: false,
+    installed: false,
     tools: [],
-    message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured TaskWraith API yet.`
+    message: `${providerLabel(provider)} MCP is provider-managed. TaskWraith host tools aren't injected into this provider.`
+  }
+}
+
+/** Cursor's TaskWraith-side MCP surface is the host web bridge (`web_fetch` +
+ * `web_search`), injected for write-mode runs once the user registers the
+ * read-only server in global `~/.cursor/mcp.json`. That live activation state
+ * (env opt-out + global registration) is not available at this pure contract
+ * layer, so we report the bridge's two tools as the AVAILABLE TaskWraith-side
+ * tool set without claiming they are installed/registered for this user. This
+ * is deliberately the honest "available to inject" framing, never a false
+ * "installed" positive (see the HARD RULE in the MCP-status fix). */
+function cursorMcpCapability(): ProviderMcpCapability {
+  return {
+    state: 'available',
+    source: 'taskwraith web bridge',
+    available: true,
+    // Not asserting installed/enabled: the global ~/.cursor registration + env
+    // opt-out are runtime state we don't read here. Leaving these undefined lets
+    // the panel show the tools as available-to-inject, not "installed".
+    serverName: 'taskwraith',
+    tools: [...TASKWRAITH_CURSOR_WEB_BRIDGE_TOOLS],
+    message:
+      'TaskWraith web bridge for Cursor — web_fetch + web_search for write-mode runs. ' +
+      'Register the taskwraith server once in Cursor → Tools & MCPs → Add Custom MCP to activate it.'
+  }
+}
+
+/** Grok is provider-managed (its tools resolve through the Grok agent CLI).
+ * TaskWraith additionally has a read-only host-tool bridge for Grok, but it is
+ * gated OFF by default behind TASKWRAITH_GROK_READONLY_MCP, so we do NOT list
+ * any tools or claim anything is installed — only that the bridge is available
+ * behind a flag (HARD RULE: never a positive tool count for a gated-off path). */
+function grokMcpCapability(): ProviderMcpCapability {
+  return {
+    state: 'delegated',
+    source: 'provider-managed',
+    available: false,
+    installed: false,
+    tools: [],
+    message:
+      'Grok MCP is provider-managed (tools resolve through the Grok agent CLI). ' +
+      'A TaskWraith read-only host-tool bridge is available behind a flag (off by default).'
   }
 }
 
@@ -604,7 +660,11 @@ export function buildProviderCapabilityContract({
     mcp =
       provider === 'claude' || provider === 'kimi'
         ? cliTaskWraithMcpCapability(provider, mcpStatus)
-        : unsupportedMcpCapability(provider)
+        : provider === 'cursor'
+          ? cursorMcpCapability()
+          : provider === 'grok'
+            ? grokMcpCapability()
+            : providerManagedMcpCapability(provider)
     shellCommands = delegatedCapability(
       'shellCommands',
       services.shellCommands,
