@@ -227,7 +227,7 @@ describe('ActivityStack compact tool groups', () => {
 
     expect(html).toContain('activity-compact-group')
     expect(html).toContain('Read 2 files')
-    expect(html).toContain('class="activity-category-icon" width="34" height="34"')
+    expect(html).toContain('class="activity-category-icon" width="27.2" height="27.2"')
   })
 })
 
