@@ -14,6 +14,17 @@ describe('ShellOpenPolicy', () => {
     })
   })
 
+  it('allows Apple System Settings deep links for local permission setup', () => {
+    expect(
+      classifyShellOpenTarget(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+      )
+    ).toEqual({
+      action: 'external',
+      href: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+    })
+  })
+
   it('routes file URLs and scheme-less strings to openPath', () => {
     const fileUrl =
       process.platform === 'win32' ? 'file:///C:/tmp/report.txt' : 'file:///tmp/report.txt'
@@ -24,6 +35,10 @@ describe('ShellOpenPolicy', () => {
     expect(classifyShellOpenTarget('/tmp/report.txt')).toEqual({
       action: 'path',
       path: '/tmp/report.txt'
+    })
+    expect(classifyShellOpenTarget('/System/Applications/Messages.app')).toEqual({
+      action: 'path',
+      path: '/System/Applications/Messages.app'
     })
   })
 

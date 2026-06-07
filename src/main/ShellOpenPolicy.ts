@@ -5,12 +5,17 @@ export type ShellOpenDecision =
   | { action: 'path'; path: string }
   | { action: 'deny'; error: string }
 
-const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
+const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'x-apple.systempreferences:'])
 const UNSAFE_PROTOCOLS = /^(javascript|data|vbscript):/i
+const MACOS_SYSTEM_SETTINGS_PROTOCOL = /^x-apple\.systempreferences:/i
 
 export function classifyShellOpenTarget(hrefRaw: unknown): ShellOpenDecision {
   const href = typeof hrefRaw === 'string' ? hrefRaw.trim() : ''
   if (!href) return { action: 'deny', error: 'Empty href' }
+
+  if (MACOS_SYSTEM_SETTINGS_PROTOCOL.test(href)) {
+    return { action: 'external', href }
+  }
 
   if (/^file:/i.test(href)) {
     try {
