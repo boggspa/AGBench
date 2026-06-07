@@ -18,15 +18,6 @@ import { providerLabel } from './ProviderAdapters'
 
 export const TASKWRAITH_GEMINI_MCP_TOOLS = TASKWRAITH_MCP_TOOLS
 
-/** The two read-only web tools TaskWraith injects into Cursor via its host MCP
- * web bridge (see CursorMcpBridge `web_fetch` / `web_search`). Listed as Cursor's
- * TaskWraith-side tool set so the MCP panel reflects what the bridge provides
- * rather than reading as "No tools". Their live activation (env opt-out +
- * global `~/.cursor/mcp.json` registration) is provider/runtime state not
- * available at this pure contract layer, so the panel describes them as the
- * available bridge tools, never as "installed" (see the Cursor MCP card copy). */
-export const TASKWRAITH_CURSOR_WEB_BRIDGE_TOOLS: readonly string[] = ['web_fetch', 'web_search']
-
 const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
@@ -296,19 +287,34 @@ function mcpToolNamesFromStatus(value: unknown): string[] {
   return [...names].sort()
 }
 
-function codexMcpCapability(mcpStatus: unknown): ProviderMcpCapability {
+function codexMcpCapability(mcpStatus: unknown, enabled: boolean): ProviderMcpCapability {
   const record = asRecord(mcpStatus)
   const tools = mcpToolNamesFromStatus(mcpStatus)
   const serverCount = Array.isArray(record.data) ? record.data.length : 0
+  if (!enabled) {
+    return {
+      state: 'unavailable',
+      source: 'provider',
+      available: false,
+      enabled: false,
+      installed: false,
+      serverName: 'TaskWraith',
+      tools: [],
+      message: 'TaskWraith MCP registration for Codex is disabled in Settings.'
+    }
+  }
   return {
-    state: serverCount > 0 ? 'available' : 'gated',
+    state: 'available',
     source: 'provider',
-    available: serverCount > 0,
-    tools,
+    available: true,
+    enabled: true,
+    installed: true,
+    serverName: 'TaskWraith',
+    tools: tools.length > 0 ? tools : [...TASKWRAITH_MCP_TOOLS],
     message:
       serverCount > 0
         ? `${serverCount} Codex MCP server${serverCount === 1 ? '' : 's'} reported by app-server.`
-        : 'Codex app-server did not report configured MCP servers.'
+        : 'TaskWraith registers the MCP bridge for Codex runs; this app-server did not expose a live server listing.'
   }
 }
 
@@ -356,48 +362,42 @@ function providerManagedMcpCapability(provider: ProviderId): ProviderMcpCapabili
   }
 }
 
-/** Cursor's TaskWraith-side MCP surface is the host web bridge (`web_fetch` +
- * `web_search`), injected for write-mode runs once the user registers the
- * read-only server in global `~/.cursor/mcp.json`. That live activation state
- * (env opt-out + global registration) is not available at this pure contract
- * layer, so we report the bridge's two tools as the AVAILABLE TaskWraith-side
- * tool set without claiming they are installed/registered for this user. This
- * is deliberately the honest "available to inject" framing, never a false
- * "installed" positive (see the HARD RULE in the MCP-status fix). */
-function cursorMcpCapability(): ProviderMcpCapability {
+/** Cursor write-mode runs register a transient workspace `taskwraith` MCP server
+ * backed by the shared TaskWraith broker. Native Cursor shell/write tools are
+ * constrained so side effects go through the brokered tools and TaskWraith
+ * approval/path checks. */
+function cursorMcpCapability(enabled: boolean): ProviderMcpCapability {
   return {
-    // 'delegated' (not 'available') so the pill reads calm: the web bridge is
-    // activatable, not auto-active (it needs the global taskwraith registration).
-    // The tools + message still convey what's on offer; never a false "installed".
-    state: 'delegated',
-    source: 'taskwraith web bridge',
-    available: true,
-    // Not asserting installed/enabled: the global ~/.cursor registration + env
-    // opt-out are runtime state we don't read here. Leaving these undefined lets
-    // the panel show the tools as available-to-inject, not "installed".
+    state: enabled ? 'available' : 'unavailable',
+    source: 'bridge',
+    available: enabled,
+    enabled,
+    installed: enabled,
     serverName: 'taskwraith',
-    tools: [...TASKWRAITH_CURSOR_WEB_BRIDGE_TOOLS],
+    tools: enabled ? [...TASKWRAITH_MCP_TOOLS] : [],
     message:
-      'TaskWraith web bridge for Cursor — web_fetch + web_search for write-mode runs. ' +
-      'Register the taskwraith server once in Cursor → Tools & MCPs → Add Custom MCP to activate it.'
+      enabled
+        ? 'TaskWraith registers a brokered MCP server for Cursor write-mode runs. Native Cursor shell/write tools are constrained so workspace side effects go through TaskWraith approvals.'
+        : 'TaskWraith MCP registration for Cursor is disabled in Settings.'
   }
 }
 
-/** Grok is provider-managed (its tools resolve through the Grok agent CLI).
- * TaskWraith additionally has a read-only host-tool bridge for Grok, but it is
- * gated OFF by default behind TASKWRAITH_GROK_READONLY_MCP, so we do NOT list
- * any tools or claim anything is installed — only that the bridge is available
- * behind a flag (HARD RULE: never a positive tool count for a gated-off path). */
-function grokMcpCapability(): ProviderMcpCapability {
+/** Grok ACP runs can receive the shared TaskWraith MCP bridge directly in
+ * session/new. Write-capable seats get the full governed tool list; read-only
+ * seats stay safe-subset unless explicitly advertised. */
+function grokMcpCapability(enabled: boolean): ProviderMcpCapability {
   return {
-    state: 'delegated',
-    source: 'provider-managed',
-    available: false,
-    installed: false,
-    tools: [],
+    state: enabled ? 'available' : 'unavailable',
+    source: 'bridge',
+    available: enabled,
+    enabled,
+    installed: enabled,
+    serverName: 'TaskWraith',
+    tools: enabled ? [...TASKWRAITH_MCP_TOOLS] : [],
     message:
-      'Grok MCP is provider-managed (tools resolve through the Grok agent CLI). ' +
-      'A TaskWraith read-only host-tool bridge is available behind a flag (off by default).'
+      enabled
+        ? 'TaskWraith registers a brokered MCP server for Grok ACP runs. Mutating MCP tools are executed by TaskWraith after approval and workspace/path checks.'
+        : 'TaskWraith MCP registration for Grok is disabled in Settings.'
   }
 }
 
@@ -622,7 +622,7 @@ export function buildProviderCapabilityContract({
       )
     }
   } else if (provider === 'codex') {
-    mcp = codexMcpCapability(mcpStatus)
+    mcp = codexMcpCapability(mcpStatus, Boolean(settings.geminiMcpBridgeEnabled))
     shellCommands = serviceCapability(
       'shellCommands',
       services.shellCommands,
@@ -664,24 +664,42 @@ export function buildProviderCapabilityContract({
       provider === 'claude' || provider === 'kimi'
         ? cliTaskWraithMcpCapability(provider, mcpStatus)
         : provider === 'cursor'
-          ? cursorMcpCapability()
+          ? cursorMcpCapability(Boolean(settings.geminiMcpBridgeEnabled))
           : provider === 'grok'
-            ? grokMcpCapability()
+            ? grokMcpCapability(Boolean(settings.geminiMcpBridgeEnabled))
             : providerManagedMcpCapability(provider)
-    shellCommands = delegatedCapability(
-      'shellCommands',
-      services.shellCommands,
-      provider === 'claude' ? ['provider_shell'] : ['provider_shell_or_wire_tool'],
-      `${label} shell command handling is delegated to the provider CLI.`
-    )
-    fileChanges = delegatedCapability(
-      'fileChanges',
-      services.fileChanges,
-      provider === 'claude' ? ['provider_file_edit'] : ['provider_file_edit_or_wire_tool'],
-      `${label} file edit handling is delegated to the provider CLI.`
-    )
+    const taskWraithBridgeProvider =
+      (provider === 'cursor' || provider === 'grok') && mcp.available
+    shellCommands = taskWraithBridgeProvider
+      ? serviceCapability(
+          'shellCommands',
+          services.shellCommands,
+          'bridge',
+          ['run_shell_command'],
+          `${label} should use the TaskWraith MCP bridge for host shell commands.`
+        )
+      : delegatedCapability(
+          'shellCommands',
+          services.shellCommands,
+          provider === 'claude' ? ['provider_shell'] : ['provider_shell_or_wire_tool'],
+          `${label} shell command handling is delegated to the provider CLI.`
+        )
+    fileChanges = taskWraithBridgeProvider
+      ? serviceCapability(
+          'fileChanges',
+          services.fileChanges,
+          'bridge',
+          ['write_file', 'replace', 'apply_patch'],
+          `${label} should use the TaskWraith MCP bridge for workspace file changes.`
+        )
+      : delegatedCapability(
+          'fileChanges',
+          services.fileChanges,
+          provider === 'claude' ? ['provider_file_edit'] : ['provider_file_edit_or_wire_tool'],
+          `${label} file edit handling is delegated to the provider CLI.`
+        )
     mcpTools =
-      provider === 'claude' || provider === 'kimi'
+      provider === 'claude' || provider === 'kimi' || taskWraithBridgeProvider
         ? serviceCapability('mcpTools', services.mcpTools, 'bridge', mcp.tools, mcp.message)
         : delegatedCapability(
             'mcpTools',
@@ -689,7 +707,7 @@ export function buildProviderCapabilityContract({
             mcp.tools,
             mcp.message || `${label} MCP status is unavailable.`
           )
-    if (provider === 'claude' || provider === 'kimi') {
+    if (provider === 'claude' || provider === 'kimi' || taskWraithBridgeProvider) {
       elicit = elicitCapability(
         'bridge',
         mcp.available,
@@ -716,14 +734,16 @@ export function buildProviderCapabilityContract({
         `${label} sub-thread delegation is delegated to the provider CLI; TaskWraith does not advertise its delegation tool here yet.`
       )
     }
-    warnings.push(
-      warning(
-        `${provider}-provider-managed-tools`,
-        'info',
-        `${label} tools are provider-managed`,
-        `${label} can run with TaskWraith routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
+    if (!taskWraithBridgeProvider) {
+      warnings.push(
+        warning(
+          `${provider}-provider-managed-tools`,
+          'info',
+          `${label} tools are provider-managed`,
+          `${label} can run with TaskWraith routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
+        )
       )
-    )
+    }
   }
 
   const networkAccess = networkCapability(services.networkAccess)

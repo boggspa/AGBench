@@ -64,6 +64,7 @@ describe('applyCursorWriteModeConfig', () => {
     expect(dirs.has(DIR)).toBe(true)
     const written = JSON.parse(files.get(CONFIG)!)
     expect(written.permissions.deny).toContain('Shell(**)')
+    expect(written.permissions.deny).toContain('Write(**)')
     restore()
     expect(files.has(CONFIG)).toBe(false)
     expect(dirs.has(DIR)).toBe(false)
@@ -77,6 +78,7 @@ describe('applyCursorWriteModeConfig', () => {
     const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR)
     const merged = JSON.parse(files.get(CONFIG)!)
     expect(merged.permissions.deny).toContain('Shell(**)')
+    expect(merged.permissions.deny).toContain('Write(**)')
     expect(merged.permissions.allow).toEqual(['Read(**)'])
     restore()
     expect(files.get(CONFIG)).toBe(originalBytes)
@@ -91,11 +93,11 @@ describe('applyCursorWriteModeConfig', () => {
   })
 
   it('exposes the canonical write-mode deny rule', () => {
-    expect(CURSOR_WRITE_MODE_DENY_RULES).toEqual(['Shell(**)'])
+    expect(CURSOR_WRITE_MODE_DENY_RULES).toEqual(['Shell(**)', 'Write(**)'])
   })
 })
 
-describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
+describe('applyCursorWriteModeConfig with the TaskWraith MCP bridge', () => {
   const CONFIG = '/ws/.cursor/cli.json'
   const MCP = '/ws/.cursor/mcp.json'
   const DIR = '/ws/.cursor'
@@ -115,6 +117,7 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
 
     const cli = JSON.parse(files.get(CONFIG)!)
     expect(cli.permissions.deny).toContain('Shell(**)')
+    expect(cli.permissions.deny).toContain('Write(**)')
     expect(cli.permissions.allow).toContain('Mcp(taskwraith:*)')
 
     const mcp = JSON.parse(files.get(MCP)!)
@@ -137,7 +140,7 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
     const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR, bridge())
 
     const cli = JSON.parse(files.get(CONFIG)!)
-    expect(cli.permissions.deny).toEqual(['Write(.env)', 'Shell(**)'])
+    expect(cli.permissions.deny).toEqual(['Write(.env)', 'Shell(**)', 'Write(**)'])
     expect(cli.permissions.allow).toEqual(['Mcp(taskwraith:*)'])
 
     const mcp = JSON.parse(files.get(MCP)!)
@@ -161,6 +164,7 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
 
     const cli = JSON.parse(files.get(CONFIG)!)
     expect(cli.permissions.deny).toContain('Shell(**)')
+    expect(cli.permissions.deny).toContain('Write(**)')
     expect(cli.permissions.allow).toContain('Mcp(taskwraith:*)')
     // The per-run workspace mcp.json must NOT be written in B mode.
     expect(files.has(MCP)).toBe(false)

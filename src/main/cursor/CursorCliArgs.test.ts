@@ -68,7 +68,7 @@ describe('buildCursorCliArgs', () => {
     expect(buildCursorCliArgs({ ...base, providerSessionId: '   ' })).not.toContain('--resume')
   })
 
-  it('adds --approve-mcps only for write-capable runs with the web bridge active', () => {
+  it('adds --approve-mcps only for write-capable runs with the TaskWraith MCP bridge active', () => {
     // Write-capable + bridge → flag present.
     expect(
       buildCursorCliArgs({ ...base, approvalMode: 'acceptEdits', webBridgeActive: true })
@@ -87,7 +87,7 @@ describe('buildCursorCliArgs', () => {
     )
   })
 
-  it('still never passes --force / --yolo with the web bridge active', () => {
+  it('still never passes --force / --yolo with the TaskWraith MCP bridge active', () => {
     const args = buildCursorCliArgs({ ...base, approvalMode: 'default', webBridgeActive: true })
     expect(args).not.toContain('--force')
     expect(args).not.toContain('--yolo')

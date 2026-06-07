@@ -1529,44 +1529,39 @@ export function SettingsPanel({
             message: geminiMcpBridgeStatus?.message || geminiMcpBridgeStatus?.error
           }
         : null
-    // Cursor + Grok are provider-managed: the provider resolves its own tools and
-    // TaskWraith does not inject host tools (Grok), or injects only the read-only
-    // web bridge gated on a global registration (Cursor). The accurate per-provider
-    // state/source/tools/message now come from the capability contract (see
-    // ProviderCapabilities cursorMcpCapability / grokMcpCapability) — the single
-    // source of truth. These minimal blocks only seed the card BEFORE the contract
-    // has loaded, so it never momentarily reads "not available yet" / "unsupported".
+    // Cursor + Grok get the brokered TaskWraith MCP bridge through their
+    // provider-native MCP surfaces. The accurate per-provider state/source/tools
+    // message comes from the capability contract; these blocks only seed the card
+    // BEFORE the contract has loaded so it doesn't flash stale delegated copy.
     const provisionalFallback =
       contract?.mcp
         ? null
         : provider === 'cursor'
           ? {
-              state: 'delegated' as const,
-              source: 'taskwraith web bridge',
+              state: 'available' as const,
+              source: 'bridge',
               serverName: 'taskwraith',
-              toolCount: 2,
-              providerManaged: true,
+              toolCount: TASKWRAITH_MCP_TOOLS.length,
+              providerManaged: false,
               message:
-                'TaskWraith web bridge for Cursor — web_fetch + web_search for write-mode runs. ' +
-                'Register the taskwraith server once in Cursor → Tools & MCPs → Add Custom MCP to activate it.'
+                'TaskWraith registers a brokered MCP server for Cursor write-mode runs. Native Cursor shell/write tools are constrained so workspace side effects go through TaskWraith approvals.'
             }
           : provider === 'grok'
             ? {
-                state: 'delegated' as const,
-                source: 'provider-managed',
-                serverName: 'Grok CLI',
-                toolCount: 0,
-                providerManaged: true,
+                state: 'available' as const,
+                source: 'bridge',
+                serverName: 'TaskWraith',
+                toolCount: TASKWRAITH_MCP_TOOLS.length,
+                providerManaged: false,
                 message:
-                  'Grok MCP is provider-managed (tools resolve through the Grok agent CLI). ' +
-                  'A TaskWraith read-only host-tool bridge is available behind a flag (off by default).'
+                  'TaskWraith registers a brokered MCP server for Grok ACP runs. Mutating MCP tools are executed by TaskWraith after approval and workspace/path checks.'
               }
             : null
     const mcp = contract?.mcp
-    // A provider-managed surface (Grok CLI, or Cursor's host web bridge) is NOT a
-    // structured TaskWraith MCP server: it must never read as an error
-    // ("unsupported" / "not installed"). Detect it from the contract source so the
-    // card can show a calm "Provider-managed MCP" tag instead.
+    // Provider-managed fallback surfaces are not installable TaskWraith MCP
+    // servers, so they must never read as an error ("unsupported" /
+    // "not installed"). Cursor/Grok now report `bridge` when their TaskWraith
+    // MCP registrations are enabled.
     const providerManaged =
       mcp?.source === 'provider-managed' ||
       mcp?.source === 'taskwraith web bridge' ||
@@ -1575,8 +1570,8 @@ export function SettingsPanel({
     const available = Boolean(mcp?.available ?? status?.available ?? bridge?.available)
     const enabled = Boolean(mcp?.enabled ?? bridge?.enabled ?? available)
     // HARD RULE: never fabricate "installed" from mere availability for a
-    // provider-managed/bridge surface — the global registration + flag state is not
-    // known here. Only report installed when an actual bridge status says so.
+    // provider-managed fallback surface. Bridge-backed providers report installed
+    // from their capability contract.
     const installed = providerManaged
       ? Boolean(mcp?.installed ?? bridge?.installed)
       : Boolean(mcp?.installed ?? bridge?.installed ?? available)

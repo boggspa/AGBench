@@ -30,11 +30,11 @@ export interface BuildCursorCliArgsInput {
   /** Composer approval mode: 'plan'/unset = read-only; else write-capable. */
   approvalMode?: string | null
   /**
-   * OQ#2 — true when the TaskWraith web bridge is active for this run (a per-run
-   * `.cursor/mcp.json` registering the `taskwraith` MCP server was written, with an
-   * `allow: ["Mcp(taskwraith:*)"]` rule). Adds `--approve-mcps` so the bridge's
-   * tools don't block on the interactive MCP-approval prompt. Only ever set for
-   * write-capable runs (default mode); plan mode executes no MCP tools.
+   * True when the TaskWraith MCP bridge is active for this run (a per-run
+   * `.cursor/mcp.json` registering the `taskwraith` MCP server was written, with
+   * an `allow: ["Mcp(taskwraith:*)"]` rule). Adds `--approve-mcps` so the
+   * bridge's tools don't block on the interactive MCP-approval prompt. Only ever
+   * set for write-capable runs (default mode); plan mode executes no MCP tools.
    * `--approve-mcps` auto-approves MCP servers ONLY — never shell/write — so it
    * stays within the never-`--force`/`--yolo` rule.
    */
@@ -67,8 +67,8 @@ export function buildCursorCliArgs(input: BuildCursorCliArgsInput): string[] {
   if (!writeCapable) {
     args.push('--mode', 'plan')
   }
-  // OQ#2 web bridge: pre-approve the TaskWraith MCP server's tools (write mode
-  // only — guarded by the caller, which sets this only when it wrote the
+  // TaskWraith MCP bridge: pre-approve the TaskWraith MCP server's tools (write
+  // mode only — guarded by the caller, which sets this only when it wrote the
   // mcp.json + allow rule). Auto-approves MCP servers ONLY, not shell/write.
   if (writeCapable && input.webBridgeActive) {
     args.push('--approve-mcps')

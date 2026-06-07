@@ -230,7 +230,8 @@ const VALID_BROKER_PARENT_PROVIDERS = new Set<ProviderId>([
   'codex',
   'claude',
   'kimi',
-  // Grok reaches the broker via its read-only scoped bridge (safe subset only).
+  // Cursor and Grok reach the broker via provider-native MCP registrations.
+  'cursor',
   'grok'
 ])
 const BRIDGE_LOG_MAX_BYTES = 1_048_576

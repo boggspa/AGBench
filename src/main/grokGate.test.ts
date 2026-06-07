@@ -95,19 +95,19 @@ describe('grokAcpEnabled', () => {
     }
   })
 
-  it('defaults off', () => {
-    expect(grokAcpEnabled()).toBe(false)
+  it('defaults on', () => {
+    expect(grokAcpEnabled()).toBe(true)
   })
 
-  it('turns on for documented opt-in values', () => {
-    for (const value of ['1', 'true', 'yes']) {
+  it('stays on for documented enabled or malformed values', () => {
+    for (const value of ['', '1', 'true', 'yes', 'TRUE', 'YES', ' yes ', 'random']) {
       resetGrokEnv({ TASKWRAITH_GROK_ACP: value })
       expect(grokAcpEnabled()).toBe(true)
     }
   })
 
-  it('stays off for false-ish, malformed, uppercase, or padded values', () => {
-    for (const value of ['', '0', 'false', 'no', 'TRUE', 'YES', ' yes ', 'random']) {
+  it('turns off for exact documented opt-out values', () => {
+    for (const value of ['0', 'false', 'no']) {
       resetGrokEnv({ TASKWRAITH_GROK_ACP: value })
       expect(grokAcpEnabled()).toBe(false)
     }

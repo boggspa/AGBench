@@ -102,6 +102,59 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextualPrompt).toContain('Child says tests passed.')
     expect(result.contextualPrompt).toContain('Current user request:\nContinue.')
   })
+
+  it('steers Cursor write-mode runs to TaskWraith MCP tools', () => {
+    const result = composeRunPrompt({
+      provider: 'cursor',
+      finalPrompt: 'Create a test file.',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Cursor'
+    })
+
+    expect(result.contextualPrompt).toContain(
+      'this Cursor workspace run has access to the TaskWraith MCP server'
+    )
+    expect(result.contextualPrompt).toContain('taskwraith__apply_patch')
+    expect(result.contextualPrompt).toContain('Native provider write/shell paths are constrained')
+  })
+
+  it('steers Grok write-mode runs to TaskWraith MCP tools', () => {
+    const result = composeRunPrompt({
+      provider: 'grok',
+      finalPrompt: 'Create a test file.',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Grok'
+    })
+
+    expect(result.contextualPrompt).toContain(
+      'this Grok workspace run has access to the TaskWraith MCP server'
+    )
+    expect(result.contextualPrompt).toContain('TaskWraith__apply_patch')
+    expect(result.contextualPrompt).toContain('Native provider write/shell paths are constrained')
+  })
+
+  it('does not advertise Cursor/Grok write tools in plan mode', () => {
+    const result = composeRunPrompt({
+      provider: 'cursor',
+      finalPrompt: 'Inspect only.',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Cursor'
+    })
+
+    expect(result.contextualPrompt).not.toContain('TaskWraith runtime note')
+  })
 })
 
 describe('buildConversationContextBlock channel messages', () => {

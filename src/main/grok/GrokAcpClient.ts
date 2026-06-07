@@ -4,9 +4,9 @@
 // INJECTED so the state machine is unit-testable against a fake child (no real
 // process / model call in tests). Protocol shapes proven by the G1 spike.
 //
-// G4 is read-only: clientCapabilities advertise no fs write, mcpServers is
-// empty, and we never send the `always-approve` command. TaskWraith-owned tools +
-// session/request_permission mediation come in G5.
+// TaskWraith-owned tools are passed through session/new `mcpServers`: write
+// seats can receive the full brokered TaskWraith bridge, while read-only seats
+// can receive a safe subset. We never send the `always-approve` command.
 
 import {
   encodeAcpFrame,
@@ -39,11 +39,11 @@ export interface GrokAcpRunOptions {
   spawnProcess: () => AcpChildProcess
   /**
    * G5b — MCP servers advertised to the session (session/new `mcpServers`). For
-   * a read-only Grok seat this is the single TaskWraith scoped bridge entry (safe
-   * subset only, launched with --safe-subset). Omitted/empty = no TaskWraith tools
-   * (the read-only G4 default). Each entry is an ACP stdio server descriptor;
-   * shape stays `unknown` here because the live ACP wire shape is confirmed by
-   * the gated trace, not assumed by the client.
+   * this can be the full TaskWraith bridge for write-capable seats or the scoped
+   * safe-subset bridge for read-only seats. Omitted/empty = no TaskWraith tools.
+   * Each entry is an ACP stdio server descriptor; shape stays `unknown` here
+   * because the live ACP wire shape is confirmed by gated traces, not assumed by
+   * the client.
    */
   mcpServers?: unknown[]
   /** Normalized run events: content / thinking / init(sessionId) / result / warning. */
@@ -145,7 +145,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
     if (!options.onPermissionRequest) {
       options.onEvent({
         type: 'provider_warning',
-        text: `Grok requested a tool (${request.toolName}) — declined (TaskWraith tool mediation is gated until G5c).`
+        text: `Grok requested a tool (${request.toolName}) — declined because no TaskWraith permission mediator was attached.`
       })
     }
   }

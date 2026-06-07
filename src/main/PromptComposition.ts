@@ -68,6 +68,7 @@ function providerDisplayName(provider: unknown): string {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   if (provider === 'gemini') return 'Gemini'
   return 'Sub-thread'
 }
@@ -515,6 +516,32 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       'If the TaskWraith MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${codexDelegationPreamble}\n\n${contextualPrompt}`
+  }
+
+  // (7) Cursor / Grok parity path: write-capable workspace runs register the
+  // brokered TaskWraith MCP server at launch. Native provider side-effect tools
+  // are constrained by the runtime; the governed path is MCP, whose handlers
+  // apply TaskWraith approvals + workspace/path checks before mutating files or
+  // running commands. Keep injecting this on resumes until we verify both
+  // providers retain the runtime note in their own resumable sessions.
+  if ((provider === 'cursor' || provider === 'grok') && !isGlobalRun && approvalMode !== 'plan') {
+    const label = providerDisplayName(provider)
+    const namespace =
+      provider === 'cursor'
+        ? 'Cursor may expose tools as `taskwraith__<tool>` or under `Mcp(taskwraith:...)`; examples: taskwraith__workspace_search, taskwraith__apply_patch, taskwraith__git_status, taskwraith__run_task, and taskwraith__delegate_to_subthread.'
+        : 'Grok may expose tools as `TaskWraith__<tool>`; examples: TaskWraith__workspace_search, TaskWraith__apply_patch, TaskWraith__git_status, TaskWraith__run_task, and TaskWraith__delegate_to_subthread.'
+    const parityPreamble = [
+      `TaskWraith runtime note: this ${label} workspace run has access to the TaskWraith MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.`,
+      `Tool groups: ${TASKWRAITH_MCP_TOOL_GROUPS}`,
+      `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
+      namespace,
+      'Use the TaskWraith MCP tools for file edits and shell commands. Native provider write/shell paths are constrained here so TaskWraith can apply permission policy, workspace/path checks, and transcript/audit logging.',
+      ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
+      "For CROSS-PROVIDER delegation, call delegate_to_subthread through the TaskWraith MCP server — do not use a provider-native sub-agent path because it cannot reach other TaskWraith providers.",
+      "Spawn example: delegate_to_subthread({ provider: 'codex', prompt: 'Run the focused test suite and summarize failures.', returnResult: true }).",
+      'If the TaskWraith MCP tools are unavailable, stop and report the exact missing tool names instead of planning edits without applying them.'
+    ].join('\n')
+    contextualPrompt = `${parityPreamble}\n\n${contextualPrompt}`
   }
 
   return {

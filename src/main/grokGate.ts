@@ -24,14 +24,16 @@ function isOptOut(value: string | undefined): boolean {
 }
 
 /**
- * 1.0.6-G4 — Sub-gate routing Grok runs through the ACP transport
+ * 1.0.6-G4/G6 — Sub-gate routing Grok runs through the ACP transport
  * (`grok agent stdio`, bidirectional JSON-RPC) instead of the headless
- * streaming-json path (G3). Default OFF: Grok uses the proven headless path
- * until ACP is soaked. Only meaningful when the provider gate is also on.
+ * streaming-json path (G3). Default ON so TaskWraith can register its MCP
+ * bridge and mediate native permission requests; set TASKWRAITH_GROK_ACP=0
+ * (or false/no) to fall back to the older headless path for emergency triage.
+ * Only meaningful when the provider gate is also on.
  */
 export function grokAcpEnabled(): boolean {
   const value = process.env.TASKWRAITH_GROK_ACP
-  return value === '1' || value === 'true' || value === 'yes'
+  return value !== '0' && value !== 'false' && value !== 'no'
 }
 
 /**

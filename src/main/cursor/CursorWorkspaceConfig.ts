@@ -4,23 +4,23 @@
 // UNMEDIATED, and that a `.cursor/cli.json` deny-list hard-blocks them. Cursor
 // has no `--deny` argv flag (unlike Grok) — permissions are file-based — so
 // write-capable runs write a transient workspace-local `.cursor/cli.json` that
-// **denies native shell** (`Shell(**)`) while leaving file edits allowed. Edits
-// then land in the workspace and are surfaced through TaskWraith's run-diff /
-// "Review changes" authority surface (the same net Grok's headless write mode
-// uses); native shell is simply impossible. Restored after the run.
+// **denies native shell + native writes** (`Shell(**)`, `Write(**)`) while the
+// TaskWraith MCP bridge supplies governed write_file / replace / apply_patch
+// tools. Edits then flow through TaskWraith's approval ledger and workspace/path
+// checks instead of Cursor-native side effects. Restored after the run.
 //
 // SAFETY: never touches global `~/.cursor`. Merges (not clobbers) any existing
 // workspace `.cursor/cli.json` — we only ADD the shell deny — and restores the
-// exact original bytes on completion. A crash that skips restore leaves only an
-// extra Shell(**) deny (conservative, never destructive). The caller falls back
-// to read-only (`--mode plan`) if this config can't be applied.
+// exact original bytes on completion. A crash that skips restore leaves only
+// extra Shell(**) / Write(**) deny rules (conservative, never destructive). The
+// caller falls back to read-only (`--mode plan`) if this config can't be applied.
 //
-// 1.0.6-CRUX34 (OQ#2): write mode optionally ALSO sets up the web bridge — a
-// per-run `.cursor/mcp.json` registering the TaskWraith `web_fetch` MCP server plus
-// an `allow: ["Mcp(taskwraith:*)"]` rule merged into the SAME cli.json write (one
+// Write mode also sets up the TaskWraith MCP bridge: a per-run
+// `.cursor/mcp.json` registering the brokered `taskwraith` MCP server plus an
+// `allow: ["Mcp(taskwraith:*)"]` rule merged into the SAME cli.json write (one
 // write, one restore for both files). Default mode is the only mode where Cursor
-// executes MCP tools (plan mode rejects them), and TaskWraith write mode == default
-// cursor mode, so the bridge rides exactly the write-mode trigger.
+// executes MCP tools (plan mode rejects them), and TaskWraith write mode ==
+// default Cursor mode, so the bridge rides exactly the write-mode trigger.
 
 import { mergeCursorAllowRules, mergeCursorMcpConfig } from './CursorMcpBridge'
 
@@ -30,8 +30,8 @@ export interface CursorCliConfig {
 }
 
 /** Native side effects denied in write mode. Edits stay allowed (diff-reviewed);
- *  shell is blocked outright. */
-export const CURSOR_WRITE_MODE_DENY_RULES: readonly string[] = ['Shell(**)']
+ *  shell and provider-native writes are blocked outright. */
+export const CURSOR_WRITE_MODE_DENY_RULES: readonly string[] = ['Shell(**)', 'Write(**)']
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -72,7 +72,7 @@ export interface CursorConfigFs {
 }
 
 /**
- * Optional web-bridge setup applied alongside the write-mode deny-list (OQ#2).
+ * Optional MCP bridge setup applied alongside the write-mode deny-list.
  * `allowRules` are always merged into the cli.json write. `mcpConfigPath` +
  * `serverEntry` are OPTIONAL: supply both to also register a per-run workspace
  * `.cursor/mcp.json` (the original approach); OMIT both for CRUX39 "B" mode,
@@ -131,7 +131,7 @@ function restoreFile(fs: CursorConfigFs, path: string, cap: CapturedFile): void 
 
 /**
  * Apply the write-mode deny-list to `configPath` (inside `dirPath` = workspace
- * `.cursor/`), optionally also setting up the web bridge (`bridge`). Returns an
+ * `.cursor/`), optionally also setting up the MCP bridge (`bridge`). Returns an
  * idempotent `restore()` to call when the run ends: rewrites the original bytes
  * of each touched file if it existed, else removes it (and the `.cursor` dir if
  * we created it). Never throws on restore (best-effort).

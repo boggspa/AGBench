@@ -125,7 +125,7 @@ describe('runGrokAcpTurn', () => {
     expect(closes).toEqual([0])
   })
 
-  it('G5b — passes provided mcpServers to session/new (read-only scoped bridge)', () => {
+  it('G5b — passes provided mcpServers to session/new', () => {
     const child = new FakeAcpChild()
     const scopedBridge = {
       name: 'taskwraith-grok',

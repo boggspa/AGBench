@@ -1083,10 +1083,10 @@ export interface ProviderApprovalCapability {
 
 export interface ProviderMcpCapability {
   state: ProviderCapabilityState
-  // 'provider-managed': the provider resolves its own tools, TaskWraith injects
-  // none (e.g. Grok CLI). 'taskwraith web bridge': TaskWraith's host web bridge
-  // (web_fetch/web_search) is the injected surface (Cursor). 'unsupported' is
-  // retained for back-compat fixtures but no longer produced.
+  // 'provider-managed': the provider resolves its own tools and TaskWraith does
+  // not expose a structured bridge. 'taskwraith web bridge' and 'unsupported'
+  // are retained for back-compat fixtures but no longer produced for active
+  // Cursor/Grok capability contracts.
   source:
     | 'taskwraith'
     | 'provider'

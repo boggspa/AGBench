@@ -87,11 +87,14 @@ describe('ProviderCapabilities', () => {
   it('honors blocked settings in the Codex tooling contract', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'codex',
-      settings: settings({
-        ...defaultServices,
-        shellCommands: 'deny',
-        networkAccess: 'deny'
-      }),
+      settings: {
+        ...settings({
+          ...defaultServices,
+          shellCommands: 'deny',
+          networkAccess: 'deny'
+        }),
+        geminiMcpBridgeEnabled: true
+      },
       status: { provider: 'codex', available: true, version: '1.0.0', appServer: 'started' },
       mcpStatus: { data: [{ name: 'local', tools: { search: {}, read: {} } }] }
     })
@@ -111,7 +114,7 @@ describe('ProviderCapabilities', () => {
   it('keeps a provider runnable when optional metadata has an error', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'codex',
-      settings: settings(),
+      settings: { ...settings(), geminiMcpBridgeEnabled: true },
       status: {
         provider: 'codex',
         version: '1.0.0',
@@ -123,6 +126,20 @@ describe('ProviderCapabilities', () => {
     expect(contract.availability.available).toBe(true)
     expect(contract.availability.error).toBe('Rate-limit metadata failed')
     expect(contract.warnings.map((warning) => warning.id)).not.toContain('codex-unavailable')
+  })
+
+  it('treats Codex MCP as available when TaskWraith registration is enabled but live listing is absent', () => {
+    const contract = buildProviderCapabilityContract({
+      provider: 'codex',
+      settings: { ...settings(), geminiMcpBridgeEnabled: true },
+      status: { provider: 'codex', available: true, version: '1.0.0', appServer: 'started' },
+      mcpStatus: { data: [] }
+    })
+
+    expect(contract.mcp.state).toBe('available')
+    expect(contract.mcp.serverName).toBe('TaskWraith')
+    expect(contract.mcp.tools).toContain('write_file')
+    expect(contract.mcp.message).toContain('did not expose a live server listing')
   })
 
   it('marks Claude and Kimi provider-native tools as delegated', () => {
@@ -183,10 +200,33 @@ describe('ProviderCapabilities', () => {
     expect(grok.tools.delegate.enforcedByTaskWraith).toBe(false)
   })
 
+  it('marks Cursor and Grok as TaskWraith MCP bridge-backed when the bridge is enabled', () => {
+    for (const provider of ['cursor', 'grok'] as const) {
+      const contract = buildProviderCapabilityContract({
+        provider,
+        settings: { ...settings(), geminiMcpBridgeEnabled: true },
+        status: { provider, available: true, version: '1.0.0' }
+      })
+
+      expect(contract.mcp.state).toBe('available')
+      expect(contract.mcp.source).toBe('bridge')
+      expect(contract.mcp.tools).toContain('write_file')
+      expect(contract.tools.shellCommands.source).toBe('bridge')
+      expect(contract.tools.shellCommands.enforcedByTaskWraith).toBe(true)
+      expect(contract.tools.fileChanges.source).toBe('bridge')
+      expect(contract.tools.fileChanges.enforcedByTaskWraith).toBe(true)
+      expect(contract.tools.elicit.state).toBe('available')
+      expect(contract.tools.delegate.state).toBe('gated')
+    }
+  })
+
   it('reflects a denied subThreadDelegation policy as a blocked delegate row', () => {
     const codex = buildProviderCapabilityContract({
       provider: 'codex',
-      settings: settings({ ...defaultServices, subThreadDelegation: 'deny' }),
+      settings: {
+        ...settings({ ...defaultServices, subThreadDelegation: 'deny' }),
+        geminiMcpBridgeEnabled: true
+      },
       status: { provider: 'codex', available: true, version: '1.0.0', appServer: 'started' }
     })
 
@@ -202,7 +242,10 @@ describe('ProviderCapabilities', () => {
     // elicit/delegate to rows must NOT change that 5-row tally.
     const codex = buildProviderCapabilityContract({
       provider: 'codex',
-      settings: settings({ ...defaultServices, subThreadDelegation: 'allow' }),
+      settings: {
+        ...settings({ ...defaultServices, subThreadDelegation: 'allow' }),
+        geminiMcpBridgeEnabled: true
+      },
       status: { provider: 'codex', available: true, version: '1.0.0', appServer: 'started' }
     })
 

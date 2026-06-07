@@ -428,16 +428,15 @@ import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import {
   experimentalCursorProviderEnabled,
-  cursorDebugEnabled,
-  cursorWebBridgeEnabled
+  cursorDebugEnabled
 } from './cursorGate'
 import { buildCursorCliArgs, cursorWriteCapable } from './cursor/CursorCliArgs'
 import { cursorEventToRunEvents, type NormalizedCursorRunEvent } from './cursor/CursorStreamJson'
 import { applyCursorWriteModeConfig } from './cursor/CursorWorkspaceConfig'
 import {
+  buildCursorMcpServerEntry,
   CURSOR_MCP_ALLOW_RULES,
-  CURSOR_MCP_SERVER_NAME,
-  CURSOR_WEB_FETCH_MCP_SERVER_SOURCE
+  CURSOR_MCP_SERVER_NAME
 } from './cursor/CursorMcpBridge'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
@@ -5485,63 +5484,13 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   })
 }
 
-// 1.0.6-CRUX34 (OQ#2) — materialise the embedded TaskWraith web_fetch MCP server to
-// a stable userData path so a per-run workspace `.cursor/mcp.json` can point
-// cursor-agent at it. Written from CursorMcpBridge's source string (idempotent:
-// rewrite only if missing/changed) → no extraResources packaging step. Returns
-// '' on any fs error, which makes the caller skip the bridge (the run still
-// proceeds, just without web). Spawned via electron-as-node by the caller, so no
-// system `node` is required.
-function ensureCursorMcpServerScript(): string {
-  try {
-    const dir = join(app.getPath('userData'), 'cursor-mcp')
-    const file = join(dir, 'taskwraith-web-fetch-server.cjs')
-    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true })
-    let current: string | null = null
-    if (fsSync.existsSync(file)) {
-      try {
-        current = fsSync.readFileSync(file, 'utf8')
-      } catch {
-        current = null
-      }
-    }
-    if (current !== CURSOR_WEB_FETCH_MCP_SERVER_SOURCE) {
-      fsSync.writeFileSync(file, CURSOR_WEB_FETCH_MCP_SERVER_SOURCE)
-    }
-    return file
-  } catch {
-    return ''
-  }
-}
-
-// 1.0.6-CRUX39 ("B") — the OQ#2 web bridge relies on a user-registered GLOBAL
-// taskwraith server in ~/.cursor/mcp.json (added once via Cursor's Tools & MCPs →
-// Add Custom MCP, pointing at the script we materialise in userData). We READ
-// that file to confirm the prerequisite is present (reading global ~/.cursor is
-// fine; we never WRITE it). If it's absent the bridge stays inactive.
-function cursorMcpServerRegisteredGlobally(): boolean {
-  try {
-    const globalMcp = join(app.getPath('home'), '.cursor', 'mcp.json')
-    if (!fsSync.existsSync(globalMcp)) return false
-    const parsed = JSON.parse(fsSync.readFileSync(globalMcp, 'utf8')) as {
-      mcpServers?: Record<string, unknown>
-    }
-    return Boolean(parsed?.mcpServers?.[CURSOR_MCP_SERVER_NAME])
-  } catch {
-    return false
-  }
-}
-
-// 1.0.6-CRUX39 ("B") — Cursor approves MCP servers PER WORKSPACE
-// (~/.cursor/projects/<ws>/) and headless --approve-mcps proved unreliable
-// (persistent "User rejected MCP … isReadonly:false"; proven 4/4 only once the
-// workspace is approved). So — per the maintainer's explicit "B" call — we approve our
-// OWN read-only web_fetch server for the run's workspace via
-// `cursor-agent mcp enable taskwraith`. This is the ONLY write TaskWraith makes under
-// ~/.cursor, only ever approves our own server, and only when the bridge is
-// opted in. Idempotent ("already enabled") + cached in-process so it spawns at
-// most once per workspace per session. Best-effort: a failure just means this
-// workspace's runs may lack web that session.
+// Cursor approves MCP servers per workspace (~/.cursor/projects/<ws>/).
+// After writing the transient workspace `.cursor/mcp.json`, approve only the
+// TaskWraith server for that workspace via `cursor-agent mcp enable taskwraith`.
+// This never approves arbitrary user MCP servers. Idempotent ("already enabled")
+// and cached in-process, so it spawns at most once per workspace per session.
+// Best-effort: failure still leaves the per-run MCP config + --approve-mcps path,
+// and native shell/write remain denied.
 const cursorMcpApprovedWorkspaces = new Set<string>()
 async function ensureCursorMcpApproved(binaryPath: string, workspace: string): Promise<void> {
   if (cursorMcpApprovedWorkspaces.has(workspace)) return
@@ -5560,15 +5509,13 @@ async function ensureCursorMcpApproved(binaryPath: string, workspace: string): P
   cursorMcpApprovedWorkspaces.add(workspace)
 }
 
-// CR4/CR6/CRUX39 — Cursor (Composer 2.5) runtime over the shared CLI streaming
+// CR4/CR6/CRUX parity — Cursor (Composer 2.5) runtime over the shared CLI streaming
 // machinery (runCliProviderProcess → handleCliProviderJsonEvent → the
 // state.provider==='cursor' branch → the fixture-tested CursorStreamJson mapper).
 // Read-only runs pass `--mode plan` (no edits, proven by CR3); write-capable runs
-// run in default mode contained by a transient workspace `.cursor/cli.json`
-// deny-list (CR6). When the OQ#2 web bridge is opted in (cursorWebBridgeEnabled)
-// AND the user's global taskwraith server is registered, the run also gets a cli.json
-// `Mcp(taskwraith:*)` allow rule + its workspace auto-approved (above) — NO per-run
-// mcp.json and NO --approve-mcps (the per-workspace approval is what works).
+// run in default mode contained by transient workspace `.cursor/cli.json` +
+// `.cursor/mcp.json` files: native shell/write are denied and the full
+// TaskWraith MCP bridge is allowed for governed side effects.
 // CursorCliArgs NEVER emits bare -p / --force / --yolo.
 async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
   const route = routeWithRunId('cursor', payload)
@@ -5597,38 +5544,44 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     sendAgentCompatExit(event.sender, 'cursor', 1, route)
     return
   }
-  // CR6 — TaskWraith-owned write mode. Cursor has no `--deny` argv flag, so a
-  // write-capable run writes a transient workspace-local `.cursor/cli.json`
-  // denying native shell (`Shell(**)`); file edits stay allowed and are surfaced
-  // through TaskWraith's run-diff / Review-changes authority surface (Grok-parity).
-  // The config is restored on completion. If it can't be written (no workspace,
-  // fs error), we FALL BACK to read-only (`--mode plan`) — write mode never runs
-  // without native-shell containment. Never mutates global ~/.cursor.
+  // CR6/CRUX parity — TaskWraith-owned write mode. Cursor has no `--deny` argv
+  // flag, so a write-capable run writes transient workspace-local Cursor config:
+  //   - `.cursor/mcp.json` registers the brokered TaskWraith MCP server.
+  //   - `.cursor/cli.json` allows Mcp(taskwraith:*) and denies native shell/write.
+  //
+  // File edits should therefore flow through TaskWraith MCP tools
+  // (write_file/replace/apply_patch), which enforce approval policy and workspace
+  // path checks before execution. The config is restored on completion. If the
+  // broker/config setup fails, we fall back to read-only (`--mode plan`) rather
+  // than launching write mode without TaskWraith-controlled side effects.
   const writeCapable = cursorWriteCapable(payload.approvalMode)
   let restoreCursorConfig: (() => void) | undefined
+  let cursorTaskWraithMcpActive = false
   if (writeCapable && payload.workspace) {
     try {
       const cursorDir = join(payload.workspace, '.cursor')
       const cliPath = join(cursorDir, 'cli.json')
-      // OQ#2 web bridge ("B", opt-in via cursorWebBridgeEnabled /
-      // TASKWRAITH_CURSOR_WEB=1). Reliable recipe (proven 4/4): the user registers
-      // our read-only web_fetch server once in global ~/.cursor/mcp.json, and
-      // TaskWraith (a) keeps that script fresh, (b) auto-approves it for THIS
-      // workspace, and (c) allows the Mcp tool in cli.json. No per-run mcp.json
-      // and no --approve-mcps — the per-workspace approval is what makes it work.
-      // Plan mode rejects MCP tools, so read-only runs never reach here.
-      if (cursorWebBridgeEnabled() && cursorMcpServerRegisteredGlobally()) {
-        ensureCursorMcpServerScript() // keep the global config's target script fresh
-        await ensureCursorMcpApproved(resolved.binaryPath, payload.workspace)
-        restoreCursorConfig = applyCursorWriteModeConfig(fsSync, cliPath, cursorDir, {
-          allowRules: CURSOR_MCP_ALLOW_RULES // allow Mcp(taskwraith:*); no workspace mcp.json
+      const mcpPath = join(cursorDir, 'mcp.json')
+      await mcpBridgeRuntime.startGeminiMcpBroker()
+      restoreCursorConfig = applyCursorWriteModeConfig(fsSync, cliPath, cursorDir, {
+        allowRules: CURSOR_MCP_ALLOW_RULES,
+        mcpConfigPath: mcpPath,
+        serverEntry: buildCursorMcpServerEntry({
+          command: process.execPath,
+          args: taskwraithMcpBridgeArgs(geminiMcpSocketPath()),
+          env: {
+            [GEMINI_MCP_BRIDGE_ENV]: '1',
+            TASKWRAITH_PARENT_PROVIDER: 'cursor',
+            TASKWRAITH_RUN_ID: route.appRunId || '',
+            TASKWRAITH_CHAT_ID: route.appChatId || ''
+          }
         })
-      } else {
-        // No bridge: plain write-mode containment (deny native shell only).
-        restoreCursorConfig = applyCursorWriteModeConfig(fsSync, cliPath, cursorDir)
-      }
+      })
+      await ensureCursorMcpApproved(resolved.binaryPath, payload.workspace)
+      cursorTaskWraithMcpActive = true
     } catch {
       restoreCursorConfig = undefined
+      cursorTaskWraithMcpActive = false
     }
   }
   const args = buildCursorCliArgs({
@@ -5637,9 +5590,9 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     model: payload.model,
     providerSessionId: payload.providerSessionId,
     // Honor the chat's approval mode only when the containment config is in
-    // place; otherwise force read-only. (No --approve-mcps: the bridge relies on
-    // the per-workspace MCP approval, not headless auto-approval.)
-    approvalMode: restoreCursorConfig ? payload.approvalMode : 'plan'
+    // place; otherwise force read-only.
+    approvalMode: cursorTaskWraithMcpActive ? payload.approvalMode : 'plan',
+    webBridgeActive: cursorTaskWraithMcpActive
   })
   runCliProviderProcess(event, 'cursor', resolved.binaryPath, args, payload, {
     fallback: false,
@@ -5653,15 +5606,13 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   })
 }
 
-// 1.0.6-G4 — read-only Grok over ACP (`grok agent stdio`, bidirectional
+// 1.0.6-G4/G6 — Grok over ACP (`grok agent stdio`, bidirectional
 // JSON-RPC). GrokAcpClient drives initialize → session/new → session/prompt and
 // streams session/update onto the same run-event sink as the headless path
 // (applyGrokRunEvent). Gated behind grokAcpEnabled(); headless stays fallback.
-// No MCP / tool mediation yet (read-only) — that's G5.
-// Distinct MCP server name for Grok's read-only scoped bridge (kept off the
-// global 'taskwraith' name to avoid a registry collision with the cursor web-fetch
-// server). Single-sourced so the session/new entry and the permission-allow
-// check below agree.
+// Write-capable seats receive the brokered TaskWraith MCP server; read-only
+// scoped seats use a distinct server name so the permission-allow check below
+// can identify safe-subset tool calls.
 
 // Is this ACP permission request for one of OUR scoped-bridge tools? The
 // taskwraith-grok bridge advertises ONLY the non-mutating safe subset (--safe-subset
@@ -5752,40 +5703,42 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     state
   )
 
-  // G5b — read-only Grok seat: advertise TaskWraith's non-mutating MCP tools via a
-  // scoped bridge (safe subset only). The ACP trace proved Grok auto-runs MCP
-  // tools with NO session/request_permission, so the bridge's advertise list +
-  // tools/call reject are the ENTIRE safety boundary — hence --safe-subset
-  // (fail-closed, atomic with the spawn) and read-only-seat-only. Default OFF
-  // (grokReadOnlyMcpAdvertiseEnabled) until the boundary is live-verified.
+  // G5b/G6 — advertise TaskWraith MCP tools via ACP `session/new`.
+  // Write-capable seats receive the full brokered TaskWraith server: mutating
+  // MCP tools still route through executeGeminiMcpTool, which applies the
+  // TaskWraith approval ledger, workspace/path checks, and write locks before
+  // any side effect. Read-only seats stay conservative: they only receive the
+  // safe subset when the read-only advertise flag is explicitly enabled.
   let grokMcpServers: unknown[] = []
-  const grokAdvertiseFlag = grokReadOnlyMcpAdvertiseEnabled()
+  const grokWriteSeat = grokWriteCapable(payload.approvalMode)
+  const grokReadOnlySeat = !grokWriteSeat
+  const grokReadOnlyAdvertiseFlag = grokReadOnlyMcpAdvertiseEnabled()
   const grokBridgeEnabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
-  const grokReadOnlySeat = !grokWriteCapable(payload.approvalMode)
+  const grokAdvertiseTaskWraithMcp =
+    grokBridgeEnabled && (grokWriteSeat || grokReadOnlyAdvertiseFlag)
   const grokMcpDebug = process.env.TASKWRAITH_GROK_DEBUG
   if (grokMcpDebug === '1' || grokMcpDebug === 'true' || grokMcpDebug === 'yes') {
-    // Diagnostic: which gate condition gates the scoped read-only bridge. All
-    // three must be true for session/new to carry the taskwraith-grok server.
     process.stderr.write(
-      `[grok-mcp] scoped-bridge gate advertiseFlag=${grokAdvertiseFlag} bridgeEnabled=${grokBridgeEnabled} readOnlySeat=${grokReadOnlySeat} approvalMode=${JSON.stringify(payload.approvalMode)} resume=${Boolean(payload.providerSessionId)}\n`
+      `[grok-mcp] bridge gate advertise=${grokAdvertiseTaskWraithMcp} bridgeEnabled=${grokBridgeEnabled} writeSeat=${grokWriteSeat} readOnlyAdvertiseFlag=${grokReadOnlyAdvertiseFlag} approvalMode=${JSON.stringify(payload.approvalMode)} resume=${Boolean(payload.providerSessionId)}\n`
     )
   }
-  if (grokAdvertiseFlag && grokBridgeEnabled && grokReadOnlySeat) {
+  if (grokAdvertiseTaskWraithMcp) {
     try {
       await mcpBridgeRuntime.startGeminiMcpBroker()
+      const safeSubset = grokReadOnlySeat
       grokMcpServers = [
         {
           // ACP McpServer is an UNTAGGED enum: the stdio variant is
           // {name, command, args, env} with NO `type` field and env REQUIRED. A
           // stray `type:'stdio'` makes it match no variant (-32602 Invalid
-          // params, which also hangs the turn). Distinct name from the global
-          // 'taskwraith' server (cursor web-fetch) to avoid a registry collision.
-          // env carries the routing identity in the ACP EnvVariable shape
-          // ({name,value}) so the bridge's broker calls map to THIS run.
-          name: GROK_SCOPED_MCP_SERVER_NAME,
+          // params, which also hangs the turn). env carries the routing identity
+          // in the ACP EnvVariable shape ({name,value}) so broker calls map to
+          // THIS run.
+          name: safeSubset ? GROK_SCOPED_MCP_SERVER_NAME : GEMINI_MCP_SERVER_NAME,
           command: process.execPath,
-          args: taskwraithMcpBridgeArgs(geminiMcpSocketPath(), true),
+          args: taskwraithMcpBridgeArgs(geminiMcpSocketPath(), safeSubset),
           env: [
+            { name: GEMINI_MCP_BRIDGE_ENV, value: '1' },
             { name: 'TASKWRAITH_PARENT_PROVIDER', value: 'grok' },
             { name: 'TASKWRAITH_RUN_ID', value: route.appRunId || '' },
             { name: 'TASKWRAITH_CHAT_ID', value: route.appChatId || '' }
@@ -5803,7 +5756,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           provider: 'grok',
           severity: 'warning',
           title: 'Grok MCP bridge unavailable',
-          message: `TaskWraith could not start the MCP broker; Grok is running without TaskWraith tools. ${
+          message: `TaskWraith could not start the MCP broker; Grok is running without TaskWraith MCP tools. ${
             error instanceof Error ? error.message : String(error)
           }`
         },
