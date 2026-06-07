@@ -76,6 +76,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 // daemon/APNs configuration sit together as a single device-management
 // page.
 import { PairingPage } from './PairingPage'
+import { MessagesBridgePanel } from './MessagesBridgePanel'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
 import { GrokTelemetryCard } from './GrokTelemetryCard'
@@ -963,6 +964,7 @@ export type SettingsTab =
   | 'mcp'
   | 'key-commands'
   | 'approval-ledger'
+  | 'messages'
   | 'pairing'
   | 'workspaces'
   | 'model-usage'
@@ -985,9 +987,9 @@ export type SettingsTabGroup = 'settings' | 'devices'
  *
  * Order matters: the sidebar renders tabs in this order and inserts
  * a divider whenever the `group` field changes from the previous
- * tab. The Pairing tab sits at the end under the "devices" group so
- * the maintainer's screenshot pattern reads correctly: settings tabs on top,
- * pairing pinned to the bottom with a visual gap.
+ * tab. The TestFlight-gated Devices tab remains last in the canonical
+ * list, but `getVisibleSettingsTabs` hides it while the iOS remote
+ * feature flag is off.
  */
 export const SETTINGS_TABS: Array<{
   id: SettingsTab
@@ -995,7 +997,7 @@ export const SETTINGS_TABS: Array<{
   group: SettingsTabGroup
 }> = [
   // 1.0.6 — explicit order requested by the maintainer: General, Appearance, Approvals,
-  // Key commands, Providers, MCP, Workspaces, Devices. All one group so NO
+  // Key commands, Providers, MCP, Workspaces, Messages, Model usage, Devices. All one group so NO
   // divider renders (the sidebar inserts a divider only when `group` changes;
   // keeping every tab in `settings` collapses the old settings/devices split).
   // "General" merges the legacy "Behavior" + "System" tabs (canonical id
@@ -1009,13 +1011,16 @@ export const SETTINGS_TABS: Array<{
   // "Workspaces" — Codex Environments-style page listing every workspace loaded
   // into TaskWraith; a row opens it in a fresh chat surface.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
+  // "Messages" — local Messages.app / iMessage bridge controls. Kept separate from
+  // the iOS device-pairing tab so the TestFlight-gated pairing app can stay hidden.
+  { id: 'messages', label: 'Messages', group: 'settings' },
   // "Model usage" — richer cross-provider usage page (quota meters + context
   // tiles). Not in the maintainer's explicit order list, kept at the tail of the settings
   // group rather than dropped.
   { id: 'model-usage', label: 'Model usage', group: 'settings' },
   // "Devices" merges the legacy Pairing + Remote Workspaces + Bridge Networking
-  // tabs (canonical id `pairing`). Same `settings` group now → no divider above
-  // it, per the requested layout.
+  // tabs (canonical id `pairing`). It stays hidden until the iOS remote
+  // TestFlight surface is ready.
   { id: 'pairing', label: 'Devices', group: 'settings' }
 ]
 
@@ -4895,6 +4900,9 @@ export function SettingsPanel({
             )}
           </div>
         )}
+
+        {/* ── Messages (local iMessage bridge) ─────────────────────────── */}
+        {activeTab === 'messages' && <MessagesBridgePanel />}
 
         {/* ── Model usage (cross-provider) ──────────────────────────────── */}
         {activeTab === 'model-usage' &&
