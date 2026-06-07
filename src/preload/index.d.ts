@@ -50,6 +50,19 @@ import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
 import type {
+  MessageChannelBinding,
+  MessageChannelBindingInput
+} from '../main/channels/MessageChannelTypes'
+import type { MessageChannelCursor } from '../main/channels/MessageChannelCursorStore'
+import type { MessageChannelAuditRecord } from '../main/channels/MessageChannelAuditStore'
+import type {
+  MessageChannelPollSummary,
+  MessagesBridgeConversationListResult,
+  MessagesBridgeConversationsParams,
+  MessagesBridgePollResult,
+  MessagesBridgePollParams
+} from '../main/channels/MessageChannelGatewayService'
+import type {
   GitPrReadiness,
   GitPrSummary,
   GitRepositorySnapshot,
@@ -843,6 +856,51 @@ declare global {
         sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut'
       }) => Promise<ChatRecord>
       getSideChats: (parentChatId: string) => Promise<ChatRecord[]>
+      listMessageChannelBindings: () => Promise<MessageChannelBinding[]>
+      upsertMessageChannelBinding: (
+        input: MessageChannelBindingInput
+      ) => Promise<MessageChannelBinding>
+      archiveMessageChannelBinding: (bindingId: string) => Promise<MessageChannelBinding | null>
+      sendMessageChannelTest: (bindingId: string) => Promise<{
+        ok: true
+        bindingId: string
+        recipientHandle: string
+        result?: unknown
+      }>
+      pollMessageChannelBinding: (
+        bindingId: string
+      ) => Promise<MessageChannelPollSummary & { bindingId: string }>
+      peekMessageChannelBinding: (
+        bindingId: string
+      ) => Promise<MessagesBridgePollResult & { bindingId: string }>
+      getMessagesBridgeStatus: () => Promise<{
+        ok: boolean
+        platform: string
+        pollSupported: boolean
+        sendTextSupported: boolean
+        sendAttachmentSupported?: boolean
+        reason?: string
+        [key: string]: unknown
+      }>
+      openMessagesPermissionHelper: () => Promise<{
+        ok: true
+        appName: string
+        dragTarget: string
+      }>
+      startMessagesPermissionHelperDrag: () => void
+      revealMessagesPermissionHelperApp: () => Promise<{ ok: boolean; error?: string }>
+      listMessagesBridgeConversations: (
+        params?: MessagesBridgeConversationsParams
+      ) => Promise<MessagesBridgeConversationListResult>
+      pollMessageChannelsOnce: (
+        params?: MessagesBridgePollParams
+      ) => Promise<MessageChannelPollSummary>
+      listMessageChannelCursors: () => Promise<MessageChannelCursor[]>
+      clearMessageChannelCursors: () => Promise<{ ok: boolean }>
+      clearMessageChannelBindingCursor: (
+        bindingId: string
+      ) => Promise<{ ok: boolean; bindingId: string }>
+      listMessageChannelAudit: (limit?: number) => Promise<MessageChannelAuditRecord[]>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
       truncateChat: (chatId: string) => Promise<ChatRecord | null>
