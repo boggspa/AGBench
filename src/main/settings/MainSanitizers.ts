@@ -70,6 +70,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'geminiMcpBridgeEnabled',
   'geminiMcpBridgeLastStatus',
   'bridgeDaemonEnabled',
+  'messageBridgeEnabled',
+  'messageBridgePollIntervalMs',
   'codexSandboxFallback',
   'updateChannel',
   'lastSeenChangelogVersion',
@@ -234,8 +236,7 @@ function sanitizeUpdateChangelog(value: unknown): ProductUpdateChangelog | undef
     const notes = record.releaseNotes
       .map((item) => {
         const noteRecord = isRecord(item) ? item : {}
-        const noteVersion =
-          typeof noteRecord.version === 'string' ? noteRecord.version.trim() : ''
+        const noteVersion = typeof noteRecord.version === 'string' ? noteRecord.version.trim() : ''
         if (!noteVersion) return null
         return {
           version: noteVersion,
@@ -277,7 +278,10 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     workspacePath: string,
     workspaceId?: unknown
   ): WorkspaceRecord {
-    const registeredPath = deps.requireRegisteredWorkspace(workspacePath, 'Scheduled task workspace')
+    const registeredPath = deps.requireRegisteredWorkspace(
+      workspacePath,
+      'Scheduled task workspace'
+    )
     const workspace = deps.findRegisteredWorkspace(registeredPath)
     if (!workspace) {
       throw new Error('Scheduled task workspace must be registered.')
@@ -502,7 +506,8 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     if ('recommendedApprovalMode' in input)
       sanitized.recommendedApprovalMode = optionalString(input.recommendedApprovalMode)
     if ('targetChatId' in input) sanitized.targetChatId = optionalString(input.targetChatId)
-    if ('dispatchedRunId' in input) sanitized.dispatchedRunId = optionalString(input.dispatchedRunId)
+    if ('dispatchedRunId' in input)
+      sanitized.dispatchedRunId = optionalString(input.dispatchedRunId)
     if ('dispatchedAt' in input) sanitized.dispatchedAt = optionalString(input.dispatchedAt)
     return sanitized
   }
@@ -755,6 +760,17 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     if ('bridgeDaemonEnabled' in sanitized) {
       const value = sanitized.bridgeDaemonEnabled
       sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
+    }
+    if ('messageBridgeEnabled' in sanitized) {
+      const value = sanitized.messageBridgeEnabled
+      sanitized.messageBridgeEnabled =
+        typeof value === 'boolean' ? value : deps.getSettings().messageBridgeEnabled
+    }
+    if ('messageBridgePollIntervalMs' in sanitized) {
+      const value = Number(sanitized.messageBridgePollIntervalMs)
+      sanitized.messageBridgePollIntervalMs = Number.isFinite(value)
+        ? Math.max(5_000, Math.trunc(value))
+        : deps.getSettings().messageBridgePollIntervalMs
     }
     if ('sidebarOpacityOverride' in sanitized) {
       const value = sanitized.sidebarOpacityOverride

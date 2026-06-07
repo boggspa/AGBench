@@ -221,6 +221,8 @@ const defaultSettings: AppSettings = {
   geminiMcpBridgeEnabled: false,
   geminiMcpBridgeLastStatus: undefined,
   bridgeDaemonEnabled: true,
+  messageBridgeEnabled: false,
+  messageBridgePollIntervalMs: 30_000,
   codexSandboxFallback: 'ask_rerun',
   updateChannel: 'stable',
   approvalTimeouts: {
@@ -580,6 +582,15 @@ export class AppStore {
         typeof stored.autoResumeParentOnSubThreadCompletion === 'boolean'
           ? stored.autoResumeParentOnSubThreadCompletion
           : defaultSettings.autoResumeParentOnSubThreadCompletion,
+      messageBridgeEnabled:
+        typeof stored.messageBridgeEnabled === 'boolean'
+          ? stored.messageBridgeEnabled
+          : defaultSettings.messageBridgeEnabled,
+      messageBridgePollIntervalMs:
+        typeof stored.messageBridgePollIntervalMs === 'number' &&
+        Number.isFinite(stored.messageBridgePollIntervalMs)
+          ? Math.max(5_000, Math.trunc(stored.messageBridgePollIntervalMs))
+          : defaultSettings.messageBridgePollIntervalMs,
       approvalTimeouts: {
         ...defaultSettings.approvalTimeouts,
         ...(storedApprovalTimeouts || {}),

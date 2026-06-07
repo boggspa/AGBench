@@ -1513,6 +1513,10 @@ export interface AppSettings {
   geminiMcpBridgeEnabled: boolean
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus
   bridgeDaemonEnabled?: boolean
+  /** Local macOS Messages.app bridge polling. Off by default; when enabled,
+   * main polls allowlisted iMessage bindings through the local bridge daemon. */
+  messageBridgeEnabled?: boolean
+  messageBridgePollIntervalMs?: number
   codexSandboxFallback: CodexSandboxFallbackMode
   updateChannel: ProductUpdateChannel
   lastSeenChangelogVersion?: string

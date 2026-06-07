@@ -171,4 +171,45 @@ describe('MainSanitizers settings patches', () => {
       }
     })
   })
+
+  it('requires explicit booleans for iMessage scheduled polling', () => {
+    const settings = makeSettings({
+      messageBridgeEnabled: false,
+      messageBridgePollIntervalMs: 30_000
+    })
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+
+    expect(
+      sanitizeSettingsPatch({
+        messageBridgeEnabled: true,
+        messageBridgePollIntervalMs: 250
+      })
+    ).toMatchObject({
+      messageBridgeEnabled: true,
+      messageBridgePollIntervalMs: 5_000
+    })
+    expect(
+      sanitizeSettingsPatch({
+        messageBridgeEnabled: 'false'
+      })
+    ).toMatchObject({
+      messageBridgeEnabled: false
+    })
+  })
+
+  it('preserves current iMessage polling state for malformed enablement patches', () => {
+    const settings = makeSettings({
+      messageBridgeEnabled: true,
+      messageBridgePollIntervalMs: 30_000
+    })
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+
+    expect(
+      sanitizeSettingsPatch({
+        messageBridgeEnabled: ''
+      })
+    ).toMatchObject({
+      messageBridgeEnabled: true
+    })
+  })
 })
