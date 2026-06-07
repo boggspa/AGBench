@@ -7,10 +7,12 @@ import {
   dialog,
   safeStorage,
   screen,
-  powerMonitor
+  powerMonitor,
+  nativeImage
 } from 'electron'
 import type {
   BrowserWindowConstructorOptions,
+  IpcMainEvent,
   MenuItemConstructorOptions
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
@@ -155,6 +157,24 @@ import {
 } from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
 import { RemoteAttentionApnsFanout } from './RemoteAttentionApnsFanout'
+import { MessageChannelBindingStore } from './channels/MessageChannelBindingStore'
+import { MessageChannelAuditStore } from './channels/MessageChannelAuditStore'
+import { MessageChannelCursorStore } from './channels/MessageChannelCursorStore'
+import {
+  labelTaskWraithOutboundText,
+  MessageChannelDeliveryService
+} from './channels/MessageChannelDeliveryService'
+import {
+  MessageChannelGatewayService,
+  type MessagesBridgeConversationListResult,
+  type MessagesBridgeConversationsParams,
+  type MessagesBridgePollParams,
+  type MessagesBridgePollResult
+} from './channels/MessageChannelGatewayService'
+import {
+  normalizeChannelHandle,
+  type MessageChannelBindingInput
+} from './channels/MessageChannelTypes'
 import { isUserAtDesktop as pureIsUserAtDesktop } from './ApnsIdleGate'
 import {
   ApprovalTimeoutScheduler,
@@ -495,6 +515,7 @@ import { CreativeApprovalGate } from './CreativeApprovalGate'
 
 let mainWindow: BrowserWindow | null = null
 const workspacePopoutWindows = new Map<string, BrowserWindow>()
+let messagesPermissionHelperWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
 let geminiSessionProcess: pty.IPty | null = null
 let codexClient: CodexAppServerClient | null = null
@@ -794,6 +815,9 @@ let soloChatWakeupServiceRef: SoloChatWakeupService | null = null
 // methods. Stays null when the daemon is disabled or hasn't spawned yet;
 // the `attached_window_*` MCP tools null-check and return a clear error.
 let bridgeDaemonRef: BridgeDaemonClient | null = null
+let messageChannelGatewayServiceRef: MessageChannelGatewayService | null = null
+const DEFAULT_MESSAGE_BRIDGE_POLL_INTERVAL_MS = 30_000
+const MIN_MESSAGE_BRIDGE_POLL_INTERVAL_MS = 5_000
 
 /**
  * Phase K3 — singleton CreativeApprovalGate used by every creative-app
@@ -12171,6 +12195,129 @@ async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
   return { ok: true }
 }
 
+function resolveTaskWraithAppDragTarget(): string {
+  const exePath = app.getPath('exe')
+  const bundleMatch = /^(.*?\.app)(?:\/Contents\/MacOS\/.*)?$/i.exec(exePath)
+  return bundleMatch?.[1] || exePath
+}
+
+async function loadMessagesPermissionHelperWindow(win: BrowserWindow): Promise<void> {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const target = new URL(process.env['ELECTRON_RENDERER_URL'])
+    target.searchParams.set('popout', 'permission-helper')
+    await win.loadURL(target.toString())
+    return
+  }
+  await win.loadFile(join(__dirname, '../renderer/index.html'), {
+    query: { popout: 'permission-helper' }
+  })
+}
+
+async function openMessagesPermissionHelperWindow(): Promise<{
+  ok: true
+  appName: string
+  dragTarget: string
+}> {
+  const existing = messagesPermissionHelperWindow
+  const dragTarget = resolveTaskWraithAppDragTarget()
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    return { ok: true, appName: app.getName(), dragTarget }
+  }
+
+  const isMac = process.platform === 'darwin'
+  const settings = AppStore.getSettings()
+  const useMaterialWindow =
+    (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
+    !settings.reduceTransparency
+  const useGlassWindow = isMac && useMaterialWindow
+  const win = new BrowserWindow({
+    width: 340,
+    height: 256,
+    minWidth: 300,
+    minHeight: 224,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    autoHideMenuBar: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'TaskWraith Permission Helper',
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    vibrancy: resolveNativeVibrancy(useGlassWindow),
+    backgroundMaterial: !isMac && useMaterialWindow ? 'tabbed' : undefined,
+    visualEffectState: 'active',
+    transparent: false,
+    backgroundColor:
+      useGlassWindow || (!isMac && useMaterialWindow)
+        ? '#00000000'
+        : resolvePopoutBackgroundColor(false),
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false
+    }
+  })
+
+  messagesPermissionHelperWindow = win
+  if (typeof win.setVisibleOnAllWorkspaces === 'function') {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
+  win.webContents.setWindowOpenHandler((details) => {
+    openSafeShellTargetDetached(details.url)
+    return { action: 'deny' }
+  })
+  win.on('ready-to-show', () => {
+    win.show()
+    win.focus()
+  })
+  win.on('closed', () => {
+    if (messagesPermissionHelperWindow === win) {
+      messagesPermissionHelperWindow = null
+    }
+  })
+  await loadMessagesPermissionHelperWindow(win)
+  return { ok: true, appName: app.getName(), dragTarget }
+}
+
+function startMessagesPermissionHelperDrag(event: IpcMainEvent): void {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender)
+  if (
+    !senderWindow ||
+    !messagesPermissionHelperWindow ||
+    senderWindow !== messagesPermissionHelperWindow ||
+    event.sender.isDestroyed()
+  ) {
+    return
+  }
+  const dragIcon = nativeImage.createFromPath(icon)
+  event.sender.startDrag({
+    file: resolveTaskWraithAppDragTarget(),
+    icon: dragIcon.isEmpty() ? nativeImage.createEmpty() : dragIcon
+  })
+}
+
+async function revealMessagesPermissionHelperApp(): Promise<{ ok: boolean; error?: string }> {
+  const dragTarget = resolveTaskWraithAppDragTarget()
+  try {
+    shell.showItemInFolder(dragTarget)
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
 function sanitizeChatScrollState(value: unknown):
   | {
       scrollTop: number
@@ -12479,6 +12626,94 @@ if (isGeminiMcpBridgeProcess) {
         console.log(line)
       }
     })
+    const messageChannelBindingStore = new MessageChannelBindingStore({
+      storagePath: join(app.getPath('userData'), 'channels', 'message-bindings.json')
+    })
+    const messageChannelCursorStore = new MessageChannelCursorStore({
+      storagePath: join(app.getPath('userData'), 'channels', 'message-cursors.json')
+    })
+    const messageChannelAuditStore = new MessageChannelAuditStore({
+      storagePath: join(app.getPath('userData'), 'channels', 'message-audit.ndjson')
+    })
+    const messageChannelDeliveryService = new MessageChannelDeliveryService({
+      sendText: async (params) => {
+        const daemon = bridgeDaemonRef
+        if (!daemon) {
+          throw new Error('TaskWraith bridge daemon is not running.')
+        }
+        return daemon.request('messages.sendText', params, { timeoutMs: 10_000 })
+      },
+      sendAttachment: async (params) => {
+        const daemon = bridgeDaemonRef
+        if (!daemon) {
+          throw new Error('TaskWraith bridge daemon is not running.')
+        }
+        return daemon.request('messages.sendAttachment', params, { timeoutMs: 30_000 })
+      },
+      canSendToTarget: ({ bindingId, accountId, chatGuid, recipientHandle }) => {
+        const binding = messageChannelBindingStore.get(bindingId)
+        if (!binding || binding.archived) return false
+        return (
+          binding.accountId === accountId &&
+          binding.chatGuid === chatGuid &&
+          binding.allowedHandles.includes(normalizeChannelHandle(recipientHandle))
+        )
+      },
+      auditStore: messageChannelAuditStore,
+      log: (line) => console.log(line)
+    })
+    runEventBus.subscribe(messageChannelDeliveryService)
+    let messageChannelPollTimer: ReturnType<typeof setInterval> | null = null
+    let messageChannelPollInFlight = false
+
+    const normalizeMessageBridgePollIntervalMs = (value: unknown): number => {
+      const numeric = Number(value)
+      if (!Number.isFinite(numeric)) return DEFAULT_MESSAGE_BRIDGE_POLL_INTERVAL_MS
+      return Math.max(MIN_MESSAGE_BRIDGE_POLL_INTERVAL_MS, Math.trunc(numeric))
+    }
+
+    const stopMessageChannelPolling = (): void => {
+      if (messageChannelPollTimer) {
+        clearInterval(messageChannelPollTimer)
+        messageChannelPollTimer = null
+      }
+    }
+
+    const pollMessageChannelsFromScheduler = async (): Promise<void> => {
+      if (messageChannelPollInFlight) return
+      const service = messageChannelGatewayServiceRef
+      if (!service) return
+      messageChannelPollInFlight = true
+      try {
+        await service.pollOnce()
+      } catch (err) {
+        messageChannelAuditStore.append({
+          kind: 'poll',
+          channel: 'imessage',
+          summary: 'Scheduled iMessage poll failed.',
+          payload: {
+            error: err instanceof Error ? err.message : String(err)
+          }
+        })
+        console.warn(
+          '[MessageChannelGateway] scheduled iMessage poll failed:',
+          err instanceof Error ? err.message : String(err)
+        )
+      } finally {
+        messageChannelPollInFlight = false
+      }
+    }
+
+    const reconcileMessageChannelPollingFromSettings = (): void => {
+      stopMessageChannelPolling()
+      const settings = AppStore.getSettings()
+      if (!settings.messageBridgeEnabled) return
+      const intervalMs = normalizeMessageBridgePollIntervalMs(settings.messageBridgePollIntervalMs)
+      messageChannelPollTimer = setInterval(() => {
+        void pollMessageChannelsFromScheduler()
+      }, intervalMs)
+      messageChannelPollTimer.unref?.()
+    }
     const bridgeApnsPusher = buildBridgeApnsPusherFromSettings()
 
     // Publish to module-scope refs so top-level approval helpers can fan
@@ -12987,7 +13222,9 @@ if (isGeminiMcpBridgeProcess) {
     }
 
     reconcileBridgeDaemonFromSettings()
+    reconcileMessageChannelPollingFromSettings()
     app.on('will-quit', () => {
+      stopMessageChannelPolling()
       stopBridgeDaemon()
     })
 
@@ -13141,6 +13378,12 @@ if (isGeminiMcpBridgeProcess) {
           }
           if (sanitizedPatch.bridgeDaemonEnabled !== undefined) {
             reconcileBridgeDaemonFromSettings()
+          }
+          if (
+            sanitizedPatch.messageBridgeEnabled !== undefined ||
+            sanitizedPatch.messageBridgePollIntervalMs !== undefined
+          ) {
+            reconcileMessageChannelPollingFromSettings()
           }
         }
       ]
@@ -15104,6 +15347,48 @@ if (isGeminiMcpBridgeProcess) {
     // (Phase F3) can dispatch agent-driven sub-thread runs without
     // requiring a Gemini-renderer round-trip.
     runCoordinatorRef = runCoordinator
+    const cancelActiveMessageChannelRunsForChat = async (chatId: string): Promise<number> => {
+      const sessions = availableProviderIds()
+        .flatMap((provider) => runManager.getActiveByProvider(provider))
+        .filter((session) => session.appChatId === chatId)
+      let cancelled = 0
+      for (const session of sessions) {
+        const ok = await cancelProviderRun(session.provider, session.runId)
+        if (ok) cancelled++
+      }
+      return cancelled
+    }
+    messageChannelGatewayServiceRef = new MessageChannelGatewayService({
+      bindingStore: messageChannelBindingStore,
+      pollMessages: async (
+        params: MessagesBridgePollParams
+      ): Promise<MessagesBridgePollResult> => {
+        const daemon = bridgeDaemonRef
+        if (!daemon) {
+          throw new Error('TaskWraith bridge daemon is not running.')
+        }
+        return daemon.request<MessagesBridgePollResult>('messages.poll', params, {
+          timeoutMs: 10_000
+        })
+      },
+      getChat: (chatId) => AppStore.getChat(chatId),
+      saveChat: saveAndBroadcastChat,
+      delivery: messageChannelDeliveryService,
+      cursorStore: messageChannelCursorStore,
+      auditStore: messageChannelAuditStore,
+      cancelActiveRunsForChat: cancelActiveMessageChannelRunsForChat,
+      resolveApproval: (approvalId, action) =>
+        approvalService?.resolve(approvalId, action, {
+          decisionSource: 'user',
+          extraMetadata: { source: 'imessageCommand' }
+        }) ?? false,
+      dispatchRun: (payload) => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          return Promise.resolve({ dispatched: false, appRunId: '' })
+        }
+        return runCoordinator.dispatch(payload, { sender: mainWindow.webContents })
+      }
+    })
     wakeupTimerServiceRef = new WakeupTimerService({
       onFire: handleEnsembleWakeupTimerFired
     })
@@ -15171,6 +15456,278 @@ if (isGeminiMcpBridgeProcess) {
       await dispatchAgentRun(payload, event)
     })
 
+
+    ipcMain.handle('message-channels:list-bindings', async () => {
+      return messageChannelBindingStore.list({ includeArchived: true })
+    })
+
+    ipcMain.handle(
+      'message-channels:upsert-binding',
+      async (_, input: MessageChannelBindingInput) => {
+        const binding = messageChannelBindingStore.upsert(input)
+        messageChannelAuditStore.append({
+          kind: 'binding_upserted',
+          channel: binding.channel,
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          bindingId: binding.id,
+          appChatId: binding.appChatId,
+          summary: 'Upserted iMessage channel binding.',
+          payload: {
+            provider: binding.provider,
+            mode: binding.mode,
+            requireTrigger: binding.requireTrigger,
+            allowedHandleCount: binding.allowedHandles.length
+          }
+        })
+        return binding
+      }
+    )
+
+    ipcMain.handle('message-channels:archive-binding', async (_, bindingId?: string) => {
+      const id = requireNonEmptyString(bindingId, 'Message channel binding id')
+      const binding = messageChannelBindingStore.archive(id)
+      if (binding) {
+        messageChannelAuditStore.append({
+          kind: 'binding_archived',
+          channel: binding.channel,
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          bindingId: binding.id,
+          appChatId: binding.appChatId,
+          summary: 'Archived iMessage channel binding.'
+        })
+      }
+      return binding
+    })
+
+    ipcMain.handle('message-channels:send-test', async (_, bindingId?: string) => {
+      const id = requireNonEmptyString(bindingId, 'Message channel binding id')
+      const binding = messageChannelBindingStore.get(id)
+      if (!binding || binding.archived) {
+        throw new Error('Active iMessage binding was not found.')
+      }
+      const recipientHandle = requireNonEmptyString(
+        binding.allowedHandles[0],
+        'Allowed iMessage handle'
+      )
+      const text = labelTaskWraithOutboundText(
+        `iMessage bridge test sent at ${new Date().toISOString()}.`
+      )
+      try {
+        const daemon = bridgeDaemonRef
+        if (!daemon) {
+          throw new Error('TaskWraith bridge daemon is not running.')
+        }
+        const result = await daemon.request(
+          'messages.sendText',
+          {
+            accountId: binding.accountId,
+            chatGuid: binding.chatGuid,
+            recipientHandle,
+            text
+          },
+          {
+            timeoutMs: 10_000
+          }
+        )
+        messageChannelAuditStore.append({
+          kind: 'outbound_sent',
+          channel: binding.channel,
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          bindingId: binding.id,
+          appChatId: binding.appChatId,
+          senderHandle: recipientHandle,
+          summary: 'Sent iMessage bridge test message.',
+          payload: {
+            test: true,
+            textPreview: text
+          }
+        })
+        return {
+          ok: true,
+          bindingId: binding.id,
+          recipientHandle,
+          result
+        }
+      } catch (err) {
+        messageChannelAuditStore.append({
+          kind: 'outbound_failed',
+          channel: binding.channel,
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          bindingId: binding.id,
+          appChatId: binding.appChatId,
+          senderHandle: recipientHandle,
+          summary: 'Failed to send iMessage bridge test message.',
+          payload: {
+            test: true,
+            error: err instanceof Error ? err.message : String(err),
+            textPreview: text
+          }
+        })
+        throw err
+      }
+    })
+
+    ipcMain.handle('message-channels:poll-binding', async (_, bindingId?: string) => {
+      const id = requireNonEmptyString(bindingId, 'Message channel binding id')
+      const binding = messageChannelBindingStore.get(id)
+      if (!binding || binding.archived) {
+        throw new Error('Active iMessage binding was not found.')
+      }
+      const service = messageChannelGatewayServiceRef
+      if (!service) {
+        throw new Error('Message channel gateway is not initialized.')
+      }
+      const cursor = messageChannelCursorStore.get({
+        channel: binding.channel,
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid
+      })
+      const summary = await service.pollOnce({
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid,
+        afterRowId: cursor?.lastRowId ?? 0,
+        includeFromMe: true
+      })
+      return {
+        bindingId: binding.id,
+        ...summary
+      }
+    })
+
+    ipcMain.handle('message-channels:peek-binding', async (_, bindingId?: string) => {
+      const id = requireNonEmptyString(bindingId, 'Message channel binding id')
+      const binding = messageChannelBindingStore.get(id)
+      if (!binding || binding.archived) {
+        throw new Error('Active iMessage binding was not found.')
+      }
+      const daemon = bridgeDaemonRef
+      if (!daemon) {
+        throw new Error('TaskWraith bridge daemon is not running.')
+      }
+      const result = await daemon.request<MessagesBridgePollResult>(
+        'messages.poll',
+        {
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          afterRowId: 0,
+          limit: 8,
+          includeFromMe: true,
+          latestFirst: true
+        },
+        { timeoutMs: 10_000 }
+      )
+      messageChannelAuditStore.append({
+        kind: 'poll',
+        channel: binding.channel,
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid,
+        bindingId: binding.id,
+        appChatId: binding.appChatId,
+        summary: `Peeked ${result.messages.length} latest iMessage rows for diagnostics.`,
+        payload: {
+          diagnostic: true,
+          latestFirst: true,
+          returned: result.messages.length,
+          latestRowId: result.messages[0]?.rowId
+        }
+      })
+      return {
+        bindingId: binding.id,
+        ...result
+      }
+    })
+
+    ipcMain.handle('message-channels:list-cursors', async () => {
+      return messageChannelCursorStore.list()
+    })
+
+    ipcMain.handle('message-channels:clear-cursors', async () => {
+      messageChannelCursorStore.clear()
+      return { ok: true }
+    })
+
+    ipcMain.handle('message-channels:clear-binding-cursor', async (_, bindingId?: string) => {
+      const id = requireNonEmptyString(bindingId, 'Message channel binding id')
+      const binding = messageChannelBindingStore.get(id)
+      if (!binding || binding.archived) {
+        throw new Error('Active iMessage binding was not found.')
+      }
+      messageChannelCursorStore.clear({
+        channel: binding.channel,
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid
+      })
+      messageChannelAuditStore.append({
+        kind: 'cursor_cleared',
+        channel: binding.channel,
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid,
+        bindingId: binding.id,
+        appChatId: binding.appChatId,
+        summary: 'Cleared iMessage cursor for operator binding.'
+      })
+      return { ok: true, bindingId: binding.id }
+    })
+
+    ipcMain.handle('message-channels:list-audit', async (_, limit?: number) => {
+      return messageChannelAuditStore.list({ limit })
+    })
+
+    ipcMain.handle('messages-bridge:status', async () => {
+      const daemon = bridgeDaemonRef
+      if (!daemon) {
+        return {
+          ok: false,
+          platform: process.platform,
+          pollSupported: false,
+          sendTextSupported: false,
+          reason: 'TaskWraith bridge daemon is not running.'
+        }
+      }
+      return daemon.request('messages.status', {}, { timeoutMs: 5_000 })
+    })
+
+    ipcMain.handle('messages-bridge:open-permission-helper', async () => {
+      return openMessagesPermissionHelperWindow()
+    })
+
+    ipcMain.on('messages-bridge:start-permission-helper-drag', startMessagesPermissionHelperDrag)
+
+    ipcMain.handle('messages-bridge:reveal-permission-helper-app', async () => {
+      return revealMessagesPermissionHelperApp()
+    })
+
+    ipcMain.handle(
+      'messages-bridge:list-conversations',
+      async (_, params: MessagesBridgeConversationsParams = {}) => {
+        const daemon = bridgeDaemonRef
+        if (!daemon) {
+          throw new Error('TaskWraith bridge daemon is not running.')
+        }
+        return daemon.request<MessagesBridgeConversationListResult>(
+          'messages.conversations',
+          params,
+          {
+            timeoutMs: 10_000
+          }
+        )
+      }
+    )
+
+    ipcMain.handle(
+      'message-channels:poll-once',
+      async (_, params: MessagesBridgePollParams = {}) => {
+        const service = messageChannelGatewayServiceRef
+        if (!service) {
+          throw new Error('Message channel gateway is not initialized.')
+        }
+        return service.pollOnce(params)
+      }
+    )
     ipcMain.handle(
       'run-ensemble-round',
       async (
@@ -15804,6 +16361,7 @@ if (isGeminiMcpBridgeProcess) {
     // re-validates the scheme as a security gate because the renderer
     // could be compromised by a future markdown XSS. Whitelist:
     //   - http / https / mailto -> shell.openExternal
+    //   - x-apple.systempreferences -> shell.openExternal for local permission setup
     //   - file:// or scheme-less absolute/relative path -> shell.openPath
     //   - everything else (javascript:, data:, ssh:, custom) -> no-op
     ipcMain.handle(

@@ -2,6 +2,7 @@ import type { ChatMessage, NativeSubAgentRequestPolicy, ProviderId } from './sto
 import { TASKWRAITH_MCP_TOOL_LIST } from './TaskWraithMcpTools'
 import { truncateOpaqueMarkdown, wrapOpaqueMarkdownBlock } from './MarkdownFenceSerializer'
 import { nativeSubAgentPromptInstruction } from './NativeSubAgentPolicy'
+import { channelInboundReplayText, isChannelInboundMessage } from './ChannelPromptReplay'
 
 /**
  * Prompt-composition utilities (Phase B3 step 1).
@@ -192,10 +193,10 @@ export function buildConversationContextBlock(
     return ''
   }
 
-  const lines = windowedMessages.map(
-    (item) =>
-      `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(item.content, MAX_CONTEXT_CHARS_PER_TURN)}`
-  )
+  const lines = windowedMessages.map((item) => {
+    const content = isChannelInboundMessage(item) ? channelInboundReplayText(item) : item.content
+    return `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(content, MAX_CONTEXT_CHARS_PER_TURN)}`
+  })
 
   const contextBlock = [
     `\n\nConversation context (last ${Math.min(maxTurns, Math.ceil(windowedMessages.length / 2))} turn(s)):`,
