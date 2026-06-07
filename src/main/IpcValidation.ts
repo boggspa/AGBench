@@ -98,6 +98,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-run-events': ['optionalObject'],
   'get-run-event-replay': ['runId'],
   'get-approval-ledger': ['optionalObject'],
+  'record-approval-elevation-ack': ['object'],
   'get-product-operations-status': [],
   'get-product-crashes': ['optionalObject'],
   'record-product-crash': ['object'],
