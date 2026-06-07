@@ -1739,206 +1739,285 @@
   background-color: color-mix(in srgb, var(--theme-chroma-1) 14%, transparent);
 }
 
-/* Popout readability for the intentionally high-contrast Alabaster /
- * Obsidian app themes. These windows sit outside the main transcript
- * shell, so they need a more solid read surface than the broad glass
- * panel gradients used by the inline inspector/editor. */
-:is([data-theme="obsidian"], [data-theme="alabaster"])
+/* Popout glass contrast.
+ * Diff Studio and File Editor run in their own utility windows, outside
+ * the transcript shell that normally provides a stable reading plane.
+ * Keep the liquid-glass chroma wash, but pin these windows to more
+ * opaque local surfaces and stronger scoped text tokens so light glass
+ * does not collapse into pale-on-pale and dark glass does not become
+ * gray-on-gray. */
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"]) {
+  min-width: 0;
+  --text-secondary: color-mix(in srgb, var(--text-primary) 76%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--text-primary) 62%, transparent);
+  --text-muted: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  --panel-border: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --popout-window-bg: color-mix(in srgb, var(--surface-1) 94%, var(--theme-chroma-1) 6%);
+  --popout-panel-bg: color-mix(in srgb, var(--surface-1) 96%, black 4%);
+  --popout-toolbar-bg: color-mix(in srgb, var(--surface-2) 94%, var(--surface-1) 6%);
+  --popout-list-bg: color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%);
+  --popout-editor-bg: color-mix(in srgb, var(--surface-1) 82%, black 18%);
+  --popout-control-bg: color-mix(in srgb, var(--text-primary) 7%, var(--popout-toolbar-bg));
+  --popout-row-hover-bg: color-mix(in srgb, var(--accent) 12%, transparent);
+  --popout-row-selected-bg: color-mix(in srgb, var(--accent) 18%, transparent);
+  --popout-line-bg: color-mix(in srgb, var(--popout-editor-bg) 96%, var(--popout-panel-bg) 4%);
+  --popout-subtle-bg: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --popout-border: color-mix(in srgb, var(--theme-border-accent) 54%, var(--panel-border));
+  --popout-primary-action-text: rgba(6, 8, 12, 0.92);
+  color: var(--text-primary);
+  background-color: var(--popout-window-bg) !important;
+  background-image:
+    radial-gradient(circle at 16% 0%, color-mix(in srgb, var(--theme-chroma-1) 12%, transparent), transparent 34%),
+    radial-gradient(circle at 94% 4%, color-mix(in srgb, var(--theme-chroma-2) 8%, transparent), transparent 38%) !important;
+}
+
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
   .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"]) {
-  min-width: 0;
-}
-
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-body .app-file-editor {
-  min-width: 0;
-  box-sizing: border-box;
-  grid-template-columns: minmax(180px, 320px) minmax(0, 1fr) !important;
-}
-
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-body .file-editor-files,
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-body .file-editor-code,
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-diff-studio > div,
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-diff-studio .diff-file-list,
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-diff-studio .diff-detail {
-  min-width: 0;
+  --text-secondary: color-mix(in srgb, var(--text-primary) 82%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  --text-muted: color-mix(in srgb, var(--text-primary) 56%, transparent);
+  --panel-border: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --popout-window-bg: color-mix(in srgb, var(--surface-2) 88%, white 12%);
+  --popout-panel-bg: color-mix(in srgb, var(--surface-1) 96%, white 4%);
+  --popout-toolbar-bg: color-mix(in srgb, var(--surface-1) 98%, var(--surface-2) 2%);
+  --popout-list-bg: color-mix(in srgb, var(--surface-2) 78%, white 22%);
+  --popout-editor-bg: color-mix(in srgb, var(--surface-3) 84%, white 16%);
+  --popout-control-bg: color-mix(in srgb, var(--text-primary) 6%, white);
+  --popout-row-hover-bg: color-mix(in srgb, var(--accent) 12%, white 88%);
+  --popout-row-selected-bg: color-mix(in srgb, var(--accent) 18%, white 82%);
+  --popout-line-bg: color-mix(in srgb, var(--popout-editor-bg) 94%, white 6%);
+  --diff-add-bg: rgba(12, 132, 82, 0.12);
+  --diff-add-text: #055c38;
+  --diff-del-bg: rgba(198, 52, 66, 0.12);
+  --diff-del-text: #8f1f2d;
 }
 
 [data-theme="obsidian"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"]) {
   --text-primary: rgba(248, 244, 238, 0.94);
-  --text-secondary: rgba(248, 244, 238, 0.72);
-  --text-tertiary: rgba(248, 244, 238, 0.54);
-  --text-muted: rgba(248, 244, 238, 0.44);
+  --text-secondary: rgba(248, 244, 238, 0.74);
+  --text-tertiary: rgba(248, 244, 238, 0.58);
+  --text-muted: rgba(248, 244, 238, 0.48);
   --panel-border: rgba(255, 232, 214, 0.18);
-  --panel-elevated-bg: rgba(24, 22, 28, 0.96);
-  --app-bg-sunken: #09080b;
+  --popout-window-bg: #08070a;
+  --popout-panel-bg: #0f0d12;
+  --popout-toolbar-bg: #18161c;
+  --popout-list-bg: #121016;
+  --popout-editor-bg: #09080b;
+  --popout-control-bg: rgba(255, 255, 255, 0.07);
+  --popout-row-hover-bg: rgba(200, 192, 210, 0.12);
+  --popout-row-selected-bg: rgba(200, 192, 210, 0.18);
+  --popout-line-bg: #0b090d;
   --diff-add-bg: rgba(36, 168, 112, 0.24);
   --diff-add-text: #7df0b7;
   --diff-del-bg: rgba(229, 77, 77, 0.24);
   --diff-del-text: #ff8b8b;
   --diff-hunk: #c8c0d2;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(255, 170, 134, 0.07), transparent 36%),
-    #08070a !important;
-  background-image:
-    radial-gradient(circle at 18% 0%, rgba(255, 170, 134, 0.07), transparent 36%) !important;
-  color: var(--text-primary);
 }
 
 [data-theme="alabaster"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"]) {
   --text-primary: rgba(18, 21, 27, 0.94);
-  --text-secondary: rgba(18, 21, 27, 0.72);
-  --text-tertiary: rgba(18, 21, 27, 0.56);
-  --text-muted: rgba(18, 21, 27, 0.46);
+  --text-secondary: rgba(18, 21, 27, 0.74);
+  --text-tertiary: rgba(18, 21, 27, 0.60);
+  --text-muted: rgba(18, 21, 27, 0.50);
   --panel-border: rgba(18, 21, 27, 0.15);
-  --panel-elevated-bg: rgba(255, 254, 250, 0.96);
-  --app-bg-sunken: #efeee8;
-  --diff-add-bg: rgba(12, 132, 82, 0.16);
-  --diff-add-text: #0a7f50;
-  --diff-del-bg: rgba(198, 52, 66, 0.16);
-  --diff-del-text: #bc2e3d;
+  --popout-window-bg: #f4f3ef;
+  --popout-panel-bg: #fbfaf6;
+  --popout-toolbar-bg: #fffefa;
+  --popout-list-bg: #fffefa;
+  --popout-editor-bg: #efeee8;
+  --popout-control-bg: rgba(18, 21, 27, 0.06);
+  --popout-row-hover-bg: rgba(90, 97, 114, 0.11);
+  --popout-row-selected-bg: rgba(90, 97, 114, 0.17);
+  --popout-line-bg: #f6f5f0;
+  --popout-primary-action-text: #fff;
   --diff-hunk: #596174;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(120, 140, 200, 0.09), transparent 36%),
-    #f4f3ef !important;
-  background-image:
-    radial-gradient(circle at 18% 0%, rgba(120, 140, 200, 0.09), transparent 36%) !important;
-  color: var(--text-primary);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-body .app-file-editor {
+  min-width: 0;
+  box-sizing: border-box;
+  grid-template-columns: minmax(180px, 320px) minmax(0, 1fr) !important;
+}
+
+.popout-body .file-editor-files,
+.popout-body .file-editor-code,
+.popout-diff-studio > div,
+.popout-diff-studio .diff-file-list,
+.popout-diff-studio .diff-detail {
+  min-width: 0;
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.popout-body .app-file-editor, .popout-diff-studio) {
+  --text-primary: inherit;
+  --text-secondary: inherit;
+  --text-tertiary: inherit;
+  --text-muted: inherit;
+  --panel-border: inherit;
+  background-color: var(--popout-panel-bg) !important;
+  background-image: var(--theme-gradient-panel) !important;
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   :is(.popout-header, .diff-studio-toolbar, .diff-detail-header, .file-editor-header) {
-  background-color: var(--panel-elevated-bg) !important;
-  background-image: none !important;
-  border-color: var(--panel-border) !important;
+  background-color: var(--popout-toolbar-bg) !important;
+  background-image:
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-chroma-1) 8%, transparent), transparent 62%) !important;
+  border-color: var(--popout-border) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
   color: var(--text-primary);
 }
 
-[data-theme="obsidian"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.popout-body .app-file-editor, .popout-diff-studio, .diff-detail, .file-editor-code-surface) {
-  background-color: #09080b !important;
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.file-editor-files, .diff-file-list) {
+  background-color: var(--popout-list-bg) !important;
+  background-image: var(--theme-gradient-file-manager) !important;
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.diff-detail, .file-editor-code-surface) {
+  background-color: var(--popout-editor-bg) !important;
+  background-image: var(--theme-gradient-editor) !important;
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-lines-section {
+  background-color: var(--popout-line-bg) !important;
   background-image: none !important;
 }
 
-[data-theme="alabaster"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.popout-body .app-file-editor, .popout-diff-studio, .diff-detail, .file-editor-code-surface) {
-  background-color: #f4f3ef !important;
-  background-image: none !important;
-}
-
-[data-theme="obsidian"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-files, .diff-file-list, .diff-lines-section) {
-  background-color: rgba(18, 16, 22, 0.96) !important;
-  background-image: none !important;
-}
-
-[data-theme="alabaster"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-files, .diff-file-list, .diff-lines-section) {
-  background-color: rgba(255, 254, 250, 0.96) !important;
-  background-image: none !important;
-}
-
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-filter, .btn, .diff-file-badge) {
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.file-editor-filter, .btn-ghost, .diff-file-badge) {
   color: var(--text-primary);
-  border-color: var(--panel-border);
+  background-color: var(--popout-control-bg) !important;
+  border-color: var(--popout-border);
 }
 
-[data-theme="obsidian"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-filter, .btn, .diff-file-badge) {
-  background-color: rgba(255, 255, 255, 0.07);
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .btn:not(.btn-ghost) {
+  color: var(--popout-primary-action-text);
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--popout-border));
 }
 
-[data-theme="alabaster"] .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-filter, .btn, .diff-file-badge) {
-  background-color: rgba(18, 21, 27, 0.06);
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .btn-ghost:hover {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--popout-control-bg)) !important;
+  color: var(--text-primary);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-file-badge.created {
+  background-color: color-mix(in srgb, var(--success) 16%, var(--popout-control-bg)) !important;
+  color: var(--text-primary);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-file-badge.modified {
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--popout-control-bg)) !important;
+  color: var(--text-primary);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-file-badge.deleted {
+  background-color: color-mix(in srgb, var(--danger) 16%, var(--popout-control-bg)) !important;
+  color: var(--text-primary);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-file-badge.untracked {
+  background-color: color-mix(in srgb, var(--warning) 18%, var(--popout-control-bg)) !important;
+  color: var(--text-primary);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-file-badge.noise {
+  background-color: var(--popout-control-bg) !important;
+  color: var(--text-muted);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   :is(.file-editor-row, .diff-file-row, .file-editor-placeholder) {
   color: var(--text-secondary);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.diff-detail, .diff-line-code) {
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.diff-detail, .file-editor-filter, .file-editor-textarea) {
   color: var(--text-primary);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   :is(.file-editor-row.active, .diff-file-row.selected, .diff-detail-header, .file-editor-header strong) {
   color: var(--text-primary);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   :is(.file-editor-row:disabled, .file-editor-row.directory) {
   opacity: 0.84;
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.file-editor-row.file:hover:not(:disabled), .file-editor-row.active, .diff-file-row:hover, .diff-file-row.selected) {
-  background-color: color-mix(in srgb, var(--accent) 16%, transparent) !important;
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.file-editor-row.file:hover:not(:disabled), .diff-file-row:hover) {
+  background-color: var(--popout-row-hover-bg) !important;
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
-  :is(.diff-line-gutter, .diff-lines-section-header, .file-editor-status) {
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.file-editor-row.active, .diff-file-row.selected) {
+  background-color: var(--popout-row-selected-bg) !important;
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.diff-line-gutter, .diff-lines-section-header, .file-editor-status, .file-editor-file-size, .popout-status) {
   color: var(--text-muted);
   border-color: var(--panel-border);
 }
 
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  :is(.diff-line-gutter, .diff-lines-section-header, .diff-line.meta) {
+  background-color: var(--popout-subtle-bg);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-line.add :is(.diff-line-code, .diff-line-gutter) {
+  background-color: var(--diff-add-bg);
+  color: var(--diff-add-text);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .diff-line.del :is(.diff-line-code, .diff-line-gutter) {
+  background-color: var(--diff-del-bg);
+  color: var(--diff-del-text);
+}
+
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   .diff-line + .diff-line,
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+.popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
   .diff-file-row + .diff-file-row {
   border-color: var(--panel-border);
 }
 
-[data-theme="obsidian"] .popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-editor,
-[data-theme="obsidian"] .popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-scroller {
+.popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-editor,
+.popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-scroller {
   color: var(--text-primary);
-  background-color: #09080b;
+  background-color: var(--popout-editor-bg);
 }
 
-[data-theme="alabaster"] .popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-editor,
-[data-theme="alabaster"] .popout-root[data-popout-kind="file-editor"] .file-editor-code-surface .cm-scroller {
-  color: var(--text-primary);
-  background-color: #f4f3ef;
-}
-
-:is([data-theme="obsidian"], [data-theme="alabaster"])
-  .popout-root[data-popout-kind="file-editor"]
+.popout-root[data-popout-kind="file-editor"]
   .file-editor-code-surface :is(.cm-gutters, .cm-activeLine, .cm-activeLineGutter) {
   color: var(--text-muted);
-  background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--popout-editor-bg));
   border-color: var(--panel-border);
 }
 
 @media (max-width: 720px) {
-  :is([data-theme="obsidian"], [data-theme="alabaster"])
-    .popout-body .app-file-editor {
+  .popout-body .app-file-editor {
     grid-template-columns: minmax(150px, 42vw) minmax(0, 1fr) !important;
   }
 
-  :is([data-theme="obsidian"], [data-theme="alabaster"])
-    .popout-diff-studio > div {
+  .popout-diff-studio > div {
     grid-template-columns: minmax(160px, 42vw) minmax(0, 1fr) !important;
   }
 
-  :is([data-theme="obsidian"], [data-theme="alabaster"])
-    .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
+  .popout-root:is([data-popout-kind="file-editor"], [data-popout-kind="diff-studio"])
     :is(.file-editor-file-size, .diff-file-badge) {
     display: none;
   }
