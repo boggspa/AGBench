@@ -519,6 +519,38 @@
     0 30px 80px rgba(15, 23, 42, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
+
+/* Approval-mode elevation sheet — reuses the creative-approval modal chrome,
+   adds tier-aware width, a Tier-2 caution banner, and the ack-checkbox row.
+   (Lifted out of inline styles in ApprovalModeElevationSheet.tsx.) */
+.approval-elevation-modal {
+  max-width: 420px;
+}
+.approval-elevation-modal[data-elevation-tier='2'] {
+  max-width: 520px;
+}
+.approval-elevation-caution {
+  border-left: 3px solid var(--danger, #e5484d);
+  background: color-mix(in srgb, var(--danger, #e5484d) 8%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-weight: 600;
+}
+.approval-elevation-ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 4px 0 2px;
+  cursor: pointer;
+}
+.approval-elevation-ack input {
+  margin-top: 2px;
+}
+.approval-elevation-modal .creative-approval-modal-approve-once:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .creative-approval-modal-eyebrow {
   font-size: 10px;
   text-transform: uppercase;

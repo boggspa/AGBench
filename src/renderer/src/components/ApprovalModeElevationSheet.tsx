@@ -64,13 +64,12 @@ export function ApprovalModeElevationSheet({
   return createPortal(
     <div className="creative-approval-backdrop" role="presentation" onMouseDown={onCancel}>
       <div
-        className="creative-approval-modal"
+        className="creative-approval-modal approval-elevation-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-elevation-title"
         data-elevation-tier={tier}
         onMouseDown={(event) => event.stopPropagation()}
-        style={{ maxWidth: isFull ? 520 : 420 }}
       >
         <header className="creative-approval-modal-header">
           <span className="creative-approval-modal-eyebrow" aria-hidden>
@@ -90,31 +89,15 @@ export function ApprovalModeElevationSheet({
               <strong>without approving each action</strong>. Once enabled there is no per-step
               confirmation — it can modify or remove anything in the workspace autonomously.
             </p>
-            <p
-              className="creative-approval-modal-description"
-              style={{
-                borderLeft: '3px solid var(--danger, #e5484d)',
-                paddingLeft: 10,
-                fontWeight: 600
-              }}
-            >
+            <p className="creative-approval-modal-description approval-elevation-caution">
               Only enable this on a disposable VM or a device you can fully recover. You can revoke
               it at any time from the permission picker.
             </p>
-            <label
-              style={{
-                display: 'flex',
-                gap: 8,
-                alignItems: 'flex-start',
-                margin: '4px 0 2px',
-                cursor: 'pointer'
-              }}
-            >
+            <label className="approval-elevation-ack">
               <input
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(event) => setAcknowledged(event.target.checked)}
-                style={{ marginTop: 2 }}
               />
               <span>I understand the risks and am on a disposable or recoverable device.</span>
             </label>
@@ -136,7 +119,6 @@ export function ApprovalModeElevationSheet({
             className="creative-approval-modal-approve-once"
             onClick={onConfirm}
             disabled={!canConfirm}
-            style={!canConfirm ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {isFull ? 'Enable Full Access' : 'Continue'}
           </button>
