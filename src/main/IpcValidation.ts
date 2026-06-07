@@ -67,6 +67,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'remove-workspace': ['string'],
   'clear-workspaces': [],
   'get-chats': ['optionalString'],
+  'get-chat-list': ['optionalString'],
   'get-chat': ['chatId'],
   'create-chat': ['string', 'workspacePath'],
   'create-global-chat': [],

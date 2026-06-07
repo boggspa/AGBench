@@ -200,6 +200,8 @@ describe('IpcValidation', () => {
   })
 
   it('rejects unsafe chat ids for chat persistence IPC', () => {
+    expect(() => validateIpcArgs('get-chat-list', [])).not.toThrow()
+    expect(() => validateIpcArgs('get-chat-list', ['workspace-1'])).not.toThrow()
     expect(() => validateIpcArgs('get-chat', ['../settings'])).toThrow(/safe chat id/)
     expect(() => validateIpcArgs('delete-chat', ['../settings'])).toThrow(/safe chat id/)
     expect(() =>
