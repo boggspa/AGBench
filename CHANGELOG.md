@@ -4,6 +4,46 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.2.0 — 2026-06-07
+
+### Added
+- **iMessage bridge (Messages.app).** Bind an iMessage conversation to a TaskWraith
+  chat: inbound messages route to the agent (with trigger-prefix rules and duplicate
+  suppression) and replies are sent back through Messages.app. Includes a Messages
+  settings panel (bindings, conversation browser, audit log, test send, polling), a
+  permission-helper popout for the macOS Automation grant, and an append-only audit
+  log. Messages are read locally (read-only) and sent via Messages.app automation —
+  no Apple credentials or private protocols.
+- **First-class side chats.** Side chats are now durable and flexible — pop one out
+  into its own window, dock it back, or promote it to a top-level chat, with draft
+  text, scroll position, and presentation preserved across the move.
+- **Approval-mode elevation failsafe.** Raising a chat's permission mode now asks
+  first: a one-time notice per workspace when you enable Default Approval, and a
+  sterner "only on disposable VMs or recoverable devices" confirm each time you
+  enable Full Workspace Access. The acknowledgement is recorded in the approval ledger.
+- **Smarter ensemble defaults.** A new ensemble seeds one participant per provider
+  you actually have set up, instead of all six.
+- **Windows testing installer.** Unsigned x64 + arm64 Windows installers are now
+  produced on demand and attached to releases — a testing channel ahead of signed builds.
+
+### Changed
+- **Clearer MCP surface.** Settings → MCP no longer mislabels working providers:
+  Cursor shows its TaskWraith web bridge (web_fetch + web_search) and Grok shows
+  provider-managed status, replacing the misleading "unsupported / not installed" tags.
+- **Tidier README.** Screenshots are now a grid instead of a long stack.
+
+### Fixed
+- **Grok no longer dead-ends.** A write/Default-mode Grok turn that reached for a
+  shell command (e.g. `mkdir`) could cancel with no output; Grok is now steered to the
+  Write/Edit tools and to adapt rather than end the turn when a tool is refused.
+- **Windows CI launch smoke** now passes on the windows-latest runner.
+- Side-chat composer, above-row, and presentation-lifecycle fixes.
+
+### Security
+- **Untrusted-input hardening.** External iMessage content is wrapped and replayed to
+  the model as untrusted; IPC validation, shell-open policy, and prompt-composition
+  sanitizers were extended for the new message surface.
+
 ## 1.1.0 — 2026-06-06
 
 ### Added
