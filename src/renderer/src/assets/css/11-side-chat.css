@@ -635,11 +635,16 @@
   }
 }
 
-.side-chat-menu-wrap {
+.side-chat-menu-wrap,
+.chat-popout-menu-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 1px;
+}
+
+.side-chat-layout-menu.chat-popout-menu {
+  width: 210px;
 }
 
 .side-chat-menu-trigger.chat-corner-btn {

@@ -206,7 +206,8 @@ export function ChangelogSheet({
 
 export function resolveChangelogEntry(
   changelogSnapshot: ProductChangelogSnapshot | null,
-  updateSnapshot: UpdateStateSnapshot | null
+  updateSnapshot: UpdateStateSnapshot | null,
+  bundledMarkdown: string = bundledChangelog
 ): ProductUpdateChangelog {
   if (updateSnapshot?.latestVersion) {
     return {
@@ -216,10 +217,97 @@ export function resolveChangelogEntry(
       ...(updateSnapshot.releaseNotes ? { releaseNotes: updateSnapshot.releaseNotes } : {})
     }
   }
-  if (changelogSnapshot?.pendingUpdateChangelog) return changelogSnapshot.pendingUpdateChangelog
+  if (changelogSnapshot?.latestUpdateChangelog) return changelogSnapshot.latestUpdateChangelog
+  if (
+    changelogSnapshot?.pendingUpdateChangelog &&
+    shouldShowPendingChangelog(
+      changelogSnapshot.pendingUpdateChangelog.version,
+      changelogSnapshot.currentVersion
+    )
+  ) {
+    return changelogSnapshot.pendingUpdateChangelog
+  }
+  const bundledEntry = resolveBundledChangelogEntry(
+    bundledMarkdown,
+    changelogSnapshot?.currentVersion
+  )
+  if (bundledEntry) return bundledEntry
   return {
     version: changelogSnapshot?.currentVersion || 'unknown'
   }
+}
+
+export function resolveBundledChangelogEntry(
+  markdown: string,
+  currentVersion?: string
+): ProductUpdateChangelog | undefined {
+  const sections = parseBundledChangelogSections(markdown)
+  if (sections.length === 0) return undefined
+  const normalizedCurrent = normalizeVersion(currentVersion)
+  if (normalizedCurrent) {
+    const currentEntry = sections.find(
+      (section) => normalizeVersion(section.version) === normalizedCurrent
+    )
+    if (currentEntry) return currentEntry
+  }
+  return sections[0]
+}
+
+function parseBundledChangelogSections(markdown: string): ProductUpdateChangelog[] {
+  const headings = Array.from(markdown.matchAll(/^##\s+(.+)$/gm))
+  return headings
+    .map((match, index): ProductUpdateChangelog | undefined => {
+      const title = match[1]?.trim()
+      if (!title) return undefined
+      const start = (match.index ?? 0) + match[0].length
+      const nextHeadingIndex = headings[index + 1]?.index
+      const end = nextHeadingIndex ?? markdown.length
+      const body = markdown.slice(start, end).trim()
+      const [versionPart, releaseDatePart] = title.split(/\s+[—-]\s+/, 2)
+      const version = normalizeVersion(versionPart)
+      if (!version) return undefined
+      return {
+        version,
+        releaseName: `TaskWraith ${version}`,
+        ...(releaseDatePart?.trim() ? { releaseDate: releaseDatePart.trim() } : {}),
+        ...(body ? { releaseNotes: body } : {})
+      }
+    })
+    .filter((entry): entry is ProductUpdateChangelog => Boolean(entry))
+}
+
+function shouldShowPendingChangelog(pendingVersion: string, currentVersion: string | undefined): boolean {
+  const normalizedPending = normalizeVersion(pendingVersion)
+  const normalizedCurrent = normalizeVersion(currentVersion)
+  if (!normalizedPending) return false
+  if (!normalizedCurrent) return true
+  if (normalizedPending === normalizedCurrent) return true
+  const comparison = compareSemverishVersions(normalizedPending, normalizedCurrent)
+  return comparison !== null && comparison > 0
+}
+
+function normalizeVersion(value: string | undefined): string {
+  return value?.trim().replace(/^v/i, '') || ''
+}
+
+function compareSemverishVersions(a: string, b: string): number | null {
+  const aParts = a.split('.').map((part) => Number(part))
+  const bParts = b.split('.').map((part) => Number(part))
+  if (
+    aParts.length === 0 ||
+    bParts.length === 0 ||
+    aParts.some((part) => !Number.isInteger(part)) ||
+    bParts.some((part) => !Number.isInteger(part))
+  ) {
+    return null
+  }
+  const length = Math.max(aParts.length, bParts.length)
+  for (let index = 0; index < length; index += 1) {
+    const aPart = aParts[index] ?? 0
+    const bPart = bParts[index] ?? 0
+    if (aPart !== bPart) return aPart > bPart ? 1 : -1
+  }
+  return 0
 }
 
 // GitHub's release feed (what electron-updater returns for an available update)

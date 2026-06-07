@@ -275,13 +275,8 @@
   align-items: center;
   gap: var(--space-sm);
   max-width: calc(100% - 360px);
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: visible;
   -webkit-app-region: no-drag;
-}
-
-.chat-corner-controls-right::-webkit-scrollbar {
-  display: none;
 }
 
 .chat-corner-btn {

@@ -118,7 +118,7 @@ describe('ChangelogSheet', () => {
     expect(html).toContain('Restart to install')
   })
 
-  it('falls back to the bundled changelog when release notes are missing', () => {
+  it('falls back to bundled current-version release notes when updater metadata is missing', () => {
     const html = renderToStaticMarkup(
       <ChangelogSheet
         open
@@ -127,7 +127,7 @@ describe('ChangelogSheet', () => {
         updateSnapshot={null}
       />
     )
-    expect(html).toContain('Bundled changelog')
+    expect(html).toContain('Release notes')
     expect(html).toContain('TaskWraith')
   })
 
@@ -160,6 +160,50 @@ describe('ChangelogSheet', () => {
     expect(entry).toMatchObject({
       version: '1.0.73',
       releaseNotes: 'Available app.'
+    })
+  })
+
+  it('ignores stale pending changelog snapshots after the app has moved past them', () => {
+    const entry = resolveChangelogEntry(
+      {
+        currentVersion: '1.2.0',
+        pendingUpdateChangelog: {
+          version: '1.0.75',
+          releaseNotes: 'Old downloaded update.'
+        }
+      },
+      null,
+      [
+        '# Changelog',
+        '',
+        '## 1.2.0 - 2026-06-07',
+        'Current bundled notes.',
+        '',
+        '## 1.0.75 - 2026-06-05',
+        'Old bundled notes.'
+      ].join('\n')
+    )
+    expect(entry).toMatchObject({
+      version: '1.2.0',
+      releaseNotes: 'Current bundled notes.'
+    })
+  })
+
+  it('keeps pending downloaded update notes while they are newer than the running app', () => {
+    const entry = resolveChangelogEntry(
+      {
+        currentVersion: '1.0.74',
+        pendingUpdateChangelog: {
+          version: '1.0.75',
+          releaseNotes: 'Downloaded update.'
+        }
+      },
+      null,
+      '# Changelog\n\n## 1.0.74 - 2026-06-05\nCurrent bundled notes.'
+    )
+    expect(entry).toMatchObject({
+      version: '1.0.75',
+      releaseNotes: 'Downloaded update.'
     })
   })
 })

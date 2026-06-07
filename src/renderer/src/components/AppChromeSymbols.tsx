@@ -220,6 +220,63 @@ export function SkyWeatherIcon() {
   )
 }
 
+export function InfoCircleIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="8" cy="8" r="5.45" />
+        <path d="M8 7.4v3.6" />
+        <circle cx="8" cy="5.1" r="0.45" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
+  )
+}
+
+export function QuestionCircleIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="8" cy="8" r="5.45" />
+        <path d="M6.35 6.4a1.75 1.75 0 1 1 2.95 1.3c-.75.55-1.2 1-1.2 1.75" />
+        <circle cx="8.1" cy="11.15" r="0.45" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
+  )
+}
+
+export function ExclamationShieldIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M8 2.25 12.35 4v3.25c0 2.8-1.65 5.1-4.35 6.5-2.7-1.4-4.35-3.7-4.35-6.5V4z" />
+        <path d="M8 5.35v3.7" />
+        <circle cx="8" cy="11.15" r="0.45" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
+  )
+}
+
 export function CopyResponseIcon() {
   return (
     <span className="sf-symbol-icon" aria-hidden>

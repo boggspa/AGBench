@@ -197,12 +197,15 @@ import {
   ClockSymbolIcon,
   CommandSymbolIcon,
   ContextWheel,
+  ExclamationShieldIcon,
   FileMenuSelectionIcon,
   GhostCompanionIcon,
+  InfoCircleIcon,
   LinkCircleSymbolIcon,
   ModelSymbolIcon,
   PermissionSymbolIcon,
   PlusSymbolIcon,
+  QuestionCircleIcon,
   QueueSymbolIcon,
   ReviewSymbolIcon,
   RunSymbolIcon,
@@ -1551,6 +1554,7 @@ function App(): React.JSX.Element {
   const [sidePanelPresentation, setSidePanelPresentation] =
     useState<SidePanelPresentation>('split')
   const [sideChatMenuOpen, setSideChatMenuOpen] = useState(false)
+  const [popoutMenuOpen, setPopoutMenuOpen] = useState(false)
   const [sideChatSeedMessageId, setSideChatSeedMessageId] = useState<string | null>(null)
 
   // Reset inspector when the user navigates to a chat that doesn't own
@@ -1581,6 +1585,7 @@ function App(): React.JSX.Element {
   const sideLogsEndRef = useRef<HTMLDivElement>(null)
   const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const sideChatMenuRef = useRef<HTMLDivElement | null>(null)
+  const popoutMenuRef = useRef<HTMLDivElement | null>(null)
   // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
   // (rendered as `.transcript-inner` in `TranscriptPanel`). A single
   // `ResizeObserver` watches this node and dispatches a coalesced rAF
@@ -1957,7 +1962,24 @@ function App(): React.JSX.Element {
     }
   }, [sideChatMenuOpen])
   useEffect(() => {
+    if (!popoutMenuOpen) return
+    const handlePointerDown = (event: MouseEvent) => {
+      if (popoutMenuRef.current?.contains(event.target as Node)) return
+      setPopoutMenuOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPopoutMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [popoutMenuOpen])
+  useEffect(() => {
     setSideChatMenuOpen(false)
+    setPopoutMenuOpen(false)
     setSideChatSeedMessageId(null)
   }, [currentChat?.appChatId])
   const permissionRequestState = currentComposerChatId
@@ -13947,7 +13969,7 @@ function App(): React.JSX.Element {
               aria-label="Toggle changelog sheet"
               aria-pressed={showChangelogSheet}
             >
-              <span className="chat-corner-symbol">i</span>
+              <InfoCircleIcon />
             </button>
             <button
               className={`chat-corner-btn ${showFirstLaunchSheet ? 'active' : ''}`}
@@ -13957,7 +13979,7 @@ function App(): React.JSX.Element {
               aria-label="Toggle onboarding sheet"
               aria-pressed={showFirstLaunchSheet}
             >
-              <span className="chat-corner-symbol">?</span>
+              <QuestionCircleIcon />
             </button>
             <button
               className={`chat-corner-btn chat-corner-btn-bug-report ${showBugReportSheet ? 'active' : ''}`}
@@ -13967,38 +13989,69 @@ function App(): React.JSX.Element {
               aria-label="Report a bug or issue"
               aria-pressed={showBugReportSheet}
             >
-              <span className="chat-corner-symbol">!</span>
+              <ExclamationShieldIcon />
             </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={() => openWorkspacePopoutWindow('file-editor')}
-              title="Open file editor in new window"
-              aria-label="Open file editor in new window"
-              disabled={!canOpenWorkspacePopout}
-            >
-              <span className="chat-corner-symbol">↗</span>
-            </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={() => openWorkspacePopoutWindow('diff-studio')}
-              title="Open Diff Studio in new window"
-              aria-label="Open Diff Studio in new window"
-              disabled={!canOpenWorkspacePopout}
-            >
-              <span className="chat-corner-symbol">Δ</span>
-            </button>
-            <button
-              className="chat-corner-btn"
-              type="button"
-              onClick={openChatPopoutWindow}
-              title="Pop out chat window"
-              aria-label="Pop out chat window"
-              disabled={!currentChat}
-            >
-              <ChatPopoutIcon />
-            </button>
+            <div className="chat-popout-menu-wrap" ref={popoutMenuRef}>
+              <button
+                className={`chat-corner-btn ${popoutMenuOpen ? 'active' : ''}`}
+                type="button"
+                onClick={() => {
+                  setSideChatMenuOpen(false)
+                  setPopoutMenuOpen((open) => !open)
+                }}
+                title="Open popout tools"
+                aria-label="Open popout tools"
+                aria-haspopup="menu"
+                aria-expanded={popoutMenuOpen}
+                disabled={!canOpenWorkspacePopout && !currentChat}
+              >
+                <ChatPopoutIcon />
+              </button>
+              {popoutMenuOpen && (
+                <div
+                  className="side-chat-layout-menu chat-popout-menu"
+                  role="menu"
+                  aria-label="Popout tools"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPopoutMenuOpen(false)
+                      openWorkspacePopoutWindow('diff-studio')
+                    }}
+                    disabled={!canOpenWorkspacePopout}
+                  >
+                    <span>Diff Studio</span>
+                    <small>Open workspace diff tools</small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPopoutMenuOpen(false)
+                      openWorkspacePopoutWindow('file-editor')
+                    }}
+                    disabled={!canOpenWorkspacePopout}
+                  >
+                    <span>File Editor</span>
+                    <small>Open workspace files</small>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPopoutMenuOpen(false)
+                      openChatPopoutWindow()
+                    }}
+                    disabled={!currentChat}
+                  >
+                    <span>Pop-Out Chat</span>
+                    <small>Open this thread in a separate window</small>
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="side-chat-menu-wrap" ref={sideChatMenuRef}>
               <button
                 className={`chat-corner-btn side-chat-primary-btn ${isSideSplitOpen ? 'active' : ''}`}
@@ -14020,7 +14073,10 @@ function App(): React.JSX.Element {
               <button
                 className={`chat-corner-btn side-chat-menu-trigger ${sideChatMenuOpen ? 'active' : ''}`}
                 type="button"
-                onClick={() => setSideChatMenuOpen((open) => !open)}
+                onClick={() => {
+                  setPopoutMenuOpen(false)
+                  setSideChatMenuOpen((open) => !open)
+                }}
                 title="Choose side chat layout"
                 aria-label="Choose side chat layout"
                 aria-haspopup="menu"
