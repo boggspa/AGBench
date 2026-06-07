@@ -2355,10 +2355,12 @@
 .transcript-message-block.is-side-chat-seed::before {
   content: "";
   position: absolute;
-  inset: -6px -8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  inset: -4px -6px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 1.5%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 7%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
   pointer-events: none;
 }
 
