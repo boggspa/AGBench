@@ -5,7 +5,7 @@ export function assertSafeChatId(value: unknown, label = 'Chat id'): string {
     throw new Error(`${label} must be a non-empty string.`)
   }
   const chatId = value.trim()
-  if (chatId !== value || chatId === '.' || chatId === '..' || /[\/\\\0]/.test(chatId)) {
+  if (chatId !== value || chatId === '.' || chatId === '..' || /[/\\\0]/.test(chatId)) {
     throw new Error(`${label} must be a safe chat id.`)
   }
   return chatId
