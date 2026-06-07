@@ -82,8 +82,8 @@ export class ProviderPreflightService {
       const reason =
         contract.mcp.message ||
         (contract.mcp.installed
-          ? 'Gemini MCP bridge is installed but unavailable.'
-          : 'Gemini MCP bridge is not installed.')
+          ? 'TaskWraith MCP bridge is installed but unavailable.'
+          : 'TaskWraith MCP bridge is not installed.')
       return {
         provider: input.provider,
         state: 'blocked',

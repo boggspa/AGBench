@@ -146,7 +146,7 @@ describe('ProviderPreflightService', () => {
           enabled: true,
           installed: false,
           tools: [],
-          message: 'Gemini MCP bridge not installed.'
+          message: 'TaskWraith MCP bridge not installed.'
         }
       }),
       defaultProviderDescriptor('gemini')

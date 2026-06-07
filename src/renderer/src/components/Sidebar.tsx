@@ -186,9 +186,9 @@ const getSideChatChildModeLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
   if (chat.sideChatContext?.mode === 'singleProvider') {
     const participantLabel = getSideChatChildParticipantLabel(chat)
-    return participantLabel ? `Participant: ${participantLabel}` : 'Single provider'
+    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated'
   }
-  return chat.chatKind === 'ensemble' ? 'Ensemble clone' : 'Single provider'
+  return chat.chatKind === 'ensemble' ? 'Ensemble clone' : 'Isolated'
 }
 
 const getSideChatChildContextLabel = (chat: ChatRecord): string => {
@@ -207,11 +207,10 @@ const getLinkedChildAgentIdentity = (chat: ChatRecord) => {
   if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
   if (!isSideChatRecord(chat) || chat.sideChatContext?.mode !== 'singleProvider') return null
   const participantId = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
-  const seed =
-    typeof participantId === 'string' && participantId.trim()
-      ? `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
-      : chat.appChatId
-  return assignAgentIdentityFromSeed(seed)
+  if (typeof participantId !== 'string' || !participantId.trim()) return null
+  return assignAgentIdentityFromSeed(
+    `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
+  )
 }
 
 const getLinkedChildRouteLabel = (chat: ChatRecord, parentChat: ChatRecord | null): string => {
@@ -223,6 +222,7 @@ const getLinkedChildRouteLabel = (chat: ChatRecord, parentChat: ChatRecord | nul
   if (chat.sideChatContext?.mode === 'fanOut') return `${parentLabel} parallel fan-out`
   if (chat.sideChatContext?.mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
   const participantLabel = getSideChatChildParticipantLabel(chat)
+  if (!participantLabel && parentProvider === chat.provider) return `${parentLabel} isolated side chat`
   return participantLabel
     ? `${parentLabel} dedicated branch to ${participantLabel}`
     : `${parentLabel} side branch to ${childLabel}`

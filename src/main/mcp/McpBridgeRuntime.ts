@@ -478,7 +478,7 @@ export function handleMcpJsonRpcMessage(
           ? request.params.protocolVersion || '2024-11-05'
           : '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'TaskWraith Gemini Bridge', version: deps.getAppVersion() || '1.0.0' }
+        serverInfo: { name: 'TaskWraith MCP Bridge', version: deps.getAppVersion() || '1.0.0' }
       },
       transport,
       stdout
@@ -884,7 +884,7 @@ export class McpBridgeRuntime {
       }
 
       const timeout = setTimeout(() => {
-        finish({ ok: false, error: 'Timed out waiting for TaskWraith Gemini MCP bridge self-test.' })
+        finish({ ok: false, error: 'Timed out waiting for TaskWraith MCP bridge self-test.' })
       }, 5_000)
 
       try {
@@ -974,7 +974,7 @@ export class McpBridgeRuntime {
             if (missing.length > 0) {
               finish({
                 ok: false,
-                error: `TaskWraith Gemini MCP bridge is connected but missing tools: ${missing.join(', ')}.`
+                error: `TaskWraith MCP bridge is connected but missing tools: ${missing.join(', ')}.`
               })
               return
             }
@@ -991,7 +991,7 @@ export class McpBridgeRuntime {
             ok: false,
             error:
               stderr.trim() ||
-              `TaskWraith Gemini MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
+              `TaskWraith MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
           })
         }
       })
@@ -1103,19 +1103,19 @@ export class McpBridgeRuntime {
         : {}),
       message: available
         ? bridgeSelfTest?.ok
-          ? 'TaskWraith Gemini MCP bridge is installed; direct bridge self-test passed.'
-          : 'TaskWraith Gemini MCP bridge is installed and enabled.'
+          ? 'TaskWraith MCP bridge is installed; direct bridge self-test passed.'
+          : 'TaskWraith MCP bridge is installed and enabled.'
         : installed && staleRegistration
-          ? 'TaskWraith Gemini MCP bridge registration points at an old app bundle or socket and needs repair.'
+          ? 'TaskWraith MCP bridge registration points at an old app bundle or socket and needs repair.'
           : installed && disabled
-            ? 'TaskWraith Gemini MCP bridge is installed but disabled.'
+            ? 'TaskWraith MCP bridge is installed but disabled.'
             : installed && disconnected
               ? bridgeSelfTest?.error
-                ? `TaskWraith Gemini MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
-                : 'TaskWraith Gemini MCP bridge is installed but disconnected.'
+                ? `TaskWraith MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
+                : 'TaskWraith MCP bridge is installed but disconnected.'
               : installed
-                ? 'TaskWraith Gemini MCP bridge is installed but did not report as available.'
-                : 'TaskWraith Gemini MCP bridge is not installed.'
+                ? 'TaskWraith MCP bridge is installed but did not report as available.'
+                : 'TaskWraith MCP bridge is not installed.'
     }
     if (options.autoRepairIfEnabled && settings.geminiMcpBridgeEnabled && !status.available) {
       try {
@@ -1128,7 +1128,7 @@ export class McpBridgeRuntime {
           enabled: true,
           available: false,
           error: repairMessage,
-          message: `TaskWraith Gemini MCP bridge auto-repair failed: ${repairMessage}`
+          message: `TaskWraith MCP bridge auto-repair failed: ${repairMessage}`
         }
         this.deps.updateSettings({ geminiMcpBridgeLastStatus: repairedStatus })
         return repairedStatus
@@ -1179,7 +1179,7 @@ export class McpBridgeRuntime {
       ).trim()
       const safeArgs = this.redactGeminiMcpBridgeArgs(addArgs)
       throw new Error(
-        `Gemini MCP bridge ${scope} registration failed (exit ${addResult.code ?? 'unknown'}): gemini ${safeArgs.join(' ')}\n${output}`
+        `TaskWraith MCP bridge ${scope} registration failed for Gemini CLI (exit ${addResult.code ?? 'unknown'}): gemini ${safeArgs.join(' ')}\n${output}`
       )
     }
   }
@@ -1399,7 +1399,7 @@ export class McpBridgeRuntime {
             type: 'provider_warning',
             provider: 'gemini',
             severity: 'warning',
-            title: 'Gemini MCP bridge auto-repair',
+            title: 'TaskWraith MCP bridge auto-repair',
             message:
               'Write-capable Gemini runs require the TaskWraith MCP bridge. TaskWraith is enabling and repairing it before launch.'
           },
@@ -1418,7 +1418,7 @@ export class McpBridgeRuntime {
       })
       if (!status.available) {
         throw new Error(
-          `TaskWraith Gemini MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+          `TaskWraith MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
         )
       }
       if (requireWriteTools) {
@@ -1427,7 +1427,7 @@ export class McpBridgeRuntime {
         )
         if (!toolSelfTest.ok) {
           throw new Error(
-            `TaskWraith Gemini MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
+            `TaskWraith MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`
           )
         }
       }

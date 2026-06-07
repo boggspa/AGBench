@@ -546,7 +546,7 @@ export async function getProviderCapabilityContractDirect(
                 available: false,
                 serverName: GEMINI_MCP_SERVER_NAME,
                 error: error instanceof Error ? error.message : String(error),
-                message: 'Gemini MCP bridge status check failed.'
+                message: 'TaskWraith MCP bridge status check failed.'
               }) satisfies GeminiMcpBridgeStatus
           )
         : Promise.resolve({
@@ -555,7 +555,7 @@ export async function getProviderCapabilityContractDirect(
             installed: false,
             available: false,
             serverName: GEMINI_MCP_SERVER_NAME,
-            message: 'Gemini MCP bridge status dependencies are not wired.'
+            message: 'TaskWraith MCP bridge status dependencies are not wired.'
           } satisfies GeminiMcpBridgeStatus)
       : Promise.resolve(null)
   ])

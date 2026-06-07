@@ -192,6 +192,41 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Closed')
   })
 
+  it('renders plain same-provider side-chat children without a subagent identity', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar([
+      makeChat({
+        provider: 'codex',
+        title: 'Codex parent'
+      }),
+      makeChat({
+        appChatId: 'plain-side-1',
+        provider: 'codex',
+        title: 'Side Codex chat',
+        parentChatId: 'parent-1',
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          mode: 'singleProvider',
+          lifecycleState: 'closed',
+          transcriptVisibility: 'none'
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    ])
+
+    expect(html).toContain('Side Codex chat')
+    expect(html).toContain('Isolated')
+    expect(html).toContain('Codex isolated side chat')
+    expect(html).not.toContain('Codex side branch to Codex')
+    expect(html).not.toContain('sidebar-sub-thread-identicon')
+  })
+
   it('labels run-result seeded side-chat children explicitly', () => {
     stubSidebarStorage({
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),

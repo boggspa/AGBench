@@ -232,7 +232,7 @@ export async function executeWorkspaceSearch(
 ) {
   const query = requireNonEmptyString(args.query || args.pattern, 'Search query')
   const target = args.path || args.directory || '.'
-  const targetPath = resolveMcpScopedPath(context, String(target))
+  const targetPath = resolveMcpScopedPath(context, String(target), { allowWorkspaceRoot: true })
   const maxResults = clampInteger(args.maxResults ?? args.limit, 100, 1, 500)
   const contextLines = clampInteger(args.contextLines ?? args.context, 0, 0, 5)
   const rgArgs = [
@@ -691,7 +691,9 @@ export async function executeWorkspaceSymbols(
   const query = String(args.query || '')
     .trim()
     .toLowerCase()
-  const targetPath = resolveMcpScopedPath(context, String(args.path || '.'))
+  const targetPath = resolveMcpScopedPath(context, String(args.path || '.'), {
+    allowWorkspaceRoot: true
+  })
   const pattern =
     '^\\s*(?:(?:export|public|private|internal|open|final|static)\\s+)*(class|function|interface|type|enum|const|let|var|struct|actor|protocol|func)\\s+[A-Za-z_][A-Za-z0-9_]*'
   const result = await runCommandArgs(
@@ -778,16 +780,24 @@ export function resolveScopedDirectory(
     : resolveWorkspaceDirectory(workspacePath || baseCwd, requestedCwd)
 }
 
-export function resolveWorkspaceChild(workspace: string, filePath: string): string {
+export function resolveWorkspaceTarget(workspace: string, filePath: string): string {
   const workspaceRoot = resolve(workspace)
   const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
+  if (!isPathInsideWorkspace(workspaceRoot, targetPath)) {
+    throw new Error('Path is outside the workspace.')
+  }
+  return targetPath
+}
+
+export function resolveWorkspaceChild(workspace: string, filePath: string): string {
+  const workspaceRoot = resolve(workspace)
+  const targetPath = resolveWorkspaceTarget(workspaceRoot, filePath)
   const rel = relative(workspaceRoot, targetPath)
   if (
     rel === '' ||
     rel === '..' ||
     rel.startsWith(`..${sep}`) ||
-    isAbsolute(rel) ||
-    !isPathInsideWorkspace(workspaceRoot, targetPath)
+    isAbsolute(rel)
   ) {
     throw new Error('Path is outside the workspace.')
   }
@@ -798,14 +808,24 @@ export function toWorkspaceRelativePath(workspace: string, targetPath: string): 
   return relative(resolve(workspace), resolve(targetPath)).replace(/\\/g, '/')
 }
 
-export function resolveMcpPath(workspacePath: string, filePath: string): string {
+export function resolveMcpPath(
+  workspacePath: string,
+  filePath: string,
+  options: { allowWorkspaceRoot?: boolean } = {}
+): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new Error('A workspace path is required.')
   }
-  return resolveWorkspaceChild(workspacePath, filePath)
+  return options.allowWorkspaceRoot
+    ? resolveWorkspaceTarget(workspacePath, filePath)
+    : resolveWorkspaceChild(workspacePath, filePath)
 }
 
-export function resolveMcpScopedPath(context: WorkspaceToolContext, filePath: string): string {
+export function resolveMcpScopedPath(
+  context: WorkspaceToolContext,
+  filePath: string,
+  options: { allowWorkspaceRoot?: boolean } = {}
+): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new Error(
       context.scope === 'global' ? 'A host path is required.' : 'A workspace path is required.'
@@ -814,7 +834,7 @@ export function resolveMcpScopedPath(context: WorkspaceToolContext, filePath: st
   if (context.scope === 'global') {
     return isAbsolute(filePath) ? resolve(filePath) : resolve(context.cwd, filePath)
   }
-  return resolveMcpPath(context.workspacePath || context.cwd, filePath)
+  return resolveMcpPath(context.workspacePath || context.cwd, filePath, options)
 }
 
 export function formatScopedPath(context: WorkspaceToolContext, targetPath: string): string {

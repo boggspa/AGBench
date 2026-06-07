@@ -1366,7 +1366,7 @@ export function SettingsPanel({
   const [fxSnapshot, setFxSnapshot] = useState<FxRateSnapshot | null>(null)
   const [fxRefreshing, setFxRefreshing] = useState(false)
   const [fxError, setFxError] = useState<string | null>(null)
-  // Gemini MCP bridge "Test" feedback. `onRefreshGeminiMcpBridgeStatus`
+  // TaskWraith MCP bridge "Test" feedback. `onRefreshGeminiMcpBridgeStatus`
   // is fire-and-forget (void), so capture the status `checkedAt` at click
   // time; we're "testing" until a fresh status (new `checkedAt`) lands.
   // Deriving from the captured value avoids a reset-in-effect.
@@ -3916,7 +3916,7 @@ export function SettingsPanel({
                 />
 
                 <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
-                  <span>Gemini MCP bridge</span>
+                  <span>TaskWraith MCP bridge</span>
                   <div
                     style={{
                       display: 'flex',
@@ -3966,7 +3966,7 @@ export function SettingsPanel({
                 </div>
                 {geminiBridgeTesting ? (
                   <p className="settings-hint" style={{ color: 'var(--text-secondary)' }}>
-                    ● Testing the Gemini MCP bridge…
+                    ● Testing the TaskWraith MCP bridge…
                   </p>
                 ) : geminiMcpBridgeStatus ? (
                   <p
@@ -4317,8 +4317,8 @@ export function SettingsPanel({
                   Connected surfaces
                 </h4>
                 <p className="settings-hint">
-                  Provider status comes from existing runtime discovery. Gemini also has an
-                  installable TaskWraith MCP bridge for CLI/OAuth runs.
+                  Provider status comes from existing runtime discovery. The shared TaskWraith
+                  MCP bridge is registered for supported provider runtimes.
                 </p>
               </div>
               <div className="settings-mcp-server-grid">
@@ -4378,10 +4378,10 @@ export function SettingsPanel({
                     onChange={(e) => onChange({ geminiMcpBridgeEnabled: e.target.checked })}
                   />
                   <span>
-                    Gemini TaskWraith MCP bridge
+                    TaskWraith MCP bridge
                     <small>
-                      Enables the bundled TaskWraith MCP server for Gemini CLI profiles. API-key Gemini
-                      runs call the same host tools directly.
+                      Enables the bundled TaskWraith MCP server for supported CLI/provider
+                      runtimes. API-key Gemini runs call the same host tools directly.
                     </small>
                   </span>
                 </label>

@@ -532,17 +532,22 @@ function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
 }
 
+function isTopLevelWorkspaceChat(chat: ChatRecord): boolean {
+  return !chat.parentChatId && chat.parentChatRelation !== 'sideChat' && !isSubThreadChat(chat)
+}
+
 function getLinkedChatAgentIdentity(chat: ChatRecord | null | undefined) {
   if (!chat) return null
   if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
   if (chat.parentChatRelation !== 'sideChat' || getSideChatMode(chat) !== 'singleProvider') return null
   const participantId = getSideChatSelectedParticipantId(chat)
-  const seed = participantId ? `${chat.parentChatId || chat.appChatId}:${participantId}` : chat.appChatId
-  return assignAgentIdentityFromSeed(seed)
+  if (!participantId) return null
+  return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:${participantId}`)
 }
 
 function getLinkedChatRouteLabel(chat: ChatRecord, parentChat?: ChatRecord | null): string {
-  const parentProvider = chat.delegationContext?.parentProvider || (parentChat ? getChatProvider(parentChat) : undefined)
+  const parentProvider =
+    chat.delegationContext?.parentProvider || (parentChat ? getChatProvider(parentChat) : undefined)
   const parentLabel = parentProvider ? getProviderLabel(parentProvider) : 'Parent'
   const childLabel = getProviderLabel(getChatProvider(chat))
   if (isSubThreadChat(chat)) return `${parentLabel} delegated to ${childLabel}`
@@ -551,6 +556,9 @@ function getLinkedChatRouteLabel(chat: ChatRecord, parentChat?: ChatRecord | nul
   if (mode === 'fanOut') return `${parentLabel} parallel fan-out`
   if (mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
+  if (!participantLabel && parentProvider === getChatProvider(chat)) {
+    return `${parentLabel} isolated side chat`
+  }
   return participantLabel
     ? `${parentLabel} dedicated branch to ${participantLabel}`
     : `${parentLabel} side branch to ${childLabel}`
@@ -573,7 +581,7 @@ function getSideChatModeLabel(chat: ChatRecord): string {
   if (mode === 'ensembleClone') return 'Ensemble clone'
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (participantLabel) return `Participant: ${participantLabel}`
-  return 'Single provider'
+  return 'Isolated'
 }
 
 function getSideChatModeDescription(chat: ChatRecord): string {
@@ -3394,7 +3402,7 @@ function App(): React.JSX.Element {
               ...prev,
               {
                 type: 'stderr',
-                content: `Failed to update Gemini MCP bridge: ${redactLog(String(error))}`
+                content: `Failed to update TaskWraith MCP bridge: ${redactLog(String(error))}`
               }
             ])
           })
@@ -3968,7 +3976,9 @@ function App(): React.JSX.Element {
     }
 
     const allChats = await window.api.getChats()
-    const workspaceChats = allChats.filter((chat) => chat.workspaceId === ws.id)
+    const workspaceChats = allChats.filter(
+      (chat) => chat.workspaceId === ws.id && isTopLevelWorkspaceChat(chat)
+    )
     const emptyChat = workspaceChats.find((chat) => chat.messages.length === 0)
     let selectedProvider: ProviderId = 'gemini'
     let selectedChat: ChatRecord
@@ -4620,6 +4630,8 @@ function App(): React.JSX.Element {
   const handleNewChat = async (wsId: string, wsPath: string) => {
     const newChat = await window.api.createChat(wsId, wsPath)
     const provider = getChatProvider(newChat)
+    setSideChatId(null)
+    setSideChatMenuOpen(false)
     const workspace = workspaces.find((item) => item.id === wsId) || getWorkspaceForChat(newChat)
     if (workspace) {
       setCurrentWorkspace(workspace)
@@ -8246,24 +8258,34 @@ function App(): React.JSX.Element {
               }
             })
           } else if (event.type === 'tool_event') {
-            if (
-              updated.messages.length === 0 ||
-              updated.messages[updated.messages.length - 1].role !== 'tool'
-            ) {
-              updated.messages = [
-                ...updated.messages,
-                {
-                  id: createMessageId(),
-                  role: 'tool',
-                  content: '',
-                  timestamp: new Date().toISOString(),
-                  toolActivities: []
-                }
-              ]
+            const createToolMessage = (): ChatMessage => ({
+              id: createMessageId(),
+              role: 'tool',
+              content: '',
+              timestamp: new Date().toISOString(),
+              toolActivities: []
+            })
+            let lastMsgIndex = updated.messages.length - 1
+            let lastMsg = updated.messages[lastMsgIndex]
+            if (updated.messages.length === 0 || lastMsg?.role !== 'tool') {
+              const trailingAssistant = lastMsg?.role === 'assistant' ? lastMsg : null
+              const previousToolIndex = trailingAssistant ? updated.messages.length - 2 : -1
+              const previousTool =
+                previousToolIndex >= 0 ? updated.messages[previousToolIndex] : null
+              if (trailingAssistant && previousTool?.role === 'tool') {
+                lastMsgIndex = previousToolIndex
+                lastMsg = previousTool
+              } else {
+                const toolMessage = createToolMessage()
+                updated.messages = trailingAssistant
+                  ? [...updated.messages.slice(0, -1), toolMessage, trailingAssistant]
+                  : [...updated.messages, toolMessage]
+                lastMsgIndex = trailingAssistant
+                  ? updated.messages.length - 2
+                  : updated.messages.length - 1
+                lastMsg = toolMessage
+              }
             }
-
-            const lastMsgIndex = updated.messages.length - 1
-            const lastMsg = updated.messages[lastMsgIndex]
             const acts = [...(lastMsg.toolActivities || [])]
 
             const tData = event.data
@@ -8324,7 +8346,8 @@ function App(): React.JSX.Element {
 
             updated.messages = [
               ...updated.messages.slice(0, lastMsgIndex),
-              { ...lastMsg, toolActivities: acts }
+              { ...lastMsg, toolActivities: acts },
+              ...updated.messages.slice(lastMsgIndex + 1)
             ]
           } else if (event.type === 'error') {
             updated.messages = [
@@ -10713,7 +10736,7 @@ function App(): React.JSX.Element {
     } catch (error) {
       setRawLogs((prev) => [
         ...prev,
-        { type: 'stderr', content: `Gemini MCP bridge status failed: ${redactLog(String(error))}` }
+        { type: 'stderr', content: `TaskWraith MCP bridge status failed: ${redactLog(String(error))}` }
       ])
     }
   }
@@ -10797,12 +10820,12 @@ function App(): React.JSX.Element {
       )
       setRawLogs((prev) => [
         ...prev,
-        { type: 'info', content: status.message || 'Gemini MCP bridge installed.' }
+        { type: 'info', content: status.message || 'TaskWraith MCP bridge installed.' }
       ])
     } catch (error) {
       setRawLogs((prev) => [
         ...prev,
-        { type: 'stderr', content: `Gemini MCP bridge install failed: ${redactLog(String(error))}` }
+        { type: 'stderr', content: `TaskWraith MCP bridge install failed: ${redactLog(String(error))}` }
       ])
     }
   }

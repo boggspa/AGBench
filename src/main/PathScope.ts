@@ -34,23 +34,37 @@ export function resolveScopedDirectory(
     : resolveWorkspaceDirectory(workspacePath || baseCwd, requestedCwd)
 }
 
-export function resolveGeminiMcpPath(workspacePath: string, filePath: string): string {
+export function resolveGeminiMcpPath(
+  workspacePath: string,
+  filePath: string,
+  options: { allowWorkspaceRoot?: boolean } = {}
+): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new Error('A workspace path is required.')
   }
-  return resolveWorkspaceChild(workspacePath, filePath)
+  return options.allowWorkspaceRoot
+    ? resolveWorkspaceTarget(workspacePath, filePath)
+    : resolveWorkspaceChild(workspacePath, filePath)
+}
+
+export function resolveWorkspaceTarget(workspace: string, filePath: string): string {
+  const workspaceRoot = resolve(workspace)
+  const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
+  if (!isPathInsideWorkspace(workspaceRoot, targetPath)) {
+    throw new Error('Path is outside the workspace.')
+  }
+  return targetPath
 }
 
 export function resolveWorkspaceChild(workspace: string, filePath: string): string {
   const workspaceRoot = resolve(workspace)
-  const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
+  const targetPath = resolveWorkspaceTarget(workspaceRoot, filePath)
   const rel = relative(workspaceRoot, targetPath)
   if (
     rel === '' ||
     rel === '..' ||
     rel.startsWith(`..${sep}`) ||
-    isAbsolute(rel) ||
-    !isPathInsideWorkspace(workspaceRoot, targetPath)
+    isAbsolute(rel)
   ) {
     throw new Error('Path is outside the workspace.')
   }

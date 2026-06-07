@@ -126,7 +126,7 @@ describe('ProductOperations', () => {
     expect(filtered[0].message).toBe('new')
   })
 
-  it('summarizes bridge health for enabled but unavailable Gemini MCP bridge', () => {
+  it('summarizes bridge health for enabled but unavailable TaskWraith MCP bridge', () => {
     const health = createBridgeHealthRecord({
       checkedAt: '2026-05-07T10:00:00.000Z',
       enabled: true,

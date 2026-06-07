@@ -125,6 +125,7 @@ import type {
 } from './index.types'
 import { appendGeminiCliWorktreeArgs } from './gemini/GeminiCliArgs'
 import {
+  buildCodexFastServiceTierCompatibilityArgs,
   CodexAppServerClient,
   codexConfigParseUserMessage,
   compareCodexVersions,
@@ -3195,7 +3196,8 @@ function resolveGeminiMcpGrantAwarePath(
   context: GeminiToolContext,
   provider: ProviderId,
   filePath: string,
-  access: 'read' | 'write'
+  access: 'read' | 'write',
+  options: { allowWorkspaceRoot?: boolean } = {}
 ): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new Error(
@@ -3209,7 +3211,7 @@ function resolveGeminiMcpGrantAwarePath(
   const workspaceRoot = resolve(context.workspacePath || context.cwd)
   const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
   if (isPathInsideWorkspace(workspaceRoot, targetPath)) {
-    return resolveGeminiMcpPath(workspaceRoot, targetPath)
+    return resolveGeminiMcpPath(workspaceRoot, targetPath, options)
   }
   if (
     isAbsolute(filePath) &&
@@ -8493,12 +8495,14 @@ async function runCodexExecFallback(
   const model = normalizeCodexModel(payload.model)
   const sandbox = codexSandboxForMode(payload.approvalMode)
   const args = [
+    ...buildCodexFastServiceTierCompatibilityArgs(),
     'exec',
     '--json',
     '--color',
     'never',
     '-C',
     payload.workspace!,
+    '--skip-git-repo-check',
     '--sandbox',
     sandbox,
     '--model',
@@ -8563,6 +8567,7 @@ async function runCodexExecFallback(
   const child = spawn(codexSpawnPlan.command, codexSpawnPlan.args, {
     cwd: payload.workspace!,
     shell: codexSpawnPlan.shell,
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: createCliEnv({
       FORCE_COLOR: '0',
       NO_COLOR: '1',
@@ -9943,7 +9948,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
           ...fallback,
           available: false,
           error: error instanceof Error ? error.message : String(error),
-          message: 'Gemini MCP bridge status check failed; showing last known status.'
+          message: 'TaskWraith MCP bridge status check failed; showing last known status.'
         } satisfies GeminiMcpBridgeStatus
       }
       return {
@@ -9953,7 +9958,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
         available: false,
         serverName: GEMINI_MCP_SERVER_NAME,
         error: error instanceof Error ? error.message : String(error),
-        message: 'Gemini MCP bridge status check failed.'
+        message: 'TaskWraith MCP bridge status check failed.'
       } satisfies GeminiMcpBridgeStatus
     }
   )
@@ -11136,7 +11141,8 @@ async function executeGeminiMcpTool(
         context,
         parentProvider,
         String(args.path || args.directory || '.'),
-        'read'
+        'read',
+        { allowWorkspaceRoot: true }
       )
       const stat = await fs.stat(targetPath)
       if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')

@@ -3,6 +3,7 @@ import type { ChatRecord, ProviderId } from '../../../main/store/types'
 import { isSubThreadChat } from '../lib/chatScope'
 import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
+import { ChatPopoutIcon, LinkCircleSymbolIcon, SplitChatIcon } from './AppChromeSymbols'
 
 const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
@@ -42,7 +43,7 @@ function linkedModeLabel(chat: ChatRecord): string {
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
   if (chat.sideChatContext?.mode === 'singleProvider') {
     const participantLabel = linkedParticipantLabel(chat)
-    return participantLabel ? `Participant: ${participantLabel}` : 'Single provider'
+    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated'
   }
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out'
   return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
@@ -57,13 +58,14 @@ function linkedParticipantLabel(chat: ChatRecord): string {
 
 function linkedAgentIdentity(chat: ChatRecord) {
   if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
-  if (chat.parentChatRelation !== 'sideChat' || chat.sideChatContext?.mode !== 'singleProvider') return null
+  if (chat.parentChatRelation !== 'sideChat' || chat.sideChatContext?.mode !== 'singleProvider') {
+    return null
+  }
   const participantId = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
-  const seed =
-    typeof participantId === 'string' && participantId.trim()
-      ? `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
-      : chat.appChatId
-  return assignAgentIdentityFromSeed(seed)
+  if (typeof participantId !== 'string' || !participantId.trim()) return null
+  return assignAgentIdentityFromSeed(
+    `${chat.parentChatId || chat.appChatId}:${participantId.trim()}`
+  )
 }
 
 function linkedRouteLabel(chat: ChatRecord, parentChat: ChatRecord): string {
@@ -75,6 +77,7 @@ function linkedRouteLabel(chat: ChatRecord, parentChat: ChatRecord): string {
   if (chat.sideChatContext?.mode === 'fanOut') return `${parentLabel} parallel fan-out`
   if (chat.sideChatContext?.mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
   const participantLabel = linkedParticipantLabel(chat)
+  if (!participantLabel && parentProvider === chat.provider) return `${parentLabel} isolated side chat`
   return participantLabel
     ? `${parentLabel} dedicated branch to ${participantLabel}`
     : `${parentLabel} side branch to ${childLabel}`
@@ -144,6 +147,11 @@ export function LinkedChatsStrip({
     subThreadCount > 0 ? countLabel(subThreadCount, 'agent') : ''
   ].filter(Boolean)
   const markerLabel = sideChatCount > 0 ? 'Side chats opened' : 'Linked threads'
+  const compactMarkerLabel = sideChatCount > 0 ? 'Side chats' : 'Linked'
+  const compactSummaryParts = [
+    String(linkedChats.length),
+    runningCount > 0 ? `${runningCount} running` : ''
+  ].filter(Boolean)
   const listId = `linked-chats-strip-list-${currentChat.appChatId}`
 
   return (
@@ -157,13 +165,15 @@ export function LinkedChatsStrip({
         aria-expanded={!collapsed}
         aria-controls={listId}
         onClick={() => setCollapsed((value) => !value)}
-        title={collapsed ? 'Show linked side chats' : 'Hide linked side chats'}
+        title={`${collapsed ? 'Show linked side chats' : 'Hide linked side chats'}: ${summaryParts.join(
+          ' | '
+        )}`}
       >
         <span className="linked-chats-strip-caret" aria-hidden>
           {collapsed ? '+' : '-'}
         </span>
-        <span className="linked-chats-strip-label">{markerLabel}</span>
-        <span className="linked-chats-strip-summary">{summaryParts.join(' | ')}</span>
+        <span className="linked-chats-strip-label">{compactMarkerLabel}</span>
+        <span className="linked-chats-strip-summary">{compactSummaryParts.join(' | ')}</span>
       </button>
       {!collapsed && (
         <div id={listId} className="linked-chats-strip-list">
@@ -177,6 +187,10 @@ export function LinkedChatsStrip({
             const modeLabel = linkedModeLabel(chat)
             const routeLabel = linkedRouteLabel(chat, currentChat)
             const agentIdentity = linkedAgentIdentity(chat)
+            const visibleStateLabel = running ? 'Running' : ''
+            const titleDetails = [stateLabel, modeLabel, contextLabel, routeLabel]
+              .filter(Boolean)
+              .join(' | ')
             return (
               <div
                 key={chat.appChatId}
@@ -189,7 +203,8 @@ export function LinkedChatsStrip({
                   className="linked-chats-strip-open"
                   onClick={canOpenBeside ? () => onOpenBeside?.(chat.appChatId) : undefined}
                   disabled={!canOpenBeside}
-                  title={`Open beside: ${title} (${contextLabel})`}
+                  title={`Open beside: ${title}${titleDetails ? ` (${titleDetails})` : ''}`}
+                  aria-label={`Open ${title} beside the current chat`}
                 >
                   <span
                     className="linked-chats-strip-provider-dot"
@@ -215,42 +230,62 @@ export function LinkedChatsStrip({
                   )}
                   <span className="linked-chats-strip-title">{title}</span>
                   <span className="linked-chats-strip-meta">
-                    <span className="linked-chats-strip-state">{stateLabel}</span>
-                    <span className="linked-chats-strip-mode">{modeLabel}</span>
-                    <span className="linked-chats-strip-context">{contextLabel}</span>
+                    {visibleStateLabel && (
+                      <span className="linked-chats-strip-state">{visibleStateLabel}</span>
+                    )}
+                    <span className="linked-chats-strip-mode linked-chats-strip-detail">
+                      {modeLabel}
+                    </span>
+                    <span className="linked-chats-strip-context linked-chats-strip-detail">
+                      {contextLabel}
+                    </span>
                     {routeLabel && (
-                      <span className="linked-chats-strip-route">{routeLabel}</span>
+                      <span className="linked-chats-strip-route linked-chats-strip-detail">
+                        {routeLabel}
+                      </span>
                     )}
                   </span>
                 </button>
                 {onOpenDrawer && (
                   <button
                     type="button"
-                    className="linked-chats-strip-main"
+                    className="linked-chats-strip-main linked-chats-strip-action"
                     onClick={() => onOpenDrawer(chat.appChatId)}
                     title={`Open in side drawer: ${title}`}
+                    aria-label={`Open ${title} in the side drawer`}
                   >
-                    Open drawer
+                    <span className="linked-chats-strip-action-icon" aria-hidden="true">
+                      <SplitChatIcon />
+                    </span>
+                    <span className="sr-only">Open drawer</span>
                   </button>
                 )}
                 {onOpenMain && (
                   <button
                     type="button"
-                    className="linked-chats-strip-main"
+                    className="linked-chats-strip-main linked-chats-strip-action"
                     onClick={() => onOpenMain(chat.appChatId)}
                     title={`Open as main chat: ${title}`}
+                    aria-label={`Open ${title} as the main chat`}
                   >
-                    Open as main
+                    <span className="linked-chats-strip-action-icon" aria-hidden="true">
+                      <LinkCircleSymbolIcon />
+                    </span>
+                    <span className="sr-only">Open as main</span>
                   </button>
                 )}
                 {onPopOut && (
                   <button
                     type="button"
-                    className="linked-chats-strip-main"
+                    className="linked-chats-strip-main linked-chats-strip-action"
                     onClick={() => onPopOut(chat.appChatId)}
                     title={`Pop out linked chat: ${title}`}
+                    aria-label={`Pop out ${title}`}
                   >
-                    Pop out
+                    <span className="linked-chats-strip-action-icon" aria-hidden="true">
+                      <ChatPopoutIcon />
+                    </span>
+                    <span className="sr-only">Pop out</span>
                   </button>
                 )}
               </div>

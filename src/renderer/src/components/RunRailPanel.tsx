@@ -275,7 +275,7 @@ export function RunRailPanel({
         })}
       </div>
 
-      <section className="run-rail-section">
+      <section className="run-rail-section run-rail-runs">
         <div className="run-rail-section-title">
           <strong>Runs</strong>
           <span>{lanes.length} tracked</span>
@@ -404,7 +404,7 @@ export function RunRailPanel({
         </section>
       )}
 
-      <section className="run-rail-section">
+      <section className="run-rail-section run-rail-handoffs-section">
         <div className="run-rail-section-title">
           <strong>Handoffs</strong>
           <span>{openHandoffs.length} draft</span>

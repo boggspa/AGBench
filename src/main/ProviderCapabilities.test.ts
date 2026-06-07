@@ -21,7 +21,7 @@ function settings(
 }
 
 describe('ProviderCapabilities', () => {
-  it('does not advertise TaskWraith Gemini tools when the MCP bridge is disabled', () => {
+  it('does not advertise TaskWraith MCP tools when the bridge is disabled', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'gemini',
       settings: settings(),

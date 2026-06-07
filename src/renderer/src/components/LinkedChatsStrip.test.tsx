@@ -88,7 +88,7 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('Side chat')
     expect(html).toContain('Scratch beside parent')
     expect(html).toContain('Active')
-    expect(html).toContain('Single provider')
+    expect(html).toContain('Isolated')
     expect(html).toContain('Seeded from selected message')
     expect(html).toContain('Agent sub-thread')
     expect(html).toContain('Investigate tests')
@@ -105,6 +105,41 @@ describe('LinkedChatsStrip', () => {
     expect(html).not.toContain('Archived child')
     expect(html).not.toContain('Terminated child')
     expect(html).not.toContain('Other child')
+  })
+
+  it('does not render plain same-provider side chats as agent identities', () => {
+    const parent = makeChat({
+      provider: 'codex',
+      title: 'Codex parent'
+    })
+    const plainSideChat = makeChat({
+      appChatId: 'side-codex-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'codex',
+      title: 'Side Codex chat',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'closed',
+        mode: 'singleProvider',
+        transcriptVisibility: 'none'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, plainSideChat]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('Side Codex chat')
+    expect(html).toContain('Isolated')
+    expect(html).toContain('Codex isolated side chat')
+    expect(html).not.toContain('Codex side branch to Codex')
+    expect(html).not.toContain('linked-chats-strip-agent-icon')
   })
 
   it('can render the linked marker collapsed to a summary', () => {

@@ -335,16 +335,16 @@ function geminiMcpCapability(
     message:
       status?.message ||
       (enabled
-        ? 'TaskWraith Gemini MCP bridge is not available.'
-        : 'TaskWraith Gemini MCP bridge is disabled.')
+        ? 'TaskWraith MCP bridge is not available for Gemini.'
+        : 'TaskWraith MCP bridge is disabled.')
   }
 }
 
 function geminiMcpUnavailableTitle(status: GeminiMcpBridgeStatus | null | undefined): string {
-  if (!status?.enabled) return 'Gemini MCP bridge disabled'
-  if (!status.installed) return 'Gemini MCP bridge not installed'
-  if (status.error) return 'Gemini MCP bridge status failed'
-  return 'Gemini MCP bridge unavailable'
+  if (!status?.enabled) return 'TaskWraith MCP bridge disabled'
+  if (!status.installed) return 'TaskWraith MCP bridge not installed'
+  if (status.error) return 'TaskWraith MCP bridge status failed'
+  return 'TaskWraith MCP bridge unavailable'
 }
 
 /** Provider-managed MCP fallback: the provider resolves its own tools (no

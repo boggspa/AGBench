@@ -8,6 +8,7 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  buildCodexFastServiceTierCompatibilityArgs,
   buildCodexTaskWraithMcpArgs,
   codexConfigParseUserMessage,
   codexRuntimeProfileKey,
@@ -147,6 +148,15 @@ describe('buildCodexTaskWraithMcpArgs', () => {
     // update the test too.
     const args = buildCodexTaskWraithMcpArgs(makeConfig())
     expect(args[5]).toContain('TASKWRAITH_PARENT_PROVIDER = "codex"')
+  })
+})
+
+describe('buildCodexFastServiceTierCompatibilityArgs', () => {
+  it('builds the Codex CLI override used after service_tier parse failures', () => {
+    expect(buildCodexFastServiceTierCompatibilityArgs()).toEqual([
+      '-c',
+      'service_tier="fast"'
+    ])
   })
 })
 

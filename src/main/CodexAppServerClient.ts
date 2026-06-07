@@ -84,6 +84,10 @@ export function codexConfigParseUserMessage(stderr: string): string {
   )
 }
 
+export function buildCodexFastServiceTierCompatibilityArgs(): string[] {
+  return ['-c', 'service_tier="fast"']
+}
+
 /**
  * Parse a codex `--version` line (e.g. `codex-cli 0.128.0` or
  * `codex-cli 0.136.0-alpha.2`) into comparable numeric parts plus a
@@ -377,7 +381,10 @@ export class CodexAppServerClient {
     this.rejectPending(new Error('Codex app-server stopped.'))
   }
 
-  private async start(appVersion: string): Promise<void> {
+  private async start(
+    appVersion: string,
+    options: { forceFastServiceTier?: boolean } = {}
+  ): Promise<void> {
     // Phase I2: prepend `-c mcp_servers.TaskWraith.*` config flags so
     // the Codex CLI registers the TaskWraith MCP bridge as an MCP server
     // for the whole app-server lifetime. The bridge subprocess
@@ -393,7 +400,11 @@ export class CodexAppServerClient {
         parentProvider: 'codex'
       }
     )
-    const codexArgs = [...mcpArgs, 'app-server']
+    const codexArgs = [
+      ...(options.forceFastServiceTier ? buildCodexFastServiceTierCompatibilityArgs() : []),
+      ...mcpArgs,
+      'app-server'
+    ]
     const codexEnv: Record<string, string> = {
       ...(this.runtimeProfile?.env || {}),
       FORCE_COLOR: '0',
@@ -413,16 +424,18 @@ export class CodexAppServerClient {
       throw new Error(resolvedCodex.error || 'Codex CLI was not found.')
     }
     const spawnPlan = createCliSpawnPlan(resolvedCodex.binaryPath, codexArgs)
-    this.proc = spawn(spawnPlan.command, spawnPlan.args, {
+    const proc = spawn(spawnPlan.command, spawnPlan.args, {
       shell: spawnPlan.shell,
       stdio: 'pipe',
       env: createCliEnv(codexEnv, resolvedCodex.binaryPath)
     })
+    this.proc = proc
 
-    this.stdoutReader = createInterface({ input: this.proc.stdout })
-    this.stdoutReader.on('line', (line) => this.handleLine(line))
+    const stdoutReader = createInterface({ input: proc.stdout })
+    this.stdoutReader = stdoutReader
+    stdoutReader.on('line', (line) => this.handleLine(line))
 
-    this.proc.stderr.on('data', (chunk) => {
+    proc.stderr.on('data', (chunk) => {
       const text = chunk.toString('utf8')
       // Keep the tail bounded; a config parse error is short and appears first,
       // but the agent can later emit lots of stderr we don't want to retain.
@@ -430,19 +443,23 @@ export class CodexAppServerClient {
       this.stderrHandler?.(text)
     })
 
-    this.proc.on('close', (code) => {
+    proc.on('close', (code) => {
       this.stderrHandler?.(
         `Codex app-server exited with code ${typeof code === 'number' ? code : 'unknown'}.`
       )
-      this.proc = null
-      this.stdoutReader?.close()
-      this.stdoutReader = null
-      this.rejectPending(new Error('Codex app-server exited.'))
+      const isCurrentProcess = this.proc === proc
+      if (isCurrentProcess) this.proc = null
+      if (this.stdoutReader === stdoutReader) {
+        this.stdoutReader.close()
+        this.stdoutReader = null
+      }
+      if (isCurrentProcess) this.rejectPending(new Error('Codex app-server exited.'))
     })
 
-    this.proc.on('error', (error) => {
-      this.proc = null
-      this.rejectPending(error)
+    proc.on('error', (error) => {
+      const isCurrentProcess = this.proc === proc
+      if (isCurrentProcess) this.proc = null
+      if (isCurrentProcess) this.rejectPending(error)
     })
 
     try {
@@ -466,6 +483,14 @@ export class CodexAppServerClient {
       // an actionable message rather than the cryptic exec-fallback notice.
       const stderr = this.recentStderr.trim()
       if (stderr) {
+        if (!options.forceFastServiceTier && isCodexConfigParseError(stderr)) {
+          this.stderrHandler?.(
+            'Codex rejected config.toml; retrying app-server with service_tier="fast" compatibility override.\n'
+          )
+          this.dispose()
+          await this.start(appVersion, { forceFastServiceTier: true })
+          return
+        }
         const base = error instanceof Error ? error.message : String(error)
         const enriched = new Error(`${base} ${stderr}`) as Error & { codexStderr?: string }
         enriched.codexStderr = stderr

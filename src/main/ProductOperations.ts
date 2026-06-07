@@ -160,13 +160,13 @@ export function createBridgeHealthRecord(
     return {
       provider: 'gemini',
       bridgeId: 'taskwraith',
-      label: 'Gemini MCP bridge',
+      label: 'TaskWraith MCP bridge',
       status: 'unknown',
       checkedAt,
       enabled: false,
       installed: false,
       available: false,
-      message: 'Gemini MCP bridge status has not been checked yet.'
+      message: 'TaskWraith MCP bridge status has not been checked yet.'
     }
   }
 
@@ -181,7 +181,7 @@ export function createBridgeHealthRecord(
   return {
     provider: 'gemini',
     bridgeId: status.serverName || 'taskwraith',
-    label: 'Gemini MCP bridge',
+    label: 'TaskWraith MCP bridge',
     status: health,
     checkedAt: status.checkedAt || checkedAt,
     enabled: Boolean(status.enabled),
@@ -217,11 +217,11 @@ export function buildInstallRepairStatus(input: {
     },
     {
       id: 'gemini-mcp-bridge',
-      label: 'Gemini MCP bridge',
+      label: 'TaskWraith MCP bridge',
       status: bridgeStatus?.enabled ? (bridgeStatus.available ? 'ok' : 'warning') : 'ok',
       message: bridgeStatus?.enabled
-        ? bridgeStatus.message || 'Gemini MCP bridge is enabled.'
-        : 'Gemini MCP bridge is disabled by settings.',
+        ? bridgeStatus.message || 'TaskWraith MCP bridge is enabled.'
+        : 'TaskWraith MCP bridge is disabled by settings.',
       repairAction:
         bridgeStatus?.enabled && !bridgeStatus.available ? 'install_gemini_bridge' : 'none',
       checkedAt

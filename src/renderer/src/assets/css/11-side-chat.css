@@ -336,6 +336,21 @@
   min-height: 0;
 }
 
+.run-rail-runs {
+  flex: 0 0 min(46vh, 430px);
+  min-height: 210px;
+}
+
+.run-rail-analyst,
+.run-rail-timeline,
+.run-rail-handoffs-section {
+  flex: 0 0 auto;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 74%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+}
+
 .run-rail-section-title {
   color: var(--text-muted);
   font-size: 11px;
@@ -351,6 +366,19 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+
+.run-rail-lanes {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.run-rail-handoffs {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .run-rail-lane,
@@ -519,13 +547,70 @@
 }
 
 .run-rail-timeline {
-  min-height: 360px;
+  min-height: 0;
 }
 
 .run-rail-timeline .run-inspector {
-  min-height: 360px;
+  height: auto;
+  min-height: 0;
+  max-height: 320px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
   border-radius: 7px;
+  overflow: hidden;
+}
+
+.run-rail-timeline .run-inspector__header {
+  gap: 6px;
+  padding: 8px;
+}
+
+.run-rail-timeline .run-inspector__header-titles {
+  gap: 6px;
+}
+
+.run-rail-timeline .run-inspector__header-stats {
+  gap: 4px;
+}
+
+.run-rail-timeline .run-inspector__rows {
+  max-height: 220px;
+}
+
+.run-rail-timeline .run-inspector__row {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "time summary chips"
+    "kind summary chips";
+  gap: 2px 6px;
+  padding: 5px 8px;
+}
+
+.run-rail-timeline .run-inspector__row-glyph {
+  display: none;
+}
+
+.run-rail-timeline .run-inspector__row-time {
+  grid-area: time;
+}
+
+.run-rail-timeline .run-inspector__row-kind {
+  grid-area: kind;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-rail-timeline .run-inspector__row-summary {
+  grid-area: summary;
+}
+
+.run-rail-timeline .run-inspector__row-chips {
+  grid-area: chips;
+  min-width: 0;
+}
+
+.run-rail-timeline .run-inspector__keyboard-hints {
+  display: none;
 }
 
 @media (max-width: 1180px) {
