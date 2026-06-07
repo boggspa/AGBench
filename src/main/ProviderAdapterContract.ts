@@ -10,13 +10,11 @@ import type {
  * ProviderAdapterContract — generic conformance test battery for any
  * `ProviderAdapter` implementation.
  *
- * Phase C-late slice "provider-adapter test harness", per Codex's
- * review of competing apps: Lunel ships a clean `AIProvider` contract
- * with a generic test suite each implementation must pass before being
- * registered. This module is our equivalent — when SuperGrok / OpenCode
- * / further Gemini variants land, they all pass through this contract
- * and we catch regressions at registration time rather than at runtime
- * inside the renderer.
+ * Phase C-late slice "provider-adapter test harness". A generic
+ * contract suite lets each `ProviderAdapter` implementation prove the
+ * same baseline behavior before registration. Future provider variants
+ * all pass through this contract, so we catch regressions at registration
+ * time rather than at runtime inside the renderer.
  *
  * Usage pattern (in a test file):
  *
