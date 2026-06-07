@@ -609,6 +609,8 @@ const api = {
   clearWorkspaces: () => ipcRenderer.invoke('clear-workspaces'),
   getChats: (workspaceId?: string) => ipcRenderer.invoke('get-chats', workspaceId),
   getChatList: (workspaceId?: string) => ipcRenderer.invoke('get-chat-list', workspaceId),
+  getPinnedMessages: (workspaceId?: string) =>
+    ipcRenderer.invoke('get-pinned-messages', workspaceId),
   getChat: (chatId: string) => ipcRenderer.invoke('get-chat', chatId),
   createChat: (workspaceId: string, workspacePath: string) =>
     ipcRenderer.invoke('create-chat', workspaceId, workspacePath),

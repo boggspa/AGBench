@@ -1854,8 +1854,39 @@ export interface ChatMessage {
     returnResultToParent?: boolean
     /** Concurrent Ensemble lane id for lane-aware transcript rows. */
     ensembleLaneId?: string
+    /** User pin timestamp (ms since epoch). Missing means not pinned. */
+    pinnedAt?: number
     [key: string]: unknown
   }
+}
+
+export interface PinnedMessageSummary {
+  id: string
+  role: ChatMessage['role']
+  content: string
+  timestamp: string
+  runId?: string
+  pinnedAt: number
+}
+
+export interface PinnedMessageChatGroup {
+  chatId: string
+  chatTitle: string
+  chatKind?: ChatKind
+  provider?: ProviderId
+  updatedAt: number
+  workspaceId?: string
+  workspacePath?: string
+  workspaceDisplayName: string
+  pinnedNotes?: string
+  messages: PinnedMessageSummary[]
+}
+
+export interface PinnedMessageGroup {
+  workspaceId?: string
+  workspacePath?: string
+  workspaceDisplayName: string
+  chats: PinnedMessageChatGroup[]
 }
 
 export interface ChatRun {
@@ -1964,6 +1995,8 @@ export interface ChatRecord {
    * and excluded from "Recents". Default false. Persisted via the
    * existing `save-chat` IPC. */
   pinned?: boolean
+  /** Per-thread markdown notes shown above this chat's pinned messages. */
+  pinnedNotes?: string
   linkedProviderSessionId?: string
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string

@@ -35,7 +35,8 @@ import {
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
-  ProductUpdateChangelog
+  ProductUpdateChangelog,
+  PinnedMessageGroup
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
 import { createDefaultEnsembleConfig } from '../EnsembleDefaults'
@@ -1013,6 +1014,73 @@ export class AppStore {
       }
     }
     return chats.sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  static getPinnedMessages(workspaceId?: string): PinnedMessageGroup[] {
+    const workspacesById = new Map(this.getWorkspaces().map((workspace) => [workspace.id, workspace]))
+    const groups = new Map<string, PinnedMessageGroup>()
+
+    for (const chat of this.getChats(workspaceId)) {
+      const messages = (chat.messages || [])
+        .map((message) => {
+          const pinnedAt = message.metadata?.pinnedAt
+          if (typeof pinnedAt !== 'number' || !Number.isFinite(pinnedAt)) return null
+          return {
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            timestamp: message.timestamp,
+            ...(message.runId ? { runId: message.runId } : {}),
+            pinnedAt
+          }
+        })
+        .filter((message): message is NonNullable<typeof message> => Boolean(message))
+        .sort((a, b) => b.pinnedAt - a.pinnedAt)
+
+      if (messages.length === 0 && !chat.pinnedNotes?.trim()) continue
+
+      const workspace = chat.workspaceId ? workspacesById.get(chat.workspaceId) : undefined
+      const workspacePath = chat.workspacePath || workspace?.path
+      const workspaceDisplayName =
+        chat.scope === 'global'
+          ? 'Global chats'
+          : workspace?.displayName ||
+            (workspacePath ? path.basename(workspacePath) || workspacePath : 'Unknown workspace')
+      const groupKey = chat.scope === 'global' ? 'global' : chat.workspaceId || workspacePath || 'unknown'
+      const group =
+        groups.get(groupKey) ||
+        ({
+          ...(chat.scope !== 'global' && chat.workspaceId ? { workspaceId: chat.workspaceId } : {}),
+          ...(workspacePath ? { workspacePath } : {}),
+          workspaceDisplayName,
+          chats: []
+        } satisfies PinnedMessageGroup)
+
+      group.chats.push({
+        chatId: chat.appChatId,
+        chatTitle: chat.title,
+        chatKind: chat.chatKind,
+        provider: chat.provider,
+        updatedAt: chat.updatedAt,
+        ...(chat.scope !== 'global' && chat.workspaceId ? { workspaceId: chat.workspaceId } : {}),
+        ...(workspacePath ? { workspacePath } : {}),
+        workspaceDisplayName,
+        ...(chat.pinnedNotes ? { pinnedNotes: chat.pinnedNotes } : {}),
+        messages
+      })
+      groups.set(groupKey, group)
+    }
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        chats: group.chats.sort((a, b) => b.updatedAt - a.updatedAt)
+      }))
+      .sort((a, b) => {
+        if (a.workspaceDisplayName === 'Global chats') return -1
+        if (b.workspaceDisplayName === 'Global chats') return 1
+        return a.workspaceDisplayName.localeCompare(b.workspaceDisplayName)
+      })
   }
 
   static getChat(chatId: string): ChatRecord | null {

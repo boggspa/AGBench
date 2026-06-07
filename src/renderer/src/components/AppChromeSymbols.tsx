@@ -154,6 +154,23 @@ export function SplitChatIcon() {
   )
 }
 
+export function PinnedMessagesIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5.2 2.4h5.6l-.8 4 2.1 2.1v1.3H8.7L8 13.6l-.7-3.8H3.9V8.5L6 6.4z" />
+      </svg>
+    </span>
+  )
+}
+
 export function GhostCompanionIcon() {
   return (
     <span className="chat-corner-symbol">

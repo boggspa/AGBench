@@ -57,7 +57,9 @@ import {
   EnsembleParticipant,
   EnsembleOrchestrationMode,
   PermissionPresetId,
-  SideChatLifecycleState
+  SideChatLifecycleState,
+  PinnedMessageGroup,
+  PinnedMessageSummary
 } from '../../main/store/types'
 import type { NativeCapabilitySnapshot } from '../../main/NativeCapabilities'
 import {
@@ -205,6 +207,7 @@ import {
   LinkCircleSymbolIcon,
   ModelSymbolIcon,
   PermissionSymbolIcon,
+  PinnedMessagesIcon,
   PlusSymbolIcon,
   QuestionCircleIcon,
   QueueSymbolIcon,
@@ -219,6 +222,7 @@ import {
   TrustSymbolIcon,
   XSymbolIcon
 } from './components/AppChromeSymbols'
+import { PinnedMessagesPanel } from './components/PinnedMessagesPanel'
 import {
   ChatMediaPreviewOverlay,
   collectChatMediaRefs,
@@ -478,7 +482,7 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
 ])
 
 type SidePanelPresentation = 'split' | 'drawer'
-type RightDockTab = 'run' | 'chat' | 'inspector' | 'files' | 'media' | 'terminal'
+type RightDockTab = 'run' | 'chat' | 'inspector' | 'files' | 'media' | 'pins' | 'terminal'
 type InspectorRightTab =
   | 'diff'
   | 'raw'
@@ -1356,6 +1360,15 @@ function App(): React.JSX.Element {
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
   const [isChatMediaPanelOpen, setIsChatMediaPanelOpen] = useState(false)
+  const [isPinnedMessagesPanelOpen, setIsPinnedMessagesPanelOpen] = useState(false)
+  const [transcriptJumpRequest, setTranscriptJumpRequest] = useState<{
+    chatId: string
+    messageId: string
+    requestId: number
+  } | null>(null)
+  const [settingsPinnedMessageGroups, setSettingsPinnedMessageGroups] = useState<
+    PinnedMessageGroup[]
+  >([])
   const [previewChatMediaRef, setPreviewChatMediaRef] = useState<ChatMediaRef | null>(null)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
@@ -5533,6 +5546,22 @@ function App(): React.JSX.Element {
   useEffect(() => {
     handleSelectChatRef.current = handleSelectChat
   })
+
+  const handleOpenPinnedMessageFromSettings = async (chatId: string, messageId: string) => {
+    let targetChat =
+      chatByIdRef.current.get(chatId) ||
+      chats.find((candidate) => candidate.appChatId === chatId) ||
+      (await window.api.getChat(chatId).catch(() => null))
+    if (!targetChat || isChatSummaryRecord(targetChat)) {
+      targetChat = await window.api.getChat(chatId).catch(() => null)
+    }
+    if (!targetChat) return
+    setShowSettings(false)
+    setIsPinnedMessagesPanelOpen(true)
+    setRightDockTab('pins')
+    await handleSelectChat(targetChat)
+    jumpToTranscriptMessage(chatId, messageId)
+  }
 
   useEffect(() => {
     const transcript = appTranscriptRef.current
@@ -10621,6 +10650,69 @@ function App(): React.JSX.Element {
     [copy]
   )
 
+  const refreshSettingsPinnedMessages = useCallback(async () => {
+    if (typeof window.api.getPinnedMessages !== 'function') return
+    try {
+      setSettingsPinnedMessageGroups(await window.api.getPinnedMessages())
+    } catch {
+      setSettingsPinnedMessageGroups([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showSettings || settingsActiveTab !== 'pinned-messages') return
+    void refreshSettingsPinnedMessages()
+  }, [showSettings, settingsActiveTab, refreshSettingsPinnedMessages])
+
+  const togglePinMessageInChat = useCallback(
+    (chat: ChatRecord | null | undefined, messageId: string) => {
+      if (!chat || !messageId) return
+      updateChatById(chat.appChatId, (source) => {
+        let changed = false
+        const pinnedAt = Date.now()
+        const messages = source.messages.map((message) => {
+          if (message.id !== messageId) return message
+          changed = true
+          const metadata = { ...(message.metadata || {}) }
+          if (typeof metadata.pinnedAt === 'number') {
+            delete metadata.pinnedAt
+          } else {
+            metadata.pinnedAt = pinnedAt
+          }
+          const nextMessage: ChatMessage = { ...message }
+          if (Object.keys(metadata).length > 0) {
+            nextMessage.metadata = metadata
+          } else {
+            delete nextMessage.metadata
+          }
+          return nextMessage
+        })
+        return changed ? { ...source, messages, updatedAt: Date.now() } : source
+      })
+    },
+    [updateChatById]
+  )
+
+  const updatePinnedNotesForChat = useCallback(
+    (chatId: string | null | undefined, notes: string) => {
+      if (!chatId) return
+      updateChatById(chatId, (source) => ({
+        ...source,
+        pinnedNotes: notes,
+        updatedAt: Date.now()
+      }))
+    },
+    [updateChatById]
+  )
+
+  const jumpToTranscriptMessage = useCallback(
+    (chatId: string | null | undefined, messageId: string) => {
+      if (!chatId || !messageId) return
+      setTranscriptJumpRequest({ chatId, messageId, requestId: Date.now() })
+    },
+    []
+  )
+
   const deleteMessageFromChat = useCallback(
     (chat: ChatRecord | null | undefined, messageId: string) => {
       if (!chat || !messageId) return
@@ -13197,6 +13289,23 @@ function App(): React.JSX.Element {
     runCompleteNotice && !isWelcomeChat
       ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
       : null
+  const currentPinnedMessages = useMemo<PinnedMessageSummary[]>(() => {
+    return (currentChat?.messages || [])
+      .map((message) => {
+        const pinnedAt = message.metadata?.pinnedAt
+        if (typeof pinnedAt !== 'number' || !Number.isFinite(pinnedAt)) return null
+        return {
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp,
+          ...(message.runId ? { runId: message.runId } : {}),
+          pinnedAt
+        }
+      })
+      .filter((message): message is PinnedMessageSummary => Boolean(message))
+      .sort((a, b) => b.pinnedAt - a.pinnedAt)
+  }, [currentChat?.messages])
   const isTerminalDockAvailable = showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext
   const rightDockTabs = [
     { id: 'run' as const, label: 'Run', available: showCockpit },
@@ -13204,6 +13313,7 @@ function App(): React.JSX.Element {
     { id: 'inspector' as const, label: 'Inspect', available: appearance.showInspector },
     { id: 'files' as const, label: 'Files', available: showFileEditor && hasWorkspaceContext },
     { id: 'media' as const, label: 'Media', available: isChatMediaPanelOpen },
+    { id: 'pins' as const, label: 'Pins', available: isPinnedMessagesPanelOpen },
     { id: 'terminal' as const, label: 'Term', available: isTerminalDockAvailable }
   ].filter((tab) => tab.available)
   const rightDockVisible = !isChatPopoutWindow && !showSettings && rightDockTabs.length > 0
@@ -14066,6 +14176,10 @@ function App(): React.JSX.Element {
               }}
               onTogglePinWorkspace={handleTogglePinWorkspace}
               usageSummary={usageSummary}
+              pinnedMessageGroups={settingsPinnedMessageGroups}
+              onOpenPinnedMessage={(chatId, messageId) =>
+                void handleOpenPinnedMessageFromSettings(chatId, messageId)
+              }
             />
           </div>
         )}
@@ -14494,6 +14608,25 @@ function App(): React.JSX.Element {
                 </span>
               )}
             </button>
+            <button
+              className={`chat-corner-btn ${isPinnedMessagesPanelOpen ? 'active' : ''}`}
+              type="button"
+              onClick={() => {
+                setIsPinnedMessagesPanelOpen((open) => !open)
+                setRightDockTab('pins')
+              }}
+              title={isPinnedMessagesPanelOpen ? 'Hide pinned messages' : 'Show pinned messages'}
+              aria-label="Toggle pinned messages"
+              aria-pressed={isPinnedMessagesPanelOpen}
+              disabled={!currentChat}
+            >
+              <PinnedMessagesIcon />
+              {currentPinnedMessages.length > 0 && (
+                <span className="chat-corner-count">
+                  {currentPinnedMessages.length > 99 ? '99+' : currentPinnedMessages.length}
+                </span>
+              )}
+            </button>
             {currentProvider === 'gemini' && hasWorkspaceContext && (
               <button
                 className={`chat-corner-btn ${showGeminiTerminal ? 'active' : ''}`}
@@ -14792,6 +14925,7 @@ function App(): React.JSX.Element {
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onTogglePinMessage={(messageId) => togglePinMessageInChat(currentChat, messageId)}
                 onMessageSelectionCandidate={
                   canCreateSideChatFromCurrent ? handleMessageSelectionCandidate : undefined
                 }
@@ -14800,6 +14934,11 @@ function App(): React.JSX.Element {
                   canCreateSideChatFromCurrent ? handleOpenSideChatFromMessage : undefined
                 }
                 sideChatSeedMessageId={sideChatSeedMessageId}
+                jumpToMessageRequest={
+                  transcriptJumpRequest?.chatId === currentChat?.appChatId
+                    ? transcriptJumpRequest
+                    : null
+                }
                 copiedId={copiedId}
                 copy={copy}
                 autoFollowRef={autoFollowRef}
@@ -17638,6 +17777,9 @@ function App(): React.JSX.Element {
                     {tab.id === 'media' && currentChatMediaRefs.length > 0 && (
                       <span className="right-dock-tab-count">{currentChatMediaRefs.length}</span>
                     )}
+                    {tab.id === 'pins' && currentPinnedMessages.length > 0 && (
+                      <span className="right-dock-tab-count">{currentPinnedMessages.length}</span>
+                    )}
                   </button>
                 ))}
                 <button
@@ -17649,6 +17791,7 @@ function App(): React.JSX.Element {
                     if (activeRightDockTab === 'inspector') appearance.update({ showInspector: false })
                     if (activeRightDockTab === 'files') setShowFileEditor(false)
                     if (activeRightDockTab === 'media') setIsChatMediaPanelOpen(false)
+                    if (activeRightDockTab === 'pins') setIsPinnedMessagesPanelOpen(false)
                     if (activeRightDockTab === 'terminal') setShowGeminiTerminal(false)
                   }}
                   title="Close active dock tab"
@@ -17863,7 +18006,11 @@ function App(): React.JSX.Element {
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
               onCopyMessage={handleCopyMessage}
               onDeleteMessage={(messageId) => deleteMessageFromChat(sideChat, messageId)}
+              onTogglePinMessage={(messageId) => togglePinMessageInChat(sideChat, messageId)}
               onPreviewImage={setPreviewChatMediaRef}
+              jumpToMessageRequest={
+                transcriptJumpRequest?.chatId === sideChat.appChatId ? transcriptJumpRequest : null
+              }
               copiedId={copiedId}
               copy={copy}
               autoFollowRef={sideAutoFollowRef}
@@ -18157,6 +18304,22 @@ function App(): React.JSX.Element {
                       </div>
                     )}
                   </div>
+                )}
+
+                {activeRightDockTab === 'pins' && isPinnedMessagesPanelOpen && (
+                  <PinnedMessagesPanel
+                    chat={currentChat}
+                    messages={currentPinnedMessages}
+                    notes={currentChat?.pinnedNotes || ''}
+                    onNotesChange={(notes) =>
+                      updatePinnedNotesForChat(currentChat?.appChatId, notes)
+                    }
+                    onCopyMessage={handleCopyMessage}
+                    onJumpToMessage={(messageId) =>
+                      jumpToTranscriptMessage(currentChat?.appChatId, messageId)
+                    }
+                    onUnpinMessage={(messageId) => togglePinMessageInChat(currentChat, messageId)}
+                  />
                 )}
 
                 {activeRightDockTab === 'terminal' && isTerminalDockAvailable && (

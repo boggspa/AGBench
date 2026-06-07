@@ -2,6 +2,7 @@ import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type {
   ChatListItem,
   ChatRecord,
+  PinnedMessageGroup,
   ProviderId,
   RunEventInput,
   SideChatMode,
@@ -35,6 +36,7 @@ export interface CreateSideChatInput {
 export interface ChatServiceStore {
   getChats: (workspaceId?: string) => ChatRecord[]
   getChatList: (workspaceId?: string) => ChatListItem[]
+  getPinnedMessages: (workspaceId?: string) => PinnedMessageGroup[]
   getChat: (chatId: string) => ChatRecord | null
   createChat: (workspaceId: string, workspacePath: string) => ChatRecord
   createGlobalChat: () => ChatRecord
@@ -80,6 +82,10 @@ export class ChatService {
 
   getChatList(workspaceId?: string): ChatListItem[] {
     return this.deps.appStore.getChatList(workspaceId)
+  }
+
+  getPinnedMessages(workspaceId?: string): PinnedMessageGroup[] {
+    return this.deps.appStore.getPinnedMessages(optionalString(workspaceId))
   }
 
   getChat(chatId: string): ChatRecord | null {

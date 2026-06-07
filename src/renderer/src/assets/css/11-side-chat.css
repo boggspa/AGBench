@@ -142,6 +142,7 @@
 
 .right-dock-side-chat,
 .right-dock-media-panel,
+.right-dock-pins-panel,
 .right-dock-terminal,
 .run-rail-panel {
   flex: 1 1 auto;
@@ -222,6 +223,123 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.right-dock-pins-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pinned-messages-header strong {
+  display: block;
+  max-width: 235px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-notes-block {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 68%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.pinned-notes-block textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 104px;
+  max-height: 220px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.pinned-message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.pinned-message-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 74%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.pinned-message-card-meta,
+.pinned-message-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pinned-message-card-meta {
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pinned-message-role {
+  color: var(--text-secondary);
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.pinned-message-card-body {
+  max-height: 210px;
+  overflow: auto;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.pinned-message-card-actions {
+  justify-content: flex-end;
+}
+
+.pinned-message-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 74%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pinned-message-card-actions button:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--panel-border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .right-dock-media-list {

@@ -162,9 +162,11 @@ type TranscriptPanelProps = {
    */
   onCopyMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
+  onTogglePinMessage?: (messageId: string) => void
   onMessageSelectionCandidate?: (message: ChatMessage) => void
   onOpenSideChatFromMessage?: (message: ChatMessage) => void
   sideChatSeedMessageId?: string | null
+  jumpToMessageRequest?: { messageId: string; requestId: number } | null
   onPreviewImage: (ref: ChatMediaRef) => void
   /**
    * 1.0.8 — shared copy-to-clipboard feedback (see {@link useCopyFeedback}).
@@ -678,9 +680,11 @@ export const TranscriptPanel = memo(
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
+    onTogglePinMessage,
     onMessageSelectionCandidate,
     onOpenSideChatFromMessage,
     sideChatSeedMessageId,
+    jumpToMessageRequest,
     onPreviewImage,
     copiedId,
     copy,
@@ -831,6 +835,69 @@ export const TranscriptPanel = memo(
       compactDensity,
       expandedRowIds
     })
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
+    const highlightTimerRef = useRef<number | null>(null)
+    const focusMessageBlock = useCallback(
+      (messageId: string): boolean => {
+        const scroller = scrollRef.current
+        if (!scroller) return false
+        const escaped =
+          typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(messageId)
+            : messageId.replace(/["\\]/g, '\\$&')
+        const target = scroller.querySelector<HTMLElement>(`[data-message-id="${escaped}"]`)
+        if (!target) return false
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightedMessageId(messageId)
+        if (highlightTimerRef.current !== null) {
+          window.clearTimeout(highlightTimerRef.current)
+        }
+        highlightTimerRef.current = window.setTimeout(() => {
+          highlightTimerRef.current = null
+          setHighlightedMessageId((current) => (current === messageId ? null : current))
+        }, 1800)
+        return true
+      },
+      [scrollRef]
+    )
+
+    useEffect(() => {
+      const request = jumpToMessageRequest
+      if (!request?.messageId) return
+      if (focusMessageBlock(request.messageId)) return
+
+      const scroller = scrollRef.current
+      if (!scroller || !virtualizeEnabled) return
+      const row = virtualRows.find((candidate) => candidate.id === request.messageId)
+      if (!row) return
+      const estimatedTop = sumHeights(
+        virtualRows.map((candidate) => candidate.estimatedHeight),
+        0,
+        row.index
+      )
+      scroller.scrollTop = Math.max(0, estimatedTop - Math.round(scroller.clientHeight * 0.35))
+      const frame = window.requestAnimationFrame(() => {
+        focusMessageBlock(request.messageId)
+      })
+      return () => window.cancelAnimationFrame(frame)
+    }, [
+      jumpToMessageRequest?.requestId,
+      jumpToMessageRequest?.messageId,
+      focusMessageBlock,
+      scrollRef,
+      virtualRows,
+      virtualizeEnabled
+    ])
+
+    useEffect(() => {
+      return () => {
+        if (highlightTimerRef.current !== null) {
+          window.clearTimeout(highlightTimerRef.current)
+          highlightTimerRef.current = null
+        }
+      }
+    }, [])
+
     // Messages mounted this frame, each paired with its collision-proof
     // `rowKey` (`${id}#${index}`). The window slice when virtualised, else the
     // full list. Keying React + the element map on `rowKey` (not `msg.id`)
@@ -866,12 +933,14 @@ export const TranscriptPanel = memo(
             const isSideChatSeedMessage = Boolean(
               sideChatSeedMessageId && msg.id === sideChatSeedMessageId
             )
+            const isPinned = typeof msg.metadata?.pinnedAt === 'number'
+            const isPinnedMessageTarget = highlightedMessageId === msg.id
             return (
               <div
                 key={`message-block-${rowKey}`}
                 className={`transcript-message-block${
                   isSideChatSeedMessage ? ' is-side-chat-seed' : ''
-                }`}
+                }${isPinnedMessageTarget ? ' is-pinned-message-target' : ''}`}
                 data-vrow-id={rowKey}
                 data-message-id={msg.id}
                 onMouseEnter={() => onMessageSelectionCandidate?.(msg)}
@@ -1104,12 +1173,16 @@ export const TranscriptPanel = memo(
                                 before removing from the transcript. */}
                             <MessageActionsChip
                               onCopy={() => onCopyMessage(msg.id, msg.content)}
+                              onTogglePin={
+                                onTogglePinMessage ? () => onTogglePinMessage(msg.id) : undefined
+                              }
                               onDelete={() => onDeleteMessage(msg.id)}
                               onOpenSideChat={
                                 onOpenSideChatFromMessage
                                   ? () => onOpenSideChatFromMessage(msg)
                                   : undefined
                               }
+                              pinned={isPinned}
                               copied={copiedId === msg.id}
                               label="user message"
                             />
@@ -1130,12 +1203,16 @@ export const TranscriptPanel = memo(
                         {(msg.role === 'assistant' || msg.role === 'system') && msg.content && (
                           <MessageActionsChip
                             onCopy={() => onCopyMessage(msg.id, msg.content)}
+                            onTogglePin={
+                              onTogglePinMessage ? () => onTogglePinMessage(msg.id) : undefined
+                            }
                             onDelete={() => onDeleteMessage(msg.id)}
                             onOpenSideChat={
                               onOpenSideChatFromMessage
                                 ? () => onOpenSideChatFromMessage(msg)
                                 : undefined
                             }
+                            pinned={isPinned}
                             copied={copiedId === msg.id}
                             label={`${msg.role} message`}
                           />

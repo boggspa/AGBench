@@ -44,6 +44,33 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
         runCount: 0
       } satisfies ChatListItem
     ]),
+    getPinnedMessages: vi.fn(() => [
+      {
+        workspaceId: 'workspace-1',
+        workspacePath: '/repo',
+        workspaceDisplayName: 'repo',
+        chats: [
+          {
+            chatId: 'chat-1',
+            chatTitle: 'Chat',
+            provider: 'gemini' as ProviderId,
+            updatedAt: 1,
+            workspaceId: 'workspace-1',
+            workspacePath: '/repo',
+            workspaceDisplayName: 'repo',
+            messages: [
+              {
+                id: 'message-1',
+                role: 'assistant' as const,
+                content: 'Pinned',
+                timestamp: '2026-06-07T00:00:00.000Z',
+                pinnedAt: 2
+              }
+            ]
+          }
+        ]
+      }
+    ]),
     getChat: vi.fn(() => makeChat()),
     createChat: vi.fn((workspaceId: string, workspacePath: string) =>
       makeChat({ workspaceId, workspacePath })
@@ -147,6 +174,16 @@ describe('ChatService', () => {
       summaryOnly: true
     })
     expect(store.getChatList).toHaveBeenCalledWith('workspace-1')
+  })
+
+  it('forwards pinned message workspace filters to the store', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    expect(service.getPinnedMessages('workspace-1')[0]).toMatchObject({
+      workspaceId: 'workspace-1',
+      chats: [expect.objectContaining({ chatId: 'chat-1' })]
+    })
+    expect(store.getPinnedMessages).toHaveBeenCalledWith('workspace-1')
   })
 
   it('creates workspace chats only for a matching registered workspace', () => {

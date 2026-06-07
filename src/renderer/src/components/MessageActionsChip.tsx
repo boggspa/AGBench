@@ -15,14 +15,18 @@
  */
 function MessageActionsChip({
   onCopy,
+  onTogglePin,
   onDelete,
   onOpenSideChat,
+  pinned = false,
   copied = false,
   label
 }: {
   onCopy: () => void
+  onTogglePin?: () => void
   onDelete: () => void
   onOpenSideChat?: () => void
+  pinned?: boolean
   /** 1.0.8 — when true the copy button shows a transient confirmation
    * (driven by the host's shared `useCopyFeedback`). */
   copied?: boolean
@@ -70,6 +74,32 @@ function MessageActionsChip({
           </svg>
         )}
       </button>
+      {onTogglePin && (
+        <button
+          type="button"
+          className={`message-actions-chip-button message-actions-chip-button--pin${
+            pinned ? ' is-pinned' : ''
+          }`}
+          onClick={onTogglePin}
+          title={pinned ? 'Unpin message' : 'Pin message'}
+          aria-label={pinned ? `Unpin ${label}` : `Pin ${label}`}
+          aria-pressed={pinned}
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill={pinned ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth="1.35"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M5.2 2.4h5.6l-.8 4 2.1 2.1v1.3H8.7L8 13.6l-.7-3.8H3.9V8.5L6 6.4z" />
+          </svg>
+        </button>
+      )}
       {onOpenSideChat && (
         <button
           type="button"

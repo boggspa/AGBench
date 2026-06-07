@@ -27,7 +27,8 @@ import type {
   ToolIconAccent,
   UserBubbleColor,
   VisualEffectStyle,
-  WorkspaceRecord
+  WorkspaceRecord,
+  PinnedMessageGroup
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
 import { humaniseModelId } from '../lib/modelDisplayName'
@@ -77,6 +78,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 // page.
 import { PairingPage } from './PairingPage'
 import { MessagesBridgePanel } from './MessagesBridgePanel'
+import { PinnedMessagesSettingsPage } from './PinnedMessagesSettingsPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
 import { GrokTelemetryCard } from './GrokTelemetryCard'
@@ -288,6 +290,8 @@ interface SettingsPanelProps {
    * headline-tiles strip above it. Optional so test mounts can omit.
    */
   usageSummary?: ModelUsageAggregate[]
+  pinnedMessageGroups?: PinnedMessageGroup[]
+  onOpenPinnedMessage?: (chatId: string, messageId: string) => void
   /**
    * Layout shape. `'sheet'` (default) renders the inline tab bar +
    * "Done" button at the top — the historic modal-sheet treatment.
@@ -967,6 +971,7 @@ export type SettingsTab =
   | 'messages'
   | 'pairing'
   | 'workspaces'
+  | 'pinned-messages'
   | 'model-usage'
 
 /**
@@ -1011,6 +1016,7 @@ export const SETTINGS_TABS: Array<{
   // "Workspaces" — Codex Environments-style page listing every workspace loaded
   // into TaskWraith; a row opens it in a fresh chat surface.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
+  { id: 'pinned-messages', label: 'Pinned Messages', group: 'settings' },
   // "Channels" — local/self-hosted message channel gateway controls. The current
   // debug-only adapter is iMessage local experimental; the tab id remains
   // `messages` so existing settings/sidebar state remains compatible.
@@ -1338,7 +1344,9 @@ export function SettingsPanel({
   onSelectWorkspaceDialog,
   onRemoveWorkspace,
   onTogglePinWorkspace,
-  usageSummary = []
+  usageSummary = [],
+  pinnedMessageGroups = [],
+  onOpenPinnedMessage
 }: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('')
   const [kimiKeyInput, setKimiKeyInput] = useState('')
@@ -4919,6 +4927,14 @@ export function SettingsPanel({
               </ul>
             )}
           </div>
+        )}
+
+        {/* ── Pinned Messages ──────────────────────────────────────────── */}
+        {activeTab === 'pinned-messages' && (
+          <PinnedMessagesSettingsPage
+            groups={pinnedMessageGroups}
+            onOpenPinnedMessage={onOpenPinnedMessage}
+          />
         )}
 
         {/* ── Channels (local/self-hosted message gateway) ─────────────── */}

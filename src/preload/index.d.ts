@@ -3,6 +3,7 @@ import {
   WorkspaceRecord,
   ChatRecord,
   ChatListItem,
+  PinnedMessageGroup,
   UsageRecord,
   TrustStatusResult,
   TrustWriteResult,
@@ -806,6 +807,7 @@ declare global {
       clearWorkspaces: () => Promise<void>
       getChats: (workspaceId?: string) => Promise<ChatRecord[]>
       getChatList: (workspaceId?: string) => Promise<ChatListItem[]>
+      getPinnedMessages: (workspaceId?: string) => Promise<PinnedMessageGroup[]>
       getChat: (chatId: string) => Promise<ChatRecord | null>
       createChat: (workspaceId: string, workspacePath: string) => Promise<ChatRecord>
       createGlobalChat: () => Promise<ChatRecord>

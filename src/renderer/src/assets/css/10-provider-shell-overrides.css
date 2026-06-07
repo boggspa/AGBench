@@ -442,6 +442,12 @@
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
+.message-actions-chip-button--pin.is-pinned,
+.message-actions-chip-button--pin:hover,
+.message-actions-chip-button--pin:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .message-actions-chip-button--delete:hover,
 .message-actions-chip-button--delete:focus-visible {
   color: var(--danger, #ff6363);
@@ -449,6 +455,12 @@
 }
 .message-actions-chip svg {
   display: block;
+}
+
+.transcript-message-block.is-pinned-message-target .message-bubble {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* ============================================================

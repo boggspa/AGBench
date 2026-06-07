@@ -511,6 +511,125 @@
   border-radius: 14px;
 }
 
+.settings-pinned-messages,
+.settings-pinned-workspace-list,
+.settings-pinned-chat-list,
+.settings-pinned-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-pinned-workspace,
+.settings-pinned-chat,
+.settings-pinned-message {
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.settings-pinned-workspace {
+  padding: 12px;
+}
+
+.settings-pinned-workspace-header,
+.settings-pinned-chat-header,
+.settings-pinned-message-meta,
+.settings-pinned-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-pinned-workspace-header,
+.settings-pinned-chat-header,
+.settings-pinned-message-meta {
+  justify-content: space-between;
+}
+
+.settings-pinned-workspace-header {
+  margin-bottom: 10px;
+  color: var(--text-primary);
+  font-weight: 720;
+}
+
+.settings-pinned-workspace-header small,
+.settings-pinned-chat-header small,
+.settings-pinned-message-meta {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 560;
+}
+
+.settings-pinned-chat {
+  padding: 10px;
+}
+
+.settings-pinned-chat-provider {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.settings-pinned-chat-provider strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-pinned-notes-preview,
+.settings-pinned-message-body {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.settings-pinned-notes-preview {
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.settings-pinned-message {
+  padding: 9px;
+}
+
+.settings-pinned-message-meta span:first-child {
+  color: var(--text-secondary);
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.settings-pinned-message-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.settings-pinned-message-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-pinned-message-actions button:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .settings-model-comparisons,
 .settings-provider-telemetry {
   display: flex;
