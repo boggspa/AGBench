@@ -4,16 +4,27 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.2.1 — 2026-06-07
+
+### Changed
+- **Messages bridge is dev/debug-only.** The local Messages.app / iMessage relay is
+  hidden from public release builds and its IPC surface returns a clear disabled
+  status outside development or the packaged TaskWraith Debug app.
+- **Cleaner transcript chrome.** The workspace toggle now owns the left pill, the
+  remaining transcript controls sit in one right-side pill, and Diff Studio /
+  File Editor / Pop-Out Chat are grouped behind one picker.
+- **Help controls use real glyphs.** The changelog, onboarding, and bug-report
+  controls now use info-circle, question-circle, and shield-warning symbols.
+
+### Fixed
+- **Dropdown pickers render again.** The condensed glass pill no longer clips the
+  popout-tools picker or side-chat layout menu.
+- **Changelog freshness.** Old downloaded-update notes no longer override the
+  running app's bundled release notes after the app has moved past that version.
+
 ## 1.2.0 — 2026-06-07
 
 ### Added
-- **iMessage bridge (Messages.app).** Bind an iMessage conversation to a TaskWraith
-  chat: inbound messages route to the agent (with trigger-prefix rules and duplicate
-  suppression) and replies are sent back through Messages.app. Includes a Messages
-  settings panel (bindings, conversation browser, audit log, test send, polling), a
-  permission-helper popout for the macOS Automation grant, and an append-only audit
-  log. Messages are read locally (read-only) and sent via Messages.app automation —
-  no Apple credentials or private protocols.
 - **First-class side chats.** Side chats are now durable and flexible — pop one out
   into its own window, dock it back, or promote it to a top-level chat, with draft
   text, scroll position, and presentation preserved across the move.

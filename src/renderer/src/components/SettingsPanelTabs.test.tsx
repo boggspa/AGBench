@@ -8,18 +8,18 @@ import {
 import { SettingsSidebar } from './SettingsSidebar'
 
 describe('Settings tabs', () => {
-  it('shows Messages as its own default tab while keeping TestFlight-gated Devices hidden', () => {
+  it('hides dev/debug-only Messages and TestFlight-gated Devices by default', () => {
     const visibleTabs = getVisibleSettingsTabs().map((tab) => tab.id)
 
-    expect(visibleTabs).toContain('messages')
+    expect(visibleTabs).not.toContain('messages')
     expect(visibleTabs).not.toContain('pairing')
-    expect(isSettingsTabVisible('messages')).toBe(true)
+    expect(isSettingsTabVisible('messages')).toBe(false)
     expect(isSettingsTabVisible('pairing')).toBe(false)
-    expect(resolveVisibleSettingsTab('messages')).toBe('messages')
+    expect(resolveVisibleSettingsTab('messages')).toBe('behavior')
     expect(resolveVisibleSettingsTab('pairing')).toBe('behavior')
   })
 
-  it('renders Messages in the Settings sidebar without exposing Devices', () => {
+  it('omits Messages from the Settings sidebar without exposing Devices', () => {
     const html = renderToStaticMarkup(
       <SettingsSidebar
         activeTab="messages"
@@ -29,7 +29,7 @@ describe('Settings tabs', () => {
       />
     )
 
-    expect(html).toContain('Messages')
+    expect(html).not.toContain('Messages')
     expect(html).not.toContain('Devices')
     expect(html).toContain('aria-selected="true"')
   })

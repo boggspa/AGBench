@@ -64,7 +64,7 @@ import {
   sanitizeKeyCommandOverrides,
   type KeyCommandId
 } from '../lib/keyCommands'
-import { IOS_REMOTE_ENABLED } from '../lib/featureFlags'
+import { IOS_REMOTE_ENABLED, MESSAGES_BRIDGE_ENABLED } from '../lib/featureFlags'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -1024,10 +1024,13 @@ export const SETTINGS_TABS: Array<{
   { id: 'pairing', label: 'Devices', group: 'settings' }
 ]
 
-const IOS_REMOTE_SETTINGS_TABS = new Set<SettingsTab>(['pairing'])
+const FEATURE_GATED_SETTINGS_TABS = new Set<SettingsTab>([
+  ...(IOS_REMOTE_ENABLED ? [] : (['pairing'] as SettingsTab[])),
+  ...(MESSAGES_BRIDGE_ENABLED ? [] : (['messages'] as SettingsTab[]))
+])
 
 export function isSettingsTabVisible(tab: SettingsTab): boolean {
-  return IOS_REMOTE_ENABLED || !IOS_REMOTE_SETTINGS_TABS.has(tab)
+  return !FEATURE_GATED_SETTINGS_TABS.has(tab)
 }
 
 export function getVisibleSettingsTabs(): typeof SETTINGS_TABS {
