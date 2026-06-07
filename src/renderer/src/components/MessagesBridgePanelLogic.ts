@@ -31,7 +31,7 @@ export function messagesBridgePanelErrorMessage(error: unknown): string {
     /No IPC schema registered for messages-bridge:/.test(message) ||
     /No IPC schema registered for message-channels:/.test(message)
   ) {
-    return 'Messages bridge IPC is not loaded in the running TaskWraith process. Restart TaskWraith, then reopen Settings -> Messages.'
+    return 'Channel gateway IPC is not loaded in the running TaskWraith process. Restart TaskWraith, then reopen Settings -> Channels.'
   }
   return message
 }
@@ -42,7 +42,7 @@ export function isMessagesBridgeMacPlatform(platform: string | undefined): boole
 
 export function messagesBridgeDatabaseBlocker(status: MessagesBridgeStatus | null): string | null {
   if (!status) return 'Refresh bridge status before scanning conversations.'
-  if (!isMessagesBridgeMacPlatform(status.platform)) return 'The iMessage bridge is macOS-only.'
+  if (!isMessagesBridgeMacPlatform(status.platform)) return 'The iMessage local adapter is macOS-only.'
   if (!status.pollSupported) {
     return status.reason || 'Messages database polling is unavailable.'
   }
@@ -60,7 +60,7 @@ export function messageBridgeSendBlocker(
   const databaseBlocker = messagesBridgeDatabaseBlocker(status)
   if (databaseBlocker) return databaseBlocker
   if (!status?.sendTextSupported) {
-    return status?.reason || 'Messages.app text sending is unavailable.'
+    return status?.reason || 'Messages.app text sending is unavailable for the iMessage adapter.'
   }
   return null
 }

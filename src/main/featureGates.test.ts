@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { messagesBridgeEnabled } from './featureGates'
+import { channelGatewayEnabled, messagesBridgeEnabled } from './featureGates'
 
 const ORIGINAL_MESSAGES_FLAG = process.env.TASKWRAITH_MESSAGES_BRIDGE
 
@@ -9,26 +9,33 @@ afterEach(() => {
 })
 
 describe('featureGates', () => {
-  describe('messagesBridgeEnabled', () => {
-    it('allows the Messages bridge in unpackaged development runs', () => {
+  describe('channelGatewayEnabled', () => {
+    it('allows the channel gateway in unpackaged development runs', () => {
       delete process.env.TASKWRAITH_MESSAGES_BRIDGE
-      expect(messagesBridgeEnabled({ isPackaged: false, appName: 'TaskWraith' })).toBe(true)
+      expect(channelGatewayEnabled({ isPackaged: false, appName: 'TaskWraith' })).toBe(true)
     })
 
-    it('allows the Messages bridge in packaged debug builds', () => {
+    it('allows the channel gateway in packaged debug builds', () => {
       delete process.env.TASKWRAITH_MESSAGES_BRIDGE
-      expect(messagesBridgeEnabled({ isPackaged: true, appName: 'TaskWraith Debug' })).toBe(true)
+      expect(channelGatewayEnabled({ isPackaged: true, appName: 'TaskWraith Debug' })).toBe(true)
     })
 
-    it('disables the Messages bridge in public packaged releases', () => {
+    it('disables the channel gateway in public packaged releases', () => {
       delete process.env.TASKWRAITH_MESSAGES_BRIDGE
-      expect(messagesBridgeEnabled({ isPackaged: true, appName: 'TaskWraith' })).toBe(false)
+      expect(channelGatewayEnabled({ isPackaged: true, appName: 'TaskWraith' })).toBe(false)
     })
 
     it('honors the local kill switch in dev/debug runs', () => {
       process.env.TASKWRAITH_MESSAGES_BRIDGE = '0'
-      expect(messagesBridgeEnabled({ isPackaged: false, appName: 'TaskWraith' })).toBe(false)
-      expect(messagesBridgeEnabled({ isPackaged: true, appName: 'TaskWraith Debug' })).toBe(false)
+      expect(channelGatewayEnabled({ isPackaged: false, appName: 'TaskWraith' })).toBe(false)
+      expect(channelGatewayEnabled({ isPackaged: true, appName: 'TaskWraith Debug' })).toBe(false)
+    })
+
+    it('keeps messagesBridgeEnabled as a compatibility alias', () => {
+      delete process.env.TASKWRAITH_MESSAGES_BRIDGE
+      expect(messagesBridgeEnabled({ isPackaged: false, appName: 'TaskWraith' })).toBe(
+        channelGatewayEnabled({ isPackaged: false, appName: 'TaskWraith' })
+      )
     })
   })
 })

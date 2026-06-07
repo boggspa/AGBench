@@ -8,7 +8,7 @@ import {
 import { SettingsSidebar } from './SettingsSidebar'
 
 describe('Settings tabs', () => {
-  it('hides dev/debug-only Messages and TestFlight-gated Devices by default', () => {
+  it('hides dev/debug-only Channels and TestFlight-gated Devices by default', () => {
     const visibleTabs = getVisibleSettingsTabs().map((tab) => tab.id)
 
     expect(visibleTabs).not.toContain('messages')
@@ -19,7 +19,7 @@ describe('Settings tabs', () => {
     expect(resolveVisibleSettingsTab('pairing')).toBe('behavior')
   })
 
-  it('omits Messages from the Settings sidebar without exposing Devices', () => {
+  it('omits Channels from the Settings sidebar without exposing Devices', () => {
     const html = renderToStaticMarkup(
       <SettingsSidebar
         activeTab="messages"
@@ -29,7 +29,7 @@ describe('Settings tabs', () => {
       />
     )
 
-    expect(html).not.toContain('Messages')
+    expect(html).not.toContain('Channels')
     expect(html).not.toContain('Devices')
     expect(html).toContain('aria-selected="true"')
   })

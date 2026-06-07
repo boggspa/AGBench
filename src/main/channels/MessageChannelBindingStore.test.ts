@@ -134,7 +134,7 @@ describe('MessageChannelBindingStore', () => {
     ).toThrow(/one-to-one operator/i)
   })
 
-  it('rejects non-iMessage channel bindings at runtime', () => {
+  it('rejects planned channel bindings at runtime', () => {
     const store = new MessageChannelBindingStore({ storagePath, createId: () => 'binding-1' })
 
     expect(() =>
@@ -146,7 +146,7 @@ describe('MessageChannelBindingStore', () => {
         appChatId: 'chat-1',
         provider: 'codex'
       })
-    ).toThrow(/imessage channel/i)
+    ).toThrow(/planned but not enabled/i)
   })
 
   it('rejects unknown providers at runtime', () => {

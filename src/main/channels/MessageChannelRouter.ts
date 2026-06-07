@@ -90,6 +90,7 @@ export class MessageChannelRouter {
           chatGuid: binding.chatGuid,
           messageGuid: envelope.messageGuid,
           senderHandle: envelope.senderHandle,
+          authState: 'allowlisted_contact',
           attachmentCount: attachments.length,
           sourceTrust: 'external_untrusted',
           ...(attachments.length > 0 ? { attachments } : {}),

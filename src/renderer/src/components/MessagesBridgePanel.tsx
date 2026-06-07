@@ -170,7 +170,7 @@ export function MessagesBridgePanel(): JSX.Element {
         messageBridgeEnabled: nextSettings.enabled,
         messageBridgePollIntervalMs: nextSettings.pollIntervalMs
       })
-      setMessage('iMessage bridge settings saved.')
+      setMessage('Channel gateway settings saved.')
     } catch (err) {
       setError(messagesBridgePanelErrorMessage(err))
     } finally {
@@ -378,7 +378,7 @@ export function MessagesBridgePanel(): JSX.Element {
     try {
       if (typeof window.api.peekMessageChannelBinding !== 'function') {
         throw new Error(
-          'Messages bridge diagnostic IPC is not loaded in this running TaskWraith process. Restart TaskWraith, then reopen Settings -> Messages.'
+          'Channel gateway diagnostic IPC is not loaded in this running TaskWraith process. Restart TaskWraith, then reopen Settings -> Channels.'
         )
       }
       const result = await window.api.peekMessageChannelBinding(binding.id)
@@ -501,7 +501,7 @@ export function MessagesBridgePanel(): JSX.Element {
     setError(null)
     setMessage(null)
     if (window.api.hostPlatform !== 'darwin') {
-      setError('The iMessage bridge is macOS-only.')
+      setError('The iMessage local adapter is macOS-only.')
       return
     }
     try {
@@ -524,7 +524,7 @@ export function MessagesBridgePanel(): JSX.Element {
     setError(null)
     setMessage(null)
     if (window.api.hostPlatform !== 'darwin') {
-      setError('The iMessage bridge is macOS-only.')
+      setError('The iMessage local adapter is macOS-only.')
       return
     }
     try {
@@ -783,10 +783,10 @@ export function MessagesBridgePanel(): JSX.Element {
   const activePeekRows = peekBindingId === primaryBinding?.id ? peekRows : []
 
   return (
-    <div className="messages-bridge-panel" aria-label="iMessage bridge">
+    <div className="messages-bridge-panel" aria-label="Channel gateway">
       <div className="messages-bridge-status-grid">
         <div className={`messages-bridge-status-chip messages-bridge-status-chip-${statusTone}`}>
-          <span>Bridge</span>
+          <span>Gateway</span>
           <strong>{statusLabel}</strong>
         </div>
         <div className="messages-bridge-status-chip">
@@ -807,12 +807,33 @@ export function MessagesBridgePanel(): JSX.Element {
       {error && <div className="settings-error">{error}</div>}
       {message && <p className="settings-hint messages-bridge-feedback">{message}</p>}
 
+      <section className="messages-bridge-identity-card" aria-label="Channel gateway overview">
+        <div className="messages-bridge-identity-avatar" aria-hidden="true">
+          CH
+        </div>
+        <div>
+          <span className="sidebar-section-title">Channels gateway</span>
+          <strong>Local/self-hosted adapters, TaskWraith-controlled permissions.</strong>
+          <small>
+            The active adapter is iMessage local experimental. Telegram, Matrix, Signal, email, and
+            local web chat can plug into the same canonical event, allowlist, routing, approval, and
+            audit path without a TaskWraith-hosted relay.
+          </small>
+        </div>
+        <div className="messages-bridge-identity-steps">
+          <span>Contact allowlists gate every inbound conversation.</span>
+          <span>Trigger prefixes prevent accidental dispatch.</span>
+          <span>Approvals, file access, and provider runs still go through TaskWraith policy.</span>
+          <span>Portable commands: status, pause, approve &lt;code&gt;, deny &lt;code&gt;.</span>
+        </div>
+      </section>
+
       <section className="messages-bridge-identity-card" aria-label="Bridge identity setup">
         <div className="messages-bridge-identity-avatar" aria-hidden="true">
           TW
         </div>
         <div>
-          <span className="sidebar-section-title">Bridge identity</span>
+          <span className="sidebar-section-title">iMessage local identity</span>
           <strong>
             This Mac will receive as:{' '}
             {bridgeIdentityIsPlaceholder ? 'TaskWraith iMessage address' : bridgeIdentityLabel}
@@ -873,7 +894,7 @@ export function MessagesBridgePanel(): JSX.Element {
               <strong>
                 {currentValidationStep
                   ? currentValidationStep.title
-                  : 'iMessage bridge validation complete'}
+                  : 'Channel validation complete'}
               </strong>
               <small>
                 {currentValidationStep
@@ -1024,10 +1045,10 @@ export function MessagesBridgePanel(): JSX.Element {
         </div>
       </section>
 
-      <section className="messages-bridge-setup" aria-label="iMessage bridge setup">
+      <section className="messages-bridge-setup" aria-label="iMessage adapter setup">
         <div className="messages-bridge-subsection-header">
           <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-            Setup checks
+            iMessage adapter checks
           </h4>
           <button
             type="button"
@@ -1093,7 +1114,8 @@ export function MessagesBridgePanel(): JSX.Element {
           <span>
             Scheduled polling
             <small>
-              Local Messages.app relay only; trigger-gated bindings decide what dispatches.
+              The current iMessage adapter polls locally; trigger-gated bindings decide what
+              dispatches.
             </small>
           </span>
         </label>
@@ -1418,7 +1440,7 @@ export function MessagesBridgePanel(): JSX.Element {
         </div>
         <div className="messages-bridge-audit-list">
           {audit.length === 0 ? (
-            <div className="settings-audit-empty">No iMessage bridge audit records yet.</div>
+            <div className="settings-audit-empty">No channel gateway audit records yet.</div>
           ) : (
             audit.slice(0, 12).map((record) => (
               <div key={record.id} className="messages-bridge-audit-row">

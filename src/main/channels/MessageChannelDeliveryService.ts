@@ -1,10 +1,11 @@
 import type { RunEvent, RunEventSink } from '../RunEventBus'
 import { extractProviderText } from '../providers/ProviderEventText'
 import type { MessageChannelAuditStore } from './MessageChannelAuditStore'
+import type { MessageChannelKind } from './MessageChannelTypes'
 
 export interface MessageChannelRunTarget {
   appRunId: string
-  channel: 'imessage'
+  channel: MessageChannelKind
   bindingId: string
   accountId: string
   chatGuid: string
@@ -14,7 +15,7 @@ export interface MessageChannelRunTarget {
 }
 
 export interface MessageChannelDirectReplyTarget {
-  channel: 'imessage'
+  channel: MessageChannelKind
   bindingId: string
   accountId: string
   chatGuid: string
@@ -48,7 +49,7 @@ export interface MessageChannelSendAttachmentParams {
 }
 
 export interface MessageChannelSendTargetCheck {
-  channel: 'imessage'
+  channel: MessageChannelKind
   bindingId: string
   accountId: string
   chatGuid: string
@@ -351,7 +352,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
   }
 
   private auditSent(input: {
-    channel: 'imessage'
+    channel: MessageChannelKind
     bindingId: string
     accountId: string
     chatGuid: string
@@ -389,7 +390,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
   }
 
   private auditFailed(input: {
-    channel: 'imessage'
+    channel: MessageChannelKind
     bindingId: string
     accountId: string
     chatGuid: string

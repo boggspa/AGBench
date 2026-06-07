@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const iosRemoteEnabled = process.env.IOS_REMOTE_TRUE === '1' || env.IOS_REMOTE_TRUE === '1'
   const debugBuild = process.env.TASKWRAITH_DEBUG_BUILD === '1' || env.TASKWRAITH_DEBUG_BUILD === '1'
-  const messagesBridgeEnabled = mode === 'development' || debugBuild
+  const channelGatewayEnabled = mode === 'development' || debugBuild
   return {
     main: {
       define: {
@@ -25,7 +25,8 @@ export default defineConfig(({ mode }) => {
     renderer: {
       define: {
         __IOS_REMOTE_TRUE__: JSON.stringify(iosRemoteEnabled),
-        __MESSAGES_BRIDGE_ENABLED__: JSON.stringify(messagesBridgeEnabled)
+        __CHANNELS_GATEWAY_ENABLED__: JSON.stringify(channelGatewayEnabled),
+        __MESSAGES_BRIDGE_ENABLED__: JSON.stringify(channelGatewayEnabled)
       },
       resolve: {
         alias: {

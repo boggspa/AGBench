@@ -510,17 +510,22 @@ export class MessageChannelGatewayService {
   ): Promise<string> {
     if (command.name === 'status') {
       return [
-        'iMessage bridge is online.',
+        'TaskWraith channel gateway is online.',
+        'Adapter: iMessage local experimental.',
         `Chat: ${chat.title || chat.appChatId}.`,
         `Provider: ${binding.provider}.`,
         `Trigger: ${binding.triggerPrefix || 'tw'}.`
       ].join(' ')
     }
 
-    if (command.name === 'cancel') {
+    if (command.name === 'pause') {
       const cancelled = await this.deps.cancelActiveRunsForChat?.(chat.appChatId)
-      if (!cancelled) return 'No active TaskWraith run is currently tied to this iMessage chat.'
+      if (!cancelled) return 'No active TaskWraith run is currently tied to this channel.'
       return `Cancelled ${cancelled} active TaskWraith run${cancelled === 1 ? '' : 's'} for this chat.`
+    }
+
+    if (command.name === 'planned') {
+      return `${command.label} is a planned TaskWraith channel command. This adapter currently supports status, pause, approve <code>, and deny <code>.`
     }
 
     const resolved = await this.deps.resolveApproval?.(command.approvalId, command.action)
@@ -555,10 +560,11 @@ function mergeSummary(target: MessageChannelPollSummary, source: MessageChannelP
   }
 }
 
-type MessageChannelCommand =
+export type MessageChannelCommand =
   | { name: 'status' }
-  | { name: 'cancel' }
+  | { name: 'pause' }
   | { name: 'approval'; action: 'accept' | 'decline'; approvalId: string }
+  | { name: 'planned'; label: string }
 
 type CommandReplyResult =
   | MessageChannelDirectReplyResult
@@ -569,14 +575,29 @@ type CommandReplyResult =
       error?: string
     }
 
-function parseChannelCommand(prompt: string): MessageChannelCommand | null {
+export function parseMessageChannelCommand(prompt: string): MessageChannelCommand | null {
   const trimmed = prompt.trim()
   const normalized = trimmed.toLowerCase()
-  if (normalized === 'status' || normalized === 'bridge status') {
+  if (normalized === 'status' || normalized === 'bridge status' || normalized === 'channel status') {
     return { name: 'status' }
   }
-  if (normalized === 'cancel' || normalized === 'stop') {
-    return { name: 'cancel' }
+  if (normalized === 'cancel' || normalized === 'stop' || normalized === 'pause') {
+    return { name: 'pause' }
+  }
+  if (normalized === 'resume') {
+    return { name: 'planned', label: 'Resume' }
+  }
+  if (normalized === 'diff' || normalized === 'show diff') {
+    return { name: 'planned', label: 'Show diff' }
+  }
+  if (normalized === 'thread' || normalized === 'open thread') {
+    return { name: 'planned', label: 'Open thread' }
+  }
+  if (/^send\s+file\b/i.test(trimmed)) {
+    return { name: 'planned', label: 'Send file' }
+  }
+  if (/^handoff\s+to\s+\S+/i.test(trimmed)) {
+    return { name: 'planned', label: 'Provider handoff' }
   }
   const approval = /^(approve|approved|accept|decline|deny|reject)\s+(\S+)$/i.exec(trimmed)
   if (!approval) return null
@@ -587,6 +608,8 @@ function parseChannelCommand(prompt: string): MessageChannelCommand | null {
     approvalId: approval[2]
   }
 }
+
+const parseChannelCommand = parseMessageChannelCommand
 
 function hasExplicitPollScope(params: MessagesBridgePollParams): boolean {
   return Boolean(params.accountId || params.chatGuid || params.afterRowId !== undefined)

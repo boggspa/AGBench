@@ -2,17 +2,19 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { randomUUID } from 'crypto'
 import type {
+  MessageChannelAdapterDescriptor,
   MessageChannelBinding,
   MessageChannelBindingInput,
   MessageChannelKind
 } from './MessageChannelTypes'
 import {
+  MESSAGE_CHANNEL_ADAPTERS,
   defaultTriggerPrefix,
+  isActiveMessageChannelKind,
   normalizeChannelHandle,
   normalizeChannelKey
 } from './MessageChannelTypes'
 
-const MESSAGE_CHANNEL_KINDS = new Set<MessageChannelKind>(['imessage'])
 const MESSAGE_CHANNEL_PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
 
 interface BindingStoreFile {
@@ -167,10 +169,10 @@ export class MessageChannelBindingStore {
     const allowedHandles = normalizeAllowedHandles(input.allowedHandles)
     const provider = requireMessageChannelProvider(input.provider)
     if (input.mode && input.mode !== 'operator') {
-      throw new Error('iMessage bridge MVP only supports operator channel bindings')
+      throw new Error('Channel gateway currently supports operator channel bindings only')
     }
     if (input.requireTrigger === false) {
-      throw new Error('iMessage bridge MVP requires trigger-gated bindings')
+      throw new Error('Channel gateway currently requires trigger-gated bindings')
     }
     return {
       id: input.id?.trim() || '',
@@ -234,10 +236,17 @@ function normalizeStoredBinding(value: unknown): MessageChannelBinding | null {
 }
 
 function requireMessageChannelKind(value: unknown): MessageChannelKind {
-  if (typeof value === 'string' && MESSAGE_CHANNEL_KINDS.has(value as MessageChannelKind)) {
-    return value as MessageChannelKind
+  const channel = value as MessageChannelKind
+  if (typeof value === 'string' && isActiveMessageChannelKind(channel)) {
+    return channel
   }
-  throw new Error('Message channel binding must use the iMessage channel')
+  const planned = MESSAGE_CHANNEL_ADAPTERS.find(
+    (adapter: MessageChannelAdapterDescriptor) => adapter.channel === value
+  )
+  if (planned) {
+    throw new Error(`${planned.label} is planned but not enabled in the channel gateway yet`)
+  }
+  throw new Error('Message channel binding uses an unknown channel adapter')
 }
 
 function requireMessageChannelProvider(value: unknown): MessageChannelBinding['provider'] {
@@ -249,7 +258,7 @@ function requireMessageChannelProvider(value: unknown): MessageChannelBinding['p
 
 function requireDirectOperatorChatGuid(chatGuid: string): string {
   if (/^imessage;\+;/i.test(chatGuid)) {
-    throw new Error('iMessage bridge MVP only supports one-to-one operator conversations')
+    throw new Error('iMessage local adapter currently supports one-to-one operator conversations')
   }
   return chatGuid
 }
@@ -271,7 +280,7 @@ function normalizeAllowedHandles(handles: string[]): string[] {
     throw new Error('allowedHandles must contain at least one handle')
   }
   if (normalized.length > 1) {
-    throw new Error('iMessage bridge MVP supports exactly one operator handle per binding')
+    throw new Error('Channel gateway currently supports exactly one operator handle per binding')
   }
   return normalized
 }

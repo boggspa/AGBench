@@ -23,7 +23,7 @@ export function composerContenteditableEnabled(): boolean {
   return value === '1' || value === 'true' || value === 'yes'
 }
 
-export function messagesBridgeEnabled(input?: {
+export function channelGatewayEnabled(input?: {
   isPackaged?: boolean
   appName?: string
 }): boolean {
@@ -33,3 +33,5 @@ export function messagesBridgeEnabled(input?: {
   if (!isPackaged) return true
   return /\bdebug\b/i.test(input?.appName || '')
 }
+
+export const messagesBridgeEnabled = channelGatewayEnabled

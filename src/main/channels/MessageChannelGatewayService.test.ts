@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatRecord } from '../store/types'
-import { MessageChannelGatewayService } from './MessageChannelGatewayService'
+import {
+  MessageChannelGatewayService,
+  parseMessageChannelCommand
+} from './MessageChannelGatewayService'
 import type { MessageChannelBinding } from './MessageChannelTypes'
 
 function binding(): MessageChannelBinding {
@@ -45,6 +48,29 @@ function chat(overrides: Partial<ChatRecord> = {}): ChatRecord {
 }
 
 describe('MessageChannelGatewayService', () => {
+  it('recognizes portable channel commands before provider dispatch', () => {
+    expect(parseMessageChannelCommand('channel status')).toEqual({ name: 'status' })
+    expect(parseMessageChannelCommand('pause')).toEqual({ name: 'pause' })
+    expect(parseMessageChannelCommand('approve approval-1')).toEqual({
+      name: 'approval',
+      action: 'accept',
+      approvalId: 'approval-1'
+    })
+    expect(parseMessageChannelCommand('deny approval-1')).toEqual({
+      name: 'approval',
+      action: 'decline',
+      approvalId: 'approval-1'
+    })
+    expect(parseMessageChannelCommand('show diff')).toEqual({
+      name: 'planned',
+      label: 'Show diff'
+    })
+    expect(parseMessageChannelCommand('handoff to codex')).toEqual({
+      name: 'planned',
+      label: 'Provider handoff'
+    })
+  })
+
   it('does not poll the Messages database when no active bindings exist', async () => {
     const pollMessages = vi.fn()
     const service = new MessageChannelGatewayService({
@@ -205,7 +231,7 @@ describe('MessageChannelGatewayService', () => {
       expect.objectContaining({
         bindingId: 'binding-1',
         recipientHandle: 'user@example.com',
-        text: expect.stringContaining('iMessage bridge is online.'),
+        text: expect.stringContaining('TaskWraith channel gateway is online.'),
         command: 'status'
       })
     )
@@ -565,7 +591,7 @@ describe('MessageChannelGatewayService', () => {
         appChatId: 'chat-1',
         recipientHandle: 'user@example.com',
         command: 'status',
-        text: expect.stringContaining('iMessage bridge is online.')
+        text: expect.stringContaining('TaskWraith channel gateway is online.')
       })
     )
     expect(auditRecords).toContainEqual(
@@ -622,7 +648,7 @@ describe('MessageChannelGatewayService', () => {
         accountId: 'mac-default',
         chatGuid: 'chat-guid',
         appChatId: 'chat-1',
-        command: 'cancel',
+        command: 'pause',
         text: 'Cancelled 2 active TaskWraith runs for this chat.'
       })
     )

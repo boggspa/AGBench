@@ -96,7 +96,7 @@ import {
 import {
   concurrentWriteLanesEnabled,
   ensembleWakeupsEnabled,
-  messagesBridgeEnabled
+  channelGatewayEnabled
 } from './featureGates'
 import {
   GEMINI_MCP_SERVER_NAME,
@@ -12696,15 +12696,15 @@ if (isGeminiMcpBridgeProcess) {
         console.log(line)
       }
     })
-    const messagesBridgeFeatureEnabled = messagesBridgeEnabled({
+    const channelGatewayFeatureEnabled = channelGatewayEnabled({
       isPackaged: app.isPackaged,
       appName: app.getName() || 'TaskWraith'
     })
-    const messagesBridgeDisabledMessage =
-      'Messages bridge is available only in TaskWraith development and debug builds.'
+    const channelGatewayDisabledMessage =
+      'Channel gateway is available only in TaskWraith development and debug builds.'
     let stopMessageChannelPolling = (): void => {}
     let reconcileMessageChannelPollingFromSettings = (): void => {}
-    const messageBridgeRuntime = messagesBridgeFeatureEnabled
+    const messageBridgeRuntime = channelGatewayFeatureEnabled
       ? (() => {
           const messageChannelBindingStore = new MessageChannelBindingStore({
             storagePath: join(app.getPath('userData'), 'channels', 'message-bindings.json')
@@ -12770,13 +12770,13 @@ if (isGeminiMcpBridgeProcess) {
               messageChannelAuditStore.append({
                 kind: 'poll',
                 channel: 'imessage',
-                summary: 'Scheduled iMessage poll failed.',
+                summary: 'Scheduled iMessage adapter poll failed.',
                 payload: {
                   error: err instanceof Error ? err.message : String(err)
                 }
               })
               console.warn(
-                '[MessageChannelGateway] scheduled iMessage poll failed:',
+                '[MessageChannelGateway] scheduled iMessage adapter poll failed:',
                 err instanceof Error ? err.message : String(err)
               )
             } finally {
@@ -12803,8 +12803,8 @@ if (isGeminiMcpBridgeProcess) {
           }
         })()
       : null
-    if (!messagesBridgeFeatureEnabled) {
-      console.log(`[MessagesBridge] disabled: ${messagesBridgeDisabledMessage}`)
+    if (!channelGatewayFeatureEnabled) {
+      console.log(`[ChannelGateway] disabled: ${channelGatewayDisabledMessage}`)
     }
     const bridgeApnsPusher = buildBridgeApnsPusherFromSettings()
 
@@ -15906,7 +15906,7 @@ if (isGeminiMcpBridgeProcess) {
     )
     } else {
       const rejectMessagesBridgeIpc = async (): Promise<never> => {
-        throw new Error(messagesBridgeDisabledMessage)
+        throw new Error(channelGatewayDisabledMessage)
       }
       ipcMain.handle('message-channels:list-bindings', rejectMessagesBridgeIpc)
       ipcMain.handle('message-channels:upsert-binding', rejectMessagesBridgeIpc)
@@ -15924,7 +15924,7 @@ if (isGeminiMcpBridgeProcess) {
         platform: process.platform,
         pollSupported: false,
         sendTextSupported: false,
-        reason: messagesBridgeDisabledMessage
+        reason: channelGatewayDisabledMessage
       }))
       ipcMain.handle('messages-bridge:open-permission-helper', rejectMessagesBridgeIpc)
       ipcMain.on('messages-bridge:start-permission-helper-drag', () => {})

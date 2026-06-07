@@ -51,7 +51,7 @@ describe('MessagesBridgePanel setup blockers', () => {
     )
     expect(messagesBridgeDatabaseBlocker({ ...readyStatus, platform: 'macos' })).toBeNull()
     expect(messagesBridgeDatabaseBlocker({ ...readyStatus, platform: 'win32' })).toBe(
-      'The iMessage bridge is macOS-only.'
+      'The iMessage local adapter is macOS-only.'
     )
     expect(messagesBridgeDatabaseBlocker({ ...readyStatus, pollSupported: false })).toBe(
       'Messages database polling is unavailable.'
@@ -68,7 +68,7 @@ describe('MessagesBridgePanel setup blockers', () => {
       'Grant Full Disk Access, restart TaskWraith if needed, then recheck.'
     )
     expect(messageBridgeSendBlocker({ ...readyStatus, sendTextSupported: false }, binding)).toBe(
-      'Messages.app text sending is unavailable.'
+      'Messages.app text sending is unavailable for the iMessage adapter.'
     )
     expect(messageBridgeSendBlocker(readyStatus, binding)).toBeNull()
   })
@@ -90,7 +90,7 @@ describe('MessagesBridgePanel setup blockers', () => {
         )
       )
     ).toBe(
-      'Messages bridge IPC is not loaded in the running TaskWraith process. Restart TaskWraith, then reopen Settings -> Messages.'
+      'Channel gateway IPC is not loaded in the running TaskWraith process. Restart TaskWraith, then reopen Settings -> Channels.'
     )
   })
 
@@ -103,7 +103,10 @@ describe('MessagesBridgePanel setup blockers', () => {
   it('renders dedicated bridge identity guidance', () => {
     const html = renderToStaticMarkup(<MessagesBridgePanel />)
 
-    expect(html).toContain('Bridge identity')
+    expect(html).toContain('Channels gateway')
+    expect(html).toContain('iMessage local experimental')
+    expect(html).toContain('Telegram, Matrix, Signal, email, and')
+    expect(html).toContain('iMessage local identity')
     expect(html).toContain('This Mac will receive as:')
     expect(html).toContain('Open Messages.app, then choose Settings')
     expect(html).toContain('do not add that address to your primary Apple Account')

@@ -64,7 +64,7 @@ import {
   sanitizeKeyCommandOverrides,
   type KeyCommandId
 } from '../lib/keyCommands'
-import { IOS_REMOTE_ENABLED, MESSAGES_BRIDGE_ENABLED } from '../lib/featureFlags'
+import { CHANNELS_GATEWAY_ENABLED, IOS_REMOTE_ENABLED } from '../lib/featureFlags'
 // RemoteWorkspacesPanel was previously rendered here under the
 // `remote-workspaces` tab. It now lives inside `PairingPage` (the
 // "Devices" tab) so paired-device QR + workspace allowlist sit
@@ -997,7 +997,7 @@ export const SETTINGS_TABS: Array<{
   group: SettingsTabGroup
 }> = [
   // 1.0.6 — explicit order requested by the maintainer: General, Appearance, Approvals,
-  // Key commands, Providers, MCP, Workspaces, Messages, Model usage, Devices. All one group so NO
+  // Key commands, Providers, MCP, Workspaces, Channels, Model usage, Devices. All one group so NO
   // divider renders (the sidebar inserts a divider only when `group` changes;
   // keeping every tab in `settings` collapses the old settings/devices split).
   // "General" merges the legacy "Behavior" + "System" tabs (canonical id
@@ -1011,9 +1011,10 @@ export const SETTINGS_TABS: Array<{
   // "Workspaces" — Codex Environments-style page listing every workspace loaded
   // into TaskWraith; a row opens it in a fresh chat surface.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
-  // "Messages" — local Messages.app / iMessage bridge controls. Kept separate from
-  // the iOS device-pairing tab so the TestFlight-gated pairing app can stay hidden.
-  { id: 'messages', label: 'Messages', group: 'settings' },
+  // "Channels" — local/self-hosted message channel gateway controls. The current
+  // debug-only adapter is iMessage local experimental; the tab id remains
+  // `messages` so existing settings/sidebar state remains compatible.
+  { id: 'messages', label: 'Channels', group: 'settings' },
   // "Model usage" — richer cross-provider usage page (quota meters + context
   // tiles). Not in the maintainer's explicit order list, kept at the tail of the settings
   // group rather than dropped.
@@ -1026,7 +1027,7 @@ export const SETTINGS_TABS: Array<{
 
 const FEATURE_GATED_SETTINGS_TABS = new Set<SettingsTab>([
   ...(IOS_REMOTE_ENABLED ? [] : (['pairing'] as SettingsTab[])),
-  ...(MESSAGES_BRIDGE_ENABLED ? [] : (['messages'] as SettingsTab[]))
+  ...(CHANNELS_GATEWAY_ENABLED ? [] : (['messages'] as SettingsTab[]))
 ])
 
 export function isSettingsTabVisible(tab: SettingsTab): boolean {
@@ -4920,7 +4921,7 @@ export function SettingsPanel({
           </div>
         )}
 
-        {/* ── Messages (local iMessage bridge) ─────────────────────────── */}
+        {/* ── Channels (local/self-hosted message gateway) ─────────────── */}
         {activeTab === 'messages' && <MessagesBridgePanel />}
 
         {/* ── Model usage (cross-provider) ──────────────────────────────── */}
