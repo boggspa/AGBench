@@ -1908,6 +1908,45 @@ export interface ChatRun {
   ensembleSleepUntil?: string
   ensembleSleepReason?: string
   ensembleSleepResumeWarning?: string
+  runAnalyst?: RunAnalystSnapshot
+}
+
+export interface RunAnalystSignal {
+  label: string
+  value: string
+  tone?: 'neutral' | 'good' | 'warn' | 'bad'
+}
+
+export interface RunAnalystRequest {
+  runId: string
+  provider?: ProviderId
+  chatTitle?: string
+  status?: string
+  startedAt?: string
+  endedAt?: string
+  promptPreview?: string
+  workspacePath?: string
+  touchedFiles?: string[]
+  warnings?: string[]
+  countsByKind?: Partial<Record<RunEventKind, number>>
+  timeline?: Array<{
+    kind: RunEventKind | string
+    summary?: string
+    timestamp?: string
+  }>
+}
+
+export interface RunAnalystSnapshot {
+  runId: string
+  generatedAt: string
+  source: 'local' | 'foundationModels'
+  status: 'ready' | 'unavailable' | 'error'
+  summary: string
+  risks: string[]
+  nextSteps: string[]
+  signals: RunAnalystSignal[]
+  model?: string
+  error?: string
 }
 
 export interface ChatRecord {

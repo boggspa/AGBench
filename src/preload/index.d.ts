@@ -41,6 +41,8 @@ import {
   RuntimeProfile,
   HandoffCard,
   HandoffCardFilter,
+  RunAnalystRequest,
+  RunAnalystSnapshot,
   AgenticServiceId
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
@@ -938,6 +940,7 @@ declare global {
       getRunRecoveryRecords: (filter?: RunRecoveryFilter) => Promise<RunRecoveryRecord[]>
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
+      analyzeRun: (request: RunAnalystRequest) => Promise<RunAnalystSnapshot>
       getApprovalLedger: (filter?: ApprovalLedgerFilter) => Promise<ApprovalLedgerRecord[]>
       recordApprovalElevationAck: (input: {
         provider: string

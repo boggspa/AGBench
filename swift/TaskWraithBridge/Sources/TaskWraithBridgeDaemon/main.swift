@@ -165,6 +165,14 @@ dispatcher.register("bridge.status") { _ in
     ]
 }
 
+/// `runAnalyst.analyze` — optional local run analysis through Apple
+/// Foundation Models. The method is availability-gated inside
+/// `RunAnalyst`; hosts without the framework return a structured JSON-RPC
+/// unavailable error that Electron converts into a graceful fallback.
+dispatcher.register("runAnalyst.analyze") { params in
+    return try RunAnalyst.analyze(params)
+}
+
 // MARK: - Attached window RPCs (Appshots-equivalent)
 
 // In-memory handle table for windows the user has attached via the macOS

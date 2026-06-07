@@ -265,6 +265,9 @@ import {
   AgenticServiceId,
   GeminiMcpBridgeStatus,
   ProviderCapabilityContract,
+  RunAnalystRequest,
+  RunAnalystSignal,
+  RunAnalystSnapshot,
   RunQueueJob,
   RunQueueJobFilter,
   RunQueueJobStatus,
@@ -292,7 +295,8 @@ import {
   EffectiveRunPermissions,
   EnsembleRunIdentity,
   EnsembleParticipant,
-  EnsembleWakeupRecord
+  EnsembleWakeupRecord,
+  RunEventKind
 } from './store/types'
 import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
 import {
@@ -1172,6 +1176,109 @@ function sanitizeChatForSave(chat: ChatRecord): ChatRecord {
     scope: 'workspace',
     workspaceId: workspace.id,
     workspacePath: canonicalPath(workspace.path)
+  }
+}
+
+const RUN_ANALYST_MAX_TEXT = 900
+const RUN_ANALYST_MAX_ITEMS = 16
+
+function compactRunAnalystText(value: unknown, maxLength = RUN_ANALYST_MAX_TEXT): string {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text
+}
+
+function sanitizeRunAnalystSignals(value: unknown): RunAnalystSignal[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 8).map((item) => {
+    const record = asRecord(item) || {}
+    const tone = record.tone
+    return {
+      label: compactRunAnalystText(record.label, 80) || 'Signal',
+      value: compactRunAnalystText(record.value, 120),
+      ...(tone === 'good' || tone === 'warn' || tone === 'bad' || tone === 'neutral'
+        ? { tone }
+        : {})
+    }
+  })
+}
+
+function sanitizeRunAnalystRequest(input: unknown): RunAnalystRequest {
+  const record = requireRecord(input, 'Run analyst request')
+  const provider =
+    typeof record.provider === 'string' && availableProviderIds().includes(record.provider as ProviderId)
+      ? (record.provider as ProviderId)
+      : undefined
+  const timeline = Array.isArray(record.timeline)
+    ? record.timeline.slice(0, RUN_ANALYST_MAX_ITEMS).map((item) => {
+        const row = asRecord(item) || {}
+        return {
+          kind: compactRunAnalystText(row.kind, 80) as RunEventKind | string,
+          summary: compactRunAnalystText(row.summary, 240),
+          timestamp: compactRunAnalystText(row.timestamp, 80)
+        }
+      })
+    : []
+  return {
+    runId: requireNonEmptyString(record.runId, 'Run id'),
+    ...(provider ? { provider } : {}),
+    chatTitle: compactRunAnalystText(record.chatTitle, 140),
+    status: compactRunAnalystText(record.status, 80),
+    startedAt: compactRunAnalystText(record.startedAt, 80),
+    endedAt: compactRunAnalystText(record.endedAt, 80),
+    promptPreview: compactRunAnalystText(record.promptPreview, 500),
+    workspacePath: compactRunAnalystText(record.workspacePath, 500),
+    touchedFiles: stringArray(record.touchedFiles).slice(0, RUN_ANALYST_MAX_ITEMS),
+    warnings: stringArray(record.warnings).slice(0, RUN_ANALYST_MAX_ITEMS),
+    countsByKind: asRecord(record.countsByKind) || {},
+    timeline
+  }
+}
+
+function normalizeRunAnalystResult(
+  request: RunAnalystRequest,
+  result: unknown,
+  generatedAt: string
+): RunAnalystSnapshot {
+  const record = asRecord(result) || {}
+  const status = record.status === 'error' || record.status === 'unavailable' ? record.status : 'ready'
+  return {
+    runId: request.runId,
+    generatedAt,
+    source: 'foundationModels',
+    status,
+    summary:
+      compactRunAnalystText(record.summary, 1400) ||
+      'Foundation Models returned no run summary.',
+    risks: stringArray(record.risks).slice(0, 6),
+    nextSteps: stringArray(record.nextSteps).slice(0, 6),
+    signals: sanitizeRunAnalystSignals(record.signals),
+    model: compactRunAnalystText(record.model, 120) || 'Apple Foundation Models',
+    error: compactRunAnalystText(record.error, 500) || undefined
+  }
+}
+
+function buildRunAnalystUnavailableSnapshot(
+  request: RunAnalystRequest,
+  reason: string
+): RunAnalystSnapshot {
+  return {
+    runId: request.runId,
+    generatedAt: new Date().toISOString(),
+    source: 'foundationModels',
+    status: 'unavailable',
+    summary: 'Local Foundation Models analysis is unavailable for this run.',
+    risks: [],
+    nextSteps: ['Use the local deterministic summary in the Run rail.'],
+    signals: [
+      {
+        label: 'Foundation Models',
+        value: reason,
+        tone: 'warn'
+      }
+    ],
+    error: reason
   }
 }
 
@@ -13943,6 +14050,23 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-run-event-replay', (_, runId: string) =>
       getRunRepository().getRunEventReplay(runId)
     )
+    ipcMain.handle('run-analyst:analyze', async (_, input: unknown) => {
+      const request = sanitizeRunAnalystRequest(input)
+      const daemon = bridgeDaemon
+      if (!daemon?.status().running) {
+        return buildRunAnalystUnavailableSnapshot(
+          request,
+          'TaskWraith bridge daemon is not running.'
+        )
+      }
+      try {
+        const result = await daemon.request('runAnalyst.analyze', request, { timeoutMs: 45_000 })
+        return normalizeRunAnalystResult(request, result, new Date().toISOString())
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        return buildRunAnalystUnavailableSnapshot(request, reason)
+      }
+    })
     ipcMain.handle('get-approval-ledger', (_, filter?: ApprovalLedgerFilter) =>
       AppStore.getApprovalLedger(filter || {})
     )

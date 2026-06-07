@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   GeminiWorktreeLaunchOption,
   ProviderId,
+  RunAnalystRequest,
+  RunAnalystSnapshot,
   WorkspaceActivitySnapshot
 } from '../main/store/types'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
@@ -746,6 +748,8 @@ const api = {
     ipcRenderer.invoke('get-run-recovery-records', filter),
   getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
   getRunEventReplay: (runId: string) => ipcRenderer.invoke('get-run-event-replay', runId),
+  analyzeRun: (request: RunAnalystRequest) =>
+    ipcRenderer.invoke('run-analyst:analyze', request) as Promise<RunAnalystSnapshot>,
   getApprovalLedger: (filter: any = {}) => ipcRenderer.invoke('get-approval-ledger', filter),
   recordApprovalElevationAck: (input: {
     provider: string

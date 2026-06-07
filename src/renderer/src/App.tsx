@@ -52,6 +52,7 @@ import {
   ChatScope,
   RuntimeProfile,
   HandoffCard,
+  RunAnalystSnapshot,
   EnsembleParticipant,
   EnsembleOrchestrationMode,
   PermissionPresetId,
@@ -90,17 +91,10 @@ import {
 import {
   MIN_RIGHT_PANEL_WIDTH,
   MAX_RIGHT_PANEL_WIDTH,
-  DEFAULT_SIDE_CHAT_WIDTH,
-  MIN_SIDE_CHAT_WIDTH,
-  MAX_SIDE_CHAT_WIDTH,
   MIN_WORKSPACE_SIDEBAR_WIDTH,
   MAX_WORKSPACE_SIDEBAR_WIDTH,
   clampPanelWidth,
-  clampSideChatWidth,
   clampWorkspaceSidebarWidth,
-  getStoredFileEditorWidth,
-  getStoredSideChatWidth,
-  setStoredSideChatWidth,
   getStoredWorkspaceSidebarWidth
 } from './lib/panelWidths'
 import { getProviderLabel } from './lib/providerLabels'
@@ -144,7 +138,7 @@ import {
 } from './lib/threadTokenTally'
 import { buildCodexUsageWindows } from './lib/codexUsageWindows'
 import type { QueuedRunRequest, RunRouteEventPayload, ActiveRunContext } from './lib/runRequestTypes'
-import { CockpitPanel } from './components/CockpitPanel'
+import { RunRailPanel } from './components/RunRailPanel'
 import {
   createToolActivity,
   pairToolResult,
@@ -222,13 +216,12 @@ import {
   XSymbolIcon
 } from './components/AppChromeSymbols'
 import {
-  ChatMediaFloatingPanel,
   ChatMediaPreviewOverlay,
   collectChatMediaRefs,
+  formatChatMediaLocation,
   type ChatMediaRef
 } from './components/ChatMediaPanel'
 import { FileEditorPanel } from './components/FileEditorPanel'
-import { RunInspector } from './components/RunInspector'
 // PairingSheet retired in the post-1.0.2 Settings full-app takeover.
 // The pairing flow now lives as a Settings tab (`PairingPage` mounted
 // inside SettingsPanel). Triggers route through `setShowSettings(true)
@@ -407,12 +400,6 @@ import {
   getStoredSkyVisualFxEnabled
 } from './lib/localStorageFlags'
 import { isFunFxMode, getLegacyFunFxSettingsFromLocalStorage } from './lib/funFxSettings'
-import {
-  clampGeminiTerminalHeight,
-  MIN_GEMINI_TERMINAL_HEIGHT,
-  DEFAULT_GEMINI_TERMINAL_HEIGHT
-} from './lib/geminiTerminalHeight'
-
 // Composer-unification (Phase J1 → slash-picker): the legacy
 // CommandPaletteItem / Action / Group / Source types and the per-provider
 // CORE constants live in src/renderer/src/lib/ComposerSlashCommands.ts
@@ -487,6 +474,15 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
 ])
 
 type SidePanelPresentation = 'split' | 'drawer'
+type RightDockTab = 'run' | 'chat' | 'inspector' | 'files' | 'media' | 'terminal'
+type InspectorRightTab =
+  | 'diff'
+  | 'raw'
+  | 'delegation'
+  | 'timeline'
+  | 'safety'
+  | 'capabilities'
+  | 'background-tasks'
 type SideChatCreateMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
 type SideChatSeedContext = {
   originMessageId?: string
@@ -980,15 +976,19 @@ function App(): React.JSX.Element {
   const preSnapshotRef = useRef<any>(null)
 
   // Right Panel Tabs
-  const [rightTab, setRightTab] = useState<
-    'diff' | 'raw' | 'delegation' | 'timeline' | 'safety' | 'capabilities' | 'background-tasks'
-  >('diff')
+  const [rightTab, setRightTab] = useState<InspectorRightTab>('diff')
+  const [rightDockTab, setRightDockTab] = useState<RightDockTab>('run')
 
   // Version Preflight
   const [geminiVersion, setGeminiVersion] = useState<string>('unknown')
 
   // Appearance & Settings
   const appearance = useAppearance()
+  const openInspectorTab = (tab: InspectorRightTab) => {
+    setRightTab(tab)
+    appearance.update({ showInspector: true })
+    setRightDockTab('inspector')
+  }
   const [showSettings, setShowSettings] = useState(false)
   // Active Settings tab. Hoisted from `SettingsPanel`'s internal
   // state because the full-app takeover layout renders the tab list
@@ -1244,15 +1244,12 @@ function App(): React.JSX.Element {
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
-  const [geminiTerminalHeight, setGeminiTerminalHeight] = useState(DEFAULT_GEMINI_TERMINAL_HEIGHT)
   const [isChatMediaPanelOpen, setIsChatMediaPanelOpen] = useState(false)
   const [previewChatMediaRef, setPreviewChatMediaRef] = useState<ChatMediaRef | null>(null)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
   const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
   const [fxBurstClass, setFxBurstClass] = useState('')
-  const [fileEditorWidth, setFileEditorWidth] = useState(getStoredFileEditorWidth)
-  const [sideChatWidth, setSideChatWidth] = useState(DEFAULT_SIDE_CHAT_WIDTH)
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
   const [chatContextNotice, setChatContextNotice] = useState<{
     id: string
@@ -1539,10 +1536,8 @@ function App(): React.JSX.Element {
   const errorCountRef = useRef(0)
   const toolCallsCountRef = useRef(0)
 
-  // Phase K1B: when set, the chat panel renders `<RunInspector />` in
-  // place of the transcript scroll. Entered via RunCard's "Inspect →"
-  // affordance; cleared via the inspector's close button or by switching
-  // chats. The composer stays mounted below either way.
+  // Selected run for the docked Run rail. The transcript remains the
+  // conversation stage; RunInspector mounts inside RunRailPanel.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
   const [sideChatId, setSideChatId] = useState<string | null>(null)
   const [sidePanelPresentation, setSidePanelPresentation] =
@@ -1578,14 +1573,6 @@ function App(): React.JSX.Element {
   const sideLogsEndRef = useRef<HTMLDivElement>(null)
   const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const sideChatMenuRef = useRef<HTMLDivElement | null>(null)
-  const getSideChatMaxWidth = useCallback((): number => {
-    const regionWidth =
-      chatSplitRegionRef.current?.getBoundingClientRect().width || window.innerWidth
-    return Math.min(
-      MAX_SIDE_CHAT_WIDTH,
-      Math.max(MIN_SIDE_CHAT_WIDTH, Math.floor(regionWidth * 0.62))
-    )
-  }, [])
   // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
   // (rendered as `.transcript-inner` in `TranscriptPanel`). A single
   // `ResizeObserver` watches this node and dispatches a coalesced rAF
@@ -1905,17 +1892,6 @@ function App(): React.JSX.Element {
     isChatPopoutWindow && currentChat?.parentChatRelation === 'sideChat'
       ? currentChat.appChatId
       : null
-  const sideSplitParentChatId = sideChat?.parentChatId || null
-  const setSideChatSplitWidth = (nextWidth: number) => {
-    const maxWidth = getSideChatMaxWidth()
-    const clampedWidth = clampSideChatWidth(
-      Math.max(MIN_SIDE_CHAT_WIDTH, Math.min(maxWidth, nextWidth))
-    )
-    setSideChatWidth(clampedWidth)
-    if (sideSplitParentChatId) {
-      setStoredSideChatWidth(sideSplitParentChatId, clampedWidth)
-    }
-  }
   useEffect(() => {
     if (!sideChatId) return
     const liveSideChat =
@@ -1948,14 +1924,6 @@ function App(): React.JSX.Element {
       setSideChatId(null)
     }
   }, [sideChatId, chats, currentChat?.appChatId])
-  useEffect(() => {
-    if (!sideSplitParentChatId) return
-    const storedWidth = getStoredSideChatWidth(sideSplitParentChatId)
-    const maxWidth = getSideChatMaxWidth()
-    setSideChatWidth(
-      clampSideChatWidth(Math.max(MIN_SIDE_CHAT_WIDTH, Math.min(maxWidth, storedWidth)))
-    )
-  }, [getSideChatMaxWidth, sideSplitParentChatId])
   useLayoutEffect(() => {
     if (!sideChat || !sideAutoFollowRef.current) return
     const scroller = sideTranscriptScrollRef.current
@@ -6200,19 +6168,6 @@ function App(): React.JSX.Element {
   }, [rawLogs, showGeminiTerminal])
 
   useEffect(() => {
-    if (!showGeminiTerminal) {
-      return
-    }
-
-    const clampTerminalOnResize = () => {
-      setGeminiTerminalHeight((current) => clampGeminiTerminalHeight(current))
-    }
-
-    window.addEventListener('resize', clampTerminalOnResize)
-    return () => window.removeEventListener('resize', clampTerminalOnResize)
-  }, [showGeminiTerminal])
-
-  useEffect(() => {
     const geminiSessionApi = window.api as any
     if (
       typeof geminiSessionApi.onGeminiSessionData !== 'function' &&
@@ -8501,7 +8456,7 @@ function App(): React.JSX.Element {
       const diffObj = await window.api.getDiff(currentWorkspace.path)
       setDiff(diffObj)
       setDiffView('workspace')
-      setRightTab('diff')
+      openInspectorTab('diff')
 
       // 1.0.4-AT5 — surface a clear distinction between Codex's
       // native `/review` (only fires when the solo path resumes a
@@ -8725,9 +8680,7 @@ function App(): React.JSX.Element {
       if (presentInline) {
         setSidePanelPresentation(presentation)
         setSideChatId(nextSideChat.appChatId)
-        setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
-        setShowFileEditor(false)
-        appearance.update({ showInspector: false })
+        setRightDockTab('chat')
       }
       setChatPromptDraft(nextSideChat.appChatId, seedPrompt)
       if (clearParentDraft) {
@@ -8793,9 +8746,7 @@ function App(): React.JSX.Element {
     }
     setSidePanelPresentation(presentation)
     setSideChatId(nextChat.appChatId)
-    setSideChatWidth(getStoredSideChatWidth(parentChat.appChatId))
-    setShowFileEditor(false)
-    appearance.update({ showInspector: false })
+    setRightDockTab('chat')
     setSideChatMenuOpen(false)
     requestAnimationFrame(() => {
       sideComposerTextareaRef.current?.focus()
@@ -9073,7 +9024,7 @@ function App(): React.JSX.Element {
     const unsubscribe = window.api.onSideChatDockRequest((request) => {
       void (async () => {
         const dockScrollState = normalizeChatScrollState(request.scrollState)
-        let linkedChat =
+        const linkedChat =
           chatByIdRef.current.get(request.chatId) ||
           (await window.api.getChat(request.chatId)) ||
           null
@@ -9740,6 +9691,7 @@ function App(): React.JSX.Element {
     })
     setHandoffCards((prev) => [card, ...prev.filter((item) => item.id !== card.id)])
     setShowCockpit(true)
+    setRightDockTab('run')
   }
 
   const handleDispatchHandoff = async (card: HandoffCard) => {
@@ -9784,6 +9736,31 @@ function App(): React.JSX.Element {
     if (updated) {
       setHandoffCards((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
     }
+  }
+
+  const handlePersistRunAnalysis = (
+    chatId: string,
+    runId: string,
+    snapshot: RunAnalystSnapshot
+  ) => {
+    const sourceChat =
+      chatByIdRef.current.get(chatId) || chats.find((item) => item.appChatId === chatId)
+    if (!sourceChat?.runs?.some((run) => run.runId === runId)) return
+    const updatedChat: ChatRecord = {
+      ...sourceChat,
+      runs: sourceChat.runs.map((run) =>
+        run.runId === runId ? { ...run, runAnalyst: snapshot } : run
+      ),
+      updatedAt: Date.now()
+    }
+    chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
+    setChats((prev) =>
+      prev.map((item) => (item.appChatId === updatedChat.appChatId ? updatedChat : item))
+    )
+    setCurrentChat((prev) =>
+      prev?.appChatId === updatedChat.appChatId ? updatedChat : prev
+    )
+    void window.api.saveChat(updatedChat).catch(() => {})
   }
 
   const dispatchScheduledTask = async (task: ScheduledTask) => {
@@ -10094,7 +10071,7 @@ function App(): React.JSX.Element {
     geminiSessionApi
       .writeGeminiSession(`${commandText}\n`)
       .catch(() => appendBridgeFallback(commandText, 'write-unavailable'))
-    setRightTab('raw')
+    openInspectorTab('raw')
     setRawLogs((prev) => [
       ...prev,
       { type: 'info', content: `Sent Gemini command: ${commandText}` }
@@ -10140,18 +10117,18 @@ function App(): React.JSX.Element {
     }
     if (slashTargetProvider === 'codex') {
       if (item.command === '/status' || item.command === '/permissions') {
-        setRightTab('safety')
+        openInspectorTab('safety')
       } else if (
         item.command === '/model' ||
         item.command === '/mcp' ||
         item.command === '/resume'
       ) {
-        setRightTab('capabilities')
+        openInspectorTab('capabilities')
         if (item.command === '/resume') {
           void refreshCodexThreads()
         }
       } else if (item.command === '/diff') {
-        setRightTab('diff')
+        openInspectorTab('diff')
       } else if (item.command === '/review') {
         void handleReviewCurrentDiff()
       } else if (item.command === '/fast') {
@@ -10175,7 +10152,7 @@ function App(): React.JSX.Element {
         if (threadId) {
           void handleForkCodexThread(threadId)
         } else {
-          setRightTab('capabilities')
+          openInspectorTab('capabilities')
           void refreshCodexThreads()
         }
       }
@@ -10184,12 +10161,12 @@ function App(): React.JSX.Element {
     if (slashTargetProvider === 'claude' || slashTargetProvider === 'kimi') {
       if (item.command === '/status' || item.command === '/permissions') {
         void refreshProviderMetadata(slashTargetProvider)
-        setRightTab('safety')
+        openInspectorTab('safety')
       } else if (item.command === '/model') {
         void refreshProviderMetadata(slashTargetProvider)
-        setRightTab('capabilities')
+        openInspectorTab('capabilities')
       } else if (item.command === '/diff') {
-        setRightTab('diff')
+        openInspectorTab('diff')
       } else if (item.command === '/review') {
         void handleReviewCurrentDiff()
       }
@@ -10874,44 +10851,6 @@ function App(): React.JSX.Element {
     }
   }
 
-  const startGeminiTerminalResize = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startY = event.clientY
-    const startHeight = geminiTerminalHeight
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      setGeminiTerminalHeight(clampGeminiTerminalHeight(startHeight - (moveEvent.clientY - startY)))
-    }
-
-    const handleMouseUp = () => {
-      document.body.classList.remove('is-resizing-gemini-terminal')
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-
-    document.body.classList.add('is-resizing-gemini-terminal')
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleGeminiTerminalResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
-      return
-    }
-
-    event.preventDefault()
-    const step = event.shiftKey ? 48 : 20
-    if (event.key === 'ArrowUp') {
-      setGeminiTerminalHeight((current) => clampGeminiTerminalHeight(current + step))
-    } else if (event.key === 'ArrowDown') {
-      setGeminiTerminalHeight((current) => clampGeminiTerminalHeight(current - step))
-    } else if (event.key === 'Home') {
-      setGeminiTerminalHeight(MIN_GEMINI_TERMINAL_HEIGHT)
-    } else if (event.key === 'End') {
-      setGeminiTerminalHeight(clampGeminiTerminalHeight(window.innerHeight))
-    }
-  }
-
   useEffect(() => {
     if (queuedRuns.length === 0) return
 
@@ -10952,14 +10891,6 @@ function App(): React.JSX.Element {
         void executeRunRef.current({ ...nextRun, appRunId: leased.runId })
       })
   }, [queuedRuns, runningChatIds, currentWorkspace, currentChat])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('taskwraith.fileEditorWidth', String(fileEditorWidth))
-    } catch {
-      // Local persistence is best-effort only.
-    }
-  }, [fileEditorWidth])
 
   useEffect(() => {
     try {
@@ -11022,13 +10953,10 @@ function App(): React.JSX.Element {
     }
   }, [showSkyVisualFx])
 
-  const startRightPanelResize = (
-    panel: 'fileEditor' | 'inspector',
-    event: React.MouseEvent<HTMLDivElement>
-  ) => {
+  const startRightPanelResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
-    const startWidth = panel === 'fileEditor' ? fileEditorWidth : appearance.inspectorWidth
+    const startWidth = appearance.inspectorWidth
     const maxWidth = Math.min(
       MAX_RIGHT_PANEL_WIDTH,
       Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(window.innerWidth * 0.58))
@@ -11039,11 +10967,7 @@ function App(): React.JSX.Element {
         MIN_RIGHT_PANEL_WIDTH,
         Math.min(maxWidth, startWidth - (moveEvent.clientX - startX))
       )
-      if (panel === 'fileEditor') {
-        setFileEditorWidth(clampPanelWidth(nextWidth))
-      } else {
-        appearance.update({ inspectorWidth: clampPanelWidth(nextWidth) })
-      }
+      appearance.update({ inspectorWidth: clampPanelWidth(nextWidth) })
     }
 
     const handleMouseUp = () => {
@@ -11110,10 +11034,7 @@ function App(): React.JSX.Element {
     )
   }
 
-  const handleRightPanelResizeKeyDown = (
-    panel: 'fileEditor' | 'inspector',
-    event: React.KeyboardEvent<HTMLDivElement>
-  ) => {
+  const handleRightPanelResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       return
     }
@@ -11123,7 +11044,7 @@ function App(): React.JSX.Element {
       MAX_RIGHT_PANEL_WIDTH,
       Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(window.innerWidth * 0.58))
     )
-    const currentWidth = panel === 'fileEditor' ? fileEditorWidth : appearance.inspectorWidth
+    const currentWidth = appearance.inspectorWidth
     const step = event.shiftKey ? 40 : 16
     let nextWidth = currentWidth
 
@@ -11133,54 +11054,7 @@ function App(): React.JSX.Element {
     if (event.key === 'End') nextWidth = maxWidth
 
     const clampedWidth = Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(maxWidth, nextWidth))
-    if (panel === 'fileEditor') {
-      setFileEditorWidth(clampPanelWidth(clampedWidth))
-    } else {
-      appearance.update({ inspectorWidth: clampPanelWidth(clampedWidth) })
-    }
-  }
-
-  const startSideChatResize = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = sideChatWidth
-    const maxWidth = getSideChatMaxWidth()
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const nextWidth = Math.max(
-        MIN_SIDE_CHAT_WIDTH,
-        Math.min(maxWidth, startWidth - (moveEvent.clientX - startX))
-      )
-      setSideChatSplitWidth(nextWidth)
-    }
-
-    const handleMouseUp = () => {
-      document.body.classList.remove('is-resizing-side-chat')
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-
-    document.body.classList.add('is-resizing-side-chat')
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleSideChatResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-      return
-    }
-
-    event.preventDefault()
-    const maxWidth = getSideChatMaxWidth()
-    const step = event.shiftKey ? 40 : 16
-    let nextWidth = sideChatWidth
-
-    if (event.key === 'ArrowLeft') nextWidth = sideChatWidth + step
-    if (event.key === 'ArrowRight') nextWidth = sideChatWidth - step
-    if (event.key === 'Home') nextWidth = MIN_SIDE_CHAT_WIDTH
-    if (event.key === 'End') nextWidth = maxWidth
-
-    setSideChatSplitWidth(nextWidth)
+    appearance.update({ inspectorWidth: clampPanelWidth(clampedWidth) })
   }
 
   const openWorkspacePopoutWindow = useCallback(
@@ -11312,10 +11186,8 @@ function App(): React.JSX.Element {
         if (commandId === 'toggle-inspector') {
           if (isChatPopoutWindow) return
           const nextShowInspector = !appearance.showInspector
-          if (nextShowInspector && window.innerWidth <= 1180) {
-            setShowFileEditor(false)
-          }
           appearance.update({ showInspector: nextShowInspector })
+          setRightDockTab('inspector')
           return
         }
         if (commandId === 'toggle-file-editor') {
@@ -11323,9 +11195,7 @@ function App(): React.JSX.Element {
           if (!hasWorkspaceContext) return
           setShowFileEditor((current) => {
             const nextShowFileEditor = !current
-            if (nextShowFileEditor && window.innerWidth <= 1180 && appearance.showInspector) {
-              appearance.update({ showInspector: false })
-            }
+            if (nextShowFileEditor) setRightDockTab('files')
             return nextShowFileEditor
           })
           return
@@ -13033,19 +12903,33 @@ function App(): React.JSX.Element {
   }
   const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
     const style: CSSProperties = {}
-    if (showGeminiTerminal && currentProvider === 'gemini') {
-      ;(style as Record<string, string>)['--gemini-terminal-height'] = `${geminiTerminalHeight}px`
-    }
     if (ensembleBlendStyle) {
       Object.assign(style, ensembleBlendStyle)
     }
     return Object.keys(style).length > 0 ? style : undefined
-  }, [showGeminiTerminal, currentProvider, geminiTerminalHeight, ensembleBlendStyle])
+  }, [ensembleBlendStyle])
   const runCompleteDurationText =
     runCompleteNotice && !isWelcomeChat
       ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
       : null
-  const isChatExpanded = !showWorkspaceSidebar || (!appearance.showInspector && !showFileEditor)
+  const isTerminalDockAvailable = showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext
+  const rightDockTabs = [
+    { id: 'run' as const, label: 'Run', available: showCockpit },
+    { id: 'chat' as const, label: 'Chat', available: Boolean(sideChat) },
+    { id: 'inspector' as const, label: 'Inspect', available: appearance.showInspector },
+    { id: 'files' as const, label: 'Files', available: showFileEditor && hasWorkspaceContext },
+    { id: 'media' as const, label: 'Media', available: isChatMediaPanelOpen },
+    { id: 'terminal' as const, label: 'Term', available: isTerminalDockAvailable }
+  ].filter((tab) => tab.available)
+  const rightDockVisible = !isChatPopoutWindow && !showSettings && rightDockTabs.length > 0
+  const activeRightDockTab: RightDockTab =
+    rightDockTabs.some((tab) => tab.id === rightDockTab)
+      ? rightDockTab
+      : rightDockTabs[0]?.id || 'run'
+  const rightDockStyle = rightDockVisible
+    ? ({ '--right-dock-width': `${appearance.inspectorWidth}px` } as CSSProperties)
+    : undefined
+  const isChatExpanded = !showWorkspaceSidebar || !rightDockVisible
   const activeDiffSummaries: DiffFileSummary[] = Array.isArray((activeDiff as any)?.summaries)
     ? (activeDiff as any).summaries.filter(isFileSummaryRecord)
     : []
@@ -13295,7 +13179,7 @@ function App(): React.JSX.Element {
     }
     if (getCreatePrState(workspacePath).status === 'pending') return
     if (typeof window.api.createGithubPr !== 'function') {
-      setRightTab('diff')
+      openInspectorTab('diff')
       return
     }
     setCreatePrStateFor(workspacePath, { status: 'pending' })
@@ -13635,14 +13519,12 @@ function App(): React.JSX.Element {
   const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
-    ? `side-chat-open side-chat-layout-${sidePanelPresentation}`
+    ? `side-chat-open side-chat-layout-${sidePanelPresentation} side-chat-docked`
     : ''
   const appMainStyle = showWorkspaceSidebar && !isChatPopoutWindow
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
     : undefined
-  const chatSplitStyle = isSideSplitOpen
-    ? ({ '--side-chat-width': `${sideChatWidth}px` } as CSSProperties)
-    : undefined
+  const chatSplitStyle = rightDockStyle
   const interfaceStyle = appearance.composerStyle
   const primaryModifierLabel = window.api.hostPlatform === 'darwin' ? '⌘' : 'Ctrl'
   const providerShellEnabled = interfaceStyle === 'codex' || interfaceStyle === 'claude'
@@ -13668,7 +13550,7 @@ function App(): React.JSX.Element {
           isChatPopoutWindow ? 'chat-popout-main' : ''
         } ${isLinkedChatPopout ? 'chat-popout-linked-main' : ''} ${
           isSideSplitOpen ? 'side-chat-open' : ''
-        }`}
+        } ${rightDockVisible ? 'right-dock-open' : ''}`}
         style={appMainStyle}
       >
         {showWorkspaceSidebar && !isChatPopoutWindow && (
@@ -13982,7 +13864,7 @@ function App(): React.JSX.Element {
           <div className="chat-split-main">
             <div
               ref={appTranscriptRef}
-              className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
+              className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
               style={transcriptStyle}
             >
           {chatContextNotice && (
@@ -14282,17 +14164,23 @@ function App(): React.JSX.Element {
             <button
               className={`chat-corner-btn ${showCockpit ? 'active' : ''}`}
               type="button"
-              onClick={() => setShowCockpit(true)}
-              title="Open multi-agent cockpit"
-              aria-label="Open multi-agent cockpit"
+              onClick={() => {
+                setShowCockpit((open) => !open)
+                setRightDockTab('run')
+              }}
+              title={showCockpit ? 'Hide Run rail' : 'Open Run rail'}
+              aria-label="Toggle Run rail"
               aria-pressed={showCockpit}
             >
-              <span className="chat-corner-symbol">CP</span>
+              <RunSymbolIcon />
             </button>
             <button
               className={`chat-corner-btn ${isChatMediaPanelOpen ? 'active' : ''}`}
               type="button"
-              onClick={() => setIsChatMediaPanelOpen((open) => !open)}
+              onClick={() => {
+                setIsChatMediaPanelOpen((open) => !open)
+                setRightDockTab('media')
+              }}
               title="Show chat uploads and paths"
               aria-label="Show chat uploads and paths"
               aria-pressed={isChatMediaPanelOpen}
@@ -14308,7 +14196,10 @@ function App(): React.JSX.Element {
               <button
                 className={`chat-corner-btn ${showGeminiTerminal ? 'active' : ''}`}
                 type="button"
-                onClick={() => setShowGeminiTerminal((current) => !current)}
+                onClick={() => {
+                  setShowGeminiTerminal((current) => !current)
+                  setRightDockTab('terminal')
+                }}
                 title={`${showGeminiTerminal ? 'Hide' : 'Show'} Gemini terminal`}
                 aria-label="Toggle Gemini terminal"
                 aria-pressed={showGeminiTerminal}
@@ -14323,9 +14214,7 @@ function App(): React.JSX.Element {
                 if (!hasWorkspaceContext) return
                 const nextShowFileEditor = !showFileEditor
                 setShowFileEditor(nextShowFileEditor)
-                if (nextShowFileEditor && window.innerWidth <= 1180 && appearance.showInspector) {
-                  appearance.update({ showInspector: false })
-                }
+                setRightDockTab('files')
               }}
               title={`${showFileEditor ? 'Hide' : 'Show'} file editor`}
               aria-label="Toggle file editor"
@@ -14340,10 +14229,8 @@ function App(): React.JSX.Element {
                 type="button"
                 onClick={() => {
                   const nextShowInspector = !appearance.showInspector
-                  if (nextShowInspector && window.innerWidth <= 1180 && showFileEditor) {
-                    setShowFileEditor(false)
-                  }
                   appearance.update({ showInspector: nextShowInspector })
+                  setRightDockTab('inspector')
                 }}
                 title={`${appearance.showInspector ? 'Hide' : 'Show'} inspector`}
                 aria-label="Toggle inspector"
@@ -14395,13 +14282,6 @@ function App(): React.JSX.Element {
               </span>
             </button>
           )}
-
-          <ChatMediaFloatingPanel
-            open={isChatMediaPanelOpen}
-            refs={currentChatMediaRefs}
-            workspacePath={currentWorkspace?.path}
-            onClose={() => setIsChatMediaPanelOpen(false)}
-          />
 
           <ChatMediaPreviewOverlay
             mediaRef={previewChatMediaRef}
@@ -14556,20 +14436,7 @@ function App(): React.JSX.Element {
            * synchronously so the welcome surface paints over a clean
            * transcript region every time.
            */}
-          {inspectingRunId ? (
-            <RunInspector
-              key={`inspector-${inspectingRunId}`}
-              runId={inspectingRunId}
-              onClose={() => setInspectingRunId(null)}
-              onJumpToSubThread={(subThreadId) => {
-                // Switch chats to the sub-thread; the chat-switch effect
-                // resets `inspectingRunId` automatically.
-                const subThread = chats.find((c) => c.appChatId === subThreadId)
-                if (subThread) handleOpenCockpitThread(subThread.appChatId)
-              }}
-            />
-          ) : (
-            <>
+          <>
               {/*
                 EnsembleParticipantStrip retired in 1.0.3 — its
                 contents (per-participant status pills) merged into
@@ -14611,7 +14478,11 @@ function App(): React.JSX.Element {
                 onRunFallback={handleRunFallback}
                 onOpenSubThread={handleOpenCockpitThread}
                 onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
-                onInspectRun={(runId) => setInspectingRunId(runId)}
+                onInspectRun={(runId) => {
+                  setInspectingRunId(runId)
+                  setShowCockpit(true)
+                  setRightDockTab('run')
+                }}
                 onOpenSideChatFromRun={
                   canCreateSideChatFromCurrent ? handleOpenSideChatFromRunResult : undefined
                 }
@@ -14634,83 +14505,7 @@ function App(): React.JSX.Element {
                 currencyOverestimatePercent={overestimatePercent}
                 providerRates={providerRates}
               />
-            </>
-          )}
-
-          {showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext && (
-            <>
-              <div
-                className="gemini-terminal-resize-divider"
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize Gemini terminal split"
-                tabIndex={0}
-                onMouseDown={startGeminiTerminalResize}
-                onKeyDown={handleGeminiTerminalResizeKeyDown}
-              />
-              <div
-                className="gemini-terminal-split"
-                role="region"
-                aria-label="Gemini terminal output"
-              >
-                <div className="gemini-terminal-header">
-                  <div className="gemini-terminal-title">
-                    <AppleTerminalIcon />
-                    <span>Gemini Terminal</span>
-                    <span className="gemini-terminal-status">{geminiTerminalStatusLabel}</span>
-                  </div>
-                  <div className="gemini-terminal-actions">
-                    <button
-                      type="button"
-                      className="gemini-terminal-action"
-                      onClick={() =>
-                        setThreadRawLogs(currentChat?.appChatId || currentChatIdRef.current, [])
-                      }
-                      title="Clear Gemini terminal output"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      className="gemini-terminal-action"
-                      onClick={() => setShowGeminiTerminal(false)}
-                      title="Close Gemini terminal"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-                <div className="gemini-terminal-body">
-                  {visibleGeminiTerminalLogs.length > 0 ? (
-                    visibleGeminiTerminalLogs.map((entry, index) => (
-                      <div
-                        key={`${index}-${entry.type}`}
-                        className={`gemini-terminal-line terminal-${entry.type}`}
-                      >
-                        <span className="gemini-terminal-prefix">{entry.type}</span>
-                        <span className="gemini-terminal-text">{entry.content}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="gemini-terminal-empty">Awaiting Gemini terminal output.</div>
-                  )}
-                  <div ref={geminiTerminalEndRef} />
-                </div>
-                <form className="gemini-terminal-input-row" onSubmit={handleGeminiTerminalSubmit}>
-                  <span className="gemini-terminal-prompt">$</span>
-                  <input
-                    value={geminiTerminalInput}
-                    onChange={(event) => setGeminiTerminalInput(event.target.value)}
-                    placeholder="Type input for the active Gemini run/session..."
-                    spellCheck={false}
-                  />
-                  <button type="submit" disabled={!geminiTerminalInput.trim()}>
-                    Send
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
+          </>
 
           {shouldShowWelcomeUsageDashboard && welcomeDashboardCardEnabled && (
             <div className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize}`}>
@@ -15186,7 +14981,7 @@ function App(): React.JSX.Element {
                                   workspacePath={currentWorkspace?.path}
                                   open={diffActionMenuOpen}
                                   hasReviewableDiff={hasReviewableDiff}
-                                  onReviewChanges={() => setRightTab('diff')}
+                                  onReviewChanges={() => openInspectorTab('diff')}
                                   onClose={() => setDiffActionMenuOpen(false)}
                                   onCreatePr={() =>
                                     void handleCreateGithubPr(currentWorkspace?.path)
@@ -16323,7 +16118,7 @@ function App(): React.JSX.Element {
                                       description: `${currentProviderLabel} safety and setup`,
                                       icon: <TrustSymbolIcon />,
                                       disabled: workspaceActionDisabled,
-                                      onSelect: () => setRightTab('safety')
+                                      onSelect: () => openInspectorTab('safety')
                                     },
                                     {
                                       id: 'diff',
@@ -16331,7 +16126,7 @@ function App(): React.JSX.Element {
                                       description: `${currentProviderLabel} workspace changes`,
                                       icon: <FileMenuSelectionIcon />,
                                       disabled: workspaceActionDisabled,
-                                      onSelect: () => setRightTab('diff')
+                                      onSelect: () => openInspectorTab('diff')
                                     },
                                     {
                                       id: 'capabilities',
@@ -16339,7 +16134,7 @@ function App(): React.JSX.Element {
                                       description: `${currentProviderLabel} capability state`,
                                       icon: <ModelSymbolIcon />,
                                       disabled: workspaceActionDisabled,
-                                      onSelect: () => setRightTab('capabilities')
+                                      onSelect: () => openInspectorTab('capabilities')
                                     }
                                   ]
                             },
@@ -17511,21 +17306,58 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          {sideChat && isSideSplitOpen && (
+          {rightDockVisible && (
             <>
-              <div
-                className="side-chat-resize-handle"
-                role="separator"
-                tabIndex={0}
-                aria-orientation="vertical"
-                aria-label="Resize side chat split"
-                aria-valuemin={MIN_SIDE_CHAT_WIDTH}
-                aria-valuemax={getSideChatMaxWidth()}
-                aria-valuenow={sideChatWidth}
-                onMouseDown={startSideChatResize}
-                onKeyDown={handleSideChatResizeKeyDown}
-                title="Resize side chat split"
-              />
+            <div
+              className="panel-resize-handle right-dock-resize-handle"
+              role="separator"
+              tabIndex={0}
+              aria-orientation="vertical"
+              aria-label="Resize right dock"
+              aria-valuemin={MIN_RIGHT_PANEL_WIDTH}
+              aria-valuemax={MAX_RIGHT_PANEL_WIDTH}
+              aria-valuenow={appearance.inspectorWidth}
+              onMouseDown={startRightPanelResize}
+              onKeyDown={handleRightPanelResizeKeyDown}
+              title="Resize right dock"
+            />
+            <aside className="right-dock" style={rightDockStyle} aria-label="Right dock">
+              <div className="right-dock-tabs" role="tablist" aria-label="Right dock tabs">
+                {rightDockTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    className={`right-dock-tab ${activeRightDockTab === tab.id ? 'active' : ''}`}
+                    aria-selected={activeRightDockTab === tab.id}
+                    onClick={() => setRightDockTab(tab.id)}
+                  >
+                    {tab.label}
+                    {tab.id === 'media' && currentChatMediaRefs.length > 0 && (
+                      <span className="right-dock-tab-count">{currentChatMediaRefs.length}</span>
+                    )}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="right-dock-close"
+                  onClick={() => {
+                    if (activeRightDockTab === 'run') setShowCockpit(false)
+                    if (activeRightDockTab === 'chat') hideSideChatPane()
+                    if (activeRightDockTab === 'inspector') appearance.update({ showInspector: false })
+                    if (activeRightDockTab === 'files') setShowFileEditor(false)
+                    if (activeRightDockTab === 'media') setIsChatMediaPanelOpen(false)
+                    if (activeRightDockTab === 'terminal') setShowGeminiTerminal(false)
+                  }}
+                  title="Close active dock tab"
+                  aria-label="Close active dock tab"
+                >
+                  <XSymbolIcon />
+                </button>
+              </div>
+              <div className="right-dock-body">
+                {activeRightDockTab === 'chat' && sideChat && (
+                  <div className="right-dock-side-chat">
               <aside
                 className={`side-chat-pane app-transcript provider-${sideProvider} interface-${interfaceStyle} ${
                   sideChat.chatKind === 'ensemble' ? 'chat-kind-ensemble' : ''
@@ -17719,7 +17551,11 @@ function App(): React.JSX.Element {
               onOpenSubThread={handleOpenCockpitThread}
               onOpenSubThreadInSidePanel={handleOpenLinkedChatInSidePanelById}
               onInspectRun={(runId) => {
-                void openLinkedChatAsMain(sideChat).then(() => setInspectingRunId(runId))
+                void openLinkedChatAsMain(sideChat).then(() => {
+                  setInspectingRunId(runId)
+                  setShowCockpit(true)
+                  setRightDockTab('run')
+                })
               }}
               compactDensity={appearance.compactDensity}
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
@@ -17954,44 +17790,134 @@ function App(): React.JSX.Element {
               </div>
             </form>
               </aside>
-            </>
-          )}
-        </div>
+                  </div>
+                )}
 
-        {!isChatPopoutWindow && showFileEditor && hasWorkspaceContext && (
-          <>
-            <div
-              className="panel-resize-handle"
-              role="separator"
-              tabIndex={0}
-              aria-orientation="vertical"
-              aria-label="Resize file editor"
-              aria-valuemin={MIN_RIGHT_PANEL_WIDTH}
-              aria-valuemax={MAX_RIGHT_PANEL_WIDTH}
-              aria-valuenow={fileEditorWidth}
-              onMouseDown={(event) => startRightPanelResize('fileEditor', event)}
-              onKeyDown={(event) => handleRightPanelResizeKeyDown('fileEditor', event)}
-              title="Resize file editor"
-            />
-            <FileEditorPanel workspacePath={currentWorkspace?.path} width={fileEditorWidth} />
-          </>
-        )}
+                {activeRightDockTab === 'run' && (
+                  <RunRailPanel
+                    lanes={runLanes}
+                    handoffCards={handoffCards}
+                    chats={chats}
+                    currentChat={currentChat}
+                    currentRun={currentRun}
+                    selectedRunId={inspectingRunId}
+                    onSelectRun={setInspectingRunId}
+                    onOpenThread={handleOpenCockpitThread}
+                    onCancelRun={handleCancelRunLane}
+                    onRetryRun={handleRetryRunLane}
+                    onDuplicateRun={handleDuplicateRunLane}
+                    onCreateHandoff={handleCreateHandoffFromLane}
+                    onDispatchHandoff={handleDispatchHandoff}
+                    onArchiveHandoff={handleArchiveHandoff}
+                    onPersistAnalysis={handlePersistRunAnalysis}
+                  />
+                )}
 
-        {!isChatPopoutWindow && appearance.showInspector && (
-          <>
-            <div
-              className="panel-resize-handle"
-              role="separator"
-              tabIndex={0}
-              aria-orientation="vertical"
-              aria-label="Resize inspector"
-              aria-valuemin={MIN_RIGHT_PANEL_WIDTH}
-              aria-valuemax={MAX_RIGHT_PANEL_WIDTH}
-              aria-valuenow={appearance.inspectorWidth}
-              onMouseDown={(event) => startRightPanelResize('inspector', event)}
-              onKeyDown={(event) => handleRightPanelResizeKeyDown('inspector', event)}
-              title="Resize inspector"
-            />
+                {activeRightDockTab === 'files' && showFileEditor && hasWorkspaceContext && (
+                  <FileEditorPanel workspacePath={currentWorkspace?.path} width={appearance.inspectorWidth} />
+                )}
+
+                {activeRightDockTab === 'media' && isChatMediaPanelOpen && (
+                  <div className="right-dock-media-panel">
+                    <header className="right-dock-panel-header">
+                      <div>
+                        <span className="right-dock-kicker">Media</span>
+                        <strong>Uploads and paths</strong>
+                      </div>
+                      <button type="button" onClick={() => setIsChatMediaPanelOpen(false)}>
+                        Close
+                      </button>
+                    </header>
+                    {currentChatMediaRefs.length === 0 ? (
+                      <div className="right-dock-empty">No uploads or external paths on this chat.</div>
+                    ) : (
+                      <div className="right-dock-media-list">
+                        {currentChatMediaRefs.map((mediaRef) => (
+                          <button
+                            key={mediaRef.id}
+                            type="button"
+                            className={`right-dock-media-item kind-${mediaRef.kind}`}
+                            onClick={() => setPreviewChatMediaRef(mediaRef)}
+                            title={mediaRef.path}
+                          >
+                            <FileTypeIcon
+                              path={mediaRef.path}
+                              size={18}
+                              workspacePath={currentWorkspace?.path}
+                            />
+                            <span>
+                              <strong>{mediaRef.name}</strong>
+                              <small>{formatChatMediaLocation(mediaRef.path, currentWorkspace?.path)}</small>
+                            </span>
+                            {mediaRef.access && <em>{mediaRef.access}</em>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeRightDockTab === 'terminal' && isTerminalDockAvailable && (
+                  <div className="gemini-terminal-split right-dock-terminal" role="region" aria-label="Gemini terminal output">
+                    <div className="gemini-terminal-header">
+                      <div className="gemini-terminal-title">
+                        <AppleTerminalIcon />
+                        <span>Gemini Terminal</span>
+                        <span className="gemini-terminal-status">{geminiTerminalStatusLabel}</span>
+                      </div>
+                      <div className="gemini-terminal-actions">
+                        <button
+                          type="button"
+                          className="gemini-terminal-action"
+                          onClick={() =>
+                            setThreadRawLogs(currentChat?.appChatId || currentChatIdRef.current, [])
+                          }
+                          title="Clear Gemini terminal output"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="gemini-terminal-action"
+                          onClick={() => setShowGeminiTerminal(false)}
+                          title="Close Gemini terminal"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    <div className="gemini-terminal-body">
+                      {visibleGeminiTerminalLogs.length > 0 ? (
+                        visibleGeminiTerminalLogs.map((entry, index) => (
+                          <div
+                            key={`${index}-${entry.type}`}
+                            className={`gemini-terminal-line terminal-${entry.type}`}
+                          >
+                            <span className="gemini-terminal-prefix">{entry.type}</span>
+                            <span className="gemini-terminal-text">{entry.content}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="gemini-terminal-empty">Awaiting Gemini terminal output.</div>
+                      )}
+                      <div ref={geminiTerminalEndRef} />
+                    </div>
+                    <form className="gemini-terminal-input-row" onSubmit={handleGeminiTerminalSubmit}>
+                      <span className="gemini-terminal-prompt">$</span>
+                      <input
+                        value={geminiTerminalInput}
+                        onChange={(event) => setGeminiTerminalInput(event.target.value)}
+                        placeholder="Type input for the active Gemini run/session..."
+                        spellCheck={false}
+                      />
+                      <button type="submit" disabled={!geminiTerminalInput.trim()}>
+                        Send
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {activeRightDockTab === 'inspector' && appearance.showInspector && (
             <Inspector
               rightTab={rightTab}
               setRightTab={setRightTab}
@@ -18045,24 +17971,13 @@ function App(): React.JSX.Element {
               runningChatIds={runningChatIdsArray}
               onOpenSubThread={handleOpenCockpitThread}
             />
-          </>
-        )}
+                )}
+              </div>
+            </aside>
+            </>
+          )}
+        </div>
       </div>
-
-      {!isChatPopoutWindow && showCockpit && (
-        <CockpitPanel
-          lanes={runLanes}
-          handoffCards={handoffCards}
-          onClose={() => setShowCockpit(false)}
-          onOpenThread={handleOpenCockpitThread}
-          onCancelRun={handleCancelRunLane}
-          onRetryRun={handleRetryRunLane}
-          onDuplicateRun={handleDuplicateRunLane}
-          onCreateHandoff={handleCreateHandoffFromLane}
-          onDispatchHandoff={handleDispatchHandoff}
-          onArchiveHandoff={handleArchiveHandoff}
-        />
-      )}
 
       {/*
         Settings now renders as a full-app takeover — workspace

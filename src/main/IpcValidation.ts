@@ -97,6 +97,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'transition-run-queue-job': ['string', 'runQueueStatus', 'optionalObject'],
   'get-run-events': ['optionalObject'],
   'get-run-event-replay': ['runId'],
+  'run-analyst:analyze': ['object'],
   'get-approval-ledger': ['optionalObject'],
   'record-approval-elevation-ack': ['object'],
   'get-product-operations-status': [],
