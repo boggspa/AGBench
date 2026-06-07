@@ -1512,6 +1512,16 @@ export interface AppSettings {
   autoResumeParentOnSubThreadCompletion: boolean
   geminiMcpBridgeEnabled: boolean
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus
+  /**
+   * Permission-mode ELEVATION warning acknowledgements. Keyed by
+   * `${workspacePath}|${provider}` (see `approvalElevationAckKey` in
+   * `src/renderer/src/lib/approvalElevation.ts`); a `true` value means the
+   * Tier-1 "raise to Default Approval" notice has been confirmed once for that
+   * (workspace, provider) and should not be shown again. Tier-2 (Full Workspace
+   * Access) is never suppressed and never recorded here. Optional so older
+   * settings files round-trip without the field.
+   */
+  approvalModeElevationAcknowledgements?: Record<string, boolean>
   bridgeDaemonEnabled?: boolean
   /** Local macOS Messages.app bridge polling. Off by default; when enabled,
    * main polls allowlisted iMessage bindings through the local bridge daemon. */

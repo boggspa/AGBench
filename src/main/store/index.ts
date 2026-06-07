@@ -220,6 +220,7 @@ const defaultSettings: AppSettings = {
   autoResumeParentOnSubThreadCompletion: true,
   geminiMcpBridgeEnabled: false,
   geminiMcpBridgeLastStatus: undefined,
+  approvalModeElevationAcknowledgements: {},
   bridgeDaemonEnabled: true,
   messageBridgeEnabled: false,
   messageBridgePollIntervalMs: 30_000,
@@ -515,6 +516,9 @@ export class AppStore {
     const stored = readJson<Partial<AppSettings>>(settingsPath, {})
     const storedDashboardStatPrefs = objectOrUndefined(stored.dashboardStatPrefs)
     const storedWelcomeHeatmapPrefs = objectOrUndefined(stored.welcomeHeatmapPrefs)
+    const storedApprovalModeElevationAcks = objectOrUndefined(
+      stored.approvalModeElevationAcknowledgements
+    )
     const storedApprovalTimeouts = objectOrUndefined(stored.approvalTimeouts)
     const storedApprovalTimeoutProviderMs = objectOrUndefined(storedApprovalTimeouts?.perProviderMs)
     const pendingUpdateChangelog = normalizeUpdateChangelog(stored.pendingUpdateChangelog)
@@ -557,6 +561,10 @@ export class AppStore {
       dashboardStatPrefs: {
         ...(defaultSettings.dashboardStatPrefs || {}),
         ...(storedDashboardStatPrefs || {})
+      },
+      approvalModeElevationAcknowledgements: {
+        ...(defaultSettings.approvalModeElevationAcknowledgements || {}),
+        ...(storedApprovalModeElevationAcks || {})
       },
       welcomeHeatmapPrefs: {
         ...defaultSettings.welcomeHeatmapPrefs,

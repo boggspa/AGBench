@@ -168,6 +168,8 @@ import {
 } from './lib/ComposerSlashCommands'
 import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
+import { ApprovalModeElevationSheet } from './components/ApprovalModeElevationSheet'
+import { decideApprovalElevation } from './lib/approvalElevation'
 import { UsageHeatmap } from './components/UsageHeatmap'
 import { WorkspaceActivityHeatmap } from './components/WorkspaceActivityHeatmap'
 import { WelcomeHeatmaps, type WelcomeHeatmapSlot } from './components/WelcomeHeatmaps'
@@ -900,6 +902,21 @@ function App(): React.JSX.Element {
   const [claudeFastMode, setClaudeFastMode] = useState<boolean>(false)
   const [kimiThinkingEnabled, setKimiThinkingEnabled] = useState<boolean>(true)
   const [approvalMode, setApprovalMode] = useState<string>('default')
+  // Permission-mode ELEVATION warning sheet. When a picker raise needs a
+  // failsafe (Tier 1 → Default Approval, shown once per workspace+provider;
+  // Tier 2 → Full Workspace Access, shown every time), we defer the original
+  // apply into `apply()` and stash the decision here; the sheet's confirm runs
+  // `apply()` (and records the Tier-1 ack), cancel drops it (mode never raised).
+  // Decision logic lives in `lib/approvalElevation.ts`.
+  const [pendingElevation, setPendingElevation] = useState<{
+    tier: 1 | 2
+    provider: string
+    workspaceLabel: string | null
+    ackKey: string
+    persistAck: boolean
+    toMode: string
+    apply: () => void
+  } | null>(null)
   const [claudeBinaryPath, setClaudeBinaryPath] = useState('')
   const [kimiBinaryPath, setKimiBinaryPath] = useState('')
   const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
@@ -1345,6 +1362,21 @@ function App(): React.JSX.Element {
     Record<string, GitRepositorySnapshot | null>
   >({})
   const currentWorkspacePath = currentWorkspace?.path
+  // Set of (workspace|provider) keys whose Tier-1 "raise to Default Approval"
+  // elevation notice has already been acknowledged, derived from the persisted
+  // `approvalModeElevationAcknowledgements` settings Record. Fed into
+  // `decideApprovalElevation` so an acknowledged workspace+provider isn't
+  // warned again. Recomputed only when the Record identity changes.
+  const acknowledgedElevationDefaults = useMemo(() => {
+    const record = settings?.approvalModeElevationAcknowledgements
+    const acked = new Set<string>()
+    if (record) {
+      for (const [key, value] of Object.entries(record)) {
+        if (value) acked.add(key)
+      }
+    }
+    return acked
+  }, [settings?.approvalModeElevationAcknowledgements])
   // Eagerly fetch the live git snapshot for the current workspace so the
   // above-bar shows real repo state (changed-file count, +/- lines, clean)
   // WITHOUT waiting for the diff-action menu to open. Refetches on workspace
@@ -16963,18 +16995,42 @@ function App(): React.JSX.Element {
                                   })
                                   return
                                 }
-                                setApprovalMode(nextApprovalMode)
-                                rememberCurrentChatComposerSelection({
-                                  approvalMode: nextApprovalMode
-                                })
-                                if (
-                                  currentProvider === 'gemini' &&
-                                  nextApprovalMode !== approvalMode
-                                ) {
-                                  markPersistentSessionRestartNeeded(
-                                    'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
-                                  )
+                                // The actual mode change, deferred so an
+                                // elevation warning can gate it (see below).
+                                const applyMainSelection = (): void => {
+                                  setApprovalMode(nextApprovalMode)
+                                  rememberCurrentChatComposerSelection({
+                                    approvalMode: nextApprovalMode
+                                  })
+                                  if (
+                                    currentProvider === 'gemini' &&
+                                    nextApprovalMode !== approvalMode
+                                  ) {
+                                    markPersistentSessionRestartNeeded(
+                                      'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
+                                    )
+                                  }
                                 }
+                                const elevation = decideApprovalElevation({
+                                  from: approvalMode,
+                                  to: nextApprovalMode,
+                                  provider: effectiveProvider,
+                                  workspacePath: currentWorkspacePath,
+                                  acknowledgedDefault: acknowledgedElevationDefaults
+                                })
+                                if (!elevation) {
+                                  applyMainSelection()
+                                  return
+                                }
+                                setPendingElevation({
+                                  tier: elevation.tier,
+                                  provider: effectiveProvider,
+                                  workspaceLabel: currentWorkspace?.displayName ?? null,
+                                  ackKey: elevation.ackKey,
+                                  persistAck: elevation.persistAckOnConfirm,
+                                  toMode: nextApprovalMode,
+                                  apply: applyMainSelection
+                                })
                               }}
                               grantServices={grantServicesForPicker}
                               enabledGrantIds={enabledGrantIds}
@@ -17795,9 +17851,31 @@ function App(): React.JSX.Element {
                           composerStyle={appearance.composerStyle}
                           permissionOptions={sidePermissionOptions}
                           selectedPermission={sideSelectedPermission}
-                          onSelectPermission={(nextApprovalMode) =>
-                            rememberSideChatComposerSelection({ approvalMode: nextApprovalMode })
-                          }
+                          onSelectPermission={(nextApprovalMode) => {
+                            const applySideSelection = (): void => {
+                              rememberSideChatComposerSelection({ approvalMode: nextApprovalMode })
+                            }
+                            const elevation = decideApprovalElevation({
+                              from: sideSelectedPermission,
+                              to: nextApprovalMode,
+                              provider: sideComposerProvider,
+                              workspacePath: currentWorkspacePath,
+                              acknowledgedDefault: acknowledgedElevationDefaults
+                            })
+                            if (!elevation) {
+                              applySideSelection()
+                              return
+                            }
+                            setPendingElevation({
+                              tier: elevation.tier,
+                              provider: sideComposerProvider,
+                              workspaceLabel: currentWorkspace?.displayName ?? null,
+                              ackKey: elevation.ackKey,
+                              persistAck: elevation.persistAckOnConfirm,
+                              toMode: nextApprovalMode,
+                              apply: applySideSelection
+                            })
+                          }}
                           grantServices={sideGrantServices}
                           enabledGrantIds={sideEnabledGrantIds}
                           agenticServices={agenticServices}
@@ -18125,6 +18203,39 @@ function App(): React.JSX.Element {
           window.api.decideCreativeAction(requestId, approved, rememberForSession)
         }
       />
+      {pendingElevation && (
+        <ApprovalModeElevationSheet
+          tier={pendingElevation.tier}
+          provider={pendingElevation.provider}
+          workspaceLabel={pendingElevation.workspaceLabel}
+          // Cancel = stay at the lower, safer mode; the deferred apply never runs.
+          onCancel={() => setPendingElevation(null)}
+          onConfirm={() => {
+            pendingElevation.apply()
+            // Tier 1 records a "seen once" ack for this (workspace, provider);
+            // Tier 2 (persistAck === false) always re-warns, so we never persist.
+            if (pendingElevation.persistAck) {
+              const nextAcks = {
+                ...(settings?.approvalModeElevationAcknowledgements ?? {}),
+                [pendingElevation.ackKey]: true
+              }
+              window.api
+                .updateSettings({ approvalModeElevationAcknowledgements: nextAcks })
+                .catch(() => {})
+              setSettings((prev) =>
+                prev
+                  ? { ...prev, approvalModeElevationAcknowledgements: nextAcks }
+                  : prev
+              )
+            }
+            // TODO(elevation): log ack to ApprovalLedger — skipped: no
+            // renderer-callable append exists (only the read-only
+            // `get-approval-ledger` IPC), and adding a write path would need a
+            // new preload method + ipcMain handler + ledger write (>15 lines).
+            setPendingElevation(null)
+          }}
+        />
+      )}
     </div>
   )
 }
