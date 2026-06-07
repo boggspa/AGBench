@@ -5,6 +5,7 @@ import {
   AppSettings,
   WorkspaceRecord,
   ChatRecord,
+  ChatListItem,
   UsageRecord,
   ScheduledTask,
   RunQueueJob,
@@ -121,6 +122,7 @@ const legacyUserDataDirs = ['TaskWraith'].map((dirName) =>
   path.join(path.dirname(userDataPath), dirName)
 )
 const chatsDir = path.join(userDataPath, 'chats')
+const chatListIndexPath = path.join(userDataPath, 'chat-list-index.json')
 const runEventsDir = path.join(userDataPath, 'run-events')
 const runArtifactsDir = path.join(userDataPath, 'run-artifacts')
 const runEventSequenceCache = new Map<string, number>()
@@ -366,6 +368,38 @@ function writeJson<T>(filePath: string, data: T) {
     } catch {
       // Best effort: stale temp files are safer than masking the original failure.
     }
+  }
+}
+
+function previewText(value: unknown, maxLength: number): string {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 3)}...`
+}
+
+function summarizeLastRun(
+  run: ChatRecord['runs'][number] | undefined
+): ChatRecord['runs'][number] | undefined {
+  if (!run) return undefined
+  return {
+    runId: run.runId,
+    provider: run.provider,
+    providerRunId: run.providerRunId,
+    providerThreadId: run.providerThreadId,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    requestedModel: run.requestedModel,
+    actualModel: run.actualModel,
+    approvalMode: run.approvalMode,
+    status: run.status,
+    cancelled: run.cancelled,
+    exitCode: run.exitCode,
+    runtimeProfileId: run.runtimeProfileId,
+    geminiAuthProfileId: run.geminiAuthProfileId,
+    ensembleRoundId: run.ensembleRoundId,
+    ensembleParticipantId: run.ensembleParticipantId,
+    ensembleRole: run.ensembleRole,
+    ensembleOrder: run.ensembleOrder
   }
 }
 
@@ -878,6 +912,93 @@ export class AppStore {
     }
   }
 
+  static toChatListItem(chat: ChatRecord): ChatListItem {
+    const normalizedChat = this.normalizeChatRecord(chat)
+    const messages = Array.isArray(normalizedChat.messages) ? normalizedChat.messages : []
+    const runs = Array.isArray(normalizedChat.runs) ? normalizedChat.runs : []
+    const lastRun = summarizeLastRun(runs[runs.length - 1])
+    const recentMessageSearch = messages
+      .slice(-8)
+      .map((message) => `${message.role} ${previewText(message.content, 180)}`)
+      .filter(Boolean)
+    const latestMessagePreview = [...messages]
+      .reverse()
+      .map((message) => previewText(message.content, 180))
+      .find(Boolean)
+    return {
+      ...normalizedChat,
+      messages: [],
+      runs: [],
+      summaryOnly: true,
+      messageCount: messages.length,
+      runCount: runs.length,
+      ...(lastRun ? { lastRun } : {}),
+      searchText: [
+        normalizedChat.title,
+        normalizedChat.provider,
+        normalizedChat.appChatId,
+        normalizedChat.linkedGeminiSessionId,
+        normalizedChat.linkedProviderSessionId,
+        ...recentMessageSearch
+      ]
+        .filter(Boolean)
+        .join(' '),
+      ...(latestMessagePreview ? { searchPreview: latestMessagePreview } : {})
+    }
+  }
+
+  static normalizeChatListItem(item: ChatListItem): ChatListItem {
+    const normalized = this.normalizeChatRecord(item)
+    return {
+      ...normalized,
+      messages: [],
+      runs: [],
+      summaryOnly: true,
+      messageCount: typeof item.messageCount === 'number' ? item.messageCount : 0,
+      runCount: typeof item.runCount === 'number' ? item.runCount : 0,
+      ...(item.lastRun ? { lastRun: summarizeLastRun(item.lastRun) || item.lastRun } : {}),
+      ...(typeof item.searchText === 'string' ? { searchText: item.searchText } : {}),
+      ...(typeof item.searchPreview === 'string' ? { searchPreview: item.searchPreview } : {})
+    }
+  }
+
+  static getChatList(workspaceId?: string): ChatListItem[] {
+    if (!fs.existsSync(chatsDir)) return []
+    const files = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json'))
+    const existingIndex = readJson<Record<string, ChatListItem>>(chatListIndexPath, {})
+    const nextIndex: Record<string, ChatListItem> = {}
+    const items: ChatListItem[] = []
+    let dirty = false
+
+    for (const file of files) {
+      const chatId = path.basename(file, '.json')
+      let item: ChatListItem | undefined
+      const indexed = existingIndex[chatId]
+      if (indexed?.summaryOnly === true) {
+        item = this.normalizeChatListItem(indexed)
+      } else {
+        const chat = readJson<ChatRecord | null>(path.join(chatsDir, file), null)
+        if (chat) {
+          item = this.toChatListItem(chat)
+          dirty = true
+        }
+      }
+      if (!item) continue
+      nextIndex[chatId] = item
+      if (!workspaceId || item.workspaceId === workspaceId) {
+        items.push(item)
+      }
+    }
+
+    if (Object.keys(existingIndex).length !== Object.keys(nextIndex).length) {
+      dirty = true
+    }
+    if (dirty) {
+      writeJson(chatListIndexPath, nextIndex)
+    }
+    return items.sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
   static getChats(workspaceId?: string): ChatRecord[] {
     if (!fs.existsSync(chatsDir)) return []
     const files = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json'))
@@ -1170,11 +1291,17 @@ export class AppStore {
   static saveChat(chat: ChatRecord) {
     const settings = this.getSettings()
     if (!settings.storeLocalChatHistory) return
+    if ((chat as Partial<ChatListItem>).summaryOnly === true) {
+      throw new Error('Cannot save a summary-only chat record; hydrate the chat first.')
+    }
 
     const normalizedChat = this.normalizeChatRecord(chat)
     normalizedChat.updatedAt = Date.now()
     const chatPath = chatPathForId(chatsDir, normalizedChat.appChatId)
     writeJson(chatPath, normalizedChat)
+    const index = readJson<Record<string, ChatListItem>>(chatListIndexPath, {})
+    index[normalizedChat.appChatId] = this.toChatListItem(normalizedChat)
+    writeJson(chatListIndexPath, index)
   }
 
   static deleteChat(chatId: string) {
@@ -1194,6 +1321,11 @@ export class AppStore {
     const chatPath = chatPathForId(chatsDir, chatId)
     if (fs.existsSync(chatPath)) {
       fs.unlinkSync(chatPath)
+    }
+    const index = readJson<Record<string, ChatListItem>>(chatListIndexPath, {})
+    if (index[chatId]) {
+      delete index[chatId]
+      writeJson(chatListIndexPath, index)
     }
   }
 

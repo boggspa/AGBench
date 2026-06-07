@@ -1,5 +1,6 @@
 import type { AgentRunRoute } from '../run/AgentRunTypes'
 import type {
+  ChatListItem,
   ChatRecord,
   ProviderId,
   RunEventInput,
@@ -33,6 +34,7 @@ export interface CreateSideChatInput {
 
 export interface ChatServiceStore {
   getChats: (workspaceId?: string) => ChatRecord[]
+  getChatList: (workspaceId?: string) => ChatListItem[]
   getChat: (chatId: string) => ChatRecord | null
   createChat: (workspaceId: string, workspacePath: string) => ChatRecord
   createGlobalChat: () => ChatRecord
@@ -74,6 +76,10 @@ export class ChatService {
 
   getChats(workspaceId?: string): ChatRecord[] {
     return this.deps.appStore.getChats(workspaceId)
+  }
+
+  getChatList(workspaceId?: string): ChatListItem[] {
+    return this.deps.appStore.getChatList(workspaceId)
   }
 
   getChat(chatId: string): ChatRecord | null {

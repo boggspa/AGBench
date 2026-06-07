@@ -64,7 +64,10 @@ function stubSidebarStorage(values: Record<string, string>) {
   })
 }
 
-function renderSidebar(chats: ChatRecord[], options: { ensembleModeEnabled?: boolean } = {}) {
+function renderSidebar(
+  chats: ChatRecord[],
+  options: { activeChatId?: string | null; ensembleModeEnabled?: boolean } = {}
+) {
   const workspace = makeWorkspace()
   return renderToStaticMarkup(
     <Sidebar
@@ -72,6 +75,7 @@ function renderSidebar(chats: ChatRecord[], options: { ensembleModeEnabled?: boo
       currentWorkspace={workspace}
       chats={chats}
       currentChat={chats[0] ?? null}
+      activeChatId={options.activeChatId}
       usageSummary={[]}
       runningChatIds={[]}
       onSelectWorkspace={() => {}}
@@ -89,6 +93,32 @@ function renderSidebar(chats: ChatRecord[], options: { ensembleModeEnabled?: boo
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('Sidebar active chat override', () => {
+  it('marks activeChatId as selected before currentChat catches up', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar(
+      [
+        makeChat({ provider: 'gemini', title: 'Current thread' }),
+        makeChat({
+          appChatId: 'clicked-thread',
+          provider: 'codex',
+          title: 'Clicked thread',
+          createdAt: 2,
+          updatedAt: 2
+        })
+      ],
+      { activeChatId: 'clicked-thread' }
+    )
+
+    expect(html).toContain('provider-codex active')
+    expect(html).not.toContain('provider-gemini active')
+  })
 })
 
 describe('Sidebar sub-thread collapse', () => {

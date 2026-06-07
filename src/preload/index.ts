@@ -608,6 +608,7 @@ const api = {
   removeWorkspace: (id: string) => ipcRenderer.invoke('remove-workspace', id),
   clearWorkspaces: () => ipcRenderer.invoke('clear-workspaces'),
   getChats: (workspaceId?: string) => ipcRenderer.invoke('get-chats', workspaceId),
+  getChatList: (workspaceId?: string) => ipcRenderer.invoke('get-chat-list', workspaceId),
   getChat: (chatId: string) => ipcRenderer.invoke('get-chat', chatId),
   createChat: (workspaceId: string, workspacePath: string) =>
     ipcRenderer.invoke('create-chat', workspaceId, workspacePath),

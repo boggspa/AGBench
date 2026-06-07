@@ -51,6 +51,62 @@ describe('AppStore global chats', () => {
     expect(loaded?.messages).toHaveLength(1)
   })
 
+  it('returns chat-list summaries without transcript or full run payloads', () => {
+    const chat = AppStore.createChat('workspace-1', '/repo')
+    AppStore.saveChat({
+      ...chat,
+      title: 'Indexed Thread',
+      messages: [
+        {
+          id: 'message-1',
+          role: 'user',
+          content: 'This content should stay in the hydrated chat.',
+          timestamp: '2026-05-08T00:00:00.000Z'
+        }
+      ],
+      runs: [
+        {
+          runId: 'run-1',
+          provider: 'codex',
+          startedAt: '2026-05-08T00:00:00.000Z',
+          endedAt: '2026-05-08T00:00:01.000Z',
+          status: 'success',
+          runDiff: {
+            files: [
+              {
+                path: 'src/large.ts',
+                status: 'modified',
+                additions: 100,
+                deletions: 2,
+                hunks: []
+              }
+            ],
+            stats: { filesChanged: 1, additions: 100, deletions: 2 }
+          } as any
+        }
+      ]
+    } as ChatRecord)
+
+    const summaries = AppStore.getChatList('workspace-1')
+    const summary = summaries.find((item) => item.appChatId === chat.appChatId)
+    expect(summary).toMatchObject({
+      appChatId: chat.appChatId,
+      title: 'Indexed Thread',
+      summaryOnly: true,
+      messageCount: 1,
+      runCount: 1
+    })
+    expect(summary?.messages).toEqual([])
+    expect(summary?.runs).toEqual([])
+    expect(summary?.lastRun).toMatchObject({ runId: 'run-1', status: 'success' })
+    expect(summary?.lastRun?.runDiff).toBeUndefined()
+
+    const hydrated = AppStore.getChat(chat.appChatId)
+    expect(hydrated?.messages).toHaveLength(1)
+    expect(hydrated?.runs).toHaveLength(1)
+    expect(hydrated?.runs[0].runDiff).toBeTruthy()
+  })
+
   it('defaults legacy chats to workspace scope', () => {
     const workspaceChat = AppStore.normalizeChatRecord({
       appChatId: 'legacy-chat',

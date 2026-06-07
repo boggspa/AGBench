@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ChatService, type ChatServiceDeps, type ChatServiceStore } from './ChatService'
-import type { ChatRecord, ProviderId, WorkspaceRecord } from '../store/types'
+import type { ChatListItem, ChatRecord, ProviderId, WorkspaceRecord } from '../store/types'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
@@ -34,6 +34,16 @@ function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecor
 function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore {
   return {
     getChats: vi.fn(() => [makeChat()]),
+    getChatList: vi.fn(() => [
+      {
+        ...makeChat(),
+        messages: [],
+        runs: [],
+        summaryOnly: true,
+        messageCount: 0,
+        runCount: 0
+      } satisfies ChatListItem
+    ]),
     getChat: vi.fn(() => makeChat()),
     createChat: vi.fn((workspaceId: string, workspacePath: string) =>
       makeChat({ workspaceId, workspacePath })
@@ -127,6 +137,16 @@ describe('ChatService', () => {
     const service = new ChatService(deps)
     expect(service.getChats('workspace-1')).toEqual([makeChat()])
     expect(store.getChats).toHaveBeenCalledWith('workspace-1')
+  })
+
+  it('forwards getChatList workspace filters to the store', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    expect(service.getChatList('workspace-1')[0]).toMatchObject({
+      appChatId: 'chat-1',
+      summaryOnly: true
+    })
+    expect(store.getChatList).toHaveBeenCalledWith('workspace-1')
   })
 
   it('creates workspace chats only for a matching registered workspace', () => {

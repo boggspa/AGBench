@@ -14,6 +14,7 @@ import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 import type {
   WorkspaceRecord,
   ChatRecord,
+  ChatListItem,
   ProviderId,
   ComposerStyle,
   ThemeAccentStyle,
@@ -49,6 +50,7 @@ interface SidebarProps {
   currentWorkspace: WorkspaceRecord | null
   chats: ChatRecord[]
   currentChat: ChatRecord | null
+  activeChatId?: string | null
   usageSummary: Array<{
     provider: ProviderId
     model: string
@@ -1010,12 +1012,14 @@ function normalizeSearchText(value: unknown): string {
 function chatMatchesSearch(chat: ChatRecord, query: string): boolean {
   if (!query) return true
   const provider = getProviderName(chat.provider)
+  const summary = chat as Partial<ChatListItem>
   const searchableText = [
     chat.title,
     provider,
     chat.appChatId,
     chat.linkedGeminiSessionId,
     chat.linkedProviderSessionId,
+    summary.searchText,
     ...(chat.messages || []).map((message) => `${message.role} ${message.content}`)
   ].join(' ')
   return searchableText.toLowerCase().includes(query)
@@ -1033,6 +1037,10 @@ function chatMatchesSearch(chat: ChatRecord, query: string): boolean {
 function getChatContentMatchSnippet(chat: ChatRecord, query: string): string | null {
   if (!query) return null
   if (chat.title.toLowerCase().includes(query)) return null
+  const summaryPreview = (chat as Partial<ChatListItem>).searchPreview
+  if (summaryPreview && summaryPreview.toLowerCase().includes(query)) {
+    return summaryPreview
+  }
   for (const message of chat.messages || []) {
     const content = message.content || ''
     const matchIndex = content.toLowerCase().indexOf(query)
@@ -1172,7 +1180,7 @@ function HighlightMatch({ text, query }: { text: string; query: string }): React
 function getLastRunStatus(
   chat: ChatRecord
 ): { label: string; tone: 'success' | 'warning' | 'danger' | 'muted' } | null {
-  const run = chat.runs?.[chat.runs.length - 1]
+  const run = (chat as Partial<ChatListItem>).lastRun || chat.runs?.[chat.runs.length - 1]
   if (!run) return null
   if (run.status === 'sleeping') return { label: 'Sleeping', tone: 'warning' }
   if (!run.endedAt && run.status !== 'failed' && run.status !== 'cancelled') {
@@ -1190,6 +1198,7 @@ export function Sidebar({
   currentWorkspace,
   chats,
   currentChat,
+  activeChatId,
   usageSummary,
   runningChatIds = [],
   showOnboardingHint = false,
@@ -1575,6 +1584,7 @@ export function Sidebar({
     }
     return grouped
   }, [chats])
+  const selectedChatId = activeChatId ?? currentChat?.appChatId ?? null
   const currentScopeTitle =
     currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'TaskWraith')
   const runningCount = runningChatIdSet.size
@@ -2010,7 +2020,7 @@ export function Sidebar({
         className={`sidebar-item sidebar-chat-item sidebar-sub-thread ${
           subIsSideChat ? 'sidebar-side-chat-child' : ''
         } provider-${subChat.provider || 'gemini'} ${
-          currentChat?.appChatId === subChat.appChatId ? 'active' : ''
+          selectedChatId === subChat.appChatId ? 'active' : ''
         } ${subRunning ? 'running' : ''}`}
         onClick={() => onSelectChat(subChat)}
       >
@@ -2035,7 +2045,7 @@ export function Sidebar({
               chat={subChat}
               className="sidebar-chat-title"
               query={sidebarSearchQuery}
-              isSelected={currentChat?.appChatId === subChat.appChatId}
+              isSelected={selectedChatId === subChat.appChatId}
               isEditing={editingChatId === subChat.appChatId}
               onStartEdit={() => setEditingChatId(subChat.appChatId)}
               onSubmit={(next) => commitChatRename(subChat, next)}
@@ -2309,7 +2319,7 @@ export function Sidebar({
                       key={`pinned-chat-${chat.appChatId}`}
                       role="button"
                       tabIndex={0}
-                      className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                      className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
                       onClick={() => onSelectChat(chat)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return
@@ -2325,7 +2335,7 @@ export function Sidebar({
                         chat={chat}
                         className="sidebar-pinned-label"
                         query={sidebarSearchQuery}
-                        isSelected={currentChat?.appChatId === chat.appChatId}
+                        isSelected={selectedChatId === chat.appChatId}
                         isEditing={editingChatId === chat.appChatId}
                         onStartEdit={() => setEditingChatId(chat.appChatId)}
                         onSubmit={(next) => commitChatRename(chat, next)}
@@ -2386,7 +2396,7 @@ export function Sidebar({
                         key={`recent-${chat.appChatId}`}
                         role="button"
                         tabIndex={0}
-                        className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                        className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
                         onClick={() => onSelectChat(chat)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return
@@ -2403,7 +2413,7 @@ export function Sidebar({
                           chat={chat}
                           className="sidebar-recents-label"
                           query={sidebarSearchQuery}
-                          isSelected={currentChat?.appChatId === chat.appChatId}
+                          isSelected={selectedChatId === chat.appChatId}
                           isEditing={editingChatId === chat.appChatId}
                           onStartEdit={() => setEditingChatId(chat.appChatId)}
                           onSubmit={(next) => commitChatRename(chat, next)}
@@ -2499,7 +2509,7 @@ export function Sidebar({
                         <div key={`ensemble-${chat.appChatId}`} className="sidebar-chat-family">
                           <button
                             type="button"
-                            className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
+                            className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${selectedChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
                             onClick={() => onSelectChat(chat)}
                             {...getChatTileDragProps(chat)}
                           >
@@ -2539,7 +2549,7 @@ export function Sidebar({
                                   chat={chat}
                                   className="sidebar-chat-title"
                                   query={sidebarSearchQuery}
-                                  isSelected={currentChat?.appChatId === chat.appChatId}
+                                  isSelected={selectedChatId === chat.appChatId}
                                   isEditing={editingChatId === chat.appChatId}
                                   onStartEdit={() => setEditingChatId(chat.appChatId)}
                                   onSubmit={(next) => commitChatRename(chat, next)}
@@ -2785,7 +2795,7 @@ export function Sidebar({
                                 <div key={chat.appChatId} className="sidebar-chat-family">
                                   <button
                                     type="button"
-                                    className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                                    className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                                     onClick={() => onSelectChat(chat)}
                                   >
                                     {subThreadCount > 0 && (
@@ -2823,7 +2833,7 @@ export function Sidebar({
                                           chat={chat}
                                           className="sidebar-chat-title"
                                           query={sidebarSearchQuery}
-                                          isSelected={currentChat?.appChatId === chat.appChatId}
+                                          isSelected={selectedChatId === chat.appChatId}
                                           isEditing={editingChatId === chat.appChatId}
                                           onStartEdit={() => setEditingChatId(chat.appChatId)}
                                           onSubmit={(next) => commitChatRename(chat, next)}
@@ -2926,7 +2936,7 @@ export function Sidebar({
                       <button
                         type="button"
                         key={chat.appChatId}
-                        className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                        className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                         onClick={() => onSelectChat(chat)}
                       >
                         <span className="sidebar-chat-copy" title={chat.title}>
@@ -2936,7 +2946,7 @@ export function Sidebar({
                               chat={chat}
                               className="sidebar-chat-title"
                               query={sidebarSearchQuery}
-                              isSelected={currentChat?.appChatId === chat.appChatId}
+                              isSelected={selectedChatId === chat.appChatId}
                               isEditing={editingChatId === chat.appChatId}
                               onStartEdit={() => setEditingChatId(chat.appChatId)}
                               onSubmit={(next) => commitChatRename(chat, next)}

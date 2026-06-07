@@ -2066,6 +2066,15 @@ export interface ChatRecord {
   }
 }
 
+export interface ChatListItem extends ChatRecord {
+  summaryOnly: true
+  messageCount: number
+  runCount: number
+  lastRun?: ChatRun
+  searchText?: string
+  searchPreview?: string
+}
+
 export type RunEventKind =
   | 'provider_raw'
   | 'provider_error'

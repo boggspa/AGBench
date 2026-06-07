@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
+import { startTransition, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
@@ -17,6 +17,7 @@ import {
   AppSettings,
   WorkspaceRecord,
   ChatRecord,
+  ChatListItem,
   ChatMessage,
   ChatRun,
   RunWarning,
@@ -721,6 +722,88 @@ function restoreChatScrollStateWhenReady(
   tryRestore()
 }
 
+function scheduleAfterPaint(callback: () => void, timeout = 700): () => void {
+  if (typeof window === 'undefined') return () => {}
+  const win = window as Window & {
+    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+    cancelIdleCallback?: (handle: number) => void
+  }
+  let cancelled = false
+  const run = () => {
+    if (!cancelled) callback()
+  }
+  if (typeof win.requestIdleCallback === 'function') {
+    const handle = win.requestIdleCallback(run, { timeout })
+    return () => {
+      cancelled = true
+      win.cancelIdleCallback?.(handle)
+    }
+  }
+  let timeoutHandle: number | null = null
+  const rafHandle = window.requestAnimationFrame(() => {
+    timeoutHandle = window.setTimeout(run, 0)
+  })
+  return () => {
+    cancelled = true
+    window.cancelAnimationFrame(rafHandle)
+    if (timeoutHandle !== null) window.clearTimeout(timeoutHandle)
+  }
+}
+
+function isChatSummaryRecord(chat: ChatRecord | null | undefined): chat is ChatListItem {
+  return Boolean((chat as ChatListItem | null | undefined)?.summaryOnly === true)
+}
+
+function mergeChatRecordValue(existing: ChatRecord | undefined, incoming: ChatRecord): ChatRecord {
+  if (existing && isChatSummaryRecord(incoming) && !isChatSummaryRecord(existing)) {
+    const {
+      summaryOnly: _summaryOnly,
+      messageCount: _messageCount,
+      runCount: _runCount,
+      lastRun: _lastRun,
+      searchText: _searchText,
+      searchPreview: _searchPreview,
+      messages: _messages,
+      runs: _runs,
+      ...summaryFields
+    } = incoming
+    return {
+      ...existing,
+      ...summaryFields,
+      messages: existing.messages,
+      runs: existing.runs
+    }
+  }
+  return incoming
+}
+
+function mergeChatRecord(chats: ChatRecord[], chat: ChatRecord): ChatRecord[] {
+  const existing = chats.find((item) => item.appChatId === chat.appChatId)
+  const merged = mergeChatRecordValue(existing, chat)
+  const next = [merged, ...chats.filter((item) => item.appChatId !== chat.appChatId)]
+  return next.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function reconcileChatRecords(existing: ChatRecord[], incoming: ChatRecord[]): ChatRecord[] {
+  return incoming
+    .map((chat) =>
+      mergeChatRecordValue(
+        existing.find((item) => item.appChatId === chat.appChatId),
+        chat
+      )
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+const EMPTY_DIFF_FILE_SUMMARIES: DiffFileSummary[] = []
+
+interface LiveToolFileSummaryState {
+  chatId: string
+  messages: ChatMessage[]
+  workspacePath?: string | null
+  summaries: DiffFileSummary[]
+}
+
 function chatPopoutHandoffKey(chatId: string): string {
   return `${CHAT_POPOUT_HANDOFF_PREFIX}${chatId}`
 }
@@ -809,6 +892,7 @@ function App(): React.JSX.Element {
 
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [currentChat, setCurrentChat] = useState<ChatRecord | null>(null)
+  const [activeSidebarChatId, setActiveSidebarChatId] = useState<string | null>(null)
   // Phase J3: session-scoped YOLO mode visibility. Driven by main's
   // `agentic-yolo-state` broadcasts so an indicator badge can show the
   // user that approvals are being auto-allowed for the rest of the run.
@@ -1262,6 +1346,9 @@ function App(): React.JSX.Element {
   const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
   const [fxBurstClass, setFxBurstClass] = useState('')
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
+  const liveToolFileSummaryCacheRef = useRef<Map<string, LiveToolFileSummaryState>>(new Map())
+  const [liveToolFileSummaryState, setLiveToolFileSummaryState] =
+    useState<LiveToolFileSummaryState | null>(null)
   const [chatContextNotice, setChatContextNotice] = useState<{
     id: string
     message: string
@@ -2529,6 +2616,18 @@ function App(): React.JSX.Element {
           ? activeRunChatSnapshotRef.current
           : null)
       if (!base) return null
+      if (isChatSummaryRecord(base)) {
+        void window.api
+          .getChat(chatId)
+          .then((hydrated) => {
+            if (!hydrated) return
+            chatByIdRef.current.set(chatId, hydrated)
+            setChats((prev) => mergeChatRecord(prev, hydrated))
+            updateChatById(chatId, updater)
+          })
+          .catch(() => {})
+        return null
+      }
 
       const updated = updater(base)
       chatByIdRef.current.set(chatId, updated)
@@ -2552,6 +2651,36 @@ function App(): React.JSX.Element {
       return updated
     },
     []
+  )
+
+  const loadChatList = useCallback(async (workspaceId?: string): Promise<ChatRecord[]> => {
+    if (typeof window.api.getChatList === 'function') {
+      return window.api.getChatList(workspaceId)
+    }
+    return window.api.getChats(workspaceId)
+  }, [])
+
+  const refreshChatList = useCallback(async (workspaceId?: string): Promise<ChatRecord[]> => {
+    const list = await loadChatList(workspaceId)
+    setChats((prev) => reconcileChatRecords(prev, list))
+    return list
+  }, [loadChatList])
+
+  const applyHydratedChat = useCallback((chat: ChatRecord): ChatRecord => {
+    chatByIdRef.current.set(chat.appChatId, chat)
+    setChats((prev) => mergeChatRecord(prev, chat))
+    setCurrentChat((prev) => (prev?.appChatId === chat.appChatId ? chat : prev))
+    return chat
+  }, [])
+
+  const refreshSingleChat = useCallback(
+    async (chatId: string | null | undefined): Promise<ChatRecord | null> => {
+      if (!chatId) return null
+      const hydrated = await window.api.getChat(chatId)
+      if (!hydrated) return null
+      return applyHydratedChat(hydrated)
+    },
+    [applyHydratedChat]
   )
 
   const getProviderModelOptions = (provider: ProviderId): CodexModelOption[] => {
@@ -2656,6 +2785,30 @@ function App(): React.JSX.Element {
     if (selection.provider === 'gemini' && selection.selectedModelType !== 'custom') {
       syncPersistentModelSelection(selection.selectedModelType)
     }
+  }
+
+  const hydrateSelectedChatAfterPaint = (chat: ChatRecord) => {
+    if (!isChatSummaryRecord(chat)) return
+    scheduleAfterPaint(() => {
+      void window.api
+        .getChat(chat.appChatId)
+        .then((hydrated) => {
+          if (!hydrated || currentChatIdRef.current !== hydrated.appChatId) return
+          const provider = getChatProvider(hydrated)
+          chatByIdRef.current.set(hydrated.appChatId, hydrated)
+          setChats((prev) => mergeChatRecord(prev, hydrated))
+          startTransition(() => {
+            setCurrentChat(hydrated)
+            applyChatComposerSelection(hydrated, provider)
+            setRunCompleteNotice(
+              deriveRunCompleteNotice(hydrated, runningChatIds.has(hydrated.appChatId))
+            )
+            setRawLogs(rawLogsByChatIdRef.current.get(hydrated.appChatId) || [])
+            setIsThinking(runningChatIds.has(hydrated.appChatId))
+          })
+        })
+        .catch(() => {})
+    })
   }
 
   const rememberCurrentChatComposerSelection = (patch: Record<string, unknown>) => {
@@ -3067,7 +3220,7 @@ function App(): React.JSX.Element {
     // load is independent, then apply whatever resolved.
     const [wsResult, chatsResult, profilesResult, handoffsResult] = await Promise.allSettled([
       window.api.getWorkspaces(),
-      window.api.getChats(),
+      loadChatList(),
       typeof window.api.getRuntimeProfiles === 'function'
         ? window.api.getRuntimeProfiles()
         : Promise.resolve([]),
@@ -3098,8 +3251,17 @@ function App(): React.JSX.Element {
     setWorkspacesHydrated(true)
     await rehydrateQueuedRuns(wsList).catch(() => {})
     if (isChatPopoutWindow) {
-      const popoutChat = allChats.find((chat) => chat.appChatId === chatPopoutChatIdRef.current)
+      const popoutSummary = allChats.find(
+        (chat) => chat.appChatId === chatPopoutChatIdRef.current
+      )
+      const popoutChat =
+        popoutSummary && isChatSummaryRecord(popoutSummary)
+          ? (await window.api.getChat(popoutSummary.appChatId)) || popoutSummary
+          : popoutSummary
       if (popoutChat) {
+        if (!isChatSummaryRecord(popoutChat)) {
+          setChats((prev) => mergeChatRecord(prev, popoutChat))
+        }
         const provider = getChatProvider(popoutChat)
         chatByIdRef.current.set(popoutChat.appChatId, popoutChat)
         currentChatIdRef.current = popoutChat.appChatId
@@ -3697,22 +3859,16 @@ function App(): React.JSX.Element {
       syncPersistentModelSelection(nextModel)
     }
     if (currentChat && !isCurrentChatProviderLocked) {
-      const updatedChat = {
-        ...currentChat,
+      const updatedChat = updateChatById(currentChat.appChatId, (source) => ({
+        ...source,
         provider,
         providerMetadata: {
-          ...(currentChat.providerMetadata || {}),
+          ...(source.providerMetadata || {}),
           ...nextMetadata
         },
         updatedAt: Date.now()
-      }
-      currentChatIdRef.current = updatedChat.appChatId
-      chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
-      setCurrentChat(updatedChat)
-      setChats((prev) =>
-        prev.map((chat) => (chat.appChatId === currentChat.appChatId ? updatedChat : chat))
-      )
-      window.api.saveChat(updatedChat).catch(() => {})
+      }))
+      if (updatedChat) currentChatIdRef.current = updatedChat.appChatId
     }
     setPendingAgentApproval(null)
     window.api.updateSettings({ activeProvider: provider }).catch(() => {})
@@ -3852,6 +4008,10 @@ function App(): React.JSX.Element {
 
   const linkCodexThreadToCurrentChat = async (threadId: string) => {
     if (!currentChat || !threadId) return
+    const targetChat =
+      isChatSummaryRecord(currentChat) && currentChat.appChatId
+        ? (await refreshSingleChat(currentChat.appChatId)) || currentChat
+        : currentChat
     // 1.0.4-AT1 — route the linkage decision through the shared
     // helper. In Ensemble chats with a matching-provider selected
     // participant, the thread id binds to the participant's
@@ -3860,7 +4020,7 @@ function App(): React.JSX.Element {
     // when the user clearly meant "resume Codex#2's session", which
     // poisoned sub-thread recall + transcript export downstream.
     const routing = resolveSessionLinkRouting({
-      chat: currentChat,
+      chat: targetChat,
       provider: 'codex',
       selectedParticipant: isCurrentEnsembleChat ? selectedParticipant : null
     })
@@ -3868,25 +4028,25 @@ function App(): React.JSX.Element {
       setRawLogs((prev) => [...prev, { type: 'info', content: routing.warning! }])
     }
     let updatedChat: ChatRecord
-    if (routing.target === 'participant' && routing.participantId && currentChat.ensemble) {
+    if (routing.target === 'participant' && routing.participantId && targetChat.ensemble) {
       // Patch the selected participant's `linkedProviderSessionId`
       // in place. The chat's own `linkedProviderSessionId` is left
       // alone so multi-participant ensembles keep independent
       // provider sessions per participant.
-      const patchedParticipants = (currentChat.ensemble.participants || []).map((p) =>
+      const patchedParticipants = (targetChat.ensemble.participants || []).map((p) =>
         p.id === routing.participantId ? { ...p, linkedProviderSessionId: threadId } : p
       )
       updatedChat = {
-        ...currentChat,
+        ...targetChat,
         ensemble: {
-          ...currentChat.ensemble,
+          ...targetChat.ensemble,
           participants: patchedParticipants,
           updatedAt: new Date().toISOString()
         }
       }
     } else {
       updatedChat = {
-        ...currentChat,
+        ...targetChat,
         provider: 'codex',
         linkedProviderSessionId: threadId
       }
@@ -3997,18 +4157,20 @@ function App(): React.JSX.Element {
       return
     }
 
-    const allChats = await window.api.getChats()
+    const allChats = await loadChatList()
     const workspaceChats = allChats.filter(
       (chat) => chat.workspaceId === ws.id && isTopLevelWorkspaceChat(chat)
     )
-    const emptyChat = workspaceChats.find((chat) => chat.messages.length === 0)
+    const emptyChat = workspaceChats.find((chat) =>
+      isChatSummaryRecord(chat) ? chat.messageCount === 0 : chat.messages.length === 0
+    )
     let selectedProvider: ProviderId = 'gemini'
     let selectedChat: ChatRecord
     if (emptyChat) {
       const provider = getChatProvider(emptyChat)
       selectedProvider = provider
       selectedChat = emptyChat
-      setChats(allChats)
+      setChats((prev) => reconcileChatRecords(prev, allChats))
       currentChatIdRef.current = emptyChat.appChatId
       chatByIdRef.current.set(emptyChat.appChatId, emptyChat)
       setCurrentChat(emptyChat)
@@ -4018,14 +4180,17 @@ function App(): React.JSX.Element {
       const provider = getChatProvider(newChat)
       selectedProvider = provider
       selectedChat = newChat
-      const updatedChats = await window.api.getChats()
-      setChats(updatedChats)
+      setChats((prev) => mergeChatRecord(prev, newChat))
       currentChatIdRef.current = newChat.appChatId
       chatByIdRef.current.set(newChat.appChatId, newChat)
       setCurrentChat(newChat)
       applyChatComposerSelection(newChat, provider)
     }
-    await refreshUsageSummary(ws.id, selectedProvider)
+    setActiveSidebarChatId(selectedChat.appChatId)
+    scheduleAfterPaint(() => {
+      void refreshUsageSummary(ws.id, selectedProvider)
+    })
+    hydrateSelectedChatAfterPaint(selectedChat)
     setDiff(
       selectedProvider === 'gemini' &&
         isGeminiWorktreeDiffUnavailable(resolveGeminiWorktreeConfig(ws))
@@ -4036,7 +4201,9 @@ function App(): React.JSX.Element {
     setRunDiff(null)
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
-    hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
+    scheduleAfterPaint(() => {
+      hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
+    })
     setShowFallbackUX(false)
     setSessionTrust(false)
     setIsThinking(runningChatIds.has(selectedChat.appChatId))
@@ -4048,8 +4215,12 @@ function App(): React.JSX.Element {
     }
 
     // Check trust
-    const tr = await window.api.checkTrust(ws.path)
-    setTrustResult(tr)
+    scheduleAfterPaint(() => {
+      window.api
+        .checkTrust(ws.path)
+        .then(setTrustResult)
+        .catch(() => {})
+    })
   }
 
   const handleSelectWelcomeWorkspace = async (ws: WorkspaceRecord) => {
@@ -4540,7 +4711,7 @@ function App(): React.JSX.Element {
     if (currentWorkspace?.id === id) {
       setCurrentWorkspace(null)
       setCurrentChat(null)
-      setChats(await window.api.getChats())
+      await refreshChatList()
       setUsageSummary([])
     }
   }
@@ -4658,26 +4829,33 @@ function App(): React.JSX.Element {
     if (workspace) {
       setCurrentWorkspace(workspace)
       currentWorkspaceIdRef.current = workspace.id
-      window.api
-        .checkTrust(workspace.path)
-        .then(setTrustResult)
-        .catch(() => {})
     }
-    setChats(await window.api.getChats())
     currentChatIdRef.current = newChat.appChatId
     chatByIdRef.current.set(newChat.appChatId, newChat)
-    setCurrentChat(newChat)
-    applyChatComposerSelection(newChat, provider)
-    if (provider === 'codex') {
-      setShowGeminiTerminal(false)
-    }
-    void refreshUsageSummary(wsId, provider)
-    setRunDiff(null)
-    setRunCompleteNotice(null)
-    setRawLogs(rawLogsByChatIdRef.current.get(newChat.appChatId) || [])
-    setShowFallbackUX(false)
-    clearImagePermissions()
-    setIsThinking(runningChatIds.has(newChat.appChatId))
+    setActiveSidebarChatId(newChat.appChatId)
+    startTransition(() => {
+      setChats((prev) => mergeChatRecord(prev, newChat))
+      setCurrentChat(newChat)
+      applyChatComposerSelection(newChat, provider)
+      if (provider === 'codex') {
+        setShowGeminiTerminal(false)
+      }
+      setRunDiff(null)
+      setRunCompleteNotice(null)
+      setRawLogs(rawLogsByChatIdRef.current.get(newChat.appChatId) || [])
+      setShowFallbackUX(false)
+      clearImagePermissions()
+      setIsThinking(runningChatIds.has(newChat.appChatId))
+    })
+    scheduleAfterPaint(() => {
+      if (workspace) {
+        window.api
+          .checkTrust(workspace.path)
+          .then(setTrustResult)
+          .catch(() => {})
+      }
+      void refreshUsageSummary(wsId, provider)
+    })
   }
 
   const clearWorkspaceOnlyUiState = () => {
@@ -4711,23 +4889,23 @@ function App(): React.JSX.Element {
     const normalizedChat: ChatRecord = { ...chat, scope: 'global' }
     currentChatIdRef.current = normalizedChat.appChatId
     chatByIdRef.current.set(normalizedChat.appChatId, normalizedChat)
-    setCurrentChat(normalizedChat)
-    applyChatComposerSelection(normalizedChat, provider)
-    setChats((prev) => {
-      const index = prev.findIndex((item) => item.appChatId === normalizedChat.appChatId)
-      if (index < 0) return [normalizedChat, ...prev]
-      return prev.map((item) =>
-        item.appChatId === normalizedChat.appChatId ? normalizedChat : item
-      )
+    setActiveSidebarChatId(normalizedChat.appChatId)
+    startTransition(() => {
+      setCurrentChat(normalizedChat)
+      applyChatComposerSelection(normalizedChat, provider)
+      setChats((prev) => mergeChatRecord(prev, normalizedChat))
+      setRawLogs(rawLogsByChatIdRef.current.get(normalizedChat.appChatId) || [])
+      setShowFallbackUX(false)
+      clearImagePermissions()
+      setCodexThreads([])
+      setIsThinking(runningChatIds.has(normalizedChat.appChatId))
     })
-    void refreshUsageSummary(GLOBAL_USAGE_WORKSPACE_ID, provider)
-    void refreshProviderMetadata(provider, null)
-    setRawLogs(rawLogsByChatIdRef.current.get(normalizedChat.appChatId) || [])
-    hydrateThreadRawLogsFromEvents(normalizedChat.appChatId)
-    setShowFallbackUX(false)
-    clearImagePermissions()
-    setCodexThreads([])
-    setIsThinking(runningChatIds.has(normalizedChat.appChatId))
+    scheduleAfterPaint(() => {
+      void refreshUsageSummary(GLOBAL_USAGE_WORKSPACE_ID, provider)
+      void refreshProviderMetadata(provider, null)
+      hydrateThreadRawLogsFromEvents(normalizedChat.appChatId)
+    })
+    hydrateSelectedChatAfterPaint(normalizedChat)
   }
 
   const handleNewGlobalChat = async () => {
@@ -4761,19 +4939,14 @@ function App(): React.JSX.Element {
         return
       }
       const newChat = await window.api.createEnsembleChat()
-      const allChats = await window.api.getChats()
-      const mergedChats = allChats.some((chat) => chat.appChatId === newChat.appChatId)
-        ? allChats
-        : [newChat, ...allChats]
-      setChats(mergedChats)
+      setChats((prev) => mergeChatRecord(prev, newChat))
       chatByIdRef.current.set(newChat.appChatId, newChat)
       currentChatIdRef.current = newChat.appChatId
       await selectGlobalChat(newChat)
       return
     }
     const newChat = await window.api.createGlobalChat()
-    const allChats = await window.api.getChats()
-    setChats(allChats)
+    setChats((prev) => mergeChatRecord(prev, newChat))
     await selectGlobalChat(newChat)
   }
 
@@ -4787,13 +4960,10 @@ function App(): React.JSX.Element {
         ? { workspaceId: workspace.id, workspacePath: workspace.path }
         : undefined
     const newChat = await window.api.createEnsembleChat(args)
-    const allChats = await window.api.getChats()
-    const mergedChats = allChats.some((chat) => chat.appChatId === newChat.appChatId)
-      ? allChats
-      : [newChat, ...allChats]
-    setChats(mergedChats)
+    setChats((prev) => mergeChatRecord(prev, newChat))
     chatByIdRef.current.set(newChat.appChatId, newChat)
     currentChatIdRef.current = newChat.appChatId
+    setActiveSidebarChatId(newChat.appChatId)
     if (newChat.scope === 'global') {
       await selectGlobalChat(newChat)
     } else {
@@ -4826,8 +4996,7 @@ function App(): React.JSX.Element {
     delegationPrompt: string
   ): Promise<void> => {
     setSubThreadCreatorParent(null)
-    const refreshed = await window.api.getChats()
-    setChats(refreshed)
+    setChats((prev) => mergeChatRecord(prev, subThread))
     const provider = getChatProvider(subThread)
     if (subThread.scope === 'global') {
       await selectGlobalChat(subThread)
@@ -5160,19 +5329,14 @@ function App(): React.JSX.Element {
       workspaceId: currentWorkspace?.id || grant.workspaceId,
       chatId: currentChat.appChatId
     }))
-    const updatedChat = {
-      ...currentChat,
+    updateChatById(currentChat.appChatId, (source) => ({
+      ...source,
       providerMetadata: canonicalizeExternalPathGrantMetadata(
-        currentChat.providerMetadata,
+        source.providerMetadata,
         normalized
       ),
       updatedAt: Date.now()
-    }
-    setCurrentChat(updatedChat)
-    setChats((prev) =>
-      prev.map((chat) => (chat.appChatId === updatedChat.appChatId ? updatedChat : chat))
-    )
-    window.api.saveChat(updatedChat)
+    }))
   }
 
   // `handlePickExternalPathGrant` was the entry point for the
@@ -5281,7 +5445,10 @@ function App(): React.JSX.Element {
       }
     }
     const selectedChat =
-      chat.parentChatRelation === 'sideChat' && !chat.archived && !isTerminatedSideChat(chat)
+      !isChatSummaryRecord(chat) &&
+      chat.parentChatRelation === 'sideChat' &&
+      !chat.archived &&
+      !isTerminatedSideChat(chat)
         ? applySideChatLifecycle(chat, 'active')
         : chat
     if (selectedChat !== chat) {
@@ -5291,6 +5458,7 @@ function App(): React.JSX.Element {
       )
       void window.api.saveChat(selectedChat).catch(() => {})
     }
+    setActiveSidebarChatId(selectedChat.appChatId)
     if (isGlobalChat(selectedChat)) {
       await selectGlobalChat(selectedChat)
       return
@@ -5320,25 +5488,30 @@ function App(): React.JSX.Element {
     }
     currentChatIdRef.current = selectedChat.appChatId
     chatByIdRef.current.set(selectedChat.appChatId, selectedChat)
-    setCurrentChat(selectedChat)
-    applyChatComposerSelection(selectedChat, provider)
-    if (provider === 'codex') {
-      setShowGeminiTerminal(false)
-    }
-    void refreshUsageSummary(getUsageWorkspaceIdForChat(selectedChat), provider)
-    setRunDiff(null)
-    // Re-derive the run-complete card from this chat's PERSISTED last run
-    // instead of clearing it, so the "Task complete" notice persists per
-    // thread across switches. Hidden while this chat is currently running;
-    // reappears/updates when its next run completes (a new run clears it at
-    // start via isRunVisibleAtStart / the ensemble round effect).
-    setRunCompleteNotice(
-      deriveRunCompleteNotice(selectedChat, runningChatIds.has(selectedChat.appChatId))
-    )
-    setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
-    hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
-    setShowFallbackUX(false)
-    setIsThinking(runningChatIds.has(selectedChat.appChatId))
+    startTransition(() => {
+      setCurrentChat(selectedChat)
+      applyChatComposerSelection(selectedChat, provider)
+      if (provider === 'codex') {
+        setShowGeminiTerminal(false)
+      }
+      setRunDiff(null)
+      // Re-derive the run-complete card from this chat's PERSISTED last run
+      // instead of clearing it, so the "Task complete" notice persists per
+      // thread across switches. Hidden while this chat is currently running;
+      // reappears/updates when its next run completes (a new run clears it at
+      // start via isRunVisibleAtStart / the ensemble round effect).
+      setRunCompleteNotice(
+        deriveRunCompleteNotice(selectedChat, runningChatIds.has(selectedChat.appChatId))
+      )
+      setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
+      setShowFallbackUX(false)
+      setIsThinking(runningChatIds.has(selectedChat.appChatId))
+    })
+    scheduleAfterPaint(() => {
+      void refreshUsageSummary(getUsageWorkspaceIdForChat(selectedChat), provider)
+      hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
+    })
+    hydrateSelectedChatAfterPaint(selectedChat)
   }
   const handleSelectChatRef = useRef(handleSelectChat)
   useEffect(() => {
@@ -5934,6 +6107,10 @@ function App(): React.JSX.Element {
       chatByIdRef.current.set(currentChat.appChatId, currentChat)
     }
   }, [currentChat])
+  useEffect(() => {
+    const chatId = currentChat?.appChatId ?? null
+    setActiveSidebarChatId((prev) => (prev === chatId ? prev : chatId))
+  }, [currentChat?.appChatId])
 
   useEffect(() => {
     // Phase L2 — fix streaming transcript content loss.
@@ -5978,7 +6155,13 @@ function App(): React.JSX.Element {
     // the streaming hot path, and that ref content is strictly more
     // up-to-date than any React-state-derived snapshot.
     const next = new Map<string, ChatRecord>()
-    chats.forEach((chat) => next.set(chat.appChatId, chat))
+    chats.forEach((chat) => {
+      const existing = chatByIdRef.current.get(chat.appChatId)
+      next.set(
+        chat.appChatId,
+        existing && !isChatSummaryRecord(existing) && isChatSummaryRecord(chat) ? existing : chat
+      )
+    })
     if (currentChat?.appChatId) {
       next.set(currentChat.appChatId, currentChat)
     }
@@ -6985,15 +7168,7 @@ function App(): React.JSX.Element {
             }
           }
         }
-        setChats((prev) => {
-          const idx = prev.findIndex((c) => c.appChatId === merged.appChatId)
-          if (idx < 0) {
-            return [...prev, merged]
-          }
-          const next = prev.slice()
-          next[idx] = merged
-          return next
-        })
+        setChats((prev) => mergeChatRecord(prev, merged))
         chatByIdRef.current.set(merged.appChatId, merged)
         if (currentChatIdRef.current === merged.appChatId) {
           setCurrentChat(merged)
@@ -7566,10 +7741,17 @@ function App(): React.JSX.Element {
     // user always sees an error if something escapes the inner catches.
     try {
       const baseRequest = runRequest ?? buildRunRequest()
-      const request = baseRequest.appRunId
+      let request = baseRequest.appRunId
         ? baseRequest
         : { ...baseRequest, appRunId: createAppRunId() }
-      const runChat = request.chatRecord || currentChat
+      let runChat = request.chatRecord || currentChat
+      if (runChat && isChatSummaryRecord(runChat)) {
+        const hydrated = await refreshSingleChat(runChat.appChatId)
+        if (hydrated) {
+          runChat = hydrated
+          request = { ...request, chatRecord: hydrated, scope: getChatScope(hydrated) }
+        }
+      }
       const isGlobalRun = request.scope === 'global' || isGlobalChat(runChat)
       const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
       if (!runChat || (!isGlobalRun && !runWorkspace) || !request.prompt.trim()) return
@@ -7614,7 +7796,7 @@ function App(): React.JSX.Element {
           clearComposerAttachmentsForSubmittedRequest(request)
         }
         setIsThinking(true)
-        setChats(await window.api.getChats())
+        void refreshSingleChat(runChat.appChatId)
         return
       }
       // Per-chat busy check: only queue when THIS chat has an active
@@ -8459,7 +8641,7 @@ function App(): React.JSX.Element {
           )
         }))
       }
-      setChats(await window.api.getChats())
+      await refreshChatList()
     } catch (error) {
       // Last line of defense — any uncaught exception in the function
       // body (between the inner try/catches that wrap composeRun + the
@@ -9136,7 +9318,7 @@ function App(): React.JSX.Element {
   const cancelLinkedChatRun = async (targetChat: ChatRecord) => {
     if (targetChat.chatKind === 'ensemble') {
       await window.api.cancelEnsembleRound(targetChat.appChatId)
-      setChats(await window.api.getChats())
+      void refreshSingleChat(targetChat.appChatId)
       return
     }
     let activeContext: ActiveRunContext | null = null
@@ -9276,7 +9458,7 @@ function App(): React.JSX.Element {
         setChatPromptDraft(targetChatId, '')
       }
       setIsThinking(true)
-      setChats(await window.api.getChats())
+      void refreshSingleChat(targetChatId)
       return
     }
 
@@ -9681,7 +9863,7 @@ function App(): React.JSX.Element {
     }
     await window.api.saveChat(updatedDuplicate)
     chatByIdRef.current.set(updatedDuplicate.appChatId, updatedDuplicate)
-    setChats(await window.api.getChats())
+    setChats((prev) => mergeChatRecord(prev, updatedDuplicate))
     setChatPromptDraft(updatedDuplicate.appChatId, sourcePrompt)
     setRuntimeProfileForChat(
       updatedDuplicate.appChatId,
@@ -9770,7 +9952,7 @@ function App(): React.JSX.Element {
       )
     }
     chatByIdRef.current.set(updatedTarget.appChatId, updatedTarget)
-    setChats(await window.api.getChats())
+    setChats((prev) => mergeChatRecord(prev, updatedTarget))
     setChatPromptDraft(updatedTarget.appChatId, card.finalPrompt)
     void handleSelectChat(updatedTarget)
     setShowCockpit(false)
@@ -10856,7 +11038,7 @@ function App(): React.JSX.Element {
     if (currentChat?.chatKind === 'ensemble') {
       await window.api.cancelEnsembleRound(currentChat.appChatId)
       setIsThinking(false)
-      setChats(await window.api.getChats())
+      void refreshSingleChat(currentChat.appChatId)
       return
     }
     const runId = currentRun?.runId
@@ -12777,14 +12959,56 @@ function App(): React.JSX.Element {
         : 'Attachment access requested'
   const currentRunDiff = currentRun?.runDiff
   const exactFileChangeSummaries = getRunFileDiffSummaries(runDiff || currentRunDiff || null)
-  const liveToolFileChangeSummaries = useMemo(
-    () =>
-      getLiveToolFileDiffSummaries(
-        currentChat?.messages || EMPTY_CHAT_MESSAGES,
-        currentWorkspace?.path
-      ),
-    [currentChat?.messages, currentWorkspace?.path]
-  )
+  const liveToolFileSummaryChatId = currentChat?.appChatId ?? null
+  const liveToolFileSummaryMessages = currentChat?.messages || EMPTY_CHAT_MESSAGES
+  const liveToolFileSummaryWorkspacePath = currentWorkspace?.path || currentChat?.workspacePath || null
+  useEffect(() => {
+    if (!liveToolFileSummaryChatId || liveToolFileSummaryMessages.length === 0) {
+      setLiveToolFileSummaryState(null)
+      return
+    }
+    const cached = liveToolFileSummaryCacheRef.current.get(liveToolFileSummaryChatId)
+    if (
+      cached &&
+      cached.messages === liveToolFileSummaryMessages &&
+      cached.workspacePath === liveToolFileSummaryWorkspacePath
+    ) {
+      setLiveToolFileSummaryState(cached)
+      return
+    }
+    setLiveToolFileSummaryState(null)
+    let cancelled = false
+    const cancel = scheduleAfterPaint(() => {
+      const summaries = getLiveToolFileDiffSummaries(
+        liveToolFileSummaryMessages,
+        liveToolFileSummaryWorkspacePath
+      )
+      if (cancelled) return
+      const entry: LiveToolFileSummaryState = {
+        chatId: liveToolFileSummaryChatId,
+        messages: liveToolFileSummaryMessages,
+        workspacePath: liveToolFileSummaryWorkspacePath,
+        summaries
+      }
+      liveToolFileSummaryCacheRef.current.set(liveToolFileSummaryChatId, entry)
+      if (liveToolFileSummaryCacheRef.current.size > 60) {
+        const oldestKey = liveToolFileSummaryCacheRef.current.keys().next().value
+        if (oldestKey) liveToolFileSummaryCacheRef.current.delete(oldestKey)
+      }
+      setLiveToolFileSummaryState(entry)
+    })
+    return () => {
+      cancelled = true
+      cancel()
+    }
+  }, [liveToolFileSummaryChatId, liveToolFileSummaryMessages, liveToolFileSummaryWorkspacePath])
+  const liveToolFileChangeSummaries =
+    liveToolFileSummaryState &&
+    liveToolFileSummaryState.chatId === liveToolFileSummaryChatId &&
+    liveToolFileSummaryState.messages === liveToolFileSummaryMessages &&
+    liveToolFileSummaryState.workspacePath === liveToolFileSummaryWorkspacePath
+      ? liveToolFileSummaryState.summaries
+      : EMPTY_DIFF_FILE_SUMMARIES
   const fileChangeSummaries =
     exactFileChangeSummaries.length > 0 ? exactFileChangeSummaries : liveToolFileChangeSummaries
   const fileChangeSummaryEstimated =
@@ -13621,6 +13845,7 @@ function App(): React.JSX.Element {
                 currentWorkspace={currentWorkspace}
                 chats={chats}
                 currentChat={currentChat}
+                activeChatId={activeSidebarChatId}
                 usageSummary={usageSummary}
                 runningChatIds={runningChatIdsArray}
                 showOnboardingHint={showOnboardingHint}

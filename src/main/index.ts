@@ -13858,6 +13858,9 @@ if (isGeminiMcpBridgeProcess) {
 
     // Chats
     ipcMain.handle('get-chats', (_, workspaceId?: string) => chatService.getChats(workspaceId))
+    ipcMain.handle('get-chat-list', (_, workspaceId?: string) =>
+      chatService.getChatList(workspaceId)
+    )
     ipcMain.handle('get-chat', (_, chatId: string) => chatService.getChat(chatId))
     ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) => {
       const chat = chatService.createChat(workspaceId, workspacePath)
