@@ -19,7 +19,7 @@ import { detectExternalPath } from './services/ExternalPathDetector'
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto'
 import { promises as fs } from 'fs'
 import * as fsSync from 'fs'
 import * as pty from 'node-pty'
@@ -13945,6 +13945,54 @@ if (isGeminiMcpBridgeProcess) {
     )
     ipcMain.handle('get-approval-ledger', (_, filter?: ApprovalLedgerFilter) =>
       AppStore.getApprovalLedger(filter || {})
+    )
+    // Records a user acknowledgement of an approval-mode elevation into the
+    // ApprovalLedger. The warning sheet (ApprovalModeElevationSheet) fires this
+    // best-effort from the renderer on confirm; it is an already-decided entry
+    // (the user clicked "Raise"), so we stamp it as an approved decision rather
+    // than a pending request, with `expiration.mode: 'none'` so the recovery
+    // sweep never touches this terminal row.
+    ipcMain.handle(
+      'record-approval-elevation-ack',
+      (
+        _,
+        input: {
+          provider: string
+          workspacePath: string | null
+          toMode: string
+          tier: number
+        }
+      ) => {
+        const provider = (input?.provider || '').trim() as ProviderId
+        const toMode = String(input?.toMode || '').trim()
+        const tier = Number(input?.tier) || 0
+        const now = new Date().toISOString()
+        const note = `User acknowledged elevation to ${toMode} (Tier ${tier})`
+        const record: ApprovalLedgerRequestInput = {
+          approvalId: `approval-mode-elevation:${randomUUID()}`,
+          provider,
+          method: 'approval/mode-elevation',
+          title: `Approval mode raised to ${toMode}`,
+          body: note,
+          actions: [],
+          status: 'approved',
+          requestedAt: now,
+          respondedAt: now,
+          decision: 'accept',
+          decisionSource: 'user',
+          grantedScope: 'request',
+          expiration: {
+            mode: 'none',
+            description: note
+          },
+          workspacePath: input?.workspacePath || undefined,
+          metadata: {
+            elevation: { toMode, tier },
+            intentNote: note
+          }
+        }
+        recordApprovalLedgerDecision(record)
+      }
     )
 
     // Product operations

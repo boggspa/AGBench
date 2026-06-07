@@ -18212,6 +18212,18 @@ function App(): React.JSX.Element {
           onCancel={() => setPendingElevation(null)}
           onConfirm={() => {
             pendingElevation.apply()
+            // Best-effort audit trail: log the acknowledgement to the
+            // ApprovalLedger for BOTH tiers (the entry is meaningful for the
+            // always-re-warn Tier 2 too, so this runs regardless of
+            // persistAck). Must not block or throw out of confirm.
+            window.api
+              .recordApprovalElevationAck({
+                provider: pendingElevation.provider,
+                workspacePath: currentWorkspacePath ?? null,
+                toMode: pendingElevation.toMode,
+                tier: pendingElevation.tier
+              })
+              .catch(() => {})
             // Tier 1 records a "seen once" ack for this (workspace, provider);
             // Tier 2 (persistAck === false) always re-warns, so we never persist.
             if (pendingElevation.persistAck) {
@@ -18228,10 +18240,6 @@ function App(): React.JSX.Element {
                   : prev
               )
             }
-            // TODO(elevation): log ack to ApprovalLedger — skipped: no
-            // renderer-callable append exists (only the read-only
-            // `get-approval-ledger` IPC), and adding a write path would need a
-            // new preload method + ipcMain handler + ledger write (>15 lines).
             setPendingElevation(null)
           }}
         />

@@ -939,6 +939,12 @@ declare global {
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
       getApprovalLedger: (filter?: ApprovalLedgerFilter) => Promise<ApprovalLedgerRecord[]>
+      recordApprovalElevationAck: (input: {
+        provider: string
+        workspacePath: string | null
+        toMode: string
+        tier: number
+      }) => Promise<void>
       getProductOperationsStatus: () => Promise<ProductOperationsStatus>
       getProductCrashes: (filter?: ProductCrashFilter) => Promise<ProductCrashRecord[]>
       recordProductCrash: (input: ProductCrashInput) => Promise<ProductCrashRecord>
