@@ -8,6 +8,7 @@ import {
   ollamaEmptyToolResponseRetryPrompt,
   ollamaLocalToolSystemPrompt,
   ollamaNativeToolDefinitions,
+  ollamaReasoningOnlyNudgePrompt,
   ollamaToolResultFollowUpPrompt,
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput,
@@ -182,6 +183,13 @@ describe('parseOllamaToolRequest', () => {
     ).toContain('If the tool result is enough to answer the user, summarize')
     expect(ollamaEmptyToolResponseRetryPrompt()).toContain('Answer the original user now')
     expect(ollamaEmptyResponseRetryPrompt()).toContain('Answer the original user request now')
+  })
+
+  it('nudges reasoning-only turns to act instead of leaking chain-of-thought', () => {
+    const prompt = ollamaReasoningOnlyNudgePrompt()
+    expect(prompt).toContain('internal reasoning but no final answer and no tool call')
+    expect(prompt).toContain('call one of the available tools now')
+    expect(prompt).toContain('Do not leave your response only in hidden reasoning')
   })
 
   it('tells local models they can reach the live internet via web tools', () => {

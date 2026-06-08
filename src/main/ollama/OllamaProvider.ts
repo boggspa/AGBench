@@ -792,6 +792,18 @@ export function ollamaEmptyResponseRetryPrompt(): string {
   ].join(' ')
 }
 
+/** Nudge for harmony-format models (gpt-oss) that emit a plan into their hidden
+ * reasoning channel without producing a final answer or an actual tool call.
+ * We must not surface chain-of-thought as the answer, so push the model to act. */
+export function ollamaReasoningOnlyNudgePrompt(): string {
+  return [
+    'You produced internal reasoning but no final answer and no tool call.',
+    'If you need external data (web pages, files, search results), call one of the available tools now.',
+    'Otherwise, write your final answer for the user in normal assistant prose.',
+    'Do not leave your response only in hidden reasoning.'
+  ].join(' ')
+}
+
 /** Resolve the text TaskWraith should treat as the model's turn output.
  * Prefers the normal `content` channel; falls back to harmony reasoning
  * (`thinking`) so models like gpt-oss that emit their answer into the
@@ -960,6 +972,20 @@ export async function runOllamaProvider(
           ? [fallbackRequest]
           : []
       if (toolRequests.length === 0) {
+        const hasContent = turn.content.trim().length > 0
+        // Reasoning-only (or empty) turn while tools are available: nudge the
+        // model to either call a tool or answer in prose rather than surfacing
+        // hidden chain-of-thought as the final answer.
+        if (!hasContent && toolProtocolEnabled && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
+          messages.push({
+            role: 'user',
+            content:
+              toolCallCount > 0
+                ? ollamaEmptyToolResponseRetryPrompt()
+                : ollamaReasoningOnlyNudgePrompt()
+          })
+          continue
+        }
         if (!visibleText.trim() && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
           messages.push({
             role: 'user',
