@@ -9,19 +9,64 @@ export function isWebMcpToolName(toolName: string): toolName is WebMcpToolName {
   return toolName === 'web_fetch' || toolName === 'web_search'
 }
 
-function htmlToText(value: string): string {
+function decodeHtmlEntities(value: string): string {
   return value
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code) => {
+      const num = Number(code)
+      return Number.isFinite(num) ? String.fromCodePoint(num) : ' '
+    })
+}
+
+function htmlToText(value: string): string {
+  return decodeHtmlEntities(
+    value
+      .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  )
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/** Strip a full HTML document down to its title + readable body text.
+ * Drops `<head>`, scripts, styles, and other non-content noise so a model
+ * receives prose instead of CSS/markup soup. Block-level tags become line
+ * breaks so structure survives. */
+function htmlDocumentToReadableText(html: string): { title: string; text: string } {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  const title = titleMatch ? htmlToText(titleMatch[1]) : ''
+
+  // Prefer the <body> when present so we skip <head> metadata/styles entirely.
+  const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)
+  const source = bodyMatch ? bodyMatch[1] : html
+
+  const withBreaks = source
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<\/(p|div|section|article|h[1-6]|li|tr|br|header|footer|nav|table)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+
+  const text = decodeHtmlEntities(withBreaks)
+    .replace(/[ \t\f\v]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return { title, text }
+}
+
+function looksLikeHtml(contentType: string, raw: string): boolean {
+  if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType)) return true
+  if (contentType) return false
+  return /<html[\s>]|<!doctype html|<body[\s>]/i.test(raw)
 }
 
 function truncateWebText(text: string): { text: string; truncated: boolean } {
@@ -57,8 +102,25 @@ async function executeWebFetch(args: Record<string, unknown>): Promise<McpToolEx
   }
   const response = await fetchWithTimeout(url, 'TaskWraith-web_fetch/1.0')
   const raw = await response.text()
-  const { text: body, truncated } = truncateWebText(raw)
-  const text = `HTTP ${response.status} ${response.statusText || ''} for ${url}\n\n${body}`
+  const contentType = String(response.headers?.get?.('content-type') || '')
+  const isHtml = looksLikeHtml(contentType, raw)
+  // Convert HTML to readable prose BEFORE truncating so the character budget
+  // is spent on page content, not on <head>/<style>/<script> markup. Non-HTML
+  // bodies (JSON, plain text, etc.) are passed through verbatim.
+  let title = ''
+  let extracted = raw
+  if (isHtml) {
+    const readable = htmlDocumentToReadableText(raw)
+    title = readable.title
+    extracted = readable.text || htmlToText(raw)
+  }
+  const { text: body, truncated } = truncateWebText(extracted)
+  const headerLines = [
+    `HTTP ${response.status} ${response.statusText || ''} for ${url}`.trim(),
+    title ? `Title: ${title}` : '',
+    isHtml ? 'Extracted readable page text:' : ''
+  ].filter(Boolean)
+  const text = `${headerLines.join('\n')}\n\n${body}`
   return {
     text,
     isError: !response.ok,
@@ -68,6 +130,9 @@ async function executeWebFetch(args: Record<string, unknown>): Promise<McpToolEx
       url,
       status: response.status,
       statusText: response.statusText || '',
+      contentType,
+      isHtml,
+      ...(title ? { title } : {}),
       truncated
     }
   }

@@ -3,11 +3,13 @@ import {
   humanizeOllamaModelId,
   normalizeOllamaBaseUrl,
   normalizeOllamaModels,
+  ollamaEmptyResponseRetryPrompt,
   ollamaEmptyToolResponseRetryPrompt,
   ollamaLocalToolSystemPrompt,
   ollamaToolResultFollowUpPrompt,
   parseOllamaToolRequest,
-  parseOllamaMemoryPsOutput
+  parseOllamaMemoryPsOutput,
+  resolveOllamaVisibleText
 } from './OllamaProvider'
 import {
   effectiveOllamaToolControlTier,
@@ -177,6 +179,23 @@ describe('parseOllamaToolRequest', () => {
       })
     ).toContain('If the tool result is enough to answer the user, summarize')
     expect(ollamaEmptyToolResponseRetryPrompt()).toContain('Answer the original user now')
+    expect(ollamaEmptyResponseRetryPrompt()).toContain('Answer the original user request now')
+  })
+
+  it('tells local models they can reach the live internet via web tools', () => {
+    const prompt = ollamaLocalToolSystemPrompt('read_only')
+    expect(prompt).toContain('You CAN access the live internet')
+    expect(prompt).toContain('web_fetch returns the readable text')
+  })
+
+  it('falls back to the thinking channel when content is empty (gpt-oss)', () => {
+    expect(resolveOllamaVisibleText({ content: 'final answer', thinking: 'reasoning' })).toBe(
+      'final answer'
+    )
+    expect(resolveOllamaVisibleText({ content: '   ', thinking: 'the weather is sunny' })).toBe(
+      'the weather is sunny'
+    )
+    expect(resolveOllamaVisibleText({ content: '', thinking: '' })).toBe('')
   })
 })
 

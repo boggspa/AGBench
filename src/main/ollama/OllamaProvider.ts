@@ -106,6 +106,9 @@ interface OllamaChatChunk {
   message?: {
     role?: string
     content?: string
+    // Harmony-format models (e.g. gpt-oss) stream their answer into a
+    // separate reasoning channel. Ollama surfaces it as `thinking`.
+    thinking?: string
   }
   done?: boolean
   error?: string
@@ -124,6 +127,10 @@ interface OllamaChatMessage {
 
 interface OllamaChatTurnResult {
   content: string
+  /** Accumulated harmony reasoning text (gpt-oss et al.), used as a fallback
+   * when a model emits its answer into the thinking channel and leaves
+   * `message.content` empty. */
+  thinking: string
   lastDone: OllamaChatChunk | null
 }
 
@@ -479,9 +486,15 @@ export function ollamaLocalToolSystemPrompt(
 ): string {
   const normalizedTier = normalizeOllamaToolControlTier(tier)
   const tools = ollamaToolNamesForTier(normalizedTier)
+  const hasWebTools = tools.includes('web_search') || tools.includes('web_fetch')
   const lines = [
     'You are running inside TaskWraith through local Ollama.',
-    'You do not have direct shell or filesystem access. TaskWraith can provide workspace tools when needed.',
+    'You do not have direct shell or filesystem access, but TaskWraith DOES give you working tools (listed below) that you can call right now. Use them instead of telling the user you lack a capability.',
+    ...(hasWebTools
+      ? [
+          'You CAN access the live internet through the web_search and web_fetch tools below. When the user asks about current events, weather, prices, or anything you cannot answer from memory, use web_search to find sources, then web_fetch to read a chosen page. web_fetch returns the readable text of the page, so you can summarize it directly.'
+        ]
+      : []),
     'To request a tool, reply with ONLY a JSON object in this exact shape:',
     '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
     `Current Ollama tool-control tier: ${ollamaTierLabel(normalizedTier)}.`,
@@ -494,10 +507,10 @@ export function ollamaLocalToolSystemPrompt(
       return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}'
     }
     if (toolName === 'web_search') {
-      return '- web_search: {"query":"current information to search for"}'
+      return '- web_search: {"query":"current information to search for"} — returns a ranked list of result titles and URLs from the live web.'
     }
     if (toolName === 'web_fetch') {
-      return '- web_fetch: {"url":"https://example.com/page"}'
+      return '- web_fetch: {"url":"https://example.com/page"} — downloads a page and returns its readable text (HTML markup is stripped), ready for you to read and summarize.'
     }
     if (toolName === 'write_file') {
       return '- write_file: {"path":"relative/path.txt","content":"...","intent":"short reason before changing files"}'
@@ -519,7 +532,7 @@ export function ollamaLocalToolSystemPrompt(
   }
   lines.push(
     'Paths must stay inside the active workspace.',
-    'web_search and web_fetch are read-only network tools routed through TaskWraith policy.',
+    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
     'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
     'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
     'Do not invent file contents or workspace facts when a tool result is needed.'
@@ -611,6 +624,22 @@ export function ollamaEmptyToolResponseRetryPrompt(): string {
   ].join(' ')
 }
 
+export function ollamaEmptyResponseRetryPrompt(): string {
+  return [
+    'Your previous response was empty.',
+    'Answer the original user request now in normal assistant prose.',
+    'Put your final answer in your normal response, not only in hidden reasoning.'
+  ].join(' ')
+}
+
+/** Resolve the text TaskWraith should treat as the model's turn output.
+ * Prefers the normal `content` channel; falls back to harmony reasoning
+ * (`thinking`) so models like gpt-oss that emit their answer into the
+ * reasoning channel still produce a visible response instead of nothing. */
+export function resolveOllamaVisibleText(turn: { content: string; thinking?: string }): string {
+  return turn.content.trim() ? turn.content : turn.thinking || ''
+}
+
 async function runOllamaChatTurn(input: {
   baseUrl: string
   model: string
@@ -638,12 +667,14 @@ async function runOllamaChatTurn(input: {
   const decoder = new TextDecoder()
   let buffer = ''
   let content = ''
+  let thinking = ''
   let lastDone: OllamaChatChunk | null = null
   const handleChunk = (chunk: OllamaChatChunk) => {
     if (chunk.error) {
       throw new Error(chunk.error)
     }
     content += chunk.message?.content || ''
+    thinking += chunk.message?.thinking || ''
     if (chunk.done) {
       lastDone = chunk
     }
@@ -663,7 +694,7 @@ async function runOllamaChatTurn(input: {
   if (trailing) {
     handleChunk(JSON.parse(trailing) as OllamaChatChunk)
   }
-  return { content, lastDone }
+  return { content, thinking, lastDone }
 }
 
 export async function runOllamaProvider(
@@ -739,19 +770,29 @@ export async function runOllamaProvider(
         signal: controller.signal
       })
       if (turn.lastDone) lastDone = turn.lastDone
-      const toolRequest = toolProtocolEnabled ? parseOllamaToolRequest(turn.content) : null
+      // gpt-oss and other harmony-format models emit their answer into the
+      // reasoning (`thinking`) channel and may leave `content` empty; fall
+      // back so the run still produces a visible reply instead of nothing.
+      const visibleText = resolveOllamaVisibleText(turn)
+      const toolRequest = toolProtocolEnabled ? parseOllamaToolRequest(visibleText) : null
       if (!toolRequest) {
-        if (!turn.content.trim() && toolCallCount > 0 && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
-          messages.push({ role: 'user', content: ollamaEmptyToolResponseRetryPrompt() })
+        if (!visibleText.trim() && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
+          messages.push({
+            role: 'user',
+            content:
+              toolCallCount > 0
+                ? ollamaEmptyToolResponseRetryPrompt()
+                : ollamaEmptyResponseRetryPrompt()
+          })
           continue
         }
-        if (turn.content) {
+        if (visibleText) {
           deps.sendAgentCompatLine(
             event.sender,
             'ollama',
             {
               type: 'content',
-              text: turn.content,
+              text: visibleText,
               model,
               modelLabel,
               timestamp: new Date().toISOString()
