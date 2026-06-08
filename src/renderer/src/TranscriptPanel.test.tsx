@@ -241,6 +241,47 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('Qwen 3 (4B Param)')
   })
 
+  it('renders Ollama run cards with the local model label instead of Gemini fallback', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          currentProviderLabel: 'Ollama',
+          currentProvider: 'ollama',
+          messages: [
+            {
+              id: 'm-run-ollama',
+              role: 'user',
+              content: 'Run this locally',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              runId: 'run-ollama'
+            }
+          ],
+          currentChat: {
+            appChatId: 'chat-ollama',
+            provider: 'ollama',
+            runs: [
+              {
+                runId: 'run-ollama',
+                provider: 'ollama',
+                promptMessageId: 'm-run-ollama',
+                requestedModel: 'gpt-oss',
+                actualModel: 'gpt-oss',
+                startedAt: '2026-01-01T00:00:00.000Z',
+                endedAt: '2026-01-01T00:00:18.000Z',
+                status: 'success'
+              }
+            ]
+          }
+        })}
+      />
+    )
+
+    expect(html).toContain('run-card-provider provider-openai')
+    expect(html).toContain('GPT OSS (20B Param)')
+    expect(html).not.toContain('run-card-provider provider-ollama">Gemini')
+  })
+
   it('renders a run-result side chat action on historical run boundary cards', () => {
     const html = renderToStaticMarkup(
       <TranscriptPanel

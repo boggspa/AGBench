@@ -4063,6 +4063,38 @@ input:disabled, select:disabled, textarea:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 0 10px color-mix(in srgb, var(--provider-cursor-color) 14%, transparent);
 }
+.run-card-provider.provider-ollama {
+  color: var(--provider-ollama-color);
+  border-color: color-mix(in srgb, var(--provider-ollama-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-ollama-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-ollama-color) 14%, transparent);
+}
+.run-card-provider.provider-qwen {
+  color: var(--provider-qwen-color);
+  border-color: color-mix(in srgb, var(--provider-qwen-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-qwen-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-qwen-color) 14%, transparent);
+}
+.run-card-provider.provider-google {
+  color: var(--provider-google-color);
+  border-color: color-mix(in srgb, var(--provider-google-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-google-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-google-color) 14%, transparent);
+}
+.run-card-provider.provider-openai {
+  color: var(--provider-openai-color);
+  border-color: color-mix(in srgb, var(--provider-openai-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-openai-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-openai-color) 14%, transparent);
+}
 
 /* Status chip — same rim-shine pattern per tone. Each tone
  * keeps its semantic color (success / warning / danger /

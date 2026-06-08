@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { ChatRun, ProviderId, RunEventReplay } from '../../../main/store/types'
 import { classifyRunEvent } from '../lib/RunEventClassifier'
+import { humaniseModelId } from '../lib/modelDisplayName'
+import { resolveOllamaDisplayBrand } from '../lib/ollamaDisplayBrand'
+import { getProviderLabel } from '../lib/providerLabels'
 import { DigitOdometer } from './DigitOdometer'
 
 interface RunCardProps {
@@ -25,6 +28,7 @@ export function RunCard({
   onOpenSideChat
 }: RunCardProps): JSX.Element {
   const provider = run.provider || fallbackProvider || 'gemini'
+  const providerDisplay = getRunProviderDisplay(run, provider)
   const [aggregate, setAggregate] = useState<RunAggregate>({
     approvalCount: 0,
     eventFileCount: null
@@ -99,7 +103,9 @@ export function RunCard({
   */
   return (
     <div className="run-card" data-provider={provider}>
-      <span className={`run-card-provider provider-${provider}`}>{getProviderLabel(provider)}</span>
+      <span className={`run-card-provider provider-${providerDisplay.providerClass}`}>
+        {providerDisplay.label}
+      </span>
       <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
       {run.ensembleSleepResumeWarning && (
         // 1.0.5-N6 — Wakeup resumed from transcript context
@@ -207,13 +213,24 @@ function formatDuration(startedAt?: string, endedAt?: string): string {
   return `${hours}h ${minutes % 60}m`
 }
 
-function getProviderLabel(provider: ProviderId): string {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  if (provider === 'grok') return 'Grok'
-  if (provider === 'cursor') return 'Cursor'
-  return 'Gemini'
+function getRunProviderDisplay(
+  run: ChatRun,
+  provider: ProviderId
+): { label: string; providerClass: string } {
+  if (provider === 'ollama') {
+    const model = run.actualModel || run.requestedModel || ''
+    const modelLabel = humaniseModelId('ollama', model)
+    const brand = resolveOllamaDisplayBrand(model, modelLabel)
+    return {
+      label: brand?.modelLabel || modelLabel || getProviderLabel(provider),
+      providerClass: brand?.providerClass || provider
+    }
+  }
+
+  return {
+    label: getProviderLabel(provider),
+    providerClass: provider
+  }
 }
 
 function shortRunId(runId: string): string {
