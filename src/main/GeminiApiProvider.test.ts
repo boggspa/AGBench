@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
-import { chunkTextForTest, tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
+import {
+  chunkTextForTest,
+  chunkThoughtTextForTest,
+  tryRunGeminiApi,
+  type GeminiApiProviderDeps
+} from './GeminiApiProvider'
 import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
 import type {
@@ -335,6 +340,24 @@ describe('chunkText — 1.0.4-AD thinking-bleed filter', () => {
     expect(chunkTextForTest(null)).toBe('')
     expect(chunkTextForTest(undefined)).toBe('')
     expect(chunkTextForTest({})).toBe('')
+  })
+
+  it('extracts only thought parts for the reasoning channel', () => {
+    const chunk = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'internal monologue ', thought: true },
+              { text: 'visible reply.' }
+            ]
+          }
+        }
+      ]
+    }
+    expect(chunkThoughtTextForTest(chunk)).toBe('internal monologue ')
+    expect(chunkThoughtTextForTest(null)).toBe('')
+    expect(chunkThoughtTextForTest({})).toBe('')
   })
 
   it('returns empty when every part is a thought', () => {

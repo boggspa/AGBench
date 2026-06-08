@@ -359,6 +359,32 @@ export function chunkTextForTest(chunk: any): string {
   return chunkText(chunk)
 }
 
+// Companion to `chunkText`: extract ONLY the `thought: true` parts so the
+// model's reasoning can be surfaced as a streamed reasoning note (rather than
+// silently dropped). Exported for test coverage.
+export function chunkThoughtTextForTest(chunk: any): string {
+  return chunkThoughtText(chunk)
+}
+
+function chunkThoughtText(chunk: any): string {
+  if (!chunk) return ''
+  try {
+    const parts = chunk.candidates?.[0]?.content?.parts
+    if (Array.isArray(parts)) {
+      const texts: string[] = []
+      for (const part of parts) {
+        if (part && typeof part.text === 'string' && part.thought === true) {
+          texts.push(part.text)
+        }
+      }
+      return stripThoughtMarkers(texts.join(''))
+    }
+  } catch {
+    // Defensive: never let chunk shape weirdness crash the loop.
+  }
+  return ''
+}
+
 function chunkText(chunk: any): string {
   if (!chunk) return ''
   // 1.0.4-AD — Gemini's thinking-capable models stream parts with
@@ -783,6 +809,12 @@ export async function tryRunGeminiApi(
     }
 
     const pendingFunctionCalls: PendingFunctionCall[] = []
+    // Reasoning (`thought: true`) for this round, accumulated and re-emitted as
+    // a single growing reasoning note so it streams into the live activity
+    // viewport instead of being dropped.
+    let roundThinking = ''
+    let roundThinkingEmitted = false
+    const roundThinkingId = `gemini-thinking-${normalizedRoute.appRunId || 'run'}-${round}`
     try {
       const stream = await client.models.generateContentStream(
         generateConfig ? { model, contents, config: generateConfig } : { model, contents }
@@ -791,6 +823,39 @@ export async function tryRunGeminiApi(
         if (controller.signal.aborted) {
           aborted = true
           break
+        }
+        const thought = chunkThoughtText(chunk)
+        if (thought) {
+          if (!roundThinkingEmitted) {
+            deps.sendAgentCompatLine(
+              event.sender,
+              'gemini',
+              {
+                type: 'tool_use',
+                tool_id: roundThinkingId,
+                tool_name: 'gemini_thinking',
+                kind: 'think',
+                parameters: { title: 'Thinking' },
+                provider: 'gemini'
+              },
+              normalizedRoute
+            )
+            roundThinkingEmitted = true
+          }
+          roundThinking += thought
+          deps.sendAgentCompatLine(
+            event.sender,
+            'gemini',
+            {
+              type: 'tool_result',
+              tool_id: roundThinkingId,
+              tool_name: 'gemini_thinking',
+              status: 'success',
+              output: roundThinking,
+              provider: 'gemini'
+            },
+            normalizedRoute
+          )
         }
         const text = chunkText(chunk)
         if (text) {
