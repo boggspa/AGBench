@@ -7312,18 +7312,31 @@
   color: rgba(29, 29, 31, 0.84) !important;
 }
 
-/* TaskWraith / default shell — same fix for the same reason. The
- * default shell's `.composer-above-bar` in light mode was picking
- * up the base-rule navy gradient `::before` overlay which read as
- * a gray-white tint. Match the chip strip's `surface-2` pill so
- * the two stack as identical sibling chrome. */
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .composer-above-bar {
-  background: var(--surface-2);
-  border-color: var(--surface-border);
+/* TaskWraith / default shell — light-mode above-rows inherit the
+ * liquid-glass instrument frame (shard 03/09), not opaque surface-2. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  [data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  background: var(--composer-glass-bg);
+  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
   color: rgba(29, 29, 31, 0.84);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .composer-above-bar::before {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  [data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row)::before {
   display: none;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  [data-appearance="native_glass"][data-reduce-transparency="false"]
+  [data-composer-style="default"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 /* Mirror the suppression on Codex shell too — the same per-provider
  * gradient `::before` overlay was painting on top of the white

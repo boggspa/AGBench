@@ -2779,7 +2779,7 @@
   stroke: rgb(var(--agent-aura-warn-rgb) / 0.82);
 }
 
-.composer-surface.fx-agent-aura {
+:is(.composer-surface, .composer-above-bar-stack).fx-agent-aura {
   box-shadow:
     0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.28),
     0 18px 58px rgb(var(--agent-aura-rgb, 87 148 255) / 0.18),
@@ -2791,10 +2791,10 @@
  * the peak-intensity shadow lives on a ::after pseudo and we animate the
  * pseudo's opacity instead — composite-only, near-zero per-frame cost.
  * Visually identical: same colour, same blur radii, same cadence. */
-.composer-surface.fx-agent-aura.fx-status-running {
+:is(.composer-surface, .composer-above-bar-stack).fx-agent-aura.fx-status-running {
   position: relative;
 }
-.composer-surface.fx-agent-aura.fx-status-running::after {
+:is(.composer-surface, .composer-above-bar-stack).fx-agent-aura.fx-status-running::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -2811,19 +2811,20 @@
   0%, 100% { opacity: 0; }
   50%      { opacity: 1; }
 }
-:root[data-reduce-motion="true"] .composer-surface.fx-agent-aura.fx-status-running::after {
+:root[data-reduce-motion="true"]
+  :is(.composer-surface, .composer-above-bar-stack).fx-agent-aura.fx-status-running::after {
   animation: none;
   opacity: 0;
 }
 
-.composer-surface.fx-agent-aura.fx-status-approval {
+:is(.composer-surface, .composer-above-bar-stack).fx-agent-aura.fx-status-approval {
   box-shadow:
     0 0 0 1px rgb(var(--agent-aura-warn-rgb) / 0.5),
     0 18px 58px rgb(var(--agent-aura-warn-rgb) / 0.2),
     var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
 }
 
-.composer-surface.fx-agent-aura.fx-status-failed {
+:is(.composer-surface, .composer-above-bar-stack).fx-agent-aura.fx-status-failed {
   box-shadow:
     0 0 0 1px rgb(var(--agent-aura-danger-rgb) / 0.42),
     0 18px 58px rgb(var(--agent-aura-danger-rgb) / 0.2),
@@ -3012,7 +3013,7 @@
   .agent-aura-layer *,
   .living-workspace-layer *,
   .run-data-viz-layer *,
-  .composer-surface.fx-agent-aura {
+  :is(.composer-surface, .composer-above-bar-stack).fx-agent-aura {
     animation: none !important;
     transition: none !important;
   }

@@ -16734,7 +16734,7 @@ function App(): React.JSX.Element {
               currentWorkspace &&
               (!isWelcomeChat || isCurrentEnsembleChat)) ||
               (isCurrentGlobalChat && isCurrentEnsembleChat)) && (
-              <div className="composer-above-bar-stack">
+              <div className={`composer-above-bar-stack ${composerAgentAuraClass}`}>
                 {/* 1.0.4-AQ5 — file-changes / Create-PR / external-path
                   rows are workspace-only by construction. Guard with
                   `currentWorkspace` so the new global-ensemble-chat

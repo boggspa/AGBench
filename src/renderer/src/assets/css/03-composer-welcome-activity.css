@@ -3061,6 +3061,7 @@
 [data-composer-style="default"]
   .app-transcript
   :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before {
+  display: none !important;
   background: none !important;
   box-shadow: none !important;
 }
