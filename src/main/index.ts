@@ -393,6 +393,7 @@ import {
 } from './providers/ProviderAuthUsage'
 import {
   createWorkspaceToolExecutors,
+  assertPatchPathsInScope,
   formatScopedPath as formatWorkspaceToolScopedPath,
   resolveMcpScopedPath as resolveWorkspaceToolScopedPath,
   WORKSPACE_MCP_TOOL_NAMES,
@@ -476,6 +477,12 @@ import {
   type OllamaToolExecutionRequest,
   type OllamaToolExecutionResult
 } from './ollama/OllamaProvider'
+import {
+  normalizeOllamaToolControlTier,
+  ollamaToolAllowedInTier,
+  ollamaToolIntent,
+  ollamaToolRequiresIntent
+} from './ollama/OllamaToolTiers'
 import {
   buildDiagnosticsSnapshot,
   buildProductOperationsStatus,
@@ -3405,15 +3412,19 @@ function previewForGeminiMcpTool(
   parentProvider: ProviderId = 'gemini'
 ) {
   const providerName = providerDisplayName(parentProvider)
+  const intent = optionalString(args.intent || args.summary || args.reason || args.description)
+  const intentBody = intent ? `Intent: ${intent}\n\n` : ''
+  const intentPreview = intent ? { intent } : {}
   if (toolName === 'run_shell_command') {
     return {
       title: `Approve ${providerName} shell command`,
-      body: `${String(args.command || '')}\n${cwd}`,
+      body: `${intentBody}${String(args.command || '')}\n${cwd}`,
       service: 'shellCommands' as AgenticServiceId,
       preview: {
         kind: 'command',
         command: String(args.command || ''),
-        cwd
+        cwd,
+        ...intentPreview
       }
     }
   }
@@ -3442,11 +3453,12 @@ function previewForGeminiMcpTool(
         toolName === 'write_file'
           ? `Approve ${providerName} file write`
           : `Approve ${providerName} file edit`,
-      body: previewPath || toolName,
+      body: `${intentBody}${previewPath || toolName}`,
       service: 'fileChanges' as AgenticServiceId,
       preview: {
         kind: 'fileChange',
         changes: [{ kind: toolName === 'write_file' ? 'write' : 'replace', path: previewPath }],
+        ...intentPreview,
         patchPreview:
           toolName === 'replace'
             ? [
@@ -3467,11 +3479,12 @@ function previewForGeminiMcpTool(
         args.dryRun === true || args.check === true
           ? 'Preview patch application'
           : 'Approve patch application',
-      body: `${cwd}\n${patch.slice(0, 1000)}`,
+      body: `${intentBody}${cwd}\n${patch.slice(0, 1000)}`,
       service: 'fileChanges' as AgenticServiceId,
       preview: {
         kind: 'fileChange',
         changes: [],
+        ...intentPreview,
         patchPreview: patch.slice(0, 4000)
       }
     }
@@ -8780,10 +8793,95 @@ async function runCodexProvider(
   }
 }
 
+const OLLAMA_PROTECTED_WORKSPACE_PATHS = new Set([
+  '.git',
+  '.hg',
+  '.svn',
+  '.ssh',
+  '.aws',
+  '.config',
+  '.npmrc',
+  '.yarnrc',
+  '.pnpmrc',
+  '.env',
+  'package.json',
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'bun.lock',
+  'bun.lockb',
+  'Cargo.lock',
+  'Gemfile.lock',
+  'Podfile.lock',
+  'electron-builder.yml',
+  'electron-builder.yaml',
+  'entitlements.mac.plist',
+  'entitlements.plist'
+])
+
+function ollamaProtectedPathReason(relativePath: string): string | null {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
+  const parts = normalized.split('/').filter(Boolean)
+  const basename = parts[parts.length - 1] || normalized
+  if (parts.some((part) => part === '.git' || part === '.hg' || part === '.svn')) {
+    return 'version-control metadata is protected'
+  }
+  if (basename === '.env' || basename.startsWith('.env.')) {
+    return 'environment/secret files are protected'
+  }
+  if (/\.(pem|key|p12|pfx|mobileprovision)$/i.test(basename)) {
+    return 'credential/key material is protected'
+  }
+  if (OLLAMA_PROTECTED_WORKSPACE_PATHS.has(normalized) || OLLAMA_PROTECTED_WORKSPACE_PATHS.has(basename)) {
+    return 'this workspace control file is protected'
+  }
+  if (parts.includes('.github')) {
+    return 'CI/workflow configuration is protected'
+  }
+  return null
+}
+
+function assertOllamaMutationIntent(toolName: string, args: Record<string, unknown>): void {
+  if (!ollamaToolRequiresIntent(toolName)) return
+  if (ollamaToolIntent(args)) return
+  throw new Error(`${toolName} requires an intent or summary before TaskWraith can request approval.`)
+}
+
+function assertOllamaProtectedWritePaths(
+  toolName: string,
+  args: Record<string, unknown>,
+  context: WorkspaceToolContext,
+  cwd: string
+): void {
+  const checkRelativePath = (relativePath: string): void => {
+    const reason = ollamaProtectedPathReason(relativePath)
+    if (reason) {
+      throw new Error(`Ollama cannot modify ${relativePath}: ${reason}.`)
+    }
+  }
+  if (toolName === 'write_file' || toolName === 'replace') {
+    const targetPath = resolveWorkspaceToolScopedPath(
+      context,
+      String(args.path || args.file_path || '')
+    )
+    checkRelativePath(formatWorkspaceToolScopedPath(context, targetPath))
+  }
+  if (toolName === 'apply_patch') {
+    const patch = String(args.patch || args.diff || '')
+    const patchPaths = assertPatchPathsInScope(context, cwd, patch)
+    for (const patchPath of patchPaths) {
+      checkRelativePath(patchPath)
+    }
+  }
+}
+
 async function executeOllamaLocalTool(
   request: OllamaToolExecutionRequest
 ): Promise<OllamaToolExecutionResult> {
   const workspacePath = canonicalPath(requireNonEmptyString(request.workspacePath, 'Workspace'))
+  const tier = normalizeOllamaToolControlTier(
+    request.toolControlTier || AppStore.getSettings().ollamaToolControlTier
+  )
   const context: WorkspaceToolContext = {
     scope: 'workspace',
     cwd: workspacePath,
@@ -8791,6 +8889,12 @@ async function executeOllamaLocalTool(
     appChatId: request.appChatId
   }
   try {
+    if (!ollamaToolAllowedInTier(request.toolName, tier)) {
+      throw new Error(`Ollama ${tier} tier does not allow ${request.toolName}.`)
+    }
+    assertOllamaMutationIntent(request.toolName, request.arguments)
+    assertOllamaProtectedWritePaths(request.toolName, request.arguments, context, workspacePath)
+
     if (request.toolName === 'workspace_search') {
       const result = await workspaceToolExecutors.executeWorkspaceSearch(
         request.arguments,
@@ -8828,6 +8932,26 @@ async function executeOllamaLocalTool(
           path: formatWorkspaceToolScopedPath(context, targetPath),
           bytes: stat.size
         }
+      }
+    }
+
+    if (
+      request.toolName === 'write_file' ||
+      request.toolName === 'replace' ||
+      request.toolName === 'apply_patch' ||
+      request.toolName === 'run_shell_command' ||
+      tier === 'provider_parity'
+    ) {
+      const result = await executeGeminiMcpTool(
+        request.toolName as TaskWraithMcpToolName,
+        request.arguments,
+        { appRunId: request.appRunId, appChatId: request.appChatId },
+        'ollama'
+      )
+      return {
+        ok: result.isError !== true,
+        output: result.text,
+        structuredContent: result.structuredContent
       }
     }
 
@@ -10792,6 +10916,17 @@ async function executeGeminiMcpTool(
     approvalPreview.service === 'mcpTools'
       ? 'shellCommands'
       : approvalPreview.service
+  const ollamaTier =
+    parentProvider === 'ollama'
+      ? normalizeOllamaToolControlTier(AppStore.getSettings().ollamaToolControlTier)
+      : null
+  const ollamaMustPrompt =
+    parentProvider === 'ollama' &&
+    ollamaTier !== 'provider_parity' &&
+    (toolName === 'write_file' ||
+      toolName === 'replace' ||
+      toolName === 'apply_patch' ||
+      toolName === 'run_shell_command')
   const allowed = skipGenericApproval
     ? true
     : await requestAgenticServiceApproval(
@@ -10805,7 +10940,7 @@ async function executeGeminiMcpTool(
           body: approvalPreview.body,
           preview: approvalPreview.preview,
           runId: context.appRunId,
-          forcePrompt: context.scope === 'global',
+          forcePrompt: context.scope === 'global' || ollamaMustPrompt,
           externalPathDetection
         }
       )

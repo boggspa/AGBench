@@ -15,6 +15,11 @@ import type {
 } from './store/types'
 import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 import { providerLabel } from './ProviderAdapters'
+import {
+  normalizeOllamaToolControlTier,
+  ollamaTierLabel,
+  ollamaToolNamesForTier
+} from './ollama/OllamaToolTiers'
 
 export const TASKWRAITH_GEMINI_MCP_TOOLS = TASKWRAITH_MCP_TOOLS
 
@@ -59,7 +64,10 @@ export function toolingControlRows(
 
 interface BuildProviderCapabilityContractInput {
   provider: ProviderId
-  settings: Pick<AppSettings, 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
+  settings: Pick<
+    AppSettings,
+    'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback' | 'ollamaToolControlTier'
+  >
   workspacePath?: string
   approvalMode?: string
   status?: unknown
@@ -366,8 +374,9 @@ function ollamaLocalMcpCapability(input: {
   enabled: boolean
   blocked: boolean
   hasWorkspace: boolean
+  tools: string[]
+  tierLabel: string
 }): ProviderMcpCapability {
-  const tools = ['read_file', 'list_directory', 'workspace_search']
   if (input.blocked) {
     return {
       state: 'blocked',
@@ -378,7 +387,7 @@ function ollamaLocalMcpCapability(input: {
       serverName: 'TaskWraith-local',
       tools: [],
       message:
-        'Ollama read-only workspace tools are blocked by TaskWraith MCP/tool settings.'
+        'Ollama workspace tools are blocked by TaskWraith MCP/tool settings.'
     }
   }
   if (!input.hasWorkspace) {
@@ -391,7 +400,7 @@ function ollamaLocalMcpCapability(input: {
       serverName: 'TaskWraith-local',
       tools: [],
       message:
-        'Ollama read-only tools require a workspace thread so paths can be scoped by TaskWraith.'
+        'Ollama tools require a workspace thread so paths can be scoped by TaskWraith.'
     }
   }
   return {
@@ -401,9 +410,9 @@ function ollamaLocalMcpCapability(input: {
     enabled: input.enabled,
     installed: true,
     serverName: 'TaskWraith-local',
-    tools: input.enabled ? tools : [],
+    tools: input.enabled ? input.tools : [],
     message: input.enabled
-      ? 'Ollama uses a TaskWraith-controlled local tool loop for read-only workspace listing, file reads, and search. Shell commands and file mutations are not advertised.'
+      ? `Ollama uses a TaskWraith-controlled local tool loop with ${input.tierLabel} tools.`
       : 'Ollama local tools are not enabled.'
   }
 }
@@ -718,21 +727,51 @@ export function buildProviderCapabilityContract({
       )
     }
   } else if (provider === 'ollama') {
+    const ollamaTier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+    const ollamaTierTools = ollamaToolNamesForTier(ollamaTier)
+    const ollamaFileTools = ollamaTierTools.filter((tool) =>
+      ['write_file', 'replace', 'apply_patch'].includes(tool)
+    )
+    const ollamaShellTools = ollamaTierTools.filter((tool) => tool === 'run_shell_command')
     mcp = ollamaLocalMcpCapability({
       enabled: services.mcpTools !== 'deny',
       blocked: services.mcpTools === 'deny',
-      hasWorkspace: Boolean(workspacePath)
+      hasWorkspace: Boolean(workspacePath),
+      tools: ollamaTierTools,
+      tierLabel: ollamaTierLabel(ollamaTier)
     })
-    shellCommands = unavailableCapability(
-      'shellCommands',
-      'taskwraith',
-      'Ollama local mode does not expose shell commands.'
-    )
-    fileChanges = unavailableCapability(
-      'fileChanges',
-      'taskwraith',
-      'Ollama local mode does not expose file edits or patch tools.'
-    )
+    shellCommands =
+      mcp.available && ollamaShellTools.length > 0
+        ? serviceCapability(
+            'shellCommands',
+            services.shellCommands,
+            'taskwraith',
+            ollamaShellTools,
+            ollamaTier === 'provider_parity'
+              ? 'Ollama shell commands are routed through TaskWraith approval policy.'
+              : 'Ollama shell commands require a modal approval for every command.'
+          )
+        : unavailableCapability(
+            'shellCommands',
+            'taskwraith',
+            'Ollama local mode does not expose shell commands at this tier.'
+          )
+    fileChanges =
+      mcp.available && ollamaFileTools.length > 0
+        ? serviceCapability(
+            'fileChanges',
+            services.fileChanges,
+            'taskwraith',
+            ollamaFileTools,
+            ollamaTier === 'provider_parity'
+              ? 'Ollama file edits are routed through TaskWraith approval policy.'
+              : 'Ollama file edits require an intent plus modal approval before applying.'
+          )
+        : unavailableCapability(
+            'fileChanges',
+            'taskwraith',
+            'Ollama local mode does not expose file edits or patch tools at this tier.'
+          )
     mcpTools = mcp.available
       ? serviceCapability(
           'mcpTools',

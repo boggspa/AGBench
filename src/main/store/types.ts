@@ -168,6 +168,11 @@ export type ChatParentRelation = 'subThread' | 'sideChat'
 export type SideChatMode = 'ensembleClone' | 'singleProvider' | 'fanOut' | 'guestParticipant'
 export type SideChatLifecycleState = 'active' | 'closed' | 'terminated'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
+export type OllamaToolControlTier =
+  | 'read_only'
+  | 'approved_edits'
+  | 'approved_shell'
+  | 'provider_parity'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
 export type PermissionPresetId =
@@ -1351,6 +1356,8 @@ export interface AppSettings {
   kimiApiKey?: string
   ollamaBaseUrl?: string
   ollamaDefaultModel?: string
+  ollamaToolControlTier?: OllamaToolControlTier
+  ollamaProviderParityAcknowledgedAt?: string
   defaultGeminiAuthProfileId?: string | null
   geminiAuthProfiles?: GeminiAuthProfile[]
   /** Phase M1 — Gemini API runtime selection. See {@link GeminiApiRuntimeMode}

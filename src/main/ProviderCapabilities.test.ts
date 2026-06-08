@@ -11,12 +11,14 @@ const defaultServices: AgenticServicesSettings = {
 }
 
 function settings(
-  agenticServices: AgenticServicesSettings = defaultServices
+  agenticServices: AgenticServicesSettings = defaultServices,
+  extra: Partial<AppSettings> = {}
 ): Pick<AppSettings, 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'> {
   return {
     agenticServices,
     geminiMcpBridgeEnabled: false,
-    codexSandboxFallback: 'ask_rerun' as const
+    codexSandboxFallback: 'ask_rerun' as const,
+    ...extra
   }
 }
 
@@ -235,6 +237,45 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
     expect(contract.tools.shellCommands.state).toBe('unavailable')
     expect(contract.tools.fileChanges.state).toBe('unavailable')
+  })
+
+  it('advertises Ollama approved edit and shell tiers through TaskWraith gates', () => {
+    const approvedEdits = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(defaultServices, { ollamaToolControlTier: 'approved_edits' }),
+      workspacePath: '/tmp/project',
+      status: { provider: 'ollama', available: true }
+    })
+    expect(approvedEdits.mcp.tools).toContain('write_file')
+    expect(approvedEdits.mcp.tools).toContain('apply_patch')
+    expect(approvedEdits.mcp.tools).not.toContain('run_shell_command')
+    expect(approvedEdits.tools.fileChanges.state).toBe('gated')
+    expect(approvedEdits.tools.fileChanges.enforcedByTaskWraith).toBe(true)
+    expect(approvedEdits.tools.shellCommands.state).toBe('unavailable')
+
+    const approvedShell = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(defaultServices, { ollamaToolControlTier: 'approved_shell' }),
+      workspacePath: '/tmp/project',
+      status: { provider: 'ollama', available: true }
+    })
+    expect(approvedShell.mcp.tools).toContain('run_shell_command')
+    expect(approvedShell.tools.shellCommands.state).toBe('gated')
+    expect(approvedShell.tools.shellCommands.enforcedByTaskWraith).toBe(true)
+  })
+
+  it('advertises Ollama provider parity after acknowledgement', () => {
+    const contract = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(defaultServices, { ollamaToolControlTier: 'provider_parity' }),
+      workspacePath: '/tmp/project',
+      status: { provider: 'ollama', available: true }
+    })
+
+    expect(contract.mcp.tools).toContain('delegate_to_subthread')
+    expect(contract.mcp.tools).toContain('run_shell_command')
+    expect(contract.tools.fileChanges.enforcedByTaskWraith).toBe(true)
+    expect(contract.tools.shellCommands.enforcedByTaskWraith).toBe(true)
   })
 
   it('does not advertise Ollama read-only tools outside a workspace', () => {

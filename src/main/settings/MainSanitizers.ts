@@ -33,6 +33,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'kimiBinaryPath',
   'ollamaBaseUrl',
   'ollamaDefaultModel',
+  'ollamaToolControlTier',
+  'ollamaProviderParityAcknowledgedAt',
   'codexUsageCredential',
   'storeLocalChatHistory',
   'storeRawEvents',
@@ -692,6 +694,36 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     }
     if ('activeProvider' in sanitized && sanitized.activeProvider !== undefined) {
       sanitized.activeProvider = assertProviderId(sanitized.activeProvider)
+    }
+    if ('ollamaToolControlTier' in sanitized) {
+      const tier = sanitized.ollamaToolControlTier
+      if (
+        tier !== 'read_only' &&
+        tier !== 'approved_edits' &&
+        tier !== 'approved_shell' &&
+        tier !== 'provider_parity'
+      ) {
+        delete sanitized.ollamaToolControlTier
+      }
+    }
+    if ('ollamaProviderParityAcknowledgedAt' in sanitized) {
+      const acknowledgedAt = sanitized.ollamaProviderParityAcknowledgedAt
+      if (typeof acknowledgedAt === 'string' && acknowledgedAt.trim()) {
+        sanitized.ollamaProviderParityAcknowledgedAt = acknowledgedAt.trim()
+      } else {
+        delete sanitized.ollamaProviderParityAcknowledgedAt
+      }
+    }
+    if (
+      sanitized.ollamaToolControlTier === 'provider_parity' &&
+      !('ollamaProviderParityAcknowledgedAt' in sanitized)
+    ) {
+      const currentAck = deps.getSettings().ollamaProviderParityAcknowledgedAt
+      if (typeof currentAck === 'string' && currentAck.trim()) {
+        sanitized.ollamaProviderParityAcknowledgedAt = currentAck.trim()
+      } else {
+        delete sanitized.ollamaToolControlTier
+      }
     }
     if ('agenticServices' in sanitized) {
       const services = requireRecord(sanitized.agenticServices, 'Agentic services')

@@ -309,6 +309,7 @@ const defaultSettings: AppSettings = {
   kimiBinaryPath: '',
   ollamaBaseUrl: 'http://127.0.0.1:11434',
   ollamaDefaultModel: '',
+  ollamaToolControlTier: 'read_only',
   defaultGeminiAuthProfileId: null,
   geminiAuthProfiles: [],
   geminiApiRuntime: 'auto',
@@ -756,6 +757,17 @@ export class AppStore {
         stored.geminiApiRuntime === 'never'
           ? stored.geminiApiRuntime
           : defaultSettings.geminiApiRuntime,
+      ollamaToolControlTier:
+        stored.ollamaToolControlTier === 'approved_edits' ||
+        stored.ollamaToolControlTier === 'approved_shell' ||
+        stored.ollamaToolControlTier === 'provider_parity'
+          ? stored.ollamaToolControlTier
+          : defaultSettings.ollamaToolControlTier,
+      ollamaProviderParityAcknowledgedAt:
+        typeof stored.ollamaProviderParityAcknowledgedAt === 'string' &&
+        stored.ollamaProviderParityAcknowledgedAt.trim()
+          ? stored.ollamaProviderParityAcknowledgedAt.trim()
+          : undefined,
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})

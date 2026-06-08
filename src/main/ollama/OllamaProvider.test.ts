@@ -7,6 +7,12 @@ import {
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput
 } from './OllamaProvider'
+import {
+  normalizeOllamaToolControlTier,
+  ollamaToolAllowedInTier,
+  ollamaToolNamesForTier,
+  ollamaToolRequiresIntent
+} from './OllamaToolTiers'
 
 describe('normalizeOllamaBaseUrl', () => {
   it('defaults to the local Ollama service when unset or invalid', () => {
@@ -130,12 +136,44 @@ describe('parseOllamaToolRequest', () => {
     })
   })
 
-  it('extracts fenced JSON and rejects mutating tools', () => {
+  it('extracts fenced JSON for known tools so policy can deny them explicitly', () => {
     expect(
       parseOllamaToolRequest(
         '```json\n{"taskwraith_tool":{"name":"write_file","arguments":{"path":"x","content":"y"}}}\n```'
       )
-    ).toBeNull()
-    expect(ollamaLocalToolSystemPrompt()).toContain('read-only workspace tools')
+    ).toEqual({
+      toolName: 'write_file',
+      arguments: { path: 'x', content: 'y' }
+    })
+    expect(ollamaLocalToolSystemPrompt()).toContain(
+      'Current Ollama tool-control tier: read-only workspace.'
+    )
+  })
+})
+
+describe('Ollama tool tiers', () => {
+  it('defaults to read-only tools', () => {
+    expect(normalizeOllamaToolControlTier('bad-value')).toBe('read_only')
+    expect(ollamaToolNamesForTier('read_only')).toEqual([
+      'read_file',
+      'list_directory',
+      'workspace_search'
+    ])
+    expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
+  })
+
+  it('adds file edits and shell incrementally', () => {
+    expect(ollamaToolAllowedInTier('write_file', 'approved_edits')).toBe(true)
+    expect(ollamaToolAllowedInTier('run_shell_command', 'approved_edits')).toBe(false)
+    expect(ollamaToolAllowedInTier('run_shell_command', 'approved_shell')).toBe(true)
+    expect(ollamaToolRequiresIntent('write_file')).toBe(true)
+    expect(ollamaToolRequiresIntent('run_shell_command')).toBe(true)
+  })
+
+  it('advertises the full TaskWraith tool surface for acknowledged parity mode', () => {
+    const tools = ollamaToolNamesForTier('provider_parity')
+    expect(tools).toContain('write_file')
+    expect(tools).toContain('run_shell_command')
+    expect(tools).toContain('delegate_to_subthread')
   })
 })

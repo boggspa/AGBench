@@ -3,7 +3,14 @@ import { promisify } from 'util'
 import { buildProviderCapabilityContract } from '../ProviderCapabilities'
 import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager, RunSessionStatus } from '../RunManager'
-import type { AppSettings, ProviderCapabilityContract } from '../store/types'
+import type { AppSettings, OllamaToolControlTier, ProviderCapabilityContract } from '../store/types'
+import {
+  OLLAMA_KNOWN_TOOL_NAMES,
+  normalizeOllamaToolControlTier,
+  ollamaTierLabel,
+  ollamaToolNamesForTier,
+  type OllamaToolName
+} from './OllamaToolTiers'
 
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
 const OLLAMA_MEMORY_POLL_INTERVAL_MS = 5_000
@@ -45,7 +52,7 @@ export interface OllamaProcessMemorySnapshot {
 }
 
 export interface OllamaProviderDeps {
-  getSettings: () => Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel' | 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
+  getSettings: () => Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel' | 'ollamaToolControlTier' | 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
   sendAgentCompatLine: (
     sender: Electron.WebContents,
     provider: 'ollama',
@@ -109,8 +116,6 @@ interface OllamaChatChunk {
   eval_duration?: number
 }
 
-type OllamaToolName = 'read_file' | 'list_directory' | 'workspace_search'
-
 interface OllamaChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
@@ -127,6 +132,7 @@ export interface OllamaToolExecutionRequest {
   workspacePath: string
   appChatId?: string
   appRunId?: string
+  toolControlTier?: OllamaToolControlTier
 }
 
 export interface OllamaToolExecutionResult {
@@ -142,11 +148,6 @@ export interface OllamaToolRequest {
 
 const OLLAMA_TOOL_LOOP_LIMIT = 4
 const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
-const OLLAMA_TOOL_NAMES = new Set<OllamaToolName>([
-  'read_file',
-  'list_directory',
-  'workspace_search'
-])
 
 export function normalizeOllamaBaseUrl(value?: string | null): string {
   const raw = String(value || '').trim() || DEFAULT_OLLAMA_BASE_URL
@@ -413,6 +414,8 @@ export async function getOllamaCapabilityContract(
   request: { workspacePath?: string; approvalMode?: string } = {}
 ): Promise<ProviderCapabilityContract> {
   const settings = deps.getSettings()
+  const tier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+  const toolNames = ollamaToolNamesForTier(tier)
   const status = await getOllamaStatusSnapshot(settings)
   return buildProviderCapabilityContract({
     provider: 'ollama',
@@ -428,12 +431,12 @@ export async function getOllamaCapabilityContract(
       serverName: OLLAMA_LOCAL_TOOL_SERVER,
       tools:
         Boolean(request.workspacePath) && settings.agenticServices?.mcpTools !== 'deny'
-          ? [...OLLAMA_TOOL_NAMES]
+          ? toolNames
           : [],
       message:
         Boolean(request.workspacePath) && settings.agenticServices?.mcpTools !== 'deny'
-          ? 'Ollama local mode uses a TaskWraith-controlled read-only tool loop for workspace list/read/search.'
-          : 'Ollama read-only tools require a workspace thread and enabled TaskWraith MCP/tool policy.'
+          ? `Ollama local mode uses TaskWraith-controlled ${ollamaTierLabel(tier)} tools.`
+          : 'Ollama tools require a workspace thread and enabled TaskWraith MCP/tool policy.'
     }
   })
 }
@@ -467,18 +470,51 @@ function ollamaUsageStats(chunk: OllamaChatChunk): Record<string, unknown> {
   }
 }
 
-export function ollamaLocalToolSystemPrompt(): string {
-  return [
+export function ollamaLocalToolSystemPrompt(
+  tier: OllamaToolControlTier | string | undefined | null = 'read_only'
+): string {
+  const normalizedTier = normalizeOllamaToolControlTier(tier)
+  const tools = ollamaToolNamesForTier(normalizedTier)
+  const lines = [
     'You are running inside TaskWraith through local Ollama.',
-    'You do not have direct shell or filesystem access. TaskWraith can provide read-only workspace tools when needed.',
+    'You do not have direct shell or filesystem access. TaskWraith can provide workspace tools when needed.',
     'To request a tool, reply with ONLY a JSON object in this exact shape:',
     '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
-    'Available read-only tools:',
-    '- list_directory: {"path":"."}',
-    '- read_file: {"path":"relative/path.txt"}',
-    '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}',
-    'Paths must stay inside the active workspace. After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
+    `Current Ollama tool-control tier: ${ollamaTierLabel(normalizedTier)}.`,
+    'Available tools:'
+  ]
+  const describeTool = (toolName: OllamaToolName): string | null => {
+    if (toolName === 'list_directory') return '- list_directory: {"path":"."}'
+    if (toolName === 'read_file') return '- read_file: {"path":"relative/path.txt"}'
+    if (toolName === 'workspace_search') {
+      return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}'
+    }
+    if (toolName === 'write_file') {
+      return '- write_file: {"path":"relative/path.txt","content":"...","intent":"short reason before changing files"}'
+    }
+    if (toolName === 'replace') {
+      return '- replace: {"path":"relative/path.txt","old_string":"...","new_string":"...","intent":"short reason before changing files"}'
+    }
+    if (toolName === 'apply_patch') {
+      return '- apply_patch: {"patch":"unified diff","intent":"short reason before changing files"}'
+    }
+    if (toolName === 'run_shell_command') {
+      return '- run_shell_command: {"command":"exact command","intent":"short reason before running it"}'
+    }
+    return `- ${toolName}: use the TaskWraith MCP argument schema for this tool.`
+  }
+  for (const toolName of tools) {
+    const line = describeTool(toolName)
+    if (line) lines.push(line)
+  }
+  lines.push(
+    'Paths must stay inside the active workspace.',
+    'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
+    'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
     'Do not invent file contents or workspace facts when a tool result is needed.'
+  )
+  return [
+    ...lines
   ].join('\n')
 }
 
@@ -521,7 +557,7 @@ export function parseOllamaToolRequest(text: string): OllamaToolRequest | null {
     const wrapper = recordFromUnknown(parsed.taskwraith_tool) || recordFromUnknown(parsed.tool)
     if (!wrapper) continue
     const name = typeof wrapper.name === 'string' ? wrapper.name.trim() : ''
-    if (!OLLAMA_TOOL_NAMES.has(name as OllamaToolName)) continue
+    if (!OLLAMA_KNOWN_TOOL_NAMES.has(name as OllamaToolName)) continue
     const args = recordFromUnknown(wrapper.arguments) || recordFromUnknown(wrapper.args) || {}
     return {
       toolName: name as OllamaToolName,
@@ -642,9 +678,10 @@ export async function runOllamaProvider(
     const toolProtocolEnabled =
       Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
       settings.agenticServices?.mcpTools !== 'deny'
+    const toolControlTier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
-        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt() }]
+        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier) }]
         : []),
       { role: 'user', content: payload.prompt }
     ]
@@ -711,7 +748,8 @@ export async function runOllamaProvider(
         arguments: toolRequest.arguments,
         workspacePath: payload.workspace!,
         appChatId: route.appChatId || payload.appChatId,
-        appRunId: route.appRunId || payload.appRunId
+        appRunId: route.appRunId || payload.appRunId,
+        toolControlTier
       })
       deps.sendAgentCompatLine(
         event.sender,
@@ -736,8 +774,8 @@ export async function runOllamaProvider(
           toolResult.output,
           '',
           toolResult.ok
-            ? 'Use this result to continue. If another read-only workspace lookup is needed, request it with the same JSON tool protocol; otherwise answer normally.'
-            : 'The tool failed. Explain the limitation or try a different read-only workspace lookup.'
+            ? 'Use this result to continue. If another TaskWraith tool is needed, request it with the same JSON tool protocol; otherwise answer normally.'
+            : 'The tool failed. Explain the limitation or try a different allowed TaskWraith tool.'
         ].join('\n')
       })
     }

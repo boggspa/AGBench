@@ -198,6 +198,57 @@ describe('MainSanitizers settings patches', () => {
     })
   })
 
+  it('sanitizes Ollama tool-control tiers and gates provider parity on acknowledgement', () => {
+    const settings = makeSettings()
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+
+    expect(
+      sanitizeSettingsPatch({
+        ollamaToolControlTier: 'approved_shell'
+      })
+    ).toMatchObject({
+      ollamaToolControlTier: 'approved_shell'
+    })
+
+    expect(
+      sanitizeSettingsPatch({
+        ollamaToolControlTier: 'bad-tier'
+      })
+    ).not.toHaveProperty('ollamaToolControlTier')
+
+    expect(
+      sanitizeSettingsPatch({
+        ollamaToolControlTier: 'provider_parity'
+      })
+    ).not.toHaveProperty('ollamaToolControlTier')
+
+    expect(
+      sanitizeSettingsPatch({
+        ollamaToolControlTier: 'provider_parity',
+        ollamaProviderParityAcknowledgedAt: ' 2026-06-08T12:00:00.000Z '
+      })
+    ).toMatchObject({
+      ollamaToolControlTier: 'provider_parity',
+      ollamaProviderParityAcknowledgedAt: '2026-06-08T12:00:00.000Z'
+    })
+  })
+
+  it('allows Ollama provider parity when a previous acknowledgement exists', () => {
+    const settings = makeSettings({
+      ollamaProviderParityAcknowledgedAt: '2026-06-08T12:00:00.000Z'
+    })
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+
+    expect(
+      sanitizeSettingsPatch({
+        ollamaToolControlTier: 'provider_parity'
+      })
+    ).toMatchObject({
+      ollamaToolControlTier: 'provider_parity',
+      ollamaProviderParityAcknowledgedAt: '2026-06-08T12:00:00.000Z'
+    })
+  })
+
   it('preserves current iMessage polling state for malformed enablement patches', () => {
     const settings = makeSettings({
       messageBridgeEnabled: true,
