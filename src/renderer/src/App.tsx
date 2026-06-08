@@ -1114,6 +1114,8 @@ function App(): React.JSX.Element {
   const [kimiBinaryPath, setKimiBinaryPath] = useState('')
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://127.0.0.1:11434')
   const [ollamaDefaultModel, setOllamaDefaultModel] = useState('')
+  const [ollamaToolControlTier, setOllamaToolControlTier] =
+    useState<AppSettings['ollamaToolControlTier']>('read_only')
   const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [geminiAuthStatus, setGeminiAuthStatus] = useState<GeminiAuthStatus | null>(null)
@@ -3261,6 +3263,13 @@ function App(): React.JSX.Element {
     setKimiBinaryPath(s.kimiBinaryPath || '')
     setOllamaBaseUrl(s.ollamaBaseUrl || 'http://127.0.0.1:11434')
     setOllamaDefaultModel(s.ollamaDefaultModel || '')
+    setOllamaToolControlTier(
+      s.ollamaToolControlTier === 'approved_edits' ||
+        s.ollamaToolControlTier === 'approved_shell' ||
+        s.ollamaToolControlTier === 'provider_parity'
+        ? s.ollamaToolControlTier
+        : 'read_only'
+    )
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(s.agenticServices || {}) })
     setAutoResumeParentOnSubThreadCompletion(
       typeof s.autoResumeParentOnSubThreadCompletion === 'boolean'
@@ -3684,6 +3693,14 @@ function App(): React.JSX.Element {
       setOllamaDefaultModel(next.ollamaDefaultModel)
       settingsPatch.ollamaDefaultModel = next.ollamaDefaultModel
       providersToRefresh.push('ollama')
+    }
+    if (next.ollamaToolControlTier !== undefined) {
+      setOllamaToolControlTier(next.ollamaToolControlTier)
+      settingsPatch.ollamaToolControlTier = next.ollamaToolControlTier
+      providersToRefresh.push('ollama')
+    }
+    if (next.ollamaProviderParityAcknowledgedAt !== undefined) {
+      settingsPatch.ollamaProviderParityAcknowledgedAt = next.ollamaProviderParityAcknowledgedAt
     }
     if (next.agenticServices !== undefined) {
       const normalizedServices = { ...DEFAULT_AGENTIC_SERVICES, ...next.agenticServices }
@@ -15068,6 +15085,8 @@ function App(): React.JSX.Element {
               kimiBinaryPath={kimiBinaryPath}
               ollamaBaseUrl={ollamaBaseUrl}
               ollamaDefaultModel={ollamaDefaultModel}
+              ollamaToolControlTier={ollamaToolControlTier}
+              ollamaProviderParityAcknowledgedAt={settings?.ollamaProviderParityAcknowledgedAt}
               agenticServices={agenticServices}
               nativeSubAgentRequests={settings?.nativeSubAgentRequests ?? 'ask'}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}

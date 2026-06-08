@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MascotGhost } from './AppChromeSymbols'
 import type {
   AgenticNetworkPolicy,
@@ -138,6 +139,8 @@ interface SettingsPanelProps {
   kimiBinaryPath: string
   ollamaBaseUrl: string
   ollamaDefaultModel: string
+  ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+  ollamaProviderParityAcknowledgedAt?: string
   agenticServices: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), TaskWraith auto-dispatches a continuation run
@@ -254,6 +257,8 @@ interface SettingsPanelProps {
     kimiBinaryPath?: string
     ollamaBaseUrl?: string
     ollamaDefaultModel?: string
+    ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+    ollamaProviderParityAcknowledgedAt?: string
     agenticServices?: AgenticServicesSettings
     nativeSubAgentRequests?: NativeSubAgentRequestPolicy
     autoResumeParentOnSubThreadCompletion?: boolean
@@ -664,6 +669,33 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'subtle', label: 'Subtle', helper: 'One effect layer with gentle motion.' },
   { value: 'cinematic', label: 'Cinematic', helper: 'Sky + ghost in synchronized balance.' },
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
+]
+
+const OLLAMA_TOOL_CONTROL_TIERS: Array<{
+  value: NonNullable<AppSettings['ollamaToolControlTier']>
+  label: string
+  helper: string
+}> = [
+  {
+    value: 'read_only',
+    label: 'Tier 1 · Read-only',
+    helper: 'Workspace listing, file reads, and search only.'
+  },
+  {
+    value: 'approved_edits',
+    label: 'Tier 2 · Approved edits',
+    helper: 'write_file, replace, and apply_patch with intent plus modal approval.'
+  },
+  {
+    value: 'approved_shell',
+    label: 'Tier 3 · Approved shell',
+    helper: 'Adds shell commands. Every command still requires modal approval.'
+  },
+  {
+    value: 'provider_parity',
+    label: 'Tier 4 · Provider parity',
+    helper: 'Full TaskWraith tool surface after explicit risk acknowledgement.'
+  }
 ]
 
 // 1.0.6-CRUX41 — cursor + grok are first-class; surface them in the MCP tab's
@@ -1295,6 +1327,8 @@ export function SettingsPanel({
   kimiBinaryPath,
   ollamaBaseUrl,
   ollamaDefaultModel,
+  ollamaToolControlTier = 'read_only',
+  ollamaProviderParityAcknowledgedAt,
   agenticServices,
   nativeSubAgentRequests = 'ask',
   autoResumeParentOnSubThreadCompletion,
@@ -1388,6 +1422,7 @@ export function SettingsPanel({
   const [fxSnapshot, setFxSnapshot] = useState<FxRateSnapshot | null>(null)
   const [fxRefreshing, setFxRefreshing] = useState(false)
   const [fxError, setFxError] = useState<string | null>(null)
+  const [showOllamaParityAck, setShowOllamaParityAck] = useState(false)
   // TaskWraith MCP bridge "Test" feedback. `onRefreshGeminiMcpBridgeStatus`
   // is fire-and-forget (void), so capture the status `checkedAt` at click
   // time; we're "testing" until a fresh status (new `checkedAt`) lands.
@@ -1784,9 +1819,84 @@ export function SettingsPanel({
   const updateAdvancedFx = (partial: Partial<AppSettings['advancedFx']>): void => {
     onChange({ advancedFx: { ...advancedFx, ...partial } })
   }
+  const resolvedOllamaToolControlTier =
+    ollamaToolControlTier === 'approved_edits' ||
+    ollamaToolControlTier === 'approved_shell' ||
+    ollamaToolControlTier === 'provider_parity'
+      ? ollamaToolControlTier
+      : 'read_only'
+  const selectOllamaToolControlTier = (
+    tier: NonNullable<AppSettings['ollamaToolControlTier']>
+  ): void => {
+    if (tier === resolvedOllamaToolControlTier) return
+    if (tier === 'provider_parity' && !ollamaProviderParityAcknowledgedAt) {
+      setShowOllamaParityAck(true)
+      return
+    }
+    onChange({ ollamaToolControlTier: tier })
+  }
+  const confirmOllamaProviderParity = (): void => {
+    setShowOllamaParityAck(false)
+    onChange({
+      ollamaToolControlTier: 'provider_parity',
+      ollamaProviderParityAcknowledgedAt: new Date().toISOString()
+    })
+  }
 
   return (
     <div className={`settings-panel settings-panel-${layout}`}>
+      {showOllamaParityAck &&
+        createPortal(
+          <div
+            className="creative-approval-backdrop"
+            role="presentation"
+            onMouseDown={() => setShowOllamaParityAck(false)}
+          >
+            <div
+              className="creative-approval-modal approval-elevation-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ollama-parity-ack-title"
+              data-elevation-tier="2"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="creative-approval-modal-header">
+                <span className="creative-approval-modal-eyebrow" aria-hidden>
+                  Ollama provider parity
+                </span>
+                <h2 id="ollama-parity-ack-title" className="creative-approval-modal-title">
+                  Enable full TaskWraith tools for Ollama?
+                </h2>
+              </header>
+              <p className="creative-approval-modal-description">
+                Tier 4 lets local Ollama models request the full TaskWraith tool surface. TaskWraith
+                still enforces workspace boundaries, path checks, approval policy, and audit events,
+                but local models can make poor or prompt-injected tool requests.
+              </p>
+              <p className="creative-approval-modal-description approval-elevation-caution">
+                Use at your own risk. Keep this to test workspaces you can recover, and revoke it
+                here by returning Ollama to a lower tier.
+              </p>
+              <footer className="creative-approval-modal-actions">
+                <button
+                  type="button"
+                  className="creative-approval-modal-reject"
+                  onClick={() => setShowOllamaParityAck(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="creative-approval-modal-approve-once"
+                  onClick={confirmOllamaProviderParity}
+                >
+                  I understand, enable Tier 4
+                </button>
+              </footer>
+            </div>
+          </div>,
+          document.body
+        )}
       {/*
         Sticky header with inline tab bar + "Done" button. Suppressed
         in `takeover` layout because the host renders a SettingsSidebar
@@ -4312,9 +4422,41 @@ export function SettingsPanel({
                   placeholder={ollamaStatus?.defaultModel || 'qwen3:4b-instruct'}
                 />
                 <p className="settings-hint">
-                  Leave blank to use the first installed Ollama model. Local mode is read-only chat;
-                  web and file search should be added through TaskWraith-owned read-only tools.
+                  Leave blank to use the first installed Ollama model.
                 </p>
+
+                <label className="settings-label">Local model tool control</label>
+                <div className="settings-option-list">
+                  {OLLAMA_TOOL_CONTROL_TIERS.map((option) => {
+                    const checked = resolvedOllamaToolControlTier === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`settings-radio-option ${checked ? 'active' : ''}`}
+                        onClick={() => selectOllamaToolControlTier(option.value)}
+                        aria-pressed={checked}
+                      >
+                        <span className="settings-radio-dot" />
+                        <span>
+                          <strong>{option.label}</strong>
+                          <span>{option.helper}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="settings-hint">
+                  Ollama never receives raw filesystem access. Every tier is still mediated by
+                  TaskWraith workspace checks; Tier 2 and Tier 3 force a modal approval before each
+                  mutation.
+                </p>
+                {resolvedOllamaToolControlTier === 'provider_parity' && (
+                  <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>
+                    Provider parity is enabled for Ollama. Use lower tiers to revoke the advanced
+                    tool surface.
+                  </p>
+                )}
                 {ollamaStatus?.error && (
                   <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>
                     {String(ollamaStatus.error)}

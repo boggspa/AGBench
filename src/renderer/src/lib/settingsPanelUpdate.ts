@@ -53,6 +53,8 @@ export type SettingsPanelUpdate = {
   kimiBinaryPath?: string
   ollamaBaseUrl?: string
   ollamaDefaultModel?: string
+  ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+  ollamaProviderParityAcknowledgedAt?: string
   agenticServices?: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   autoResumeParentOnSubThreadCompletion?: boolean
