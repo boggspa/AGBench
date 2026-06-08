@@ -489,15 +489,19 @@
    * (1/6 of the strip width). Without min-width: 0 + the role
    * truncation below, a long role like "Implementation Reviewer"
    * would force the column wider than its 1fr share. */
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
-.ensemble-above-row-chips.is-wrapped .ensemble-above-chip-role {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Single-row flex layout (1–6 chips): let each chip shrink and cap
+ * width so long custom role names don't paint over their neighbours.
+ * Ellipsis on `.ensemble-above-chip-role` carries the readable cue;
+ * the chip `title` still exposes the full string on hover. */
+.ensemble-above-row-chips:not(.is-wrapped) .ensemble-above-chip {
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 11.5rem;
 }
 
 /* 1.0.5-EW2 — The "+ add participant" button is now a SIBLING of
@@ -553,6 +557,10 @@
    */
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  container-type: inline-size;
+  container-name: ensemble-chip;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -622,9 +630,12 @@
 }
 
 .ensemble-above-chip-body {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 5px 10px;
   background: transparent;
   border: none;
@@ -802,6 +813,31 @@
 
 .ensemble-above-chip-role {
   font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scale down role text inside very narrow chips (wrapped grid cells,
+ * dense single rows) so more characters stay legible before ellipsis. */
+@container ensemble-chip (max-width: 108px) {
+  .ensemble-above-chip-role {
+    font-size: 11px;
+  }
+}
+
+@container ensemble-chip (max-width: 84px) {
+  .ensemble-above-chip-role {
+    font-size: 10px;
+  }
+}
+
+.ensemble-above-chip-tokens,
+.ensemble-above-chip-status,
+.ensemble-above-chip-retry {
+  flex-shrink: 0;
 }
 
 /* 1.0.4-AV2 — Per-participant token-spend badge.

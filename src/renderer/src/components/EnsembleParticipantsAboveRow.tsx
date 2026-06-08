@@ -1240,7 +1240,10 @@ function ParticipantChip({
           without the redundant glyph. Token chip + status icon
           stay on the right edge.
         */}
-        <span className="ensemble-above-chip-role">
+        <span
+          className="ensemble-above-chip-role"
+          title={participant.role || getProviderName(participant.provider)}
+        >
           {participant.role || getProviderName(participant.provider)}
         </span>
         {/* 1.0.4-AV2 — per-participant token-spend chip. Renders
