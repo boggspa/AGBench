@@ -40,6 +40,12 @@ import type {
   ProviderId
 } from '../../../main/store/types'
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
+import {
+  ENSEMBLE_ROLE_PRESET_CUSTOM,
+  ENSEMBLE_ROLE_PRESETS,
+  resolveRolePresetId,
+  roleLabelForPresetId
+} from '../lib/ensembleRolePresets'
 import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
 import {
@@ -1370,6 +1376,11 @@ export function EnsembleParticipantOverflowPopover({
 }: OverflowPopoverProps): React.JSX.Element | null {
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+  const [rolePresetId, setRolePresetId] = useState(() => resolveRolePresetId(participant.role))
+
+  useEffect(() => {
+    setRolePresetId(resolveRolePresetId(participant.role))
+  }, [participant.id, participant.role])
 
   useEffect(() => {
     let cancelled = false
@@ -1438,12 +1449,45 @@ export function EnsembleParticipantOverflowPopover({
       </label>
       <label className="ensemble-above-overflow-role">
         <span className="ensemble-above-overflow-label">Role</span>
-        <input
-          type="text"
-          value={participant.role}
+        <select
+          className="ensemble-above-overflow-role-picker"
+          value={rolePresetId}
           disabled={locked}
-          onChange={(event) => onPatch({ role: event.target.value })}
-          placeholder={`${getProviderName(participant.provider)} role`}
+          onChange={(event) => {
+            const nextPresetId = event.target.value
+            setRolePresetId(nextPresetId)
+            const presetLabel = roleLabelForPresetId(nextPresetId)
+            if (presetLabel) {
+              onPatch({ role: presetLabel })
+            }
+          }}
+        >
+          {ENSEMBLE_ROLE_PRESETS.map((preset) => (
+            <option key={preset.id} value={preset.id} title={preset.description}>
+              {preset.label}
+            </option>
+          ))}
+          <option value={ENSEMBLE_ROLE_PRESET_CUSTOM}>Custom…</option>
+        </select>
+        {rolePresetId === ENSEMBLE_ROLE_PRESET_CUSTOM ? (
+          <input
+            type="text"
+            value={participant.role}
+            disabled={locked}
+            onChange={(event) => onPatch({ role: event.target.value })}
+            placeholder={`${getProviderName(participant.provider)} role`}
+          />
+        ) : null}
+      </label>
+      <label className="ensemble-above-overflow-instructions">
+        <span className="ensemble-above-overflow-label">Goal / brief</span>
+        <textarea
+          className="ensemble-above-overflow-instructions-field"
+          rows={3}
+          value={participant.instructions}
+          disabled={locked}
+          onChange={(event) => onPatch({ instructions: event.target.value })}
+          placeholder="Optional focus for this participant's turns…"
         />
       </label>
       {onRetry && (

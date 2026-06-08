@@ -916,6 +916,7 @@
   color: var(--text-secondary);
 }
 
+.ensemble-above-overflow-role select,
 .ensemble-above-overflow-role input[type='text'] {
   width: 100%;
   border: 1px solid var(--border-color);
@@ -924,6 +925,31 @@
   color: var(--text-primary);
   padding: 6px 8px;
   font-size: var(--font-size-sm);
+}
+
+.ensemble-above-overflow-role-picker {
+  cursor: pointer;
+}
+
+.ensemble-above-overflow-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ensemble-above-overflow-instructions-field {
+  width: 100%;
+  min-height: 54px;
+  max-height: 96px;
+  resize: vertical;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* 1.0.4-AT7 — Retry participant action in the chip's overflow
