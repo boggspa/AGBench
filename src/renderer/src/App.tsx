@@ -181,6 +181,13 @@ import { usePanelPresence } from './hooks/usePanelPresence'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
+import { ExternalPathGrantPromptCard } from './components/ExternalPathGrantPromptCard'
+import {
+  filterDispatchExternalPathGrants,
+  findExternalPathGrantGaps,
+  missingExternalPathGrantProviders,
+  type ExternalPathGrantGap
+} from './lib/externalPathGrantPreflight'
 import { GitCommitControls } from './components/GitCommitControls'
 import { branchTone, GitCiChip, GitMergeBadge, GitSyncChip } from './components/GitStatusChips'
 import type { GitPrSummary, GitRepositorySnapshot } from '../../main/services/GitService'
@@ -1538,6 +1545,17 @@ function App(): React.JSX.Element {
   const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<
     Record<string, ComposerPermissionState>
   >({})
+  const [externalPathGrantPromptByChatId, setExternalPathGrantPromptByChatId] = useState<
+    Record<
+      string,
+      {
+        gaps: ExternalPathGrantGap[]
+        pendingRun: QueuedRunRequest | null
+        trigger: 'preflight' | 'attach'
+      } | null
+    >
+  >({})
+  const [externalPathGrantPromptBusy, setExternalPathGrantPromptBusy] = useState(false)
   const [
     pendingAgentApprovalByChatId,
     setPendingAgentApprovalForChatId,
@@ -2233,6 +2251,9 @@ function App(): React.JSX.Element {
   const permissionRequestSource = permissionRequestState.source
   const pendingAgentApproval = currentComposerChatId
     ? pendingAgentApprovalByChatId[currentComposerChatId] || null
+    : null
+  const externalPathGrantPrompt = currentComposerChatId
+    ? externalPathGrantPromptByChatId[currentComposerChatId] || null
     : null
   const pendingPlanChoice = currentComposerChatId
     ? pendingPlanChoiceByChatId[currentComposerChatId] || null
@@ -4883,24 +4904,81 @@ function App(): React.JSX.Element {
    * Claude/Kimi `--add-dir` + approval gate), so no main-process
    * change is needed — write is free parameterization here.
    */
+  const clearExternalPathGrantPrompt = (chatId?: string | null) => {
+    const targetChatId = chatId || currentChat?.appChatId
+    if (!targetChatId) return
+    setExternalPathGrantPromptByChatId((prev) => ({ ...prev, [targetChatId]: null }))
+  }
+
+  const openExternalPathGrantPrompt = (input: {
+    chatId: string
+    gaps: ExternalPathGrantGap[]
+    pendingRun?: QueuedRunRequest | null
+    trigger: 'preflight' | 'attach'
+  }) => {
+    if (input.gaps.length === 0) return
+    setExternalPathGrantPromptByChatId((prev) => ({
+      ...prev,
+      [input.chatId]: {
+        gaps: input.gaps,
+        pendingRun: input.pendingRun ?? null,
+        trigger: input.trigger
+      }
+    }))
+  }
+
+  const persistExternalPathGrantPrompt = async (access: ExternalPathGrant['access']) => {
+    const chatId = currentChat?.appChatId
+    const prompt = chatId ? externalPathGrantPromptByChatId[chatId] : null
+    if (!chatId || !prompt || prompt.gaps.length === 0) return
+    setExternalPathGrantPromptBusy(true)
+    try {
+      for (const gap of prompt.gaps) {
+        const result = await window.api.pickAndPersistExternalPathGrant({
+          chatId,
+          access,
+          path: gap.path
+        })
+        if (!result.ok) return
+      }
+      const resumeRun = prompt.pendingRun
+      clearExternalPathGrantPrompt(chatId)
+      if (resumeRun) {
+        void executeRun(resumeRun)
+      }
+    } catch (err) {
+      console.warn('[external-path:pick-and-persist] prompt grant failed', err)
+    } finally {
+      setExternalPathGrantPromptBusy(false)
+    }
+  }
+
   const handleAddWorkspaceFolder = async (access: ExternalPathGrant['access']) => {
     const chatId = currentChat?.appChatId
-    if (!chatId) return
+    if (!chatId || !currentChat) return
     try {
       const result = await window.api.pickAndPersistExternalPathGrant({
         chatId,
-        access
+        access,
+        deferPersist: true
       })
-      if (!result.ok) {
-        // 'cancelled' is the common path; 'no-chat' / 'no-provider'
-        // / 'no-window' are defensive. No UI surface needed for any
-        // of them — the user already knows they cancelled, and the
-        // other reasons indicate an impossible-state we can't show
-        // anything meaningful for.
+      if (!result.ok || !result.path) {
         return
       }
-      // Banner / diff row appears via the main → renderer chat-updated
-      // broadcast; nothing else to do on this side.
+      const grants = normalizeExternalPathGrants(
+        collectExternalPathGrantsFromMetadata(currentChat.providerMetadata)
+      )
+      const missingProviders = missingExternalPathGrantProviders({
+        chat: currentChat,
+        grants,
+        path: result.path
+      })
+      if (missingProviders.length === 0) return
+      openExternalPathGrantPrompt({
+        chatId,
+        gaps: [{ path: result.path, access, missingProviders }],
+        trigger: 'attach'
+      })
     } catch (err) {
       console.warn('[external-path:pick-and-persist] failed', err)
     }
@@ -4908,28 +4986,30 @@ function App(): React.JSX.Element {
 
   /**
    * 1.0.6-EW69 — Attach an EXISTING known workspace as an additional
-   * (secondary) workspace with the chosen access, WITHOUT the OS
-   * folder dialog. Passes the workspace's path to the same
-   * pick-and-persist IPC (which skips the dialog when `path` is set).
-   * Makes building a multi-workspace set from already-registered
-   * workspaces a one-click action instead of re-picking the folder.
+   * (secondary) workspace. Surfaces the composer permission card first
+   * so the user explicitly grants read/edit access for dispatch-capable
+   * panelists before grants are issued.
    */
-  const handleAddKnownWorkspaceAsSecondary = async (
+  const handleAddKnownWorkspaceAsSecondary = (
     workspacePath: string,
     access: ExternalPathGrant['access']
   ) => {
     const chatId = currentChat?.appChatId
-    if (!chatId || !workspacePath) return
-    try {
-      const result = await window.api.pickAndPersistExternalPathGrant({
-        chatId,
-        access,
-        path: workspacePath
-      })
-      if (!result.ok) return
-    } catch (err) {
-      console.warn('[external-path:pick-and-persist] (known path) failed', err)
-    }
+    if (!chatId || !workspacePath || !currentChat) return
+    const grants = normalizeExternalPathGrants(
+      collectExternalPathGrantsFromMetadata(currentChat.providerMetadata)
+    )
+    const missingProviders = missingExternalPathGrantProviders({
+      chat: currentChat,
+      grants,
+      path: workspacePath
+    })
+    if (missingProviders.length === 0) return
+    openExternalPathGrantPrompt({
+      chatId,
+      gaps: [{ path: workspacePath, access, missingProviders }],
+      trigger: 'attach'
+    })
   }
 
   const handleSelectWelcomeWorkspaceDialog = async () => {
@@ -7895,12 +7975,18 @@ function App(): React.JSX.Element {
         : claudeReasoningEffort
     const requestClaudeFastMode =
       provider === 'claude' ? (composerSelection?.claudeFastMode ?? claudeFastMode) : claudeFastMode
-    const externalPathGrants =
+    const normalizedExternalPathGrants =
       scope !== 'global'
         ? normalizeExternalPathGrants(
             collectExternalPathGrantsFromMetadata(selectedChat?.providerMetadata)
-          ).filter((grant) => grant.provider === provider)
+          )
         : []
+    const externalPathGrants =
+      scope === 'global'
+        ? []
+        : selectedChat?.chatKind === 'ensemble'
+          ? filterDispatchExternalPathGrants(normalizedExternalPathGrants)
+          : normalizedExternalPathGrants.filter((grant) => grant.provider === provider)
     const requestDiscordContextSelection =
       !existingPrompt &&
       selectedChat?.appChatId &&
@@ -8147,6 +8233,24 @@ function App(): React.JSX.Element {
       const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
       if (!runChat || (!isGlobalRun && !runWorkspace) || !request.prompt.trim()) return
       const runProvider = request.provider || currentProvider
+      if (!isGlobalRun) {
+        const grantPreflight = findExternalPathGrantGaps({
+          chat: runChat,
+          grants: normalizeExternalPathGrants(
+            collectExternalPathGrantsFromMetadata(runChat.providerMetadata)
+          ),
+          primaryWorkspacePath: runWorkspace?.path
+        })
+        if (grantPreflight.gaps.length > 0) {
+          openExternalPathGrantPrompt({
+            chatId: runChat.appChatId,
+            gaps: grantPreflight.gaps,
+            pendingRun: request,
+            trigger: 'preflight'
+          })
+          return
+        }
+      }
       if (runChat.chatKind === 'ensemble') {
         const mode =
           runChat.ensemble?.activeRound?.status === 'running'
@@ -17583,6 +17687,16 @@ function App(): React.JSX.Element {
                           ))}
                         </div>
                       )}
+                    {externalPathGrantPrompt && (
+                      <ExternalPathGrantPromptCard
+                        gaps={externalPathGrantPrompt.gaps}
+                        trigger={externalPathGrantPrompt.trigger}
+                        busy={externalPathGrantPromptBusy}
+                        onGrantRead={() => void persistExternalPathGrantPrompt('read')}
+                        onGrantEdit={() => void persistExternalPathGrantPrompt('write')}
+                        onDismiss={() => clearExternalPathGrantPrompt()}
+                      />
+                    )}
                     {permissionRequestPaths.length > 0 && (
                       <div className="composer-permission-card">
                         <div className="composer-permission-title">

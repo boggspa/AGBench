@@ -68,6 +68,7 @@ const api = {
     // OS folder dialog and grants this exact path (composer picker's
     // "attach a known workspace as a secondary" action).
     path?: string
+    deferPersist?: boolean
   }): Promise<
     | { ok: true; grants: unknown[]; path: string }
     | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }

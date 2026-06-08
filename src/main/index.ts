@@ -244,7 +244,9 @@ import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
-  collectExternalPathGrantsFromMetadata
+  collectExternalPathGrantsFromMetadata,
+  EXTERNAL_PATH_GRANT_DISPATCH_PROVIDERS,
+  isExternalPathGrantDispatchProvider
 } from './store/ExternalPathGrants'
 import { resolveRegisteredExplicitExternalPath } from './ExternalPathGrantRequest'
 import {
@@ -1449,7 +1451,17 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
   const externalPathGrants = rawExternalPathGrants.length
     ? normalizeExternalPathGrants(rawExternalPathGrants)
     : []
-  if (rawExternalPathGrants.length && externalPathGrants.length !== rawExternalPathGrants.length) {
+  if (
+    rawExternalPathGrants.some(
+      (grant) =>
+        grant &&
+        typeof grant.path === 'string' &&
+        grant.issuedBy === 'main' &&
+        typeof grant.signature === 'string' &&
+        grant.signature.length > 0 &&
+        !isMainIssuedExternalPathGrant(grant as ExternalPathGrant)
+    )
+  ) {
     throw new Error('External path grants must be issued by TaskWraith in this app session.')
   }
   const appChatId = optionalString(payload.appChatId) || optionalString(payload.chatId)
@@ -7312,14 +7324,7 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
   // provider cannot be smuggled in as another.
   // 1.0.6-CRUX21 — include grok + cursor (first-class providers) so their
   // signed grants normalize through rather than being dropped here.
-  const allowedProviders = new Set<ProviderId>([
-    'gemini',
-    'codex',
-    'claude',
-    'kimi',
-    'grok',
-    'cursor'
-  ])
+  const allowedProviders = EXTERNAL_PATH_GRANT_DISPATCH_PROVIDERS
   for (const grant of grants) {
     if (!grant || typeof grant.path !== 'string') continue
     if (!allowedProviders.has(grant.provider)) continue
@@ -14994,7 +14999,13 @@ if (isGeminiMcpBridgeProcess) {
         // folder dialog and grant that exact path (the composer
         // picker's "attach a known workspace as a secondary" action).
         // When omitted, open the folder picker as before.
-        payload: { chatId?: string; access?: 'read' | 'write'; path?: string }
+        payload: {
+          chatId?: string
+          access?: 'read' | 'write'
+          path?: string
+          /** When true, resolve the folder but skip issuing grants until the user confirms in the composer prompt. */
+          deferPersist?: boolean
+        }
       ): Promise<
         | { ok: true; grants: ExternalPathGrant[]; path: string }
         | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
@@ -15024,7 +15035,10 @@ if (isGeminiMcpBridgeProcess) {
         } else if (chat.provider) {
           targetProviders.push(chat.provider)
         }
-        if (targetProviders.length === 0) {
+        const dispatchProviders = targetProviders.filter((provider) =>
+          isExternalPathGrantDispatchProvider(provider)
+        )
+        if (dispatchProviders.length === 0) {
           return { ok: false, reason: 'no-provider' }
         }
 
@@ -15059,8 +15073,8 @@ if (isGeminiMcpBridgeProcess) {
             message: `Issues a ${
               access === 'write' ? 'read+write' : 'read-only'
             } grant scoped to this chat. ${
-              targetProviders.length > 1
-                ? `One grant per panelist provider (${targetProviders
+              dispatchProviders.length > 1
+                ? `One grant per panelist provider (${dispatchProviders
                     .map((p) => providerLabel(p))
                     .join(', ')}).`
                 : ''
@@ -15084,8 +15098,12 @@ if (isGeminiMcpBridgeProcess) {
           kind = 'file'
         }
 
+        if (payload?.deferPersist) {
+          return { ok: true, grants: [], path: selectedPath }
+        }
+
         const now = Date.now()
-        const newGrants: ExternalPathGrant[] = targetProviders.map((provider) =>
+        const newGrants: ExternalPathGrant[] = dispatchProviders.map((provider) =>
           issueExternalPathGrant({
             id: `proactive-${now}-${provider}-${randomBytes(4).toString('hex')}`,
             provider,

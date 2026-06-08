@@ -22,6 +22,25 @@ const KNOWN_PROVIDERS = new Set<ProviderId>([
   'ollama'
 ])
 
+/** Providers whose CLI/MCP runtimes consume signed external-path grants at dispatch. */
+export const EXTERNAL_PATH_GRANT_DISPATCH_PROVIDERS = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor'
+])
+
+export function isExternalPathGrantDispatchProvider(
+  provider: ProviderId | string | null | undefined
+): provider is ProviderId {
+  return (
+    typeof provider === 'string' &&
+    EXTERNAL_PATH_GRANT_DISPATCH_PROVIDERS.has(provider as ProviderId)
+  )
+}
+
 function grantKey(grant: ExternalPathGrant): string {
   return `${grant.provider}:${grant.path}`
 }
