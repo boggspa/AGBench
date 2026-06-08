@@ -105,13 +105,15 @@ const formatEnsembleTokenBreakdown = (
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      explicitCostUsd: 0
+      explicitCostUsd: 0,
+      peakMemoryRssGb: 0
     }
     byParticipant.set(pid, {
       inputTokens: existing.inputTokens + counts.inputTokens,
       outputTokens: existing.outputTokens + counts.outputTokens,
       totalTokens: existing.totalTokens + counts.totalTokens,
-      explicitCostUsd: existing.explicitCostUsd + cost
+      explicitCostUsd: existing.explicitCostUsd + cost,
+      peakMemoryRssGb: 0
     })
   }
   if (byParticipant.size === 0) return null
