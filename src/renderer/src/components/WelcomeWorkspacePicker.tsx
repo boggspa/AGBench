@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { WorkspaceRecord } from '../../../main/store/types'
+import {
+  hideWelcomeWorkspaceId,
+  readWelcomeWorkspaceHiddenIds
+} from '../lib/welcomeWorkspaceHidden'
 
 /**
  * Welcome-screen workspace picker (1.0.3). Surfaces below the welcome
@@ -54,6 +58,9 @@ export function WelcomeWorkspacePicker({
   onSelectNoWorkspace
 }: WelcomeWorkspacePickerProps): React.JSX.Element | null {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(() =>
+    readWelcomeWorkspaceHiddenIds()
+  )
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
   // 1.0.5-W1 — Position state for the portaled popover. The pre-1.0.5
@@ -122,8 +129,14 @@ export function WelcomeWorkspacePicker({
     }
   }, [popoverOpen])
 
+  const handleHideWorkspace = (workspaceId: string): void => {
+    hideWelcomeWorkspaceId(workspaceId)
+    setHiddenWorkspaceIds((current) => new Set([...current, workspaceId]))
+  }
+
   const others = workspaces
     .filter((ws) => ws.id !== currentWorkspace?.id)
+    .filter((ws) => !hiddenWorkspaceIds.has(ws.id))
     .sort((a, b) => (b.lastOpenedAt || b.createdAt || 0) - (a.lastOpenedAt || a.createdAt || 0))
   const inline = others.slice(0, WELCOME_WORKSPACE_INLINE_LIMIT)
   const overflow = others.slice(WELCOME_WORKSPACE_INLINE_LIMIT)
@@ -151,17 +164,27 @@ export function WelcomeWorkspacePicker({
           <span className="welcome-workspace-picker-chip-name">Global Chat</span>
         </button>
         {inline.map((ws) => (
-          <button
-            key={ws.id}
-            type="button"
-            className="welcome-workspace-picker-chip"
-            onClick={() => onPickExisting(ws)}
-            title={ws.path}
-          >
-            <span className="welcome-workspace-picker-chip-name">
-              {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
-            </span>
-          </button>
+          <span key={ws.id} className="welcome-workspace-picker-chip-wrap">
+            <button
+              type="button"
+              className="welcome-workspace-picker-chip"
+              onClick={() => onPickExisting(ws)}
+              title={ws.path}
+            >
+              <span className="welcome-workspace-picker-chip-name">
+                {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="welcome-workspace-picker-chip-dismiss"
+              onClick={() => handleHideWorkspace(ws.id)}
+              title="Remove from this row"
+              aria-label={`Remove ${ws.displayName || ws.path.split('/').pop() || 'workspace'} from this row`}
+            >
+              ×
+            </button>
+          </span>
         ))}
         <button
           ref={triggerRef}
@@ -200,21 +223,31 @@ export function WelcomeWorkspacePicker({
               <div className="welcome-workspace-popover-section">
                 <div className="welcome-workspace-popover-header">More workspaces</div>
                 {overflow.map((ws) => (
-                  <button
-                    key={ws.id}
-                    type="button"
-                    role="menuitem"
-                    className="welcome-workspace-popover-row"
-                    onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
-                    title={ws.path}
-                  >
-                    <span className="welcome-workspace-popover-row-name">
-                      {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
-                    </span>
-                    {ws.path && (
-                      <span className="welcome-workspace-popover-row-path">{ws.path}</span>
-                    )}
-                  </button>
+                  <div key={ws.id} className="welcome-workspace-popover-row welcome-workspace-popover-row-with-dismiss">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="welcome-workspace-popover-row-main-action"
+                      onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
+                      title={ws.path}
+                    >
+                      <span className="welcome-workspace-popover-row-name">
+                        {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                      </span>
+                      {ws.path && (
+                        <span className="welcome-workspace-popover-row-path">{ws.path}</span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="welcome-workspace-picker-chip-dismiss"
+                      onClick={() => handleHideWorkspace(ws.id)}
+                      title="Remove from this row"
+                      aria-label={`Remove ${ws.displayName || ws.path.split('/').pop() || 'workspace'} from this row`}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
