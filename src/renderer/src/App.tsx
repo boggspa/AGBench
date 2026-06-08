@@ -12068,14 +12068,37 @@ function App(): React.JSX.Element {
     }
   }, [showSkyVisualFx])
 
+  // Tracks the live window width so the inspector's *applied* width can be
+  // clamped to the viewport on launch / window resize (see
+  // `effectiveInspectorWidth`). rAF-coalesced to avoid resize-storm churn.
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1280
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let frame = 0
+    const onResize = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => setViewportWidth(window.innerWidth))
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
+
   const startRightPanelResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
-    const startWidth = appearance.inspectorWidth
     const maxWidth = Math.min(
       MAX_RIGHT_PANEL_WIDTH,
       Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(window.innerWidth * 0.58))
     )
+    // Start from the *applied* (window-clamped) width, not the raw stored
+    // preference — otherwise the first drag jumps to the full stored px on
+    // a window that was rendering a narrower, clamped inspector.
+    const startWidth = Math.min(appearance.inspectorWidth, maxWidth)
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const nextWidth = Math.max(
@@ -12159,7 +12182,7 @@ function App(): React.JSX.Element {
       MAX_RIGHT_PANEL_WIDTH,
       Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(window.innerWidth * 0.58))
     )
-    const currentWidth = appearance.inspectorWidth
+    const currentWidth = Math.min(appearance.inspectorWidth, maxWidth)
     const step = event.shiftKey ? 40 : 16
     let nextWidth = currentWidth
 
@@ -14510,8 +14533,20 @@ function App(): React.JSX.Element {
     rightDockTabs.some((tab) => tab.id === rightDockTab)
       ? rightDockTab
       : rightDockTabs[0]?.id || 'run'
+  // The stored `inspectorWidth` is an absolute px preference. Applied
+  // verbatim it mis-scales on a window narrower than the one it was saved
+  // on (the inspector opens too wide and squeezes the transcript until the
+  // user drags it back). Clamp the *applied* width to the same
+  // window-proportional ceiling the drag handlers use, so it opens sensibly
+  // for the current window. This is non-destructive: the stored preference
+  // is untouched and re-expands up to it when the window grows.
+  const rightPanelWindowMax = Math.min(
+    MAX_RIGHT_PANEL_WIDTH,
+    Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(viewportWidth * 0.58))
+  )
+  const effectiveInspectorWidth = Math.min(appearance.inspectorWidth, rightPanelWindowMax)
   const rightDockStyle = rightDockVisible
-    ? ({ '--right-dock-width': `${appearance.inspectorWidth}px` } as CSSProperties)
+    ? ({ '--right-dock-width': `${effectiveInspectorWidth}px` } as CSSProperties)
     : undefined
   const isChatExpanded = !showWorkspaceSidebar || !rightDockVisible
   const activeDiffSummaries: DiffFileSummary[] = Array.isArray((activeDiff as any)?.summaries)
@@ -19070,7 +19105,7 @@ function App(): React.JSX.Element {
               aria-label="Resize right dock"
               aria-valuemin={MIN_RIGHT_PANEL_WIDTH}
               aria-valuemax={MAX_RIGHT_PANEL_WIDTH}
-              aria-valuenow={appearance.inspectorWidth}
+              aria-valuenow={effectiveInspectorWidth}
               onMouseDown={startRightPanelResize}
               onKeyDown={handleRightPanelResizeKeyDown}
               title="Resize right dock"
