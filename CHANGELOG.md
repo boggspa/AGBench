@@ -4,7 +4,7 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
-## 1.3.0 — In progress
+## 1.3.0 — 2026-06-08
 
 ### Added
 - **Local Ollama provider.** TaskWraith can talk to a local Ollama runtime without
@@ -12,6 +12,19 @@ history, and workspace state stay on your machine throughout.
   GPT OSS 20B. Local transcript labels present those models by their upstream
   family — Qwen, Google/Gemma, and OpenAI/GPT OSS — while the runtime remains
   the local Ollama provider.
+- **Read-only tools for Ollama.** Local Ollama runs can now request
+  TaskWraith-controlled workspace list/read/search tools. Shell and write tools
+  are not exposed, and every path stays scoped to the active workspace.
+- **Channel gateway foundation.** The dev/debug-only message bridge has been
+  renamed into a broader Channels architecture with a canonical inbound event,
+  adapter descriptors, route targets for existing chats / new provider threads /
+  workspace default agents / ensembles / approval-status endpoints, and portable
+  commands such as `approve`, `deny`, `status`, `pause`, `resume`, `show diff`,
+  `open thread`, `send file`, and provider handoff.
+- **Free/BYO channel adapters.** Telegram bot long polling, Matrix room polling,
+  and local web/PWA chat now sit beside the experimental local iMessage adapter.
+  Signal CLI, email, Discord, and Slack are represented as planned adapters so
+  future work plugs into the same contract rather than a one-off bridge.
 - **Guest participants in normal chats.** Standard chats can now invite linked
   provider guests for focused side replies, with deduped side-chat chips and
   clearer linked-chat sidecar presentation.
@@ -26,11 +39,17 @@ history, and workspace state stay on your machine throughout.
 - **First-launch local-model signposting.** Onboarding now includes a minimal
   Ollama card and install hint without treating local models like a cloud sign-in
   provider.
+- **Seven-provider channel routing.** Channel handoff and provider-target choices
+  cover Codex, Claude, Gemini, Kimi, Grok, Cursor, and local Ollama.
 
 ### Security
-- **Message-channel groundwork remains gated.** The channel-gateway/iMessage
-  internals continue behind development/debug surfaces while the remote message
-  pipeline settles, preserving the 1.2.1 public-build boundary.
+- **Channel gateway remains gated.** Channel user surfaces and bridge runtime are
+  available only in development/debug builds while the remote message pipeline
+  settles, preserving the 1.2.1 public-build boundary.
+- **Channel-originated work stays policy-gated.** Inbound channel messages go
+  through contact allow-lists, workspace allow-lists, provider policy, approval
+  ledger handling, file/path checks, rate limits, and audit logging before a run
+  can start or a file can be sent back.
 
 ## 1.2.1 — 2026-06-07
 
