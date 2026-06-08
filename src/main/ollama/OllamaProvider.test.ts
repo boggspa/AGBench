@@ -3,9 +3,11 @@ import {
   humanizeOllamaModelId,
   normalizeOllamaBaseUrl,
   normalizeOllamaModels,
+  normalizeOllamaNativeToolCall,
   ollamaEmptyResponseRetryPrompt,
   ollamaEmptyToolResponseRetryPrompt,
   ollamaLocalToolSystemPrompt,
+  ollamaNativeToolDefinitions,
   ollamaToolResultFollowUpPrompt,
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput,
@@ -196,6 +198,57 @@ describe('parseOllamaToolRequest', () => {
       'the weather is sunny'
     )
     expect(resolveOllamaVisibleText({ content: '', thinking: '' })).toBe('')
+  })
+})
+
+describe('ollamaNativeToolDefinitions', () => {
+  it('exposes read-only tools as OpenAI-style function schemas', () => {
+    const defs = ollamaNativeToolDefinitions('read_only')
+    const names = defs.map((def) => def.function.name)
+    expect(names).toEqual([
+      'read_file',
+      'list_directory',
+      'workspace_search',
+      'web_search',
+      'web_fetch'
+    ])
+    const webSearch = defs.find((def) => def.function.name === 'web_search')
+    expect(webSearch?.type).toBe('function')
+    expect(webSearch?.function.parameters.required).toEqual(['query'])
+    expect(webSearch?.function.parameters.properties).toHaveProperty('query')
+  })
+
+  it('expands with the tier and marks mutating tool intents as required', () => {
+    const defs = ollamaNativeToolDefinitions('approved_shell')
+    const names = defs.map((def) => def.function.name)
+    expect(names).toContain('write_file')
+    expect(names).toContain('run_shell_command')
+    const shell = defs.find((def) => def.function.name === 'run_shell_command')
+    expect(shell?.function.parameters.required).toEqual(['command', 'intent'])
+  })
+})
+
+describe('normalizeOllamaNativeToolCall', () => {
+  it('accepts object arguments for known tools', () => {
+    expect(
+      normalizeOllamaNativeToolCall({
+        function: { name: 'web_search', arguments: { query: 'Cambridge weather' } }
+      })
+    ).toEqual({ toolName: 'web_search', arguments: { query: 'Cambridge weather' } })
+  })
+
+  it('parses stringified JSON arguments', () => {
+    expect(
+      normalizeOllamaNativeToolCall({
+        function: { name: 'web_fetch', arguments: '{"url":"https://example.com"}' }
+      })
+    ).toEqual({ toolName: 'web_fetch', arguments: { url: 'https://example.com' } })
+  })
+
+  it('rejects unknown tool names', () => {
+    expect(
+      normalizeOllamaNativeToolCall({ function: { name: 'rm_rf', arguments: {} } })
+    ).toBeNull()
   })
 })
 

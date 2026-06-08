@@ -100,6 +100,15 @@ interface OllamaTagsResponse {
 
 type OllamaTagModel = NonNullable<OllamaTagsResponse['models']>[number]
 
+interface OllamaNativeToolCall {
+  function?: {
+    name?: string
+    /** Ollama returns parsed arguments as an object, but some builds emit a
+     * JSON string. Accept both. */
+    arguments?: Record<string, unknown> | string
+  }
+}
+
 interface OllamaChatChunk {
   model?: string
   created_at?: string
@@ -109,6 +118,9 @@ interface OllamaChatChunk {
     // Harmony-format models (e.g. gpt-oss) stream their answer into a
     // separate reasoning channel. Ollama surfaces it as `thinking`.
     thinking?: string
+    // Models with native tool support (gpt-oss, qwen, etc.) return structured
+    // calls here when the request includes a `tools` array.
+    tool_calls?: OllamaNativeToolCall[]
   }
   done?: boolean
   error?: string
@@ -121,8 +133,13 @@ interface OllamaChatChunk {
 }
 
 interface OllamaChatMessage {
-  role: 'system' | 'user' | 'assistant'
+  role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  /** Echoed back on an assistant turn that made native tool calls so the model
+   * keeps a coherent transcript across the stateless HTTP loop. */
+  tool_calls?: OllamaNativeToolCall[]
+  /** Names the tool a `role: 'tool'` result message answers. */
+  tool_name?: string
 }
 
 interface OllamaChatTurnResult {
@@ -131,6 +148,9 @@ interface OllamaChatTurnResult {
    * when a model emits its answer into the thinking channel and leaves
    * `message.content` empty. */
   thinking: string
+  /** Native structured tool calls (Ollama `tools` API). Preferred over the
+   * legacy JSON-in-prose protocol when present. */
+  toolCalls: OllamaToolRequest[]
   lastDone: OllamaChatChunk | null
 }
 
@@ -591,6 +611,146 @@ export function parseOllamaToolRequest(text: string): OllamaToolRequest | null {
   return null
 }
 
+export interface OllamaNativeToolDefinition {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: {
+      type: 'object'
+      properties: Record<string, unknown>
+      required?: string[]
+    }
+  }
+}
+
+const STRING = { type: 'string' as const }
+
+function ollamaNativeToolParameters(toolName: OllamaToolName): {
+  description: string
+  properties: Record<string, unknown>
+  required: string[]
+} {
+  switch (toolName) {
+    case 'read_file':
+      return {
+        description: 'Read a UTF-8 text file inside the active workspace.',
+        properties: { path: { ...STRING, description: 'Workspace-relative file path.' } },
+        required: ['path']
+      }
+    case 'list_directory':
+      return {
+        description: 'List the entries of a directory inside the active workspace.',
+        properties: { path: { ...STRING, description: 'Workspace-relative directory path. Use "." for the root.' } },
+        required: ['path']
+      }
+    case 'workspace_search':
+      return {
+        description: 'Search the workspace tree for text or a regular expression.',
+        properties: {
+          query: { ...STRING, description: 'Text or regex to search for.' },
+          path: { ...STRING, description: 'Optional subdirectory to scope the search.' },
+          maxResults: { type: 'number', description: 'Maximum matches to return.' },
+          contextLines: { type: 'number', description: 'Lines of context around each match.' }
+        },
+        required: ['query']
+      }
+    case 'web_search':
+      return {
+        description:
+          'Search the live web. Returns a ranked list of result titles and URLs. Use this for current events, weather, prices, or anything not answerable from memory.',
+        properties: { query: { ...STRING, description: 'What to search the web for.' } },
+        required: ['query']
+      }
+    case 'web_fetch':
+      return {
+        description:
+          'Download a web page and return its readable text (HTML stripped) so you can summarize it.',
+        properties: { url: { ...STRING, description: 'Absolute http(s) URL to fetch.' } },
+        required: ['url']
+      }
+    case 'write_file':
+      return {
+        description: 'Create or overwrite a workspace file. Requires a short intent.',
+        properties: {
+          path: { ...STRING, description: 'Workspace-relative file path.' },
+          content: { ...STRING, description: 'Full new file contents.' },
+          intent: { ...STRING, description: 'Short reason for the change (shown in the approval modal).' }
+        },
+        required: ['path', 'content', 'intent']
+      }
+    case 'replace':
+      return {
+        description: 'Replace an exact substring within a workspace file. Requires a short intent.',
+        properties: {
+          path: { ...STRING, description: 'Workspace-relative file path.' },
+          old_string: { ...STRING, description: 'Exact text to replace.' },
+          new_string: { ...STRING, description: 'Replacement text.' },
+          intent: { ...STRING, description: 'Short reason for the change.' }
+        },
+        required: ['path', 'old_string', 'new_string', 'intent']
+      }
+    case 'apply_patch':
+      return {
+        description: 'Apply a unified diff to the workspace. Requires a short intent.',
+        properties: {
+          patch: { ...STRING, description: 'Unified diff text.' },
+          intent: { ...STRING, description: 'Short reason for the change.' }
+        },
+        required: ['patch', 'intent']
+      }
+    case 'run_shell_command':
+      return {
+        description: 'Run a shell command in the workspace. Requires a short intent.',
+        properties: {
+          command: { ...STRING, description: 'Exact command to run.' },
+          intent: { ...STRING, description: 'Short reason for running it.' }
+        },
+        required: ['command', 'intent']
+      }
+    default:
+      return {
+        description: `Invoke the TaskWraith ${toolName} tool using its documented MCP argument schema.`,
+        properties: {},
+        required: []
+      }
+  }
+}
+
+/** Build OpenAI-style function definitions for the tools allowed in `tier`, to
+ * pass via Ollama's native `tools` request field. Models with native tool
+ * support (gpt-oss, qwen, etc.) emit structured `tool_calls` against these. */
+export function ollamaNativeToolDefinitions(
+  tier: OllamaToolControlTier | string | undefined | null
+): OllamaNativeToolDefinition[] {
+  return ollamaToolNamesForTier(tier).map((toolName) => {
+    const { description, properties, required } = ollamaNativeToolParameters(toolName)
+    return {
+      type: 'function',
+      function: {
+        name: toolName,
+        description,
+        parameters: { type: 'object', properties, ...(required.length ? { required } : {}) }
+      }
+    }
+  })
+}
+
+/** Normalize a single native tool call from an Ollama stream chunk into the
+ * internal request shape, or null when the name is unknown / unparseable. */
+export function normalizeOllamaNativeToolCall(call: OllamaNativeToolCall): OllamaToolRequest | null {
+  const name = typeof call.function?.name === 'string' ? call.function.name.trim() : ''
+  if (!OLLAMA_KNOWN_TOOL_NAMES.has(name as OllamaToolName)) return null
+  const rawArgs = call.function?.arguments
+  let args: Record<string, unknown> = {}
+  if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+    args = rawArgs as Record<string, unknown>
+  } else if (typeof rawArgs === 'string' && rawArgs.trim()) {
+    args = recordFromUnknown(parseJsonObject(rawArgs)) || {}
+  }
+  return { toolName: name as OllamaToolName, arguments: args }
+}
+
 export function ollamaToolResultFollowUpPrompt(input: {
   toolName: OllamaToolName
   output: string
@@ -645,6 +805,7 @@ async function runOllamaChatTurn(input: {
   model: string
   messages: OllamaChatMessage[]
   signal: AbortSignal
+  tools?: OllamaNativeToolDefinition[]
 }): Promise<OllamaChatTurnResult> {
   const response = await fetch(endpoint(input.baseUrl, '/api/chat'), {
     method: 'POST',
@@ -654,6 +815,7 @@ async function runOllamaChatTurn(input: {
       model: input.model,
       stream: true,
       messages: input.messages,
+      ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
       options: {
         temperature: 0.2
       }
@@ -668,6 +830,7 @@ async function runOllamaChatTurn(input: {
   let buffer = ''
   let content = ''
   let thinking = ''
+  const toolCalls: OllamaToolRequest[] = []
   let lastDone: OllamaChatChunk | null = null
   const handleChunk = (chunk: OllamaChatChunk) => {
     if (chunk.error) {
@@ -675,6 +838,10 @@ async function runOllamaChatTurn(input: {
     }
     content += chunk.message?.content || ''
     thinking += chunk.message?.thinking || ''
+    for (const call of chunk.message?.tool_calls || []) {
+      const normalized = normalizeOllamaNativeToolCall(call)
+      if (normalized) toolCalls.push(normalized)
+    }
     if (chunk.done) {
       lastDone = chunk
     }
@@ -694,7 +861,7 @@ async function runOllamaChatTurn(input: {
   if (trailing) {
     handleChunk(JSON.parse(trailing) as OllamaChatChunk)
   }
-  return { content, thinking, lastDone }
+  return { content, thinking, toolCalls, lastDone }
 }
 
 export async function runOllamaProvider(
@@ -754,6 +921,9 @@ export async function runOllamaProvider(
       Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
       settings.agenticServices?.mcpTools !== 'deny'
     const toolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
+    const nativeToolDefs = toolProtocolEnabled
+      ? ollamaNativeToolDefinitions(toolControlTier)
+      : []
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
         ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier) }]
@@ -767,15 +937,29 @@ export async function runOllamaProvider(
         baseUrl,
         model,
         messages,
-        signal: controller.signal
+        signal: controller.signal,
+        tools: nativeToolDefs
       })
       if (turn.lastDone) lastDone = turn.lastDone
       // gpt-oss and other harmony-format models emit their answer into the
       // reasoning (`thinking`) channel and may leave `content` empty; fall
       // back so the run still produces a visible reply instead of nothing.
       const visibleText = resolveOllamaVisibleText(turn)
-      const toolRequest = toolProtocolEnabled ? parseOllamaToolRequest(visibleText) : null
-      if (!toolRequest) {
+      // Prefer native structured tool calls (Ollama `tools` API). Models that
+      // ignore the schema and instead embed the legacy JSON-in-prose protocol
+      // still work via the fallback parser.
+      const nativeCalls = toolProtocolEnabled ? turn.toolCalls : []
+      const usingNativeToolCalls = nativeCalls.length > 0
+      const fallbackRequest =
+        !usingNativeToolCalls && toolProtocolEnabled
+          ? parseOllamaToolRequest(visibleText)
+          : null
+      const toolRequests: OllamaToolRequest[] = usingNativeToolCalls
+        ? nativeCalls
+        : fallbackRequest
+          ? [fallbackRequest]
+          : []
+      if (toolRequests.length === 0) {
         if (!visibleText.trim() && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
           messages.push({
             role: 'user',
@@ -817,56 +1001,79 @@ export async function runOllamaProvider(
         )
         break
       }
-      toolCallCount += 1
-      const toolId = `ollama-tool-${route.appRunId || Date.now()}-${toolCallCount}`
-      deps.sendAgentCompatLine(
-        event.sender,
-        'ollama',
-        {
-          type: 'tool_use',
-          tool_id: toolId,
-          tool_name: toolRequest.toolName,
-          parameters: toolRequest.arguments,
-          provider: 'ollama',
-          server: OLLAMA_LOCAL_TOOL_SERVER
-        },
-        route
-      )
-      const toolResult = await deps.executeTool!({
-        toolName: toolRequest.toolName,
-        arguments: toolRequest.arguments,
-        workspacePath: payload.workspace!,
-        appChatId: route.appChatId || payload.appChatId,
-        appRunId: route.appRunId || payload.appRunId,
-        toolControlTier
-      })
-      deps.sendAgentCompatLine(
-        event.sender,
-        'ollama',
-        {
-          type: 'tool_result',
-          tool_id: toolId,
-          tool_name: toolRequest.toolName,
-          status: toolResult.ok ? 'success' : 'error',
-          output: toolResult.output,
-          result: toolResult.structuredContent,
-          provider: 'ollama',
-          server: OLLAMA_LOCAL_TOOL_SERVER
-        },
-        route
-      )
-      messages.push({
-        role: 'assistant',
-        content: `Requested TaskWraith tool ${toolRequest.toolName}.`
-      })
-      messages.push({
-        role: 'user',
-        content: ollamaToolResultFollowUpPrompt({
-          toolName: toolRequest.toolName,
-          output: toolResult.output,
-          ok: toolResult.ok
+      // Echo the assistant's native tool-call turn so the model keeps a coherent
+      // transcript across the stateless HTTP loop.
+      if (usingNativeToolCalls) {
+        messages.push({
+          role: 'assistant',
+          content: turn.content || '',
+          tool_calls: nativeCalls.map((request) => ({
+            function: { name: request.toolName, arguments: request.arguments }
+          }))
         })
-      })
+      }
+      for (const toolRequest of toolRequests) {
+        toolCallCount += 1
+        const toolId = `ollama-tool-${route.appRunId || Date.now()}-${toolCallCount}`
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          {
+            type: 'tool_use',
+            tool_id: toolId,
+            tool_name: toolRequest.toolName,
+            parameters: toolRequest.arguments,
+            provider: 'ollama',
+            server: OLLAMA_LOCAL_TOOL_SERVER
+          },
+          route
+        )
+        const toolResult = await deps.executeTool!({
+          toolName: toolRequest.toolName,
+          arguments: toolRequest.arguments,
+          workspacePath: payload.workspace!,
+          appChatId: route.appChatId || payload.appChatId,
+          appRunId: route.appRunId || payload.appRunId,
+          toolControlTier
+        })
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          {
+            type: 'tool_result',
+            tool_id: toolId,
+            tool_name: toolRequest.toolName,
+            status: toolResult.ok ? 'success' : 'error',
+            output: toolResult.output,
+            result: toolResult.structuredContent,
+            provider: 'ollama',
+            server: OLLAMA_LOCAL_TOOL_SERVER
+          },
+          route
+        )
+        if (usingNativeToolCalls) {
+          // Native protocol: feed the result back as a `role: 'tool'` message
+          // so the model resumes naturally on the next turn.
+          messages.push({
+            role: 'tool',
+            content: toolResult.output,
+            tool_name: toolRequest.toolName
+          })
+        } else {
+          messages.push({
+            role: 'assistant',
+            content: `Requested TaskWraith tool ${toolRequest.toolName}.`
+          })
+          messages.push({
+            role: 'user',
+            content: ollamaToolResultFollowUpPrompt({
+              toolName: toolRequest.toolName,
+              output: toolResult.output,
+              ok: toolResult.ok
+            })
+          })
+        }
+      }
     }
 
     const hardwareStats = memoryMonitor ? await memoryMonitor.stop() : {}
