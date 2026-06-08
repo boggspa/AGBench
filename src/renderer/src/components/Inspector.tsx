@@ -583,6 +583,48 @@ function DiffTab(props: InspectorProps) {
   )
 }
 
+/**
+ * Faithful clipboard serialisation of the raw-event buffer (1.4.1).
+ *
+ * The on-screen rows carry metadata (`#sequence`, content hash,
+ * `tool:`/`span:` ids, artifact counts) that is exactly what you need
+ * when debugging "undefined" raw output or events that don't present
+ * cleanly in the transcript. The previous Copy dropped all of it, so a
+ * pasted bug report lost the very fields that made it diagnosable. This
+ * preserves the type tag + metadata per line and prepends a one-line
+ * header with the type breakdown. Hashes are emitted in full (not the
+ * 10-char on-screen preview) so they remain verifiable.
+ */
+/**
+ * Single raw-event row serialised faithfully (type tag + full metadata +
+ * content). Shared by the buffer-wide Copy and the per-row Copy
+ * affordance so both paste identically.
+ */
+function formatRawEventLine(log: InspectorProps['rawLogs'][number]): string {
+  const meta: string[] = []
+  if (log.sequence) meta.push(`#${log.sequence}`)
+  if (log.hash) meta.push(log.hash)
+  if (log.toolCallId) meta.push(`tool:${log.toolCallId}`)
+  else if (log.spanId) meta.push(`span:${log.spanId}`)
+  if (log.artifactCount) meta.push(`artifacts:${log.artifactCount}`)
+  const prefix = `[${log.type.toUpperCase()}]${meta.length ? ` ${meta.join(' ')}` : ''}`
+  return `${prefix} ${log.content}`
+}
+
+function formatRawEventsForClipboard(logs: InspectorProps['rawLogs']): string {
+  if (logs.length === 0) return ''
+  const counts = logs.reduce(
+    (acc, log) => {
+      acc[log.type] = (acc[log.type] || 0) + 1
+      return acc
+    },
+    {} as Partial<Record<(typeof logs)[number]['type'], number>>
+  )
+  const header = `TaskWraith raw events — ${logs.length} total (${counts.stdout || 0} stdout · ${counts.stderr || 0} stderr · ${counts.tool || 0} tool · ${counts.info || 0} info)`
+  const lines = logs.map((log) => formatRawEventLine(log))
+  return `${header}\n${'-'.repeat(header.length)}\n${lines.join('\n')}\n`
+}
+
 function RawTab(props: InspectorProps) {
   const { rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef } = props
   const { copiedId, copy } = useCopyFeedback()
@@ -610,19 +652,91 @@ function RawTab(props: InspectorProps) {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: '4px' }}>
+        {/* 1.4.1 — Copy/Clear pill, mirroring the transcript message
+            actions chip. Copy serialises the WHOLE buffer (with the
+            metadata the on-screen rows show) so a bug report pastes
+            faithfully; Clear confirms before dropping the local buffer. */}
+        <div className="raw-events-actions-chip" role="group" aria-label="Raw event actions">
           <button
-            className="btn btn-sm btn-ghost"
+            type="button"
+            className={`message-actions-chip-button message-actions-chip-button--copy${
+              copiedId === 'raw-events' ? ' is-copied' : ''
+            }`}
+            disabled={rawLogs.length === 0}
+            onClick={() => copy('raw-events', formatRawEventsForClipboard(rawLogs))}
+            title={
+              copiedId === 'raw-events'
+                ? 'Copied'
+                : `Copy all ${rawLogs.length} raw event${rawLogs.length === 1 ? '' : 's'} (with metadata) to clipboard`
+            }
+            aria-label={
+              copiedId === 'raw-events'
+                ? 'Copied raw events'
+                : `Copy all ${rawLogs.length} raw events to clipboard`
+            }
+          >
+            {copiedId === 'raw-events' ? (
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M13.5 4.5 6 12 2.5 8.5" />
+              </svg>
+            ) : (
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            className="message-actions-chip-button message-actions-chip-button--delete"
             disabled={rawLogs.length === 0}
             onClick={() => {
-              const text = rawLogs.map((l) => `[${l.type.toUpperCase()}] ${l.content}`).join('\n')
-              copy('raw-events', text)
+              if (rawLogs.length === 0) return
+              const ok = window.confirm(
+                `Clear all ${rawLogs.length} raw event${rawLogs.length === 1 ? '' : 's'} from this inspector view? This only clears the local buffer, not the run history.`
+              )
+              if (ok) setRawLogs([])
             }}
+            title="Clear the raw event buffer for this inspector"
+            aria-label="Clear raw events"
           >
-            {copiedId === 'raw-events' ? 'Copied' : 'Copy'}
-          </button>
-          <button className="btn btn-sm btn-ghost" onClick={() => setRawLogs([])}>
-            Clear
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M3 4h10" />
+              <path d="M5.5 4V2.5C5.5 2.22 5.72 2 6 2h4c.28 0 .5.22.5.5V4" />
+              <path d="M4.5 4l.5 9c.04.55.5 1 1 1h4c.5 0 .96-.45 1-1l.5-9" />
+              <path d="M7 7v5" />
+              <path d="M9 7v5" />
+            </svg>
           </button>
         </div>
       </div>
@@ -674,36 +788,86 @@ function RawTab(props: InspectorProps) {
               : `No ${rawFilter} events to show. Switch the filter to "all" to see other event types.`}
           </p>
         ) : (
-          filteredLogs.map((log, i) => (
-            <div
-              key={i}
-              className="raw-log-line"
-              style={{
-                color:
-                  log.type === 'stderr'
-                    ? 'var(--danger)'
-                    : log.type === 'tool'
-                      ? 'var(--success)'
-                      : log.type === 'info'
-                        ? 'var(--accent)'
-                        : 'var(--text-secondary)'
-              }}
-            >
-              {(log.sequence || log.hash || log.spanId || log.toolCallId || log.artifactCount) && (
-                <span className="raw-log-meta">
-                  {log.sequence ? `#${log.sequence}` : ''}
-                  {log.hash ? ` ${log.hash.slice(0, 10)}` : ''}
-                  {log.toolCallId
-                    ? ` tool:${log.toolCallId}`
-                    : log.spanId
-                      ? ` span:${log.spanId}`
-                      : ''}
-                  {log.artifactCount ? ` artifacts:${log.artifactCount}` : ''}
-                </span>
-              )}
-              {log.content}
-            </div>
-          ))
+          filteredLogs.map((log, i) => {
+            // 1.4.1 — per-row Copy affordance for targeted troubleshooting.
+            // Hover-revealed (CSS) so the stream stays clean; copies this
+            // single event faithfully (same serialisation as the bulk Copy).
+            const lineCopyId = `raw-line-${i}`
+            return (
+              <div
+                key={i}
+                className="raw-log-line"
+                style={{
+                  color:
+                    log.type === 'stderr'
+                      ? 'var(--danger)'
+                      : log.type === 'tool'
+                        ? 'var(--success)'
+                        : log.type === 'info'
+                          ? 'var(--accent)'
+                          : 'var(--text-secondary)'
+                }}
+              >
+                {(log.sequence ||
+                  log.hash ||
+                  log.spanId ||
+                  log.toolCallId ||
+                  log.artifactCount) && (
+                  <span className="raw-log-meta">
+                    {log.sequence ? `#${log.sequence}` : ''}
+                    {log.hash ? ` ${log.hash.slice(0, 10)}` : ''}
+                    {log.toolCallId
+                      ? ` tool:${log.toolCallId}`
+                      : log.spanId
+                        ? ` span:${log.spanId}`
+                        : ''}
+                    {log.artifactCount ? ` artifacts:${log.artifactCount}` : ''}
+                  </span>
+                )}
+                {log.content}
+                <button
+                  type="button"
+                  className={`message-actions-chip-button message-actions-chip-button--copy raw-log-line-copy${
+                    copiedId === lineCopyId ? ' is-copied' : ''
+                  }`}
+                  onClick={() => copy(lineCopyId, formatRawEventLine(log))}
+                  title={copiedId === lineCopyId ? 'Copied' : 'Copy this event (with metadata)'}
+                  aria-label={copiedId === lineCopyId ? 'Copied event' : 'Copy this raw event'}
+                >
+                  {copiedId === lineCopyId ? (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M13.5 4.5 6 12 2.5 8.5" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                      <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )
+          })
         )}
         <div ref={rawLogsEndRef} />
       </div>
