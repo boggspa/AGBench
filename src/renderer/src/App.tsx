@@ -12615,6 +12615,38 @@ function App(): React.JSX.Element {
     },
     [isCurrentEnsembleChat, currentChat]
   )
+  const applyEnsemblePermissionsToAllParticipants = useCallback(() => {
+    if (!isCurrentEnsembleChat || !selectedParticipant || !currentChat?.ensemble) return
+    const sourceOverrides = selectedParticipant.permissionOverrides
+    const clonedOverrides = sourceOverrides
+      ? {
+          ...sourceOverrides,
+          ...(sourceOverrides.agenticServices
+            ? { agenticServices: { ...sourceOverrides.agenticServices } }
+            : {}),
+          ...(sourceOverrides.externalPathGrants
+            ? { externalPathGrants: [...sourceOverrides.externalPathGrants] }
+            : {})
+        }
+      : undefined
+    const patchedChat: ChatRecord = {
+      ...currentChat,
+      ensemble: {
+        ...currentChat.ensemble,
+        participants: currentChat.ensemble.participants.map((participant) => ({
+          ...participant,
+          permissionPresetId: selectedParticipant.permissionPresetId,
+          permissionOverrides: clonedOverrides
+        })),
+        updatedAt: new Date().toISOString()
+      }
+    }
+    const nextChat = withSessionActivityLedger(currentChat, patchedChat)
+    chatByIdRef.current.set(nextChat.appChatId, nextChat)
+    setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+    setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
+    void window.api.saveChat(nextChat)
+  }, [isCurrentEnsembleChat, selectedParticipant, currentChat])
   const updateCurrentEnsembleOrchestrationMode = useCallback(
     (mode: EnsembleOrchestrationMode) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
@@ -18889,6 +18921,12 @@ function App(): React.JSX.Element {
                                 )
                               }}
                               grantScopeLabel={ensembleBinding ? 'participant' : 'workspace'}
+                              onApplyToAllParticipants={
+                                ensembleBinding &&
+                                (currentChat?.ensemble?.participants.length || 0) > 1
+                                  ? applyEnsemblePermissionsToAllParticipants
+                                  : undefined
+                              }
                               disabled={
                                 isCurrentComposerLocked ||
                                 (effectiveProvider === 'gemini' && !geminiWorkspaceTrustReady)

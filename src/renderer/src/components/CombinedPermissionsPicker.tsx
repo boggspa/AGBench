@@ -56,6 +56,8 @@ interface CombinedPermissionsPickerProps {
   onToggleGrant: (service: AgenticServiceId, enabled: boolean) => void
   grantScopeLabel?: 'workspace' | 'participant'
   disabled?: boolean
+  /** Ensemble-only: copy the current permission preset + grants to every participant. */
+  onApplyToAllParticipants?: () => void
 }
 
 export function CombinedPermissionsPicker({
@@ -69,7 +71,8 @@ export function CombinedPermissionsPicker({
   agenticServices,
   onToggleGrant,
   grantScopeLabel = 'workspace',
-  disabled
+  disabled,
+  onApplyToAllParticipants
 }: CombinedPermissionsPickerProps): React.JSX.Element {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -250,6 +253,19 @@ export function CombinedPermissionsPicker({
             )}
           </button>
         ))}
+        {onApplyToAllParticipants ? (
+          <button
+            type="button"
+            className="composer-combined-picker-apply-all"
+            onClick={() => {
+              onApplyToAllParticipants()
+              setOpen(false)
+            }}
+            title="Copy this participant's permission mode and tool grants to every ensemble participant"
+          >
+            Apply to all participants
+          </button>
+        ) : null}
       </div>
       {grantServices.length > 0 && (
         <div

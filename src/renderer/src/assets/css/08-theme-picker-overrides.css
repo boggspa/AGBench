@@ -7979,6 +7979,28 @@
   transform: translateX(12px);
 }
 
+.composer-combined-picker-apply-all {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 4px 6px 8px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border-color));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.composer-combined-picker-apply-all:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 /* Tool-Grant rows: multi-select with a leading checkbox glyph + a
  * smaller sub-label describing the global policy state for each
  * service. Shape mirrors the model/reasoning row but with denser

@@ -49,4 +49,9 @@ describe('CombinedPermissionsPicker', () => {
     expect(html).toContain('Default Approval')
     expect(html).not.toContain('composer-combined-picker-trigger-suffix')
   })
+
+  it('does not render Apply to all unless the ensemble callback is provided', () => {
+    const html = renderPicker(new Set(['fileChanges']))
+    expect(html).not.toContain('Apply to all participants')
+  })
 })
