@@ -202,7 +202,7 @@ describe('buildProviderAuthStatusV2 — kimi', () => {
 
 describe('buildProviderAuthStatusV2 — schema invariants', () => {
   it('never returns the legacy "unknown" authState for any provider', () => {
-    const providers = ['gemini', 'codex', 'claude', 'kimi'] as const
+    const providers = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor', 'ollama'] as const
     for (const provider of providers) {
       const presentAndUnknown = buildProviderAuthStatusV2({
         provider,

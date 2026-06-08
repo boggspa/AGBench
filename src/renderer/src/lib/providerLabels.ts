@@ -8,6 +8,7 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
   if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
   return 'Gemini'
 }
 

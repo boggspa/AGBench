@@ -70,6 +70,13 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     instructions:
       'Draft the concrete implementation: propose specific edits, file touches, and integration steps.',
     permissionPresetId: 'read_only'
+  },
+  {
+    provider: 'ollama',
+    role: 'Local',
+    instructions:
+      'Provide a local, privacy-preserving second opinion for summaries, triage, and small read-only reasoning tasks.',
+    permissionPresetId: 'read_only'
   }
 ]
 

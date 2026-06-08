@@ -325,6 +325,21 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         lastVerified: RATE_TABLE_VERSION
       }
     ]
+  },
+  ollama: {
+    provider: 'ollama',
+    pricingUrl: 'local://ollama',
+    models: [
+      {
+        modelId: 'qwen3:4b-instruct',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Local Ollama model. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      }
+    ]
   }
 }
 
@@ -467,7 +482,15 @@ export function getCurrentProviderRates(): ProviderRatesSnapshot {
   return cachedSnapshot
 }
 
-const providerIds = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
+const providerIds = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+])
 
 function isProviderId(value: unknown): value is ProviderId {
   return typeof value === 'string' && providerIds.has(value as ProviderId)

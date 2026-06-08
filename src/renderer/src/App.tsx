@@ -120,10 +120,13 @@ import {
   GEMINI_DEFAULT_MODELS,
   GROK_DEFAULT_MODELS,
   CURSOR_DEFAULT_MODELS,
+  OLLAMA_DEFAULT_MODELS,
+  OLLAMA_DEFAULT_MODEL,
   isGeminiModelId,
   isCodexModelId,
   isClaudeModelId,
   isKimiModelId,
+  isOllamaModelId,
   normalizeProviderModelKey
 } from './lib/providerModelDefaults'
 import type { CodexModelOption } from './lib/providerModelDefaults'
@@ -1159,6 +1162,8 @@ function App(): React.JSX.Element {
   } | null>(null)
   const [claudeBinaryPath, setClaudeBinaryPath] = useState('')
   const [kimiBinaryPath, setKimiBinaryPath] = useState('')
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://127.0.0.1:11434')
+  const [ollamaDefaultModel, setOllamaDefaultModel] = useState('')
   const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [geminiAuthStatus, setGeminiAuthStatus] = useState<GeminiAuthStatus | null>(null)
@@ -1524,7 +1529,8 @@ function App(): React.JSX.Element {
     claude: [],
     kimi: [],
     grok: [],
-    cursor: []
+    cursor: [],
+    ollama: []
   })
   const usageSummarySignatureRef = useRef('')
   const usageRecordsSignatureRef = useRef('')
@@ -2681,7 +2687,10 @@ function App(): React.JSX.Element {
         provider === 'gemini' ||
         provider === 'codex' ||
         provider === 'claude' ||
-        provider === 'kimi'
+        provider === 'kimi' ||
+        provider === 'grok' ||
+        provider === 'cursor' ||
+        provider === 'ollama'
       ) {
         return provider
       }
@@ -2848,6 +2857,7 @@ function App(): React.JSX.Element {
     if (provider === 'gemini') return GEMINI_DEFAULT_MODELS
     if (provider === 'grok') return GROK_DEFAULT_MODELS
     if (provider === 'cursor') return CURSOR_DEFAULT_MODELS
+    if (provider === 'ollama') return agentModelsByProvider.ollama || OLLAMA_DEFAULT_MODELS
     return []
   }
 
@@ -2857,6 +2867,11 @@ function App(): React.JSX.Element {
     if (provider === 'kimi') return KIMI_DEFAULT_MODEL
     if (provider === 'grok') return 'grok-build'
     if (provider === 'cursor') return 'composer-2.5-fast'
+    if (provider === 'ollama') {
+      return agentModelsByProvider.ollama?.find((model) => model.isDefault)?.id ||
+        agentModelsByProvider.ollama?.[0]?.id ||
+        OLLAMA_DEFAULT_MODEL
+    }
     return 'flash-lite'
   }
 
@@ -2874,6 +2889,7 @@ function App(): React.JSX.Element {
     // to the default (grok-build) so the picker shows "Grok Build 0.1", not blank.
     if (provider === 'grok') return modelId.startsWith('grok')
     if (provider === 'cursor') return modelId.startsWith('composer-')
+    if (provider === 'ollama') return isOllamaModelId(modelId)
     return isGeminiModelId(modelId)
   }
 
@@ -2904,7 +2920,9 @@ function App(): React.JSX.Element {
       selectedModelType: selected,
       customModel: typeof metadata.customModel === 'string' ? metadata.customModel : '',
       approvalMode:
-        typeof metadata.approvalMode === 'string'
+        provider === 'ollama'
+          ? 'plan'
+          : typeof metadata.approvalMode === 'string'
           ? metadata.approvalMode
           : chat.settingsSnapshot?.approvalMode || approvalMode,
       codexReasoningEffort:
@@ -3026,6 +3044,10 @@ function App(): React.JSX.Element {
           const normalized =
             provider === 'kimi'
               ? KIMI_DEFAULT_MODELS
+              : provider === 'ollama'
+                ? Array.isArray(models) && models.length > 0
+                  ? models.map((model) => ({ ...model, label: model.label || model.id }))
+                  : OLLAMA_DEFAULT_MODELS
               : Array.isArray(models) && models.length > 0
                 ? models.map((model) => ({ ...model, label: model.label || model.id }))
                 : provider === 'claude'
@@ -3043,6 +3065,8 @@ function App(): React.JSX.Element {
             setAgentModelsByProvider((prev) => ({ ...prev, claude: CLAUDE_DEFAULT_MODELS }))
           if (provider === 'kimi')
             setAgentModelsByProvider((prev) => ({ ...prev, kimi: KIMI_DEFAULT_MODELS }))
+          if (provider === 'ollama')
+            setAgentModelsByProvider((prev) => ({ ...prev, ollama: OLLAMA_DEFAULT_MODELS }))
         })
     }
     window.api
@@ -3300,6 +3324,8 @@ function App(): React.JSX.Element {
     setActiveProvider(s.activeProvider || 'gemini')
     setClaudeBinaryPath(s.claudeBinaryPath || '')
     setKimiBinaryPath(s.kimiBinaryPath || '')
+    setOllamaBaseUrl(s.ollamaBaseUrl || 'http://127.0.0.1:11434')
+    setOllamaDefaultModel(s.ollamaDefaultModel || '')
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(s.agenticServices || {}) })
     setAutoResumeParentOnSubThreadCompletion(
       typeof s.autoResumeParentOnSubThreadCompletion === 'boolean'
@@ -3713,6 +3739,16 @@ function App(): React.JSX.Element {
       setKimiBinaryPath(next.kimiBinaryPath)
       settingsPatch.kimiBinaryPath = next.kimiBinaryPath
       if (currentProvider === 'kimi') providersToRefresh.push('kimi')
+    }
+    if (next.ollamaBaseUrl !== undefined) {
+      setOllamaBaseUrl(next.ollamaBaseUrl)
+      settingsPatch.ollamaBaseUrl = next.ollamaBaseUrl
+      providersToRefresh.push('ollama')
+    }
+    if (next.ollamaDefaultModel !== undefined) {
+      setOllamaDefaultModel(next.ollamaDefaultModel)
+      settingsPatch.ollamaDefaultModel = next.ollamaDefaultModel
+      providersToRefresh.push('ollama')
     }
     if (next.agenticServices !== undefined) {
       const normalizedServices = { ...DEFAULT_AGENTIC_SERVICES, ...next.agenticServices }
@@ -14778,6 +14814,8 @@ function App(): React.JSX.Element {
               kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
+              ollamaBaseUrl={ollamaBaseUrl}
+              ollamaDefaultModel={ollamaDefaultModel}
               agenticServices={agenticServices}
               nativeSubAgentRequests={settings?.nativeSubAgentRequests ?? 'ask'}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
@@ -14790,7 +14828,8 @@ function App(): React.JSX.Element {
                 codex: codexMcpStatus,
                 gemini: agentMcpStatusByProvider.gemini,
                 claude: agentMcpStatusByProvider.claude,
-                kimi: agentMcpStatusByProvider.kimi
+                kimi: agentMcpStatusByProvider.kimi,
+                ollama: agentMcpStatusByProvider.ollama
               }}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
@@ -14806,6 +14845,7 @@ function App(): React.JSX.Element {
               codexStatus={codexStatus}
               claudeAuthStatus={claudeAuthStatus}
               kimiAuthStatus={kimiAuthStatus}
+              ollamaStatus={agentStatusByProvider.ollama}
               cursorProviderAvailable={cursorProviderAvailable}
               grokProviderAvailable={grokProviderAvailable}
               claudeLoginState={claudeLoginState}
@@ -17251,7 +17291,8 @@ function App(): React.JSX.Element {
                             'claude',
                             'kimi',
                             ...(grokProviderAvailable ? (['grok'] as ProviderId[]) : []),
-                            ...(cursorProviderAvailable ? (['cursor'] as ProviderId[]) : [])
+                            ...(cursorProviderAvailable ? (['cursor'] as ProviderId[]) : []),
+                            'ollama'
                           ]
                           const plusSections: ComposerPlusPickerSection[] = [
                             {

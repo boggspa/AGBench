@@ -42,4 +42,12 @@ export const LIGHT_THEME_POPOUT_BACKDROPS: Record<string, string> = {
   alabaster: '#f4f3ef'
 }
 
-export const RUN_MANAGER_PROVIDERS: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+export const RUN_MANAGER_PROVIDERS: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]

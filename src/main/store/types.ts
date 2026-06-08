@@ -154,7 +154,14 @@ export type ComposerStyle =
 // type level (so adapters/records compile), but kept OUT of every user-visible
 // array + validation Set unless the gate is on, so the gate-off state is
 // structurally inert (the same discipline Grok used at G2).
-export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok' | 'cursor'
+export type ProviderId =
+  | 'gemini'
+  | 'codex'
+  | 'claude'
+  | 'kimi'
+  | 'grok'
+  | 'cursor'
+  | 'ollama'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type ChatParentRelation = 'subThread' | 'sideChat'
@@ -1132,6 +1139,7 @@ export type ProviderAdapterTransport =
   | 'kimi-wire-or-cli'
   | 'grok-cli'
   | 'cursor-cli'
+  | 'ollama-http'
 
 export type ProviderAdapterRunChannel = 'run-agent'
 
@@ -1341,6 +1349,8 @@ export interface AppSettings {
   claudeApiKey?: string
   kimiBinaryPath?: string
   kimiApiKey?: string
+  ollamaBaseUrl?: string
+  ollamaDefaultModel?: string
   defaultGeminiAuthProfileId?: string | null
   geminiAuthProfiles?: GeminiAuthProfile[]
   /** Phase M1 — Gemini API runtime selection. See {@link GeminiApiRuntimeMode}

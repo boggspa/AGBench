@@ -123,6 +123,8 @@
   --provider-grok-color: var(--text-primary);
   /* Cursor (Composer 2.5) — mustard yellow (leans yellow, not orange). */
   --provider-cursor-color: #E3B91E;
+  /* Ollama / Local — green-teal for on-device inference. */
+  --provider-ollama-color: #20A77A;
 
   /* Phase L6 slice 2 — Quota warning palette. Drives the
    * progressive bar gradient on the Model Usage Card: the fill

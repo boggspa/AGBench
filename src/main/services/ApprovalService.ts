@@ -494,7 +494,9 @@ export class ApprovalService {
         grok: 120_000,
         // Cursor (gated, CR) — pin to the built-in default until a per-provider
         // timeout setting exists.
-        cursor: 120_000
+        cursor: 120_000,
+        // Ollama Phase 1 is read-only/no-approval, but keep the policy complete.
+        ollama: 120_000
       },
       mainTimeoutMs: userSettings.mainAuthorityMs
     })

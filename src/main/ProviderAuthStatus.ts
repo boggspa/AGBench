@@ -29,7 +29,9 @@ const TRANSPORT_BY_PROVIDER: Record<ProviderId, ProviderAuthTransport> = {
   // Grok (gated, G3) runs via the local headless CLI stream.
   grok: 'cli',
   // Cursor (gated, CR) runs via the cursor-agent headless stream-json CLI.
-  cursor: 'cli'
+  cursor: 'cli',
+  // Ollama runs through the local HTTP API rather than a cloud auth flow.
+  ollama: 'http'
 }
 
 const APPROVAL_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
@@ -41,7 +43,9 @@ const APPROVAL_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   grok: false,
   // CR4 ships read-only; CR6 flips this true when write mode routes through the
   // approval ledger.
-  cursor: false
+  cursor: false,
+  // Phase 1 local chat is read-only/no-tools.
+  ollama: false
 }
 
 const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
@@ -52,7 +56,8 @@ const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   // No TaskWraith MCP for Grok until G5.
   grok: false,
   // Cursor MCP is workspace-config-based (CR6), not a live status surface.
-  cursor: false
+  cursor: false,
+  ollama: false
 }
 
 export function buildProviderAuthStatusV2(input: ProviderAuthStatusV2Input): ProviderAuthStatusV2 {
@@ -96,7 +101,9 @@ function deriveAuthState(
   if (!available) {
     return {
       authState: 'missing',
-      authReason: errorReason || `${provider} CLI not available`
+      authReason:
+        errorReason ||
+        (provider === 'ollama' ? 'Ollama service not reachable' : `${provider} CLI not available`)
     }
   }
 
@@ -146,6 +153,10 @@ function deriveAuthState(
       authState: 'not-observable',
       authReason: 'Grok auth not probed (read-only)'
     }
+  }
+
+  if (provider === 'ollama') {
+    return { authState: 'authenticated' }
   }
 
   // kimi

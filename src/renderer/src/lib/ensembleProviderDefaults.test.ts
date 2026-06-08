@@ -74,6 +74,13 @@ describe('getDefaultEnsembleParticipantConfig', () => {
       permissionPresetId: 'read_only'
     })
   })
+
+  it('returns ollama defaults: cli-default model, read_only, no reasoning axis', () => {
+    expect(getDefaultEnsembleParticipantConfig('ollama')).toEqual({
+      model: 'cli-default',
+      permissionPresetId: 'read_only'
+    })
+  })
 })
 
 describe('resolveEnsembleParticipantSettings', () => {

@@ -3,11 +3,19 @@ import { createDefaultEnsembleConfig } from './EnsembleDefaults'
 import type { ProviderId } from './store/types'
 import { getDefaultEnsembleParticipantConfig } from '../renderer/src/lib/ensembleProviderDefaults'
 
-const EXPECTED_PROVIDERS = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'] as const
-const DEFAULT_ORDER = ['claude', 'codex', 'gemini', 'kimi', 'grok', 'cursor'] as const
+const EXPECTED_PROVIDERS = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+] as const
+const DEFAULT_ORDER = ['claude', 'codex', 'gemini', 'kimi', 'grok', 'cursor', 'ollama'] as const
 
 describe('createDefaultEnsembleConfig parity guard', () => {
-  it('seeds exactly the six supported providers', () => {
+  it('seeds exactly the seven supported providers', () => {
     const config = createDefaultEnsembleConfig()
     const providers = config.participants.map((participant) => participant.provider)
 
@@ -67,6 +75,11 @@ describe('createDefaultEnsembleConfig parity guard', () => {
         role: 'Cursor',
         instructions:
           'Draft the concrete implementation: propose specific edits, file touches, and integration steps.'
+      },
+      ollama: {
+        role: 'Local',
+        instructions:
+          'Provide a local, privacy-preserving second opinion for summaries, triage, and small read-only reasoning tasks.'
       }
     })
   })

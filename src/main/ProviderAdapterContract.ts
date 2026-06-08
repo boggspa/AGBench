@@ -67,7 +67,8 @@ const KNOWN_PROVIDER_IDS: ReadonlySet<string> = new Set<ProviderId>([
   'gemini',
   'codex',
   'claude',
-  'kimi'
+  'kimi',
+  'ollama'
 ])
 
 /** Run the generic conformance battery against an adapter factory.

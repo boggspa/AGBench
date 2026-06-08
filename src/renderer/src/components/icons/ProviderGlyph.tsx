@@ -96,6 +96,17 @@ function glyphBody(provider: string): ReactElement {
           <circle className="provider-glyph-dot" cx="15.6" cy="8.4" r="1" />
         </>
       )
+    case 'ollama':
+      return (
+        <>
+          <path className="provider-glyph-line" d="M5.3 15.9v-6.2l6.7-3.8 6.7 3.8v6.2l-6.7 3.9Z" />
+          <path className="provider-glyph-accent" d="M8.3 11.2h7.4" />
+          <path className="provider-glyph-accent" d="M8.3 14.2h7.4" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M12 5.9v13.7" />
+          <circle className="provider-glyph-dot" cx="8.2" cy="8.8" r="1" />
+          <circle className="provider-glyph-dot" cx="15.8" cy="8.8" r="1" />
+        </>
+      )
     default:
       return (
         <>

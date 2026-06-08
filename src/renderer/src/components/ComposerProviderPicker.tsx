@@ -84,7 +84,8 @@ const PROVIDER_DESCRIPTIONS: Record<ProviderId, string> = {
   claude: 'Anthropic Claude Code',
   kimi: 'Moonshot Kimi CLI',
   grok: 'xAI Grok CLI',
-  cursor: 'Cursor Agent CLI'
+  cursor: 'Cursor Agent CLI',
+  ollama: 'Local Ollama HTTP'
 }
 
 /**
@@ -104,7 +105,8 @@ export function resolveProviderRows(
     'claude',
     'kimi',
     ...(grokAvailable ? (['grok'] as ProviderId[]) : []),
-    ...(cursorAvailable ? (['cursor'] as ProviderId[]) : [])
+    ...(cursorAvailable ? (['cursor'] as ProviderId[]) : []),
+    'ollama'
   ]
   return ids.map((id) => ({
     id,

@@ -115,6 +115,10 @@ const CURSOR_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast' }
 ]
 
+const OLLAMA_MODELS: CombinedModelPickerModelOption[] = [
+  { id: 'qwen3:4b-instruct', label: 'qwen3:4b-instruct' }
+]
+
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])
 const CLAUDE_FAST_CAPABLE = new Set<string>(['claude-opus-4-7', 'claude-opus-4-6'])
 
@@ -197,6 +201,11 @@ export function getDefaultEnsembleParticipantConfig(
       // ensembles like most members (codex is the lone writer). The user can
       // grant write per-participant — cursor's write mode is deny-list
       // contained + diff-reviewed. MUST mirror EnsembleDefaults.ts.
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only'
+      }
+    case 'ollama':
       return {
         model: 'cli-default',
         permissionPresetId: 'read_only'
@@ -316,6 +325,14 @@ export function getEnsembleModelDefaults(provider: ProviderId): EnsembleModelDef
         defaultReasoning: '',
         fastModeCapableModelIds: new Set<string>(),
         defaultModelId: 'composer-2.5'
+      }
+    case 'ollama':
+      return {
+        modelOptions: OLLAMA_MODELS,
+        reasoningOptions: [],
+        defaultReasoning: '',
+        fastModeCapableModelIds: new Set<string>(),
+        defaultModelId: 'qwen3:4b-instruct'
       }
     default:
       return {

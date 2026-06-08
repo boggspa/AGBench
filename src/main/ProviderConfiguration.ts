@@ -1,5 +1,6 @@
 import type { AppSettings, ProviderId } from './store/types'
 import { resolveCliProviderBinary } from './providers/CliProviderRuntime'
+import { getOllamaStatusSnapshot } from './ollama/OllamaProvider'
 
 /**
  * The set of providers the user has actually set up ("logged in + activated") —
@@ -25,6 +26,12 @@ export async function detectConfiguredProviders(settings: AppSettings): Promise<
     configured.add('gemini')
   }
   if (settings.kimiApiKey || settings.kimiBinaryPath) configured.add('kimi')
+  try {
+    const ollamaStatus = await getOllamaStatusSnapshot(settings)
+    if (ollamaStatus.available && ollamaStatus.modelCount > 0) configured.add('ollama')
+  } catch {
+    // Unreachable local service -> not configured.
+  }
 
   await Promise.all(
     (['grok', 'cursor'] as const).map(async (provider) => {

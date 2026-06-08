@@ -34,7 +34,8 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
   // dashboard, dark on the LIGHT-mode dashboard heatmap — a static
   // near-white hex was invisible on the light surface.
   grok: 'var(--provider-grok-color)',
-  cursor: '#D2A60C'
+  cursor: '#D2A60C',
+  ollama: '#20A77A'
 }
 
 export interface HeatmapCell {

@@ -15,7 +15,7 @@ import type {
   WorkspaceRecord
 } from '../store/types'
 
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
   shellCommands: 'workspace',
   fileChanges: 'ask',
@@ -28,6 +28,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'windowBounds',
   'claudeBinaryPath',
   'kimiBinaryPath',
+  'ollamaBaseUrl',
+  'ollamaDefaultModel',
   'codexUsageCredential',
   'storeLocalChatHistory',
   'storeRawEvents',
@@ -122,7 +124,7 @@ export function assertProviderId(value: unknown): ProviderId {
 }
 
 export function availableProviderIds(): ProviderId[] {
-  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'ollama']
   if (experimentalGrokProviderEnabled()) ids.push('grok')
   if (experimentalCursorProviderEnabled()) ids.push('cursor')
   return ids

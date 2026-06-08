@@ -30,7 +30,10 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   'kimi-k2.6': 256_000,
   // Grok — grok-build (the CLI default) is the 256K build model; grok-4.3 is 1M.
   'grok-build': 256_000,
-  'grok-4.3': 1_000_000
+  'grok-4.3': 1_000_000,
+  // Ollama local defaults. qwen3:4b advertises a large context in Ollama
+  // metadata, but use a conservative UI fallback when no live limit is known.
+  'qwen3:4b-instruct': 262_144
 }
 
 const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {
@@ -41,7 +44,9 @@ const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {
   // Grok (gated) — placeholder until G10 wires real model metadata.
   grok: 256_000,
   // Cursor (gated) — Composer 2.5 placeholder until real metadata.
-  cursor: 200_000
+  cursor: 200_000,
+  // Ollama — local models vary by tag, so keep the fallback conservative.
+  ollama: 262_144
 }
 
 export function resolveContextWindow(

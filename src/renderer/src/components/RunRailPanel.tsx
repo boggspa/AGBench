@@ -38,7 +38,15 @@ interface RunSource {
   run: ChatRun | null
 }
 
-const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+const providerIds: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
 
 function formatDuration(startedAt?: string, endedAt?: string): string {
   if (!startedAt || !endedAt) return ''

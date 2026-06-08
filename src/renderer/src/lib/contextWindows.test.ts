@@ -19,16 +19,18 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('claude', 'claude-opus-4-8-1m')).toBe(1_000_000)
     expect(resolveContextWindow('kimi', 'kimi-k2.6')).toBe(256_000)
     expect(resolveContextWindow('grok', 'grok-build')).toBe(256_000)
+    expect(resolveContextWindow('ollama', 'qwen3:4b-instruct')).toBe(262_144)
   })
 
-  it('uses provider fallbacks for all six providers when the model is unknown', () => {
+  it('uses provider fallbacks for all seven providers when the model is unknown', () => {
     const expected: Record<ProviderId, number> = {
       gemini: 1_048_576,
       codex: 400_000,
       claude: 200_000,
       kimi: 256_000,
       grok: 256_000,
-      cursor: 200_000
+      cursor: 200_000,
+      ollama: 262_144
     }
 
     for (const [provider, limit] of Object.entries(expected) as Array<[ProviderId, number]>) {

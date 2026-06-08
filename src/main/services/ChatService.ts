@@ -12,7 +12,7 @@ import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { assertSafeChatId } from '../ChatPath'
 
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 
 export interface CreateSubThreadInput {
   parentChatId: string

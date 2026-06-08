@@ -38,7 +38,15 @@ interface RemoteWorkspaceEntry {
 }
 
 // Include every first-class provider in the remote bridge allowlist toggles.
-const PROVIDER_OPTIONS = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'] as const
+const PROVIDER_OPTIONS = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+] as const
 const APPROVAL_MODE_OPTIONS = ['default', 'plan'] as const
 
 export function RemoteWorkspacesPanel(): ReactElement {

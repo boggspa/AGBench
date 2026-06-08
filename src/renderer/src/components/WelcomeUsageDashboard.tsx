@@ -182,7 +182,9 @@ export function WelcomeUsageDashboard({
     // surface, so the "white" end of black/white reads here.
     grok: '#e6e6e8',
     // Cursor (gated) — cyan identity, distinct from the five.
-    cursor: '#E3B91E'
+    cursor: '#E3B91E',
+    // Ollama — local green, matching the provider glyph accent.
+    ollama: '#20A77A'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
@@ -198,9 +200,12 @@ export function WelcomeUsageDashboard({
     data.providerTokenTotals.claude +
     data.providerTokenTotals.kimi +
     data.providerTokenTotals.grok +
-    data.providerTokenTotals.cursor
+    data.providerTokenTotals.cursor +
+    data.providerTokenTotals.ollama
   const providerRibbonSegments = (
-    ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'] as Array<keyof typeof PROVIDER_PALETTE>
+    ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor', 'ollama'] as Array<
+      keyof typeof PROVIDER_PALETTE
+    >
   ).map((provider) => ({
     provider,
     weight: data.providerTokenTotals[provider],

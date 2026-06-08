@@ -967,6 +967,7 @@ export function getProviderName(provider?: ProviderId) {
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
   if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
   return 'Gemini'
 }
 

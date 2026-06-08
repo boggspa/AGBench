@@ -152,6 +152,16 @@ const CURSOR_DEFAULT_MODELS = [
   { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
   { id: 'composer-2.5', label: 'Composer 2.5' }
 ] satisfies CodexModelOption[]
+const OLLAMA_DEFAULT_MODELS = [
+  {
+    id: 'qwen3:4b-instruct',
+    label: 'qwen3:4b-instruct',
+    description: 'Local Ollama model',
+    isDefault: true
+  },
+  { id: 'custom', label: 'Custom model ID' }
+] satisfies CodexModelOption[]
+const OLLAMA_DEFAULT_MODEL = OLLAMA_DEFAULT_MODELS[0].id
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
   'default',
@@ -168,12 +178,15 @@ const CLAUDE_MODEL_IDS = new Set([
   'claude-opus-4-6'
 ])
 const KIMI_MODEL_IDS = new Set(KIMI_DEFAULT_MODELS.map((model) => model.id))
+const OLLAMA_MODEL_IDS = new Set(OLLAMA_DEFAULT_MODELS.map((model) => model.id))
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean =>
   modelId.startsWith('gpt-') || modelId.includes('codex')
 const isClaudeModelId = (modelId: string): boolean =>
   CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
 const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
+const isOllamaModelId = (modelId: string): boolean =>
+  OLLAMA_MODEL_IDS.has(modelId) || modelId.includes(':')
 const normalizeProviderModelKey = (model?: string | null): string =>
   String(model || '')
     .trim()
@@ -190,12 +203,16 @@ export {
   GEMINI_DEFAULT_MODELS,
   GROK_DEFAULT_MODELS,
   CURSOR_DEFAULT_MODELS,
+  OLLAMA_DEFAULT_MODELS,
+  OLLAMA_DEFAULT_MODEL,
   GEMINI_MODEL_IDS,
   CLAUDE_MODEL_IDS,
   KIMI_MODEL_IDS,
+  OLLAMA_MODEL_IDS,
   isGeminiModelId,
   isCodexModelId,
   isClaudeModelId,
   isKimiModelId,
+  isOllamaModelId,
   normalizeProviderModelKey
 }

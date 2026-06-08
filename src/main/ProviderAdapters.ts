@@ -92,6 +92,7 @@ export function providerLabel(provider: ProviderId): string {
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
   if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
   return 'Gemini'
 }
 
@@ -243,6 +244,33 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         imageAttachments: false,
         contextInjection: false,
         sessionResumption: true,
+        perThreadMcp: false
+      }
+    }
+  }
+  if (provider === 'ollama') {
+    return {
+      provider,
+      label: providerLabel(provider),
+      transport: 'ollama-http',
+      runChannel: 'run-agent',
+      capabilitySource: 'taskwraith',
+      features: {
+        persistentSessions: false,
+        appManagedApprovals: true,
+        workspaceGrants: false,
+        agentBenchMcpBridge: false,
+        providerManagedMcp: false,
+        nativeThreadTools: false,
+        hostCommandFallback: false
+      },
+      capabilities: {
+        approvalModes: ['plan'],
+        reasoningEffort: false,
+        speedTiers: [],
+        imageAttachments: false,
+        contextInjection: true,
+        sessionResumption: false,
         perThreadMcp: false
       }
     }

@@ -51,6 +51,8 @@ export type SettingsPanelUpdate = {
   kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
   claudeBinaryPath?: string
   kimiBinaryPath?: string
+  ollamaBaseUrl?: string
+  ollamaDefaultModel?: string
   agenticServices?: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   autoResumeParentOnSubThreadCompletion?: boolean

@@ -458,6 +458,12 @@ import {
   type ProviderAdapter
 } from './ProviderAdapters'
 import {
+  fetchOllamaModels,
+  getOllamaCapabilityContract,
+  getOllamaStatusSnapshot,
+  runOllamaProvider
+} from './ollama/OllamaProvider'
+import {
   buildDiagnosticsSnapshot,
   buildProductOperationsStatus,
   serializeDiagnosticsSnapshot
@@ -8747,6 +8753,43 @@ async function runCodexProvider(
   }
 }
 
+async function runOllamaProviderAdapter(
+  event: Electron.IpcMainInvokeEvent,
+  payload: AgentRunPayload
+): Promise<void> {
+  const route = routeWithRunId('ollama', payload)
+  registerRunSession(
+    'ollama',
+    event.sender,
+    route,
+    payload.scope === 'global' ? undefined : payload.workspace,
+    {
+      provider: 'ollama',
+      sender: event.sender,
+      startedAt: Date.now(),
+      model: payload.model,
+      approvalMode: 'plan',
+      ...route
+    }
+  )
+  await runOllamaProvider(
+    {
+      getSettings: () => AppStore.getSettings(),
+      sendAgentCompatLine,
+      sendAgentCompatError,
+      sendAgentCompatExit,
+      runManager,
+      emitProviderCapabilityWarnings
+    },
+    event,
+    {
+      ...payload,
+      approvalMode: 'plan'
+    },
+    route
+  )
+}
+
 async function cancelProviderRun(
   provider: ProviderId = 'gemini',
   runId?: string
@@ -8807,7 +8850,8 @@ async function cancelProviderRun(
     provider === 'claude' ||
     provider === 'kimi' ||
     provider === 'grok' ||
-    provider === 'cursor'
+    provider === 'cursor' ||
+    provider === 'ollama'
   ) {
     const child = cliProviderProcesses.get(provider)
     if (child) {
@@ -9537,6 +9581,24 @@ const providerAdapters = createProviderAdapterRegistry<
     getMcpStatus: () => getAgentMcpStatusSnapshotDirect('kimi'),
     getCapabilityContract: (request = {}) =>
       getProviderCapabilityContractDirect('kimi', request.workspacePath, request.approvalMode)
+  },
+  {
+    ...defaultProviderDescriptor('ollama'),
+    run: ({ event, payload }) => runOllamaProviderAdapter(event, payload),
+    cancel: (runId) => cancelProviderRun('ollama', runId),
+    getStatus: () => getOllamaStatusSnapshot(AppStore.getSettings()),
+    getMcpStatus: async () => ({
+      available: false,
+      enabled: false,
+      installed: false,
+      tools: [],
+      message: 'Ollama Phase 1 does not expose MCP tools.'
+    }),
+    getCapabilityContract: (request = {}) =>
+      getOllamaCapabilityContract(
+        { getSettings: () => AppStore.getSettings() },
+        request
+      )
   },
   ...grokAdapters,
   ...cursorAdapters
@@ -15467,6 +15529,27 @@ if (isGeminiMcpBridgeProcess) {
     )
 
     ipcMain.handle('get-agent-models', async (_, provider: ProviderId) => {
+      if (provider === 'ollama') {
+        try {
+          const settings = AppStore.getSettings()
+          const models = await fetchOllamaModels(settings)
+          return models.map((model) => ({
+            id: model.id,
+            label: model.label,
+            description: model.description,
+            isDefault: model.isDefault
+          }))
+        } catch {
+          return [
+            {
+              id: 'qwen3:4b-instruct',
+              label: 'qwen3:4b-instruct',
+              description: 'Install with `ollama pull qwen3:4b-instruct`',
+              isDefault: true
+            }
+          ]
+        }
+      }
       if (provider !== 'codex') {
         return getStaticProviderModels(provider)
       }

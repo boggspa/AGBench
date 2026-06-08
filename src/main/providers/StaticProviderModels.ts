@@ -120,6 +120,15 @@ const KIMI_STATIC_MODELS = [
     isDefault: true
   }
 ]
+const OLLAMA_STATIC_MODELS = [
+  {
+    id: 'qwen3:4b-instruct',
+    label: 'qwen3:4b-instruct',
+    description: 'Local Ollama model',
+    isDefault: true
+  },
+  { id: 'custom', label: 'Custom model ID' }
+]
 const KIMI_DEFAULT_MODEL = 'kimi-k2.6'
 const KIMI_CLI_MODEL_IDS = new Set(KIMI_STATIC_MODELS.map((model) => model.id))
 const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
@@ -145,6 +154,7 @@ const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
 export function getStaticProviderModels(provider: ProviderId) {
   if (provider === 'claude') return CLAUDE_STATIC_MODELS
   if (provider === 'kimi') return KIMI_STATIC_MODELS
+  if (provider === 'ollama') return OLLAMA_STATIC_MODELS
   return [
     { id: 'cli-default', label: 'CLI Default', isDefault: true },
     { id: 'auto', label: 'Auto' },
@@ -163,6 +173,12 @@ export function normalizeCliProviderModel(provider: ProviderId, model?: string |
     if (alias) return alias
     if (KIMI_CLI_MODEL_IDS.has(lowered)) return lowered
     return KIMI_DEFAULT_MODEL
+  }
+  if (provider === 'ollama') {
+    if (!trimmed || trimmed === 'cli-default' || trimmed === 'auto' || trimmed === 'default') {
+      return OLLAMA_STATIC_MODELS[0].id
+    }
+    return trimmed
   }
   if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best')
     return 'default'

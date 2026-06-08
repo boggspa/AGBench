@@ -25,7 +25,15 @@ function CockpitPanel({
   onDispatchHandoff: (card: HandoffCard) => void
   onArchiveHandoff: (card: HandoffCard) => void
 }) {
-  const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  const providerIds: ProviderId[] = [
+    'gemini',
+    'codex',
+    'claude',
+    'kimi',
+    'grok',
+    'cursor',
+    'ollama'
+  ]
   const activeCount = lanes.filter((lane) => lane.phase === 'active').length
   const waitingCount = lanes.filter(
     (lane) => lane.phase === 'queued' || lane.phase === 'scheduled' || lane.phase === 'paused'

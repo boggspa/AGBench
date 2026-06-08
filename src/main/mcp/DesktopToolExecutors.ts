@@ -65,7 +65,7 @@ const MAX_CREATIVE_PROJECT_SNAPSHOT_BYTES = 2_000_000
 const CREATIVE_RUNNING_PROBE_TTL_MS = 3_000
 const FCPXML_DTD_CACHE_DIR = `${os.tmpdir()}/taskwraith-fcpxml-dtds`
 
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
   'shellCommands',
   'fileChanges',
@@ -352,7 +352,7 @@ function assertProviderId(value: unknown): ProviderId {
 }
 
 function availableProviderIds(): ProviderId[] {
-  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'ollama']
   if (experimentalGrokProviderEnabled()) ids.push('grok')
   if (experimentalCursorProviderEnabled()) ids.push('cursor')
   return ids

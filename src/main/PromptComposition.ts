@@ -80,6 +80,7 @@ function providerDisplayName(provider: unknown, fallback = 'Sub-thread'): string
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
   if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
   if (provider === 'gemini') return 'Gemini'
   return fallback
 }
@@ -433,7 +434,9 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // own session continuity (with a special Codex handoff branch below).
   const kimiNeedsContextInjection = provider === 'kimi'
   const geminiNeedsContextInjection = provider === 'gemini' && !resumeSessionId
-  const shouldAppendContextForRun = kimiNeedsContextInjection || geminiNeedsContextInjection
+  const ollamaNeedsContextInjection = provider === 'ollama'
+  const shouldAppendContextForRun =
+    kimiNeedsContextInjection || geminiNeedsContextInjection || ollamaNeedsContextInjection
 
   let contextTurnsApplied = shouldAppendContextForRun ? clampContextTurns(chatContextTurns) : 0
   let contextualPrompt = injectAdditionalPeerContext(
@@ -443,6 +446,8 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   )
   let applicationLog = kimiNeedsContextInjection
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
+    : ollamaNeedsContextInjection
+      ? `Context turns: ${contextTurnsApplied} (Ollama: appending compact conversation context because the local HTTP adapter is stateless)`
     : provider !== 'gemini'
       ? `Context turns: 0 (${providerLabel} provider/session history is authoritative when available)`
       : resumeSessionId

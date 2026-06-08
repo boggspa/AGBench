@@ -47,6 +47,7 @@ describe('ProviderAdapters', () => {
     expect(providerLabel('codex')).toBe('Codex')
     expect(providerLabel('claude')).toBe('Claude')
     expect(providerLabel('kimi')).toBe('Kimi')
+    expect(providerLabel('ollama')).toBe('Ollama')
     expect(defaultProviderDescriptor('codex')).toMatchObject({
       provider: 'codex',
       transport: 'codex-app-server',
@@ -66,11 +67,13 @@ describe('ProviderAdapters', () => {
       }
     })
     expect(
-      ['gemini', 'codex', 'claude', 'kimi'].map(
+      ['gemini', 'codex', 'claude', 'kimi', 'ollama'].map(
         (provider) =>
-          defaultProviderDescriptor(provider as 'gemini' | 'codex' | 'claude' | 'kimi').runChannel
+          defaultProviderDescriptor(
+            provider as 'gemini' | 'codex' | 'claude' | 'kimi' | 'ollama'
+          ).runChannel
       )
-    ).toEqual(['run-agent', 'run-agent', 'run-agent', 'run-agent'])
+    ).toEqual(['run-agent', 'run-agent', 'run-agent', 'run-agent', 'run-agent'])
   })
 
   it('enforces one adapter per provider and requires registered providers', () => {
@@ -104,20 +107,25 @@ describe('defaultProviderDescriptor capabilities', () => {
   // renderer consume to decide what to render. Pinning them as tests
   // means any change is reviewable; silently flipping (e.g. removing
   // image support from Gemini) requires touching this file.
-  const allProviders: Array<'gemini' | 'codex' | 'claude' | 'kimi'> = [
+  const allProviders: Array<'gemini' | 'codex' | 'claude' | 'kimi' | 'ollama'> = [
     'gemini',
     'codex',
     'claude',
-    'kimi'
+    'kimi',
+    'ollama'
   ]
 
   for (const provider of allProviders) {
     it(`${provider} declares a non-empty approvalModes list`, () => {
       const cap = defaultProviderDescriptor(provider).capabilities
       expect(cap.approvalModes.length).toBeGreaterThan(0)
-      // Must always include 'default' — every provider's runtime accepts
-      // the baseline approval prompt mode.
-      expect(cap.approvalModes).toContain('default')
+      if (provider === 'ollama') {
+        expect(cap.approvalModes).toEqual(['plan'])
+      } else {
+        // Must always include 'default' — every CLI provider's runtime accepts
+        // the baseline approval prompt mode.
+        expect(cap.approvalModes).toContain('default')
+      }
     })
 
     it(`${provider} declares boolean capability flags`, () => {

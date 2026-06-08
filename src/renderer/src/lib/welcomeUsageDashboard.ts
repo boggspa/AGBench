@@ -300,7 +300,8 @@ const emptyProviderTotals = (): Record<ProviderId, number> => ({
   claude: 0,
   kimi: 0,
   grok: 0,
-  cursor: 0
+  cursor: 0,
+  ollama: 0
 })
 
 const formatHourLabel = (dayKey: string, hour: number): string => {
@@ -434,6 +435,9 @@ const inferProviderFromModelName = (model: string): ProviderId => {
     return 'codex'
   if (normalized.includes('grok')) return 'grok'
   if (normalized.includes('composer') || normalized.includes('cursor')) return 'cursor'
+  if (normalized.includes('ollama') || normalized.includes('qwen') || normalized.includes('llama')) {
+    return 'ollama'
+  }
   return 'gemini'
 }
 
@@ -578,7 +582,8 @@ export const buildWelcomeUsageDashboardData = (
     gemini: { tokens: 0, costUsd: 0 },
     kimi: { tokens: 0, costUsd: 0 },
     grok: { tokens: 0, costUsd: 0 },
-    cursor: { tokens: 0, costUsd: 0 }
+    cursor: { tokens: 0, costUsd: 0 },
+    ollama: { tokens: 0, costUsd: 0 }
   }
   // 1.0.5-EW52 — Cumulative wall time across runs whose
   // timestamp is within the last 24 hours. Distinct from
@@ -631,7 +636,8 @@ export const buildWelcomeUsageDashboardData = (
       recordProvider === 'gemini' ||
       recordProvider === 'kimi' ||
       recordProvider === 'grok' ||
-      recordProvider === 'cursor'
+      recordProvider === 'cursor' ||
+      recordProvider === 'ollama'
     ) {
       providerCostAggregate[recordProvider].tokens += Number(record.totalTokens) || 0
       if (hasCost) providerCostAggregate[recordProvider].costUsd += cost
@@ -1025,7 +1031,8 @@ export const buildWelcomeUsageDashboardData = (
     gemini: 'Gemini',
     kimi: 'Kimi',
     grok: 'Grok',
-    cursor: 'Cursor'
+    cursor: 'Cursor',
+    ollama: 'Ollama'
   }
   // 1.0.5-EW52 follow-up — Also compute total provider-tokens
   // so each card's meter can render as share-of-tokens rather

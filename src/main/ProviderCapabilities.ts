@@ -362,6 +362,18 @@ function providerManagedMcpCapability(provider: ProviderId): ProviderMcpCapabili
   }
 }
 
+function unavailableLocalMcpCapability(provider: ProviderId): ProviderMcpCapability {
+  return {
+    state: 'unavailable',
+    source: 'taskwraith',
+    available: false,
+    enabled: false,
+    installed: false,
+    tools: [],
+    message: `${providerLabel(provider)} runs through TaskWraith's local HTTP adapter. Tool execution is not advertised in this MVP.`
+  }
+}
+
 /** Cursor write-mode runs register a transient workspace `taskwraith` MCP server
  * backed by the shared TaskWraith broker. Native Cursor shell/write tools are
  * constrained so side effects go through the brokered tools and TaskWraith
@@ -433,6 +445,18 @@ function approvalContract(
   requestedMode: string,
   effectiveMode: string
 ): ProviderApprovalCapability {
+  if (provider === 'ollama') {
+    return {
+      requestedMode,
+      effectiveMode: 'plan',
+      providerMode: 'local read-only',
+      inAppApprovals: true,
+      supportsWorkspaceGrants: false,
+      notes: [
+        'Ollama runs through TaskWraith local HTTP. Phase 1 does not advertise shell, file, or MCP tools.'
+      ]
+    }
+  }
   if (provider === 'codex') {
     return {
       requestedMode,
@@ -659,6 +683,33 @@ export function buildProviderCapabilityContract({
         )
       )
     }
+  } else if (provider === 'ollama') {
+    mcp = unavailableLocalMcpCapability(provider)
+    shellCommands = unavailableCapability(
+      'shellCommands',
+      'taskwraith',
+      'Ollama Phase 1 is local read-only chat; shell commands are not advertised.'
+    )
+    fileChanges = unavailableCapability(
+      'fileChanges',
+      'taskwraith',
+      'Ollama Phase 1 is local read-only chat; file edits are not advertised.'
+    )
+    mcpTools = unavailableCapability(
+      'mcpTools',
+      'taskwraith',
+      'Ollama Phase 1 does not expose TaskWraith MCP tools to the model.'
+    )
+    elicit = unavailableCapability(
+      'elicit',
+      'taskwraith',
+      'Ollama Phase 1 does not expose TaskWraith user-question tools.'
+    )
+    delegate = unavailableCapability(
+      'delegate',
+      'taskwraith',
+      'Ollama Phase 1 cannot spawn sub-threads.'
+    )
   } else {
     mcp =
       provider === 'claude' || provider === 'kimi'

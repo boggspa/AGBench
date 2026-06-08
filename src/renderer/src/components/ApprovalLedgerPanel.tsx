@@ -31,7 +31,16 @@ import { getWorkspacePolicyServiceLabel } from '../lib/workspacePolicyServices'
  * without a manual reload).
  */
 
-const ALL_PROVIDERS: Array<ProviderId | 'all'> = ['all', 'gemini', 'codex', 'claude', 'kimi']
+const ALL_PROVIDERS: Array<ProviderId | 'all'> = [
+  'all',
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
 const ALL_STATUSES: ApprovalLedgerStatus[] = [
   'pending',
   'approved',
@@ -54,7 +63,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   claude: 'Claude',
   kimi: 'Kimi',
   grok: 'Grok',
-  cursor: 'Cursor'
+  cursor: 'Cursor',
+  ollama: 'Ollama'
 }
 
 export interface ApprovalLedgerPanelProps {

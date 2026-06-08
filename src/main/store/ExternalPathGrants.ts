@@ -5,13 +5,22 @@ export const EXTERNAL_PATH_GRANT_METADATA_KEYS = [
   'codexExternalPathGrants',
   'claudeExternalPathGrants',
   'geminiExternalPathGrants',
-  'kimiExternalPathGrants'
+  'kimiExternalPathGrants',
+  'ollamaExternalPathGrants'
 ] as const
 
 // 1.0.6-CRUX21 — grok + cursor are first-class providers; their signed grants
 // must survive coalescing like the others. (Integrity is enforced separately by
 // the main-issued signature check, not by this membership set.)
-const KNOWN_PROVIDERS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
+const KNOWN_PROVIDERS = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+])
 
 function grantKey(grant: ExternalPathGrant): string {
   return `${grant.provider}:${grant.path}`

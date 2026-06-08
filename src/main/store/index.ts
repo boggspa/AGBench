@@ -133,7 +133,15 @@ const runEventHashCache = new Map<string, string>()
 // runtime profiles too (local + global per provider, see getDefaultRuntimeProfiles)
 // so their global chats have a usable runtime out of the box. Unconditional:
 // unused default profiles for a force-disabled provider are harmless data.
-const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
+const providerIds: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
 const LEGACY_TASKWRAITH_FONT_STACK =
   '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
 const TASKWRAITH_DEFAULT_FONT_STACK =
@@ -143,6 +151,8 @@ const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
   claudeBinaryPath: '',
   kimiBinaryPath: '',
+  ollamaBaseUrl: 'http://127.0.0.1:11434',
+  ollamaDefaultModel: '',
   defaultGeminiAuthProfileId: null,
   geminiAuthProfiles: [],
   geminiApiRuntime: 'auto',

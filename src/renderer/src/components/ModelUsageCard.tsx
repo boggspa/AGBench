@@ -43,7 +43,15 @@ interface ModelUsageCardProps {
   variant?: 'card' | 'sidebar'
 }
 
-const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+const PROVIDER_ORDER: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
 const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'taskwraith-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
 const SIDEBAR_USAGE_MIN_HEIGHT = 220

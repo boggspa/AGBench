@@ -65,7 +65,9 @@ export const DEFAULT_APPROVAL_TIMEOUT_POLICY: ApprovalTimeoutPolicy = {
     // Record<ProviderId> requires a value — mirror the Claude/Gemini window.
     grok: 120_000,
     // Cursor (gated, CR) — mirror the Claude/Gemini window.
-    cursor: 120_000
+    cursor: 120_000,
+    // Ollama Phase 1 is read-only/no-approval, but keep the record complete.
+    ollama: 120_000
   },
   mainTimeoutMs: 60_000,
   perKindOverridesMs: {

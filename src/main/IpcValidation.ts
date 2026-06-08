@@ -30,7 +30,7 @@ type ArgSpec =
   | 'runQueueStatus'
   | 'bugReportPayload'
 
-const PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 const APPROVAL_ACTIONS = new Set([
   'accept',
   'acceptForSession',

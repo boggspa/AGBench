@@ -111,6 +111,10 @@
   --chat-provider-accent: var(--provider-cursor-color);
 }
 
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-ollama {
+  --chat-provider-accent: var(--provider-ollama-color);
+}
+
 /* Chat rows: provider colour now lives on the SELECTION rim (no per-row left
    sliver — "fingernail" removed). A selected chat gets a provider-tinted
    gradient + rim, so the accent reads only where it carries meaning. */
@@ -1908,6 +1912,11 @@
 .app-sidebar .sidebar-chat-item.provider-cursor,
 .app-sidebar .sidebar-global-chat-item.provider-cursor {
   --chat-provider-accent: var(--provider-cursor-color);
+}
+
+.app-sidebar .sidebar-chat-item.provider-ollama,
+.app-sidebar .sidebar-global-chat-item.provider-ollama {
+  --chat-provider-accent: var(--provider-ollama-color);
 }
 
 .sidebar-chat-title-line,

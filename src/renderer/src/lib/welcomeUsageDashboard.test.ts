@@ -659,24 +659,31 @@ describe('mixProviderColors', () => {
     claude: '#D97706',
     kimi: '#84A33B',
     grok: '#6B7280',
-    cursor: '#06B6D4'
+    cursor: '#06B6D4',
+    ollama: '#20A77A'
   } as const
 
   it('returns empty string when no provider has weight', () => {
     expect(
-      mixProviderColors({ gemini: 0, codex: 0, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+      mixProviderColors(
+        { gemini: 0, codex: 0, claude: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
+        palette
+      )
     ).toBe('')
   })
 
   it('returns the single provider color when only one contributes', () => {
     expect(
-      mixProviderColors({ gemini: 0, codex: 50, claude: 0, kimi: 0, grok: 0, cursor: 0 }, palette)
+      mixProviderColors(
+        { gemini: 0, codex: 50, claude: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
+        palette
+      )
     ).toBe('#6366F1')
   })
 
   it('builds a nested color-mix() expression that references both providers when two contribute', () => {
     const result = mixProviderColors(
-      { gemini: 30, codex: 70, claude: 0, kimi: 0, grok: 0, cursor: 0 },
+      { gemini: 30, codex: 70, claude: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
       palette
     )
     expect(result).toContain('color-mix(in srgb,')
@@ -686,7 +693,7 @@ describe('mixProviderColors', () => {
 
   it('weights the dominant provider with a higher percentage in the color-mix expression', () => {
     const dominantCodex = mixProviderColors(
-      { gemini: 10, codex: 90, claude: 0, kimi: 0, grok: 0, cursor: 0 },
+      { gemini: 10, codex: 90, claude: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
       palette
     )
     // color-mix(in srgb, <gemini> 10%, <codex> 90%) → codex weight should appear with a high number.
@@ -1165,11 +1172,11 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
   const HOUR = 60 * 60 * 1000
   const DAY = 24 * HOUR
 
-  it('always emits 6 canonical providers in cost breakdown, even with no records', () => {
+  it('always emits 7 canonical providers in cost breakdown, even with no records', () => {
     const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
-    expect(data.providerCostBreakdown).toHaveLength(6)
+    expect(data.providerCostBreakdown).toHaveLength(7)
     const providers = data.providerCostBreakdown.map((entry) => entry.provider).sort()
-    expect(providers).toEqual(['claude', 'codex', 'cursor', 'gemini', 'grok', 'kimi'])
+    expect(providers).toEqual(['claude', 'codex', 'cursor', 'gemini', 'grok', 'kimi', 'ollama'])
     // Zero-token / zero-cost providers still appear with the canonical
     // display name and 0 share so the card list is a stable roster.
     for (const entry of data.providerCostBreakdown) {

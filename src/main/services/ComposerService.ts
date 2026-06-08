@@ -17,7 +17,7 @@ import type {
   ProviderId
 } from '../store/types'
 
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 
 export interface ComposerImageAttachment {
   id?: string
@@ -119,11 +119,10 @@ export class ComposerService {
     const selfReflectiveRequested = planParsed.selfReflective
 
     const requestedModel = resolveRequestedModel(provider, input, chat)
-    const approvalMode = resolveApprovalMode(
-      scope,
-      planParsed.planMode ? 'plan' : input.approvalMode,
-      chat
-    )
+    const approvalMode =
+      provider === 'ollama'
+        ? 'plan'
+        : resolveApprovalMode(scope, planParsed.planMode ? 'plan' : input.approvalMode, chat)
     const imagePaths = normalizeImagePaths(input.imageAttachments || input.attachments || [])
     const externalPathGrants =
       scope !== 'global'
@@ -440,6 +439,7 @@ function getProviderLabel(provider: ProviderId): string {
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
   if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
   return 'Gemini'
 }
 
@@ -448,6 +448,7 @@ function getDefaultModelForProvider(provider: ProviderId): string {
   if (provider === 'claude') return 'default'
   if (provider === 'kimi') return 'kimi-k2.6'
   if (provider === 'cursor') return 'composer-2.5-fast'
+  if (provider === 'ollama') return 'qwen3:4b-instruct'
   return 'flash-lite'
 }
 

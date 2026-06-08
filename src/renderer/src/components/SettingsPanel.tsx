@@ -136,6 +136,8 @@ interface SettingsPanelProps {
   kimiSanitiserCustomKeywords: string
   claudeBinaryPath: string
   kimiBinaryPath: string
+  ollamaBaseUrl: string
+  ollamaDefaultModel: string
   agenticServices: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), TaskWraith auto-dispatches a continuation run
@@ -162,6 +164,7 @@ interface SettingsPanelProps {
   codexStatus?: any
   claudeAuthStatus?: ProviderApiKeyStatus | null
   kimiAuthStatus?: ProviderApiKeyStatus | null
+  ollamaStatus?: any
   /** Cursor / Grok adapter availability (enabled, not force-disabled). Both
    * are CLI-login providers — auth lives in their own CLI — so the cards
    * surface availability + a terminal-login instruction, no API-key field. */
@@ -249,6 +252,8 @@ interface SettingsPanelProps {
     kimiSanitiserCustomKeywords?: string
     claudeBinaryPath?: string
     kimiBinaryPath?: string
+    ollamaBaseUrl?: string
+    ollamaDefaultModel?: string
     agenticServices?: AgenticServicesSettings
     nativeSubAgentRequests?: NativeSubAgentRequestPolicy
     autoResumeParentOnSubThreadCompletion?: boolean
@@ -669,7 +674,8 @@ const SETTINGS_PROVIDER_ORDER: ProviderId[] = [
   'gemini',
   'kimi',
   'cursor',
-  'grok'
+  'grok',
+  'ollama'
 ]
 
 const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
@@ -678,7 +684,8 @@ const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
   gemini: 'Gemini',
   kimi: 'Kimi',
   grok: 'Grok',
-  cursor: 'Cursor'
+  cursor: 'Cursor',
+  ollama: 'Ollama'
 }
 
 /** Human labels for a Gemini auth profile's `kind` (the raw values read
@@ -1286,6 +1293,8 @@ export function SettingsPanel({
   kimiSanitiserCustomKeywords,
   claudeBinaryPath,
   kimiBinaryPath,
+  ollamaBaseUrl,
+  ollamaDefaultModel,
   agenticServices,
   nativeSubAgentRequests = 'ask',
   autoResumeParentOnSubThreadCompletion,
@@ -1309,6 +1318,7 @@ export function SettingsPanel({
   codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
+  ollamaStatus,
   cursorProviderAvailable = false,
   grokProviderAvailable = false,
   claudeLoginState = 'idle',
@@ -4210,6 +4220,106 @@ export function SettingsPanel({
                   placeholder="Auto-detect, or /path/to/kimi"
                 />
                 <p className="settings-hint">Optional path override for Kimi Code CLI.</p>
+              </div>
+
+              <div className="settings-group">
+                <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                  Local / Ollama
+                </h4>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-sm)',
+                    marginBottom: 'var(--space-xs)',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  {ollamaStatus?.available ? (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--color-success, #3fb950)' }}>
+                      ● Service reachable
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--color-warning, #d29922)' }}>
+                      ● Service not reachable
+                    </span>
+                  )}
+                  {typeof ollamaStatus?.modelCount === 'number' && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                      {ollamaStatus.modelCount} local model
+                      {ollamaStatus.modelCount === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    type="button"
+                    onClick={() => onRefreshProviderMcpStatus?.('ollama')}
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {Array.isArray(ollamaStatus?.models) && ollamaStatus.models.length > 0 && (
+                  <div
+                    className="settings-hint"
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 'var(--space-2xs)',
+                      marginBottom: 'var(--space-sm)'
+                    }}
+                  >
+                    {ollamaStatus.models.slice(0, 6).map((model: any) => (
+                      <span
+                        key={model.id || model.label}
+                        style={{
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '999px',
+                          padding: '2px 8px',
+                          color: model.isDefault ? 'var(--accent)' : 'var(--text-secondary)'
+                        }}
+                        title={model.description || model.id}
+                      >
+                        {model.label || model.id}
+                        {model.isDefault ? ' default' : ''}
+                      </span>
+                    ))}
+                    {ollamaStatus.models.length > 6 && (
+                      <span style={{ color: 'var(--text-tertiary)' }}>
+                        +{ollamaStatus.models.length - 6} more
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <label className="settings-label">Ollama endpoint</label>
+                <input
+                  className="settings-select"
+                  value={ollamaBaseUrl}
+                  onChange={(e) => onChange({ ollamaBaseUrl: e.target.value })}
+                  placeholder="http://127.0.0.1:11434"
+                />
+                <p className="settings-hint">
+                  TaskWraith talks to the local Ollama HTTP service. No cloud API key is required.
+                </p>
+
+                <label className="settings-label">Default local model</label>
+                <input
+                  className="settings-select"
+                  value={ollamaDefaultModel}
+                  onChange={(e) => onChange({ ollamaDefaultModel: e.target.value })}
+                  placeholder={ollamaStatus?.defaultModel || 'qwen3:4b-instruct'}
+                />
+                <p className="settings-hint">
+                  Leave blank to use the first installed Ollama model. Phase 1 is read-only local
+                  chat; shell, file, and MCP tools are not advertised.
+                </p>
+                {ollamaStatus?.error && (
+                  <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>
+                    {String(ollamaStatus.error)}
+                  </p>
+                )}
               </div>
             </>
           ) /* end providers */

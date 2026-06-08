@@ -35,7 +35,7 @@ const RUN_QUEUE_SOURCES = new Set<RunQueueJobSource>([
   'host_rerun',
   'system'
 ])
-const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 
 export interface RunQueueStore {
   getChat: (chatId: string) => ChatRecord | null

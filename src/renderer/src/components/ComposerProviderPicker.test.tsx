@@ -55,7 +55,8 @@ describe('resolveProviderRows (gated visibility + option order)', () => {
       'gemini',
       'codex',
       'claude',
-      'kimi'
+      'kimi',
+      'ollama'
     ])
   })
 
@@ -66,7 +67,8 @@ describe('resolveProviderRows (gated visibility + option order)', () => {
       'claude',
       'kimi',
       'grok',
-      'cursor'
+      'cursor',
+      'ollama'
     ])
   })
 
@@ -76,7 +78,8 @@ describe('resolveProviderRows (gated visibility + option order)', () => {
       'codex',
       'claude',
       'kimi',
-      'cursor'
+      'cursor',
+      'ollama'
     ])
   })
 

@@ -44,7 +44,7 @@ function makeWorkSession(over: Partial<WorkSessionConfig> = {}): WorkSessionConf
     maxDurationMs: 6 * 60 * 60 * 1000,
     enableScoutPass: false,
     startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
+    roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
     totalRoundsUsed: 0,
     ...over
   }
@@ -283,7 +283,7 @@ describe('handleEnsembleContinue', () => {
         {
           workSession: makeWorkSession({
             maxRoundsPerProvider: 2,
-            roundsUsed: { codex: 2, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
+            roundsUsed: { codex: 2, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
             totalRoundsUsed: 2
           })
         }
@@ -371,7 +371,7 @@ describe('transitionWorkSession', () => {
         maxRoundsPerProvider: 10,
         maxDurationMs: 1000,
         enableScoutPass: false,
-        roundsUsed: { codex: 3, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
+        roundsUsed: { codex: 3, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0, ollama: 0 },
         totalRoundsUsed: 3
       }
     }
