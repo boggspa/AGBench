@@ -515,6 +515,26 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
     ])
   })
 
+  it('treats bare Qwen 3.5 model names as local Ollama usage', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'qwen35-local',
+        provider: undefined,
+        timestamp: NOW - 90_000,
+        model: 'qwen3.5:9b',
+        inputTokens: 2_000,
+        outputTokens: 500,
+        totalTokens: 2_500
+      })
+    ]
+
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+
+    expect(data.modelBreakdown.map((m) => [m.provider, m.model, m.label])).toEqual([
+      ['ollama', 'qwen3.5:9b', 'Qwen 3.5 (9B Param)']
+    ])
+  })
+
   it('percentages are computed against kept-model tokens, not the lifetime aggregate', () => {
     const records: UsageRecord[] = [
       baseRecord({

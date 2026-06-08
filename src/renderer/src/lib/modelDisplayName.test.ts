@@ -92,6 +92,10 @@ describe('humaniseModelId', () => {
   describe('Ollama', () => {
     it('maps local Ollama tags to readable model names', () => {
       expect(humaniseModelId('ollama', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+      expect(humaniseModelId('ollama', 'qwen3.5:9b')).toBe('Qwen 3.5 (9B Param)')
+      expect(humaniseModelId('ollama', 'qwen3.5:9b-q4_K_M')).toBe(
+        'Qwen 3.5 (9B Param)'
+      )
       expect(humaniseModelId('ollama', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
       expect(humaniseModelId('ollama', 'gemma4:12b-it-q4_K_M')).toBe(
         'Gemma 4 (12B Param)'
@@ -158,6 +162,7 @@ describe('humaniseModelId', () => {
       expect(labels['grok-build']).toBeDefined()
       expect(labels['composer-2.5-fast']).toBeDefined()
       expect(labels['qwen3:4b-instruct']).toBeDefined()
+      expect(labels['qwen3.5:9b']).toBeDefined()
       expect(labels['gemma4:12b']).toBeDefined()
       expect(labels['gpt-oss']).toBeDefined()
       // CLI Default is a non-canonical Gemini composer id but is

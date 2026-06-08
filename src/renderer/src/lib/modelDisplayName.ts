@@ -89,6 +89,7 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
 
   // ── Ollama ────────────────────────────────────────────────
   'qwen3:4b-instruct': 'Qwen 3 (4B Param)',
+  'qwen3.5:9b': 'Qwen 3.5 (9B Param)',
   'gemma4:12b': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-qat': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-q4_k_m': 'Gemma 4 (12B Param)',
@@ -155,6 +156,9 @@ export function humaniseModelId(
   const canonical = canonicalModelIdForProvider(provider, modelId)
   if (!canonical) return ''
   const key = canonical.trim().toLowerCase()
+  if (provider === 'ollama' && key.startsWith('qwen3.5:9b-')) {
+    return 'Qwen 3.5 (9B Param)'
+  }
   return KNOWN_MODEL_LABELS[key] || canonical
 }
 

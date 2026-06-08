@@ -15960,6 +15960,11 @@ if (isGeminiMcpBridgeProcess) {
               isDefault: true
             },
             {
+              id: 'qwen3.5:9b',
+              label: humanizeOllamaModelId('qwen3.5:9b'),
+              description: 'Install with `ollama pull qwen3.5:9b`'
+            },
+            {
               id: 'gemma4:12b',
               label: humanizeOllamaModelId('gemma4:12b'),
               description: 'Install with `ollama pull gemma4:12b`'

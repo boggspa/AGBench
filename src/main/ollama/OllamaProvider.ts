@@ -172,6 +172,9 @@ export function humanizeOllamaModelId(model: string): string {
   const id = model.trim()
   const key = id.toLowerCase()
   if (key === 'qwen3:4b-instruct') return 'Qwen 3 (4B Param)'
+  if (key === 'qwen3.5:9b' || key.startsWith('qwen3.5:9b-')) {
+    return 'Qwen 3.5 (9B Param)'
+  }
   if (key === 'gemma4:12b' || key.startsWith('gemma4:12b-')) {
     return 'Gemma 4 (12B Param)'
   }
@@ -644,7 +647,7 @@ export async function runOllamaProvider(
       deps.sendAgentCompatError(
         event.sender,
         'ollama',
-        'Ollama is reachable, but no local model is installed. Pull a model with `ollama pull qwen3:4b-instruct`, `ollama pull gemma4:12b`, or `ollama pull gpt-oss`, then refresh models.',
+        'Ollama is reachable, but no local model is installed. Pull a model with `ollama pull qwen3:4b-instruct`, `ollama pull qwen3.5:9b`, `ollama pull gemma4:12b`, or `ollama pull gpt-oss`, then refresh models.',
         route
       )
       deps.sendAgentCompatExit(event.sender, 'ollama', 1, route)

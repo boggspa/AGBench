@@ -35,6 +35,8 @@ describe('normalizeOllamaBaseUrl', () => {
 describe('normalizeOllamaModels', () => {
   it('maps common local model ids to human-readable labels', () => {
     expect(humanizeOllamaModelId('qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+    expect(humanizeOllamaModelId('qwen3.5:9b')).toBe('Qwen 3.5 (9B Param)')
+    expect(humanizeOllamaModelId('qwen3.5:9b-q4_K_M')).toBe('Qwen 3.5 (9B Param)')
     expect(humanizeOllamaModelId('gemma4:12b')).toBe('Gemma 4 (12B Param)')
     expect(humanizeOllamaModelId('gemma4:12b-it-q4_K_M')).toBe('Gemma 4 (12B Param)')
     expect(humanizeOllamaModelId('gpt-oss')).toBe('GPT OSS (20B Param)')
@@ -57,6 +59,7 @@ describe('normalizeOllamaModels', () => {
             capabilities: ['completion', 'tools']
           },
           { model: 'qwen3:4b-instruct' },
+          { model: 'qwen3.5:9b' },
           { model: 'gemma4:12b' },
           { model: 'gpt-oss:20b' },
           { model: 'llama3.2:3b' }
@@ -65,7 +68,7 @@ describe('normalizeOllamaModels', () => {
       'llama3.2:3b'
     )
 
-    expect(models).toHaveLength(4)
+    expect(models).toHaveLength(5)
     expect(models[0]).toMatchObject({
       id: 'qwen3:4b-instruct',
       label: 'Qwen 3 (4B Param)',
@@ -77,16 +80,21 @@ describe('normalizeOllamaModels', () => {
       isDefault: false
     })
     expect(models[1]).toMatchObject({
+      id: 'qwen3.5:9b',
+      label: 'Qwen 3.5 (9B Param)',
+      isDefault: false
+    })
+    expect(models[2]).toMatchObject({
       id: 'gemma4:12b',
       label: 'Gemma 4 (12B Param)',
       isDefault: false
     })
-    expect(models[2]).toMatchObject({
+    expect(models[3]).toMatchObject({
       id: 'gpt-oss:20b',
       label: 'GPT OSS (20B Param)',
       isDefault: false
     })
-    expect(models[3]).toMatchObject({
+    expect(models[4]).toMatchObject({
       id: 'llama3.2:3b',
       isDefault: true
     })

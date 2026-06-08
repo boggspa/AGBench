@@ -26,6 +26,21 @@ describe('formatAssistantMessageLabel', () => {
     })
   })
 
+  it('uses the Qwen brand and Qwen 3.5 badge for the 9B Ollama model', () => {
+    expect(
+      formatAssistantMessageLabel(
+        assistant({ providerModel: 'qwen3.5:9b' }),
+        'Ollama',
+        'ollama'
+      )
+    ).toEqual({
+      label: 'Qwen',
+      provider: 'ollama',
+      providerClass: 'qwen',
+      modelBadge: 'Qwen 3.5 (9B Param)'
+    })
+  })
+
   it('uses the Google brand for Gemma through Ollama', () => {
     expect(
       formatAssistantMessageLabel(

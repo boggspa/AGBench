@@ -222,13 +222,13 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
           currentProvider: 'ollama',
           messages: [
             {
-              id: 'assistant-qwen',
+              id: 'assistant-qwen35',
               role: 'assistant',
               content: 'Local response',
               timestamp: '2026-01-01T00:00:00.000Z',
               metadata: {
-                providerModel: 'qwen3:4b-instruct',
-                providerModelLabel: 'Qwen 3 (4B Param)'
+                providerModel: 'qwen3.5:9b',
+                providerModelLabel: 'Qwen 3.5 (9B Param)'
               }
             }
           ]
@@ -238,7 +238,7 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
 
     expect(html).toContain('provider-qwen')
     expect(html).toContain('Qwen')
-    expect(html).toContain('Qwen 3 (4B Param)')
+    expect(html).toContain('Qwen 3.5 (9B Param)')
   })
 
   it('renders Ollama run cards with the local model label instead of Gemini fallback', () => {

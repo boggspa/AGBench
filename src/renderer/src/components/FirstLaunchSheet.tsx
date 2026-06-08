@@ -530,7 +530,7 @@ export function FirstLaunchSheet({
       statusText: ollamaProviderAvailable ? 'Local runtime ready' : 'Local setup optional',
       hint: ollamaProviderAvailable
         ? 'Pick Local / Ollama in the provider picker, then choose an installed model in Settings or the composer.'
-        : 'Install Ollama, then pull a model such as `qwen3:4b-instruct`, `gemma4:12b`, or `gpt-oss`.',
+        : 'Install Ollama, then pull a model such as `qwen3:4b-instruct`, `qwen3.5:9b`, `gemma4:12b`, or `gpt-oss`.',
       deemphasised: true,
       optional: true,
       localOnly: true

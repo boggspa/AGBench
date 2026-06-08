@@ -122,6 +122,9 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
 
   if (provider === 'ollama') {
     if (id === 'qwen3:4b-instruct') return 'Qwen 3 (4B Param)'
+    if (id === 'qwen3.5:9b' || id.startsWith('qwen3.5:9b-')) {
+      return 'Qwen 3.5 (9B Param)'
+    }
     if (id === 'gemma4:12b' || id.startsWith('gemma4:12b-')) {
       return 'Gemma 4 (12B Param)'
     }

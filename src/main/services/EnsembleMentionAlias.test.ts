@@ -121,6 +121,14 @@ describe('generateModelAliases', () => {
     // Lite can be tagged by the trailing word alone.
     expect(aliases).toContain('lite')
   })
+
+  it('ollama: supports Qwen colon tags as mentionable model aliases', () => {
+    const aliases = generateModelAliases('ollama', 'qwen3.5:9b')
+    expect(aliases).toContain('qwen 3.5 9b')
+    expect(aliases).toContain('qwen3.5 9b')
+    expect(aliases).toContain('qwen')
+    expect(aliases).toContain('qwen 3.5')
+  })
 })
 
 describe('getParticipantAliases', () => {

@@ -47,6 +47,10 @@ describe('shortModelName', () => {
 
   it('renders local Ollama tags as model names', () => {
     expect(shortModelName('ollama', '', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+    expect(shortModelName('ollama', '', 'qwen3.5:9b')).toBe('Qwen 3.5 (9B Param)')
+    expect(shortModelName('ollama', '', 'qwen3.5:9b-q4_K_M')).toBe(
+      'Qwen 3.5 (9B Param)'
+    )
     expect(shortModelName('ollama', '', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
     expect(shortModelName('ollama', '', 'gemma4:12b-it-q4_K_M')).toBe(
       'Gemma 4 (12B Param)'

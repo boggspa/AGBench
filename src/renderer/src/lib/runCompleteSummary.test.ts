@@ -115,7 +115,7 @@ describe('buildRunCompleteSummaryRows', () => {
     const rows = buildRunCompleteSummaryRows(
       run({
         provider: 'ollama',
-        actualModel: 'qwen3:4b-instruct',
+        actualModel: 'qwen3.5:9b',
         approvalMode: 'plan',
         status: 'completed',
         stats: {
@@ -126,7 +126,7 @@ describe('buildRunCompleteSummaryRows', () => {
         }
       })
     )
-    expect(rows).toContainEqual({ label: 'Model', value: 'Qwen 3 (4B Param)' })
+    expect(rows).toContainEqual({ label: 'Model', value: 'Qwen 3.5 (9B Param)' })
     expect(rows).toContainEqual({ label: 'Tokens', value: '100 in / 25 out' })
     expect(rows).toContainEqual({ label: 'RAM', value: '2.4 GB llama-server peak, 3 samples' })
   })

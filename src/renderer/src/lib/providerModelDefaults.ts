@@ -160,6 +160,11 @@ const OLLAMA_DEFAULT_MODELS = [
     isDefault: true
   },
   {
+    id: 'qwen3.5:9b',
+    label: 'Qwen 3.5 (9B Param)',
+    description: 'Qwen 3.5 9B via Ollama'
+  },
+  {
     id: 'gemma4:12b',
     label: 'Gemma 4 (12B Param)',
     description: 'Google Gemma 4 12B via Ollama'

@@ -213,6 +213,7 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
     expect(ollama.defaultModelId).toBe('qwen3:4b-instruct')
     expect(ollama.modelOptions.map((o) => o.id)).toEqual([
       'qwen3:4b-instruct',
+      'qwen3.5:9b',
       'gemma4:12b',
       'gpt-oss'
     ])
