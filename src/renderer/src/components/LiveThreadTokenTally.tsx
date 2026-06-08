@@ -3,7 +3,7 @@ import type { ProviderId } from '../../../main/store/types'
 import { formatContextTokens } from '../lib/contextWindows'
 import { formatCostAlwaysOn, type DisplayCurrency } from '../lib/formatCost'
 import { estimateRunCostUsd, type RendererProviderRates } from '../lib/providerRateEstimate'
-import type { ChatTokenTally } from '../lib/threadTokenTally'
+import { formatTallySuffix, type ChatTokenTally } from '../lib/threadTokenTally'
 
 const LIVE_TICK_MS = 1000
 const APPROX_CHARS_PER_TOKEN = 4
@@ -70,6 +70,12 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
   }, [running])
 
   const label = useMemo(() => {
+    const tokenLabel = `${formatContextTokens(baseTally.inputTokens)} in / ${formatContextTokens(
+      displayedOutputTokens
+    )} out`
+    if (provider === 'ollama') {
+      return `${tokenLabel}${formatTallySuffix(provider, baseTally, currency, overestimatePercent)}`
+    }
     const liveOutputExtra = Math.max(0, displayedOutputTokens - baseTally.outputTokens)
     const liveCostUsd = running
       ? estimateRunCostUsd(providerRates, provider, model, 0, liveOutputExtra)
@@ -80,13 +86,13 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
         ? formatCostAlwaysOn(totalCostUsd, currency, undefined, overestimatePercent)
         : ''
     const prefix = running && liveCostUsd > 0 ? '~' : ''
-    return `${formatContextTokens(baseTally.inputTokens)} in / ${formatContextTokens(
-      displayedOutputTokens
-    )} out${cost ? ` · ${prefix}${cost}` : ''}`
+    return `${tokenLabel}${cost ? ` · ${prefix}${cost}` : ''}`
   }, [
+    baseTally,
     baseTally.explicitCostUsd,
     baseTally.inputTokens,
     baseTally.outputTokens,
+    baseTally.peakMemoryRssGb,
     currency,
     displayedOutputTokens,
     model,
@@ -100,8 +106,12 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
 
   const liveTitle =
     running && liveOutputTokens > 0
-      ? `${title}\n\nLive output and projected cost update once per second while this run is active.`
-      : title
+      ? provider === 'ollama'
+        ? `${title}\n\nLive output updates once per second while this run is active. Peak RAM updates when the run finishes.`
+        : `${title}\n\nLive output and projected cost update once per second while this run is active.`
+      : provider === 'ollama' && baseTally.peakMemoryRssGb > 0
+        ? `${title}\n\nPeak llama-server RAM from the latest completed Ollama run.`
+        : title
 
   return (
     <span

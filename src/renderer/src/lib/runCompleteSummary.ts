@@ -11,6 +11,10 @@ import { formatCostAlwaysOn, type DisplayCurrency } from './formatCost'
 import { humaniseModelId } from './modelDisplayName'
 import { estimateRunCostUsd, type RendererProviderRates } from './providerRateEstimate'
 import {
+  extractOllamaPeakRssGb,
+  formatOllamaSummaryMemoryGb
+} from './ollamaMemoryDisplay'
+import {
   extractUsageCount,
   extractUsageCostUsd,
   extractUsageCountsFromCandidate
@@ -200,20 +204,9 @@ const readPositiveNumber = (obj: any, paths: Array<string | string[]>): number =
   return 0
 }
 
-const formatOllamaMemoryGb = (gb: number): string => {
-  if (gb >= 10) return `${gb.toFixed(0)} GB`
-  if (gb >= 1) return `${gb.toFixed(1)} GB`
-  return `${gb.toFixed(2)} GB`
-}
-
 const buildOllamaRamRow = (run: ChatRun): RunCompleteSummaryRow | null => {
   if (run.provider !== 'ollama') return null
-  const peakGb = readPositiveNumber(run.stats, [
-    ['ollamaMemoryPeakRssGb'],
-    ['hardware', 'ram', 'peakRssGb'],
-    ['hardware', 'ram', 'rssGb'],
-    ['ollamaMemoryRssGb']
-  ])
+  const peakGb = extractOllamaPeakRssGb(run.stats)
   if (peakGb <= 0) return null
   const samples = readPositiveNumber(run.stats, [
     ['ollamaMemorySampleCount'],
@@ -222,7 +215,7 @@ const buildOllamaRamRow = (run: ChatRun): RunCompleteSummaryRow | null => {
   const suffix = samples > 1 ? ` peak, ${Math.round(samples)} samples` : ' RSS'
   return {
     label: 'RAM',
-    value: `${formatOllamaMemoryGb(peakGb)} llama-server${suffix}`
+    value: `${formatOllamaSummaryMemoryGb(peakGb)} llama-server${suffix}`
   }
 }
 

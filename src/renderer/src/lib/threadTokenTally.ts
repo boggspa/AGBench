@@ -1,28 +1,49 @@
 import { formatCost, type DisplayCurrency } from './formatCost'
 import { formatContextTokens } from './contextWindows'
+import { extractOllamaPeakRssGb, formatOllamaComposerPeakGb } from './ollamaMemoryDisplay'
 import { extractUsageCostUsd, extractUsageCountsFromCandidate } from './usageStats'
-import type { ChatRun, EnsembleParticipant } from '../../../main/store/types'
+import type { ChatRun, EnsembleParticipant, ProviderId } from '../../../main/store/types'
 
 type ChatTokenTally = {
   inputTokens: number
   outputTokens: number
   totalTokens: number
   explicitCostUsd: number
+  /** Latest non-zero llama-server peak RSS (GB) from completed Ollama runs. */
+  peakMemoryRssGb: number
 }
 
 const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
-  return runs.reduce<ChatTokenTally>(
+  let peakMemoryRssGb = 0
+  const tally = runs.reduce<ChatTokenTally>(
     (total, run) => {
+      const peakGb = extractOllamaPeakRssGb(run?.stats)
+      if (peakGb > 0) peakMemoryRssGb = peakGb
       const counts = extractUsageCountsFromCandidate(run?.stats)
       return {
         inputTokens: total.inputTokens + counts.inputTokens,
         outputTokens: total.outputTokens + counts.outputTokens,
         totalTokens: total.totalTokens + counts.totalTokens,
-        explicitCostUsd: total.explicitCostUsd + extractUsageCostUsd(run?.stats)
+        explicitCostUsd: total.explicitCostUsd + extractUsageCostUsd(run?.stats),
+        peakMemoryRssGb
       }
     },
-    { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0 }
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0, peakMemoryRssGb: 0 }
   )
+  return { ...tally, peakMemoryRssGb }
+}
+
+const formatTallySuffix = (
+  provider: ProviderId,
+  tally: ChatTokenTally,
+  currency: DisplayCurrency,
+  overestimatePercent: number
+): string => {
+  if (provider === 'ollama' && tally.peakMemoryRssGb > 0) {
+    return ` · ${formatOllamaComposerPeakGb(tally.peakMemoryRssGb)}`
+  }
+  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
+  return cost ? ` · ${cost}` : ''
 }
 // 1.0.5-EW25 — Routes through `formatCost` so the user's selected
 // display currency wins. Pre-EW25 this hard-coded the `$` symbol +
@@ -39,18 +60,18 @@ const formatExplicitCostUsd = (
   overestimatePercent: number = 0
 ): string => formatCost(costUsd, currency, undefined, overestimatePercent)
 const formatThreadTokenTally = (
+  provider: ProviderId,
   _providerLabel: string,
   tally: ChatTokenTally,
   currency: DisplayCurrency = 'USD',
   overestimatePercent: number = 0
 ): string | null => {
   if (tally.totalTokens <= 0) return null
-  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
   // Provider label dropped — the user already knows which provider
   // they're talking to (the provider chip is right next to this
   // tally), and the inline real-estate is tight. `_providerLabel`
   // kept as a positional arg so the call site doesn't change shape.
-  return `${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
+  return `${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${formatTallySuffix(provider, tally, currency, overestimatePercent)}`
 }
 
 /**
@@ -71,6 +92,8 @@ const formatEnsembleTokenBreakdown = (
   currency: DisplayCurrency = 'USD',
   overestimatePercent: number = 0
 ): string | null => {
+  // Ollama RAM peaks are per-run hardware telemetry; ensemble breakdown
+  // stays token/cost-only so the footer tooltip doesn't grow noisy.
   if (!runs.length || !participants.length) return null
   const byParticipant = new Map<string, ChatTokenTally>()
   for (const run of runs) {
@@ -109,6 +132,7 @@ export type { ChatTokenTally }
 export {
   buildChatTokenTally,
   formatExplicitCostUsd,
+  formatTallySuffix,
   formatThreadTokenTally,
   formatEnsembleTokenBreakdown
 }
