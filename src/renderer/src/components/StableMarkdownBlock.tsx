@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { HighlightedCodeBlock } from './HighlightedCodeBlock'
 import { AgentMention } from './AgentMention'
 import { ParticipantMention } from './ParticipantMention'
+import { FaviconLink } from './FaviconLink'
 import { classifyMarkdownLink } from '../lib/classifyMarkdownLink'
 import { useCopyFeedback } from '../lib/useCopyFeedback'
 import type { ChatRecord } from '../../../main/store/types'
@@ -172,11 +173,23 @@ const MARKDOWN_COMPONENTS: Components = {
       }
     }
     const isExternal = classification.kind === 'external'
+    if (isExternal) {
+      return (
+        <FaviconLink
+          href={typeof href === 'string' ? href : '#'}
+          resolvedUrl={classification.resolved}
+          target="_blank"
+          rel="noreferrer"
+          onClick={handleClick}
+          data-link-kind={classification.kind}
+        >
+          {children}
+        </FaviconLink>
+      )
+    }
     return (
       <a
         href={typeof href === 'string' ? href : '#'}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noreferrer' : undefined}
         onClick={handleClick}
         data-link-kind={classification.kind}
       >

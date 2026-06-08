@@ -1,5 +1,10 @@
 import type { ProviderId, ToolActivity } from '../../../main/store/types'
 import { prettyPrintJson, unwrapMcpEnvelope } from '../lib/ToolParser'
+import {
+  extractHttpUrls,
+  mergeLinkPresentationTargets,
+  type LinkPresentationTarget
+} from '../lib/urlPresentation'
 
 /** Inline preview shown on the row. Hard cap at 80 chars; appends a
  * truncation hint when the underlying result is long (> 500 chars) so
@@ -138,4 +143,40 @@ export function buildFoldoutSections(activity: ToolActivity): FoldoutSection[] {
   }
 
   return sections
+}
+
+export function extractToolUrlTargets(activity: ToolActivity, limit = 5): LinkPresentationTarget[] {
+  return mergeLinkPresentationTargets(
+    [
+      extractUrlsFromUnknown(activity.parameters, limit),
+      extractHttpUrls(activity.resultSummary || '', limit),
+      extractHttpUrls(activity.outputPreview || '', limit)
+    ],
+    limit
+  )
+}
+
+function extractUrlsFromUnknown(
+  value: unknown,
+  limit: number,
+  depth = 0
+): LinkPresentationTarget[] {
+  if (limit <= 0 || value === null || value === undefined || depth > 4) return []
+  if (typeof value === 'string') return extractHttpUrls(value, limit)
+  if (typeof value === 'number' || typeof value === 'boolean') return []
+  if (Array.isArray(value)) {
+    return mergeLinkPresentationTargets(
+      value.map((item) => extractUrlsFromUnknown(item, limit, depth + 1)),
+      limit
+    )
+  }
+  if (typeof value === 'object') {
+    return mergeLinkPresentationTargets(
+      Object.values(value as Record<string, unknown>).map((item) =>
+        extractUrlsFromUnknown(item, limit, depth + 1)
+      ),
+      limit
+    )
+  }
+  return []
 }

@@ -358,6 +358,20 @@ const api = {
   // (filesystem paths); unknown / unsafe schemes are no-ops.
   openExternalOrPath: (href: string) =>
     ipcRenderer.invoke('shell:open-link', href) as Promise<{ ok: boolean; error?: string }>,
+  getFaviconForUrl: (url: string) =>
+    ipcRenderer.invoke('favicon:getForUrl', url) as Promise<
+      | {
+          ok: true
+          origin: string
+          host: string
+          iconUrl: string
+          dataUrl: string
+          contentType: string
+          source: 'cache' | 'network'
+          title?: string
+        }
+      | { ok: false; origin?: string; host?: string; blocked?: boolean; error: string }
+    >,
   // 1.0.6-CRUX42 — open a Terminal already running the provider's interactive CLI
   // sign-in (Cursor / Grok). Main writes + opens a one-shot .command.
   openProviderLoginTerminal: (provider: ProviderId) =>

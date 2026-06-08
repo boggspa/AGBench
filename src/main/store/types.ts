@@ -1887,6 +1887,8 @@ export interface ChatMessage {
     parentChatId?: string
     /** User pin timestamp (ms since epoch). Missing means not pinned. */
     pinnedAt?: number
+    /** Presentation-only link preview targets extracted from user-visible prompt text. */
+    linkPreviews?: Array<{ url: string; origin: string; host: string }>
     [key: string]: unknown
   }
 }

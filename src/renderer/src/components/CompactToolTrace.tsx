@@ -6,10 +6,12 @@ import {
   buildFoldoutSections,
   buildResultPreview,
   durationLabel,
+  extractToolUrlTargets,
   providerLabel,
   resolveProvider,
   statusLabel
 } from './CompactToolTrace.lib'
+import { ToolUrlBadge } from './ToolUrlBadge'
 
 interface CompactToolTraceProps {
   activity: ToolActivity
@@ -27,6 +29,7 @@ export function CompactToolTrace({ activity, provider }: CompactToolTraceProps) 
   const status = statusLabel(activity.status)
   const toolName = activity.toolName || activity.displayName || 'tool'
   const provLabel = providerLabel(resolvedProvider)
+  const urlTargets = extractToolUrlTargets(activity)
 
   const sections = expanded ? buildFoldoutSections(activity) : []
 
@@ -58,6 +61,14 @@ export function CompactToolTrace({ activity, provider }: CompactToolTraceProps) 
             <span className={`compact-tool-trace-provider provider-${resolvedProvider}`}>
               {provLabel}
             </span>
+          </>
+        )}
+        {urlTargets[0] && (
+          <>
+            <span className="compact-tool-trace-sep" aria-hidden>
+              ·
+            </span>
+            <ToolUrlBadge target={urlTargets[0]} compact />
           </>
         )}
         <span className="compact-tool-trace-sep" aria-hidden>
@@ -107,8 +118,18 @@ export function CompactToolTrace({ activity, provider }: CompactToolTraceProps) 
           </svg>
         </span>
       </button>
-      {expanded && sections.length > 0 && (
+      {expanded && (sections.length > 0 || urlTargets.length > 0) && (
         <div className="compact-tool-trace-foldout">
+          {urlTargets.length > 0 && (
+            <div className="compact-tool-trace-foldout-section">
+              <div className="compact-tool-trace-foldout-label">Sources</div>
+              <div className="compact-tool-trace-sources">
+                {urlTargets.map((target) => (
+                  <ToolUrlBadge key={target.url} target={target} />
+                ))}
+              </div>
+            </div>
+          )}
           {sections.map((section) => (
             <div key={section.label} className="compact-tool-trace-foldout-section">
               <div className="compact-tool-trace-foldout-label">{section.label}</div>

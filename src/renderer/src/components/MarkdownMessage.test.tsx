@@ -46,6 +46,17 @@ describe('MarkdownMessage', () => {
     expect(html).toContain('<strong>safe</strong>')
   })
 
+  it('renders external markdown links with favicon presentation metadata', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownMessage content={'Open [here](https://github.com/boggspa/TaskWraith).'} />
+    )
+
+    expect(html).toContain('favicon-link')
+    expect(html).toContain('data-link-kind="external"')
+    expect(html).toContain('github.com')
+    expect(html).toContain('favicon-image-fallback')
+  })
+
   it('renders identically across calls and matches block-by-block output (append-only contract)', () => {
     // Phase L1a: the renderer is now block-aware. This test verifies
     // two invariants the streaming hot path depends on:

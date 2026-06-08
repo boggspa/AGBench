@@ -2462,6 +2462,58 @@
   background: color-mix(in srgb, var(--composer-bg) 78%, var(--accent) 22%);
 }
 
+.composer-link-preview-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  min-width: 0;
+}
+
+.composer-link-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(320px, 100%);
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 62%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated) 58%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+}
+
+.composer-link-preview-host {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.composer-link-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.composer-link-preview-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 56%, transparent);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================
  * NATIVE-SHELL COMPOSER CONSOLE RIM (CSS-only)
  * --------------------------------------------------------------

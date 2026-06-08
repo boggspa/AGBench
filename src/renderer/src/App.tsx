@@ -248,8 +248,10 @@ import {
   QueuedMessagesAboveRow,
   type QueuedMessageRowEntry
 } from './components/QueuedMessagesAboveRow'
+import { ComposerLinkPreviewStrip } from './components/ComposerLinkPreviewStrip'
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { hasResolvedMention } from './lib/mentionHighlight'
+import { extractHttpUrls } from './lib/urlPresentation'
 import { useCopyFeedback } from './lib/useCopyFeedback'
 import { reasoningDisplayLabel, shortModelName } from './lib/composerChipFormat'
 import {
@@ -3701,6 +3703,10 @@ function App(): React.JSX.Element {
     }
     if (next.ollamaProviderParityAcknowledgedAt !== undefined) {
       settingsPatch.ollamaProviderParityAcknowledgedAt = next.ollamaProviderParityAcknowledgedAt
+    }
+    if (next.ollamaProviderParityWorkspaceGrants !== undefined) {
+      settingsPatch.ollamaProviderParityWorkspaceGrants = next.ollamaProviderParityWorkspaceGrants
+      providersToRefresh.push('ollama')
     }
     if (next.agenticServices !== undefined) {
       const normalizedServices = { ...DEFAULT_AGENTIC_SERVICES, ...next.agenticServices }
@@ -8111,14 +8117,20 @@ function App(): React.JSX.Element {
             name: attachment.name || getImageName(attachment.path)
           }))
           .filter((attachment) => Boolean(attachment.path))
+        const linkPreviewMetadata = extractHttpUrls(displayFinalPrompt, 8)
+        const messageMetadata: ChatMessage['metadata'] = {}
+        if (imageAttachmentMetadata.length > 0) {
+          messageMetadata.imageAttachments = imageAttachmentMetadata
+        }
+        if (linkPreviewMetadata.length > 0) {
+          messageMetadata.linkPreviews = linkPreviewMetadata
+        }
         const userMessage: ChatMessage = {
           id: createMessageId(),
           role: 'user',
           content: displayFinalPrompt,
           timestamp: runStartedAt,
-          ...(imageAttachmentMetadata.length
-            ? { metadata: { imageAttachments: imageAttachmentMetadata } }
-            : {})
+          ...(Object.keys(messageMetadata).length > 0 ? { metadata: messageMetadata } : {})
         }
         promptMessageId = userMessage.id
         chatToUpdate.messages = [...chatToUpdate.messages, userMessage]
@@ -9062,6 +9074,7 @@ function App(): React.JSX.Element {
         name: attachment.name || getImageName(attachment.path)
       }))
       .filter((attachment) => Boolean(attachment.path))
+    const linkPreviewMetadata = extractHttpUrls(content, 8)
     updateChatById(parentChat.appChatId, (source) => {
       const message: ChatMessage = {
         id: createMessageId(),
@@ -9070,7 +9083,8 @@ function App(): React.JSX.Element {
         timestamp,
         metadata: {
           guestAddressTarget: 'guest',
-          ...(imageAttachmentMetadata.length ? { imageAttachments: imageAttachmentMetadata } : {})
+          ...(imageAttachmentMetadata.length ? { imageAttachments: imageAttachmentMetadata } : {}),
+          ...(linkPreviewMetadata.length ? { linkPreviews: linkPreviewMetadata } : {})
         }
       }
       const next: ChatRecord = {
@@ -15087,6 +15101,9 @@ function App(): React.JSX.Element {
               ollamaDefaultModel={ollamaDefaultModel}
               ollamaToolControlTier={ollamaToolControlTier}
               ollamaProviderParityAcknowledgedAt={settings?.ollamaProviderParityAcknowledgedAt}
+              ollamaProviderParityWorkspaceGrants={
+                settings?.ollamaProviderParityWorkspaceGrants
+              }
               agenticServices={agenticServices}
               nativeSubAgentRequests={settings?.nativeSubAgentRequests ?? 'ask'}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
@@ -16805,6 +16822,7 @@ function App(): React.JSX.Element {
                     </div>
                   )
                 })()}
+                <ComposerLinkPreviewStrip text={prompt} />
                 <ComposerSlashMenu
                   open={slashMenuOpen}
                   anchorRef={composerTextareaRef}
@@ -19096,6 +19114,7 @@ function App(): React.JSX.Element {
                     disabled={!sideCanRun}
                   />
                 </div>
+                <ComposerLinkPreviewStrip text={sidePrompt} />
                 <div className="composer-bottom-controls side-chat-bottom-controls">
                   <div className="composer-control-footer side-chat-control-footer">
                     <div className="composer-inline-pickers side-chat-inline-pickers">

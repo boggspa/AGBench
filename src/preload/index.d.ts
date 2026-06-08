@@ -522,6 +522,19 @@ declare global {
         reason?: string
       }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
+      getFaviconForUrl: (url: string) => Promise<
+        | {
+            ok: true
+            origin: string
+            host: string
+            iconUrl: string
+            dataUrl: string
+            contentType: string
+            source: 'cache' | 'network'
+            title?: string
+          }
+        | { ok: false; origin?: string; host?: string; blocked?: boolean; error: string }
+      >
       openProviderLoginTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
       openProviderLogoutTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>

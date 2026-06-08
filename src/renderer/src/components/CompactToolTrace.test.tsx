@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { CompactToolTrace } from './CompactToolTrace'
-import { buildFoldoutSections, buildResultPreview } from './CompactToolTrace.lib'
+import {
+  buildFoldoutSections,
+  buildResultPreview,
+  extractToolUrlTargets
+} from './CompactToolTrace.lib'
 import type { ToolActivity } from '../../../main/store/types'
 
 function makeActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
@@ -74,6 +78,30 @@ describe('CompactToolTrace', () => {
     )
     expect(html).toContain('provider-gemini')
     expect(html).toContain('Gemini')
+  })
+
+  it('renders a compact URL badge when tool input contains a web URL', () => {
+    const html = renderToStaticMarkup(
+      <CompactToolTrace
+        activity={makeActivity({
+          toolName: 'web_fetch',
+          parameters: { url: 'https://github.com/boggspa/TaskWraith' }
+        })}
+      />
+    )
+    expect(html).toContain('tool-url-badge')
+    expect(html).toContain('github.com')
+    expect(html).toContain('favicon-image-fallback')
+  })
+
+  it('extracts deduped URL targets from tool parameters and result text', () => {
+    const targets = extractToolUrlTargets(
+      makeActivity({
+        parameters: { url: 'https://github.com/boggspa/TaskWraith' },
+        resultSummary: 'Fetched https://github.com/boggspa/TaskWraith and https://example.com/docs.'
+      })
+    )
+    expect(targets.map((target) => target.host)).toEqual(['github.com', 'example.com'])
   })
 
   it('redacts the inline preview when the result is longer than 500 chars', () => {

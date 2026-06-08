@@ -16,6 +16,7 @@ import type {
   MenuItemConstructorOptions
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
+import { FaviconService } from './services/FaviconService'
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
@@ -810,12 +811,22 @@ let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
 let sessionCheckpointStoreRef: SessionCheckpointStore | null = null
 let updateServiceRef: UpdateService | null = null
+let faviconServiceRef: FaviconService | null = null
 // 1.0.5-EW37 — Solo-chat wakeup service. Extends the Phase N
 // wakeup infrastructure off the ensemble-only path so a solo chat
 // can also pause + resume itself via `schedule_wakeup`. Set in
 // `app.whenReady` alongside the ensemble orchestrator + wakeup
 // timer; the consumer (`schedule_wakeup` MCP handler) null-checks.
 let soloChatWakeupServiceRef: SoloChatWakeupService | null = null
+
+function getFaviconService(): FaviconService {
+  if (!faviconServiceRef) {
+    faviconServiceRef = new FaviconService({
+      cacheDir: join(app.getPath('userData'), 'favicons')
+    })
+  }
+  return faviconServiceRef
+}
 
 
 /**
@@ -17234,6 +17245,9 @@ if (isGeminiMcpBridgeProcess) {
         return openSafeShellTarget(hrefRaw)
       }
     )
+    ipcMain.handle('favicon:getForUrl', async (_event, hrefRaw: unknown) => {
+      return getFaviconService().getForUrl(String(hrefRaw || ''))
+    })
 
     // PTY for Trust Assistant
     const ptyProcesses = new Map<string, pty.IPty>()

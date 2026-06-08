@@ -337,6 +337,8 @@ describe('IpcValidation', () => {
   it('validates safe shell-open bridge arguments', () => {
     expect(() => validateIpcArgs('shell:open-link', ['https://example.com'])).not.toThrow()
     expect(() => validateIpcArgs('shell:open-link', [''])).toThrow(/non-empty/)
+    expect(() => validateIpcArgs('favicon:getForUrl', ['https://example.com'])).not.toThrow()
+    expect(() => validateIpcArgs('favicon:getForUrl', [''])).toThrow(/non-empty/)
   })
 
   it('accepts bridge daemon status and toggle APIs', () => {

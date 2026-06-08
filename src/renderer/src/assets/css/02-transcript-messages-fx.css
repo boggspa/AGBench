@@ -3115,6 +3115,55 @@
   text-underline-offset: 2px;
 }
 
+.message-markdown a.favicon-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  vertical-align: text-bottom;
+  text-decoration: none;
+}
+
+.favicon-link-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.favicon-link-host {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 0.78em;
+  text-decoration: none;
+}
+
+.favicon-image {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-elevated) 76%, transparent);
+  color: var(--text-tertiary);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: -0.12em;
+}
+
+.favicon-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.favicon-image-fallback {
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
 .message-code-block {
   margin: 0;
   background: var(--app-bg-sunken);
