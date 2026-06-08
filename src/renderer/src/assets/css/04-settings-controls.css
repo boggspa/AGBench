@@ -3268,6 +3268,12 @@
 }
 .sidebar-item:hover .sidebar-overflow-trigger,
 .sidebar-item:focus-within .sidebar-overflow-trigger,
+/* Pinned + Recents tiles use their own class (not `.sidebar-item`), so the
+ * trigger stayed invisible there. Reveal it on hover/focus too. */
+.sidebar-pinned-item:hover .sidebar-overflow-trigger,
+.sidebar-pinned-item:focus-within .sidebar-overflow-trigger,
+.sidebar-recents-item:hover .sidebar-overflow-trigger,
+.sidebar-recents-item:focus-within .sidebar-overflow-trigger,
 .sidebar-overflow-menu.is-open .sidebar-overflow-trigger {
   opacity: 1;
 }

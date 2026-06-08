@@ -69,7 +69,13 @@ export function SidebarOverflowMenu({
 }: SidebarOverflowMenuProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  const [position, setPosition] = useState<{ top: number; left?: number; right?: number } | null>(
+    null
+  )
+  // When the menu is opened via right-click on the host tile we anchor it to
+  // the pointer (left/top) instead of the trigger's right edge. Cleared on a
+  // normal trigger open so the click path keeps its under-trigger placement.
+  const pointerOpenRef = useRef<{ x: number; y: number } | null>(null)
   // Trigger is rendered as a <span role="button"> rather than a real
   // <button> because tile rows are themselves buttons (chat tile = full
   // row click target) and nesting actual buttons is invalid HTML; the
@@ -90,13 +96,25 @@ export function SidebarOverflowMenu({
   // Expressed as a `right` offset from the viewport edge so the popover
   // doesn't slide off-screen on a narrow window.
   const updatePosition = useCallback(() => {
+    const point = pointerOpenRef.current
+    if (point) {
+      // Pointer-anchored (right-click): left-align to the cursor so the menu
+      // opens rightward into the screen (the sidebar sits at the left edge),
+      // clamped so it can't spill off the right/bottom.
+      const menuWidth = 188
+      const menuHeightEstimate = 44 * Math.max(1, orderedItems.length) + 16
+      const left = Math.min(Math.max(8, point.x), window.innerWidth - menuWidth)
+      const top = Math.min(point.y, Math.max(8, window.innerHeight - menuHeightEstimate))
+      setPosition({ top, left })
+      return
+    }
     const trigger = triggerRef.current
     if (!trigger) return
     const rect = trigger.getBoundingClientRect()
     const right = Math.max(8, window.innerWidth - rect.right)
     const top = rect.bottom + 4
     setPosition({ top, right })
-  }, [])
+  }, [orderedItems.length])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -144,13 +162,43 @@ export function SidebarOverflowMenu({
   // Reset focused index when menu closes so opening it again starts fresh.
   useEffect(() => {
     if (open) return
+    pointerOpenRef.current = null
     const frame = window.requestAnimationFrame(() => setFocusedIndex(-1))
     return () => window.cancelAnimationFrame(frame)
   }, [open])
 
+  // Right-click anywhere on the host tile opens this same actions menu at the
+  // pointer. The menu already lives inside each tile (chats, pinned, recents,
+  // workspaces), so attaching to the closest interactive ancestor gives every
+  // sidebar row a native-feeling context menu with zero per-tile wiring.
+  useEffect(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    // Resolve the enclosing tile row. Start from the menu wrapper (trigger's
+    // parent) so we skip the trigger itself — the trigger is a role="button"
+    // span, which a plain `closest('[role=button]')` would wrongly match.
+    const host =
+      (trigger.parentElement?.closest(
+        '.sidebar-item, .sidebar-pinned-item, .sidebar-recents-item'
+      ) as HTMLElement | null) ?? null
+    if (!host) return
+    const handleContextMenu = (event: globalThis.MouseEvent): void => {
+      if (items.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      pointerOpenRef.current = { x: event.clientX, y: event.clientY }
+      setOpen(true)
+      setFocusedIndex(0)
+    }
+    host.addEventListener('contextmenu', handleContextMenu)
+    return () => host.removeEventListener('contextmenu', handleContextMenu)
+  }, [items.length])
+
   const handleTriggerClick = (event: MouseEvent<HTMLSpanElement>) => {
     event.preventDefault()
     event.stopPropagation()
+    // Trigger-click anchors under the dots glyph, not the last right-click point.
+    pointerOpenRef.current = null
     setOpen((current) => !current)
   }
 
@@ -158,6 +206,7 @@ export function SidebarOverflowMenu({
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       event.stopPropagation()
+      pointerOpenRef.current = null
       setOpen(true)
       setFocusedIndex(0)
     }
@@ -200,7 +249,9 @@ export function SidebarOverflowMenu({
             style={{
               position: 'fixed',
               top: position.top,
-              right: position.right,
+              ...(position.left !== undefined
+                ? { left: position.left }
+                : { right: position.right }),
               zIndex: 50
             }}
             onKeyDown={handleMenuKeyDown}
