@@ -1335,6 +1335,9 @@
 .composer-git-status-clean {
   color: #6ddfa8;
 }
+.composer-git-status-counts-line {
+  width: 100%;
+}
 .composer-git-status-counts {
   color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
   font-feature-settings: 'tnum';

@@ -352,17 +352,18 @@ export function GitCommitControls({
               <strong className="composer-git-branch">
                 {snapshot.detached ? 'detached HEAD' : snapshot.branch || 'unknown branch'}
               </strong>
-              {snapshot.clean ? (
-                <span className="composer-git-status-clean">clean</span>
-              ) : (
+              {snapshot.clean ? <span className="composer-git-status-clean">clean</span> : null}
+            </span>
+            {!snapshot.clean ? (
+              <span className="composer-git-status-line composer-git-status-counts-line">
                 <span className="composer-git-status-counts">
                   {changedCount} {changedCount === 1 ? 'change' : 'changes'}
                   {hasStaged ? ` · ${counts?.staged} staged` : ''}
                   {(counts?.unstaged ?? 0) > 0 ? ` · ${counts?.unstaged} unstaged` : ''}
                   {(counts?.untracked ?? 0) > 0 ? ` · ${counts?.untracked} new` : ''}
                 </span>
-              )}
-            </span>
+              </span>
+            ) : null}
             {(snapshot.ahead > 0 || snapshot.behind > 0 || !snapshot.upstream) && (
               <span className="composer-git-status-line is-muted">
                 {!snapshot.upstream
