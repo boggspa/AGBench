@@ -577,6 +577,28 @@ function parseJsonObject(candidate: string): unknown | null {
   }
 }
 
+/** Escape backslashes that are NOT part of a valid JSON escape sequence so a
+ * tolerant re-parse can recover. Models frequently embed source code in a tool
+ * call's string arguments (e.g. Swift's `\(date)` interpolation, Windows paths,
+ * LaTeX), which is invalid JSON — strict `JSON.parse` throws and the whole tool
+ * call would otherwise leak to the user as raw text. The negative lookahead
+ * leaves real escapes (`\n`, `\"`, `\\`, `\uXXXX`, …) untouched. */
+export function sanitizeLooseJsonEscapes(candidate: string): string {
+  // Consume valid escape pairs atomically (so the char after a real `\\` isn't
+  // misread), and double any remaining lone backslash.
+  return candidate.replace(/\\(["\\/bfnrtu])|\\/g, (_match, valid) =>
+    valid ? `\\${valid}` : '\\\\'
+  )
+}
+
+/** Strict JSON parse, falling back to a tolerant re-parse that repairs invalid
+ * backslash escapes (the common failure when models embed code in string args). */
+export function parseJsonObjectLoose(candidate: string): unknown | null {
+  const strict = parseJsonObject(candidate)
+  if (strict !== null) return strict
+  return parseJsonObject(sanitizeLooseJsonEscapes(candidate))
+}
+
 function jsonCandidatesFromText(text: string): string[] {
   const candidates: string[] = []
   for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
@@ -597,7 +619,7 @@ function jsonCandidatesFromText(text: string): string[] {
 
 export function parseOllamaToolRequest(text: string): OllamaToolRequest | null {
   for (const candidate of jsonCandidatesFromText(text)) {
-    const parsed = recordFromUnknown(parseJsonObject(candidate))
+    const parsed = recordFromUnknown(parseJsonObjectLoose(candidate))
     if (!parsed) continue
     const wrapper = recordFromUnknown(parsed.taskwraith_tool) || recordFromUnknown(parsed.tool)
     if (!wrapper) continue
@@ -747,7 +769,7 @@ export function normalizeOllamaNativeToolCall(call: OllamaNativeToolCall): Ollam
   if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
     args = rawArgs as Record<string, unknown>
   } else if (typeof rawArgs === 'string' && rawArgs.trim()) {
-    args = recordFromUnknown(parseJsonObject(rawArgs)) || {}
+    args = recordFromUnknown(parseJsonObjectLoose(rawArgs)) || {}
   }
   return { toolName: name as OllamaToolName, arguments: args }
 }
@@ -820,6 +842,27 @@ export function ollamaToolIntentNudgePrompt(toolNames: string[] = []): string {
   ]
     .filter(Boolean)
     .join(' ')
+}
+
+/** Detect a leaked tool-protocol attempt: the model tried to emit the
+ * `{"taskwraith_tool":{...}}` JSON contract in prose but it could not be parsed
+ * into a real request (e.g. invalid JSON escapes that even the tolerant parser
+ * couldn't repair). We must not show this raw blob to the user as the answer. */
+export function looksLikeLeakedOllamaToolProtocol(text: string): boolean {
+  const value = (text || '').trim()
+  if (!value) return false
+  return value.includes('"taskwraith_tool"') || value.includes('"tool"')
+    ? /\{[\s\S]*"(?:taskwraith_tool|tool)"[\s\S]*\}/.test(value)
+    : false
+}
+
+/** Nudge for a malformed/leaked tool-call JSON that couldn't be parsed. */
+export function ollamaMalformedToolJsonNudgePrompt(): string {
+  return [
+    'Your previous tool request could not be parsed as valid JSON.',
+    'If a string argument contains source code or backslashes, escape them correctly (for example, a literal backslash must be written as \\\\, and embedded double quotes as \\").',
+    'Re-issue the tool call now as a single valid JSON object (or emit a native tool call). Do not output the tool request as plain prose.'
+  ].join(' ')
 }
 
 /** Heuristic: does this turn's visible `content` merely ANNOUNCE a tool call
@@ -1090,6 +1133,20 @@ export async function runOllamaProvider(
                 ? ollamaEmptyToolResponseRetryPrompt()
                 : ollamaEmptyResponseRetryPrompt()
           })
+          continue
+        }
+        // Leaked tool protocol: the model tried to emit the taskwraith_tool
+        // JSON contract but it couldn't be parsed (e.g. invalid escapes from
+        // embedded source code). Re-prompt to re-issue valid JSON rather than
+        // leaking the raw blob to the user as the final answer.
+        if (
+          hasContent &&
+          toolProtocolEnabled &&
+          turnIndex < OLLAMA_TOOL_LOOP_LIMIT &&
+          looksLikeLeakedOllamaToolProtocol(turn.content)
+        ) {
+          messages.push({ role: 'assistant', content: turn.content })
+          messages.push({ role: 'user', content: ollamaMalformedToolJsonNudgePrompt() })
           continue
         }
         // Tool-intent stub: the model announced a tool in prose ("We need to

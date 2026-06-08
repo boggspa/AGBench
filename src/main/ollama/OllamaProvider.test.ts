@@ -8,11 +8,15 @@ import {
   ollamaEmptyToolResponseRetryPrompt,
   ollamaLocalToolSystemPrompt,
   ollamaNativeToolDefinitions,
+  ollamaMalformedToolJsonNudgePrompt,
   ollamaReasoningOnlyNudgePrompt,
   ollamaToolIntentNudgePrompt,
   ollamaToolResultFollowUpPrompt,
+  looksLikeLeakedOllamaToolProtocol,
   looksLikeOllamaToolIntent,
+  parseJsonObjectLoose,
   parseOllamaToolRequest,
+  sanitizeLooseJsonEscapes,
   parseOllamaMemoryPsOutput,
   resolveOllamaVisibleText,
   shouldEmitOllamaReasoning
@@ -156,6 +160,31 @@ describe('parseOllamaToolRequest', () => {
     })
   })
 
+  it('recovers a tool request whose string args contain invalid JSON escapes', () => {
+    // The exact Qwen 3.5 failure: a write_file whose Swift `content` embeds
+    // string interpolation `\(date)` — invalid JSON, so strict parse throws and
+    // the whole call used to leak to the user as raw text.
+    const leaked =
+      '{"taskwraith_tool":{"name":"write_file","arguments":{"path":"CambridgeWeather.swift","content":"import Foundation\\nprint(\\"\\(date) sunny\\")\\n","intent":"Create a basic Swift file"}}}'
+    const parsed = parseOllamaToolRequest(leaked)
+    expect(parsed?.toolName).toBe('write_file')
+    expect(parsed?.arguments.path).toBe('CambridgeWeather.swift')
+    expect(String(parsed?.arguments.content)).toContain('\\(date)')
+    expect(parsed?.arguments.intent).toBe('Create a basic Swift file')
+  })
+
+  it('repairs invalid backslash escapes while leaving valid ones intact', () => {
+    expect(sanitizeLooseJsonEscapes('"a\\(b)"')).toBe('"a\\\\(b)"')
+    // Valid escapes are untouched.
+    expect(sanitizeLooseJsonEscapes('"line\\nbreak \\" \\\\ \\u0041"')).toBe(
+      '"line\\nbreak \\" \\\\ \\u0041"'
+    )
+    // `\U` and `\m` are invalid JSON escapes (Windows path) — strict parse
+    // fails, the tolerant re-parse recovers the literal backslashes.
+    expect(parseJsonObjectLoose('{"x":"C:\\Users\\me"}')).toEqual({ x: 'C:\\Users\\me' })
+    expect(parseJsonObjectLoose('{"ok":true}')).toEqual({ ok: true })
+  })
+
   it('extracts fenced JSON for known tools so policy can deny them explicitly', () => {
     expect(
       parseOllamaToolRequest(
@@ -272,6 +301,24 @@ describe('parseOllamaToolRequest', () => {
     expect(prompt).toContain('emit a real tool call now')
     expect(prompt).toContain('Available tools: web_search, web_fetch.')
     expect(prompt).toContain('give your complete final answer')
+  })
+
+  it('detects a leaked tool-protocol blob that should not reach the user', () => {
+    expect(
+      looksLikeLeakedOllamaToolProtocol(
+        '{"taskwraith_tool":{"name":"write_file","arguments":{"path":"x"}}}'
+      )
+    ).toBe(true)
+    // Plain prose / real answers are not leaked protocol.
+    expect(looksLikeLeakedOllamaToolProtocol('The weather is sunny today.')).toBe(false)
+    expect(looksLikeLeakedOllamaToolProtocol('   ')).toBe(false)
+  })
+
+  it('nudges malformed tool JSON to be re-issued as valid JSON', () => {
+    const prompt = ollamaMalformedToolJsonNudgePrompt()
+    expect(prompt).toContain('could not be parsed as valid JSON')
+    expect(prompt).toContain('escape them correctly')
+    expect(prompt).toContain('Do not output the tool request as plain prose')
   })
 })
 
