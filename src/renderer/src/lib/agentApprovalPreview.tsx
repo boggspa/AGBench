@@ -30,8 +30,18 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
           ? preview.patch
           : ''
   const changesPreview = formatApprovalChangePreview(preview.changes)
+  const riskLabels = Array.isArray(preview.riskLabels)
+    ? preview.riskLabels.map((label: unknown) => String(label).trim()).filter(Boolean)
+    : []
+  const envDeltas =
+    preview.envDeltas && typeof preview.envDeltas === 'object' && !Array.isArray(preview.envDeltas)
+      ? Object.entries(preview.envDeltas)
+          .map(([key, value]) => `${key}=${String(value)}`)
+          .join('\n')
+      : ''
   const kind = typeof preview.kind === 'string' ? preview.kind : 'approval'
-  const hasDetails = command || cwd || toolName || taskPreview || patchPreview || changesPreview
+  const hasDetails =
+    command || cwd || toolName || taskPreview || patchPreview || changesPreview || riskLabels.length || envDeltas
   if (!hasDetails) return null
 
   return (
@@ -53,6 +63,18 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
         <div className="agent-approval-preview-block">
           <span>Command</span>
           <pre>{command}</pre>
+        </div>
+      )}
+      {riskLabels.length > 0 && (
+        <div className="agent-approval-preview-row">
+          <span>Risk</span>
+          <code>{riskLabels.join(', ')}</code>
+        </div>
+      )}
+      {envDeltas && (
+        <div className="agent-approval-preview-block">
+          <span>Env deltas</span>
+          <pre>{envDeltas}</pre>
         </div>
       )}
       {taskPreview && (

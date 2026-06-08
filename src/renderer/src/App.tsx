@@ -17392,7 +17392,8 @@ function App(): React.JSX.Element {
                             session-wide YOLO so every subsequent approval auto-allows for
                             the rest of the process lifetime. Never persisted to disk.
                             Global `deny` policies still win. */}
-                          {!isNativeSubAgentPreferenceApproval(pendingAgentApproval) && (
+                          {!isNativeSubAgentPreferenceApproval(pendingAgentApproval) &&
+                            pendingAgentApproval.preview?.requestOnly !== true && (
                             <button
                               className="btn btn-sm btn-ghost"
                               type="button"

@@ -409,6 +409,40 @@ describe('ApprovalService — resolve dispatch', () => {
     )
   })
 
+  it('GeminiTool request-only approvals coerce grant actions to one-shot accept', async () => {
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    const resolveFn = vi.fn()
+    const approval: PendingGeminiToolApproval = {
+      provider: 'ollama',
+      service: 'shellCommands',
+      workspacePath: '/ws',
+      runId: 'r-1',
+      requestOnly: true,
+      resolve: resolveFn
+    }
+    svc.registerGeminiTool('g-request-only', approval)
+    await svc.resolve('g-request-only', 'acceptForWorkspace')
+
+    expect(spies.permissionService.applyApprovalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'ollama',
+        service: 'shellCommands',
+        action: 'accept'
+      })
+    )
+    expect(spies.resolveApprovalLedger).toHaveBeenCalledWith(
+      'g-request-only',
+      'accept',
+      'user',
+      expect.objectContaining({
+        requestedAction: 'acceptForWorkspace',
+        requestOnly: true
+      })
+    )
+    expect(resolveFn).toHaveBeenCalledWith(true)
+  })
+
   it('HostCommand accept: invokes runApprovedHostCommand and does NOT clear the registry', async () => {
     const { deps, spies } = makeDeps()
     spies.runApprovedHostCommand.mockResolvedValue(true)

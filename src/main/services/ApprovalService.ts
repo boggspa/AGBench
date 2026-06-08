@@ -86,6 +86,7 @@ export interface PendingGeminiToolApproval {
   workspacePath?: string
   runId?: string
   externalPathDetection?: PendingExternalPathDetection
+  requestOnly?: boolean
   resolve: (allowed: boolean) => void
 }
 
@@ -609,6 +610,11 @@ export class ApprovalService {
     // ── Gemini tool approval ────────────────────────────────────
     const pendingGeminiTool = this.pendingGeminiTool.get(requestId)
     if (pendingGeminiTool) {
+      const resolvedAction =
+        pendingGeminiTool.requestOnly &&
+        (action === 'acceptForSession' || action === 'acceptForWorkspace')
+          ? 'accept'
+          : action
       const session =
         this.deps.runManager.resolveApproval(requestId) ||
         this.deps.runManager.get(pendingGeminiTool.runId)
@@ -617,20 +623,25 @@ export class ApprovalService {
         { appRunId: session?.runId || pendingGeminiTool.runId, appChatId: session?.appChatId },
         'approval_response',
         'control',
-        `Approval response: ${action}`,
+        `Approval response: ${resolvedAction}`,
         {
           requestId,
-          action,
+          action: resolvedAction,
+          requestedAction: action,
           service: pendingGeminiTool.service,
-          workspacePath: pendingGeminiTool.workspacePath
+          workspacePath: pendingGeminiTool.workspacePath,
+          requestOnly: pendingGeminiTool.requestOnly
         }
       )
-      this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+      this.deps.resolveApprovalLedger(requestId, resolvedAction, decisionSource, {
+        ...extraMetadata,
+        ...(resolvedAction !== action ? { requestedAction: action, requestOnly: true } : {})
+      })
       this.emitApprovalRunEvent('approval_resolved', requestId, pendingGeminiTool.provider, {
         appRunId: session?.runId || pendingGeminiTool.runId,
         appChatId: session?.appChatId,
         workspacePath: pendingGeminiTool.workspacePath,
-        action,
+        action: resolvedAction,
         decisionSource
       })
       this.pendingGeminiTool.delete(requestId)
@@ -640,7 +651,7 @@ export class ApprovalService {
         workspacePath: pendingGeminiTool.workspacePath,
         service: pendingGeminiTool.service,
         runId: pendingGeminiTool.runId,
-        action
+        action: resolvedAction
       })
       pendingGeminiTool.resolve(allowed)
       return true

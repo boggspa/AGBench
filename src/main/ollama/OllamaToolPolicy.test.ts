@@ -6,6 +6,9 @@ import type { WorkspaceToolContext } from '../mcp/WorkspaceToolExecutors'
 import {
   assertOllamaMutationIntent,
   assertOllamaProtectedWritePaths,
+  ollamaShellApprovalPreviewMetadata,
+  ollamaShellRiskLabels,
+  ollamaTextDiffPreview,
   ollamaProtectedPathReason,
   ollamaToolRequiresModalApproval
 } from './OllamaToolPolicy'
@@ -121,5 +124,21 @@ describe('Ollama tool policy', () => {
     expect(ollamaToolRequiresModalApproval('workspace_search', 'approved_shell')).toBe(false)
     expect(ollamaToolRequiresModalApproval('write_file', 'provider_parity')).toBe(false)
     expect(ollamaToolRequiresModalApproval('run_shell_command', 'read_only')).toBe(true)
+  })
+
+  it('adds host-derived shell approval metadata for Ollama commands', () => {
+    expect(ollamaShellRiskLabels('npm install left-pad && git add package.json')).toEqual(
+      expect.arrayContaining(['workspace shell execution', 'dependency change', 'git mutation'])
+    )
+    const preview = ollamaShellApprovalPreviewMetadata('rm -rf dist')
+    expect(preview.envDeltas).toEqual({ FORCE_COLOR: '0', NO_COLOR: '1' })
+    expect(preview.riskLabels).toEqual(
+      expect.arrayContaining(['workspace shell execution', 'deletes files'])
+    )
+  })
+
+  it('generates a TaskWraith diff preview for Ollama file edits', () => {
+    expect(ollamaTextDiffPreview('notes.md', null, 'hello\nworld')).toContain('--- /dev/null')
+    expect(ollamaTextDiffPreview('notes.md', 'old', 'new')).toContain('-old\n+new')
   })
 })

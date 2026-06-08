@@ -485,6 +485,8 @@ import {
 import {
   assertOllamaMutationIntent,
   assertOllamaProtectedWritePaths,
+  ollamaShellApprovalPreviewMetadata,
+  ollamaTextDiffPreview,
   ollamaToolRequiresModalApproval
 } from './ollama/OllamaToolPolicy'
 import {
@@ -3012,9 +3014,12 @@ async function requestAgenticServiceApproval(
 
   const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
   const externalPathDetection = request.externalPathDetection
+  const requestOnly = request.forcePrompt === true && !externalPathDetection
   const actions: AgentApprovalAction[] = externalPathDetection
     ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
-    : approvalActionsForPolicy(policy, workspacePath)
+    : requestOnly
+      ? ['accept', 'decline', 'cancel']
+      : approvalActionsForPolicy(policy, workspacePath)
   const baseTitle = externalPathDetection ? externalPathApprovalTitle() : request.title
   const baseBody = externalPathDetection
     ? externalPathApprovalBody(externalPathDetection)
@@ -3028,6 +3033,7 @@ async function requestAgenticServiceApproval(
       workspacePath,
       runId: request.runId,
       externalPathDetection,
+      requestOnly,
       resolve: resolveApproval
     })
     runManager.registerApproval(request.runId, approvalId)
@@ -3049,6 +3055,13 @@ async function requestAgenticServiceApproval(
       preview: {
         ...(request.preview || {}),
         actions,
+        ...(requestOnly
+          ? {
+              requestOnly: true,
+              requestOnlyReason:
+                'This approval is per-call only; session/workspace grants are disabled for this request.'
+            }
+          : {}),
         ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {}),
         ...(externalPathDetection
           ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
@@ -3286,6 +3299,22 @@ function previewGeminiMcpPath(context: GeminiToolContext, filePath: string): str
   }
 }
 
+function readApprovalPreviewFileContent(
+  context: GeminiToolContext,
+  filePath: string
+): string | null {
+  try {
+    const targetPath = resolveGeminiMcpScopedPath(context, filePath)
+    const stat = fsSync.statSync(targetPath)
+    if (!stat.isFile() || stat.size > MAX_EDITOR_FILE_BYTES) return null
+    const buffer = fsSync.readFileSync(targetPath)
+    assertTextBuffer(buffer)
+    return buffer.toString('utf8')
+  } catch {
+    return null
+  }
+}
+
 function formatScopedPath(context: GeminiToolContext, targetPath: string): string {
   if (context.scope === 'global') return resolve(targetPath)
   const workspaceRoot = resolve(context.workspacePath || context.cwd)
@@ -3430,14 +3459,18 @@ function previewForGeminiMcpTool(
   const intentBody = intent ? `Intent: ${intent}\n\n` : ''
   const intentPreview = intent ? { intent } : {}
   if (toolName === 'run_shell_command') {
+    const command = String(args.command || '')
+    const ollamaShellMetadata =
+      parentProvider === 'ollama' ? ollamaShellApprovalPreviewMetadata(command) : {}
     return {
       title: `Approve ${providerName} shell command`,
-      body: `${intentBody}${String(args.command || '')}\n${cwd}`,
+      body: `${intentBody}${command}\n${cwd}`,
       service: 'shellCommands' as AgenticServiceId,
       preview: {
         kind: 'command',
-        command: String(args.command || ''),
+        command,
         cwd,
+        ...ollamaShellMetadata,
         ...intentPreview
       }
     }
@@ -3462,6 +3495,26 @@ function previewForGeminiMcpTool(
   if (toolName === 'write_file' || toolName === 'replace') {
     const filePath = String(args.path || args.file_path || '')
     const previewPath = filePath ? previewGeminiMcpPath(context, filePath) : filePath
+    const content = String(args.content || '')
+    const oldString = String(args.old_string || args.oldString || '')
+    const newString = String(args.new_string || args.newString || '')
+    const patchPreview =
+      parentProvider === 'ollama'
+        ? toolName === 'write_file'
+          ? ollamaTextDiffPreview(
+              previewPath || filePath || 'file',
+              readApprovalPreviewFileContent(context, filePath),
+              content
+            )
+          : ollamaTextDiffPreview(previewPath || filePath || 'file', oldString, newString)
+        : toolName === 'replace'
+          ? [
+              `--- old_string`,
+              oldString.slice(0, 2000),
+              `+++ new_string`,
+              newString.slice(0, 2000)
+            ].join('\n')
+          : content.slice(0, 2000)
     return {
       title:
         toolName === 'write_file'
@@ -3473,15 +3526,7 @@ function previewForGeminiMcpTool(
         kind: 'fileChange',
         changes: [{ kind: toolName === 'write_file' ? 'write' : 'replace', path: previewPath }],
         ...intentPreview,
-        patchPreview:
-          toolName === 'replace'
-            ? [
-                `--- old_string`,
-                String(args.old_string || args.oldString || '').slice(0, 2000),
-                `+++ new_string`,
-                String(args.new_string || args.newString || '').slice(0, 2000)
-              ].join('\n')
-            : String(args.content || '').slice(0, 2000)
+        patchPreview
       }
     }
   }

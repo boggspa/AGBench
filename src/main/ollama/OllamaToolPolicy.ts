@@ -7,6 +7,13 @@ import {
 import type { OllamaToolControlTier } from '../store/types'
 import { ollamaToolIntent, ollamaToolRequiresIntent } from './OllamaToolTiers'
 
+export const OLLAMA_SHELL_ENV_DELTAS = {
+  FORCE_COLOR: '0',
+  NO_COLOR: '1'
+} as const
+
+const MAX_OLLAMA_APPROVAL_DIFF_PREVIEW_CHARS = 4_000
+
 export const OLLAMA_PROTECTED_WORKSPACE_PATHS = new Set([
   '.git',
   '.hg',
@@ -39,6 +46,71 @@ const OLLAMA_FORCE_PROMPT_TOOLS = new Set([
   'apply_patch',
   'run_shell_command'
 ])
+
+export function ollamaShellRiskLabels(command: string): string[] {
+  const normalized = command.toLowerCase()
+  const labels = new Set<string>(['workspace shell execution'])
+  if (/\b(rm|rmdir|unlink)\b/.test(normalized)) labels.add('deletes files')
+  if (/\b(mv|cp|mkdir|touch|tee)\b/.test(normalized) || />{1,2}/.test(command)) {
+    labels.add('may modify files')
+  }
+  if (/\b(sed\s+-i|perl\s+-pi|python\s+-c|node\s+-e|git\s+apply)\b/.test(normalized)) {
+    labels.add('scripted mutation')
+  }
+  if (/\b(git\s+(add|commit|reset|checkout|clean|merge|rebase|push|tag))\b/.test(normalized)) {
+    labels.add('git mutation')
+  }
+  if (/\b(npm|pnpm|yarn|bun|pip|uv|cargo|gem|bundle|brew)\s+(install|add|update|upgrade|remove|uninstall)\b/.test(normalized)) {
+    labels.add('dependency change')
+  }
+  if (/\b(curl|wget|scp|rsync|ssh|ftp)\b/.test(normalized)) labels.add('network access')
+  if (/\b(sudo|su)\b/.test(normalized)) labels.add('elevated privileges')
+  return [...labels]
+}
+
+export function ollamaShellApprovalPreviewMetadata(command: string): {
+  envDeltas: Record<keyof typeof OLLAMA_SHELL_ENV_DELTAS, string>
+  riskLabels: string[]
+} {
+  return {
+    envDeltas: { ...OLLAMA_SHELL_ENV_DELTAS },
+    riskLabels: ollamaShellRiskLabels(command)
+  }
+}
+
+export function ollamaTextDiffPreview(
+  relativePath: string,
+  previousContent: string | null,
+  nextContent: string
+): string {
+  const path = relativePath || 'file'
+  const nextLines = nextContent.replace(/\r\n/g, '\n').split('\n')
+  const header =
+    previousContent === null
+      ? [
+          `diff --git a/${path} b/${path}`,
+          'new file mode 100644',
+          '--- /dev/null',
+          `+++ b/${path}`,
+          `@@ -0,0 +1,${nextLines.length} @@`
+        ]
+      : [
+          `diff --git a/${path} b/${path}`,
+          `--- a/${path}`,
+          `+++ b/${path}`,
+          `@@ -1,${previousContent.replace(/\r\n/g, '\n').split('\n').length} +1,${nextLines.length} @@`
+        ]
+  const body =
+    previousContent === null
+      ? nextLines.map((line) => `+${line}`)
+      : [
+          ...previousContent.replace(/\r\n/g, '\n').split('\n').map((line) => `-${line}`),
+          ...nextLines.map((line) => `+${line}`)
+        ]
+  const preview = [...header, ...body].join('\n')
+  if (preview.length <= MAX_OLLAMA_APPROVAL_DIFF_PREVIEW_CHARS) return preview
+  return `${preview.slice(0, MAX_OLLAMA_APPROVAL_DIFF_PREVIEW_CHARS).trimEnd()}\n... diff preview truncated ...`
+}
 
 export function ollamaProtectedPathReason(relativePath: string): string | null {
   const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
