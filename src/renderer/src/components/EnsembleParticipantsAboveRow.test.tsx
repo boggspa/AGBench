@@ -81,6 +81,7 @@ describe('EnsembleParticipantsAboveRow', () => {
     )
     expect(html).toContain('Explorer')
     expect(html).toContain('Worker')
+    expect(html).toContain('aria-haspopup="dialog"')
     // Two `status-idle` pills should appear (one per participant when no
     // active round).
     const idleHits = html.match(/status-idle/g) || []

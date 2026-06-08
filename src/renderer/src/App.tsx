@@ -244,7 +244,10 @@ import { FileEditorPanel } from './components/FileEditorPanel'
 // The pairing flow now lives as a Settings tab (`PairingPage` mounted
 // inside SettingsPanel). Triggers route through `setShowSettings(true)
 // + setSettingsActiveTab('pairing')`.
-import { EnsembleParticipantsAboveRow } from './components/EnsembleParticipantsAboveRow'
+import {
+  EnsembleParticipantOverflowPopover,
+  EnsembleParticipantsAboveRow
+} from './components/EnsembleParticipantsAboveRow'
 import {
   QueuedMessagesAboveRow,
   type QueuedMessageRowEntry
@@ -294,6 +297,10 @@ import {
 import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
 import { EnsembleModePicker } from './components/EnsembleModePicker'
 import { ComposerProviderPicker } from './components/ComposerProviderPicker'
+import {
+  ComposerTextareaContextMenu,
+  useComposerTextareaContextMenu
+} from './components/ComposerTextareaContextMenu'
 import { ContinuousHopsLimitChip } from './components/ContinuousHopsLimitChip'
 import { OllamaHealthChip } from './components/OllamaHealthChip'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
@@ -1816,6 +1823,7 @@ function App(): React.JSX.Element {
   const sideTranscriptContentRef = useRef<HTMLDivElement>(null)
   const sideLogsEndRef = useRef<HTMLDivElement>(null)
   const sideComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const sideComposerContextMenu = useComposerTextareaContextMenu()
   const sideChatMenuRef = useRef<HTMLDivElement | null>(null)
   const popoutMenuRef = useRef<HTMLDivElement | null>(null)
   // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
@@ -1911,6 +1919,11 @@ function App(): React.JSX.Element {
   // Composer textarea + @-mention popover state. AgentMentionMenu can insert
   // agent markdown mentions or plain path text at the caret.
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerContextMenu = useComposerTextareaContextMenu()
+  const [welcomeParticipantOverflow, setWelcomeParticipantOverflow] = useState<{
+    participantId: string
+    anchor: HTMLElement
+  } | null>(null)
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   // Caret position of the `@` (or `-` of `-@`) that opened the menu —
@@ -12581,6 +12594,27 @@ function App(): React.JSX.Element {
     },
     [isCurrentEnsembleChat, selectedParticipant, currentChat]
   )
+  const patchEnsembleParticipantById = useCallback(
+    (participantId: string, patch: Partial<EnsembleParticipant>) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      const patchedChat: ChatRecord = {
+        ...currentChat,
+        ensemble: {
+          ...currentChat.ensemble,
+          participants: currentChat.ensemble.participants.map((p) =>
+            p.id === participantId ? { ...p, ...patch } : p
+          ),
+          updatedAt: new Date().toISOString()
+        }
+      }
+      const nextChat = withSessionActivityLedger(currentChat, patchedChat)
+      chatByIdRef.current.set(nextChat.appChatId, nextChat)
+      setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+      setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
+      void window.api.saveChat(nextChat)
+    },
+    [isCurrentEnsembleChat, currentChat]
+  )
   const updateCurrentEnsembleOrchestrationMode = useCallback(
     (mode: EnsembleOrchestrationMode) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
@@ -16451,10 +16485,20 @@ function App(): React.JSX.Element {
                         >
                           {orderedEnabled.map((participant, idx) => (
                             <div key={participant.id} className="ensemble-hierarchy-chain-step">
-                              <div
-                                className={`ensemble-hierarchy-tile provider-${participant.provider}`}
+                              <button
+                                type="button"
+                                className={`ensemble-hierarchy-tile provider-${participant.provider} ${
+                                  effectiveSelectedParticipantId === participant.id ? 'is-selected' : ''
+                                }`}
                                 role="listitem"
-                                title={`${participant.role || participant.provider} — speaks at position ${idx + 1}`}
+                                title={`${participant.role || participant.provider} — speaks at position ${idx + 1}. Click to edit.`}
+                                onClick={(event) => {
+                                  handleSelectParticipant(participant.id)
+                                  setWelcomeParticipantOverflow({
+                                    participantId: participant.id,
+                                    anchor: event.currentTarget
+                                  })
+                                }}
                               >
                                 <ProviderBadgeIcon provider={participant.provider} />
                                 <div className="ensemble-hierarchy-tile-text">
@@ -16465,7 +16509,7 @@ function App(): React.JSX.Element {
                                     {participant.provider}
                                   </span>
                                 </div>
-                              </div>
+                              </button>
                               {idx < orderedEnabled.length - 1 && (
                                 <span className="ensemble-hierarchy-arrow" aria-hidden>
                                   →
@@ -16474,6 +16518,26 @@ function App(): React.JSX.Element {
                             </div>
                           ))}
                         </div>
+                        {welcomeParticipantOverflow && currentChat?.ensemble
+                          ? (() => {
+                              const overflowParticipant = currentChat.ensemble.participants.find(
+                                (participant) =>
+                                  participant.id === welcomeParticipantOverflow.participantId
+                              )
+                              if (!overflowParticipant) return null
+                              return (
+                                <EnsembleParticipantOverflowPopover
+                                  anchor={welcomeParticipantOverflow.anchor}
+                                  participant={overflowParticipant}
+                                  onPatch={(patch) =>
+                                    patchEnsembleParticipantById(overflowParticipant.id, patch)
+                                  }
+                                  locked={isCurrentEnsembleRoundRunning}
+                                  onClose={() => setWelcomeParticipantOverflow(null)}
+                                />
+                              )
+                            })()
+                          : null}
                       </>
                     )}
                     {/* Workspace picker on the ensemble welcome too —
@@ -16903,6 +16967,9 @@ function App(): React.JSX.Element {
                       // no in-memory runtime (e.g. post-restart).
                       void window.api.cancelEnsembleParticipantWakeup(wakeupId)
                     }}
+                    composerStyle={appearance.composerStyle}
+                    grokAvailable={grokProviderAvailable}
+                    cursorAvailable={cursorProviderAvailable}
                   />
                 )}
                 {/*
@@ -17155,6 +17222,7 @@ function App(): React.JSX.Element {
                         className={`composer-textarea${composerHasMention ? ' has-mention-overlay' : ''}`}
                         ref={composerTextareaRef}
                         value={prompt}
+                        onContextMenu={composerContextMenu.handleContextMenu}
                         onChange={(e) => {
                           const nextValue = e.target.value
                           // 1.0.4-AQ3 — snapshot the caret position from
@@ -17256,6 +17324,12 @@ function App(): React.JSX.Element {
                   )
                 })()}
                 <ComposerLinkPreviewStrip text={prompt} />
+                <ComposerTextareaContextMenu
+                  anchor={composerContextMenu.anchor}
+                  textareaRef={composerTextareaRef}
+                  onValueChange={setPrompt}
+                  onClose={() => composerContextMenu.setAnchor(null)}
+                />
                 <ComposerSlashMenu
                   open={slashMenuOpen}
                   anchorRef={composerTextareaRef}
@@ -19580,6 +19654,7 @@ function App(): React.JSX.Element {
                       sideComposerHasMention ? ' has-mention-overlay' : ''
                     }`}
                     value={sidePrompt}
+                    onContextMenu={sideComposerContextMenu.handleContextMenu}
                     onChange={(event) => setChatPromptDraft(sideChat.appChatId, event.target.value)}
                     onKeyDown={(event) => {
                       if (
@@ -19597,6 +19672,12 @@ function App(): React.JSX.Element {
                     disabled={!sideCanRun}
                   />
                 </div>
+                <ComposerTextareaContextMenu
+                  anchor={sideComposerContextMenu.anchor}
+                  textareaRef={sideComposerTextareaRef}
+                  onValueChange={(value) => setChatPromptDraft(sideChat.appChatId, value)}
+                  onClose={() => sideComposerContextMenu.setAnchor(null)}
+                />
                 <ComposerLinkPreviewStrip text={sidePrompt} />
                 <div className="composer-bottom-controls side-chat-bottom-controls">
                   <div className="composer-control-footer side-chat-control-footer">

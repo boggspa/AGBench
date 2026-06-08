@@ -769,13 +769,26 @@
 }
 
 .ensemble-above-chip.is-dragging {
-  /* 1.0.4-AQ2 — slight scale + grabbing cursor reinforces the
-   * "I'm holding this" affordance now that the opacity-only
-   * cue isn't getting drowned in selection-blue. */
+  /* Placeholder slot while the portaled ghost follows the cursor. */
   cursor: grabbing;
-  opacity: 0.45;
-  transform: scale(0.96);
-  transition: transform 80ms ease, opacity 80ms ease;
+  opacity: 0.22;
+  transform: none;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent-color) 42%, transparent);
+  transition: opacity 80ms ease, border-color 80ms ease;
+}
+
+.ensemble-above-chip-drag-ghost {
+  pointer-events: none;
+  cursor: grabbing;
+  box-shadow:
+    0 10px 28px color-mix(in srgb, var(--text-primary) 18%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-color) 28%, transparent);
+  transform: scale(1.03);
+}
+
+.ensemble-above-row-chips.is-chip-dragging {
+  cursor: grabbing;
 }
 
 .ensemble-above-chip.is-drag-over {

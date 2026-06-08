@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
+  ComposerStyle,
   ConcurrentLane,
   EnsembleParticipant,
   ProviderId
@@ -41,6 +42,10 @@ import type {
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
 import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
+import {
+  ComposerProviderPickerRows,
+  resolveProviderRows
+} from './ComposerProviderPicker'
 import { getProviderName } from './Sidebar'
 
 // 1.0.4-AR2 — global ceiling raised from 6 → 8 so the panel can host
@@ -297,6 +302,76 @@ interface EnsembleParticipantsAboveRowProps {
    * of the sleeping state.
    */
   onCancelWakeupParticipant?: (wakeupId: string) => void
+  /** Shell token for the portaled add-participant provider picker. */
+  composerStyle?: ComposerStyle
+  grokAvailable?: boolean
+  cursorAvailable?: boolean
+}
+
+interface ChipDragGhostState {
+  participantId: string
+  x: number
+  y: number
+  width: number
+  offsetX: number
+  offsetY: number
+}
+
+interface ChipDragStartInfo {
+  pointerX: number
+  pointerY: number
+  chipRect: DOMRect
+  offsetX: number
+  offsetY: number
+}
+
+function resolveReorderDropTarget(
+  container: HTMLElement | null,
+  x: number,
+  y: number,
+  sourceId: string
+): string | null {
+  if (!container) return null
+
+  const chips = Array.from(
+    container.querySelectorAll('.ensemble-above-chip[data-participant-id]:not(.is-dragging)')
+  ) as HTMLElement[]
+
+  const directTarget = document.elementFromPoint(x, y) as HTMLElement | null
+  const directChip = directTarget?.closest(
+    '.ensemble-above-chip[data-participant-id]:not(.is-dragging)'
+  ) as HTMLElement | null
+  const directId = directChip?.getAttribute('data-participant-id')
+  if (directId && directId !== sourceId) {
+    return directId
+  }
+
+  const containerRect = container.getBoundingClientRect()
+  const verticalTolerance = 56
+  if (
+    y < containerRect.top - verticalTolerance ||
+    y > containerRect.bottom + verticalTolerance ||
+    x < containerRect.left - 80 ||
+    x > containerRect.right + 80
+  ) {
+    return null
+  }
+
+  let nearestId: string | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const chip of chips) {
+    const id = chip.getAttribute('data-participant-id')
+    if (!id || id === sourceId) continue
+    const rect = chip.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    const distance = Math.hypot(x - centerX, y - centerY)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestId = id
+    }
+  }
+  return nearestId
 }
 
 export function EnsembleParticipantsAboveRow({
@@ -308,11 +383,16 @@ export function EnsembleParticipantsAboveRow({
   onStopWorkSession,
   onRetryParticipant,
   onWakeNowParticipant,
-  onCancelWakeupParticipant
+  onCancelWakeupParticipant,
+  composerStyle = 'default',
+  grokAvailable = false,
+  cursorAvailable = false
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
+  const chipsContainerRef = useRef<HTMLDivElement | null>(null)
   const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dragGhost, setDragGhost] = useState<ChipDragGhostState | null>(null)
   const [workSessionNow, setWorkSessionNow] = useState(() => Date.now())
 
   const workSession = chat.chatKind === 'ensemble' ? chat.ensemble?.workSession : undefined
@@ -393,12 +473,12 @@ export function EnsembleParticipantsAboveRow({
     onChatChange(withSessionActivityLedger(chat, nextChat))
   }
 
-  const addParticipant = (): void => {
+  const addParticipant = (chosenProvider?: ProviderId): void => {
     if (!canAddParticipant) return
     const source =
       participants.find((participant) => participant.id === selectedParticipantId) ||
       participants[participants.length - 1]
-    const provider: ProviderId = source?.provider || 'codex'
+    const provider: ProviderId = chosenProvider || source?.provider || 'codex'
     const defaults = getDefaultEnsembleParticipantConfig(provider)
     const sourceIndex = source
       ? participants.findIndex((participant) => participant.id === source.id)
@@ -443,6 +523,7 @@ export function EnsembleParticipantsAboveRow({
   const handleReorder = (sourceId: string, targetId: string | null): void => {
     setDragId(null)
     setDragOverId(null)
+    setDragGhost(null)
     if (isRoundRunning) return
     if (!targetId || sourceId === targetId) return
     const fromIdx = participants.findIndex((p) => p.id === sourceId)
@@ -564,13 +645,14 @@ export function EnsembleParticipantsAboveRow({
         </div>
       )}
       <div
+        ref={chipsContainerRef}
         className={`ensemble-above-row-chips ${
           // 1.0.5-EW1 — Switch to the wrapping grid layout at 7+
           // participants so the strip never clips. Below the
           // threshold we keep the centred horizontal flex layout —
           // most ensembles live there.
           participants.length >= ENSEMBLE_CHIPS_WRAP_THRESHOLD ? 'is-wrapped' : ''
-        }`}
+        } ${dragGhost ? 'is-chip-dragging' : ''}`}
         data-participant-count={participants.length}
       >
         {participants.map((participant) => {
@@ -653,9 +735,44 @@ export function EnsembleParticipantsAboveRow({
               onCloseOverflow={() => setOverflowOpenId(null)}
               onPatch={(patch) => updateParticipant(participant.id, patch)}
               locked={isRoundRunning}
-              onDragStart={() => setDragId(participant.id)}
-              onDragHover={(overId) => setDragOverId(overId)}
-              onDragEnd={(droppedOnId) => handleReorder(participant.id, droppedOnId)}
+              onDragStart={(info) => {
+                setDragId(participant.id)
+                setDragGhost({
+                  participantId: participant.id,
+                  x: info.pointerX - info.offsetX,
+                  y: info.pointerY - info.offsetY,
+                  width: info.chipRect.width,
+                  offsetX: info.offsetX,
+                  offsetY: info.offsetY
+                })
+              }}
+              onDragMove={(pointerX, pointerY) => {
+                setDragGhost((current) =>
+                  current
+                    ? {
+                        ...current,
+                        x: pointerX - current.offsetX,
+                        y: pointerY - current.offsetY
+                      }
+                    : null
+                )
+                const overId = resolveReorderDropTarget(
+                  chipsContainerRef.current,
+                  pointerX,
+                  pointerY,
+                  participant.id
+                )
+                setDragOverId(overId)
+              }}
+              onDragEnd={(pointerX, pointerY) => {
+                const droppedOnId = resolveReorderDropTarget(
+                  chipsContainerRef.current,
+                  pointerX,
+                  pointerY,
+                  participant.id
+                )
+                handleReorder(participant.id, droppedOnId)
+              }}
               onRetry={
                 isRetryable && onRetryParticipant
                   ? () => onRetryParticipant(participant.id)
@@ -690,10 +807,7 @@ export function EnsembleParticipantsAboveRow({
         flex slot — same visual logic as Stop Ensemble + queued-
         prompt indicator.
       */}
-      <button
-        type="button"
-        className="ensemble-above-add-participant"
-        onClick={addParticipant}
+      <EnsembleAddParticipantButton
         disabled={!canAddParticipant}
         title={
           isRoundRunning
@@ -702,10 +816,39 @@ export function EnsembleParticipantsAboveRow({
               ? `Ensembles support up to ${MAX_ENSEMBLE_PARTICIPANTS} participants.`
               : 'Add another participant'
         }
-        aria-label="Add Ensemble participant"
-      >
-        +
-      </button>
+        composerStyle={composerStyle}
+        grokAvailable={grokAvailable}
+        cursorAvailable={cursorAvailable}
+        onAdd={addParticipant}
+      />
+      {dragGhost
+        ? (() => {
+            const ghostParticipant = participants.find(
+              (participant) => participant.id === dragGhost.participantId
+            )
+            if (!ghostParticipant) return null
+            return createPortal(
+              <div
+                className={`ensemble-above-chip ensemble-above-chip-drag-ghost provider-${ghostParticipant.provider} is-selected`}
+                style={{
+                  position: 'fixed',
+                  left: `${dragGhost.x}px`,
+                  top: `${dragGhost.y}px`,
+                  width: `${dragGhost.width}px`,
+                  zIndex: 10050
+                }}
+                aria-hidden
+              >
+                <div className="ensemble-above-chip-body">
+                  <span className="ensemble-above-chip-role">
+                    {ghostParticipant.role || getProviderName(ghostParticipant.provider)}
+                  </span>
+                </div>
+              </div>,
+              document.body
+            )
+          })()
+        : null}
       {/*
         1.0.5-EW22 — "-" remove-selected sibling button. Pairs with
         "+" on the right edge so the roster's add/remove controls
@@ -762,6 +905,117 @@ export function EnsembleParticipantsAboveRow({
   )
 }
 
+function EnsembleAddParticipantButton({
+  disabled,
+  title,
+  composerStyle,
+  grokAvailable,
+  cursorAvailable,
+  onAdd
+}: {
+  disabled: boolean
+  title: string
+  composerStyle: ComposerStyle
+  grokAvailable: boolean
+  cursorAvailable: boolean
+  onAdd: (provider: ProviderId) => void
+}): React.JSX.Element {
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+  const rows = resolveProviderRows(grokAvailable, cursorAvailable)
+
+  useEffect(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      if (!open) {
+        setPosition(null)
+        return
+      }
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - 340))
+      const top = rect.top - 8
+      setPosition({ left, top })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, rows.length])
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (popoverRef.current?.contains(target)) return
+      if (triggerRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('mousedown', handleClick, true)
+    document.addEventListener('keydown', handleKey, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick, true)
+      document.removeEventListener('keydown', handleKey, true)
+    }
+  }, [open])
+
+  const popover =
+    open && position
+      ? createPortal(
+          <div
+            ref={popoverRef}
+            className={`composer-combined-picker-popover composer-plus-picker-popover shell-${composerStyle}`}
+            style={{
+              position: 'fixed',
+              left: `${position.left}px`,
+              top: `${position.top}px`,
+              transform: 'translateY(-100%)'
+            }}
+            role="dialog"
+            aria-label="Choose provider for new participant"
+          >
+            <ComposerProviderPickerRows
+              rows={rows}
+              activeProvider={rows[0]?.id || 'codex'}
+              onSelect={(provider) => {
+                onAdd(provider)
+                setOpen(false)
+              }}
+            />
+          </div>,
+          document.body
+        )
+      : null
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="ensemble-above-add-participant"
+        onClick={() => setOpen((current) => !current)}
+        disabled={disabled}
+        title={title}
+        aria-label="Add Ensemble participant"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        +
+      </button>
+      {popover}
+    </>
+  )
+}
+
 interface ParticipantChipProps {
   participant: EnsembleParticipant
   statusLabel: string
@@ -807,9 +1061,9 @@ interface ParticipantChipProps {
    * Click events on the chip body now land reliably because no
    * native drag is competing for the pointer stream.
    */
-  onDragStart: () => void
-  onDragHover: (overParticipantId: string | null) => void
-  onDragEnd: (droppedOnParticipantId: string | null) => void
+  onDragStart: (info: ChipDragStartInfo) => void
+  onDragMove: (pointerX: number, pointerY: number) => void
+  onDragEnd: (pointerX: number, pointerY: number) => void
   /**
    * 1.0.4-AT7 — re-dispatch this participant after a failed /
    * unreachable turn. The chip strip computes whether retry is
@@ -843,7 +1097,7 @@ function ParticipantChip({
   onPatch,
   locked,
   onDragStart,
-  onDragHover,
+  onDragMove,
   onDragEnd,
   onRetry,
   onWakeNow,
@@ -886,13 +1140,8 @@ function ParticipantChip({
       const startX = event.clientX
       const startY = event.clientY
       let dragged = false
-      let lastHoverId: string | null = null
 
-      const findChipUnderPointer = (x: number, y: number): string | null => {
-        const el = document.elementFromPoint(x, y) as HTMLElement | null
-        const chip = el?.closest('.ensemble-above-chip[data-participant-id]') as HTMLElement | null
-        return chip?.getAttribute('data-participant-id') || null
-      }
+      const chipElement = event.currentTarget as HTMLElement
 
       const handleMove = (moveEvent: PointerEvent): void => {
         const dx = Math.abs(moveEvent.clientX - startX)
@@ -902,14 +1151,17 @@ function ParticipantChip({
         // trackpad without making intentional drags feel sluggish.
         if (!dragged && (dx > 6 || dy > 6)) {
           dragged = true
-          onDragStart()
+          const chipRect = chipElement.getBoundingClientRect()
+          onDragStart({
+            pointerX: moveEvent.clientX,
+            pointerY: moveEvent.clientY,
+            chipRect,
+            offsetX: moveEvent.clientX - chipRect.left,
+            offsetY: moveEvent.clientY - chipRect.top
+          })
         }
         if (dragged) {
-          const overId = findChipUnderPointer(moveEvent.clientX, moveEvent.clientY)
-          if (overId !== lastHoverId) {
-            lastHoverId = overId
-            onDragHover(overId)
-          }
+          onDragMove(moveEvent.clientX, moveEvent.clientY)
         }
       }
 
@@ -918,8 +1170,7 @@ function ParticipantChip({
         document.removeEventListener('pointerup', handleUp)
         document.removeEventListener('pointercancel', handleUp)
         if (dragged) {
-          const dropId = findChipUnderPointer(upEvent.clientX, upEvent.clientY)
-          onDragEnd(dropId && dropId !== participant.id ? dropId : null)
+          onDragEnd(upEvent.clientX, upEvent.clientY)
         } else {
           // Pure tap: no significant movement → fire the click handler.
           onClick()
@@ -930,7 +1181,7 @@ function ParticipantChip({
       document.addEventListener('pointerup', handleUp)
       document.addEventListener('pointercancel', handleUp)
     },
-    [locked, participant.id, onClick, onDragStart, onDragHover, onDragEnd]
+    [locked, onClick, onDragStart, onDragMove, onDragEnd]
   )
 
   return (
@@ -1072,7 +1323,7 @@ function ParticipantChip({
         (see `EnsembleParticipantsAboveRow.tsx` near line 574).
       */}
       {overflowOpen && (
-        <OverflowPopover
+        <EnsembleParticipantOverflowPopover
           anchor={chipAnchor}
           participant={participant}
           onPatch={onPatch}
@@ -1106,7 +1357,7 @@ interface OverflowPopoverProps {
   wakeAt?: string
 }
 
-function OverflowPopover({
+export function EnsembleParticipantOverflowPopover({
   anchor,
   participant,
   onPatch,
