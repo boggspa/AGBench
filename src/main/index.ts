@@ -469,6 +469,7 @@ import {
   providerLabel,
   type ProviderAdapter
 } from './ProviderAdapters'
+import type { OllamaModelPreflightResult } from './ollama/OllamaModelPreflight'
 import {
   fetchOllamaModels,
   getOllamaCapabilityContract,
@@ -9001,6 +9002,59 @@ async function executeOllamaLocalTool(
   }
 }
 
+function markOllamaModelPreflightComplete(modelId: string): void {
+  const key = modelId.trim()
+  if (!key) return
+  const settings = AppStore.getSettings()
+  AppStore.updateSettings({
+    ollamaModelPreflightAt: {
+      ...(settings.ollamaModelPreflightAt || {}),
+      [key]: Date.now()
+    }
+  })
+}
+
+function emitOllamaModelPreflight(
+  sender: Electron.WebContents,
+  result: OllamaModelPreflightResult,
+  route?: AgentRunRoute | null
+): void {
+  appendDurableRunEventForRoute(
+    'ollama',
+    route,
+    'lifecycle',
+    'control',
+    `Ollama capability preflight: ${result.guidance}`,
+    { kind: 'ollamaModelPreflight', guidance: result.guidance, checks: result.checks }
+  )
+  for (const check of result.checks) {
+    appendDurableRunEventForRoute(
+      'ollama',
+      route,
+      'lifecycle',
+      'control',
+      `Preflight ${check.id}: ${check.detail}`,
+      { kind: 'ollamaModelPreflightCheck', check }
+    )
+  }
+  for (const item of result.warnings) {
+    if (item.severity === 'info') continue
+    sendAgentCompatLine(
+      sender,
+      'ollama',
+      {
+        type: 'provider_warning',
+        provider: 'ollama',
+        severity: item.severity,
+        title: item.title,
+        message: item.message,
+        capabilityWarning: item
+      },
+      route
+    )
+  }
+}
+
 async function runOllamaProviderAdapter(
   event: Electron.IpcMainInvokeEvent,
   payload: AgentRunPayload
@@ -9023,6 +9077,9 @@ async function runOllamaProviderAdapter(
   await runOllamaProvider(
     {
       getSettings: () => AppStore.getSettings(),
+      getTotalMemoryBytes: () => os.totalmem(),
+      markOllamaModelPreflightComplete,
+      emitOllamaModelPreflight,
       sendAgentCompatLine,
       sendAgentCompatError,
       sendAgentCompatExit,

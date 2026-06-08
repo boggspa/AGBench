@@ -133,6 +133,35 @@ describe('ProviderPreflightService', () => {
     expect(result.reason).toContain('Claude login required')
   })
 
+  it('adds honest Ollama model guidance when a model is selected', () => {
+    const result = service.evaluate(
+      {
+        provider: 'ollama',
+        workspacePath: '/repo',
+        model: 'qwen3.5:9b',
+        ollamaModelInfo: {
+          id: 'qwen3.5:9b',
+          label: 'Qwen 3.5 (9B Param)',
+          parameterSize: '9B',
+          capabilities: ['completion', 'tools']
+        },
+        ollamaInstalledModelIds: ['qwen3.5:9b'],
+        totalMemoryBytes: 32 * 1024 ** 3
+      },
+      contract({
+        provider: 'ollama',
+        label: 'Ollama'
+      }),
+      defaultProviderDescriptor('ollama')
+    )
+
+    expect(result.state).toBe('ready')
+    expect(result.chips.some((chip) => chip.id === 'ollama-model-guidance')).toBe(true)
+    expect(result.chips.find((chip) => chip.id === 'ollama-model-guidance')?.message).toContain(
+      'scoped tasks'
+    )
+  })
+
   it('blocks enabled unavailable Gemini bridge state fail closed', () => {
     const result = service.evaluate(
       { provider: 'gemini', workspacePath: '/repo' },

@@ -5,6 +5,11 @@ import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager, RunSessionStatus } from '../RunManager'
 import type { AppSettings, OllamaToolControlTier, ProviderCapabilityContract } from '../store/types'
 import {
+  evaluateOllamaModelPreflight,
+  shouldRunOllamaModelPreflight,
+  type OllamaModelPreflightResult
+} from './OllamaModelPreflight'
+import {
   OLLAMA_KNOWN_TOOL_NAMES,
   effectiveOllamaToolControlTier,
   normalizeOllamaToolControlTier,
@@ -53,7 +58,24 @@ export interface OllamaProcessMemorySnapshot {
 }
 
 export interface OllamaProviderDeps {
-  getSettings: () => Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel' | 'ollamaToolControlTier' | 'ollamaProviderParityWorkspaceGrants' | 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
+  getSettings: () => Pick<
+    AppSettings,
+    | 'ollamaBaseUrl'
+    | 'ollamaDefaultModel'
+    | 'ollamaToolControlTier'
+    | 'ollamaModelPreflightAt'
+    | 'ollamaProviderParityWorkspaceGrants'
+    | 'agenticServices'
+    | 'geminiMcpBridgeEnabled'
+    | 'codexSandboxFallback'
+  >
+  getTotalMemoryBytes?: () => number
+  markOllamaModelPreflightComplete?: (modelId: string) => void
+  emitOllamaModelPreflight?: (
+    sender: Electron.WebContents,
+    result: OllamaModelPreflightResult,
+    route?: AgentRunRoute | null
+  ) => void
   sendAgentCompatLine: (
     sender: Electron.WebContents,
     provider: 'ollama',
@@ -1008,6 +1030,21 @@ export async function runOllamaProvider(
       return
     }
     const modelLabel = humanizeOllamaModelId(model)
+    const modelInfo = models.find((entry) => entry.id === model) || null
+    if (
+      shouldRunOllamaModelPreflight(settings.ollamaModelPreflightAt, model) &&
+      deps.emitOllamaModelPreflight
+    ) {
+      const preflight = evaluateOllamaModelPreflight({
+        modelId: model,
+        modelLabel,
+        modelInfo,
+        installedModelIds: models.map((entry) => entry.id),
+        totalMemoryBytes: deps.getTotalMemoryBytes?.() || 16 * 1024 ** 3
+      })
+      deps.emitOllamaModelPreflight(event.sender, preflight, route)
+      deps.markOllamaModelPreflightComplete?.(model)
+    }
     memoryMonitor = createOllamaMemoryMonitor()
     memoryMonitor.start()
 

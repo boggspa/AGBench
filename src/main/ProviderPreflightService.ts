@@ -1,3 +1,5 @@
+import { evaluateOllamaModelPreflight } from './ollama/OllamaModelPreflight'
+import type { OllamaModelInfo } from './ollama/OllamaProvider'
 import type {
   ProviderAdapterDescriptor,
   ProviderCapabilityContract,
@@ -18,6 +20,10 @@ export interface ProviderPreflightInput {
   workspacePath?: string
   approvalMode?: string
   model?: string | null
+  /** Ollama /api/tags metadata for the requested model (when known). */
+  ollamaModelInfo?: OllamaModelInfo | null
+  ollamaInstalledModelIds?: string[]
+  totalMemoryBytes?: number
 }
 
 export interface ProviderPreflightResult {
@@ -112,6 +118,22 @@ export class ProviderPreflightService {
           `${delegatedTools.length}/${controlRows.length} tooling controls are delegated or best-effort for ${label}.`
         )
       )
+    }
+
+    if (input.provider === 'ollama' && input.model?.trim()) {
+      const modelId = input.model.trim()
+      const modelLabel = input.ollamaModelInfo?.label || modelId
+      const ollamaPreflight = evaluateOllamaModelPreflight({
+        modelId,
+        modelLabel,
+        modelInfo: input.ollamaModelInfo,
+        installedModelIds: input.ollamaInstalledModelIds || [],
+        totalMemoryBytes: input.totalMemoryBytes || 16 * 1024 ** 3
+      })
+      for (const item of ollamaPreflight.warnings) {
+        if (chips.some((chip) => chip.id === item.id)) continue
+        chips.unshift(item)
+      }
     }
 
     return {

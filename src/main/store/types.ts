@@ -1357,6 +1357,8 @@ export interface AppSettings {
   ollamaBaseUrl?: string
   ollamaDefaultModel?: string
   ollamaToolControlTier?: OllamaToolControlTier
+  /** Per-model timestamps (ms) for the one-shot honest capability preflight. */
+  ollamaModelPreflightAt?: Record<string, number>
   ollamaProviderParityAcknowledgedAt?: string
   ollamaProviderParityWorkspaceGrants?: Record<string, string>
   defaultGeminiAuthProfileId?: string | null
