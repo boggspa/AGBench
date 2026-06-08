@@ -137,6 +137,7 @@ import {
   isGeminiWorktreeDiffUnavailable,
   getDiffWorkspacePath
 } from './lib/geminiWorktree'
+import { humaniseModelId } from './lib/modelDisplayName'
 import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
 import {
   buildChatTokenTally,
@@ -8377,6 +8378,36 @@ function App(): React.JSX.Element {
             const incomingItemId = (event as { itemId?: unknown }).itemId
             const incomingItemIdStr =
               typeof incomingItemId === 'string' && incomingItemId ? incomingItemId : undefined
+            const providerModelMetadata =
+              runProvider === 'ollama'
+                ? (() => {
+                    const model =
+                      typeof event.model === 'string' && event.model
+                        ? event.model
+                        : updated.runs?.[updated.runs.length - 1]?.actualModel ||
+                          updated.runs?.[updated.runs.length - 1]?.requestedModel ||
+                          ''
+                    const label =
+                      typeof event.modelLabel === 'string' && event.modelLabel
+                        ? event.modelLabel
+                        : humaniseModelId('ollama', model)
+                    if (!model && !label) return undefined
+                    return {
+                      ...(model ? { providerModel: model } : {}),
+                      ...(label ? { providerModelLabel: label } : {})
+                    }
+                  })()
+                : undefined
+            const mergeAssistantMetadata = (
+              base: ChatMessage['metadata'] | undefined
+            ): ChatMessage['metadata'] | undefined => {
+              const next = {
+                ...(base ?? {}),
+                ...(incomingItemIdStr ? { codexItemId: incomingItemIdStr } : {}),
+                ...(providerModelMetadata ?? {})
+              }
+              return Object.keys(next).length > 0 ? next : undefined
+            }
             if (last && last.role === 'assistant') {
               // 1.0.6 dup-fix — idempotent merge. Claude (a cumulative
               // `assistant` envelope that diverged from the streamed
@@ -8393,9 +8424,14 @@ function App(): React.JSX.Element {
                 // Stale/duplicate re-statement we already render in full —
                 // leave the bubble untouched.
               } else if (merge.action === 'replace') {
+                const nextMetadata = mergeAssistantMetadata(last.metadata)
                 updated.messages = [
                   ...updated.messages.slice(0, lastAssistantIdx),
-                  { ...last, content: merge.content },
+                  {
+                    ...last,
+                    content: merge.content,
+                    ...(nextMetadata ? { metadata: nextMetadata } : {})
+                  },
                   ...updated.messages.slice(lastAssistantIdx + 1)
                 ]
               } else {
@@ -8409,9 +8445,7 @@ function App(): React.JSX.Element {
                   incomingItemIdStr !== lastItemId &&
                   last.content.length > 0
                 const separator = itemTransition ? '\n\n---\n\n' : ''
-                const nextMetadata = incomingItemIdStr
-                  ? { ...(last.metadata ?? {}), codexItemId: incomingItemIdStr }
-                  : last.metadata
+                const nextMetadata = mergeAssistantMetadata(last.metadata)
                 // Replace the assistant message in-place at its actual
                 // index (may not be `length - 1` when tool messages are
                 // interleaved). Tool messages between this assistant and
@@ -8421,13 +8455,13 @@ function App(): React.JSX.Element {
                   {
                     ...last,
                     content: last.content + separator + event.content,
-                    metadata: nextMetadata
+                    ...(nextMetadata ? { metadata: nextMetadata } : {})
                   },
                   ...updated.messages.slice(lastAssistantIdx + 1)
                 ]
               }
             } else {
-              const metadata = incomingItemIdStr ? { codexItemId: incomingItemIdStr } : undefined
+              const metadata = mergeAssistantMetadata(undefined)
               updated.messages = [
                 ...updated.messages,
                 {
@@ -12467,6 +12501,19 @@ function App(): React.JSX.Element {
       return {
         thinkingProviderLabel: 'Ensemble',
         thinkingProvider: null as ProviderId | null,
+        thinkingModelBadge: null as string | null
+      }
+    }
+    if (currentProvider === 'ollama') {
+      const latestRun = currentChat?.runs?.[currentChat.runs.length - 1]
+      const model =
+        latestRun?.actualModel ||
+        latestRun?.requestedModel ||
+        (selectedModelType === 'custom' ? customModel : selectedModelType) ||
+        ollamaDefaultModel
+      return {
+        thinkingProviderLabel: humaniseModelId('ollama', model) || currentProviderLabel,
+        thinkingProvider: currentProvider as ProviderId | null,
         thinkingModelBadge: null as string | null
       }
     }

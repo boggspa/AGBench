@@ -89,6 +89,19 @@ describe('humaniseModelId', () => {
     })
   })
 
+  describe('Ollama', () => {
+    it('maps local Ollama tags to readable model names', () => {
+      expect(humaniseModelId('ollama', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+      expect(humaniseModelId('ollama', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
+      expect(humaniseModelId('ollama', 'gemma4:12b-it-q4_K_M')).toBe(
+        'Gemma 4 (12B Param)'
+      )
+      expect(humaniseModelId('ollama', 'gpt-oss')).toBe('GPT OSS (20B Param)')
+      expect(humaniseModelId('ollama', 'gpt-oss:20b')).toBe('GPT OSS (20B Param)')
+      expect(humaniseModelId('ollama', 'gpt-oss:latest')).toBe('GPT OSS (20B Param)')
+    })
+  })
+
   describe('Lookup behaviour', () => {
     it('is case-insensitive on the input id', () => {
       expect(humaniseModelId('gemini', 'GEMINI-3-FLASH-PREVIEW')).toBe('Gemini 3 Flash Preview')
@@ -144,6 +157,9 @@ describe('humaniseModelId', () => {
       expect(labels['kimi-k2.6-thinking']).toBeDefined()
       expect(labels['grok-build']).toBeDefined()
       expect(labels['composer-2.5-fast']).toBeDefined()
+      expect(labels['qwen3:4b-instruct']).toBeDefined()
+      expect(labels['gemma4:12b']).toBeDefined()
+      expect(labels['gpt-oss']).toBeDefined()
       // CLI Default is a non-canonical Gemini composer id but is
       // surfaced in the comparison list when a user has run with
       // it — must humanise to something readable.

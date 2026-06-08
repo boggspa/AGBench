@@ -45,6 +45,16 @@ describe('shortModelName', () => {
     expect(shortModelName('grok', '', 'grok-build')).toBe('Grok Build 0.1')
   })
 
+  it('renders local Ollama tags as model names', () => {
+    expect(shortModelName('ollama', '', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+    expect(shortModelName('ollama', '', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
+    expect(shortModelName('ollama', '', 'gemma4:12b-it-q4_K_M')).toBe(
+      'Gemma 4 (12B Param)'
+    )
+    expect(shortModelName('ollama', '', 'gpt-oss')).toBe('GPT OSS (20B Param)')
+    expect(shortModelName('ollama', '', 'gpt-oss:20b')).toBe('GPT OSS (20B Param)')
+  })
+
   it("resolves the cli-default sentinel to each provider's real default", () => {
     // Kimi + Grok dispatch with the bare sentinel → show their actual default.
     expect(shortModelName('kimi', '', 'cli-default')).toBe('K2.6')

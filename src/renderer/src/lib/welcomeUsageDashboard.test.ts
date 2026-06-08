@@ -475,6 +475,46 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
     ])
   })
 
+  it('treats bare GPT OSS model names as local Ollama usage', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'gpt-oss-local',
+        provider: undefined,
+        timestamp: NOW - 90_000,
+        model: 'gpt-oss',
+        inputTokens: 2_000,
+        outputTokens: 500,
+        totalTokens: 2_500
+      })
+    ]
+
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+
+    expect(data.modelBreakdown.map((m) => [m.provider, m.model, m.label])).toEqual([
+      ['ollama', 'gpt-oss', 'GPT OSS (20B Param)']
+    ])
+  })
+
+  it('treats bare Gemma model names as local Ollama usage', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'gemma-local',
+        provider: undefined,
+        timestamp: NOW - 90_000,
+        model: 'gemma4:12b',
+        inputTokens: 2_000,
+        outputTokens: 500,
+        totalTokens: 2_500
+      })
+    ]
+
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+
+    expect(data.modelBreakdown.map((m) => [m.provider, m.model, m.label])).toEqual([
+      ['ollama', 'gemma4:12b', 'Gemma 4 (12B Param)']
+    ])
+  })
+
   it('percentages are computed against kept-model tokens, not the lifetime aggregate', () => {
     const records: UsageRecord[] = [
       baseRecord({

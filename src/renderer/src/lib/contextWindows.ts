@@ -33,7 +33,16 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   'grok-4.3': 1_000_000,
   // Ollama local defaults. qwen3:4b advertises a large context in Ollama
   // metadata, but use a conservative UI fallback when no live limit is known.
-  'qwen3:4b-instruct': 262_144
+  'qwen3:4b-instruct': 262_144,
+  'gemma4:12b': 262_144,
+  'gemma4:12b-it-qat': 262_144,
+  'gemma4:12b-it-q4_k_m': 262_144,
+  'gemma4:12b-it-q8_0': 262_144,
+  'gemma4:12b-it-bf16': 262_144,
+  'gpt-oss': 131_072,
+  'gpt-oss:20b': 131_072,
+  'gpt-oss:latest': 131_072,
+  'openai/gpt-oss-20b': 131_072
 }
 
 const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {

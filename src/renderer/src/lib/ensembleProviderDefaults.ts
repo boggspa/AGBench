@@ -116,7 +116,9 @@ const CURSOR_MODELS: CombinedModelPickerModelOption[] = [
 ]
 
 const OLLAMA_MODELS: CombinedModelPickerModelOption[] = [
-  { id: 'qwen3:4b-instruct', label: 'qwen3:4b-instruct' }
+  { id: 'qwen3:4b-instruct', label: 'Qwen 3 (4B Param)' },
+  { id: 'gemma4:12b', label: 'Gemma 4 (12B Param)' },
+  { id: 'gpt-oss', label: 'GPT OSS (20B Param)' }
 ]
 
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])

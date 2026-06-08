@@ -8,6 +8,7 @@ import type {
 } from '../../../main/store/types'
 import { formatContextTokens } from './contextWindows'
 import { formatCostAlwaysOn, type DisplayCurrency } from './formatCost'
+import { humaniseModelId } from './modelDisplayName'
 import { estimateRunCostUsd, type RendererProviderRates } from './providerRateEstimate'
 import {
   extractUsageCount,
@@ -180,12 +181,57 @@ const getRunDurationMs = (run: ChatRun): number => {
   return 0
 }
 
+const readPositiveNumber = (obj: any, paths: Array<string | string[]>): number => {
+  for (const path of paths) {
+    const keys = Array.isArray(path) ? path : [path]
+    let cursor = obj
+    let found = true
+    for (const key of keys) {
+      if (!cursor || typeof cursor !== 'object' || !(key in cursor)) {
+        found = false
+        break
+      }
+      cursor = cursor[key]
+    }
+    if (!found) continue
+    const value = typeof cursor === 'string' ? Number(cursor.trim()) : Number(cursor)
+    if (Number.isFinite(value) && value > 0) return value
+  }
+  return 0
+}
+
+const formatOllamaMemoryGb = (gb: number): string => {
+  if (gb >= 10) return `${gb.toFixed(0)} GB`
+  if (gb >= 1) return `${gb.toFixed(1)} GB`
+  return `${gb.toFixed(2)} GB`
+}
+
+const buildOllamaRamRow = (run: ChatRun): RunCompleteSummaryRow | null => {
+  if (run.provider !== 'ollama') return null
+  const peakGb = readPositiveNumber(run.stats, [
+    ['ollamaMemoryPeakRssGb'],
+    ['hardware', 'ram', 'peakRssGb'],
+    ['hardware', 'ram', 'rssGb'],
+    ['ollamaMemoryRssGb']
+  ])
+  if (peakGb <= 0) return null
+  const samples = readPositiveNumber(run.stats, [
+    ['ollamaMemorySampleCount'],
+    ['hardware', 'ram', 'sampleCount']
+  ])
+  const suffix = samples > 1 ? ` peak, ${Math.round(samples)} samples` : ' RSS'
+  return {
+    label: 'RAM',
+    value: `${formatOllamaMemoryGb(peakGb)} llama-server${suffix}`
+  }
+}
+
 export const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSummaryRow[] => {
   if (!run) return []
 
   const rows: RunCompleteSummaryRow[] = []
   const model = run.actualModel || run.requestedModel
-  if (model) rows.push({ label: 'Model', value: model })
+  if (model) rows.push({ label: 'Model', value: humaniseModelId(run.provider, model) || model })
   rows.push({ label: 'Mode', value: formatApprovalModeLabel(run.approvalMode) })
   rows.push({ label: 'Status', value: formatRunStatusLabel(run.status) })
 
@@ -200,6 +246,8 @@ export const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSu
     })
     rows.push({ label: 'Total', value: `${formatContextTokens(counts.totalTokens)} tokens` })
   }
+  const ramRow = buildOllamaRamRow(run)
+  if (ramRow) rows.push(ramRow)
 
   return rows
 }

@@ -461,6 +461,7 @@ import {
   fetchOllamaModels,
   getOllamaCapabilityContract,
   getOllamaStatusSnapshot,
+  humanizeOllamaModelId,
   runOllamaProvider
 } from './ollama/OllamaProvider'
 import {
@@ -9592,7 +9593,8 @@ const providerAdapters = createProviderAdapterRegistry<
       enabled: false,
       installed: false,
       tools: [],
-      message: 'Ollama Phase 1 does not expose MCP tools.'
+      message:
+        'Ollama local mode does not yet expose TaskWraith MCP tools; read-only search should run through a TaskWraith-controlled tool loop.'
     }),
     getCapabilityContract: (request = {}) =>
       getOllamaCapabilityContract(
@@ -15543,9 +15545,19 @@ if (isGeminiMcpBridgeProcess) {
           return [
             {
               id: 'qwen3:4b-instruct',
-              label: 'qwen3:4b-instruct',
+              label: humanizeOllamaModelId('qwen3:4b-instruct'),
               description: 'Install with `ollama pull qwen3:4b-instruct`',
               isDefault: true
+            },
+            {
+              id: 'gemma4:12b',
+              label: humanizeOllamaModelId('gemma4:12b'),
+              description: 'Install with `ollama pull gemma4:12b`'
+            },
+            {
+              id: 'gpt-oss',
+              label: humanizeOllamaModelId('gpt-oss'),
+              description: 'Install with `ollama pull gpt-oss`'
             }
           ]
         }

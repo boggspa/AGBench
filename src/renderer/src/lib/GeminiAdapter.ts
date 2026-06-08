@@ -3,6 +3,7 @@ export type NormalizedEvent =
       type: 'run_started'
       session_id: string
       model: string
+      modelLabel?: string
       timestamp: string
       fallback?: boolean
     }
@@ -12,7 +13,14 @@ export type NormalizedEvent =
   // re: multi-bubble per turn), but propagating the id here is a pure data
   // plumbing change so when we want to wire item-scoped append, the
   // metadata is already present at the adapter boundary.
-  | { type: 'assistant_message_delta'; content: string; itemId?: string; cumulative?: boolean }
+  | {
+      type: 'assistant_message_delta'
+      content: string
+      itemId?: string
+      cumulative?: boolean
+      model?: string
+      modelLabel?: string
+    }
   | { type: 'assistant_message_complete'; content: string; itemId?: string }
   | {
       type: 'tool_event'
@@ -82,6 +90,9 @@ export class GeminiStreamAdapter {
           session_id:
             parsed.session_id || parsed.providerThreadId || parsed.provider_thread_id || '',
           model: parsed.model || 'unknown',
+          ...(typeof parsed.modelLabel === 'string' || typeof parsed.model_label === 'string'
+            ? { modelLabel: parsed.modelLabel || parsed.model_label }
+            : {}),
           timestamp: parsed.timestamp || new Date().toISOString(),
           fallback: Boolean(parsed.fallback)
         })
@@ -105,6 +116,10 @@ export class GeminiStreamAdapter {
           type: 'assistant_message_delta',
           content: text,
           ...(itemId ? { itemId } : {}),
+          ...(typeof parsed.model === 'string' && parsed.model ? { model: parsed.model } : {}),
+          ...(typeof parsed.modelLabel === 'string' || typeof parsed.model_label === 'string'
+            ? { modelLabel: parsed.modelLabel || parsed.model_label }
+            : {}),
           // 1.0.6 dup-fix — main tags a cumulative full-turn re-statement
           // (Claude's divergent envelope) so the renderer REPLACES the
           // bubble instead of appending and doubling it.

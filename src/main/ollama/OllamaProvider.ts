@@ -1,9 +1,13 @@
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { buildProviderCapabilityContract } from '../ProviderCapabilities'
 import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager, RunSessionStatus } from '../RunManager'
 import type { AppSettings, ProviderCapabilityContract } from '../store/types'
 
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
+const OLLAMA_MEMORY_POLL_INTERVAL_MS = 5_000
+const execFileAsync = promisify(execFile)
 
 export interface OllamaModelInfo {
   id: string
@@ -24,6 +28,20 @@ export interface OllamaStatusSnapshot {
   defaultModel?: string
   models?: OllamaModelInfo[]
   error?: string
+}
+
+export interface OllamaProcessMemoryEntry {
+  pid: number
+  rssBytes: number
+  command: string
+}
+
+export interface OllamaProcessMemorySnapshot {
+  sampledAt: string
+  processCount: number
+  rssBytes: number
+  rssGb: number
+  processes: OllamaProcessMemoryEntry[]
 }
 
 export interface OllamaProviderDeps {
@@ -108,8 +126,22 @@ function endpoint(baseUrl: string | undefined | null, path: string): string {
   return `${normalizeOllamaBaseUrl(baseUrl)}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-function modelLabel(model: string): string {
-  return model
+export function humanizeOllamaModelId(model: string): string {
+  const id = model.trim()
+  const key = id.toLowerCase()
+  if (key === 'qwen3:4b-instruct') return 'Qwen 3 (4B Param)'
+  if (key === 'gemma4:12b' || key.startsWith('gemma4:12b-')) {
+    return 'Gemma 4 (12B Param)'
+  }
+  if (
+    key === 'gpt-oss' ||
+    key === 'gpt-oss:20b' ||
+    key === 'gpt-oss:latest' ||
+    key === 'openai/gpt-oss-20b'
+  ) {
+    return 'GPT OSS (20B Param)'
+  }
+  return id
     .split(':')
     .map((part) => part.trim())
     .filter(Boolean)
@@ -139,7 +171,7 @@ export function normalizeOllamaModels(
     seen.add(id)
     const info: OllamaModelInfo = {
       id,
-      label: modelLabel(id),
+      label: humanizeOllamaModelId(id),
       isDefault: selectedDefault ? id === selectedDefault : seen.size === 1
     }
     const description = modelDescription(entry)
@@ -160,6 +192,132 @@ export function normalizeOllamaModels(
     normalized.push(info)
   }
   return normalized
+}
+
+function isOllamaModelRuntimeCommand(command: string): boolean {
+  const lower = command.toLowerCase()
+  if (lower.includes('llama-server')) return true
+  if (lower.includes('ollama_llama_server')) return true
+  return lower.includes('ollama') && lower.includes('runner')
+}
+
+export function parseOllamaMemoryPsOutput(
+  stdout: string,
+  sampledAt = new Date().toISOString()
+): OllamaProcessMemorySnapshot | null {
+  const processes: OllamaProcessMemoryEntry[] = []
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/)
+    if (!match) continue
+    const command = match[3].trim()
+    if (!isOllamaModelRuntimeCommand(command)) continue
+    const pid = Number(match[1])
+    const rssKb = Number(match[2])
+    if (!Number.isFinite(pid) || !Number.isFinite(rssKb) || rssKb <= 0) continue
+    processes.push({
+      pid,
+      rssBytes: Math.round(rssKb * 1024),
+      command
+    })
+  }
+  if (processes.length === 0) return null
+  const rssBytes = processes.reduce((sum, process) => sum + process.rssBytes, 0)
+  return {
+    sampledAt,
+    processCount: processes.length,
+    rssBytes,
+    rssGb: rssBytes / 1_000_000_000,
+    processes
+  }
+}
+
+export async function sampleOllamaLlamaServerMemory(): Promise<OllamaProcessMemorySnapshot | null> {
+  try {
+    const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,rss=,command='], {
+      timeout: 2_000,
+      maxBuffer: 1024 * 1024
+    })
+    return parseOllamaMemoryPsOutput(String(stdout))
+  } catch {
+    return null
+  }
+}
+
+function ollamaHardwareStats(
+  latest: OllamaProcessMemorySnapshot | null,
+  peak: OllamaProcessMemorySnapshot | null,
+  sampleCount: number
+): Record<string, unknown> {
+  if (!latest && !peak) return {}
+  const selectedPeak = peak || latest
+  const selectedLatest = latest || peak
+  if (!selectedLatest || !selectedPeak) return {}
+  return {
+    ollamaMemoryRssBytes: selectedLatest.rssBytes,
+    ollamaMemoryRssGb: selectedLatest.rssGb,
+    ollamaMemoryPeakRssBytes: selectedPeak.rssBytes,
+    ollamaMemoryPeakRssGb: selectedPeak.rssGb,
+    ollamaMemoryProcessCount: selectedPeak.processCount,
+    ollamaMemorySampleCount: sampleCount,
+    ollamaMemorySampledAt: selectedPeak.sampledAt,
+    hardware: {
+      ram: {
+        process: 'llama-server',
+        rssBytes: selectedLatest.rssBytes,
+        rssGb: selectedLatest.rssGb,
+        peakRssBytes: selectedPeak.rssBytes,
+        peakRssGb: selectedPeak.rssGb,
+        processCount: selectedPeak.processCount,
+        sampleCount,
+        sampledAt: selectedPeak.sampledAt
+      }
+    }
+  }
+}
+
+function createOllamaMemoryMonitor(intervalMs = OLLAMA_MEMORY_POLL_INTERVAL_MS) {
+  let timer: NodeJS.Timeout | null = null
+  let latest: OllamaProcessMemorySnapshot | null = null
+  let peak: OllamaProcessMemorySnapshot | null = null
+  let sampleCount = 0
+  let inflight: Promise<void> | null = null
+
+  const sample = async (): Promise<void> => {
+    if (inflight) return inflight
+    inflight = sampleOllamaLlamaServerMemory()
+      .then((snapshot) => {
+        if (!snapshot) return
+        latest = snapshot
+        sampleCount += 1
+        if (!peak || snapshot.rssBytes > peak.rssBytes) {
+          peak = snapshot
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        inflight = null
+      })
+    return inflight
+  }
+
+  return {
+    start(): void {
+      void sample()
+      timer = setInterval(() => void sample(), intervalMs)
+      timer.unref?.()
+    },
+    async stop(): Promise<Record<string, unknown>> {
+      if (timer) {
+        clearInterval(timer)
+        timer = null
+      }
+      await sample()
+      if (inflight) await inflight
+      return ollamaHardwareStats(latest, peak, sampleCount)
+    }
+  }
 }
 
 export async function fetchOllamaModels(
@@ -225,7 +383,8 @@ export async function getOllamaCapabilityContract(
     mcpStatus: {
       available: false,
       enabled: false,
-      message: 'Ollama Phase 1 does not expose MCP tools.'
+      message:
+        'Ollama local mode does not yet expose TaskWraith MCP tools; read-only search should run through a TaskWraith-controlled tool loop.'
     }
   })
 }
@@ -268,6 +427,7 @@ export async function runOllamaProvider(
   const settings = deps.getSettings()
   const baseUrl = normalizeOllamaBaseUrl(settings.ollamaBaseUrl)
   const controller = new AbortController()
+  let memoryMonitor: ReturnType<typeof createOllamaMemoryMonitor> | null = null
   deps.runManager.attachAbortController(route.appRunId!, controller)
 
   try {
@@ -279,13 +439,16 @@ export async function runOllamaProvider(
       deps.sendAgentCompatError(
         event.sender,
         'ollama',
-        'Ollama is reachable, but no local model is installed. Pull a model with `ollama pull qwen3:4b-instruct`, then refresh models.',
+        'Ollama is reachable, but no local model is installed. Pull a model with `ollama pull qwen3:4b-instruct`, `ollama pull gemma4:12b`, or `ollama pull gpt-oss`, then refresh models.',
         route
       )
       deps.sendAgentCompatExit(event.sender, 'ollama', 1, route)
       deps.runManager.finish(route.appRunId, 'failed' as RunSessionStatus)
       return
     }
+    const modelLabel = humanizeOllamaModelId(model)
+    memoryMonitor = createOllamaMemoryMonitor()
+    memoryMonitor.start()
 
     await deps.emitProviderCapabilityWarnings?.(
       event.sender,
@@ -302,6 +465,7 @@ export async function runOllamaProvider(
         type: 'init',
         session_id: `ollama://${model}`,
         model,
+        modelLabel,
         timestamp: new Date().toISOString()
       },
       route
@@ -348,6 +512,7 @@ export async function runOllamaProvider(
               type: 'content',
               text,
               model: chunk.model || model,
+              modelLabel: humanizeOllamaModelId(chunk.model || model),
               timestamp: chunk.created_at || new Date().toISOString()
             },
             route
@@ -364,11 +529,18 @@ export async function runOllamaProvider(
       if (chunk.error) throw new Error(chunk.error)
       const text = chunk.message?.content || ''
       if (text) {
-        deps.sendAgentCompatLine(event.sender, 'ollama', { type: 'content', text, model }, route)
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          { type: 'content', text, model, modelLabel },
+          route
+        )
       }
       if (chunk.done) lastDone = chunk
     }
 
+    const hardwareStats = memoryMonitor ? await memoryMonitor.stop() : {}
+    memoryMonitor = null
     deps.sendAgentCompatLine(
       event.sender,
       'ollama',
@@ -376,13 +548,21 @@ export async function runOllamaProvider(
         type: 'result',
         status: 'success',
         model,
-        stats: lastDone ? ollamaUsageStats(lastDone) : {}
+        modelLabel,
+        stats: {
+          ...(lastDone ? ollamaUsageStats(lastDone) : {}),
+          ...hardwareStats
+        }
       },
       route
     )
     deps.sendAgentCompatExit(event.sender, 'ollama', 0, route)
     deps.runManager.finish(route.appRunId, 'completed' as RunSessionStatus)
   } catch (error) {
+    if (memoryMonitor) {
+      await memoryMonitor.stop().catch(() => {})
+      memoryMonitor = null
+    }
     const aborted = controller.signal.aborted
     const message = aborted
       ? 'Ollama run cancelled.'

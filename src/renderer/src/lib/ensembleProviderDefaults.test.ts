@@ -207,4 +207,15 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
     expect(cursor.modelOptions.map((o) => o.id)).toEqual(['composer-2.5', 'composer-2.5-fast'])
     expect(cursor.reasoningOptions).toEqual([])
   })
+
+  it('exposes local Ollama models without changing the Qwen default', () => {
+    const ollama = getEnsembleModelDefaults('ollama')
+    expect(ollama.defaultModelId).toBe('qwen3:4b-instruct')
+    expect(ollama.modelOptions.map((o) => o.id)).toEqual([
+      'qwen3:4b-instruct',
+      'gemma4:12b',
+      'gpt-oss'
+    ])
+    expect(ollama.reasoningOptions).toEqual([])
+  })
 })

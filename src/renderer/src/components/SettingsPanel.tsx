@@ -4312,8 +4312,8 @@ export function SettingsPanel({
                   placeholder={ollamaStatus?.defaultModel || 'qwen3:4b-instruct'}
                 />
                 <p className="settings-hint">
-                  Leave blank to use the first installed Ollama model. Phase 1 is read-only local
-                  chat; shell, file, and MCP tools are not advertised.
+                  Leave blank to use the first installed Ollama model. Local mode is read-only chat;
+                  web and file search should be added through TaskWraith-owned read-only tools.
                 </p>
                 {ollamaStatus?.error && (
                   <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>

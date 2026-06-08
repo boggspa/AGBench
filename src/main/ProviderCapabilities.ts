@@ -453,7 +453,7 @@ function approvalContract(
       inAppApprovals: true,
       supportsWorkspaceGrants: false,
       notes: [
-        'Ollama runs through TaskWraith local HTTP. Phase 1 does not advertise shell, file, or MCP tools.'
+        'Ollama runs through TaskWraith local HTTP. Current local mode is read-only; future search tools should be mediated by TaskWraith, not direct model shell access.'
       ]
     }
   }
@@ -688,27 +688,27 @@ export function buildProviderCapabilityContract({
     shellCommands = unavailableCapability(
       'shellCommands',
       'taskwraith',
-      'Ollama Phase 1 is local read-only chat; shell commands are not advertised.'
+      'Ollama local mode is read-only chat; shell commands are not advertised.'
     )
     fileChanges = unavailableCapability(
       'fileChanges',
       'taskwraith',
-      'Ollama Phase 1 is local read-only chat; file edits are not advertised.'
+      'Ollama local mode is read-only chat; file edits are not advertised.'
     )
     mcpTools = unavailableCapability(
       'mcpTools',
       'taskwraith',
-      'Ollama Phase 1 does not expose TaskWraith MCP tools to the model.'
+      'Ollama does not yet expose TaskWraith MCP tools to the model; read-only search should be added through a TaskWraith-controlled tool loop.'
     )
     elicit = unavailableCapability(
       'elicit',
       'taskwraith',
-      'Ollama Phase 1 does not expose TaskWraith user-question tools.'
+      'Ollama does not yet expose TaskWraith user-question tools.'
     )
     delegate = unavailableCapability(
       'delegate',
       'taskwraith',
-      'Ollama Phase 1 cannot spawn sub-threads.'
+      'Ollama local mode cannot spawn sub-threads.'
     )
   } else {
     mcp =

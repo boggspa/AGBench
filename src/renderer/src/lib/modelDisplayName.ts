@@ -85,7 +85,23 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
 
   // ── Cursor ────────────────────────────────────────────────
   'composer-2.5': 'Composer 2.5',
-  'composer-2.5-fast': 'Composer 2.5 Fast'
+  'composer-2.5-fast': 'Composer 2.5 Fast',
+
+  // ── Ollama ────────────────────────────────────────────────
+  'qwen3:4b-instruct': 'Qwen 3 (4B Param)',
+  'gemma4:12b': 'Gemma 4 (12B Param)',
+  'gemma4:12b-it-qat': 'Gemma 4 (12B Param)',
+  'gemma4:12b-it-q4_k_m': 'Gemma 4 (12B Param)',
+  'gemma4:12b-it-q8_0': 'Gemma 4 (12B Param)',
+  'gemma4:12b-it-bf16': 'Gemma 4 (12B Param)',
+  'gemma4:12b-mlx': 'Gemma 4 (12B Param)',
+  'gemma4:12b-mlx-bf16': 'Gemma 4 (12B Param)',
+  'gemma4:12b-mxfp8': 'Gemma 4 (12B Param)',
+  'gemma4:12b-nvfp4': 'Gemma 4 (12B Param)',
+  'gpt-oss': 'GPT OSS (20B Param)',
+  'gpt-oss:20b': 'GPT OSS (20B Param)',
+  'gpt-oss:latest': 'GPT OSS (20B Param)',
+  'openai/gpt-oss-20b': 'GPT OSS (20B Param)'
 }
 
 const STALE_GEMINI_PLACEHOLDER_MODEL_IDS = new Set([

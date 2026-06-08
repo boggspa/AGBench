@@ -23,6 +23,32 @@ describe('GeminiStreamAdapter', () => {
     )
   })
 
+  it('preserves provider model labels on run start and content deltas', () => {
+    const onEvent = vi.fn()
+    const adapter = new GeminiStreamAdapter(onEvent)
+
+    adapter.appendChunk(
+      [
+        '{"type":"init","session_id":"ollama://qwen3:4b-instruct","model":"qwen3:4b-instruct","modelLabel":"Qwen 3 (4B Param)"}',
+        '{"type":"content","text":"Hi","model":"qwen3:4b-instruct","modelLabel":"Qwen 3 (4B Param)"}'
+      ].join('\n') + '\n'
+    )
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'run_started',
+        model: 'qwen3:4b-instruct',
+        modelLabel: 'Qwen 3 (4B Param)'
+      })
+    )
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'assistant_message_delta',
+      content: 'Hi',
+      model: 'qwen3:4b-instruct',
+      modelLabel: 'Qwen 3 (4B Param)'
+    })
+  })
+
   it('buffers and parses chunks split across multiple calls', () => {
     const onEvent = vi.fn()
     const adapter = new GeminiStreamAdapter(onEvent)

@@ -155,9 +155,19 @@ const CURSOR_DEFAULT_MODELS = [
 const OLLAMA_DEFAULT_MODELS = [
   {
     id: 'qwen3:4b-instruct',
-    label: 'qwen3:4b-instruct',
+    label: 'Qwen 3 (4B Param)',
     description: 'Local Ollama model',
     isDefault: true
+  },
+  {
+    id: 'gemma4:12b',
+    label: 'Gemma 4 (12B Param)',
+    description: 'Google Gemma 4 12B via Ollama'
+  },
+  {
+    id: 'gpt-oss',
+    label: 'GPT OSS (20B Param)',
+    description: 'OpenAI gpt-oss 20B via Ollama'
   },
   { id: 'custom', label: 'Custom model ID' }
 ] satisfies CodexModelOption[]

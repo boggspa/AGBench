@@ -37,6 +37,7 @@ export interface ComposerChipContext {
  * Gemini (`gemini-2.5-pro`)                → `2.5 Pro`
  * Cursor (`composer-2.5-fast`)             → `Composer 2.5 Fast`
  * Grok (`grok-build`)                      → `Grok Build 0.1`
+ * Ollama (`qwen3:4b-instruct`)             → `Qwen 3 (4B Param)`
  *
  * Falls back to the full label when no provider-specific pattern matches.
  */
@@ -117,6 +118,21 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
   if (provider === 'grok') {
     // grok-build is the only model the subscription CLI exposes (= Grok Build 0.1).
     if (id === 'grok-build') return 'Grok Build 0.1'
+  }
+
+  if (provider === 'ollama') {
+    if (id === 'qwen3:4b-instruct') return 'Qwen 3 (4B Param)'
+    if (id === 'gemma4:12b' || id.startsWith('gemma4:12b-')) {
+      return 'Gemma 4 (12B Param)'
+    }
+    if (
+      id === 'gpt-oss' ||
+      id === 'gpt-oss:20b' ||
+      id === 'gpt-oss:latest' ||
+      id === 'openai/gpt-oss-20b'
+    ) {
+      return 'GPT OSS (20B Param)'
+    }
   }
 
   return label

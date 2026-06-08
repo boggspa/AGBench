@@ -1,4 +1,5 @@
 import { reasoningDisplayLabel, shortModelName } from './composerChipFormat'
+import { humaniseModelId } from './modelDisplayName'
 import { getProviderLabel } from './providerLabels'
 import type { ChatMessage, ProviderId } from '../../../main/store/types'
 
@@ -25,6 +26,17 @@ const formatAssistantMessageLabel = (
   }
   const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
   if (!provider) {
+    if (fallbackProvider === 'ollama') {
+      const model =
+        typeof message.metadata?.providerModel === 'string' ? message.metadata.providerModel : ''
+      const modelLabel =
+        typeof message.metadata?.providerModelLabel === 'string'
+          ? message.metadata.providerModelLabel
+          : humaniseModelId('ollama', model)
+      if (modelLabel) {
+        return { label: modelLabel, provider: fallbackProvider, modelBadge: null }
+      }
+    }
     // Solo chats: use the chat-level provider as the colouring hook.
     // The label is still the plain provider name (no role suffix
     // since there's no ensemble context). The composer chip already

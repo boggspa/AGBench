@@ -20,6 +20,10 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('kimi', 'kimi-k2.6')).toBe(256_000)
     expect(resolveContextWindow('grok', 'grok-build')).toBe(256_000)
     expect(resolveContextWindow('ollama', 'qwen3:4b-instruct')).toBe(262_144)
+    expect(resolveContextWindow('ollama', 'gemma4:12b')).toBe(262_144)
+    expect(resolveContextWindow('ollama', 'gemma4:12b-it-q4_K_M')).toBe(262_144)
+    expect(resolveContextWindow('ollama', 'gpt-oss')).toBe(131_072)
+    expect(resolveContextWindow('ollama', 'gpt-oss:20b')).toBe(131_072)
   })
 
   it('uses provider fallbacks for all seven providers when the model is unknown', () => {

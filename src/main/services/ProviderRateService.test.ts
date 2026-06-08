@@ -92,6 +92,7 @@ describe('BAKED_IN_RATES', () => {
     expect(BAKED_IN_RATES.claude).toBeDefined()
     expect(BAKED_IN_RATES.gemini).toBeDefined()
     expect(BAKED_IN_RATES.kimi).toBeDefined()
+    expect(BAKED_IN_RATES.ollama).toBeDefined()
   })
 
   it('every priced entry carries a pricingUrl + at least one model', () => {
@@ -104,7 +105,7 @@ describe('BAKED_IN_RATES', () => {
         expect(table.pricingUrl).toBe('')
         continue
       }
-      expect(table.pricingUrl).toMatch(/^https?:\/\//)
+      expect(table.pricingUrl).toMatch(/^(https?:\/\/|local:\/\/)/)
       expect(table.models.length).toBeGreaterThan(0)
     }
   })
@@ -113,9 +114,14 @@ describe('BAKED_IN_RATES', () => {
     for (const table of Object.values(BAKED_IN_RATES)) {
       for (const model of table.models) {
         expect(model.modelId).toBeTruthy()
-        expect(model.inputUsdPerMillion).toBeGreaterThan(0)
-        expect(model.outputUsdPerMillion).toBeGreaterThan(0)
-        expect(model.sourceUrl).toMatch(/^https?:\/\//)
+        if (table.provider === 'ollama') {
+          expect(model.inputUsdPerMillion).toBe(0)
+          expect(model.outputUsdPerMillion).toBe(0)
+        } else {
+          expect(model.inputUsdPerMillion).toBeGreaterThan(0)
+          expect(model.outputUsdPerMillion).toBeGreaterThan(0)
+        }
+        expect(model.sourceUrl).toMatch(/^(https?:\/\/|local:\/\/)/)
         expect(model.lastVerified).toBe(RATE_TABLE_VERSION)
       }
     }

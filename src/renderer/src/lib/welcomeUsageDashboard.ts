@@ -426,6 +426,15 @@ const inferProviderFromModelName = (model: string): ProviderId => {
   if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2'))
     return 'kimi'
   if (
+    normalized.includes('ollama') ||
+    normalized.includes('qwen') ||
+    normalized.includes('llama') ||
+    normalized.includes('gemma')
+  ) {
+    return 'ollama'
+  }
+  if (normalized.includes('gpt-oss') || normalized.includes('gptoss')) return 'ollama'
+  if (
     normalized.includes('codex') ||
     normalized.includes('gpt') ||
     normalized.includes('o3') ||
@@ -435,9 +444,6 @@ const inferProviderFromModelName = (model: string): ProviderId => {
     return 'codex'
   if (normalized.includes('grok')) return 'grok'
   if (normalized.includes('composer') || normalized.includes('cursor')) return 'cursor'
-  if (normalized.includes('ollama') || normalized.includes('qwen') || normalized.includes('llama')) {
-    return 'ollama'
-  }
   return 'gemini'
 }
 

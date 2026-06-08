@@ -338,6 +338,60 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         lastVerified: RATE_TABLE_VERSION,
         notes: 'Local Ollama model. TaskWraith does not charge per token for local inference.',
         confidence: 'baked-in'
+      },
+      {
+        modelId: 'gemma4:12b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Google Gemma 4 12B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'gemma4:12b-it-q4_K_M',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Google Gemma 4 12B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'gpt-oss',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'OpenAI gpt-oss 20B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'gpt-oss:20b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'OpenAI gpt-oss 20B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'gpt-oss:latest',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'OpenAI gpt-oss 20B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'openai/gpt-oss-20b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'OpenAI gpt-oss 20B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
       }
     ]
   }
@@ -806,7 +860,10 @@ export async function probeAllProviderRates(
   // regardless; only the network verification probe is gated.)
   const grokProbeAllowed = experimentalGrokProviderEnabled()
   const providers = (Object.values(baseline) as ProviderRateTable[]).filter(
-    (table) => table.models.length > 0 && (table.provider !== 'grok' || grokProbeAllowed)
+    (table) =>
+      table.models.length > 0 &&
+      /^https?:\/\//i.test(table.pricingUrl) &&
+      (table.provider !== 'grok' || grokProbeAllowed)
   )
   const results = await Promise.all(providers.map(probeOneProvider))
   const resultsMap: Record<ProviderId, ProviderRateProbeResult> = {} as Record<

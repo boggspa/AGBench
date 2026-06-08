@@ -3,6 +3,7 @@ import type { ChatRecord, ChatRun } from '../../../main/store/types'
 import {
   buildEnsembleRoundCostRow,
   buildEnsembleRoundSummaryRows,
+  buildRunCompleteSummaryRows,
   buildEscalationChips,
   buildRoundOutcomeRows
 } from './runCompleteSummary'
@@ -106,6 +107,28 @@ describe('buildEnsembleRoundSummaryRows', () => {
       (r) => r.label === 'Cost'
     )
     expect(cost?.value).toBe('$0.50')
+  })
+})
+
+describe('buildRunCompleteSummaryRows', () => {
+  it('renders Ollama model and RAM as local hardware telemetry', () => {
+    const rows = buildRunCompleteSummaryRows(
+      run({
+        provider: 'ollama',
+        actualModel: 'qwen3:4b-instruct',
+        approvalMode: 'plan',
+        status: 'completed',
+        stats: {
+          inputTokens: 100,
+          outputTokens: 25,
+          ollamaMemoryPeakRssGb: 2.42,
+          ollamaMemorySampleCount: 3
+        }
+      })
+    )
+    expect(rows).toContainEqual({ label: 'Model', value: 'Qwen 3 (4B Param)' })
+    expect(rows).toContainEqual({ label: 'Tokens', value: '100 in / 25 out' })
+    expect(rows).toContainEqual({ label: 'RAM', value: '2.4 GB llama-server peak, 3 samples' })
   })
 })
 
