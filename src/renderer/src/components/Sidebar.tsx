@@ -53,6 +53,8 @@ interface SidebarProps {
   chats: ChatRecord[]
   currentChat: ChatRecord | null
   activeChatId?: string | null
+  /** Open/close transition classes from `usePanelPresence` (App.tsx). */
+  animationClassName?: string
   usageSummary: Array<{
     provider: ProviderId
     model: string
@@ -1289,6 +1291,7 @@ export function Sidebar({
   chats,
   currentChat,
   activeChatId,
+  animationClassName = '',
   usageSummary,
   runningChatIds = [],
   workflows = [],
@@ -2255,7 +2258,7 @@ export function Sidebar({
   // reference either directly.
 
   return (
-    <div className="app-sidebar">
+    <div className={`app-sidebar${animationClassName ? ` ${animationClassName}` : ''}`}>
       <div className="sidebar-content">
         <div className="sidebar-masthead">
           <div className="sidebar-masthead-copy">

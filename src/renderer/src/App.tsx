@@ -177,6 +177,7 @@ import { UsageHeatmap } from './components/UsageHeatmap'
 import { WorkspaceActivityHeatmap } from './components/WorkspaceActivityHeatmap'
 import { WelcomeHeatmaps, type WelcomeHeatmapSlot } from './components/WelcomeHeatmaps'
 import { useAppearance } from './hooks/useAppearance'
+import { usePanelPresence } from './hooks/usePanelPresence'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { useUpdateStatus } from './hooks/useUpdateStatus'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
@@ -14564,6 +14565,12 @@ function App(): React.JSX.Element {
     { id: 'terminal' as const, label: 'Term', available: isTerminalDockAvailable }
   ].filter((tab) => tab.available)
   const rightDockVisible = !isChatPopoutWindow && !showSettings && rightDockTabs.length > 0
+  // Animated open/close: keep each panel mounted through a short exit
+  // transition instead of snapping in/out. `mounted` gates rendering;
+  // `className` drives the slide/fade (see 13-panel-transitions.css).
+  const sidebarShown = showWorkspaceSidebar && !isChatPopoutWindow
+  const sidebarPresence = usePanelPresence(sidebarShown)
+  const dockPresence = usePanelPresence(rightDockVisible)
   const activeRightDockTab: RightDockTab =
     rightDockTabs.some((tab) => tab.id === rightDockTab)
       ? rightDockTab
@@ -14691,7 +14698,7 @@ function App(): React.JSX.Element {
     Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(viewportWidth * 0.58))
   )
   const effectiveInspectorWidth = Math.min(appearance.inspectorWidth, rightPanelWindowMax)
-  const rightDockStyle = rightDockVisible
+  const rightDockStyle = dockPresence.mounted
     ? ({ '--right-dock-width': `${effectiveInspectorWidth}px` } as CSSProperties)
     : undefined
   const isChatExpanded = !showWorkspaceSidebar || !rightDockVisible
@@ -15273,7 +15280,7 @@ function App(): React.JSX.Element {
   const sidePanelLayoutClass = isSideSplitOpen
     ? `side-chat-open side-chat-layout-${sidePanelPresentation} side-chat-docked`
     : ''
-  const appMainStyle = showWorkspaceSidebar && !isChatPopoutWindow
+  const appMainStyle = sidebarPresence.mounted && !isChatPopoutWindow
     ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties)
     : undefined
   const chatSplitStyle = rightDockStyle
@@ -15305,7 +15312,7 @@ function App(): React.JSX.Element {
         } ${rightDockVisible ? 'right-dock-open' : ''}`}
         style={appMainStyle}
       >
-        {showWorkspaceSidebar && !isChatPopoutWindow && (
+        {sidebarPresence.mounted && !isChatPopoutWindow && (
           <>
             {/*
               Sidebar swap. In Settings full-app takeover layout
@@ -15321,9 +15328,11 @@ function App(): React.JSX.Element {
                 onTabChange={setSettingsActiveTab}
                 onBackToApp={() => setShowSettings(false)}
                 appVersion={appVersion}
+                animationClassName={sidebarPresence.className}
               />
             ) : (
               <Sidebar
+                animationClassName={sidebarPresence.className}
                 workspaces={workspaces}
                 currentWorkspace={currentWorkspace}
                 chats={chats}
@@ -15397,7 +15406,9 @@ function App(): React.JSX.Element {
               />
             )}
             <div
-              className="workspace-sidebar-resize-handle"
+              className={`workspace-sidebar-resize-handle${
+                sidebarPresence.className ? ` ${sidebarPresence.className}` : ''
+              }`}
               role="separator"
               tabIndex={0}
               aria-orientation="vertical"
@@ -19259,10 +19270,12 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          {rightDockVisible && (
+          {dockPresence.mounted && (
             <>
             <div
-              className="panel-resize-handle right-dock-resize-handle"
+              className={`panel-resize-handle right-dock-resize-handle${
+                dockPresence.className ? ` ${dockPresence.className}` : ''
+              }`}
               role="separator"
               tabIndex={0}
               aria-orientation="vertical"
@@ -19274,7 +19287,11 @@ function App(): React.JSX.Element {
               onKeyDown={handleRightPanelResizeKeyDown}
               title="Resize right dock"
             />
-            <aside className="right-dock" style={rightDockStyle} aria-label="Right dock">
+            <aside
+              className={`right-dock${dockPresence.className ? ` ${dockPresence.className}` : ''}`}
+              style={rightDockStyle}
+              aria-label="Right dock"
+            >
               <div className="right-dock-tabs" role="tablist" aria-label="Right dock tabs">
                 {dockTabDefs.map((tab) => {
                   const isActive = activeRightDockTab === tab.id

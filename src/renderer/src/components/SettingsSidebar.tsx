@@ -26,6 +26,8 @@ interface SettingsSidebarProps {
   onTabChange: (tab: SettingsTab) => void
   onBackToApp: () => void
   appVersion?: string
+  /** Open/close transition classes from `usePanelPresence` (App.tsx). */
+  animationClassName?: string
 }
 
 function ArrowLeftSymbolIcon() {
@@ -50,14 +52,18 @@ export function SettingsSidebar({
   activeTab,
   onTabChange,
   onBackToApp,
-  appVersion
+  appVersion,
+  animationClassName = ''
 }: SettingsSidebarProps) {
   const visibleVersion = appVersion && appVersion !== 'unknown' ? appVersion : null
   const visibleSettingsTabs = getVisibleSettingsTabs()
   const resolvedActiveTab = resolveVisibleSettingsTab(activeTab)
 
   return (
-    <aside className="app-sidebar settings-sidebar" aria-label="Settings navigation">
+    <aside
+      className={`app-sidebar settings-sidebar${animationClassName ? ` ${animationClassName}` : ''}`}
+      aria-label="Settings navigation"
+    >
       <div className="settings-sidebar-inner">
         <button
           type="button"

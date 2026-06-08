@@ -1,0 +1,49 @@
+/* Animated open/close for the workspace sidebar + right dock.
+ *
+ * Both panels are conditionally mounted, so historically they snapped in and
+ * out. `usePanelPresence` now keeps them mounted through a short exit window
+ * and toggles the classes below. We collapse via a negative margin rather than
+ * animating `width` directly: the panel keeps its own fixed width (so the
+ * inner content never reflows / squishes) and the parent's `overflow: hidden`
+ * clips it as it slides off-edge, while the flex sibling (chat pane) smoothly
+ * reclaims the space. The settled/idle state carries no transition, so live
+ * drag-resize of either panel stays instant. */
+
+.tw-panel-anim {
+  transition:
+    margin 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 190ms ease;
+  will-change: margin, opacity;
+}
+
+/* Left workspace sidebar slides off to the left. */
+.app-sidebar.tw-panel-collapsed {
+  margin-left: calc(-1 * var(--sidebar-width, 280px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Right dock slides off to the right. */
+.right-dock.tw-panel-collapsed {
+  margin-right: calc(-1 * var(--right-dock-width, 390px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Resize handles ride along so no thin gap is left mid-animation. */
+.workspace-sidebar-resize-handle.tw-panel-collapsed,
+.right-dock-resize-handle.tw-panel-collapsed {
+  width: 0;
+  flex-basis: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tw-panel-anim {
+    transition: none;
+  }
+}
