@@ -1,6 +1,10 @@
 import type { GeminiStreamAdapter } from './GeminiAdapter'
 import type { ImageAttachment } from './imageAttachments'
 import type {
+  DiscordContextSelection,
+  DiscordContextSnapshot
+} from '../../../main/channels/DiscordContextService'
+import type {
   ChatScope,
   ProviderId,
   WorkspaceRecord,
@@ -23,6 +27,8 @@ export interface QueuedRunRequest {
   approvalMode: string
   sessionTrust: boolean
   imageAttachments: ImageAttachment[]
+  discordContextSelection?: DiscordContextSelection
+  discordContextSnapshots?: DiscordContextSnapshot[]
   externalPathGrants?: ExternalPathGrant[]
   geminiWorktree?: GeminiWorktreeConfig
   codexNativeReview?: boolean

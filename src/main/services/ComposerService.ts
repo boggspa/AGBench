@@ -1,5 +1,11 @@
 import type { AgentRunPayload } from '../run/AgentRunTypes'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
+import {
+  formatDiscordContextPromptAppendix,
+  normalizeDiscordContextSnapshots,
+  type DiscordContextReadMetadata,
+  type DiscordContextSnapshot
+} from '../channels/DiscordContextService'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
@@ -50,6 +56,7 @@ export interface ComposerInput {
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
+  discordContextSnapshots?: DiscordContextSnapshot[]
   chatSnapshot?: ChatRecord
 }
 
@@ -67,6 +74,7 @@ export interface ComposerRunMetadata {
   codexHandoffApplied?: ComposeRunPromptResult['codexHandoffApplied']
   uiNoticeMessage?: string
   imagePaths: string[]
+  discordContextReads?: DiscordContextReadMetadata[]
   planModeParsed?: boolean
   /**
    * 1.0.4-AF — set when the user prefixed the prompt with `/discuss`
@@ -128,7 +136,9 @@ export class ComposerService {
       scope !== 'global'
         ? normalizeComposerExternalPathGrants(input.externalPathGrants || [], provider)
         : []
+    const discordContextSnapshots = normalizeDiscordContextSnapshots(input.discordContextSnapshots)
     const finalPrompt = `${basePrompt}${attachmentPromptAppendix(imagePaths)}${provider === 'codex' ? externalPathGrantPromptAppendix(externalPathGrants) : ''}`
+    const contextualFinalPrompt = `${finalPrompt}${formatDiscordContextPromptAppendix(discordContextSnapshots)}`
     const geminiAuthProfileId =
       provider === 'gemini'
         ? optionalStringOrNull(input.geminiAuthProfileId) ||
@@ -150,7 +160,7 @@ export class ComposerService {
     const codexHandoffsApplied = provider === 'codex' ? getCodexModelContextAppliedKeys(chat) : []
     const composed = composeRunPrompt({
       provider,
-      finalPrompt,
+      finalPrompt: contextualFinalPrompt,
       messages: chat.messages || [],
       chatContextTurns: settings.chatContextTurns,
       resumeSessionId: resumeDecision.sessionId || undefined,
@@ -233,6 +243,9 @@ export class ComposerService {
         codexHandoffApplied: composed.codexHandoffApplied,
         uiNoticeMessage: composed.uiNoticeMessage,
         imagePaths,
+        ...(discordContextSnapshots.length > 0
+          ? { discordContextReads: discordContextSnapshots.map((snapshot) => snapshot.metadata) }
+          : {}),
         planModeParsed: planParsed.planMode,
         ...(selfReflectiveRequested ? { selfReflectiveRequested: true } : {})
       }

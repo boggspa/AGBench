@@ -2682,6 +2682,14 @@ export interface RunQueueImageAttachmentSnapshot {
   name?: string
 }
 
+export interface RunQueueDiscordContextSelectionSnapshot {
+  guildId?: string
+  guildName?: string
+  channelId: string
+  channelName?: string
+  limit: 10 | 25 | 50 | 100
+}
+
 export interface RunQueueRequestSnapshot {
   scope?: ChatScope
   prompt: string
@@ -2691,6 +2699,7 @@ export interface RunQueueRequestSnapshot {
   approvalMode: string
   sessionTrust: boolean
   imageAttachments: RunQueueImageAttachmentSnapshot[]
+  discordContextSelection?: RunQueueDiscordContextSelectionSnapshot
   externalPathGrants?: ExternalPathGrant[]
   geminiWorktree?: GeminiWorktreeConfig
   codexNativeReview?: boolean

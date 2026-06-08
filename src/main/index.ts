@@ -205,6 +205,7 @@ import {
 import { ChatService } from './services/ChatService'
 import { detectConfiguredProviders } from './ProviderConfiguration'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
+import { DiscordContextService } from './channels/DiscordContextService'
 import { EnsembleOrchestrator, type ParticipantProbeResult } from './services/EnsembleOrchestrator'
 import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
 import { SoloChatWakeupService } from './SoloChatWakeupService'
@@ -13896,6 +13897,14 @@ if (isGeminiMcpBridgeProcess) {
       appStore: AppStore,
       getSettings: () => AppStore.getSettings()
     })
+    const discordContextService = new DiscordContextService({
+      botToken: process.env.TASKWRAITH_DISCORD_BOT_TOKEN,
+      guildIds: (process.env.TASKWRAITH_DISCORD_GUILD_IDS || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+      accountId: process.env.TASKWRAITH_DISCORD_ACCOUNT_ID || 'discord-bot'
+    })
     const chatService = new ChatService({
       appStore: AppStore,
       findRegisteredWorkspace,
@@ -14143,6 +14152,10 @@ if (isGeminiMcpBridgeProcess) {
       }
     )
     ipcMain.handle('compose-run', (_, input: ComposerInput) => composerService.composeRun(input))
+    ipcMain.handle('discord-context:list-targets', () => discordContextService.listTargets())
+    ipcMain.handle('discord-context:read-channel', (_, input: unknown) =>
+      discordContextService.readChannel(input)
+    )
 
     // Runtime profiles
     ipcMain.handle('get-runtime-profiles', (_, provider?: ProviderId) => {

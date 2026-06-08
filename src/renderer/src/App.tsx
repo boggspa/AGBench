@@ -249,6 +249,7 @@ import {
   type QueuedMessageRowEntry
 } from './components/QueuedMessagesAboveRow'
 import { ComposerLinkPreviewStrip } from './components/ComposerLinkPreviewStrip'
+import { DiscordContextPicker } from './components/DiscordContextPicker'
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { hasResolvedMention } from './lib/mentionHighlight'
 import { extractHttpUrls } from './lib/urlPresentation'
@@ -336,6 +337,11 @@ import { buildRunDiffByPath } from './lib/RunWorkspaceDiff'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { buildWelcomeCopy } from './lib/welcomeCopy'
+import type {
+  DiscordContextReadMetadata,
+  DiscordContextSelection,
+  DiscordContextTargets
+} from '../../main/channels/DiscordContextService'
 import {
   collectDroppedAttachmentPaths,
   dedupePaths,
@@ -1500,6 +1506,14 @@ function App(): React.JSX.Element {
   const [imageAttachmentsByChatId, setImageAttachmentsByChatId] = useState<
     Record<string, ImageAttachment[]>
   >({})
+  const [discordContextSelectionByChatId, setDiscordContextSelectionByChatId] = useState<
+    Record<string, DiscordContextSelection | null>
+  >({})
+  const [discordContextTargets, setDiscordContextTargets] =
+    useState<DiscordContextTargets | null>(null)
+  const [discordContextPickerOpen, setDiscordContextPickerOpen] = useState(false)
+  const [discordContextLoading, setDiscordContextLoading] = useState(false)
+  const [discordContextError, setDiscordContextError] = useState('')
   const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<
     Record<string, ComposerPermissionState>
   >({})
@@ -2039,6 +2053,13 @@ function App(): React.JSX.Element {
         : EMPTY_IMAGE_ATTACHMENTS,
     [currentComposerChatId, imageAttachmentsByChatId]
   )
+  const currentDiscordContextSelection = useMemo(
+    () =>
+      currentComposerChatId
+        ? discordContextSelectionByChatId[currentComposerChatId] || null
+        : null,
+    [currentComposerChatId, discordContextSelectionByChatId]
+  )
   const composerImageAttachments = useMemo(
     () => imageAttachments.filter((attachment) => isImageAttachmentPath(attachment.path)),
     [imageAttachments]
@@ -2287,6 +2308,37 @@ function App(): React.JSX.Element {
       const nextValue = applyStateAction(value, prev[chatId] || [])
       return { ...prev, [chatId]: nextValue }
     })
+  }
+  const setDiscordContextSelection = (selection: DiscordContextSelection | null) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setDiscordContextSelectionByChatId((prev) => ({ ...prev, [chatId]: selection }))
+  }
+  const refreshDiscordContextTargets = useCallback(async () => {
+    setDiscordContextLoading(true)
+    setDiscordContextError('')
+    try {
+      const targets = await window.api.listDiscordContextTargets()
+      setDiscordContextTargets(targets)
+    } catch (error) {
+      setDiscordContextError(redactLog(String(error)))
+      setDiscordContextTargets(null)
+    } finally {
+      setDiscordContextLoading(false)
+    }
+  }, [])
+  const openDiscordContextPicker = () => {
+    setDiscordContextPickerOpen(true)
+    if (!discordContextTargets && !discordContextLoading) {
+      void refreshDiscordContextTargets()
+    }
+  }
+  const handleSelectDiscordContext = (selection: DiscordContextSelection) => {
+    setDiscordContextSelection(selection)
+    setDiscordContextPickerOpen(false)
+  }
+  const handleClearDiscordContext = () => {
+    setDiscordContextSelection(null)
   }
   const updatePermissionRequestState = (
     patch:
@@ -5266,6 +5318,7 @@ function App(): React.JSX.Element {
     const targetChatId = request.chatRecord?.appChatId || getCurrentComposerStateChatId()
     if (!targetChatId) return
     setImageAttachmentsByChatId((prev) => ({ ...prev, [targetChatId]: [] }))
+    setDiscordContextSelectionByChatId((prev) => ({ ...prev, [targetChatId]: null }))
   }
 
   const addImageAttachments = (paths: string[]) => {
@@ -7482,6 +7535,9 @@ function App(): React.JSX.Element {
       path: attachment.path,
       name: attachment.name
     })),
+    ...(request.discordContextSelection
+      ? { discordContextSelection: request.discordContextSelection }
+      : {}),
     ...(request.externalPathGrants?.length
       ? { externalPathGrants: request.externalPathGrants }
       : {}),
@@ -7595,6 +7651,7 @@ function App(): React.JSX.Element {
         path: attachment.path,
         name: attachment.name || getImageName(attachment.path)
       })),
+      discordContextSelection: request.discordContextSelection,
       externalPathGrants: request.externalPathGrants,
       geminiWorktree: request.geminiWorktree,
       codexNativeReview: request.codexNativeReview,
@@ -7767,6 +7824,12 @@ function App(): React.JSX.Element {
             collectExternalPathGrantsFromMetadata(selectedChat?.providerMetadata)
           ).filter((grant) => grant.provider === provider)
         : []
+    const requestDiscordContextSelection =
+      !existingPrompt &&
+      selectedChat?.appChatId &&
+      selectedChat.appChatId === currentComposerChatId
+        ? currentDiscordContextSelection || undefined
+        : undefined
 
     return {
       appRunId: createAppRunId(),
@@ -7780,6 +7843,9 @@ function App(): React.JSX.Element {
       approvalMode: requestApprovalMode,
       sessionTrust,
       imageAttachments: target?.imageAttachments ?? imageAttachments,
+      ...(requestDiscordContextSelection
+        ? { discordContextSelection: requestDiscordContextSelection }
+        : {}),
       externalPathGrants,
       geminiWorktree:
         scope === 'global' ? undefined : resolveGeminiWorktreeConfig(selectedWorkspace),
@@ -7919,6 +7985,67 @@ function App(): React.JSX.Element {
     void executeRun(request)
   }
 
+  const discordContextToolSummary = (metadata: DiscordContextReadMetadata): string =>
+    `Read Discord #${metadata.channelName} · ${metadata.messageCount} messages`
+
+  const discordContextToolResult = (metadata: DiscordContextReadMetadata): string => {
+    const lines = [
+      metadata.guildName ? `Server: ${metadata.guildName}` : '',
+      `Channel: #${metadata.channelName}`,
+      `Fetched at: ${metadata.fetchedAt}`,
+      `Messages: ${metadata.messageCount}`,
+      metadata.firstTimestamp && metadata.lastTimestamp
+        ? `Range: ${metadata.firstTimestamp} to ${metadata.lastTimestamp}`
+        : '',
+      '',
+      'Preview:',
+      ...(metadata.previewMessages.length > 0
+        ? metadata.previewMessages.map(
+            (message) =>
+              `${message.timestamp || 'unknown-time'} ${message.authorName}: ${message.contentPreview}`
+          )
+        : ['No message preview was available.']),
+      '',
+      metadata.truncated
+        ? 'Full Discord context was capped before being supplied to the model.'
+        : 'Full content was supplied to the model as external untrusted context.'
+    ]
+    return lines.filter((line, index) => line || lines[index - 1]).join('\n')
+  }
+
+  const createDiscordContextToolMessage = (
+    reads: DiscordContextReadMetadata[],
+    timestamp: string,
+    provider: ProviderId
+  ): ChatMessage => ({
+    id: createMessageId(),
+    role: 'tool',
+    content: '',
+    timestamp,
+    toolActivities: reads.map((metadata, index) => ({
+      id: `discord-context-${metadata.channelId}-${metadata.fetchedAt}-${index}`,
+      toolName: discordContextToolSummary(metadata),
+      displayName: discordContextToolSummary(metadata),
+      category: 'read',
+      status: 'success',
+      startedAt: metadata.fetchedAt,
+      endedAt: metadata.fetchedAt,
+      durationMs: 0,
+      parameters: {
+        channelId: metadata.channelId,
+        channelName: metadata.channelName,
+        guildId: metadata.guildId,
+        guildName: metadata.guildName,
+        limit: metadata.limit,
+        retention: metadata.retention
+      },
+      resultSummary: discordContextToolResult(metadata),
+      metadata: {
+        provider
+      }
+    }))
+  })
+
   const executeRun = async (runRequest?: QueuedRunRequest) => {
     // Diagnostic fix (send-message regression investigation, 2026-05-16):
     // Every call site invokes this via `void executeRun(...)` which
@@ -8018,6 +8145,36 @@ function App(): React.JSX.Element {
           ? getDiffWorkspacePath(runWorkspace, runWorktree)
           : undefined
       const currentRunId = request.appRunId || Date.now().toString()
+      if (request.discordContextSelection && !request.discordContextSnapshots?.length) {
+        try {
+          const snapshot = await window.api.readDiscordContext(request.discordContextSelection)
+          request = {
+            ...request,
+            discordContextSnapshots: [snapshot]
+          }
+          appendThreadRawLog(runChat.appChatId, {
+            type: 'tool',
+            content: discordContextToolResult(snapshot.metadata)
+          })
+        } catch (error) {
+          const message = `Failed to read Discord context: ${redactLog(String(error))}`
+          updateRunQueueJobStatus(currentRunId, 'failed', 'Discord context read failed.', message)
+          appendThreadRawLog(runChat.appChatId, { type: 'stderr', content: message })
+          updateChatById(runChat.appChatId, (source) => ({
+            ...source,
+            messages: [
+              ...source.messages,
+              {
+                id: createMessageId(),
+                role: 'error',
+                content: message,
+                timestamp: new Date().toISOString()
+              }
+            ]
+          }))
+          return
+        }
+      }
       let composedPayload: Awaited<ReturnType<typeof window.api.composeRun>>
       try {
         composedPayload = await window.api.composeRun({
@@ -8043,6 +8200,7 @@ function App(): React.JSX.Element {
           runtimeProfileId: request.runtimeProfileId,
           geminiAuthProfileId: request.geminiAuthProfileId,
           handoffSourceRunId: request.handoffSourceRunId,
+          discordContextSnapshots: request.discordContextSnapshots,
           chatSnapshot: runChat
         })
       } catch (error) {
@@ -8072,6 +8230,10 @@ function App(): React.JSX.Element {
       }
       const composerMetadata = composedPayload.composer
       const finalPrompt = composerMetadata.finalPrompt
+      const discordContextReads =
+        composerMetadata.discordContextReads ||
+        request.discordContextSnapshots?.map((snapshot) => snapshot.metadata) ||
+        []
       const displayFinalPrompt = request.displayPrompt ? request.displayPrompt : finalPrompt
       const modelToPass =
         composedPayload.model ||
@@ -8125,6 +8287,9 @@ function App(): React.JSX.Element {
         if (linkPreviewMetadata.length > 0) {
           messageMetadata.linkPreviews = linkPreviewMetadata
         }
+        if (discordContextReads.length > 0) {
+          messageMetadata.discordContextReads = discordContextReads
+        }
         const userMessage: ChatMessage = {
           id: createMessageId(),
           role: 'user',
@@ -8134,6 +8299,12 @@ function App(): React.JSX.Element {
         }
         promptMessageId = userMessage.id
         chatToUpdate.messages = [...chatToUpdate.messages, userMessage]
+        if (discordContextReads.length > 0) {
+          chatToUpdate.messages = [
+            ...chatToUpdate.messages,
+            createDiscordContextToolMessage(discordContextReads, runStartedAt, runProvider)
+          ]
+        }
       } else {
         const lastUserMessage = [...chatToUpdate.messages]
           .reverse()
@@ -16592,10 +16763,10 @@ function App(): React.JSX.Element {
                 </div>
               )}
 
-              {imageAttachments.length > 0 && (
+              {(imageAttachments.length > 0 || currentDiscordContextSelection) && (
                 <div
                   className="composer-image-strip composer-attachment-tray"
-                  aria-label="Composer attachments"
+                  aria-label="Composer attachments and context"
                 >
                   {composerImageAttachments.map((image) => (
                     <div
@@ -16651,7 +16822,38 @@ function App(): React.JSX.Element {
                       </button>
                     </div>
                   ))}
-                  <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
+                  {currentDiscordContextSelection && (
+                    <div
+                      className="composer-image-item composer-file-card composer-discord-context-card"
+                      title={`Discord #${currentDiscordContextSelection.channelName || currentDiscordContextSelection.channelId}`}
+                    >
+                      <span className="composer-discord-context-icon" aria-hidden>
+                        #
+                      </span>
+                      <span
+                        className="composer-image-name composer-discord-context-name"
+                        title={`Discord #${currentDiscordContextSelection.channelName || currentDiscordContextSelection.channelId}`}
+                      >
+                        {`Discord #${currentDiscordContextSelection.channelName || currentDiscordContextSelection.channelId}`}
+                      </span>
+                      <span className="composer-discord-context-count">
+                        {currentDiscordContextSelection.limit}
+                      </span>
+                      <button
+                        className="composer-image-remove"
+                        type="button"
+                        onClick={handleClearDiscordContext}
+                        disabled={isCurrentComposerLocked}
+                        title="Remove Discord context"
+                        aria-label="Remove Discord context"
+                      >
+                        <XSymbolIcon />
+                      </button>
+                    </div>
+                  )}
+                  {imageAttachments.length > 0 && (
+                    <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
+                  )}
                 </div>
               )}
 
@@ -17501,6 +17703,22 @@ function App(): React.JSX.Element {
                                     Boolean(screenWatchUnavailableReason) ||
                                     (!attachedWindow && isAttachingWindow),
                                   onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
+                                },
+                                {
+                                  id: 'discord-context',
+                                  label: 'Discord context',
+                                  description: isCurrentEnsembleChat
+                                    ? 'Solo chats only'
+                                    : currentDiscordContextSelection
+                                      ? `#${currentDiscordContextSelection.channelName || currentDiscordContextSelection.channelId} · last ${currentDiscordContextSelection.limit}`
+                                      : 'Read recent channel messages',
+                                  icon: <ChatMediaIcon />,
+                                  active: Boolean(currentDiscordContextSelection),
+                                  disabled:
+                                    isCurrentComposerLocked ||
+                                    isCurrentEnsembleChat ||
+                                    !currentChat,
+                                  onSelect: openDiscordContextPicker
                                 }
                               ]
                             },
@@ -19584,6 +19802,16 @@ function App(): React.JSX.Element {
         onCheckForUpdates={updateStatus.checkForUpdates}
         onDownloadUpdate={updateStatus.downloadUpdate}
         onInstallUpdateNow={updateStatus.installUpdateNow}
+      />
+      <DiscordContextPicker
+        open={!isChatPopoutWindow && discordContextPickerOpen}
+        targets={discordContextTargets}
+        loading={discordContextLoading}
+        error={discordContextError}
+        currentSelection={currentDiscordContextSelection}
+        onRefresh={refreshDiscordContextTargets}
+        onSelect={handleSelectDiscordContext}
+        onClose={() => setDiscordContextPickerOpen(false)}
       />
       {/* 1.0.4-AK2 — Work Session setup sheet. z-index 9130 sits
           above BugReportSheet (9120) since opening a Work Session

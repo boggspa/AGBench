@@ -286,6 +286,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'message-channels:poll-once': ['optionalObject'],
   'message-channels:submit-web-message': ['object'],
   'message-channels:drain-web-outbox': ['optionalObject'],
+  'discord-context:list-targets': [],
+  'discord-context:read-channel': ['object'],
   'messages-bridge:status': [],
   'messages-bridge:open-permission-helper': [],
   'messages-bridge:reveal-permission-helper-app': [],

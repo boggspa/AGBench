@@ -73,6 +73,12 @@ import type {
   MessagesBridgePollParams
 } from '../main/channels/MessageChannelGatewayService'
 import type {
+  DiscordContextSelection,
+  DiscordContextTargets,
+  DiscordContextSnapshot,
+  DiscordContextReadMetadata
+} from '../main/channels/DiscordContextService'
+import type {
   GitPrReadiness,
   GitPrSummary,
   GitRepositorySnapshot,
@@ -201,6 +207,7 @@ interface ComposerRunInput {
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
+  discordContextSnapshots?: DiscordContextSnapshot[]
   chatSnapshot?: ChatRecord
 }
 
@@ -223,6 +230,7 @@ interface ComposerRunMetadata {
   }
   uiNoticeMessage?: string
   imagePaths: string[]
+  discordContextReads?: DiscordContextReadMetadata[]
   planModeParsed?: boolean
 }
 
@@ -953,6 +961,8 @@ declare global {
         bindingId: string
       ) => Promise<{ ok: boolean; bindingId: string }>
       listMessageChannelAudit: (limit?: number) => Promise<MessageChannelAuditRecord[]>
+      listDiscordContextTargets: () => Promise<DiscordContextTargets>
+      readDiscordContext: (selection: DiscordContextSelection) => Promise<DiscordContextSnapshot>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
       truncateChat: (chatId: string) => Promise<ChatRecord | null>

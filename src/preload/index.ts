@@ -18,6 +18,7 @@ import type {
   MessagesBridgePollResult,
   MessagesBridgePollParams
 } from '../main/channels/MessageChannelGatewayService'
+import type { DiscordContextSelection } from '../main/channels/DiscordContextService'
 import type {
   GitPrReadiness,
   GitPrSummary,
@@ -760,6 +761,9 @@ const api = {
     ipcRenderer.invoke('message-channels:clear-binding-cursor', bindingId),
   listMessageChannelAudit: (limit?: number) =>
     ipcRenderer.invoke('message-channels:list-audit', limit),
+  listDiscordContextTargets: () => ipcRenderer.invoke('discord-context:list-targets'),
+  readDiscordContext: (selection: DiscordContextSelection) =>
+    ipcRenderer.invoke('discord-context:read-channel', selection),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),
   deleteChat: (chatId: string) => ipcRenderer.invoke('delete-chat', chatId),
   /** Slash-picker `/clear` — wipes the chat's messages + runs while
