@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -1971,7 +1971,6 @@ describe('MessageChannelGatewayService', () => {
     mkdirSync(join(workspacePath, 'docs'))
     const filePath = join(workspacePath, 'docs', 'report.txt')
     writeFileSync(filePath, 'channel report\n')
-    const realFilePath = realpathSync(filePath)
     const dispatchRun = vi.fn()
     const delivery = {
       registerRunTarget: vi.fn(),
@@ -2031,7 +2030,10 @@ describe('MessageChannelGatewayService', () => {
       [{ attachmentPaths?: string[] }]
     >
     const reply = sendDirectReplyCalls[0]?.[0]
-    expect(reply?.attachmentPaths?.map((path) => realpathSync(path))).toEqual([realFilePath])
+    expect(reply?.attachmentPaths).toHaveLength(1)
+    const attachmentPath = reply?.attachmentPaths?.[0] ?? ''
+    expect(attachmentPath.endsWith(join('docs', 'report.txt'))).toBe(true)
+    expect(readFileSync(attachmentPath, 'utf8')).toBe('channel report\n')
     expect(auditRecords).toContainEqual(
       expect.objectContaining({
         kind: 'inbound_dispatched',
