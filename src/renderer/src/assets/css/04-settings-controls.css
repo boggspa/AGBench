@@ -3975,7 +3975,12 @@ input:disabled, select:disabled, textarea:disabled {
   width: 100%;
   padding: 4px 2px;
   color: var(--text-secondary);
-  font-family: var(--transcript-font-family);
+  /* Pinned to the SF Pro system stack (--font-sans) rather than the
+   * user-configurable --transcript-font-family: the turn header is chrome,
+   * not prose, so a custom transcript typeface (serif/mono/etc.) made it
+   * clash with the surrounding UI. --font-sans falls back to Segoe UI on
+   * Windows. */
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
 }
 
