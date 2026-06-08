@@ -357,7 +357,9 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
           onPointerUp={endSidebarResize}
           onPointerCancel={endSidebarResize}
           onKeyDown={resizeSidebarWithKeyboard}
-        />
+        >
+          <span className="model-usage-resize-grip" aria-hidden />
+        </div>
       )}
       <div className="model-usage-summary-header">
         <div className="run-summary-title">Model Usage</div>

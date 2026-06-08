@@ -72,4 +72,13 @@ describe('ModelUsageCard', () => {
     // Grok credits meter stays out unless the gated adapter is registered.
     expect(html).not.toContain('Subscription credits')
   })
+
+  it('renders the sidebar resize grip band when expanded', () => {
+    const html = renderToStaticMarkup(
+      <ModelUsageCard usageSummary={[quotaEntry()]} variant="sidebar" />
+    )
+
+    expect(html).toContain('model-usage-resize-handle')
+    expect(html).toContain('model-usage-resize-grip')
+  })
 })
