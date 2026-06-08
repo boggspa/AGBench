@@ -3173,6 +3173,33 @@
     0 0;
 }
 
+/* Native default — merged above-bar stack stays neutral glass when
+ * Advanced FX stamps `.fx-agent-aura` on the stack (shard 05). The
+ * coloured running / approval / failed aura remains on
+ * `.composer-surface` only so the instrument top does not inherit
+ * the blue provider rim. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-running,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-approval,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-failed {
+  box-shadow: var(--composer-shadow) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
 /* INNER module — the readable input. NORMAL theme-tone surface so
  * the textarea + controls always sit on theme tone (light-on-dark
  * / dark-on-light), NEVER on the inverted contrast glass. Seated
@@ -3283,6 +3310,30 @@
     color-mix(in srgb, var(--composer-bg) 93%, var(--text-primary) 7%),
     color-mix(in srgb, var(--composer-bg) 87%, var(--text-primary) 13%)
   );
+}
+
+/* ── Console refinement: telemetry on the glass frame ────────────────
+ * The timecode row sits on the outer `.composer-surface` padding zone
+ * below the opaque inner module. Drop the inner module's external
+ * shadow spill and the telemetry border-top so the footer reads as
+ * frosted glass rather than a second opaque panel. */
+[data-composer-style="default"] .app-transcript .composer-surface {
+  padding-bottom: 10px;
+}
+[data-composer-style="default"] .app-transcript .composer-inner-module {
+  margin-bottom: 6px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+[data-composer-style="default"] .app-transcript .composer-telemetry-row {
+  background: transparent;
+  border-top: 0;
+  margin: 0 6px;
+  padding: 2px 4px 0;
+  position: relative;
+  z-index: 1;
 }
 
 /* Reduce-motion: snap the inner-module seam transition. */
