@@ -154,6 +154,65 @@ export function SplitChatIcon() {
   )
 }
 
+export function BackToParentIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M7.1 4.1 3.2 8l3.9 3.9" />
+        <path d="M3.6 8h6.5a2.9 2.9 0 0 1 2.9 2.9v1" />
+      </svg>
+    </span>
+  )
+}
+
+export function DockDrawerIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="2.4" y="3" width="11.2" height="10" rx="1.4" />
+        <path d="M10.2 3v10" />
+        <path d="M11.7 5.5h.7M11.7 8h.7M11.7 10.5h.7" />
+        <path d="M5.2 8h3" />
+        <path d="M6.9 6.2 5.1 8l1.8 1.8" />
+      </svg>
+    </span>
+  )
+}
+
+export function EndSideChatIcon() {
+  return (
+    <span className="chat-corner-symbol">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5.4 4.1V3.2h5.2v.9" />
+        <path d="M4 5h8" />
+        <path d="M5.1 6.3 5.6 13h4.8l.5-6.7" />
+        <path d="M7.1 7.7v3.8M8.9 7.7v3.8" />
+      </svg>
+    </span>
+  )
+}
+
 export function PinnedMessagesIcon() {
   return (
     <span className="chat-corner-symbol">

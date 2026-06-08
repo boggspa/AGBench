@@ -197,12 +197,15 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import {
   ArrowUpSendIcon,
   AppleTerminalIcon,
+  BackToParentIcon,
   ChatMediaIcon,
   ChatPopoutIcon,
   ClaudeReturnSymbolIcon,
   ClockSymbolIcon,
   CommandSymbolIcon,
   ContextWheel,
+  DockDrawerIcon,
+  EndSideChatIcon,
   ExclamationShieldIcon,
   FileMenuSelectionIcon,
   GhostCompanionIcon,
@@ -263,7 +266,6 @@ import { applyWorkSessionConfirmation, cancelWorkSessionOnChat } from './lib/wor
 // (EnsembleParticipantsAboveRow) where each chip opens a flyout in the
 // same visual language as the rest of the composer pickers.
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
-import { LinkedChatsStrip } from './components/LinkedChatsStrip'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { AgentIdentityIcon } from './components/icons/AgentIdentityIcon'
 import { assignAgentIdentityFromSeed } from './lib/agentIdentitySeed'
@@ -486,6 +488,13 @@ const ACTIVE_RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>([
 ])
 
 type SidePanelPresentation = 'split' | 'drawer'
+type SideChatTypePickerOption = {
+  id: string
+  label: string
+  description: string
+  chatId?: string
+  agentIdentity?: ReturnType<typeof assignAgentIdentityFromSeed>
+}
 type RightDockTab = 'run' | 'chat' | 'inspector' | 'files' | 'media' | 'pins' | 'terminal'
 type InspectorRightTab =
   | 'diff'
@@ -647,12 +656,6 @@ function getSideChatSelectedParticipantId(chat: ChatRecord): string {
   return typeof value === 'string' ? value : ''
 }
 
-function getSideChatSelectedParticipantLabel(chat: ChatRecord): string {
-  const value = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY]
-  if (typeof value === 'string' && value.trim()) return value.trim()
-  return getSideChatSelectedParticipantId(chat) ? getProviderLabel(getChatProvider(chat)) : ''
-}
-
 function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.parentChatRelation === 'sideChat' && getSideChatLifecycleState(chat) === 'terminated'
 }
@@ -677,26 +680,6 @@ function getLinkedChatAgentIdentity(chat: ChatRecord | null | undefined) {
   return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:${participantId}`)
 }
 
-function getLinkedChatRouteLabel(chat: ChatRecord, parentChat?: ChatRecord | null): string {
-  const parentProvider =
-    chat.delegationContext?.parentProvider || (parentChat ? getChatProvider(parentChat) : undefined)
-  const parentLabel = parentProvider ? getProviderLabel(parentProvider) : 'Parent'
-  const childLabel = getProviderLabel(getChatProvider(chat))
-  if (isSubThreadChat(chat)) return `${parentLabel} delegated to ${childLabel}`
-  if (chat.parentChatRelation !== 'sideChat') return ''
-  const mode = getSideChatMode(chat)
-  if (mode === 'fanOut') return `${parentLabel} parallel fan-out`
-  if (mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
-  if (mode === 'guestParticipant') return `${parentLabel} with ${childLabel} guest`
-  const participantLabel = getSideChatSelectedParticipantLabel(chat)
-  if (!participantLabel && parentProvider === getChatProvider(chat)) {
-    return `${parentLabel} isolated side chat`
-  }
-  return participantLabel
-    ? `${parentLabel} dedicated branch to ${participantLabel}`
-    : `${parentLabel} side branch to ${childLabel}`
-}
-
 function getLinkedChatKindLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation === 'sideChat') {
     const mode = getSideChatMode(chat)
@@ -706,42 +689,6 @@ function getLinkedChatKindLabel(chat: ChatRecord): string {
     return 'Isolated side chat'
   }
   return 'Sub-thread'
-}
-
-function getSideChatModeLabel(chat: ChatRecord): string {
-  if (chat.parentChatRelation !== 'sideChat') return ''
-  const mode = getSideChatMode(chat)
-  if (mode === 'fanOut') return 'Parallel fan-out'
-  if (mode === 'ensembleClone') return 'Ensemble clone'
-  if (mode === 'guestParticipant') return 'Attached peer'
-  const participantLabel = getSideChatSelectedParticipantLabel(chat)
-  if (participantLabel) return `Participant: ${participantLabel}`
-  return 'Isolated sidecar'
-}
-
-function getSideChatModeDescription(chat: ChatRecord): string {
-  if (chat.parentChatRelation !== 'sideChat') return 'Delegated agent thread.'
-  const mode = getSideChatMode(chat)
-  if (mode === 'fanOut') return 'Participants answer in parallel from this linked side thread.'
-  if (mode === 'ensembleClone') return 'A linked ensemble clone with the parent participants.'
-  if (mode === 'guestParticipant') {
-    return 'A persistent guest peer attached to the parent transcript.'
-  }
-  const participantLabel = getSideChatSelectedParticipantLabel(chat)
-  if (participantLabel) {
-    return `A dedicated side chat with ${participantLabel}, isolated from the parent transcript.`
-  }
-  return 'An isolated sidecar chat. New side chats start with a copied parent snapshot, but context does not sync after creation.'
-}
-
-function getLinkedChatContextLabel(chat: ChatRecord): string {
-  if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
-  if (getSideChatMode(chat) === 'guestParticipant') return 'Parent transcript peer'
-  if (chat.sideChatContext?.originMessageId) return 'Seeded from selected message'
-  if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
-  if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
-  if (chat.sideChatContext?.transcriptVisibility === 'snapshot') return 'Copied parent snapshot'
-  return 'Isolated context'
 }
 
 function applySideChatLifecycle(
@@ -2118,11 +2065,7 @@ function App(): React.JSX.Element {
         : 'linkedChat'
     : null
   const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Isolated side chat'
-  const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'Isolated context'
-  const sidePanelModeLabel = sideChat ? getSideChatModeLabel(sideChat) : ''
-  const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
   const sidePanelAgentIdentity = getLinkedChatAgentIdentity(sideChat)
-  const sidePanelRouteLabel = sideChat ? getLinkedChatRouteLabel(sideChat, sidePanelParentChat) : ''
   const sideChatPresentationForCurrentParent: SidePanelPresentation =
     sideChat && currentChat && sideChat.parentChatId === currentChat.appChatId
       ? sidePanelPresentation
@@ -2138,20 +2081,6 @@ function App(): React.JSX.Element {
         null
       : null
   const canCreateSideChatFromCurrent = Boolean(currentChat && !currentChatIsLinkedChild)
-  const currentLinkedKindLabel =
-    currentLinkedParentChat && currentChat ? getLinkedChatKindLabel(currentChat) : 'Linked chat'
-  const currentLinkedContextLabel =
-    currentLinkedParentChat && currentChat
-      ? getLinkedChatContextLabel(currentChat)
-      : 'Isolated context'
-  const currentLinkedModeLabel =
-    currentLinkedParentChat && currentChat?.parentChatRelation === 'sideChat'
-      ? getSideChatModeLabel(currentChat)
-      : ''
-  const currentLinkedRouteLabel =
-    currentLinkedParentChat && currentChat ? getLinkedChatRouteLabel(currentChat, currentLinkedParentChat) : ''
-  const currentLinkedAgentIdentity =
-    currentLinkedParentChat && currentChat ? getLinkedChatAgentIdentity(currentChat) : null
   const popoutSideChatLifecycleId =
     isChatPopoutWindow && currentChat?.parentChatRelation === 'sideChat'
       ? currentChat.appChatId
@@ -2160,7 +2089,8 @@ function App(): React.JSX.Element {
     if (!sideChatId) return
     const liveSideChat =
       chatByIdRef.current.get(sideChatId) || chats.find((chat) => chat.appChatId === sideChatId)
-    const sideChatIsMainChat = liveSideChat?.appChatId === currentChat?.appChatId
+    const activeMainChatId = currentChatIdRef.current || currentChat?.appChatId || null
+    const sideChatIsMainChat = liveSideChat?.appChatId === activeMainChatId
     if (sideChatIsMainChat) {
       setSideChatId(null)
       return
@@ -2169,7 +2099,7 @@ function App(): React.JSX.Element {
       !liveSideChat ||
       liveSideChat.archived ||
       isTerminatedSideChat(liveSideChat) ||
-      liveSideChat.parentChatId !== currentChat?.appChatId
+      liveSideChat.parentChatId !== activeMainChatId
     ) {
       if (
         liveSideChat?.parentChatRelation === 'sideChat' &&
@@ -13078,6 +13008,82 @@ function App(): React.JSX.Element {
     isCurrentEnsembleChat,
     currentChat?.ensemble?.participants
   ])
+  const sideChatTypePickerParentChat =
+    sidePanelParentChat || (currentChat && !currentChatIsLinkedChild ? currentChat : null)
+  const sideChatTypePickerOptions = useMemo<SideChatTypePickerOption[]>(() => {
+    if (!sideChatTypePickerParentChat) return []
+    const options: SideChatTypePickerOption[] = [
+      {
+        id: 'isolated-side-chat',
+        label: 'Side Chat',
+        description: 'Current main agent side chat (isolated)'
+      }
+    ]
+    const guestChatId =
+      sideChatTypePickerParentChat.chatKind !== 'ensemble'
+        ? sideChatTypePickerParentChat.guestParticipant?.childChatId
+        : undefined
+    const guestChat = guestChatId
+      ? chatByIdRef.current.get(guestChatId) ||
+        chats.find((chat) => chat.appChatId === guestChatId) ||
+        null
+      : null
+    if (
+      guestChat &&
+      guestChat.parentChatRelation === 'sideChat' &&
+      getSideChatMode(guestChat) === 'guestParticipant' &&
+      getSideChatLifecycleState(guestChat) === 'active' &&
+      !guestChat.archived
+    ) {
+      options.push({
+        id: `guest-${guestChat.appChatId}`,
+        label: 'Guest Side Chat',
+        description: `${getProviderLabel(getChatProvider(guestChat))} guest agent side chat`,
+        chatId: guestChat.appChatId,
+        agentIdentity: getLinkedChatAgentIdentity(guestChat) || undefined
+      })
+    }
+    const subThreads = chats
+      .filter(
+        (chat) =>
+          chat.parentChatId === sideChatTypePickerParentChat.appChatId &&
+          isSubThreadChat(chat) &&
+          !chat.archived
+      )
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+    for (const subThread of subThreads) {
+      const providerLabel = getProviderLabel(getChatProvider(subThread))
+      const threadLabel = subThread.title?.trim() || providerLabel
+      options.push({
+        id: `subagent-${subThread.appChatId}`,
+        label: `Subagent Side Chat with ${threadLabel}`,
+        description: `${providerLabel} delegated subagent`,
+        chatId: subThread.appChatId,
+        agentIdentity: getLinkedChatAgentIdentity(subThread) || undefined
+      })
+    }
+    return options
+  }, [chats, sideChatTypePickerParentChat])
+  const selectedSideChatTypeOption =
+    sideChatTypePickerOptions.find((option) => option.chatId === sideChat?.appChatId) ||
+    sideChatTypePickerOptions[0] ||
+    null
+  const sideChatWelcomeWorkspaceLabel = sideChatTypePickerParentChat
+    ? isGlobalChat(sideChatTypePickerParentChat)
+      ? 'Global Chat'
+      : getWorkspaceForChat(sideChatTypePickerParentChat)?.displayName ||
+        sideChatTypePickerParentChat.workspacePath?.split(/[\\/]/).filter(Boolean).pop() ||
+        'Workspace'
+    : sideWorkspace?.displayName || 'Workspace'
+  const sideChatWelcomeThreadLabel =
+    sideChatTypePickerParentChat?.title || sideChat?.title || 'Thread'
+  const handleSelectSideChatTypeOption = (option: SideChatTypePickerOption) => {
+    if (option.chatId) {
+      handleOpenLinkedChatInSidePanelById(option.chatId)
+      return
+    }
+    void openCurrentSideChatPresentation('split', 'singleProvider')
+  }
   const guestComposerProvider = currentGuestParticipant?.provider || currentProvider
   const guestComposerModelOptionsRaw = getProviderModelOptions(guestComposerProvider)
   const guestComposerSelectedModel =
@@ -14623,19 +14629,6 @@ function App(): React.JSX.Element {
         chats.find((chat) => chat.appChatId === currentChat.parentChatId) ||
         null
       : null
-  const chatPopoutKindLabel =
-    isLinkedChatPopout && currentChat ? getLinkedChatKindLabel(currentChat) : 'Isolated side chat'
-  const chatPopoutContextLabel =
-    isLinkedChatPopout && currentChat ? getLinkedChatContextLabel(currentChat) : ''
-  const chatPopoutModeLabel =
-    isLinkedChatPopout && currentChat?.parentChatRelation === 'sideChat'
-      ? getSideChatModeLabel(currentChat)
-      : ''
-  const chatPopoutRouteLabel =
-    isLinkedChatPopout && currentChat ? getLinkedChatRouteLabel(currentChat, chatPopoutParentChat) : ''
-  const chatPopoutAgentIdentity =
-    isLinkedChatPopout && currentChat ? getLinkedChatAgentIdentity(currentChat) : null
-  const showLinkedMainBanner = Boolean(currentLinkedParentChat && !isLinkedChatPopout)
   const isSideSplitOpen = Boolean(sideChat && !showSettings && !isChatPopoutWindow)
   const sidePanelLayoutClass = isSideSplitOpen
     ? `side-chat-open side-chat-layout-${sidePanelPresentation} side-chat-docked`
@@ -14913,72 +14906,68 @@ function App(): React.JSX.Element {
         )}
 
         {isLinkedChatPopout && currentChat && (
-          <div className="chat-popout-dock-toolbar" role="banner">
-            <div className="chat-popout-dock-title">
-              <span>{chatPopoutKindLabel}</span>
-              {chatPopoutAgentIdentity && (
-                <span
-                  className="linked-chat-agent-identity chat-popout-dock-agent"
-                  title={chatPopoutAgentIdentity.name}
-                >
-                  <AgentIdentityIcon
-                    name={chatPopoutAgentIdentity.key}
-                    color={chatPopoutAgentIdentity.accent}
-                    size={22}
-                    className="linked-chat-agent-identicon"
-                    title={chatPopoutAgentIdentity.name}
-                  />
-                  <span>{chatPopoutAgentIdentity.name}</span>
-                </span>
-              )}
-              <strong title={currentChat.title}>{currentChat.title}</strong>
-              <small title={chatPopoutParentChat?.title || undefined}>
-                {chatPopoutKindLabel} · Parent: {chatPopoutParentChat?.title || 'linked chat'}
-              </small>
-              <span className="chat-popout-dock-meta">
-                {chatPopoutContextLabel && (
-                  <span className="side-chat-context-chip">{chatPopoutContextLabel}</span>
-                )}
-                {chatPopoutModeLabel && (
-                  <span className="side-chat-context-chip side-chat-mode-chip">
-                    {chatPopoutModeLabel}
-                  </span>
-                )}
-                {chatPopoutRouteLabel && (
-                  <span className="side-chat-context-chip side-chat-route-chip">
-                    {chatPopoutRouteLabel}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="chat-popout-dock-actions">
+          <div
+            className="side-chat-floating-actions side-chat-popout-actions"
+            role="toolbar"
+            aria-label="Side chat actions"
+          >
               {chatPopoutParentChat && (
                 <button
                   type="button"
-                  className="side-chat-header-btn"
+                  className="side-chat-action-btn"
                   onClick={() => void handleSelectChat(chatPopoutParentChat)}
                   title="Open the parent chat in this popout"
+                  aria-label="Open parent chat"
                 >
-                  Back to parent
+                  <BackToParentIcon />
                 </button>
               )}
               <button
                 type="button"
-                className="side-chat-header-btn"
+                className="side-chat-action-btn"
                 onClick={() => dockChatPopoutWindow('split')}
                 title="Dock this linked chat into the main pane split"
+                aria-label="Dock as split"
               >
-                Dock split
+                <SplitChatIcon />
               </button>
               <button
                 type="button"
-                className="side-chat-header-btn"
+                className="side-chat-action-btn"
                 onClick={() => dockChatPopoutWindow('drawer')}
                 title="Dock this linked chat into the side drawer"
+                aria-label="Dock as drawer"
               >
-                Dock drawer
+                <DockDrawerIcon />
               </button>
-            </div>
+              {currentChat.parentChatRelation === 'sideChat' && (
+                <button
+                  type="button"
+                  className="side-chat-action-btn danger"
+                  onClick={() => void handleEndCurrentLinkedMainChat()}
+                  title={
+                    getSideChatMode(currentChat) === 'guestParticipant'
+                      ? 'Remove this guest participant from the parent chat'
+                      : 'End this isolated side chat, cancel queued work, and archive it'
+                  }
+                  aria-label={
+                    getSideChatMode(currentChat) === 'guestParticipant'
+                      ? 'Remove guest participant'
+                      : 'End side chat'
+                  }
+                >
+                  <EndSideChatIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                className="side-chat-action-btn"
+                onClick={() => window.close()}
+                title="Close this side chat window"
+                aria-label="Close side chat window"
+              >
+                <XSymbolIcon />
+              </button>
           </div>
         )}
 
@@ -15517,114 +15506,6 @@ function App(): React.JSX.Element {
               upgrade Gemini CLI before using this app on real repositories.
             </div>
           )}
-
-          {showLinkedMainBanner && currentChat && currentLinkedParentChat && (
-            <div className="linked-chat-parent-banner" role="region" aria-label="Linked chat">
-              <div className="linked-chat-parent-copy">
-                <span className="linked-chat-parent-kicker">
-                  <ProviderBadgeIcon provider={currentProvider} />
-                  <span>{currentLinkedKindLabel}</span>
-                </span>
-                {currentLinkedAgentIdentity && (
-                  <span
-                    className="linked-chat-agent-identity"
-                    title={currentLinkedAgentIdentity.name}
-                  >
-                    <AgentIdentityIcon
-                      name={currentLinkedAgentIdentity.key}
-                      color={currentLinkedAgentIdentity.accent}
-                      size={22}
-                      className="linked-chat-agent-identicon"
-                      title={currentLinkedAgentIdentity.name}
-                    />
-                    <span>{currentLinkedAgentIdentity.name}</span>
-                  </span>
-                )}
-                <strong title={currentChat.title}>{currentChat.title}</strong>
-                <span className="linked-chat-parent-line">
-                  {currentLinkedKindLabel} · Parent: {currentLinkedParentChat.title || 'Parent chat'}
-                </span>
-                <span className="side-chat-context-chip linked-chat-parent-context">
-                  {currentLinkedContextLabel}
-                </span>
-                {currentLinkedModeLabel && (
-                  <span className="side-chat-context-chip side-chat-mode-chip linked-chat-parent-context">
-                    {currentLinkedModeLabel}
-                  </span>
-                )}
-                {currentLinkedRouteLabel && (
-                  <span className="side-chat-context-chip side-chat-route-chip linked-chat-parent-context">
-                    {currentLinkedRouteLabel}
-                  </span>
-                )}
-              </div>
-              <div className="linked-chat-parent-actions">
-                <button
-                  type="button"
-                  className="side-chat-header-btn"
-                  onClick={() => void handleSelectChat(currentLinkedParentChat)}
-                  title="Back to parent chat"
-                >
-                  Back to parent
-                </button>
-                <button
-                  type="button"
-                  className="side-chat-header-btn"
-                  onClick={() => void handleOpenLinkedChatInSidePanelFromSidebar(currentChat)}
-                  title="Show this linked chat beside its parent"
-                >
-                  Open beside
-                </button>
-                <button
-                  type="button"
-                  className="side-chat-header-btn"
-                  onClick={() =>
-                    void handleOpenLinkedChatInSidePanelFromSidebar(currentChat, 'drawer')
-                  }
-                  title="Show this linked chat in the side drawer"
-                >
-                  Open drawer
-                </button>
-                <button
-                  type="button"
-                  className="side-chat-header-btn"
-                  onClick={() => void openCurrentSideChatPresentation('popout')}
-                  title="Pop out this linked chat"
-                >
-                  Pop out
-                </button>
-                {currentChat.parentChatRelation === 'sideChat' && (
-                  <button
-                    type="button"
-                    className="side-chat-header-btn side-chat-header-btn-danger"
-                    onClick={() => void handleEndCurrentLinkedMainChat()}
-                    title={
-                      getSideChatMode(currentChat) === 'guestParticipant'
-                        ? 'Remove this guest participant from the parent chat'
-                        : 'End this isolated side chat, cancel queued work, and archive it'
-                    }
-                  >
-                    {getSideChatMode(currentChat) === 'guestParticipant' ? 'Remove' : 'End'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <LinkedChatsStrip
-            currentChat={currentChat}
-            chats={chats}
-            runningChatIds={runningChatIdsArray}
-            onOpenBeside={handleOpenLinkedChatInSidePanelById}
-            onOpenDrawer={(chatId) => handleOpenLinkedChatInSidePanelById(chatId, 'drawer')}
-            onOpenMain={handleOpenCockpitThread}
-            onPopOut={(chatId) => {
-              const linkedChat =
-                chatByIdRef.current.get(chatId) ||
-                chats.find((candidate) => candidate.appChatId === chatId)
-              if (linkedChat) popOutLinkedChat(linkedChat)
-            }}
-          />
 
           {/*
            * Keying the transcript on the current chat id guarantees a
@@ -18712,155 +18593,132 @@ function App(): React.JSX.Element {
                 }
               aria-label="Linked chat"
               >
-            <div className="side-chat-header">
-              <div className="side-chat-title-wrap">
-                <span className="side-chat-kicker">
-                  <ProviderBadgeIcon provider={sideProvider} />
-                  <span>{sidePanelKindLabel}</span>
-                </span>
-                {sidePanelAgentIdentity && (
-                  <span
-                    className="linked-chat-agent-identity side-chat-agent-identity"
-                    title={sidePanelAgentIdentity.name}
-                  >
-                    <AgentIdentityIcon
-                      name={sidePanelAgentIdentity.key}
-                      color={sidePanelAgentIdentity.accent}
-                      size={22}
-                      className="linked-chat-agent-identicon"
-                      title={sidePanelAgentIdentity.name}
-                    />
-                    <span>{sidePanelAgentIdentity.name}</span>
-                  </span>
-                )}
-                <span className="side-chat-parent-link">
-                  {sidePanelKindLabel} · Parent: {sidePanelParentChat?.title || 'current chat'}
-                </span>
-                <strong title={sideChat.title}>{sideChat.title}</strong>
-                <span className="side-chat-header-chips">
-                  <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
-                  {sidePanelModeLabel && (
-                    <span className="side-chat-context-chip side-chat-mode-chip">
-                      {sidePanelModeLabel}
-                    </span>
-                  )}
-                  {sidePanelRouteLabel && (
-                    <span className="side-chat-context-chip side-chat-route-chip">
-                      {sidePanelRouteLabel}
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="side-chat-actions">
+            <div
+              className="side-chat-floating-actions side-chat-pane-actions"
+              role="toolbar"
+              aria-label="Side chat actions"
+            >
                 {sidePanelParentChat && (
                   <button
                     type="button"
-                    className="side-chat-header-btn"
+                    className="side-chat-action-btn"
                     onClick={handleReturnToSideChatParent}
                     title="Close this side view and return focus to the parent chat"
+                    aria-label="Back to parent"
                   >
-                    Back to parent
+                    <BackToParentIcon />
                   </button>
                 )}
                 <button
                   type="button"
-                  className="side-chat-header-btn"
+                  className="side-chat-action-btn"
                   onClick={() => popOutLinkedChat(sideChat)}
                   title="Pop out this linked chat"
+                  aria-label="Pop out linked chat"
                 >
-                  Pop out
+                  <ChatPopoutIcon />
                 </button>
                 <button
                   type="button"
-                  className="side-chat-header-btn"
+                  className="side-chat-action-btn"
                   onClick={() => void openLinkedChatAsMain(sideChat)}
                   title="Open linked chat as the main thread"
+                  aria-label="Open as main"
                 >
-                  Open as main
+                  <LinkCircleSymbolIcon />
                 </button>
                 {sidePanelRelation === 'sideChat' && (
                   <button
                     type="button"
-                    className="side-chat-header-btn side-chat-header-btn-danger"
+                    className="side-chat-action-btn danger"
                     onClick={() => void handleEndSidePanelChat()}
                     title={
                       getSideChatMode(sideChat) === 'guestParticipant'
                         ? 'Remove this guest participant from the parent chat'
                         : 'End this isolated side chat, cancel queued work, and archive it'
                     }
+                    aria-label={
+                      getSideChatMode(sideChat) === 'guestParticipant'
+                        ? 'Remove guest participant'
+                        : 'End side chat'
+                    }
                   >
-                    {getSideChatMode(sideChat) === 'guestParticipant' ? 'Remove' : 'End'}
+                    <EndSideChatIcon />
                   </button>
                 )}
                 <button
                   type="button"
-                  className="side-chat-icon-btn"
+                  className="side-chat-action-btn"
                   onClick={hideSideChatPane}
                   title="Close side view; linked chat keeps running"
                   aria-label="Close side view"
                 >
                   <XSymbolIcon />
                 </button>
-              </div>
             </div>
             {sideChatIsWelcome && (
               <div className="side-chat-welcome" aria-label="Linked chat welcome">
-                <span className="side-chat-welcome-kicker">{sidePanelKindLabel}</span>
-                {sidePanelAgentIdentity && (
-                  <span className="side-chat-welcome-agent" title={sidePanelAgentIdentity.name}>
-                    <AgentIdentityIcon
-                      name={sidePanelAgentIdentity.key}
-                      color={sidePanelAgentIdentity.accent}
-                      size={44}
-                      className="linked-chat-agent-identicon"
-                      title={sidePanelAgentIdentity.name}
-                    />
-                    <span>{sidePanelAgentIdentity.name}</span>
+                <h2 className="side-chat-welcome-line">
+                  <span>New</span>
+                  {selectedSideChatTypeOption ? (
+                    <details className="side-chat-type-picker">
+                      <summary title="Choose side chat type">
+                        {selectedSideChatTypeOption.agentIdentity && (
+                          <AgentIdentityIcon
+                            name={selectedSideChatTypeOption.agentIdentity.key}
+                            color={selectedSideChatTypeOption.agentIdentity.accent}
+                            size={18}
+                            className="linked-chat-agent-identicon"
+                            title={selectedSideChatTypeOption.agentIdentity.name}
+                          />
+                        )}
+                        <span>{selectedSideChatTypeOption.label}</span>
+                      </summary>
+                      <div className="side-chat-type-picker-menu" role="listbox">
+                        {sideChatTypePickerOptions.map((option) => {
+                          const selected = option.id === selectedSideChatTypeOption.id
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              disabled={selected}
+                              onClick={(event) => {
+                                event.currentTarget.closest('details')?.removeAttribute('open')
+                                handleSelectSideChatTypeOption(option)
+                              }}
+                            >
+                              {option.agentIdentity && (
+                                <AgentIdentityIcon
+                                  name={option.agentIdentity.key}
+                                  color={option.agentIdentity.accent}
+                                  size={20}
+                                  className="linked-chat-agent-identicon"
+                                  title={option.agentIdentity.name}
+                                />
+                              )}
+                              <span className="side-chat-type-picker-option-copy">
+                                <strong>{option.label}</strong>
+                                <small>{option.description}</small>
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  ) : (
+                    <span className="side-chat-type-picker-static">Side Chat</span>
+                  )}
+                  <span>in</span>
+                  <span className="side-chat-welcome-workspace" title={sideChatWelcomeWorkspaceLabel}>
+                    {sideChatWelcomeWorkspaceLabel}
                   </span>
-                )}
-                <h2>
-                  {sidePanelRelation === 'subThread'
-                    ? 'Sub-thread'
-                    : sidePanelKindLabel}
+                  <span aria-hidden>:</span>
+                  <span className="side-chat-welcome-thread" title={sideChatWelcomeThreadLabel}>
+                    {sideChatWelcomeThreadLabel}
+                  </span>
                 </h2>
-                <p>{sidePanelModeDescription}</p>
-                <span className="side-chat-welcome-parent">
-                  {sidePanelKindLabel} · Parent: {sidePanelParentChat?.title || 'Parent chat'}
-                </span>
-                <span className="side-chat-welcome-context">
-                  <span className="side-chat-context-chip">{sidePanelContextLabel}</span>
-                  {sidePanelModeLabel && (
-                    <span className="side-chat-context-chip side-chat-mode-chip">
-                      {sidePanelModeLabel}
-                    </span>
-                  )}
-                  {sidePanelRouteLabel && (
-                    <span className="side-chat-context-chip side-chat-route-chip">
-                      {sidePanelRouteLabel}
-                    </span>
-                  )}
-                </span>
-                {sideChat.chatKind === 'ensemble' && sideChat.ensemble?.participants?.length ? (
-                  <div className="side-chat-welcome-chain" aria-label="Ensemble participants">
-                    {[...(sideChat.ensemble.participants || [])]
-                      .filter((participant) => participant.enabled)
-                      .sort((a, b) => a.order - b.order)
-                      .slice(0, 6)
-                      .map((participant, index, enabledParticipants) => (
-                        <span key={participant.id} className="side-chat-welcome-chain-step">
-                          <span className={`side-chat-welcome-participant provider-${participant.provider}`}>
-                            <ProviderBadgeIcon provider={participant.provider} />
-                            <span>{participant.role || getProviderLabel(participant.provider)}</span>
-                          </span>
-                          {index < enabledParticipants.length - 1 && (
-                            <span className="side-chat-welcome-arrow" aria-hidden>
-                              →
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                  </div>
-                ) : null}
               </div>
             )}
             <TranscriptPanel
