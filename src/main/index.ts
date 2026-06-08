@@ -395,7 +395,6 @@ import {
 } from './providers/ProviderAuthUsage'
 import {
   createWorkspaceToolExecutors,
-  assertPatchPathsInScope,
   formatScopedPath as formatWorkspaceToolScopedPath,
   resolveMcpScopedPath as resolveWorkspaceToolScopedPath,
   WORKSPACE_MCP_TOOL_NAMES,
@@ -482,9 +481,12 @@ import {
 import {
   effectiveOllamaToolControlTier,
   ollamaToolAllowedInTier,
-  ollamaToolIntent,
-  ollamaToolRequiresIntent
 } from './ollama/OllamaToolTiers'
+import {
+  assertOllamaMutationIntent,
+  assertOllamaProtectedWritePaths,
+  ollamaToolRequiresModalApproval
+} from './ollama/OllamaToolPolicy'
 import {
   buildDiagnosticsSnapshot,
   buildProductOperationsStatus,
@@ -2968,7 +2970,7 @@ async function requestAgenticServiceApproval(
   // 'ask' services a read-only posture leaves open (mcpTools / subThreadDelegation)
   // — silently widening "read-only" into "trust everything". Skip the bypass for
   // read-only sessions so the posture is never weakened by a global toggle.
-  if (sessionYoloState.enabled && !effectivePermissions?.readOnly) {
+  if (sessionYoloState.enabled && !effectivePermissions?.readOnly && !request.forcePrompt) {
     auditService.recordAutomaticApprovalDecision(
       provider,
       auditRoute,
@@ -2989,7 +2991,7 @@ async function requestAgenticServiceApproval(
   if (
     decision === 'allow' &&
     !request.externalPathDetection &&
-    !(request.forcePrompt && !sessionGrantAllowed)
+    !request.forcePrompt
   ) {
     auditService.recordAutomaticApprovalDecision(
       provider,
@@ -8805,88 +8807,6 @@ async function runCodexProvider(
   }
 }
 
-const OLLAMA_PROTECTED_WORKSPACE_PATHS = new Set([
-  '.git',
-  '.hg',
-  '.svn',
-  '.ssh',
-  '.aws',
-  '.config',
-  '.npmrc',
-  '.yarnrc',
-  '.pnpmrc',
-  '.env',
-  'package.json',
-  'package-lock.json',
-  'yarn.lock',
-  'pnpm-lock.yaml',
-  'bun.lock',
-  'bun.lockb',
-  'Cargo.lock',
-  'Gemfile.lock',
-  'Podfile.lock',
-  'electron-builder.yml',
-  'electron-builder.yaml',
-  'entitlements.mac.plist',
-  'entitlements.plist'
-])
-
-function ollamaProtectedPathReason(relativePath: string): string | null {
-  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
-  const parts = normalized.split('/').filter(Boolean)
-  const basename = parts[parts.length - 1] || normalized
-  if (parts.some((part) => part === '.git' || part === '.hg' || part === '.svn')) {
-    return 'version-control metadata is protected'
-  }
-  if (basename === '.env' || basename.startsWith('.env.')) {
-    return 'environment/secret files are protected'
-  }
-  if (/\.(pem|key|p12|pfx|mobileprovision)$/i.test(basename)) {
-    return 'credential/key material is protected'
-  }
-  if (OLLAMA_PROTECTED_WORKSPACE_PATHS.has(normalized) || OLLAMA_PROTECTED_WORKSPACE_PATHS.has(basename)) {
-    return 'this workspace control file is protected'
-  }
-  if (parts.includes('.github')) {
-    return 'CI/workflow configuration is protected'
-  }
-  return null
-}
-
-function assertOllamaMutationIntent(toolName: string, args: Record<string, unknown>): void {
-  if (!ollamaToolRequiresIntent(toolName)) return
-  if (ollamaToolIntent(args)) return
-  throw new Error(`${toolName} requires an intent or summary before TaskWraith can request approval.`)
-}
-
-function assertOllamaProtectedWritePaths(
-  toolName: string,
-  args: Record<string, unknown>,
-  context: WorkspaceToolContext,
-  cwd: string
-): void {
-  const checkRelativePath = (relativePath: string): void => {
-    const reason = ollamaProtectedPathReason(relativePath)
-    if (reason) {
-      throw new Error(`Ollama cannot modify ${relativePath}: ${reason}.`)
-    }
-  }
-  if (toolName === 'write_file' || toolName === 'replace') {
-    const targetPath = resolveWorkspaceToolScopedPath(
-      context,
-      String(args.path || args.file_path || '')
-    )
-    checkRelativePath(formatWorkspaceToolScopedPath(context, targetPath))
-  }
-  if (toolName === 'apply_patch') {
-    const patch = String(args.patch || args.diff || '')
-    const patchPaths = assertPatchPathsInScope(context, cwd, patch)
-    for (const patchPath of patchPaths) {
-      checkRelativePath(patchPath)
-    }
-  }
-}
-
 async function executeOllamaLocalTool(
   request: OllamaToolExecutionRequest
 ): Promise<OllamaToolExecutionResult> {
@@ -10931,12 +10851,7 @@ async function executeGeminiMcpTool(
       ? effectiveOllamaToolControlTier(AppStore.getSettings(), context.workspacePath)
       : null
   const ollamaMustPrompt =
-    parentProvider === 'ollama' &&
-    ollamaTier !== 'provider_parity' &&
-    (toolName === 'write_file' ||
-      toolName === 'replace' ||
-      toolName === 'apply_patch' ||
-      toolName === 'run_shell_command')
+    parentProvider === 'ollama' && ollamaToolRequiresModalApproval(toolName, ollamaTier)
   const allowed = skipGenericApproval
     ? true
     : await requestAgenticServiceApproval(
