@@ -7,6 +7,7 @@ import {
   extractResultOutput,
   extractStatus,
   getToolCategory,
+  isReasoningToolName,
   mapToolKindToCategory,
   getToolDisplayName,
   isWriteLikeToolName,
@@ -120,6 +121,22 @@ describe('ToolParser', () => {
     })
   })
 
+  describe('isReasoningToolName', () => {
+    it('recognises provider-specific and generic reasoning channels', () => {
+      expect(isReasoningToolName('codex_reasoning')).toBe(true)
+      expect(isReasoningToolName('kimi_thinking')).toBe(true)
+      expect(isReasoningToolName('ollama_thinking')).toBe(true)
+      expect(isReasoningToolName('thinking')).toBe(true)
+      expect(isReasoningToolName('mcp__taskwraith__gemini_reasoning')).toBe(true)
+    })
+
+    it('does not match ordinary tools', () => {
+      expect(isReasoningToolName('read_file')).toBe(false)
+      expect(isReasoningToolName('run_shell_command')).toBe(false)
+      expect(isReasoningToolName('')).toBe(false)
+    })
+  })
+
   describe('getToolCategory', () => {
     it('maps update_topic to task', () => {
       expect(getToolCategory('update_topic')).toBe('task')
@@ -130,6 +147,9 @@ describe('ToolParser', () => {
     })
     it('maps Kimi thinking to task', () => {
       expect(getToolCategory('kimi_thinking')).toBe('task')
+      expect(getToolCategory('ollama_thinking')).toBe('task')
+      expect(getToolCategory('grok_thinking')).toBe('task')
+      expect(getToolCategory('mcp__taskwraith__claude_reasoning')).toBe('task')
       expect(getToolDisplayName('kimi_thinking', {})).toBe('Kimi thinking')
     })
     it('maps read_file to read', () => {

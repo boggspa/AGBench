@@ -429,10 +429,28 @@ const SEARCH_LIKE_TOOL_NAMES = new Set([
   'websearch'
 ])
 
+/**
+ * Whether a tool name denotes a model reasoning / thinking channel. Covers the
+ * provider-specific pseudo-tools (`codex_reasoning`, `kimi_thinking`) plus the
+ * generic `<provider>_thinking` / `<provider>_reasoning` shape emitted by Grok,
+ * Cursor, Ollama, etc. Reasoning activities are task-category and render as a
+ * streaming "Thinking" note in the live activity viewport.
+ */
+export function isReasoningToolName(toolName: string): boolean {
+  const unqualified = stripToolNamespace((toolName || '').toLowerCase())
+  return (
+    unqualified === 'thinking' ||
+    unqualified === 'reasoning' ||
+    unqualified.endsWith('_thinking') ||
+    unqualified.endsWith('_reasoning')
+  )
+}
+
 export function getToolCategory(toolName: string): ToolCategory {
   const name = (toolName || '').toLowerCase()
   const unqualifiedName = stripToolNamespace(name)
   if (TASK_LIKE_TOOL_NAMES.has(unqualifiedName)) return 'task'
+  if (isReasoningToolName(unqualifiedName)) return 'task'
   if (READ_LIKE_TOOL_NAMES.has(unqualifiedName)) return 'read'
   if (isWriteLikeToolName(unqualifiedName)) return 'write'
   if (SEARCH_LIKE_TOOL_NAMES.has(unqualifiedName) || SEARCH_LIKE_TOOL_NAMES.has(name))
@@ -550,6 +568,7 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
       }
       if (unqualifiedName === 'codex_reasoning') return (params.title as string) || 'Thinking note'
       if (unqualifiedName === 'kimi_thinking') return (params.title as string) || 'Kimi thinking'
+      if (isReasoningToolName(unqualifiedName)) return (params.title as string) || 'Thinking'
       if (unqualifiedName === 'codex_plan') return 'Plan update'
       if (unqualifiedName === 'invoke_agent') return (params.title as string) || 'Delegated task'
       if (unqualifiedName === 'summary') return (params.title as string) || 'Summary'

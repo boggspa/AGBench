@@ -12,6 +12,7 @@ import {
   extractMcpImageBlocks,
   getToolDisplayName,
   isErroredToolStatus,
+  isReasoningToolName,
   isWriteLikeToolName,
   prettyPrintJson,
   unwrapMcpEnvelope
@@ -250,7 +251,8 @@ function buildSanitizedDetail(
   if (activity.category === 'task') {
     if (resultText) {
       previews.push({
-        label: toolName === 'codex_reasoning' ? 'Thoughts' : 'Update',
+        label:
+          toolName === 'codex_reasoning' || isReasoningToolName(toolName) ? 'Thoughts' : 'Update',
         // Phase L5 slice 1 — same bump as shell output.
         content: truncateText(resultText, { maxLength: 6000, maxLines: 60 }),
         tone: 'neutral'
