@@ -1478,6 +1478,12 @@ function App(): React.JSX.Element {
   } | null>(null)
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
+  // True once the first usage fetch has resolved. Until then we can't know
+  // whether the welcome dashboard will render, so the welcome screen reserves
+  // its (fixed) height to stop the greeting + composer jumping downward when
+  // the dashboard pops in a moment after launch. See `welcome-usage-region-
+  // reserved` in the welcome JSX + CSS.
+  const [usageInitialized, setUsageInitialized] = useState(false)
   const [welcomeUsageTab, setWelcomeUsageTab] = useState<WelcomeUsageTab>('overview')
   // Welcome L7 — fixed 30-day rolling window; the toggle UI is gone.
   // (Builder still accepts the range param so the lib stays flexible
@@ -4495,6 +4501,9 @@ function App(): React.JSX.Element {
       usageRecordsSignatureRef.current = nextUsageRecordsSignature
       setUsageRecords(normalizedUsageRecords)
     }
+    // First fetch resolved — the welcome dashboard's presence is now known, so
+    // the welcome screen can stop reserving the dashboard's placeholder height.
+    setUsageInitialized(true)
 
     const normalizeQuotaWindow = (
       provider: ProviderId,
@@ -6329,6 +6338,17 @@ function App(): React.JSX.Element {
     // (workspace id, the refresh function) come from refs and are read at
     // call time, so we never need to tear the timer down.
   }, [])
+
+  // Safety net for the welcome dashboard space-reservation: the first usage
+  // fetch normally fires within a beat of launch (workspace/chat selection,
+  // onUsageChanged), flipping `usageInitialized`. If some edge path never
+  // fires it, release the reserved placeholder height after a short grace
+  // period so we never leave a permanent blank gap above the composer.
+  useEffect(() => {
+    if (usageInitialized) return
+    const timer = window.setTimeout(() => setUsageInitialized(true), 6000)
+    return () => window.clearTimeout(timer)
+  }, [usageInitialized])
 
   useEffect(() => {
     currentChatIdRef.current = currentChat?.appChatId ?? null
@@ -16272,6 +16292,22 @@ function App(): React.JSX.Element {
               />
             </div>
           )}
+
+          {/* Reserve the dashboard's fixed height during the first usage fetch
+              so the greeting + composer below don't jump downward when the
+              dashboard mounts a moment after launch. Only shown before the
+              fetch resolves and only when the dashboard would plausibly
+              render (welcome screen + card enabled). Collapses harmlessly for
+              brand-new accounts that turn out to have no history. */}
+          {isWelcomeChat &&
+            welcomeDashboardCardEnabled &&
+            !usageInitialized &&
+            !shouldShowWelcomeUsageDashboard && (
+              <div
+                className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize} welcome-usage-region-reserved`}
+                aria-hidden
+              />
+            )}
 
           <div className={`composer-area interface-${interfaceStyle}`} ref={composerAreaRef}>
             {shouldShowGhostCompanion && <GhostCompanion />}

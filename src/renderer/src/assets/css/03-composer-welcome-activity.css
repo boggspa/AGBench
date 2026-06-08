@@ -140,6 +140,13 @@
   margin-top: 0;
   flex: 0 0 auto;
 }
+/* Empty placeholder shown while the first usage fetch is in flight: reserves
+ * the dashboard's fixed height (--welcome-usage-dashboard-height) so the
+ * composer beneath it doesn't shift when the real dashboard mounts. */
+.app-transcript.welcome-mode .welcome-usage-region.welcome-usage-region-reserved {
+  min-height: var(--welcome-usage-dashboard-height, 680px);
+  pointer-events: none;
+}
 .app-transcript.welcome-mode .composer-area {
   position: relative;
   top: auto;
@@ -954,6 +961,11 @@
 }
 
 .welcome-usage-region {
+  /* Single source of truth for the dashboard card height. Consumed by the
+   * card itself (`.welcome-usage-dashboard`) AND the loading placeholder
+   * (`.welcome-usage-region-reserved`) so the reserved space always matches
+   * the real card and the welcome screen never jumps. */
+  --welcome-usage-dashboard-height: 680px;
   position: absolute;
   left: 0;
   right: 0;
@@ -996,7 +1008,7 @@
    * `overflow-y: auto` + `min-height: 0` so the excess scrolls within 680. */
   display: flex;
   flex-direction: column;
-  height: 680px;
+  height: var(--welcome-usage-dashboard-height, 680px);
   padding: 12px 14px 14px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 54%, var(--text-primary) 16%);
