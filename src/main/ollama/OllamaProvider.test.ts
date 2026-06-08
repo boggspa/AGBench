@@ -12,7 +12,8 @@ import {
   ollamaToolResultFollowUpPrompt,
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput,
-  resolveOllamaVisibleText
+  resolveOllamaVisibleText,
+  shouldEmitOllamaReasoning
 } from './OllamaProvider'
 import {
   effectiveOllamaToolControlTier,
@@ -207,6 +208,17 @@ describe('parseOllamaToolRequest', () => {
       'the weather is sunny'
     )
     expect(resolveOllamaVisibleText({ content: '', thinking: '' })).toBe('')
+  })
+
+  it('emits reasoning notes except when thinking is the visible answer', () => {
+    // Thinking alongside a tool call → emit.
+    expect(shouldEmitOllamaReasoning({ content: '', thinking: 'planning the edit' }, 1)).toBe(true)
+    // Thinking alongside visible content → emit.
+    expect(shouldEmitOllamaReasoning({ content: 'done', thinking: 'reasoning' }, 0)).toBe(true)
+    // Thinking promoted to the visible answer (no content, no tool call) → skip.
+    expect(shouldEmitOllamaReasoning({ content: '   ', thinking: 'the answer' }, 0)).toBe(false)
+    // No reasoning text → skip.
+    expect(shouldEmitOllamaReasoning({ content: 'done', thinking: '   ' }, 0)).toBe(false)
   })
 })
 

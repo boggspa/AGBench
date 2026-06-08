@@ -812,6 +812,22 @@ export function resolveOllamaVisibleText(turn: { content: string; thinking?: str
   return turn.content.trim() ? turn.content : turn.thinking || ''
 }
 
+/**
+ * Whether a turn's reasoning (`thinking`) channel should be surfaced as a
+ * separate streamed reasoning note. True whenever there is reasoning text,
+ * EXCEPT when that text is being promoted to the visible answer (no content and
+ * no tool call) — emitting it as a note there would duplicate the final reply.
+ */
+export function shouldEmitOllamaReasoning(
+  turn: { content: string; thinking?: string },
+  toolRequestCount: number
+): boolean {
+  const reasoningText = (turn.thinking || '').trim()
+  if (!reasoningText) return false
+  const reasoningIsAnswer = toolRequestCount === 0 && !turn.content.trim()
+  return !reasoningIsAnswer
+}
+
 async function runOllamaChatTurn(input: {
   baseUrl: string
   model: string
@@ -971,6 +987,41 @@ export async function runOllamaProvider(
         : fallbackRequest
           ? [fallbackRequest]
           : []
+      // Surface the model's reasoning (`thinking`) channel as a streamed
+      // reasoning note so it renders inside the live activity viewport — except
+      // when thinking is being promoted to the visible answer (no content + no
+      // tool call), where emitting it here would duplicate the final reply.
+      if (shouldEmitOllamaReasoning(turn, toolRequests.length)) {
+        const reasoningId = `ollama-thinking-${route.appRunId || 'run'}-${turnIndex}`
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          {
+            type: 'tool_use',
+            tool_id: reasoningId,
+            tool_name: 'ollama_thinking',
+            kind: 'think',
+            parameters: { title: 'Thinking' },
+            provider: 'ollama',
+            server: OLLAMA_LOCAL_TOOL_SERVER
+          },
+          route
+        )
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          {
+            type: 'tool_result',
+            tool_id: reasoningId,
+            tool_name: 'ollama_thinking',
+            status: 'success',
+            output: turn.thinking,
+            provider: 'ollama',
+            server: OLLAMA_LOCAL_TOOL_SERVER
+          },
+          route
+        )
+      }
       if (toolRequests.length === 0) {
         const hasContent = turn.content.trim().length > 0
         // Reasoning-only (or empty) turn while tools are available: nudge the
