@@ -388,6 +388,8 @@ describe('Ollama tool tiers', () => {
 
   it('adds file edits and shell incrementally', () => {
     expect(ollamaToolAllowedInTier('write_file', 'approved_edits')).toBe(true)
+    expect(ollamaToolAllowedInTier('todo_write', 'approved_edits')).toBe(true)
+    expect(ollamaToolAllowedInTier('todo_write', 'read_only')).toBe(false)
     expect(ollamaToolAllowedInTier('run_shell_command', 'approved_edits')).toBe(false)
     expect(ollamaToolAllowedInTier('run_shell_command', 'approved_shell')).toBe(true)
     expect(ollamaToolRequiresIntent('write_file')).toBe(true)

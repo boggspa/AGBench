@@ -21,11 +21,19 @@ export const OLLAMA_SHELL_TOOL_NAMES = [
   'run_shell_command'
 ] as const satisfies readonly OllamaToolName[]
 
+/** Non-mutating coordination tools unlocked at tier 3 (approved edits) and above. */
+export const OLLAMA_TIER3_COORDINATION_TOOL_NAMES = [
+  'todo_write'
+] as const satisfies readonly OllamaToolName[]
+
 const OLLAMA_TIER4_EXTRA_TOOL_NAMES = TASKWRAITH_MCP_TOOLS.filter(
   (toolName) =>
     !OLLAMA_READ_TOOL_NAMES.includes(toolName as (typeof OLLAMA_READ_TOOL_NAMES)[number]) &&
     !OLLAMA_FILE_EDIT_TOOL_NAMES.includes(toolName as (typeof OLLAMA_FILE_EDIT_TOOL_NAMES)[number]) &&
-    !OLLAMA_SHELL_TOOL_NAMES.includes(toolName as (typeof OLLAMA_SHELL_TOOL_NAMES)[number])
+    !OLLAMA_SHELL_TOOL_NAMES.includes(toolName as (typeof OLLAMA_SHELL_TOOL_NAMES)[number]) &&
+    !OLLAMA_TIER3_COORDINATION_TOOL_NAMES.includes(
+      toolName as (typeof OLLAMA_TIER3_COORDINATION_TOOL_NAMES)[number]
+    )
 ) as OllamaToolName[]
 
 export const OLLAMA_KNOWN_TOOL_NAMES = new Set<OllamaToolName>(TASKWRAITH_MCP_TOOLS)
@@ -52,14 +60,24 @@ export function ollamaToolNamesForTier(
       ...OLLAMA_READ_TOOL_NAMES,
       ...OLLAMA_FILE_EDIT_TOOL_NAMES,
       ...OLLAMA_SHELL_TOOL_NAMES,
+      ...OLLAMA_TIER3_COORDINATION_TOOL_NAMES,
       ...OLLAMA_TIER4_EXTRA_TOOL_NAMES
     ]
   }
   if (normalized === 'approved_shell') {
-    return [...OLLAMA_READ_TOOL_NAMES, ...OLLAMA_FILE_EDIT_TOOL_NAMES, ...OLLAMA_SHELL_TOOL_NAMES]
+    return [
+      ...OLLAMA_READ_TOOL_NAMES,
+      ...OLLAMA_FILE_EDIT_TOOL_NAMES,
+      ...OLLAMA_SHELL_TOOL_NAMES,
+      ...OLLAMA_TIER3_COORDINATION_TOOL_NAMES
+    ]
   }
   if (normalized === 'approved_edits') {
-    return [...OLLAMA_READ_TOOL_NAMES, ...OLLAMA_FILE_EDIT_TOOL_NAMES]
+    return [
+      ...OLLAMA_READ_TOOL_NAMES,
+      ...OLLAMA_FILE_EDIT_TOOL_NAMES,
+      ...OLLAMA_TIER3_COORDINATION_TOOL_NAMES
+    ]
   }
   return [...OLLAMA_READ_TOOL_NAMES]
 }
