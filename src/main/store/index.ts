@@ -722,6 +722,9 @@ export class AppStore {
     const storedApprovalModeElevationAcks = objectOrUndefined(
       stored.approvalModeElevationAcknowledgements
     )
+    const storedOllamaProviderParityWorkspaceGrants = objectOrUndefined(
+      stored.ollamaProviderParityWorkspaceGrants
+    )
     const storedApprovalTimeouts = objectOrUndefined(stored.approvalTimeouts)
     const storedApprovalTimeoutProviderMs = objectOrUndefined(storedApprovalTimeouts?.perProviderMs)
     const pendingUpdateChangelog = normalizeUpdateChangelog(stored.pendingUpdateChangelog)
@@ -768,6 +771,15 @@ export class AppStore {
         stored.ollamaProviderParityAcknowledgedAt.trim()
           ? stored.ollamaProviderParityAcknowledgedAt.trim()
           : undefined,
+      ollamaProviderParityWorkspaceGrants: Object.fromEntries(
+        Object.entries(storedOllamaProviderParityWorkspaceGrants || {}).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[0] === 'string' &&
+            entry[0].trim().length > 0 &&
+            typeof entry[1] === 'string' &&
+            entry[1].trim().length > 0
+        )
+      ),
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})

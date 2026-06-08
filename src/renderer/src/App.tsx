@@ -12792,6 +12792,12 @@ function App(): React.JSX.Element {
     chatId: currentChat?.appChatId || null
   })
   const currentProviderLabel = getProviderLabel(currentProvider)
+  const ollamaProviderParityActiveForCurrentWorkspace =
+    currentProvider === 'ollama' &&
+    ollamaToolControlTier === 'provider_parity' &&
+    Boolean(
+      currentWorkspacePath && settings?.ollamaProviderParityWorkspaceGrants?.[currentWorkspacePath]
+    )
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
     : getDefaultModelForProvider(currentProvider)
@@ -18599,6 +18605,7 @@ function App(): React.JSX.Element {
                           <button
                             type="button"
                             className="composer-yolo-chip"
+                            data-composer-control="permission"
                             onClick={() => setYoloBannerDismissed(false)}
                             title="Trust mode is active — every approval auto-allowed. Click to show details."
                             aria-label="Trust mode active — show details"
@@ -18608,6 +18615,19 @@ function App(): React.JSX.Element {
                             </span>
                             <span className="composer-yolo-chip-label">YOLO</span>
                           </button>
+                        )}
+                        {ollamaProviderParityActiveForCurrentWorkspace && (
+                          <span
+                            className="composer-yolo-chip composer-ollama-tier4-chip"
+                            data-composer-control="permission"
+                            title="Ollama Tier 4 provider parity is enabled for this workspace. TaskWraith still gates tool use through workspace/path checks and approvals."
+                            aria-label="Ollama Tier 4 provider parity enabled for this workspace"
+                          >
+                            <span className="composer-yolo-chip-icon" aria-hidden>
+                              T4
+                            </span>
+                            <span className="composer-yolo-chip-label">Ollama parity</span>
+                          </span>
                         )}
 
                         {currentProvider === 'gemini' && !isCurrentGlobalChat && (

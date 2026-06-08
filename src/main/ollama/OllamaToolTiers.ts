@@ -1,5 +1,5 @@
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
-import type { OllamaToolControlTier } from '../store/types'
+import type { AppSettings, OllamaToolControlTier } from '../store/types'
 
 export type OllamaToolName = TaskWraithMcpToolName
 
@@ -60,6 +60,25 @@ export function ollamaToolNamesForTier(
     return [...OLLAMA_READ_TOOL_NAMES, ...OLLAMA_FILE_EDIT_TOOL_NAMES]
   }
   return [...OLLAMA_READ_TOOL_NAMES]
+}
+
+export function ollamaProviderParityWorkspaceGranted(
+  settings: Pick<AppSettings, 'ollamaProviderParityWorkspaceGrants'>,
+  workspacePath?: string | null
+): boolean {
+  const path = String(workspacePath || '').trim()
+  if (!path) return false
+  const grants = settings.ollamaProviderParityWorkspaceGrants || {}
+  return typeof grants[path] === 'string' && grants[path].trim().length > 0
+}
+
+export function effectiveOllamaToolControlTier(
+  settings: Pick<AppSettings, 'ollamaToolControlTier' | 'ollamaProviderParityWorkspaceGrants'>,
+  workspacePath?: string | null
+): OllamaToolControlTier {
+  const tier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+  if (tier !== 'provider_parity') return tier
+  return ollamaProviderParityWorkspaceGranted(settings, workspacePath) ? 'provider_parity' : 'read_only'
 }
 
 export function ollamaToolAllowedInTier(

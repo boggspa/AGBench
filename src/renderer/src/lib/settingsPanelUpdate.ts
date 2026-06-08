@@ -55,6 +55,7 @@ export type SettingsPanelUpdate = {
   ollamaDefaultModel?: string
   ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
   ollamaProviderParityAcknowledgedAt?: string
+  ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
   agenticServices?: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   autoResumeParentOnSubThreadCompletion?: boolean

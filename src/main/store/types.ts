@@ -1358,6 +1358,7 @@ export interface AppSettings {
   ollamaDefaultModel?: string
   ollamaToolControlTier?: OllamaToolControlTier
   ollamaProviderParityAcknowledgedAt?: string
+  ollamaProviderParityWorkspaceGrants?: Record<string, string>
   defaultGeminiAuthProfileId?: string | null
   geminiAuthProfiles?: GeminiAuthProfile[]
   /** Phase M1 — Gemini API runtime selection. See {@link GeminiApiRuntimeMode}

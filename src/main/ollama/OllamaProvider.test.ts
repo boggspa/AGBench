@@ -8,7 +8,9 @@ import {
   parseOllamaMemoryPsOutput
 } from './OllamaProvider'
 import {
+  effectiveOllamaToolControlTier,
   normalizeOllamaToolControlTier,
+  ollamaProviderParityWorkspaceGranted,
   ollamaToolAllowedInTier,
   ollamaToolNamesForTier,
   ollamaToolRequiresIntent
@@ -175,5 +177,19 @@ describe('Ollama tool tiers', () => {
     expect(tools).toContain('write_file')
     expect(tools).toContain('run_shell_command')
     expect(tools).toContain('delegate_to_subthread')
+  })
+
+  it('requires a workspace grant before provider parity becomes effective', () => {
+    const settings = {
+      ollamaToolControlTier: 'provider_parity' as const,
+      ollamaProviderParityWorkspaceGrants: {
+        '/tmp/granted': '2026-06-08T12:00:00.000Z'
+      }
+    }
+
+    expect(ollamaProviderParityWorkspaceGranted(settings, '/tmp/granted')).toBe(true)
+    expect(ollamaProviderParityWorkspaceGranted(settings, '/tmp/other')).toBe(false)
+    expect(effectiveOllamaToolControlTier(settings, '/tmp/granted')).toBe('provider_parity')
+    expect(effectiveOllamaToolControlTier(settings, '/tmp/other')).toBe('read_only')
   })
 })

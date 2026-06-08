@@ -141,6 +141,7 @@ interface SettingsPanelProps {
   ollamaDefaultModel: string
   ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
   ollamaProviderParityAcknowledgedAt?: string
+  ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
   agenticServices: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), TaskWraith auto-dispatches a continuation run
@@ -259,6 +260,7 @@ interface SettingsPanelProps {
     ollamaDefaultModel?: string
     ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
     ollamaProviderParityAcknowledgedAt?: string
+    ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
     agenticServices?: AgenticServicesSettings
     nativeSubAgentRequests?: NativeSubAgentRequestPolicy
     autoResumeParentOnSubThreadCompletion?: boolean
@@ -1329,6 +1331,7 @@ export function SettingsPanel({
   ollamaDefaultModel,
   ollamaToolControlTier = 'read_only',
   ollamaProviderParityAcknowledgedAt,
+  ollamaProviderParityWorkspaceGrants,
   agenticServices,
   nativeSubAgentRequests = 'ask',
   autoResumeParentOnSubThreadCompletion,
@@ -1825,21 +1828,43 @@ export function SettingsPanel({
     ollamaToolControlTier === 'provider_parity'
       ? ollamaToolControlTier
       : 'read_only'
+  const currentWorkspacePath = currentWorkspace?.path || ''
+  const ollamaParityWorkspaceGrants = ollamaProviderParityWorkspaceGrants || {}
+  const currentWorkspaceParityGranted = Boolean(
+    currentWorkspacePath && ollamaParityWorkspaceGrants[currentWorkspacePath]
+  )
+  const currentWorkspaceLabel = currentWorkspace?.displayName || currentWorkspacePath || 'workspace'
   const selectOllamaToolControlTier = (
     tier: NonNullable<AppSettings['ollamaToolControlTier']>
   ): void => {
-    if (tier === resolvedOllamaToolControlTier) return
-    if (tier === 'provider_parity' && !ollamaProviderParityAcknowledgedAt) {
+    if (tier === 'provider_parity' && !currentWorkspaceParityGranted) {
       setShowOllamaParityAck(true)
       return
     }
+    if (tier === resolvedOllamaToolControlTier) return
     onChange({ ollamaToolControlTier: tier })
   }
   const confirmOllamaProviderParity = (): void => {
+    if (!currentWorkspacePath) return
+    const grantedAt = new Date().toISOString()
     setShowOllamaParityAck(false)
     onChange({
       ollamaToolControlTier: 'provider_parity',
-      ollamaProviderParityAcknowledgedAt: new Date().toISOString()
+      ollamaProviderParityAcknowledgedAt: ollamaProviderParityAcknowledgedAt || grantedAt,
+      ollamaProviderParityWorkspaceGrants: {
+        ...ollamaParityWorkspaceGrants,
+        [currentWorkspacePath]: grantedAt
+      }
+    })
+  }
+  const revokeOllamaProviderParityForCurrentWorkspace = (): void => {
+    if (!currentWorkspacePath) return
+    const nextGrants = { ...ollamaParityWorkspaceGrants }
+    delete nextGrants[currentWorkspacePath]
+    onChange({
+      ollamaToolControlTier:
+        resolvedOllamaToolControlTier === 'provider_parity' ? 'read_only' : resolvedOllamaToolControlTier,
+      ollamaProviderParityWorkspaceGrants: nextGrants
     })
   }
 
@@ -1869,14 +1894,20 @@ export function SettingsPanel({
                 </h2>
               </header>
               <p className="creative-approval-modal-description">
-                Tier 4 lets local Ollama models request the full TaskWraith tool surface. TaskWraith
-                still enforces workspace boundaries, path checks, approval policy, and audit events,
-                but local models can make poor or prompt-injected tool requests.
+                Tier 4 lets local Ollama models request the full TaskWraith tool surface for{' '}
+                <strong>{currentWorkspaceLabel}</strong>. TaskWraith still enforces workspace
+                boundaries, path checks, approval policy, and audit events, but local models can
+                make poor or prompt-injected tool requests.
               </p>
               <p className="creative-approval-modal-description approval-elevation-caution">
                 Use at your own risk. Keep this to test workspaces you can recover, and revoke it
-                here by returning Ollama to a lower tier.
+                here per workspace.
               </p>
+              {!currentWorkspacePath && (
+                <p className="creative-approval-modal-description approval-elevation-caution">
+                  Open a workspace before enabling provider parity for Ollama.
+                </p>
+              )}
               <footer className="creative-approval-modal-actions">
                 <button
                   type="button"
@@ -1889,8 +1920,9 @@ export function SettingsPanel({
                   type="button"
                   className="creative-approval-modal-approve-once"
                   onClick={confirmOllamaProviderParity}
+                  disabled={!currentWorkspacePath}
                 >
-                  I understand, enable Tier 4
+                  I understand, enable for this workspace
                 </button>
               </footer>
             </div>
@@ -4452,10 +4484,35 @@ export function SettingsPanel({
                   mutation.
                 </p>
                 {resolvedOllamaToolControlTier === 'provider_parity' && (
-                  <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>
-                    Provider parity is enabled for Ollama. Use lower tiers to revoke the advanced
-                    tool surface.
-                  </p>
+                  <div
+                    className="settings-hint"
+                    style={{
+                      color: currentWorkspaceParityGranted
+                        ? 'var(--color-success, #3fb950)'
+                        : 'var(--color-warning, #d29922)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-xs)',
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <span>
+                      {currentWorkspaceParityGranted
+                        ? `Provider parity is enabled for ${currentWorkspaceLabel}.`
+                        : currentWorkspacePath
+                          ? `Tier 4 is selected, but ${currentWorkspaceLabel} has no parity grant yet; Ollama is read-only here.`
+                          : 'Tier 4 is selected, but Ollama stays read-only until a workspace is open and granted.'}
+                    </span>
+                    {currentWorkspaceParityGranted && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={revokeOllamaProviderParityForCurrentWorkspace}
+                      >
+                        Revoke this workspace
+                      </button>
+                    )}
+                  </div>
                 )}
                 {ollamaStatus?.error && (
                   <p className="settings-hint" style={{ color: 'var(--color-warning, #d29922)' }}>

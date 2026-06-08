@@ -267,7 +267,12 @@ describe('ProviderCapabilities', () => {
   it('advertises Ollama provider parity after acknowledgement', () => {
     const contract = buildProviderCapabilityContract({
       provider: 'ollama',
-      settings: settings(defaultServices, { ollamaToolControlTier: 'provider_parity' }),
+      settings: settings(defaultServices, {
+        ollamaToolControlTier: 'provider_parity',
+        ollamaProviderParityWorkspaceGrants: {
+          '/tmp/project': '2026-06-08T12:00:00.000Z'
+        }
+      }),
       workspacePath: '/tmp/project',
       status: { provider: 'ollama', available: true }
     })
@@ -276,6 +281,19 @@ describe('ProviderCapabilities', () => {
     expect(contract.mcp.tools).toContain('run_shell_command')
     expect(contract.tools.fileChanges.enforcedByTaskWraith).toBe(true)
     expect(contract.tools.shellCommands.enforcedByTaskWraith).toBe(true)
+  })
+
+  it('keeps Ollama provider parity read-only without the workspace grant', () => {
+    const contract = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(defaultServices, { ollamaToolControlTier: 'provider_parity' }),
+      workspacePath: '/tmp/project',
+      status: { provider: 'ollama', available: true }
+    })
+
+    expect(contract.mcp.tools).toEqual(['read_file', 'list_directory', 'workspace_search'])
+    expect(contract.tools.fileChanges.state).toBe('unavailable')
+    expect(contract.tools.shellCommands.state).toBe('unavailable')
   })
 
   it('does not advertise Ollama read-only tools outside a workspace', () => {

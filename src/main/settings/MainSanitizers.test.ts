@@ -225,11 +225,19 @@ describe('MainSanitizers settings patches', () => {
     expect(
       sanitizeSettingsPatch({
         ollamaToolControlTier: 'provider_parity',
-        ollamaProviderParityAcknowledgedAt: ' 2026-06-08T12:00:00.000Z '
+        ollamaProviderParityAcknowledgedAt: ' 2026-06-08T12:00:00.000Z ',
+        ollamaProviderParityWorkspaceGrants: {
+          ' /tmp/project ': ' 2026-06-08T12:01:00.000Z ',
+          ' ': 'ignored',
+          '/tmp/empty': ''
+        }
       })
     ).toMatchObject({
       ollamaToolControlTier: 'provider_parity',
-      ollamaProviderParityAcknowledgedAt: '2026-06-08T12:00:00.000Z'
+      ollamaProviderParityAcknowledgedAt: '2026-06-08T12:00:00.000Z',
+      ollamaProviderParityWorkspaceGrants: {
+        '/tmp/project': '2026-06-08T12:01:00.000Z'
+      }
     })
   })
 

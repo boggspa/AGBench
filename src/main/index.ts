@@ -480,7 +480,7 @@ import {
   type OllamaToolExecutionResult
 } from './ollama/OllamaProvider'
 import {
-  normalizeOllamaToolControlTier,
+  effectiveOllamaToolControlTier,
   ollamaToolAllowedInTier,
   ollamaToolIntent,
   ollamaToolRequiresIntent
@@ -8891,9 +8891,7 @@ async function executeOllamaLocalTool(
   request: OllamaToolExecutionRequest
 ): Promise<OllamaToolExecutionResult> {
   const workspacePath = canonicalPath(requireNonEmptyString(request.workspacePath, 'Workspace'))
-  const tier = normalizeOllamaToolControlTier(
-    request.toolControlTier || AppStore.getSettings().ollamaToolControlTier
-  )
+  const tier = effectiveOllamaToolControlTier(AppStore.getSettings(), workspacePath)
   const context: WorkspaceToolContext = {
     scope: 'workspace',
     cwd: workspacePath,
@@ -10930,7 +10928,7 @@ async function executeGeminiMcpTool(
       : approvalPreview.service
   const ollamaTier =
     parentProvider === 'ollama'
-      ? normalizeOllamaToolControlTier(AppStore.getSettings().ollamaToolControlTier)
+      ? effectiveOllamaToolControlTier(AppStore.getSettings(), context.workspacePath)
       : null
   const ollamaMustPrompt =
     parentProvider === 'ollama' &&

@@ -35,6 +35,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'ollamaDefaultModel',
   'ollamaToolControlTier',
   'ollamaProviderParityAcknowledgedAt',
+  'ollamaProviderParityWorkspaceGrants',
   'codexUsageCredential',
   'storeLocalChatHistory',
   'storeRawEvents',
@@ -713,6 +714,16 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       } else {
         delete sanitized.ollamaProviderParityAcknowledgedAt
       }
+    }
+    if ('ollamaProviderParityWorkspaceGrants' in sanitized) {
+      const grants = isRecord(sanitized.ollamaProviderParityWorkspaceGrants)
+        ? sanitized.ollamaProviderParityWorkspaceGrants
+        : {}
+      sanitized.ollamaProviderParityWorkspaceGrants = Object.fromEntries(
+        Object.entries(grants)
+          .map(([workspacePath, grantedAt]) => [workspacePath.trim(), String(grantedAt || '').trim()])
+          .filter(([workspacePath, grantedAt]) => workspacePath.length > 0 && grantedAt.length > 0)
+      )
     }
     if (
       sanitized.ollamaToolControlTier === 'provider_parity' &&

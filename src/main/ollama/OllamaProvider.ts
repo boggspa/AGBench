@@ -6,6 +6,7 @@ import type { RunManager, RunSessionStatus } from '../RunManager'
 import type { AppSettings, OllamaToolControlTier, ProviderCapabilityContract } from '../store/types'
 import {
   OLLAMA_KNOWN_TOOL_NAMES,
+  effectiveOllamaToolControlTier,
   normalizeOllamaToolControlTier,
   ollamaTierLabel,
   ollamaToolNamesForTier,
@@ -52,7 +53,7 @@ export interface OllamaProcessMemorySnapshot {
 }
 
 export interface OllamaProviderDeps {
-  getSettings: () => Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel' | 'ollamaToolControlTier' | 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
+  getSettings: () => Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel' | 'ollamaToolControlTier' | 'ollamaProviderParityWorkspaceGrants' | 'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback'>
   sendAgentCompatLine: (
     sender: Electron.WebContents,
     provider: 'ollama',
@@ -414,7 +415,7 @@ export async function getOllamaCapabilityContract(
   request: { workspacePath?: string; approvalMode?: string } = {}
 ): Promise<ProviderCapabilityContract> {
   const settings = deps.getSettings()
-  const tier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+  const tier = effectiveOllamaToolControlTier(settings, request.workspacePath)
   const toolNames = ollamaToolNamesForTier(tier)
   const status = await getOllamaStatusSnapshot(settings)
   return buildProviderCapabilityContract({
@@ -678,7 +679,7 @@ export async function runOllamaProvider(
     const toolProtocolEnabled =
       Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
       settings.agenticServices?.mcpTools !== 'deny'
-    const toolControlTier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+    const toolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
         ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier) }]

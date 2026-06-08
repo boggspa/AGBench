@@ -16,7 +16,7 @@ import type {
 import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
 import { providerLabel } from './ProviderAdapters'
 import {
-  normalizeOllamaToolControlTier,
+  effectiveOllamaToolControlTier,
   ollamaTierLabel,
   ollamaToolNamesForTier
 } from './ollama/OllamaToolTiers'
@@ -66,7 +66,11 @@ interface BuildProviderCapabilityContractInput {
   provider: ProviderId
   settings: Pick<
     AppSettings,
-    'agenticServices' | 'geminiMcpBridgeEnabled' | 'codexSandboxFallback' | 'ollamaToolControlTier'
+    | 'agenticServices'
+    | 'geminiMcpBridgeEnabled'
+    | 'codexSandboxFallback'
+    | 'ollamaToolControlTier'
+    | 'ollamaProviderParityWorkspaceGrants'
   >
   workspacePath?: string
   approvalMode?: string
@@ -727,7 +731,7 @@ export function buildProviderCapabilityContract({
       )
     }
   } else if (provider === 'ollama') {
-    const ollamaTier = normalizeOllamaToolControlTier(settings.ollamaToolControlTier)
+    const ollamaTier = effectiveOllamaToolControlTier(settings, workspacePath)
     const ollamaTierTools = ollamaToolNamesForTier(ollamaTier)
     const ollamaFileTools = ollamaTierTools.filter((tool) =>
       ['write_file', 'replace', 'apply_patch'].includes(tool)
