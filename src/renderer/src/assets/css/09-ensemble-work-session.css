@@ -2,6 +2,12 @@
   padding: 6px 10px 2px;
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
+[data-composer-style="cursor"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-label {
+  color: var(--cursor-shell-faint);
+}
 
 [data-composer-style="codex"]
   .composer-above-bar-stack:not(:has(.ensemble-above-row))
