@@ -7,6 +7,21 @@ interface ProviderInstallEntry {
   /** The vendor the command comes from — shown on hover so a newcomer
    * can confirm it's the official source, not a third-party script. */
   source: string
+  /** Optional per-OS variant of the install command (e.g. Ollama ships a
+   * curl installer for macOS/Linux and a PowerShell one for Windows).
+   * When present, the label gets the OS suffix so both copy-rows are
+   * unambiguous. */
+  platform?: string
+}
+
+interface OllamaModelEntry {
+  id: string
+  label: string
+  /** `ollama run <id>` — the id MUST match the model id TaskWraith sends
+   * to the Ollama runtime (see OLLAMA_DEFAULT_MODELS in
+   * lib/providerModelDefaults.ts) so the pulled local model is the exact
+   * tag the app invokes. */
+  command: string
 }
 
 /**
@@ -57,8 +72,31 @@ const PROVIDER_INSTALL_COMMANDS: ProviderInstallEntry[] = [
     id: 'ollama',
     label: 'Ollama',
     command: 'curl -fsSL https://ollama.com/install.sh | sh',
-    source: 'Ollama'
+    source: 'Ollama',
+    platform: 'macOS / Linux'
+  },
+  {
+    id: 'ollama-windows',
+    label: 'Ollama',
+    command: 'irm https://ollama.com/install.ps1 | iex',
+    source: 'Ollama',
+    platform: 'Windows'
   }
+]
+
+/**
+ * Once Ollama itself is installed, these pull + run each local model
+ * TaskWraith currently allows. Labels mirror OLLAMA_DEFAULT_MODELS so the
+ * names match the model picker; the `ollama run <id>` tag is the exact id
+ * the app sends to the runtime, so the model the user pulls is the one the
+ * app will actually invoke. Keep in sync with
+ * lib/providerModelDefaults.ts (OLLAMA_DEFAULT_MODELS).
+ */
+const OLLAMA_MODEL_COMMANDS: OllamaModelEntry[] = [
+  { id: 'qwen3:4b-instruct', label: 'Qwen 3 (4B Param)', command: 'ollama run qwen3:4b-instruct' },
+  { id: 'qwen3.5:9b', label: 'Qwen 3.5 (9B Param)', command: 'ollama run qwen3.5:9b' },
+  { id: 'gemma4:12b', label: 'Gemma 4 (12B Param)', command: 'ollama run gemma4:12b' },
+  { id: 'gpt-oss', label: 'GPT OSS (20B Param)', command: 'ollama run gpt-oss' }
 ]
 
 /**
@@ -69,29 +107,67 @@ const PROVIDER_INSTALL_COMMANDS: ProviderInstallEntry[] = [
 export function ProviderInstallCommands(): ReactElement {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  const copy = (entry: ProviderInstallEntry): void => {
-    void navigator.clipboard?.writeText(entry.command)
-    setCopiedId(entry.id)
+  const copy = (rowId: string, command: string): void => {
+    void navigator.clipboard?.writeText(command)
+    setCopiedId(rowId)
     // Transient "Copied" confirmation; clears only if this row is still
     // the one showing it (so a quick second copy doesn't flash-clear).
-    window.setTimeout(() => setCopiedId((cur) => (cur === entry.id ? null : cur)), 1500)
+    window.setTimeout(() => setCopiedId((cur) => (cur === rowId ? null : cur)), 1500)
   }
 
   return (
     <div className="provider-install-commands">
-      {PROVIDER_INSTALL_COMMANDS.map((entry) => (
-        <div key={entry.id} className="provider-install-row" data-provider={entry.id}>
-          <span className="provider-install-label">{entry.label}</span>
-          <code className="provider-install-cmd" title={`Official ${entry.source} install command`}>
-            {entry.command}
+      {PROVIDER_INSTALL_COMMANDS.map((entry) => {
+        const rowLabel = entry.platform ? `${entry.label} (${entry.platform})` : entry.label
+        return (
+          <div
+            key={entry.id}
+            className={`provider-install-row${entry.platform ? ' is-model' : ''}`}
+            data-provider={entry.id}
+          >
+            <span className="provider-install-label">{rowLabel}</span>
+            <code
+              className="provider-install-cmd"
+              title={`Official ${entry.source} install command`}
+            >
+              {entry.command}
+            </code>
+            <button
+              type="button"
+              className="btn btn-sm provider-install-copy"
+              onClick={() => copy(entry.id, entry.command)}
+              aria-label={`Copy ${rowLabel} install command`}
+            >
+              {copiedId === entry.id ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        )
+      })}
+      {/* Ollama is local: after the runtime is installed, each model has to
+          be pulled separately. These rows pull + run the exact tags
+          TaskWraith allows so the model picker lights up with a working
+          local model. */}
+      <div className="provider-install-subhead">Ollama models — pull after installing Ollama</div>
+      {OLLAMA_MODEL_COMMANDS.map((model) => (
+        <div
+          key={model.id}
+          className="provider-install-row is-model"
+          data-provider="ollama"
+        >
+          <span className="provider-install-label">{model.label}</span>
+          <code
+            className="provider-install-cmd"
+            title={`Pull and run ${model.label} with Ollama`}
+          >
+            {model.command}
           </code>
           <button
             type="button"
             className="btn btn-sm provider-install-copy"
-            onClick={() => copy(entry)}
-            aria-label={`Copy ${entry.label} install command`}
+            onClick={() => copy(model.id, model.command)}
+            aria-label={`Copy ${model.label} install command`}
           >
-            {copiedId === entry.id ? 'Copied' : 'Copy'}
+            {copiedId === model.id ? 'Copied' : 'Copy'}
           </button>
         </div>
       ))}

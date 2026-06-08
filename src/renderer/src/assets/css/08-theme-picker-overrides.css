@@ -1877,6 +1877,22 @@
   align-items: center;
   gap: 8px;
 }
+/* Ollama platform variants ("Ollama (Windows)") and per-model rows
+ * ("Qwen 3.5 (9B Param)") carry longer labels than the short provider
+ * names, so they get a wider label column to avoid clipping. */
+.provider-install-row.is-model {
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+}
+/* Caption that separates the "install Ollama" rows from the
+ * "pull a model" rows below them. */
+.provider-install-subhead {
+  margin-top: 6px;
+  font-size: 0.74em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, var(--text-secondary));
+}
 .provider-install-label {
   font-size: 0.82em;
   font-weight: 600;
