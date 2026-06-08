@@ -487,3 +487,38 @@ describe('ActivityStack denied / errored edit rendering', () => {
     expect(html).toContain('activity-line-stats')
   })
 })
+
+describe('ActivityStack todo_write rendering', () => {
+  it('renders a checklist card and progress summary for goal-step updates', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          {
+            id: 'tool-todo-1',
+            toolName: 'todo_write',
+            displayName: 'Goal steps',
+            category: 'task',
+            status: 'success',
+            startedAt: '2026-06-08T12:00:00Z',
+            endedAt: '2026-06-08T12:00:01Z',
+            durationMs: 1000,
+            parameters: {
+              merge: false,
+              todos: [
+                { id: '1', content: 'Parse todo parameters', status: 'completed' },
+                { id: '2', content: 'Render checklist card', status: 'in_progress' },
+                { id: '3', content: 'Ship 1.4.2', status: 'pending' }
+              ]
+            }
+          }
+        ]}
+        provider="codex"
+      />
+    )
+
+    expect(html).toContain('Goal steps · 1/3 complete')
+    expect(html).toContain('todo-checklist-card')
+    expect(html).toContain('Render checklist card')
+    expect(html).toContain('Ship 1.4.2')
+  })
+})

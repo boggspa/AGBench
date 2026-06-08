@@ -1,4 +1,5 @@
 import type { ProviderId, ToolActivity } from '../../../main/store/types'
+import { isTodoToolName, parseTodoItemsFromActivity, summarizeTodoProgress } from '../../../main/TodoList'
 import { prettyPrintJson, unwrapMcpEnvelope } from '../lib/ToolParser'
 import {
   extractHttpUrls,
@@ -86,6 +87,17 @@ export interface RenderedPreview {
 }
 
 export function buildResultPreview(activity: ToolActivity): RenderedPreview {
+  if (isTodoToolName(activity.toolName)) {
+    const todos = parseTodoItemsFromActivity(activity)
+    if (todos.length > 0) {
+      return {
+        display: summarizeTodoProgress(todos).label,
+        redacted: false,
+        hasContent: true
+      }
+    }
+  }
+
   const raw = getResultText(activity)
   if (!raw) {
     return { display: '', redacted: false, hasContent: false }
@@ -117,6 +129,24 @@ export interface FoldoutSection {
 
 export function buildFoldoutSections(activity: ToolActivity): FoldoutSection[] {
   const sections: FoldoutSection[] = []
+
+  if (isTodoToolName(activity.toolName)) {
+    const todos = parseTodoItemsFromActivity(activity)
+    if (todos.length > 0) {
+      const lines = todos.map((item) => {
+        const mark =
+          item.status === 'completed'
+            ? '[x]'
+            : item.status === 'in_progress'
+              ? '[>]'
+              : item.status === 'cancelled'
+                ? '[-]'
+                : '[ ]'
+        return `${mark} ${item.content}`
+      })
+      sections.push({ label: 'Goal steps', body: lines.join('\n') })
+    }
+  }
 
   const params = activity.parameters || {}
   if (Object.keys(params).length > 0) {

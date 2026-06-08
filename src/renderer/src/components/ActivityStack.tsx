@@ -29,6 +29,15 @@ import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
 import { LiveActivityViewport } from './LiveActivityViewport'
+import { TodoChecklistCard } from './TodoChecklistCard'
+import {
+  computeMergedTodosByActivityId,
+  computeMergedTodosFromActivities,
+  isTodoToolName,
+  parseTodoItemsFromActivity,
+  summarizeTodoProgress,
+  type TodoItem
+} from '../../../main/TodoList'
 import { durationLabel } from './CompactToolTrace.lib'
 import {
   agentInvocationRouteLabel,
@@ -249,6 +258,9 @@ function buildSanitizedDetail(
   }
 
   if (activity.category === 'task') {
+    if (isTodoToolName(toolName) && parseTodoItemsFromActivity(activity).length > 0) {
+      return { rows, previews }
+    }
     if (resultText) {
       previews.push({
         label:
@@ -533,6 +545,8 @@ function getReadableActivityDisplayName(activity: ToolActivity): string {
 
 function getProgressNote(activity: ToolActivity): { title: string; body?: string } | null {
   if (activity.category !== 'task') return null
+  // 1.4.2 — todo_write / update_todo_list render as checklist cards.
+  if (isTodoToolName(activity.toolName)) return null
   // ensemble_yield is a `task`-category tool but has its own structured
   // render (actor + provider-tinted target chip) in `renderEnsembleYieldTitle`.
   // The generic progress-note path renders `activity.displayName` verbatim,
@@ -1119,6 +1133,14 @@ function getInlineActivityTitle(
     )
   }
 
+  if (isTodoToolName(activity.toolName)) {
+    const todos = parseTodoItemsFromActivity(activity)
+    if (todos.length > 0) {
+      return <>{`Goal steps · ${summarizeTodoProgress(todos).label}`}</>
+    }
+    return <>{getReadableActivityDisplayName(activity) || 'Goal steps'}</>
+  }
+
   if (activity.category === 'task') {
     if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) {
       // 1.0.4 — render the ensemble_yield activity title with a
@@ -1558,6 +1580,14 @@ export function ActivityStack({
     }
   }, [activities, childThreads])
 
+  const mergedTodosByActivityId = useMemo(
+    () => computeMergedTodosByActivityId(topLevelActivities),
+    [topLevelActivities]
+  )
+  const latestMergedTodos = useMemo(
+    () => computeMergedTodosFromActivities(topLevelActivities),
+    [topLevelActivities]
+  )
   // Phase L5 slice 3 — lifted expansion state. The set of ids that
   // are currently open. Single-open mode (default + always in
   // compactDensity) auto-collapses other rows when one expands;
@@ -1651,6 +1681,7 @@ export function ActivityStack({
         childActivities={thread ? resolveThreadActivities(thread) : undefined}
         provider={provider}
         participants={participants}
+        todoItems={mergedTodosByActivityId.get(item.activity.id)}
         forceCompact={compactDensity}
         isExpanded={expandedIds.has(item.activity.id)}
         onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
@@ -1671,6 +1702,9 @@ export function ActivityStack({
           active={activitiesHaveLiveWork(activities)}
           revision={liveActivityRevision(topLevelActivities)}
         >
+          {latestMergedTodos.length > 0 && (
+            <TodoChecklistCard todos={latestMergedTodos} variant="pinned" />
+          )}
           <div className="activity-timeline-live-inner">{timelineNodes}</div>
         </LiveActivityViewport>
       </div>
@@ -1902,6 +1936,7 @@ function ActivityRow({
   childActivities,
   provider,
   participants,
+  todoItems,
   isExpanded,
   onToggleExpand,
   shimmerNow
@@ -1911,6 +1946,8 @@ function ActivityRow({
   forceCompact?: boolean
   childThread?: ChildAgentThread
   childActivities?: ToolActivity[]
+  /** 1.4.2 — merged goal-step checklist state at this activity. */
+  todoItems?: TodoItem[]
   /** 1.0.4 — ensemble participants for resolving an `ensemble_yield`
    * activity's target string to a provider, so the inline target chip
    * picks up provider-themed tinting (e.g. blue for Gemini). Optional
@@ -2013,6 +2050,12 @@ function ActivityRow({
     inlineStats.visible ? inlineStats.additions : diffSummary?.additions,
     inlineStats.visible ? inlineStats.deletions : diffSummary?.deletions
   )
+  const checklistTodos =
+    todoItems && todoItems.length > 0
+      ? todoItems
+      : isTodoToolName(activity.toolName)
+        ? parseTodoItemsFromActivity(activity)
+        : []
   const creativeTimelineDiff = creativeTimelineDiffModelFromActivity(activity)
   const visiblePreviews = creativeTimelineDiff
     ? sanitizedDetail.previews.filter((preview) => preview.label !== 'Result')
@@ -2023,7 +2066,8 @@ function ActivityRow({
     sanitizedDetail.rows.length > 0 ||
     visiblePreviews.length > 0 ||
     Boolean(creativeTimelineDiff) ||
-    hasRichImages
+    hasRichImages ||
+    checklistTodos.length > 0
   const shouldShowRawEvent = showDebugWarning || (isUnknown && !hasSanitizedDetail)
   const diffFileCount = diffSummary?.files?.length || 0
   const renderInputs = {
@@ -2031,7 +2075,10 @@ function ActivityRow({
     detailRowCount: sanitizedDetail.rows.length,
     previews: sanitizedDetail.previews,
     diffFileCount,
-    customDetailCount: (creativeTimelineDiff ? 1 : 0) + (hasRichImages ? 1 : 0),
+    customDetailCount:
+      (creativeTimelineDiff ? 1 : 0) +
+      (hasRichImages ? 1 : 0) +
+      (checklistTodos.length > 0 ? 1 : 0),
     shouldShowRawEvent
   }
   // Phase L4 slice 3 — all rows render in the inline body-text form by
@@ -2231,6 +2278,10 @@ function ActivityRow({
             </div>
           )}
 
+          {checklistTodos.length > 0 && !expanded && (
+            <TodoChecklistCard todos={checklistTodos} variant="compact" maxVisible={5} />
+          )}
+
           {expanded && (
             <div className="activity-detail">
               {showDebugWarning && (
@@ -2247,6 +2298,9 @@ function ActivityRow({
                 </div>
               )}
               <ActivityDiffFiles diffSummary={diffSummary} workspacePath={workspacePath} />
+              {checklistTodos.length > 0 && (
+                <TodoChecklistCard todos={checklistTodos} variant="full" />
+              )}
               {creativeTimelineDiff && <CreativeTimelineDiffCard activity={activity} />}
               {visiblePreviews.map((preview) => (
                 <div key={`${preview.label}-${preview.content.slice(0, 32)}`}>

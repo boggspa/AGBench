@@ -4331,6 +4331,117 @@
   cursor: not-allowed;
 }
 
+/* 1.4.2 — goal-step / todo checklist cards (todo_write + provider-native aliases). */
+.todo-checklist-card {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todo-checklist-card.is-compact {
+  max-width: 100%;
+}
+
+.todo-checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.todo-checklist-item.status-in_progress {
+  color: var(--text-primary);
+}
+
+.todo-checklist-item.status-completed {
+  color: var(--text-tertiary);
+}
+
+.todo-checklist-item.status-completed .todo-checklist-text {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+
+.todo-checklist-item.status-cancelled {
+  color: var(--text-tertiary);
+  opacity: 0.72;
+}
+
+.todo-checklist-item.status-cancelled .todo-checklist-text {
+  text-decoration: line-through;
+}
+
+.todo-checklist-glyph {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.todo-checklist-item.status-in_progress .todo-checklist-glyph {
+  color: var(--accent);
+}
+
+.todo-checklist-item.status-completed .todo-checklist-glyph {
+  color: var(--success, #5ecf8f);
+}
+
+.todo-checklist-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.todo-checklist-more {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  padding-left: 22px;
+}
+
+.todo-pinned-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: var(--font-size-xs);
+}
+
+.todo-pinned-step.is-complete {
+  border-color: rgba(94, 207, 143, 0.25);
+  background: rgba(94, 207, 143, 0.06);
+}
+
+.todo-pinned-label {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.todo-pinned-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-activity-viewport .todo-pinned-step {
+  margin-top: 0;
+}
+
 /* QMOD (1.0.3) — `ask_user_question` MCP tool surface. Extends the
  * existing .plan-choice-card visual; only adds the bits that diverge:
  *   - Context sub-paragraph beneath the question.

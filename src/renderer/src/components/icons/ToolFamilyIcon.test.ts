@@ -136,6 +136,12 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('codex_plan')).toBe('plan')
   })
 
+  it('maps todo_write goal-step tools to the plan family', () => {
+    expect(toolNameToFamily('todo_write')).toBe('plan')
+    expect(toolNameToFamily('update_todo_list')).toBe('plan')
+    expect(toolNameToFamily('mcp__TaskWraith__todo_write')).toBe('plan')
+  })
+
   it('maps create_handoff_card to the handoff family', () => {
     expect(toolNameToFamily('create_handoff_card')).toBe('handoff')
   })
