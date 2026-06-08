@@ -173,14 +173,15 @@ describe('parseOllamaToolRequest', () => {
     )
   })
 
-  it('nudges local models to summarize after tool results instead of looping', () => {
-    expect(
-      ollamaToolResultFollowUpPrompt({
-        toolName: 'read_file',
-        output: 'README content',
-        ok: true
-      })
-    ).toContain('If the tool result is enough to answer the user, summarize')
+  it('encourages local models to chain multi-step work after a tool result', () => {
+    const followUp = ollamaToolResultFollowUpPrompt({
+      toolName: 'read_file',
+      output: 'README content',
+      ok: true
+    })
+    expect(followUp).toContain('Continue the task using this result')
+    expect(followUp).toContain('call another TaskWraith tool now')
+    expect(followUp).toContain('Do not repeat an identical tool call')
     expect(ollamaEmptyToolResponseRetryPrompt()).toContain('Answer the original user now')
     expect(ollamaEmptyResponseRetryPrompt()).toContain('Answer the original user request now')
   })

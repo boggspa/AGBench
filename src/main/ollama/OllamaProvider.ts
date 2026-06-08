@@ -174,7 +174,7 @@ export interface OllamaToolRequest {
   arguments: Record<string, unknown>
 }
 
-const OLLAMA_TOOL_LOOP_LIMIT = 4
+const OLLAMA_TOOL_LOOP_LIMIT = 8
 const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
 
 export function normalizeOllamaBaseUrl(value?: string | null): string {
@@ -764,10 +764,10 @@ export function ollamaToolResultFollowUpPrompt(input: {
     '',
     input.ok
       ? [
-          'Now continue the original task in normal assistant prose.',
-          'If the tool result is enough to answer the user, summarize the relevant facts and stop.',
-          'Do not call the same tool again unless the result is incomplete and another call is strictly necessary.',
-          'Only output JSON if you are requesting a different additional TaskWraith tool.'
+          'Continue the task using this result.',
+          'If you still need more information to fully complete what the user asked, call another TaskWraith tool now (use different arguments than before).',
+          'When you have everything you need, give your complete final answer to the user in normal assistant prose.',
+          'Do not repeat an identical tool call, and only output JSON when you are requesting another TaskWraith tool.'
         ].join(' ')
       : [
           'The tool failed.',
