@@ -72,6 +72,9 @@ function describeTool(toolName: OllamaToolName): string | null {
   if (toolName === 'run_shell_command') {
     return '- run_shell_command: {"command":"exact command","intent":"short reason before running it"}'
   }
+  if (toolName === 'todo_write') {
+    return '- todo_write: {"merge":true,"todos":[{"id":"1","content":"short step label","status":"in_progress"}]} — publish goal steps the user sees as a checklist; keep one item in_progress.'
+  }
   return `- ${toolName}: use the TaskWraith MCP argument schema for this tool.`
 }
 

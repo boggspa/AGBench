@@ -56,7 +56,9 @@ export const READ_ONLY_TOOL_PRESET: ReadonlyArray<string> = Object.freeze([
   // 1.0.72 — asking the user a clarifying question is non-mutating (no fs /
   // shell / network), so a read-only delegated child may do it. Mirrors the
   // main-participant behaviour for Codex / Claude / Kimi.
-  'ask_user_question'
+  'ask_user_question',
+  // 1.4.2 — delegated read-only children may publish goal-step checklists.
+  'todo_write'
 ])
 
 export interface DerivePermissionEnvelopeInput {

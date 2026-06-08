@@ -54,6 +54,8 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   // The renderer modal IS the approval surface, so a second confirm
   // step would be silly. Universally auto-allowed.
   'ask_user_question',
+  // 1.4.2 — goal-step checklist updates are non-mutating run coordination.
+  'todo_write',
   // 1.0.71 — workspace READ tools (see header). Read-only + host-gate-safe:
   // writes/shell are NOT here, so they still hit the gate and are denied under
   // read_only. This is what gives read-only Claude/Kimi parity with Gemini's

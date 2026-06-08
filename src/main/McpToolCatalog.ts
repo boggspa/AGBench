@@ -1406,6 +1406,54 @@ export function createTaskWraithMcpToolDefinitions(): TaskWraithMcpToolDefinitio
       }
     },
     {
+      // 1.4.2 — structured goal-step / todo checklist for every provider.
+      // Renderer parses `todos[]` into a checklist card and pins the
+      // current `in_progress` (or first `pending`) step in the live
+      // activity viewport while a run is streaming.
+      name: 'todo_write',
+      description:
+        'Publish or update a structured goal-step checklist for the current run. ' +
+        'Use this to break multi-step work into trackable items the user can follow in the transcript. ' +
+        'Each todo needs a stable `id`, human-readable `content`, and `status` (`pending`, `in_progress`, `completed`, or `cancelled`). ' +
+        'Keep exactly one item `in_progress` when actively working. ' +
+        'Set `merge: true` to patch existing steps by `id`; omit or set `merge: false` to replace the whole list. ' +
+        'Prefer this over prose bullet lists when executing a plan with 3+ steps.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          merge: {
+            type: 'boolean',
+            description:
+              'When true, merge `todos` into the existing checklist by `id`. When false/omitted, replace the whole list.'
+          },
+          todos: {
+            type: 'array',
+            description: 'Goal steps for this run.',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Stable identifier for this step.' },
+                content: { type: 'string', description: 'Short human-readable step label.' },
+                status: {
+                  type: 'string',
+                  enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+                  description: 'Current state of the step.'
+                }
+              },
+              required: ['id', 'content', 'status']
+            }
+          }
+        },
+        required: ['todos']
+      }
+    },
+    {
       // Phase F3: agent-driven sub-thread delegation. Spawns a
       // sub-thread under the active parent thread, optionally on a
       // different provider, and (fire-and-forget) dispatches a run

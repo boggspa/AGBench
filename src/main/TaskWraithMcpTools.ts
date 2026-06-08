@@ -91,6 +91,10 @@ export const TASKWRAITH_MCP_TOOLS = [
   // Critical fix for plan-mode where Claude was silently exiting after
   // its questions went unanswered. Universally auto-allowed.
   'ask_user_question',
+  // 1.4.2 — universal goal-step / todo checklist surface. Agents call this
+  // to publish a structured task list the renderer shows as a checklist
+  // card (and pins the current step in the live activity viewport).
+  'todo_write',
   'delegate_to_subthread',
   // 1.0.4-AK — Ensemble Work Session control tool. Lets a participant
   // queue exactly one follow-up round in the active Work Session

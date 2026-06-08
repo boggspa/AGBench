@@ -513,6 +513,8 @@ import {
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from './TaskWraithMcpTools'
+import { validateTodoWriteArgs } from './TodoList'
+import { handleChatTodoWrite } from './TodoWriteRegistry'
 import { createTaskWraithMcpToolDefinitions } from './McpToolCatalog'
 import {
   MCP_AUTO_ALLOWED_TOOLS,
@@ -11446,6 +11448,23 @@ async function executeGeminiMcpTool(
             entry
           })
         }
+      }
+    } else if (toolName === 'todo_write') {
+      const validated = validateTodoWriteArgs(args)
+      if (!validated.ok) {
+        text = mcpJson({ ok: false, error: validated.error })
+      } else {
+        const chatId = String(context.appChatId || '').trim()
+        const todos =
+          chatId.length > 0
+            ? handleChatTodoWrite(chatId, validated.todos, validated.merge)
+            : validated.todos
+        text = mcpJson({
+          ok: true,
+          tool: 'todo_write',
+          merge: validated.merge,
+          todos
+        })
       }
     } else if (toolName === 'ask_user_question') {
       // QMOD (1.0.3) — pause the agent on a modal question and resume

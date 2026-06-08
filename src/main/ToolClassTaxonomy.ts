@@ -109,7 +109,9 @@ const ORCHESTRATION_TOOLS = new Set<string>([
   'agent_delegation_role',
   'ensemble_continue',
   'scout_brief',
-  'blackboard_post'
+  'blackboard_post',
+  // 1.4.2 — structured goal-step checklist (no workspace mutation).
+  'todo_write'
 ])
 
 /** Bucket a single tool name. Unknown → workspace_write (safe default). */
