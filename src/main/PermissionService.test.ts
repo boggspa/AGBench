@@ -42,6 +42,7 @@ const settings: AppSettings = {
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,
+  liveActivityViewport: true,
   showInspector: true,
   inspectorWidth: 380,
   sidebarWidth: 260,

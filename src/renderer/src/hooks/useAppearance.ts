@@ -44,6 +44,7 @@ export interface AppearanceState {
   reduceTransparency: boolean
   reduceMotion: boolean
   compactDensity: boolean
+  liveActivityViewport: boolean
   showInspector: boolean
   inspectorWidth: number
   sidebarWidth: number
@@ -129,6 +130,7 @@ function getInitialState(): AppearanceState {
     reduceTransparency,
     reduceMotion,
     compactDensity: false,
+    liveActivityViewport: true,
     showInspector: true,
     inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
@@ -198,6 +200,7 @@ export function useAppearance() {
           reduceTransparency: settings.reduceTransparency || getInitialState().reduceTransparency,
           reduceMotion: settings.reduceMotion || getInitialState().reduceMotion,
           compactDensity: settings.compactDensity || false,
+          liveActivityViewport: settings.liveActivityViewport !== false,
           showInspector: settings.showInspector !== false,
           inspectorWidth: normalizeAppearanceDimension(
             settings.inspectorWidth,
@@ -366,6 +369,7 @@ export function useAppearance() {
             reduceTransparency: next.reduceTransparency,
             reduceMotion: next.reduceMotion,
             compactDensity: next.compactDensity,
+            liveActivityViewport: next.liveActivityViewport,
             showInspector: next.showInspector,
             inspectorWidth: next.inspectorWidth,
             sidebarWidth: next.sidebarWidth,

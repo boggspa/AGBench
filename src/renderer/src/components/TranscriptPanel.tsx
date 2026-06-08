@@ -145,6 +145,10 @@ type TranscriptPanelProps = {
    * every `ActivityStack` inside the transcript renders in the same
    * density as the rest of the chat. */
   compactDensity: boolean
+  /** Cursor-style live activity viewport toggle (`settings.liveActivityViewport`),
+   * forwarded to every `ActivityStack` so in-flight thinking + tool activity
+   * streams inside the masked auto-following region. */
+  liveActivityViewport?: boolean
   /** Set of `appRunId`s whose run-queue job is still in `'queued'`
    * status. Used to hide the in-transcript "Queued (#N): …" system
    * card while the queued-messages above-row is showing the same
@@ -685,6 +689,7 @@ export const TranscriptPanel = memo(
     onInspectRun,
     onOpenSideChatFromRun,
     compactDensity,
+    liveActivityViewport,
     pendingQueuedAppRunIds,
     onCopyMessage,
     onDeleteMessage,
@@ -1000,6 +1005,7 @@ export const TranscriptPanel = memo(
                     runId={msg.runId || boundaryRun?.runId}
                     chat={currentChat || undefined}
                     compactDensity={compactDensity}
+                    liveActivityViewport={liveActivityViewport}
                     expandedActivityIds={
                       activityExpansionByRow.get(msg.id) ?? EMPTY_ACTIVITY_EXPANSION
                     }

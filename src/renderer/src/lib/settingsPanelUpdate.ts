@@ -26,6 +26,7 @@ export type SettingsPanelUpdate = {
   reduceTransparency?: boolean
   reduceMotion?: boolean
   compactDensity?: boolean
+  liveActivityViewport?: boolean
   sidebarOpacity?: AppSettings['sidebarOpacity']
   mainPaneOpacity?: AppSettings['mainPaneOpacity']
   sidebarOpacityOverride?: AppSettings['sidebarOpacityOverride']

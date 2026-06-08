@@ -97,6 +97,7 @@ function makeSettings(): AppSettings {
     reduceTransparency: false,
     reduceMotion: false,
     compactDensity: false,
+    liveActivityViewport: true,
     showInspector: true,
     inspectorWidth: 320,
     sidebarWidth: 300,

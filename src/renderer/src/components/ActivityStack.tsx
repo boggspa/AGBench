@@ -27,6 +27,7 @@ import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
+import { LiveActivityViewport } from './LiveActivityViewport'
 import { durationLabel } from './CompactToolTrace.lib'
 import {
   agentInvocationRouteLabel,
@@ -49,6 +50,11 @@ interface ActivityStackProps {
    * tool cards collapse to their inline form and the turn-receipt
    * tape switches to its one-line summary variant. */
   compactDensity?: boolean
+  /** When true (default from `settings.liveActivityViewport`), an in-flight
+   * burst of activity renders inside the Cursor-style {@link LiveActivityViewport}
+   * — a fixed-height, edge-masked, auto-following region — until activity
+   * settles, after which it collapses to the normal compact timeline. */
+  liveActivityViewport?: boolean
   /**
    * 1.0.6-TV2 — optional controlled expansion. When BOTH are provided
    * the stack's per-row expansion set is owned by the parent instead of
@@ -1457,6 +1463,47 @@ function useShimmerStaleTick(activities: readonly ToolActivity[] | undefined): n
   return now
 }
 
+/** Grace period after the last running/pending activity finishes before the
+ * live viewport collapses into the settled compact timeline. Keeps the viewport
+ * present across the brief gap between one tool finishing and the next starting
+ * (or the turn completing), so a multi-step burst reads as one continuous
+ * streaming region rather than flickering in and out. */
+const LIVE_VIEWPORT_SETTLE_MS = 1500
+
+export function activitiesHaveLiveWork(activities: readonly ToolActivity[]): boolean {
+  return activities.some((a) => a.status === 'running' || a.status === 'pending')
+}
+
+/** Cheap signature that changes whenever streamed content grows, so the
+ * viewport re-pins to the live edge as reasoning text / tool results stream in. */
+export function liveActivityRevision(activities: readonly ToolActivity[]): string {
+  const last = activities[activities.length - 1]
+  const tail = last ? `${last.id}:${(last.resultSummary || last.outputPreview || '').length}` : ''
+  return `${activities.length}|${tail}`
+}
+
+/** Drives the live-viewport phase: true while a burst is in-flight and for a
+ * short settle window afterwards. Returns false immediately when the feature is
+ * disabled or there has never been live work in this stack. */
+function useLiveViewportPhase(activities: readonly ToolActivity[], enabled: boolean): boolean {
+  const hasLiveWork = useMemo(() => activitiesHaveLiveWork(activities), [activities])
+  const [streaming, setStreaming] = useState(false)
+  useEffect(() => {
+    if (!enabled) {
+      setStreaming(false)
+      return
+    }
+    if (hasLiveWork) {
+      setStreaming(true)
+      return
+    }
+    if (!streaming) return
+    const timer = window.setTimeout(() => setStreaming(false), LIVE_VIEWPORT_SETTLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [enabled, hasLiveWork, streaming])
+  return enabled && streaming
+}
+
 export function ActivityStack({
   activities,
   workspacePath,
@@ -1465,6 +1512,7 @@ export function ActivityStack({
   runId,
   chat,
   compactDensity = false,
+  liveActivityViewport = false,
   expandedActivityIds,
   onExpandedActivityIdsChange
 }: ActivityStackProps) {
@@ -1474,6 +1522,9 @@ export function ActivityStack({
   // re-rendering at a steady 15s cadence while any activity could
   // still be in flight.
   const shimmerNow = useShimmerStaleTick(activities)
+  // Cursor-style live viewport: active while a burst is in flight (+ a short
+  // settle window). Hook is called unconditionally before any early return.
+  const liveViewportActive = useLiveViewportPhase(activities || [], liveActivityViewport)
   // 1.0.4 — ensemble participants are forwarded down to ActivityRow
   // so an `ensemble_yield(target: ...)` activity can render the target
   // as a provider-tinted `@<role>` chip. Memoised against the
@@ -1563,51 +1614,71 @@ export function ActivityStack({
       return next
     })
   }
+  const timelineNodes = timelineItems.map((item) => {
+    if (item.type === 'compact-group') {
+      return (
+        <ActivityCompactGroup
+          key={item.id}
+          activities={item.activities}
+          workspacePath={workspacePath}
+          provider={provider}
+          participants={participants}
+          shimmerNow={shimmerNow}
+        />
+      )
+    }
+    const thread = threadByParentId.get(item.activity.id)
+    // 1.0.4-AG — when the user has compact density on AND this
+    // activity isn't carrying a child-agent thread (those still
+    // need the full ActivityRow render so the ChildAgentThreadCard
+    // hangs off it), route through CompactToolTrace for the
+    // one-line trace + foldout view. The CompactToolTrace reads
+    // its own provider attribution from `activity.metadata` and
+    // falls back to the chat-level `provider` passed here.
+    if (compactDensity && !thread) {
+      return (
+        <CompactToolTrace key={item.activity.id} activity={item.activity} provider={provider} />
+      )
+    }
+    return (
+      <ActivityRow
+        key={item.activity.id}
+        activity={item.activity}
+        workspacePath={workspacePath}
+        childThread={thread}
+        childActivities={thread ? resolveThreadActivities(thread) : undefined}
+        provider={provider}
+        participants={participants}
+        forceCompact={compactDensity}
+        isExpanded={expandedIds.has(item.activity.id)}
+        onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
+        shimmerNow={shimmerNow}
+      />
+    )
+  })
+
+  // While a burst is in flight, stream the rows inside the masked, auto-
+  // following viewport. The child-agent spawn header stays above it (it's a
+  // navigational header, not streaming detail). Once activity settles the
+  // viewport unmounts and the rows fall back to the normal compact timeline.
+  if (liveViewportActive) {
+    return (
+      <div className="activity-timeline">
+        {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
+        <LiveActivityViewport
+          active={activitiesHaveLiveWork(activities)}
+          revision={liveActivityRevision(topLevelActivities)}
+        >
+          <div className="activity-timeline-live-inner">{timelineNodes}</div>
+        </LiveActivityViewport>
+      </div>
+    )
+  }
+
   return (
     <div className="activity-timeline">
       {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
-      {timelineItems.map((item) => {
-        if (item.type === 'compact-group') {
-          return (
-            <ActivityCompactGroup
-              key={item.id}
-              activities={item.activities}
-              workspacePath={workspacePath}
-              provider={provider}
-              participants={participants}
-              shimmerNow={shimmerNow}
-            />
-          )
-        }
-        const thread = threadByParentId.get(item.activity.id)
-        // 1.0.4-AG — when the user has compact density on AND this
-        // activity isn't carrying a child-agent thread (those still
-        // need the full ActivityRow render so the ChildAgentThreadCard
-        // hangs off it), route through CompactToolTrace for the
-        // one-line trace + foldout view. The CompactToolTrace reads
-        // its own provider attribution from `activity.metadata` and
-        // falls back to the chat-level `provider` passed here.
-        if (compactDensity && !thread) {
-          return (
-            <CompactToolTrace key={item.activity.id} activity={item.activity} provider={provider} />
-          )
-        }
-        return (
-          <ActivityRow
-            key={item.activity.id}
-            activity={item.activity}
-            workspacePath={workspacePath}
-            childThread={thread}
-            childActivities={thread ? resolveThreadActivities(thread) : undefined}
-            provider={provider}
-            participants={participants}
-            forceCompact={compactDensity}
-            isExpanded={expandedIds.has(item.activity.id)}
-            onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
-            shimmerNow={shimmerNow}
-          />
-        )
-      })}
+      {timelineNodes}
     </div>
   )
 }

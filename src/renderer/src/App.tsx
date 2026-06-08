@@ -1,5 +1,5 @@
 import { startTransition, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
@@ -3674,6 +3674,10 @@ function App(): React.JSX.Element {
     if (next.compactDensity !== undefined) {
       settingsPatch.compactDensity = next.compactDensity
       appearance.update({ compactDensity: next.compactDensity })
+    }
+    if (next.liveActivityViewport !== undefined) {
+      settingsPatch.liveActivityViewport = next.liveActivityViewport
+      appearance.update({ liveActivityViewport: next.liveActivityViewport })
     }
     if (next.sidebarOpacity !== undefined || next.sidebarOpacityOverride !== undefined) {
       if (next.sidebarOpacity !== undefined) {
@@ -14533,6 +14537,77 @@ function App(): React.JSX.Element {
     rightDockTabs.some((tab) => tab.id === rightDockTab)
       ? rightDockTab
       : rightDockTabs[0]?.id || 'run'
+  // Canonical dock tab strip (1.4.1) — all six dock views are always
+  // rendered as icon tabs in the dock header (matching the main-pane
+  // glass-pill row), so switching no longer requires bouncing back to
+  // the composer pill row. Clicking a tab OPENS that panel (the same
+  // state toggles the glass-pill icons drive) and selects it. Tabs that
+  // need missing context (a side chat to exist, a chat to be open, a
+  // workspace to be bound) render disabled, mirroring the glass pill.
+  // The Gemini terminal stays a conditional 7th tab so we don't regress
+  // it. Icon-only keeps all tabs visible at the dock's min width without
+  // truncation.
+  const dockTabDefs: Array<{
+    id: RightDockTab
+    label: string
+    icon: ReactNode
+    enabled: boolean
+    badge?: number
+  }> = [
+    { id: 'chat', label: 'Chat', icon: <SplitChatIcon />, enabled: Boolean(sideChat) },
+    { id: 'run', label: 'Run', icon: <RunSymbolIcon />, enabled: true },
+    {
+      id: 'media',
+      label: 'Media',
+      icon: <ChatMediaIcon />,
+      enabled: true,
+      badge: currentChatMediaRefs.length
+    },
+    {
+      id: 'pins',
+      label: 'Pins',
+      icon: <PinnedMessagesIcon />,
+      enabled: Boolean(currentChat),
+      badge: currentPinnedMessages.length
+    },
+    {
+      id: 'files',
+      label: 'Files',
+      icon: <FileMenuSelectionIcon />,
+      enabled: hasWorkspaceContext
+    },
+    { id: 'inspector', label: 'Inspect', icon: <ReviewSymbolIcon />, enabled: true }
+  ]
+  if (isTerminalDockAvailable) {
+    dockTabDefs.push({ id: 'terminal', label: 'Term', icon: <AppleTerminalIcon />, enabled: true })
+  }
+  const activateRightDockTab = (id: RightDockTab) => {
+    switch (id) {
+      case 'run':
+        setShowCockpit(true)
+        break
+      case 'media':
+        setIsChatMediaPanelOpen(true)
+        break
+      case 'pins':
+        if (currentChat) setIsPinnedMessagesPanelOpen(true)
+        break
+      case 'files':
+        if (hasWorkspaceContext) setShowFileEditor(true)
+        break
+      case 'inspector':
+        appearance.update({ showInspector: true })
+        break
+      case 'terminal':
+        setShowGeminiTerminal(true)
+        break
+      case 'chat':
+        // Side chats can't be conjured here — the tab is only enabled
+        // when one already exists, so selection is all that's needed.
+        break
+    }
+    setRightDockTab(id)
+  }
   // The stored `inspectorWidth` is an absolute px preference. Applied
   // verbatim it mis-scales on a window narrower than the one it was saved
   // on (the inspector opens too wide and squeezes the transcript until the
@@ -15296,6 +15371,7 @@ function App(): React.JSX.Element {
               reduceTransparency={appearance.reduceTransparency}
               reduceMotion={appearance.reduceMotion}
               compactDensity={appearance.compactDensity}
+              liveActivityViewport={appearance.liveActivityViewport}
               sidebarOpacity={appearance.sidebarOpacity}
               mainPaneOpacity={appearance.mainPaneOpacity}
               geminiCheckpointingEnabled={geminiCheckpointingEnabled}
@@ -16078,6 +16154,7 @@ function App(): React.JSX.Element {
                   canCreateSideChatFromCurrent ? handleOpenSideChatFromRunResult : undefined
                 }
                 compactDensity={appearance.compactDensity}
+                liveActivityViewport={appearance.liveActivityViewport}
                 pendingQueuedAppRunIds={pendingQueuedAppRunIds}
                 onCopyMessage={handleCopyMessage}
                 onDeleteMessage={handleDeleteMessage}
@@ -19112,24 +19189,41 @@ function App(): React.JSX.Element {
             />
             <aside className="right-dock" style={rightDockStyle} aria-label="Right dock">
               <div className="right-dock-tabs" role="tablist" aria-label="Right dock tabs">
-                {rightDockTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    className={`right-dock-tab ${activeRightDockTab === tab.id ? 'active' : ''}`}
-                    aria-selected={activeRightDockTab === tab.id}
-                    onClick={() => setRightDockTab(tab.id)}
-                  >
-                    {tab.label}
-                    {tab.id === 'media' && currentChatMediaRefs.length > 0 && (
-                      <span className="right-dock-tab-count">{currentChatMediaRefs.length}</span>
-                    )}
-                    {tab.id === 'pins' && currentPinnedMessages.length > 0 && (
-                      <span className="right-dock-tab-count">{currentPinnedMessages.length}</span>
-                    )}
-                  </button>
-                ))}
+                {dockTabDefs.map((tab) => {
+                  const isActive = activeRightDockTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      className={`right-dock-tab right-dock-tab--icon ${isActive ? 'active' : ''}`}
+                      aria-selected={isActive}
+                      aria-label={tab.label}
+                      title={
+                        tab.enabled
+                          ? tab.label
+                          : tab.id === 'chat'
+                            ? 'Open a side chat from a message first'
+                            : tab.id === 'files'
+                              ? 'Files need a bound workspace'
+                              : tab.id === 'pins'
+                                ? 'Open a chat first'
+                                : tab.label
+                      }
+                      disabled={!tab.enabled}
+                      onClick={() => activateRightDockTab(tab.id)}
+                    >
+                      <span className="right-dock-tab-icon" aria-hidden>
+                        {tab.icon}
+                      </span>
+                      {typeof tab.badge === 'number' && tab.badge > 0 && (
+                        <span className="right-dock-tab-count">
+                          {tab.badge > 99 ? '99+' : tab.badge}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
                 <button
                   type="button"
                   className="right-dock-close"
@@ -19333,6 +19427,7 @@ function App(): React.JSX.Element {
                 })
               }}
               compactDensity={appearance.compactDensity}
+              liveActivityViewport={appearance.liveActivityViewport}
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
               onCopyMessage={handleCopyMessage}
               onDeleteMessage={(messageId) => deleteMessageFromChat(sideChat, messageId)}

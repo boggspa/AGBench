@@ -1514,6 +1514,11 @@ export interface AppSettings {
   reduceTransparency: boolean
   reduceMotion: boolean
   compactDensity: boolean
+  /** Cursor-style live activity viewport. When enabled (default), streaming
+   * thinking + tool activity renders inside a fixed-height, edge-masked,
+   * auto-following region during an in-flight turn, collapsing to the compact
+   * tool summary once activity settles. */
+  liveActivityViewport: boolean
   showInspector: boolean
   inspectorWidth: number
   sidebarWidth: number

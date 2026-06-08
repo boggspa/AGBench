@@ -55,6 +55,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'reduceTransparency',
   'reduceMotion',
   'compactDensity',
+  'liveActivityViewport',
   'showInspector',
   'inspectorWidth',
   'sidebarWidth',

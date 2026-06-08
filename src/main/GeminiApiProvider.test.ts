@@ -130,6 +130,7 @@ function makeDeps(overrides: {
     reduceTransparency: false,
     reduceMotion: false,
     compactDensity: false,
+    liveActivityViewport: true,
     showInspector: false,
     inspectorWidth: 380,
     sidebarWidth: 260,

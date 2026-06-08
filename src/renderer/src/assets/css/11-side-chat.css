@@ -83,6 +83,26 @@
 
 .right-dock-tab {
   padding: 0 9px;
+  position: relative;
+}
+
+/* Icon-only dock tabs (1.4.1): square-ish targets so all six (plus the
+ * conditional terminal) fit at the dock's min width without truncation. */
+.right-dock-tab--icon {
+  width: 32px;
+  padding: 0;
+}
+
+.right-dock-tab--icon .right-dock-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.right-dock-tab--icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 .right-dock-close {
@@ -90,10 +110,15 @@
   margin-left: auto;
 }
 
-.right-dock-tab:hover,
+.right-dock-tab:not(:disabled):hover,
 .right-dock-close:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.right-dock-tab:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .right-dock-tab.active {
@@ -103,15 +128,22 @@
 }
 
 .right-dock-tab-count {
-  min-width: 16px;
-  height: 16px;
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface-1, #1c1c22));
+  border: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: 9.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .right-dock-body {

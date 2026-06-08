@@ -104,6 +104,7 @@ interface SettingsPanelProps {
   reduceTransparency: boolean
   reduceMotion: boolean
   compactDensity: boolean
+  liveActivityViewport: boolean
   sidebarOpacity: number
   mainPaneOpacity: number
   geminiCheckpointingEnabled: boolean
@@ -230,6 +231,7 @@ interface SettingsPanelProps {
     reduceTransparency?: boolean
     reduceMotion?: boolean
     compactDensity?: boolean
+    liveActivityViewport?: boolean
     sidebarOpacity?: number
     mainPaneOpacity?: number
     sidebarOpacityOverride?: boolean
@@ -1334,6 +1336,7 @@ export function SettingsPanel({
   reduceTransparency,
   reduceMotion,
   compactDensity,
+  liveActivityViewport,
   sidebarOpacity,
   mainPaneOpacity,
   geminiCheckpointingEnabled,
@@ -2512,6 +2515,20 @@ export function SettingsPanel({
                       <span>
                         Compact density
                         <small>Tighter spacing throughout the interface.</small>
+                      </span>
+                    </label>
+                    <label className="settings-effects-check-row">
+                      <input
+                        type="checkbox"
+                        checked={liveActivityViewport}
+                        onChange={(e) => onChange({ liveActivityViewport: e.target.checked })}
+                      />
+                      <span>
+                        Live activity viewport
+                        <small>
+                          Stream thinking &amp; tool activity in a compact auto-scrolling panel
+                          while the agent works.
+                        </small>
                       </span>
                     </label>
                     <label className="settings-effects-field">

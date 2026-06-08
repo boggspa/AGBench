@@ -33,6 +33,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     reduceTransparency: false,
     reduceMotion: false,
     compactDensity: false,
+    liveActivityViewport: true,
     showInspector: true,
     inspectorWidth: 420,
     sidebarWidth: 280,
