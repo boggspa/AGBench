@@ -264,6 +264,10 @@ import {
   resolveEnsembleParticipantSettings
 } from './lib/ensembleProviderDefaults'
 import {
+  materializeParticipantsFromPreset,
+  type EnsembleRosterPreset
+} from './lib/ensembleRosterPresets'
+import {
   rebindEnsembleChatToWorkspace,
   rebindWelcomeEnsembleChatToGlobal,
   rebindWelcomeEnsembleChatToWorkspace
@@ -352,6 +356,7 @@ import type {
   DiscordContextTargets
 } from '../../main/channels/DiscordContextService'
 import {
+  collectClipboardAttachmentPaths,
   collectDroppedAttachmentPaths,
   dedupePaths,
   getImageName,
@@ -404,6 +409,7 @@ import {
   LiveThreadTokenTally,
   estimateLiveOutputTokensFromChars
 } from './components/LiveThreadTokenTally'
+import { EnsembleRosterPresetPicker } from './components/EnsembleRosterPresetPicker'
 import { WelcomeWorkspacePicker } from './components/WelcomeWorkspacePicker'
 import { WelcomeUsageDashboard } from './components/WelcomeUsageDashboard'
 import { ComposerWorkspaceSwitcher } from './components/ComposerWorkspaceSwitcher'
@@ -5543,6 +5549,34 @@ function App(): React.JSX.Element {
       return
     }
 
+    addImageAttachments(paths)
+    if (imageAttachments.length + paths.length > MAX_IMAGE_ATTACHMENTS) {
+      setRawLogs((prev) => [
+        ...prev,
+        {
+          type: 'info',
+          content: `Attachment limit reached (${MAX_IMAGE_ATTACHMENTS}); oldest files were removed.`
+        }
+      ])
+    }
+  }
+
+  const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    let paths = collectClipboardAttachmentPaths(event.clipboardData)
+    if (paths.length === 0) {
+      const hasImageItem = Array.from(event.clipboardData?.items || []).some((item) =>
+        item.type.startsWith('image/')
+      )
+      if (!hasImageItem) {
+        return
+      }
+      const saved = await window.api.saveClipboardImageAttachment()
+      paths = saved || []
+    }
+    if (paths.length === 0) {
+      return
+    }
+    event.preventDefault()
     addImageAttachments(paths)
     if (imageAttachments.length + paths.length > MAX_IMAGE_ATTACHMENTS) {
       setRawLogs((prev) => [
@@ -12615,6 +12649,45 @@ function App(): React.JSX.Element {
     },
     [isCurrentEnsembleChat, currentChat]
   )
+  const applyEnsembleRosterPreset = useCallback(
+    (preset: EnsembleRosterPreset) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble || isCurrentEnsembleRoundRunning) return
+      const participants = materializeParticipantsFromPreset(preset.participants)
+      const nextMaxParticipants = Math.min(
+        12,
+        Math.max(preset.maxParticipants, participants.length, 2)
+      )
+      const patchedChat: ChatRecord = {
+        ...currentChat,
+        ensemble: {
+          ...currentChat.ensemble,
+          orchestrationMode: preset.orchestrationMode,
+          maxParticipants: nextMaxParticipants,
+          ...(typeof preset.maxContinuationHops === 'number'
+            ? { maxContinuationHops: preset.maxContinuationHops }
+            : {}),
+          ...(typeof preset.concurrentModeEnabled === 'boolean'
+            ? { concurrentModeEnabled: preset.concurrentModeEnabled }
+            : {}),
+          ...(typeof preset.ensembleContextChars === 'number'
+            ? { ensembleContextChars: preset.ensembleContextChars }
+            : {}),
+          participants,
+          updatedAt: new Date().toISOString()
+        }
+      }
+      const nextChat = withSessionActivityLedger(currentChat, patchedChat)
+      chatByIdRef.current.set(nextChat.appChatId, nextChat)
+      setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+      setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
+      const firstEnabled = participants.find((participant) => participant.enabled) || participants[0]
+      if (firstEnabled) {
+        setSelectedParticipantId(firstEnabled.id)
+      }
+      void window.api.saveChat(nextChat)
+    },
+    [isCurrentEnsembleChat, currentChat, isCurrentEnsembleRoundRunning]
+  )
   const applyEnsemblePermissionsToAllParticipants = useCallback(() => {
     if (!isCurrentEnsembleChat || !selectedParticipant || !currentChat?.ensemble) return
     const sourceOverrides = selectedParticipant.permissionOverrides
@@ -16572,6 +16645,11 @@ function App(): React.JSX.Element {
                           : null}
                       </>
                     )}
+                    <EnsembleRosterPresetPicker
+                      ensemble={currentChat?.ensemble}
+                      disabled={isCurrentEnsembleRoundRunning}
+                      onApplyPreset={applyEnsembleRosterPreset}
+                    />
                     {/* Workspace picker on the ensemble welcome too —
                       same affordance as the solo welcome surface above,
                       because the ensemble path lands here just as
@@ -16926,6 +17004,14 @@ function App(): React.JSX.Element {
                   the first prompt — configure-before-send is the
                   entire point of the strip.
                 */}
+                {currentChat?.chatKind === 'ensemble' && !isWelcomeChat && (
+                  <EnsembleRosterPresetPicker
+                    ensemble={currentChat.ensemble}
+                    disabled={isCurrentEnsembleRoundRunning}
+                    onApplyPreset={applyEnsembleRosterPreset}
+                    variant="compact"
+                  />
+                )}
                 {currentChat?.chatKind === 'ensemble' && (
                   <EnsembleParticipantsAboveRow
                     chat={currentChat}
@@ -17255,6 +17341,9 @@ function App(): React.JSX.Element {
                         ref={composerTextareaRef}
                         value={prompt}
                         onContextMenu={composerContextMenu.handleContextMenu}
+                        onPaste={(event) => {
+                          void handleComposerPaste(event)
+                        }}
                         onChange={(e) => {
                           const nextValue = e.target.value
                           // 1.0.4-AQ3 — snapshot the caret position from

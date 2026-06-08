@@ -178,6 +178,151 @@
  * "Browse…" button under the welcome subheading. Pointer-events
  * re-enabled here because the parent .welcome-hero is `none` so
  * the textarea below isn't blocked by the hero text. */
+.ensemble-roster-preset-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  pointer-events: auto;
+}
+.ensemble-roster-preset-picker.is-compact {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+.ensemble-roster-preset-picker-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.ensemble-roster-preset-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  position: relative;
+}
+.ensemble-roster-preset-picker.is-compact .ensemble-roster-preset-picker-chips {
+  justify-content: flex-start;
+}
+.ensemble-roster-preset-picker-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated, var(--background)) 65%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.ensemble-roster-preset-picker-chip:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 8%, var(--surface-elevated, var(--background)));
+  border-color: color-mix(in srgb, currentColor 28%, transparent);
+}
+.ensemble-roster-preset-picker-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ensemble-roster-preset-picker-chip-save {
+  border-style: dashed;
+}
+.ensemble-roster-preset-picker-chip-name {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ensemble-roster-preset-picker-browse.is-open {
+  border-color: color-mix(in srgb, currentColor 36%, transparent);
+}
+.ensemble-roster-preset-popover {
+  position: fixed;
+  z-index: 12000;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 24px));
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated, var(--background)) 92%, transparent);
+  box-shadow: 0 12px 36px color-mix(in srgb, #000000 28%, transparent);
+  padding: 8px;
+}
+.ensemble-roster-preset-popover-section {
+  display: grid;
+  gap: 4px;
+}
+.ensemble-roster-preset-popover-header {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px 2px;
+}
+.ensemble-roster-preset-popover-empty {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 8px;
+}
+.ensemble-roster-preset-popover-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  align-items: center;
+}
+.ensemble-roster-preset-popover-row-main-action {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+.ensemble-roster-preset-popover-row-main-action:hover:not(:disabled),
+.ensemble-roster-preset-popover-row-main-action:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.ensemble-roster-preset-popover-row-main-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ensemble-roster-preset-popover-row-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.ensemble-roster-preset-popover-row-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.ensemble-roster-preset-popover-row-action {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 6px 8px;
+}
+.ensemble-roster-preset-popover-row-action:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.ensemble-roster-preset-popover-row-action.is-danger:hover {
+  color: #f08080;
+}
+
 .welcome-workspace-picker {
   display: flex;
   flex-wrap: wrap;
