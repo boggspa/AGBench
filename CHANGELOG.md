@@ -4,6 +4,53 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.4.0 — 2026-06-08
+
+### Added
+- **Live web access for local models.** Local Ollama runs can now use `web_search`
+  and `web_fetch`. Search returns ranked result links; fetch downloads a page and
+  returns its readable text (HTML markup, scripts, and styles are stripped) so the
+  model can summarize real content instead of raw markup.
+- **Tiered tool control for Ollama.** A new tool-control tier ladder — read-only →
+  approved edits → approved shell → provider parity — lets you decide how much
+  local models can do, with a Settings surface and per-workspace grants. Read-only
+  stays the default.
+- **Qwen 3.5 (9B) preset.** Added to the curated local model line-up alongside the
+  existing Qwen, Gemma, and GPT OSS presets.
+- **Discord channel context.** Attach a scoped, run-only snapshot of the most recent
+  messages from a Discord channel (you choose how many) as untrusted model context
+  for collaborative projects. Reads only — agents don't post back.
+- **Link favicons.** Links in prompts and transcripts now show a favicon for quicker
+  visual scanning.
+- **Local memory telemetry in the composer.** Ollama threads show the latest
+  llama-server peak RAM (e.g. `17.0GB`) in the composer telemetry row, in place of
+  the cost estimate shown for metered cloud providers.
+
+### Fixed
+- **GPT OSS replies again.** Harmony-format models (e.g. GPT OSS) that stream their
+  answer into the reasoning channel no longer finish with an empty response;
+  TaskWraith now surfaces that text when the normal content channel is empty.
+- **Readable `web_fetch` results.** Page HTML is converted to readable text before
+  truncation, so local models receive prose within the character budget rather than
+  a head full of CSS and scripts. Non-HTML responses (JSON, plain text) pass through
+  unchanged.
+- **Local models recognize their web tools.** The Ollama system prompt now states
+  explicitly that `web_search`/`web_fetch` reach the live internet, so models stop
+  denying the capability and use the search → fetch → summarize flow.
+- **Ollama run-card model labels.** Corrected the model label shown on local run
+  cards.
+
+### Changed
+- **Ollama approval previews tightened.** Clearer previews before approved-edit and
+  approved-shell tool calls.
+- **Provider parity scoped to workspace grants.** Ollama provider-parity tooling is
+  gated behind explicit per-workspace grants.
+
+### Security
+- **Local web + workspace tools stay policy-gated.** `web_search`/`web_fetch` are
+  read-only and routed through TaskWraith policy; workspace tools keep every path
+  inside the active workspace, and write/shell tiers require explicit approval.
+
 ## 1.3.0 — 2026-06-08
 
 ### Added
