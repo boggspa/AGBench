@@ -106,6 +106,31 @@ interface AdditionalWorkspaceEntry {
   order: number
 }
 
+function WorkspaceRevealButton({
+  path,
+  label
+}: {
+  path: string
+  label: string
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="composer-workspace-row-reveal"
+      onClick={(event) => {
+        event.stopPropagation()
+        if (typeof window.api?.revealPathInFinder === 'function') {
+          void window.api.revealPathInFinder(path)
+        }
+      }}
+      title={`Reveal ${label} in Finder`}
+      aria-label={`Reveal ${label} in Finder`}
+    >
+      Finder
+    </button>
+  )
+}
+
 export function ComposerWorkspaceSwitcher({
   workspaces,
   currentWorkspace,
@@ -388,6 +413,7 @@ export function ComposerWorkspaceSwitcher({
                   <span className="composer-workspace-badge composer-workspace-badge-primary">
                     PRIMARY
                   </span>
+                  <WorkspaceRevealButton path={currentWorkspace.path} label={primaryLabel} />
                 </div>
               ) : (
                 <div className="composer-workspace-row composer-workspace-row-empty">
@@ -434,6 +460,7 @@ export function ComposerWorkspaceSwitcher({
                   >
                     {entry.access === 'write' ? 'WRITE' : 'READ'}
                   </span>
+                  <WorkspaceRevealButton path={entry.path} label={entry.basename} />
                   {onRemoveWorkspacePath && (
                     <button
                       type="button"
@@ -558,19 +585,28 @@ export function ComposerWorkspaceSwitcher({
             <div className="welcome-workspace-popover-section welcome-workspace-popover-actions">
               <div className="welcome-workspace-popover-header">Switch primary workspace</div>
               {others.map((ws) => (
-                <button
-                  key={ws.id}
-                  type="button"
-                  role="menuitem"
-                  className="welcome-workspace-popover-row"
-                  onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
-                  title={`Make ${ws.displayName || ws.path} the primary workspace`}
-                >
-                  <span className="welcome-workspace-popover-row-name">
-                    {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
-                  </span>
-                  {ws.path && <span className="welcome-workspace-popover-row-path">{ws.path}</span>}
-                </button>
+                <div key={ws.id} className="welcome-workspace-popover-row composer-workspace-switch-row">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="welcome-workspace-popover-row-main-action"
+                    onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
+                    title={`Make ${ws.displayName || ws.path} the primary workspace`}
+                  >
+                    <span className="welcome-workspace-popover-row-name">
+                      {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                    </span>
+                    {ws.path && (
+                      <span className="welcome-workspace-popover-row-path">{ws.path}</span>
+                    )}
+                  </button>
+                  {ws.path ? (
+                    <WorkspaceRevealButton
+                      path={ws.path}
+                      label={ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                    />
+                  ) : null}
+                </div>
               ))}
               <button
                 type="button"

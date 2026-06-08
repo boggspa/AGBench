@@ -530,6 +530,7 @@ declare global {
         reason?: string
       }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
+      revealPathInFinder: (path: string) => Promise<{ ok: boolean; error?: string }>
       getFaviconForUrl: (url: string) => Promise<
         | {
             ok: true

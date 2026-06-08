@@ -359,6 +359,8 @@ const api = {
   // (filesystem paths); unknown / unsafe schemes are no-ops.
   openExternalOrPath: (href: string) =>
     ipcRenderer.invoke('shell:open-link', href) as Promise<{ ok: boolean; error?: string }>,
+  revealPathInFinder: (path: string) =>
+    ipcRenderer.invoke('shell:reveal-in-finder', path) as Promise<{ ok: boolean; error?: string }>,
   getFaviconForUrl: (url: string) =>
     ipcRenderer.invoke('favicon:getForUrl', url) as Promise<
       | {

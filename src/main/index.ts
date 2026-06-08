@@ -660,6 +660,21 @@ remoteQuestionRegistry.subscribe((event) => {
   }
 })
 
+async function revealPathInFinder(pathRaw: unknown): Promise<{ ok: boolean; error?: string }> {
+  const path = typeof pathRaw === 'string' ? pathRaw.trim() : ''
+  if (!path) return { ok: false, error: 'Path is required' }
+  if (!fsSync.existsSync(path)) return { ok: false, error: `Path not found: ${path}` }
+  try {
+    shell.showItemInFolder(path)
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
 async function openSafeShellTarget(hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> {
   const decision = classifyShellOpenTarget(hrefRaw)
   try {
@@ -17333,6 +17348,12 @@ if (isGeminiMcpBridgeProcess) {
       'shell:open-link',
       async (_event, hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
         return openSafeShellTarget(hrefRaw)
+      }
+    )
+    ipcMain.handle(
+      'shell:reveal-in-finder',
+      async (_event, pathRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
+        return revealPathInFinder(pathRaw)
       }
     )
     ipcMain.handle('favicon:getForUrl', async (_event, hrefRaw: unknown) => {
