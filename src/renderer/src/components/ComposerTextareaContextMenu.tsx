@@ -60,12 +60,12 @@ export function ComposerTextareaContextMenu({
 
   useEffect(() => {
     if (!anchor) return
-    const handlePointerDown = (event: MouseEvent): void => {
+    const handlePointerDown = (event: globalThis.MouseEvent): void => {
       const target = event.target as Node
       if (menuRef.current?.contains(target)) return
       onClose()
     }
-    const handleKeyDown = (event: KeyboardEvent): void => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
