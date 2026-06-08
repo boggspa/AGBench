@@ -8,7 +8,8 @@ import {
   safeStorage,
   screen,
   powerMonitor,
-  nativeImage
+  nativeImage,
+  clipboard
 } from 'electron'
 import type {
   BrowserWindowConstructorOptions,
@@ -14890,6 +14891,19 @@ if (isGeminiMcpBridgeProcess) {
         return []
       }
       return result.filePaths || []
+    })
+
+    ipcMain.handle('save-clipboard-image-attachment', async () => {
+      const image = clipboard.readImage()
+      if (image.isEmpty()) {
+        return []
+      }
+      const filePath = join(
+        os.tmpdir(),
+        `taskwraith-paste-${Date.now()}-${randomUUID().slice(0, 8)}.png`
+      )
+      await fs.writeFile(filePath, image.toPNG())
+      return [filePath]
     })
 
     ipcMain.handle(

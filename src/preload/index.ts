@@ -38,6 +38,7 @@ const api = {
   getRuntimeVersions: () => ({ ...(process?.versions || {}) }),
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   selectImageFiles: () => ipcRenderer.invoke('select-image-files'),
+  saveClipboardImageAttachment: () => ipcRenderer.invoke('save-clipboard-image-attachment'),
   // Phase J1 (composer unification): the picker is now cross-provider —
   // optional `provider` argument so the main process can stamp the
   // grant with the requesting provider (defaults to 'codex' for

@@ -274,6 +274,7 @@ declare global {
       getRuntimeVersions: () => NodeJS.ProcessVersions
       selectWorkspace: () => Promise<WorkspaceRecord | null>
       selectImageFiles: () => Promise<string[]>
+      saveClipboardImageAttachment: () => Promise<string[]>
       selectExternalPathGrant: (
         access?: 'read' | 'write',
         provider?: string

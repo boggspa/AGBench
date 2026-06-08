@@ -38,6 +38,60 @@ export const dedupePaths = (values: string[]): string[] => {
   return next
 }
 
+export const collectClipboardAttachmentPaths = (
+  clipboardData?: DataTransfer | null
+): string[] => {
+  if (!clipboardData) {
+    return []
+  }
+
+  const paths: string[] = []
+  const fileList = clipboardData.files
+  for (let i = 0; i < fileList.length; i += 1) {
+    const file = fileList.item(i)
+    if (!file) continue
+    const asFile = file as File & { path?: string }
+    const candidate = sanitizeImagePath(asFile.path || file.name)
+    if (candidate) {
+      paths.push(candidate)
+    }
+  }
+
+  if (paths.length > 0) {
+    return dedupePaths(paths)
+  }
+
+  const uriList = clipboardData.getData('text/uri-list')
+  if (uriList) {
+    const uriCandidates = uriList
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => line.startsWith('file://'))
+      .map((line) => sanitizeImagePath(line))
+      .filter(Boolean)
+    if (uriCandidates.length > 0) {
+      return dedupePaths(uriCandidates)
+    }
+  }
+
+  for (let i = 0; i < clipboardData.items.length; i += 1) {
+    const item = clipboardData.items[i]
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+      continue
+    }
+    const file = item.getAsFile()
+    if (!file) continue
+    const asFile = file as File & { path?: string }
+    const candidate = sanitizeImagePath(asFile.path || file.name)
+    if (candidate) {
+      paths.push(candidate)
+    }
+  }
+
+  return dedupePaths(paths)
+}
+
 export const collectDroppedAttachmentPaths = (dataTransfer?: DataTransfer | null): string[] => {
   if (!dataTransfer) {
     return []
