@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   distanceFromBottom,
+  edgeFadeState,
   nextAutoFollow,
   shouldShowViewportJump
 } from '../lib/LiveActivityViewport'
@@ -36,7 +37,7 @@ export function LiveActivityViewport({
   children,
   revision,
   active = false,
-  collapsedMaxHeight = 200,
+  collapsedMaxHeight = 168,
   defaultExpanded = false,
   reduceMotion = false,
   label = 'Live activity'
@@ -44,6 +45,24 @@ export function LiveActivityViewport({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [following, setFollowing] = useState(true)
+  const [fadeTop, setFadeTop] = useState(false)
+  const [fadeBottom, setFadeBottom] = useState(false)
+
+  const refreshEdgeFades = useCallback(() => {
+    const el = scrollRef.current
+    if (!el || expanded) {
+      setFadeTop(false)
+      setFadeBottom(false)
+      return
+    }
+    const next = edgeFadeState({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      scrollTop: el.scrollTop
+    })
+    setFadeTop(next.top)
+    setFadeBottom(next.bottom)
+  }, [expanded])
 
   // Re-pin to the bottom on new content while collapsed + following. A layout
   // effect (not a passive effect) so the scroll write lands in the same frame
@@ -52,12 +71,26 @@ export function LiveActivityViewport({
     const el = scrollRef.current
     if (!el || expanded || !following) return
     el.scrollTop = el.scrollHeight
-  }, [revision, expanded, following])
+    refreshEdgeFades()
+  }, [revision, expanded, following, refreshEdgeFades])
+
+  useLayoutEffect(() => {
+    refreshEdgeFades()
+  }, [expanded, refreshEdgeFades])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || expanded) return
+    const observer = new ResizeObserver(() => refreshEdgeFades())
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [expanded, refreshEdgeFades])
 
   const handleScroll = () => {
     const el = scrollRef.current
     if (!el || expanded) return
     setFollowing((current) => nextAutoFollow(distanceFromBottom(el), current))
+    refreshEdgeFades()
   }
 
   const jumpToLatest = () => {
@@ -73,7 +106,9 @@ export function LiveActivityViewport({
     <div
       className={`live-activity-viewport${expanded ? ' is-expanded' : ' is-collapsed'}${
         active ? ' is-active' : ''
-      }${following ? ' is-following' : ''}`}
+      }${following ? ' is-following' : ''}${fadeTop ? ' has-fade-top' : ''}${
+        fadeBottom ? ' has-fade-bottom' : ''
+      }`}
       data-following={following ? 'true' : 'false'}
       data-active={active ? 'true' : 'false'}
     >
