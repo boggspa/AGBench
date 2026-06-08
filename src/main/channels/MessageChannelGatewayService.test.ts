@@ -40,6 +40,18 @@ function telegramBinding(): MessageChannelBinding {
   }
 }
 
+function matrixBinding(): MessageChannelBinding {
+  return {
+    ...binding(),
+    id: 'matrix-binding-1',
+    channel: 'matrix',
+    accountId: 'matrix:matrix.local',
+    chatGuid: 'matrix:!room123:matrix.local',
+    allowedHandles: ['@operator:matrix.local'],
+    label: 'Matrix Operator'
+  }
+}
+
 function webBinding(): MessageChannelBinding {
   return {
     ...binding(),
@@ -1071,6 +1083,80 @@ describe('MessageChannelGatewayService', () => {
       expect.objectContaining({
         provider: 'codex',
         prompt: expect.stringContaining('External Telegram channel input.')
+      })
+    )
+  })
+
+  it('routes Matrix adapter messages through the same policy-gated dispatch path', async () => {
+    const saved: ChatRecord[] = []
+    const dispatchRun = vi.fn(async () => ({ dispatched: true, appRunId: 'run-matrix' }))
+    const pollMessages = vi.fn(async () => ({
+      ok: true,
+      channel: 'matrix' as const,
+      accountId: 'matrix:matrix.local',
+      databasePath: 'https://matrix.local/_matrix/client/v3/rooms/!room123:matrix.local/messages',
+      messages: [
+        {
+          rowId: 1780941600000,
+          channel: 'matrix' as const,
+          accountId: 'matrix:matrix.local',
+          chatGuid: 'matrix:!room123:matrix.local',
+          messageGuid: 'matrix:$event1',
+          senderHandle: '@operator:matrix.local',
+          text: 'tw check release status',
+          timestamp: '2026-06-08T10:00:00.000Z',
+          isFromMe: false,
+          attachments: [
+            {
+              id: 'mxc://matrix.local/upload1',
+              filename: 'notes.txt',
+              mimeType: 'text/plain',
+              byteCount: 42
+            }
+          ]
+        }
+      ]
+    }))
+    const service = new MessageChannelGatewayService({
+      bindingStore: {
+        findByConversation: ({ channel }) => (channel === 'matrix' ? [matrixBinding()] : []),
+        list: () => [matrixBinding()]
+      },
+      pollMessages,
+      getChat: () => chat({ title: 'Matrix Operator' }),
+      saveChat: (updated) => saved.push(updated),
+      dispatchRun
+    })
+
+    const summary = await service.pollOnce()
+
+    expect(summary).toMatchObject({
+      polled: 1,
+      accepted: 1,
+      dispatched: 1,
+      lastRowId: 1780941600000
+    })
+    expect(pollMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'matrix',
+        accountId: 'matrix:matrix.local',
+        chatGuid: 'matrix:!room123:matrix.local',
+        afterRowId: 0,
+        includeFromMe: true
+      })
+    )
+    expect(saved.at(-1)?.messages[0].metadata).toMatchObject({
+      kind: 'channelInbound',
+      channel: 'matrix',
+      authState: 'allowlisted_contact',
+      sourceTrust: 'external_untrusted',
+      attachmentCount: 1,
+      appRunId: 'run-matrix'
+    })
+    expect(dispatchRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'codex',
+        prompt: expect.stringContaining('External Matrix channel input.')
       })
     )
   })
