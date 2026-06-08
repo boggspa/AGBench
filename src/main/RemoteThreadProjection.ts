@@ -183,6 +183,7 @@ export function classifyRemoteKind(message: ChatMessage): RemoteThreadRowKind {
   const metaKind = message.metadata?.kind
   if (message.role === 'system' && metaKind === 'subThreadDelegation') return 'system'
   if (metaKind === 'subThreadReturn') return 'tool'
+  if (metaKind === 'guestParticipantReply') return 'tool'
   if (message.role === 'tool') return 'tool'
   if (message.role === 'user') return 'user'
   if (message.role === 'error') return 'error'

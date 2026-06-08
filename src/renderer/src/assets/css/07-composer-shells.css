@@ -13,8 +13,8 @@
  * Anything else TaskWraith-specific in the left bar (model-aware reasoning
  * pills, extra workspace chips, etc.) still gets hidden by these :not()
  * allowlists. */
-[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]),
-[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]),
+[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]) {
   display: none !important;
 }
 
@@ -1944,7 +1944,7 @@
  * ============================================================ */
 [data-composer-style="gemini"] .composer-top-toggles,
 [data-composer-style="gemini"] .composer-chips,
-[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]) {
   display: none !important;
 }
 /* Gemini shell — historically hid `.composer-above-bar` entirely
@@ -2398,7 +2398,7 @@
  * ============================================================ */
 [data-composer-style="kimi"] .composer-top-toggles,
 [data-composer-style="kimi"] .composer-chips,
-[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]) {
   display: none !important;
 }
 /* Kimi shell — same parity move as Gemini above. Was hidden

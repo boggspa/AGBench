@@ -266,6 +266,7 @@ import { AgentIdentityIcon } from './components/icons/AgentIdentityIcon'
 import { assignAgentIdentityFromSeed } from './lib/agentIdentitySeed'
 import {
   extractFirstEnsembleDmTarget,
+  extractGuestParticipantAddressTarget,
   formatComposerPathMention,
   parseComposerMentionTrigger
 } from './lib/ComposerMentionTrigger'
@@ -491,7 +492,7 @@ type InspectorRightTab =
   | 'safety'
   | 'capabilities'
   | 'background-tasks'
-type SideChatCreateMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
+type SideChatCreateMode = 'ensembleClone' | 'singleProvider' | 'fanOut' | 'guestParticipant'
 type SideChatSeedContext = {
   originMessageId?: string
   originRunId?: string
@@ -513,6 +514,61 @@ type ChatPopoutHandoffState = {
 const CHAT_POPOUT_HANDOFF_PREFIX = 'taskwraith.chatPopoutHandoff.'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
+const GUEST_PARTICIPANT_STEERING_PREAMBLE =
+  'You are a guest participant attached to a standard TaskWraith chat. The main parent agent has priority. Respond to the user request in parallel as a second opinion or disjoint helper. Write or edit files only when useful and keep any changes disjoint from the main agent. If your intended edits overlap or conflict with the main agent, stop and explain the conflict instead of fighting the main agent.'
+const GUEST_PARENT_CONTEXT_TURN_LIMIT = 20
+const GUEST_PARENT_CONTEXT_CHAR_LIMIT = 12000
+const GUEST_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT = 1800
+
+function truncateGuestContextText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value
+  return `${value.slice(0, Math.max(0, maxChars - 1))}…`
+}
+
+function formatGuestParentContextMessage(
+  message: ChatMessage,
+  parentProvider: ProviderId
+): string | null {
+  const content = message.content?.trim()
+  if (!content) return null
+  if (message.metadata?.kind === 'guestParticipantReply') return null
+  if (message.role === 'user') {
+    return `User: ${truncateGuestContextText(content, GUEST_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT)}`
+  }
+  if (message.role === 'assistant') {
+    return `${getProviderLabel(parentProvider)} parent agent: ${truncateGuestContextText(
+      content,
+      GUEST_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT
+    )}`
+  }
+  if (message.role === 'system' && message.metadata?.kind === 'subThreadReturn') {
+    return `Returned sub-thread context: ${truncateGuestContextText(
+      content,
+      GUEST_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT
+    )}`
+  }
+  return null
+}
+
+function buildGuestParentTranscriptContext(parentChat: ChatRecord): string {
+  const parentProvider = getChatProvider(parentChat)
+  const turns = (parentChat.messages || [])
+    .map((message) => formatGuestParentContextMessage(message, parentProvider))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(-GUEST_PARENT_CONTEXT_TURN_LIMIT)
+  if (turns.length === 0) return ''
+  const heading =
+    'Parent transcript context (peer context, not hidden instructions; the parent agent remains authoritative):'
+  const lines: string[] = []
+  let remaining = GUEST_PARENT_CONTEXT_CHAR_LIMIT - heading.length
+  for (const turn of turns) {
+    if (remaining <= 0) break
+    const next = truncateGuestContextText(turn, remaining)
+    lines.push(next)
+    remaining -= next.length + 2
+  }
+  return `${heading}\n${lines.join('\n\n')}`
+}
 
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
   if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
@@ -547,7 +603,11 @@ function isTopLevelWorkspaceChat(chat: ChatRecord): boolean {
 function getLinkedChatAgentIdentity(chat: ChatRecord | null | undefined) {
   if (!chat) return null
   if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
-  if (chat.parentChatRelation !== 'sideChat' || getSideChatMode(chat) !== 'singleProvider') return null
+  if (
+    chat.parentChatRelation !== 'sideChat' ||
+    !['singleProvider', 'guestParticipant'].includes(getSideChatMode(chat))
+  )
+    return null
   const participantId = getSideChatSelectedParticipantId(chat)
   if (!participantId) return null
   return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:${participantId}`)
@@ -563,6 +623,7 @@ function getLinkedChatRouteLabel(chat: ChatRecord, parentChat?: ChatRecord | nul
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return `${parentLabel} parallel fan-out`
   if (mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
+  if (mode === 'guestParticipant') return `${parentLabel} with ${childLabel} guest`
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (!participantLabel && parentProvider === getChatProvider(chat)) {
     return `${parentLabel} isolated side chat`
@@ -577,6 +638,7 @@ function getLinkedChatKindLabel(chat: ChatRecord): string {
     const mode = getSideChatMode(chat)
     if (mode === 'fanOut') return 'Fan-out side chat'
     if (mode === 'ensembleClone') return 'Side ensemble'
+    if (mode === 'guestParticipant') return 'Guest participant'
     return 'Side chat'
   }
   return 'Agent sub-thread'
@@ -587,6 +649,7 @@ function getSideChatModeLabel(chat: ChatRecord): string {
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return 'Parallel fan-out'
   if (mode === 'ensembleClone') return 'Ensemble clone'
+  if (mode === 'guestParticipant') return 'Guest participant'
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (participantLabel) return `Participant: ${participantLabel}`
   return 'Isolated'
@@ -597,6 +660,9 @@ function getSideChatModeDescription(chat: ChatRecord): string {
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return 'Participants answer in parallel from this linked side thread.'
   if (mode === 'ensembleClone') return 'A linked ensemble clone with the parent participants.'
+  if (mode === 'guestParticipant') {
+    return 'A persistent guest participant attached to the parent chat.'
+  }
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (participantLabel) {
     return `A dedicated side chat with ${participantLabel}, isolated from the parent transcript.`
@@ -7359,6 +7425,9 @@ function App(): React.JSX.Element {
     ...(request.codexServiceTier !== undefined
       ? { codexServiceTier: request.codexServiceTier }
       : {}),
+    ...(request.claudeReasoningEffort !== undefined
+      ? { claudeReasoningEffort: request.claudeReasoningEffort }
+      : {}),
     ...(request.claudeFastMode !== undefined ? { claudeFastMode: request.claudeFastMode } : {}),
     ...(request.kimiThinkingEnabled !== undefined
       ? { kimiThinkingEnabled: request.kimiThinkingEnabled }
@@ -7367,6 +7436,8 @@ function App(): React.JSX.Element {
     ...(request.runtimeProfileId ? { runtimeProfileId: request.runtimeProfileId } : {}),
     ...(request.geminiAuthProfileId ? { geminiAuthProfileId: request.geminiAuthProfileId } : {}),
     ...(request.handoffSourceRunId ? { handoffSourceRunId: request.handoffSourceRunId } : {}),
+    ...(request.guestParentChatId ? { guestParentChatId: request.guestParentChatId } : {}),
+    ...(request.guestRole ? { guestRole: request.guestRole } : {}),
     ...(request.preserveComposer ? { preserveComposer: true } : {})
   })
 
@@ -7461,12 +7532,15 @@ function App(): React.JSX.Element {
       codexNativeReview: request.codexNativeReview,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      claudeReasoningEffort: request.claudeReasoningEffort,
       claudeFastMode: request.claudeFastMode,
       kimiThinkingEnabled: request.kimiThinkingEnabled,
       scheduledTaskId: request.scheduledTaskId,
       runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
       geminiAuthProfileId: request.geminiAuthProfileId,
       handoffSourceRunId: job.handoffSourceRunId || request.handoffSourceRunId,
+      guestParentChatId: request.guestParentChatId,
+      guestRole: request.guestRole,
       workspaceRecord: scope === 'global' ? undefined : workspaceRecord,
       chatRecord,
       preserveComposer: request.preserveComposer
@@ -8449,6 +8523,28 @@ function App(): React.JSX.Element {
             }
             updated.runs = runs
 
+            const statusText = String(event.status || '').toLowerCase()
+            if (
+              request.guestParentChatId &&
+              statusText !== 'failed' &&
+              statusText !== 'cancelled'
+            ) {
+              const finalGuestMessage = [...updated.messages]
+                .reverse()
+                .find((message) => message.role === 'assistant' && message.content.trim())
+              if (finalGuestMessage) {
+                appendGuestParticipantReplyToParent({
+                  parentChatId: request.guestParentChatId,
+                  guestChat: updated,
+                  runId: currentRunId,
+                  provider: runProvider,
+                  model: resolvedRunModel !== 'unknown' ? resolvedRunModel : modelToPass,
+                  role: request.guestRole || 'Guest',
+                  content: finalGuestMessage.content
+                })
+              }
+            }
+
             const runDurationMs = Math.max(
               0,
               extractUsageCount(event.stats, [['duration_ms'], ['durationMs']])
@@ -8717,6 +8813,183 @@ function App(): React.JSX.Element {
   const executeRunRef = useRef(executeRun)
   executeRunRef.current = executeRun
 
+  const appendGuestParticipantReplyToParent = ({
+    parentChatId,
+    guestChat,
+    runId,
+    provider,
+    model,
+    role,
+    content
+  }: {
+    parentChatId: string
+    guestChat: ChatRecord
+    runId: string
+    provider: ProviderId
+    model: string
+    role: string
+    content: string
+  }): void => {
+    const trimmed = content.trim()
+    if (!trimmed) return
+    const appendToParent = (source: ChatRecord): ChatRecord => {
+      const alreadyReturned = source.messages.some(
+        (message) =>
+          message.metadata?.kind === 'guestParticipantReply' &&
+          message.metadata?.guestRunId === runId
+      )
+      if (alreadyReturned) return source
+      return {
+        ...source,
+        messages: [
+          ...source.messages,
+          {
+            id: `guest-return-${runId}`,
+            role: 'system',
+            content: trimmed,
+            timestamp: new Date().toISOString(),
+            runId,
+            metadata: {
+              kind: 'guestParticipantReply',
+              guestChatId: guestChat.appChatId,
+              guestProvider: provider,
+              guestModel: model,
+              guestRole: role,
+              guestRunId: runId,
+              parentChatId
+            }
+          }
+        ],
+        updatedAt: Date.now()
+      }
+    }
+    const applied = updateChatById(parentChatId, appendToParent)
+    if (!applied) {
+      void refreshSingleChat(parentChatId).then((hydrated) => {
+        if (hydrated) updateChatById(parentChatId, appendToParent)
+      })
+    }
+  }
+
+  const dispatchGuestParticipantRun = async (parentRequest: QueuedRunRequest): Promise<void> => {
+    const parentChat = parentRequest.chatRecord || currentChat
+    const guest = parentChat?.guestParticipant
+    if (
+      !parentChat ||
+      parentChat.chatKind === 'ensemble' ||
+      !guest ||
+      parentRequest.guestParentChatId ||
+      parentRequest.dmTargetParticipantId
+    ) {
+      return
+    }
+
+    const guestChat =
+      chatByIdRef.current.get(guest.childChatId) ||
+      (await window.api.getChat(guest.childChatId).catch(() => null))
+    if (
+      !guestChat ||
+      guestChat.archived ||
+      guestChat.parentChatId !== parentChat.appChatId ||
+      guestChat.parentChatRelation !== 'sideChat' ||
+      guestChat.sideChatContext?.mode !== 'guestParticipant'
+    ) {
+      return
+    }
+    applyHydratedChat(guestChat)
+
+    const provider = guest.provider
+    const selectedModel = isValidModelForProvider(provider, guest.selectedModelType)
+      ? guest.selectedModelType
+      : getDefaultModelForProvider(provider)
+    const parentTranscriptContext = buildGuestParentTranscriptContext(parentChat)
+    const guestPrompt = [
+      GUEST_PARTICIPANT_STEERING_PREAMBLE,
+      parentTranscriptContext,
+      `Current user request:\n${parentRequest.prompt}`
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+    const guestRequest: QueuedRunRequest = {
+      ...parentRequest,
+      appRunId: createAppRunId(),
+      provider,
+      prompt: guestPrompt,
+      displayPrompt: parentRequest.displayPrompt || parentRequest.prompt,
+      selectedModelType: selectedModel,
+      customModel: guest.customModel || '',
+      imageAttachments: parentRequest.imageAttachments.map((attachment) => ({ ...attachment })),
+      externalPathGrants: (parentRequest.externalPathGrants || []).filter(
+        (grant) => grant.provider === provider
+      ),
+      codexReasoningEffort:
+        provider === 'codex' ? guest.codexReasoningEffort || 'medium' : undefined,
+      codexServiceTier: provider === 'codex' ? guest.codexServiceTier || '' : undefined,
+      claudeReasoningEffort:
+        provider === 'claude' ? guest.claudeReasoningEffort || 'off' : undefined,
+      claudeFastMode: provider === 'claude' ? Boolean(guest.claudeFastMode) : undefined,
+      kimiThinkingEnabled:
+        provider === 'kimi' ? (guest.kimiThinkingEnabled ?? true) : undefined,
+      runtimeProfileId: getRuntimeProfileIdForChat(guestChat, provider),
+      geminiAuthProfileId:
+        provider === 'gemini'
+          ? typeof guestChat.providerMetadata?.geminiAuthProfileId === 'string'
+            ? guestChat.providerMetadata.geminiAuthProfileId
+            : geminiAuthStatus?.activeProfileId || null
+          : null,
+      chatRecord: guestChat,
+      preserveComposer: true,
+      guestParentChatId: parentChat.appChatId,
+      guestRole: 'Guest',
+      dmTargetParticipantId: undefined
+    }
+
+    if (isChatBusy(guestChat.appChatId)) {
+      queueRunRequest(
+        guestRequest,
+        `Guest participant ${getProviderLabel(provider)} is already running; TaskWraith will dispatch this guest turn when it finishes.`
+      )
+      return
+    }
+    void executeRunRef.current(guestRequest)
+  }
+
+  const appendGuestAddressedUserMessage = (request: QueuedRunRequest): void => {
+    const parentChat = request.chatRecord || currentChat
+    if (!parentChat) return
+    const content = (request.displayPrompt || request.prompt || '').trim()
+    if (!content) return
+    const timestamp = new Date().toISOString()
+    const imageAttachmentMetadata = request.imageAttachments
+      .map((attachment) => ({
+        id: attachment.id,
+        path: attachment.path,
+        name: attachment.name || getImageName(attachment.path)
+      }))
+      .filter((attachment) => Boolean(attachment.path))
+    updateChatById(parentChat.appChatId, (source) => {
+      const message: ChatMessage = {
+        id: createMessageId(),
+        role: 'user',
+        content,
+        timestamp,
+        metadata: {
+          guestAddressTarget: 'guest',
+          ...(imageAttachmentMetadata.length ? { imageAttachments: imageAttachmentMetadata } : {})
+        }
+      }
+      const next: ChatRecord = {
+        ...source,
+        messages: [...source.messages, message],
+        updatedAt: Date.now()
+      }
+      if (next.messages.length === 1) {
+        next.title = content.length > 30 ? `${content.substring(0, 30)}...` : content
+      }
+      return next
+    })
+  }
+
   const handleReviewCurrentDiff = async () => {
     if (!currentWorkspace || !currentChat || isPreparingDiffReview) {
       return
@@ -8816,8 +9089,35 @@ function App(): React.JSX.Element {
       return
     }
 
+    const parentChat = request.chatRecord || currentChat
+    const guestAddressTarget =
+      parentChat && parentChat.chatKind !== 'ensemble' && parentChat.guestParticipant
+        ? extractGuestParticipantAddressTarget(request.prompt, {
+            parentProvider: getChatProvider(parentChat),
+            guestProvider: parentChat.guestParticipant.provider
+          })
+        : null
+    const shouldDispatchGuest =
+      Boolean(parentChat?.guestParticipant) &&
+      parentChat?.chatKind !== 'ensemble' &&
+      guestAddressTarget !== 'parent'
+
+    if (guestAddressTarget === 'guest') {
+      appendGuestAddressedUserMessage(request)
+      void dispatchGuestParticipantRun(request)
+      clearComposerAttachmentsForSubmittedRequest(request)
+      if (!request.existingPrompt) {
+        setChatPromptDraft(
+          request.chatRecord?.appChatId || currentChatIdRef.current || currentChat?.appChatId,
+          ''
+        )
+      }
+      return
+    }
+
     if (isChatBusy(request.chatRecord?.appChatId || currentChat?.appChatId)) {
       queueRunRequest(request)
+      if (shouldDispatchGuest) void dispatchGuestParticipantRun(request)
       clearComposerAttachmentsForSubmittedRequest(request)
       if (!request.existingPrompt) {
         setChatPromptDraft(
@@ -8829,6 +9129,7 @@ function App(): React.JSX.Element {
     }
 
     void executeRun(request)
+    if (shouldDispatchGuest) void dispatchGuestParticipantRun(request)
   }
 
   const createSideChatFromCurrentChat = async (
@@ -8860,7 +9161,10 @@ function App(): React.JSX.Element {
         : getProviderLabel(sideProvider)
       const createdSideChat = await window.api.createSideChat({
         parentChatId: parentChat.appChatId,
-        chatKind: sideChatMode === 'singleProvider' ? 'single' : 'ensemble',
+        chatKind:
+          sideChatMode === 'singleProvider' || sideChatMode === 'guestParticipant'
+            ? 'single'
+            : 'ensemble',
         provider: sideProvider,
         sideChatMode,
         originMessageId: seedContext.originMessageId,
@@ -12595,6 +12899,289 @@ function App(): React.JSX.Element {
     }
   }, [externalWorkspacePathsKey, runCompleteNotice?.timestamp])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
+  const currentGuestParticipant =
+    currentChat && currentChat.chatKind !== 'ensemble' ? currentChat.guestParticipant : undefined
+  const currentGuestParticipantChatId = currentGuestParticipant?.childChatId || null
+  const hasCurrentGuestActiveRunQueueJob = Boolean(
+    currentGuestParticipantChatId &&
+      runQueueJobs.some(
+        (job) =>
+          job.chatId === currentGuestParticipantChatId && ACTIVE_RUN_QUEUE_STATUSES.has(job.status)
+      )
+  )
+  const isCurrentGuestParticipantRunning = Boolean(
+    currentGuestParticipantChatId &&
+      (runningChatIds.has(currentGuestParticipantChatId) || hasCurrentGuestActiveRunQueueJob)
+  )
+  const currentComposerMentionParticipants = useMemo<EnsembleParticipant[]>(() => {
+    if (isCurrentEnsembleChat) return currentChat?.ensemble?.participants || []
+    if (!currentChat || !currentGuestParticipant) return []
+    const parentProvider = getChatProvider(currentChat)
+    const guestProvider = currentGuestParticipant.provider
+    const sameProvider = parentProvider === guestProvider
+    return [
+      {
+        id: 'guest-route-parent',
+        provider: parentProvider,
+        enabled: true,
+        role: sameProvider ? 'Parent' : getProviderLabel(parentProvider),
+        instructions: '',
+        order: 0
+      },
+      {
+        id: 'guest-route-guest',
+        provider: guestProvider,
+        enabled: true,
+        role: sameProvider ? 'Guest' : getProviderLabel(guestProvider),
+        instructions: '',
+        order: 1
+      }
+    ]
+  }, [
+    currentChat,
+    currentGuestParticipant,
+    isCurrentEnsembleChat,
+    currentChat?.ensemble?.participants
+  ])
+  const guestComposerProvider = currentGuestParticipant?.provider || currentProvider
+  const guestComposerModelOptionsRaw = getProviderModelOptions(guestComposerProvider)
+  const guestComposerSelectedModel =
+    currentGuestParticipant &&
+    isValidModelForProvider(guestComposerProvider, currentGuestParticipant.selectedModelType)
+      ? currentGuestParticipant.selectedModelType
+      : getDefaultModelForProvider(guestComposerProvider)
+  const guestComposerModelOptions: CombinedModelPickerModelOption[] = [
+    ...guestComposerModelOptionsRaw.map((model) => {
+      const retiresAtRaw = (model as { retiresAt?: unknown }).retiresAt
+      const retiresAt = typeof retiresAtRaw === 'string' ? retiresAtRaw : undefined
+      return {
+        id: model.id,
+        label: model.label || model.id,
+        ...(retiresAt ? { retiresAt } : {})
+      }
+    }),
+    ...(guestComposerProvider !== 'kimi' ? [{ id: 'custom', label: 'Custom…' }] : [])
+  ]
+  const guestCodexModelOption =
+    guestComposerProvider === 'codex'
+      ? codexModels.find((model) => model.id === guestComposerSelectedModel)
+      : undefined
+  const guestClaudeModelOption =
+    guestComposerProvider === 'claude'
+      ? (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS).find(
+          (model) => model.id === guestComposerSelectedModel
+        )
+      : undefined
+  const guestCodexReasoning =
+    currentGuestParticipant?.codexReasoningEffort ||
+    guestCodexModelOption?.defaultReasoningEffort ||
+    'medium'
+  const guestCodexServiceTier = currentGuestParticipant?.codexServiceTier || ''
+  const guestClaudeReasoning = currentGuestParticipant?.claudeReasoningEffort || 'off'
+  const guestClaudeFastMode = Boolean(currentGuestParticipant?.claudeFastMode)
+  const guestKimiThinking = currentGuestParticipant?.kimiThinkingEnabled ?? true
+  let guestComposerReasoningOptions: CombinedModelPickerReasoningOption[] = []
+  let guestComposerSelectedReasoning = ''
+  if (guestComposerProvider === 'codex') {
+    const sourceOptions = guestCodexModelOption?.supportedReasoningEfforts?.length
+      ? guestCodexModelOption.supportedReasoningEfforts
+      : [
+          { reasoningEffort: 'low' },
+          { reasoningEffort: 'medium' },
+          { reasoningEffort: 'high' },
+          { reasoningEffort: 'xhigh' }
+        ]
+    guestComposerReasoningOptions = sourceOptions.map((option) => ({
+      value: option.reasoningEffort,
+      label:
+        option.reasoningEffort === 'xhigh'
+          ? 'Extra High'
+          : option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)
+    }))
+    guestComposerSelectedReasoning = guestCodexReasoning
+  } else if (guestComposerProvider === 'claude') {
+    const sourceOptions = guestClaudeModelOption?.supportedReasoningEfforts?.length
+      ? guestClaudeModelOption.supportedReasoningEfforts
+      : CLAUDE_THINKING_EFFORTS
+    guestComposerReasoningOptions = sourceOptions.map((option) => ({
+      value: option.reasoningEffort,
+      label:
+        option.reasoningEffort === 'off'
+          ? 'Thinking off'
+          : option.reasoningEffort === 'high'
+            ? 'Max'
+            : option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)
+    }))
+    guestComposerSelectedReasoning = guestClaudeReasoning
+  } else if (guestComposerProvider === 'kimi') {
+    guestComposerReasoningOptions = [
+      { value: 'on', label: 'Thinking on' },
+      { value: 'off', label: 'Thinking off' }
+    ]
+    guestComposerSelectedReasoning = guestKimiThinking ? 'on' : 'off'
+  }
+  const guestFastModeCapableModelIds = (() => {
+    if (guestComposerProvider === 'codex') {
+      return new Set(
+        codexModels
+          .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+          .map((model) => model.id)
+      )
+    }
+    if (guestComposerProvider === 'claude') {
+      return new Set(
+        (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
+          .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+          .map((model) => model.id)
+      )
+    }
+    if (guestComposerProvider === 'cursor') return new Set(['composer-2.5', 'composer-2.5-fast'])
+    return new Set<string>()
+  })()
+  const guestFastModeEnabled =
+    guestComposerProvider === 'codex'
+      ? guestCodexServiceTier === 'fast'
+      : guestComposerProvider === 'claude'
+        ? guestClaudeFastMode
+        : guestComposerProvider === 'cursor'
+          ? guestComposerSelectedModel === 'composer-2.5-fast'
+          : false
+  const setGuestParticipantForCurrentChat = async (
+    patch: Partial<NonNullable<ChatRecord['guestParticipant']>> & { provider?: ProviderId }
+  ): Promise<void> => {
+    if (!currentChat || currentChat.chatKind === 'ensemble') return
+    const existing = currentChat.guestParticipant
+    const provider = patch.provider || existing?.provider || currentProvider
+    const sameProvider = existing?.provider === provider
+    const selectedModelType =
+      patch.selectedModelType ||
+      (sameProvider ? existing?.selectedModelType : undefined) ||
+      getDefaultModelForProvider(provider)
+    const customModel = patch.customModel ?? (sameProvider ? existing?.customModel || '' : '')
+    const codexModelOption =
+      provider === 'codex' ? codexModels.find((model) => model.id === selectedModelType) : undefined
+    const result = await window.api.setGuestParticipant({
+      parentChatId: currentChat.appChatId,
+      provider,
+      selectedModelType,
+      customModel,
+      codexReasoningEffort:
+        provider === 'codex'
+          ? patch.codexReasoningEffort ??
+            (sameProvider ? existing?.codexReasoningEffort : undefined) ??
+            codexModelOption?.defaultReasoningEffort ??
+            'medium'
+          : undefined,
+      codexServiceTier:
+        provider === 'codex'
+          ? patch.codexServiceTier ??
+            (sameProvider ? existing?.codexServiceTier : undefined) ??
+            ''
+          : undefined,
+      claudeReasoningEffort:
+        provider === 'claude'
+          ? patch.claudeReasoningEffort ??
+            (sameProvider ? existing?.claudeReasoningEffort : undefined) ??
+            'off'
+          : undefined,
+      claudeFastMode:
+        provider === 'claude'
+          ? patch.claudeFastMode ??
+            (sameProvider ? existing?.claudeFastMode : undefined) ??
+            false
+          : undefined,
+      kimiThinkingEnabled:
+        provider === 'kimi'
+          ? patch.kimiThinkingEnabled ??
+            (sameProvider ? existing?.kimiThinkingEnabled : undefined) ??
+            true
+          : undefined
+    })
+    applyHydratedChat(result.parent)
+    applyHydratedChat(result.guest)
+    void refreshChatList()
+  }
+  const handleGuestProviderChange = (provider: ProviderId): void => {
+    const model = getDefaultModelForProvider(provider)
+    void setGuestParticipantForCurrentChat({
+      provider,
+      selectedModelType: model,
+      customModel: '',
+      codexReasoningEffort:
+        provider === 'codex'
+          ? codexModels.find((option) => option.id === model)?.defaultReasoningEffort || 'medium'
+          : undefined,
+      codexServiceTier: provider === 'codex' ? '' : undefined,
+      claudeReasoningEffort: provider === 'claude' ? 'off' : undefined,
+      claudeFastMode: provider === 'claude' ? false : undefined,
+      kimiThinkingEnabled: provider === 'kimi' ? true : undefined
+    })
+  }
+  const handleGuestModelChange = (nextModel: string): void => {
+    const patch: Partial<NonNullable<ChatRecord['guestParticipant']>> = {
+      selectedModelType: nextModel
+    }
+    if (guestComposerProvider === 'codex') {
+      const modelOption = codexModels.find((model) => model.id === nextModel)
+      if (modelOption?.defaultReasoningEffort) {
+        patch.codexReasoningEffort = modelOption.defaultReasoningEffort
+      }
+      if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+        patch.codexServiceTier = ''
+      }
+    }
+    if (guestComposerProvider === 'claude') {
+      const modelOption = (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS).find(
+        (model) => model.id === nextModel
+      )
+      if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+        patch.claudeFastMode = false
+      }
+    }
+    void setGuestParticipantForCurrentChat(patch)
+  }
+  const handleGuestReasoningChange = (value: string): void => {
+    if (guestComposerProvider === 'codex') {
+      void setGuestParticipantForCurrentChat({ codexReasoningEffort: value })
+    } else if (guestComposerProvider === 'claude') {
+      void setGuestParticipantForCurrentChat({ claudeReasoningEffort: value })
+    } else if (guestComposerProvider === 'kimi') {
+      void setGuestParticipantForCurrentChat({ kimiThinkingEnabled: value !== 'off' })
+    }
+  }
+  const handleGuestToggleFastMode =
+    guestComposerProvider === 'codex'
+      ? () => {
+          void setGuestParticipantForCurrentChat({
+            codexServiceTier: guestCodexServiceTier === 'fast' ? '' : 'fast'
+          })
+        }
+      : guestComposerProvider === 'claude'
+        ? () => {
+            void setGuestParticipantForCurrentChat({ claudeFastMode: !guestClaudeFastMode })
+          }
+        : guestComposerProvider === 'cursor'
+          ? () => {
+              handleGuestModelChange(
+                guestComposerSelectedModel === 'composer-2.5-fast'
+                  ? 'composer-2.5'
+                  : 'composer-2.5-fast'
+              )
+            }
+          : undefined
+  const handleRemoveGuestParticipant = (): void => {
+    if (!currentChat) return
+    void window.api.removeGuestParticipant(currentChat.appChatId).then((result) => {
+      applyHydratedChat(result.parent)
+      if (result.guest) {
+        applyHydratedChat(result.guest)
+        if (sideChatId === result.guest.appChatId) {
+          setSideChatId(null)
+        }
+      }
+      void refreshChatList()
+    })
+  }
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
     : getDefaultModelForProvider(currentProvider)
@@ -13285,9 +13872,11 @@ function App(): React.JSX.Element {
     }
     return Object.keys(style).length > 0 ? style : undefined
   }, [ensembleBlendStyle])
+  const visibleRunCompleteNotice =
+    currentGuestParticipant && isCurrentGuestParticipantRunning ? null : runCompleteNotice
   const runCompleteDurationText =
-    runCompleteNotice && !isWelcomeChat
-      ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
+    visibleRunCompleteNotice && !isWelcomeChat
+      ? formatWorkDuration(visibleRunCompleteNotice.startedAt, visibleRunCompleteNotice.timestamp)
       : null
   const currentPinnedMessages = useMemo<PinnedMessageSummary[]>(() => {
     return (currentChat?.messages || [])
@@ -14892,7 +15481,7 @@ function App(): React.JSX.Element {
                 pendingAgentQuestion={pendingAgentQuestion}
                 onAgentQuestionSubmit={handleAgentQuestionSubmit}
                 onAgentQuestionDismiss={handleAgentQuestionDismiss}
-                runCompleteNotice={runCompleteNotice}
+                runCompleteNotice={visibleRunCompleteNotice}
                 runCompleteDurationText={runCompleteDurationText}
                 currentChat={currentChat}
                 currentRun={currentRun}
@@ -15753,7 +16342,7 @@ function App(): React.JSX.Element {
                   // and a mention resolves, the overlay activates.
                   const composerHasMention = hasResolvedMention(
                     prompt,
-                    currentChat?.ensemble?.participants || []
+                    currentComposerMentionParticipants
                   )
                   // 1.0.4 — sync epoch for the overlay's auto-metric
                   // mirror. Any change in the inputs below can shift
@@ -15769,7 +16358,7 @@ function App(): React.JSX.Element {
                       {composerHasMention && (
                         <ComposerHighlightOverlay
                           value={prompt}
-                          participants={currentChat?.ensemble?.participants}
+                          participants={currentComposerMentionParticipants}
                           textareaRef={composerTextareaRef}
                           syncEpoch={composerOverlaySyncEpoch}
                         />
@@ -15947,6 +16536,9 @@ function App(): React.JSX.Element {
                         // produces the right `dmTargetParticipantId`.
                         // This also means free-typed `@Gemini` or
                         // `@Worker` works the same as a picker click.
+                        return `@${mention.name} `
+                      }
+                      if (mention.kind === 'guest-participant') {
                         return `@${mention.name} `
                       }
                       return formatComposerPathMention(mention.path || mention.name)
@@ -16515,6 +17107,14 @@ function App(): React.JSX.Element {
                       <div className="composer-inline-pickers-left">
                         {(() => {
                           const workspaceActionDisabled = !currentWorkspace || !currentChat
+                          const guestProviderOptions: ProviderId[] = [
+                            'gemini',
+                            'codex',
+                            'claude',
+                            'kimi',
+                            ...(grokProviderAvailable ? (['grok'] as ProviderId[]) : []),
+                            ...(cursorProviderAvailable ? (['cursor'] as ProviderId[]) : [])
+                          ]
                           const plusSections: ComposerPlusPickerSection[] = [
                             {
                               id: 'add',
@@ -16547,6 +17147,37 @@ function App(): React.JSX.Element {
                                 }
                               ]
                             },
+                            ...(!isCurrentEnsembleChat && currentChat
+                              ? [
+                                  {
+                                    id: 'guest',
+                                    title: 'Guest',
+                                    items: guestProviderOptions.map((provider) => ({
+                                      id: `guest-${provider}`,
+                                      label: getProviderLabel(provider),
+                                      description: currentGuestParticipant
+                                        ? provider === guestComposerProvider
+                                          ? 'Current guest participant'
+                                          : 'Switch guest participant'
+                                        : 'Add guest participant',
+                                      icon: <ProviderBadgeIcon provider={provider} />,
+                                      active: Boolean(
+                                        currentGuestParticipant &&
+                                          provider === guestComposerProvider
+                                      ),
+                                      disabled: isCurrentComposerLocked,
+                                      onSelect: () => {
+                                        if (
+                                          !currentGuestParticipant ||
+                                          provider !== guestComposerProvider
+                                        ) {
+                                          handleGuestProviderChange(provider)
+                                        }
+                                      }
+                                    }))
+                                  }
+                                ]
+                              : []),
                             {
                               id: 'workspace',
                               title: 'Workspace',
@@ -17134,6 +17765,94 @@ function App(): React.JSX.Element {
                             </>
                           )
                         })()}
+
+                        {!isCurrentEnsembleChat && currentChat && currentGuestParticipant && (
+                          <span
+                            data-composer-control="guest"
+                            data-guest-provider={guestComposerProvider}
+                            className={`composer-guest-control is-active provider-${guestComposerProvider}${isCurrentGuestParticipantRunning ? ' is-running' : ''}`}
+                            title={
+                              isCurrentGuestParticipantRunning
+                                ? `${getProviderLabel(guestComposerProvider)} guest is thinking`
+                                : `Guest participant: ${getProviderLabel(guestComposerProvider)}`
+                            }
+                          >
+                            {isCurrentGuestParticipantRunning && (
+                              <span
+                                className="composer-guest-running-indicator"
+                                aria-label={`${getProviderLabel(guestComposerProvider)} guest is thinking`}
+                                title={`${getProviderLabel(guestComposerProvider)} guest is thinking`}
+                              >
+                                Thinking
+                                <span className="thinking-dots" aria-hidden>
+                                  <span className="thinking-dot" />
+                                  <span className="thinking-dot" />
+                                  <span className="thinking-dot" />
+                                </span>
+                              </span>
+                            )}
+                            <CombinedModelPicker
+                              provider={guestComposerProvider}
+                              composerStyle={appearance.composerStyle}
+                              modelOptions={guestComposerModelOptions}
+                              selectedModelId={guestComposerSelectedModel}
+                              onSelectModel={handleGuestModelChange}
+                              reasoningOptions={guestComposerReasoningOptions}
+                              selectedReasoning={guestComposerSelectedReasoning}
+                              onSelectReasoning={handleGuestReasoningChange}
+                              codexReasoningEffort={guestCodexReasoning}
+                              claudeReasoningEffort={guestClaudeReasoning}
+                              kimiThinkingEnabled={guestKimiThinking}
+                              fastModeCapableModelIds={guestFastModeCapableModelIds}
+                              fastModeEnabled={guestFastModeEnabled}
+                              onToggleFastMode={handleGuestToggleFastMode}
+                              disabled={isCurrentComposerLocked}
+                            />
+                            {guestComposerSelectedModel === 'custom' &&
+                              guestComposerProvider !== 'kimi' && (
+                                <span className="composer-inline-custom-model composer-guest-custom-model">
+                                  <input
+                                    className="composer-inline-input"
+                                    type="text"
+                                    value={currentGuestParticipant.customModel || ''}
+                                    onChange={(event) =>
+                                      void setGuestParticipantForCurrentChat({
+                                        customModel: event.target.value
+                                      })
+                                    }
+                                    placeholder="Model ID"
+                                    disabled={isCurrentComposerLocked}
+                                  />
+                                  <button
+                                    className="composer-inline-clear"
+                                    type="button"
+                                    onClick={() =>
+                                      void setGuestParticipantForCurrentChat({
+                                        customModel: '',
+                                        selectedModelType:
+                                          getDefaultModelForProvider(guestComposerProvider)
+                                      })
+                                    }
+                                    disabled={isCurrentComposerLocked}
+                                    title="Cancel custom guest model"
+                                    aria-label="Cancel custom guest model"
+                                  >
+                                    <XSymbolIcon />
+                                  </button>
+                                </span>
+                              )}
+                            <button
+                              className="composer-inline-clear composer-guest-remove"
+                              type="button"
+                              onClick={handleRemoveGuestParticipant}
+                              disabled={isCurrentComposerLocked}
+                              title={`Remove ${getProviderLabel(guestComposerProvider)} guest participant`}
+                              aria-label="Remove guest participant"
+                            >
+                              <XSymbolIcon />
+                            </button>
+                          </span>
+                        )}
 
                         {/*
                         Codex speed-tier `<select>` removed — Fast mode

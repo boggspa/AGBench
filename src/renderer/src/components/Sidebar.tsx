@@ -171,6 +171,7 @@ const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedPartic
 const getSideChatChildKindLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
   if (chat.sideChatContext?.mode === 'singleProvider') return 'Side chat'
   return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
 }
@@ -186,6 +187,7 @@ const getSideChatChildParticipantLabel = (chat: ChatRecord): string => {
 const getSideChatChildModeLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'fanOut') return 'Parallel fan-out'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
   if (chat.sideChatContext?.mode === 'singleProvider') {
     const participantLabel = getSideChatChildParticipantLabel(chat)
     return participantLabel ? `Participant: ${participantLabel}` : 'Isolated'
@@ -207,7 +209,14 @@ const getSideChatChildLifecycleLabel = (chat: ChatRecord): string => {
 
 const getLinkedChildAgentIdentity = (chat: ChatRecord) => {
   if (isSubThreadChat(chat)) return assignAgentIdentityFromSeed(chat.appChatId)
-  if (!isSideChatRecord(chat) || chat.sideChatContext?.mode !== 'singleProvider') return null
+  if (
+    !isSideChatRecord(chat) ||
+    !['singleProvider', 'guestParticipant'].includes(chat.sideChatContext?.mode || '')
+  )
+    return null
+  if (chat.sideChatContext?.mode === 'guestParticipant') {
+    return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:guest`)
+  }
   const participantId = chat.providerMetadata?.[SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY]
   if (typeof participantId !== 'string' || !participantId.trim()) return null
   return assignAgentIdentityFromSeed(
@@ -223,6 +232,9 @@ const getLinkedChildRouteLabel = (chat: ChatRecord, parentChat: ChatRecord | nul
   if (!isSideChatRecord(chat)) return ''
   if (chat.sideChatContext?.mode === 'fanOut') return `${parentLabel} parallel fan-out`
   if (chat.sideChatContext?.mode === 'ensembleClone') return `${parentLabel} ensemble side branch`
+  if (chat.sideChatContext?.mode === 'guestParticipant') {
+    return `${parentLabel} with ${childLabel} guest`
+  }
   const participantLabel = getSideChatChildParticipantLabel(chat)
   if (!participantLabel && parentProvider === chat.provider) return `${parentLabel} isolated side chat`
   return participantLabel

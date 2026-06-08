@@ -161,7 +161,8 @@ export class ComposerService {
       isGlobalRun: scope === 'global',
       approvalMode,
       providerLabel: getProviderLabel(provider),
-      nativeSubAgentRequests: settings.nativeSubAgentRequests
+      nativeSubAgentRequests: settings.nativeSubAgentRequests,
+      guestParticipant: chat.guestParticipant
     })
 
     const providerMetadataPatchData = {

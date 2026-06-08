@@ -33,6 +33,18 @@ export interface CreateSideChatInput {
   sideChatMode?: SideChatMode
 }
 
+export interface SetGuestParticipantInput {
+  parentChatId: string
+  provider: ProviderId
+  selectedModelType?: string
+  customModel?: string
+  codexReasoningEffort?: string | null
+  codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
+  kimiThinkingEnabled?: boolean
+}
+
 export interface ChatServiceStore {
   getChats: (workspaceId?: string) => ChatRecord[]
   getChatList: (workspaceId?: string) => ChatListItem[]
@@ -43,6 +55,8 @@ export interface ChatServiceStore {
   createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }, configuredProviders?: Set<ProviderId>) => ChatRecord
   createSubThread: (args: CreateSubThreadInput) => ChatRecord
   createSideChat: (args: CreateSideChatInput) => ChatRecord
+  setGuestParticipant: (args: SetGuestParticipantInput) => { parent: ChatRecord; guest: ChatRecord }
+  removeGuestParticipant: (parentChatId: string) => { parent: ChatRecord; guest?: ChatRecord }
   getChildChats: (parentChatId: string) => ChatRecord[]
   getSideChats: (parentChatId: string) => ChatRecord[]
   saveChat: (chat: ChatRecord) => void
@@ -161,7 +175,8 @@ export class ChatService {
     const sideChatMode =
       args?.sideChatMode === 'ensembleClone' ||
       args?.sideChatMode === 'singleProvider' ||
-      args?.sideChatMode === 'fanOut'
+      args?.sideChatMode === 'fanOut' ||
+      args?.sideChatMode === 'guestParticipant'
         ? args.sideChatMode
         : undefined
     const sideChat = this.deps.appStore.createSideChat({
@@ -196,6 +211,71 @@ export class ChatService {
     }
 
     return sideChat
+  }
+
+  setGuestParticipant(args: SetGuestParticipantInput | undefined): {
+    parent: ChatRecord
+    guest: ChatRecord
+  } {
+    const parentChatId = requireSafeChatId(args?.parentChatId, 'Parent chat id')
+    const provider = assertProviderId(args?.provider)
+    const selectedModelType = optionalString(args?.selectedModelType) || 'default'
+    const customModel = optionalString(args?.customModel) || ''
+    const result = this.deps.appStore.setGuestParticipant({
+      parentChatId,
+      provider,
+      selectedModelType,
+      customModel,
+      codexReasoningEffort: optionalString(args?.codexReasoningEffort),
+      codexServiceTier: optionalString(args?.codexServiceTier),
+      claudeReasoningEffort: optionalString(args?.claudeReasoningEffort),
+      claudeFastMode:
+        typeof args?.claudeFastMode === 'boolean' ? args.claudeFastMode : undefined,
+      kimiThinkingEnabled:
+        typeof args?.kimiThinkingEnabled === 'boolean' ? args.kimiThinkingEnabled : undefined
+    })
+
+    try {
+      this.deps.appendDurableRunEventForRoute(
+        result.parent.provider ?? 'gemini',
+        { appChatId: parentChatId },
+        'lifecycle',
+        'control',
+        `Attached ${provider} guest participant`,
+        {
+          guestChatId: result.guest.appChatId,
+          provider,
+          selectedModelType
+        }
+      )
+    } catch {
+      // Parent run may not be active — durable trace is best-effort.
+    }
+
+    return result
+  }
+
+  removeGuestParticipant(parentChatIdInput: string | undefined): {
+    parent: ChatRecord
+    guest?: ChatRecord
+  } {
+    const parentChatId = requireSafeChatId(parentChatIdInput, 'Parent chat id')
+    const result = this.deps.appStore.removeGuestParticipant(parentChatId)
+    try {
+      this.deps.appendDurableRunEventForRoute(
+        result.parent.provider ?? 'gemini',
+        { appChatId: parentChatId },
+        'lifecycle',
+        'control',
+        'Removed guest participant',
+        {
+          guestChatId: result.guest?.appChatId
+        }
+      )
+    } catch {
+      // Parent run may not be active — durable trace is best-effort.
+    }
+    return result
   }
 
   getSubThreads(parentChatId: string): ChatRecord[] {
@@ -240,6 +320,10 @@ function requireNonEmptyString(value: unknown, label: string): string {
     throw new Error(`${label} is required.`)
   }
   return value
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
 }
 
 function requireSafeChatId(value: unknown, label: string): string {

@@ -158,7 +158,7 @@ export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok' | 'curs
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type ChatParentRelation = 'subThread' | 'sideChat'
-export type SideChatMode = 'ensembleClone' | 'singleProvider' | 'fanOut'
+export type SideChatMode = 'ensembleClone' | 'singleProvider' | 'fanOut' | 'guestParticipant'
 export type SideChatLifecycleState = 'active' | 'closed' | 'terminated'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
@@ -1854,6 +1854,18 @@ export interface ChatMessage {
     returnResultToParent?: boolean
     /** Concurrent Ensemble lane id for lane-aware transcript rows. */
     ensembleLaneId?: string
+    /** Guest participant child chat id for `kind: 'guestParticipantReply'`. */
+    guestChatId?: string
+    /** Guest participant provider for inline badge/icon rendering. */
+    guestProvider?: ProviderId
+    /** Guest participant model at dispatch time. */
+    guestModel?: string
+    /** Guest participant role label at dispatch time. */
+    guestRole?: string
+    /** Guest participant run id whose final assistant reply was mirrored. */
+    guestRunId?: string
+    /** Parent chat id that received the mirrored guest reply. */
+    parentChatId?: string
     /** User pin timestamp (ms since epoch). Missing means not pinned. */
     pinnedAt?: number
     [key: string]: unknown
@@ -1980,6 +1992,21 @@ export interface RunAnalystSnapshot {
   error?: string
 }
 
+export interface GuestParticipantConfig {
+  childChatId: string
+  provider: ProviderId
+  selectedModelType: string
+  customModel: string
+  codexReasoningEffort?: string | null
+  codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
+  kimiThinkingEnabled?: boolean
+  createdAt: number
+  updatedAt: number
+  persistent: true
+}
+
 export interface ChatRecord {
   appChatId: string
   scope?: ChatScope
@@ -2001,6 +2028,7 @@ export interface ChatRecord {
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string
   ensemble?: EnsembleConfig
+  guestParticipant?: GuestParticipantConfig
   /**
    * 1.0.5-C3 — Permission envelope for this chat, when it was
    * spawned as a sub-thread (`parentChatId` is set). Stays
@@ -2555,6 +2583,7 @@ export interface RunQueueRequestSnapshot {
   codexNativeReview?: boolean
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
   claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   scheduledTaskId?: string
@@ -2562,6 +2591,8 @@ export interface RunQueueRequestSnapshot {
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
+  guestParentChatId?: string
+  guestRole?: string
 }
 
 export type RunRecoveryProcessAction = 'left_running' | 'not_found' | 'inaccessible' | 'unknown'

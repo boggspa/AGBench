@@ -15,7 +15,12 @@ import { getProviderName } from './Sidebar'
 import type { ComposerMentionTriggerKind } from '../lib/ComposerMentionTrigger'
 import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 
-export type ComposerMentionKind = 'agent' | 'participant' | 'workspace-file' | 'external-grant'
+export type ComposerMentionKind =
+  | 'agent'
+  | 'participant'
+  | 'guest-participant'
+  | 'workspace-file'
+  | 'external-grant'
 
 export interface ComposerMentionPick {
   kind: ComposerMentionKind
@@ -253,8 +258,35 @@ export function AgentMentionMenu({
         })
     }
 
-    // `@` trigger in normal chats: list active sub-agents only.
-    return activeSubagents.map<ComposerMentionCandidate>((thread) => {
+    // `@` trigger in normal chats: guest routing targets first, then
+    // active sub-agents.
+    const guestRoutingCandidates: ComposerMentionCandidate[] = []
+    if (chat?.chatKind !== 'ensemble' && chat?.guestParticipant && provider) {
+      const parentProvider = provider
+      const guestProvider = chat.guestParticipant.provider
+      const sameProvider = parentProvider === guestProvider
+      const parentName = sameProvider ? 'Parent' : getProviderName(parentProvider)
+      const guestName = sameProvider ? 'Guest' : getProviderName(guestProvider)
+      guestRoutingCandidates.push(
+        {
+          id: 'guest-route:parent',
+          kind: 'guest-participant',
+          name: parentName,
+          provider: parentProvider,
+          detail: `${getProviderName(parentProvider)} parent agent`,
+          color: `var(--provider-${parentProvider}-color, var(--accent))`
+        },
+        {
+          id: 'guest-route:guest',
+          kind: 'guest-participant',
+          name: guestName,
+          provider: guestProvider,
+          detail: `${getProviderName(guestProvider)} guest participant`,
+          color: `var(--provider-${guestProvider}-color, var(--accent))`
+        }
+      )
+    }
+    const subagentCandidates = activeSubagents.map<ComposerMentionCandidate>((thread) => {
       const identity = thread.identity
       const name = identity?.name || thread.name
       return {
@@ -267,12 +299,15 @@ export function AgentMentionMenu({
         identity
       }
     })
+    return [...guestRoutingCandidates, ...subagentCandidates]
   }, [
     triggerKind,
     chat?.chatKind,
+    chat?.guestParticipant,
     ensembleParticipants,
     activeSubagents,
     externalPathGrants,
+    provider,
     workspaceFiles
   ])
 

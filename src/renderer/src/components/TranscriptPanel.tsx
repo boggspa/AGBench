@@ -39,6 +39,7 @@ import type { RunCompleteNotice } from '../lib/runCompleteNotice'
 import { EMPTY_CHAT_MESSAGES } from '../lib/stableEmpties'
 import { ActivityStack } from './ActivityStack'
 import { AgentQuestionCard, type AgentQuestionState } from './AgentQuestionCard'
+import { isGuestParticipantReplyMessage } from './GuestParticipantReplyCardModel'
 import { SubThreadDelegationCard } from './SubThreadDelegationCard'
 import { isSubThreadDelegationMessage } from './SubThreadDelegationCardModel'
 import { SubThreadReturnCard } from './SubThreadReturnCard'
@@ -929,6 +930,7 @@ export const TranscriptPanel = memo(
           {renderedRows.map(({ msg, rowKey }) => {
             const isDelegationCard = isSubThreadDelegationMessage(msg)
             const isReturnCard = isSubThreadReturnMessage(msg)
+            const isGuestReply = isGuestParticipantReplyMessage(msg)
             const boundaryRun = runBoundaryByMessageId.get(msg.id)
             const isSideChatSeedMessage = Boolean(
               sideChatSeedMessageId && msg.id === sideChatSeedMessageId
@@ -960,7 +962,9 @@ export const TranscriptPanel = memo(
                     key={msg.id}
                     className={`message-group ${
                       isReturnCard ? 'subthread-return-message' : ''
-                    } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
+                    } ${isDelegationCard ? 'subthread-delegation-message' : ''}${
+                      isGuestReply ? ' guest-participant-reply-message' : ''
+                    }`}
                   >
                     {isDelegationCard ? (
                       <SubThreadDelegationCard
@@ -1010,7 +1014,9 @@ export const TranscriptPanel = memo(
                     key={msg.id}
                     className={`message-group ${
                       isReturnCard ? 'subthread-return-message' : ''
-                    } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
+                    } ${isDelegationCard ? 'subthread-delegation-message' : ''}${
+                      isGuestReply ? ' guest-participant-reply-message' : ''
+                    }`}
                   >
                     {(() => {
                       // Provider-aware label rendering. Solo chats: the
@@ -1033,7 +1039,7 @@ export const TranscriptPanel = memo(
                       if (msg.role === 'error') {
                         return <div className="message-meta">Error</div>
                       }
-                      if (msg.role === 'assistant') {
+                      if (msg.role === 'assistant' || isGuestReply) {
                         const { label, provider, modelBadge } = formatAssistantMessageLabel(
                           msg,
                           currentProviderLabel,
@@ -1190,8 +1196,12 @@ export const TranscriptPanel = memo(
                         )
                       })()
                     ) : (
-                      <div className={`message-bubble ${msg.role}${ensembleRoundStatusClass(msg)}`}>
-                        {msg.role === 'assistant' ? (
+                      <div
+                        className={`message-bubble ${
+                          isGuestReply ? 'assistant guest-participant-reply' : msg.role
+                        }${ensembleRoundStatusClass(msg)}`}
+                      >
+                        {msg.role === 'assistant' || isGuestReply ? (
                           <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
                         ) : (
                           msg.content
@@ -1200,7 +1210,8 @@ export const TranscriptPanel = memo(
                             and "other" role bubbles get the chip; for system
                             bubbles (status notes etc.) the chip is harmless
                             but rarely useful. */}
-                        {(msg.role === 'assistant' || msg.role === 'system') && msg.content && (
+                        {(msg.role === 'assistant' || msg.role === 'system' || isGuestReply) &&
+                          msg.content && (
                           <MessageActionsChip
                             onCopy={() => onCopyMessage(msg.id, msg.content)}
                             onTogglePin={
@@ -1214,7 +1225,7 @@ export const TranscriptPanel = memo(
                             }
                             pinned={isPinned}
                             copied={copiedId === msg.id}
-                            label={`${msg.role} message`}
+                            label={`${isGuestReply ? 'guest participant' : msg.role} message`}
                           />
                         )}
                       </div>

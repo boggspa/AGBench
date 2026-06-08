@@ -21,6 +21,7 @@
  */
 
 import type { ChatMessage } from '../../../main/store/types'
+import { isGuestParticipantReplyMessage } from '../components/GuestParticipantReplyCardModel'
 import { isSubThreadDelegationMessage } from '../components/SubThreadDelegationCardModel'
 import { isSubThreadReturnMessage } from '../components/SubThreadReturnCardModel'
 
@@ -38,6 +39,7 @@ export type VirtualRowType =
   | 'participantHealth'
   | 'delegation'
   | 'return'
+  | 'guestReply'
 
 export interface VirtualRow {
   /** Stable, persisted message id. NOT guaranteed unique — historical /
@@ -92,7 +94,8 @@ export const ESTIMATED_ROW_HEIGHT_PX: Record<VirtualRowType, number> = {
   tool: 180,
   participantHealth: 132,
   delegation: 104,
-  return: 148
+  return: 148,
+  guestReply: 220
 }
 
 /** Extra height added when a RunCard boundary renders above a block. */
@@ -142,6 +145,7 @@ export function widthBucket(clientWidth: number, step: number = WIDTH_BUCKET_PX)
 export function classifyRowType(message: ChatMessage): VirtualRowType {
   if (isSubThreadDelegationMessage(message)) return 'delegation'
   if (isSubThreadReturnMessage(message)) return 'return'
+  if (isGuestParticipantReplyMessage(message)) return 'guestReply'
   if (message.role === 'tool') return 'tool'
   if (message.metadata?.kind === 'ensembleParticipantHealth') return 'participantHealth'
   if (message.role === 'user') return 'user'

@@ -7,6 +7,22 @@ const formatAssistantMessageLabel = (
   fallbackLabel: string,
   fallbackProvider: ProviderId | null
 ): { label: string; provider: ProviderId | null; modelBadge: string | null } => {
+  if (message.metadata?.kind === 'guestParticipantReply') {
+    const guestProvider = (message.metadata?.guestProvider as ProviderId | undefined) ?? null
+    const guestRole =
+      typeof message.metadata?.guestRole === 'string' && message.metadata.guestRole
+        ? message.metadata.guestRole
+        : 'Guest'
+    const guestModel =
+      typeof message.metadata?.guestModel === 'string' ? message.metadata.guestModel : ''
+    return {
+      label: guestProvider
+        ? `${getProviderLabel(guestProvider)} / ${guestRole}`
+        : `Guest / ${guestRole}`,
+      provider: guestProvider,
+      modelBadge: guestProvider && guestModel ? shortModelName(guestProvider, '', guestModel) : null
+    }
+  }
   const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
   if (!provider) {
     // Solo chats: use the chat-level provider as the colouring hook.

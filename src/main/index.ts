@@ -13923,7 +13923,7 @@ if (isGeminiMcpBridgeProcess) {
           title?: string
           originMessageId?: string
           originRunId?: string
-          sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut'
+          sideChatMode?: 'ensembleClone' | 'singleProvider' | 'fanOut' | 'guestParticipant'
         }
       ) => {
         const chat = chatService.createSideChat(args)
@@ -13934,6 +13934,38 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-side-chats', (_, parentChatId: string) =>
       chatService.getSideChats(parentChatId)
     )
+    ipcMain.handle(
+      'set-guest-participant',
+      (
+        _,
+        args: {
+          parentChatId: string
+          provider: ProviderId
+          selectedModelType?: string
+          customModel?: string
+          codexReasoningEffort?: string | null
+          codexServiceTier?: string | null
+          claudeReasoningEffort?: string | null
+          claudeFastMode?: boolean | null
+          kimiThinkingEnabled?: boolean
+        }
+      ) => {
+        const result = chatService.setGuestParticipant(args)
+        broadcastChatPopoutUpdate(result.parent)
+        broadcastChatPopoutUpdate(result.guest)
+        broadcastThreadUpdate(result.parent.appChatId)
+        broadcastThreadUpdate(result.guest.appChatId)
+        return result
+      }
+    )
+    ipcMain.handle('remove-guest-participant', (_, parentChatId: string) => {
+      const result = chatService.removeGuestParticipant(parentChatId)
+      broadcastChatPopoutUpdate(result.parent)
+      if (result.guest) broadcastChatPopoutUpdate(result.guest)
+      broadcastThreadUpdate(result.parent.appChatId)
+      if (result.guest) broadcastThreadUpdate(result.guest.appChatId)
+      return result
+    })
     ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
       chatService.saveChat(chat)
       broadcastChatPopoutUpdate(chat)

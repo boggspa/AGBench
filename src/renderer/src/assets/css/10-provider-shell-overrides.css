@@ -1210,7 +1210,7 @@
 /* Hide the same extra controls Gemini hides. */
 [data-composer-style="grok"] .composer-top-toggles,
 [data-composer-style="grok"] .composer-chips,
-[data-composer-style="grok"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+[data-composer-style="grok"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]) {
   display: none !important;
 }
 
@@ -1803,7 +1803,7 @@
 /* Hide the same extra controls Gemini hides. */
 [data-composer-style="cursor"] .composer-top-toggles,
 [data-composer-style="cursor"] .composer-chips,
-[data-composer-style="cursor"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+[data-composer-style="cursor"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]):not([data-composer-control="guest"]) {
   display: none !important;
 }
 
@@ -2306,6 +2306,135 @@
 .agent-mention-menu.shell-cursor .agent-mention-item.is-active,
 .composer-slash-menu.shell-cursor .composer-slash-item.is-active {
   background: var(--cursor-shell-hover) !important;
+}
+
+/* Guest participant composer control ---------------------------------
+ * Active guests live beside the parent model/reasoning picker, but the
+ * nested guest model trigger must not inherit the main model trigger's
+ * auto-margin / absolute-positioning rules. */
+.composer-guest-control [data-composer-control="model"] {
+  order: 0 !important;
+  margin-left: 0 !important;
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  color: var(--guest-accent) !important;
+  z-index: auto !important;
+}
+
+.composer-guest-control
+  [data-composer-control="model"]
+  :is(.composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix) {
+  color: inherit !important;
+}
+
+.composer-guest-control
+  [data-composer-control="model"]
+  .composer-combined-picker-trigger-suffix {
+  opacity: 0.74;
+}
+
+:is(
+    [data-composer-style="default"],
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="grok"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-guest-control {
+  order: 6;
+  margin-left: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  max-width: min(100%, 230px);
+}
+
+:is(
+    [data-composer-style="default"],
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="grok"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-guest-control.is-running {
+  max-width: min(100%, 304px);
+}
+
+:is(
+    [data-composer-style="default"],
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="grok"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-guest-control
+  [data-composer-control="model"] {
+  order: 0 !important;
+  margin-left: 0 !important;
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  max-width: 176px;
+  z-index: auto !important;
+}
+
+:is(
+    [data-composer-style="default"],
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="grok"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-guest-control
+  .composer-guest-remove {
+  flex: 0 0 auto;
+}
+
+[data-composer-style="cursor"] .composer-surface:has([data-composer-control="guest"]) .composer-textarea {
+  padding-right: min(392px, 52vw);
+}
+
+[data-composer-style="cursor"] .composer-guest-control {
+  position: absolute;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 17px);
+  right: 222px;
+  z-index: 3;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  max-width: 164px;
+}
+
+[data-composer-style="cursor"] .composer-guest-control.is-running {
+  max-width: 234px;
+}
+
+[data-composer-style="cursor"] .composer-guest-control [data-composer-control="model"] {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  max-width: 136px;
+  margin: 0 !important;
+}
+
+[data-composer-style="cursor"] .composer-guest-control .composer-guest-remove {
+  flex: 0 0 auto;
 }
 
 /* Pane opacity sliders are multiplicative by default so the system theme can

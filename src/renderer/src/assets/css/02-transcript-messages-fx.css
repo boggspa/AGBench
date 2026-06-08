@@ -3289,6 +3289,26 @@
   width: min(100%, 900px);
 }
 
+.guest-participant-reply-message .message-meta-label::before {
+  content: "Guest";
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+.message-bubble.guest-participant-reply {
+  border-left: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+}
+
 /* 1.0.5-EW29 — Participant-health card. Replaces the pre-EW29
  * "System\n[participant-health]\n  Codex / Worker: ok\n  ..." text
  * block with a compact card showing a header + chip strip. Chip
