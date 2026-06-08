@@ -5,6 +5,8 @@ export const TASKWRAITH_MCP_TOOLS = [
   'read_file',
   'list_directory',
   'workspace_search',
+  'web_search',
+  'web_fetch',
   'apply_patch',
   'git_status',
   'git_diff',

@@ -22,7 +22,7 @@ export function ReadOnlyToolClassBreakdown(): React.JSX.Element {
     <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'right' }}>
       {TOOL_CLASS_ORDER.map((cls: ToolClass) => {
         const tools = READ_ONLY_BREAKDOWN[cls]
-        const blocked = cls === 'workspace_write'
+        const blocked = cls === 'workspace_write' || tools.length === 0
         return (
           <span
             key={cls}

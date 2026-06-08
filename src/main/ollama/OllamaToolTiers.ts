@@ -6,7 +6,9 @@ export type OllamaToolName = TaskWraithMcpToolName
 export const OLLAMA_READ_TOOL_NAMES = [
   'read_file',
   'list_directory',
-  'workspace_search'
+  'workspace_search',
+  'web_search',
+  'web_fetch'
 ] as const satisfies readonly OllamaToolName[]
 
 export const OLLAMA_FILE_EDIT_TOOL_NAMES = [

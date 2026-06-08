@@ -493,6 +493,12 @@ export function ollamaLocalToolSystemPrompt(
     if (toolName === 'workspace_search') {
       return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}'
     }
+    if (toolName === 'web_search') {
+      return '- web_search: {"query":"current information to search for"}'
+    }
+    if (toolName === 'web_fetch') {
+      return '- web_fetch: {"url":"https://example.com/page"}'
+    }
     if (toolName === 'write_file') {
       return '- write_file: {"path":"relative/path.txt","content":"...","intent":"short reason before changing files"}'
     }
@@ -513,6 +519,7 @@ export function ollamaLocalToolSystemPrompt(
   }
   lines.push(
     'Paths must stay inside the active workspace.',
+    'web_search and web_fetch are read-only network tools routed through TaskWraith policy.',
     'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
     'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
     'Do not invent file contents or workspace facts when a tool result is needed.'
@@ -569,6 +576,39 @@ export function parseOllamaToolRequest(text: string): OllamaToolRequest | null {
     }
   }
   return null
+}
+
+export function ollamaToolResultFollowUpPrompt(input: {
+  toolName: OllamaToolName
+  output: string
+  ok: boolean
+}): string {
+  return [
+    `TaskWraith executed ${input.toolName}.`,
+    input.ok ? 'Tool status: success.' : 'Tool status: error.',
+    'Tool result:',
+    input.output,
+    '',
+    input.ok
+      ? [
+          'Now continue the original task in normal assistant prose.',
+          'If the tool result is enough to answer the user, summarize the relevant facts and stop.',
+          'Do not call the same tool again unless the result is incomplete and another call is strictly necessary.',
+          'Only output JSON if you are requesting a different additional TaskWraith tool.'
+        ].join(' ')
+      : [
+          'The tool failed.',
+          'Explain the limitation or request a different allowed TaskWraith tool only if that can recover.'
+        ].join(' ')
+  ].join('\n')
+}
+
+export function ollamaEmptyToolResponseRetryPrompt(): string {
+  return [
+    'Your previous response was empty after TaskWraith returned tool results.',
+    'Do not request another tool unless it is strictly required.',
+    'Answer the original user now in normal assistant prose, summarizing the tool results you already received.'
+  ].join(' ')
 }
 
 async function runOllamaChatTurn(input: {
@@ -701,6 +741,10 @@ export async function runOllamaProvider(
       if (turn.lastDone) lastDone = turn.lastDone
       const toolRequest = toolProtocolEnabled ? parseOllamaToolRequest(turn.content) : null
       if (!toolRequest) {
+        if (!turn.content.trim() && toolCallCount > 0 && turnIndex < OLLAMA_TOOL_LOOP_LIMIT) {
+          messages.push({ role: 'user', content: ollamaEmptyToolResponseRetryPrompt() })
+          continue
+        }
         if (turn.content) {
           deps.sendAgentCompatLine(
             event.sender,
@@ -770,17 +814,17 @@ export async function runOllamaProvider(
         },
         route
       )
-      messages.push({ role: 'assistant', content: turn.content })
+      messages.push({
+        role: 'assistant',
+        content: `Requested TaskWraith tool ${toolRequest.toolName}.`
+      })
       messages.push({
         role: 'user',
-        content: [
-          `TaskWraith tool result for ${toolRequest.toolName}:`,
-          toolResult.output,
-          '',
-          toolResult.ok
-            ? 'Use this result to continue. If another TaskWraith tool is needed, request it with the same JSON tool protocol; otherwise answer normally.'
-            : 'The tool failed. Explain the limitation or try a different allowed TaskWraith tool.'
-        ].join('\n')
+        content: ollamaToolResultFollowUpPrompt({
+          toolName: toolRequest.toolName,
+          output: toolResult.output,
+          ok: toolResult.ok
+        })
       })
     }
 

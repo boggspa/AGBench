@@ -128,6 +128,42 @@ export function createTaskWraithMcpToolDefinitions(): TaskWraithMcpToolDefinitio
       }
     },
     {
+      name: 'web_search',
+      description:
+        'Search the web for current online information and return top result titles and URLs. Read-only network access.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query.' }
+        },
+        required: ['query']
+      }
+    },
+    {
+      name: 'web_fetch',
+      description:
+        'Fetch the text contents of an absolute http(s) URL. Read-only network access.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The absolute http(s) URL to fetch.' }
+        },
+        required: ['url']
+      }
+    },
+    {
       name: 'apply_patch',
       description: 'Validate or apply a git-style unified diff patch in the active workspace.',
       annotations: {

@@ -740,6 +740,7 @@ type McpToolGroup =
   | 'git'
   | 'runtime'
   | 'subthreads'
+  | 'web'
   | 'browser'
   | 'appwatch'
   | 'creative'
@@ -756,6 +757,7 @@ const MCP_TOOL_GROUP_LABELS: Record<McpToolGroup, string> = {
   git: 'Git',
   runtime: 'Runtime and tasks',
   subthreads: 'Sub-threads',
+  web: 'Web',
   browser: 'Browser and screenshots',
   appwatch: 'Appwatch',
   creative: 'Creative apps',
@@ -771,6 +773,7 @@ const MCP_TOOL_GROUP_ORDER: McpToolGroup[] = [
   'git',
   'runtime',
   'subthreads',
+  'web',
   'browser',
   'appwatch',
   'creative',
@@ -841,6 +844,22 @@ const MCP_TOOL_OVERRIDES: Partial<
     policyKey: 'mcpTools',
     description: 'Searches project text and file names for provider grounding.'
   },
+  web_search: {
+    label: 'Web search',
+    transcript: 'Searched web',
+    group: 'web',
+    iconRef: 'tool:search',
+    policyKey: 'mcpTools',
+    description: 'Searches the web for current information through TaskWraith policy.'
+  },
+  web_fetch: {
+    label: 'Web fetch',
+    transcript: 'Fetched web page',
+    group: 'web',
+    iconRef: 'tool:browser',
+    policyKey: 'mcpTools',
+    description: 'Fetches a live web page as read-only text through TaskWraith policy.'
+  },
   apply_patch: {
     label: 'Apply patch',
     transcript: 'Applied patch',
@@ -907,6 +926,7 @@ function inferMcpToolGroup(tool: TaskWraithMcpToolName): McpToolGroup {
     return 'files'
   }
   if (tool.startsWith('workspace_') || tool === 'list_directory') return 'workspace'
+  if (tool.startsWith('web_')) return 'web'
   if (tool.includes('subthread') || tool === 'delegate_to_subthread') return 'subthreads'
   if (tool.startsWith('browser_') || tool.startsWith('attached_window_')) return 'browser'
   if (tool.startsWith('appwatch_')) return 'appwatch'

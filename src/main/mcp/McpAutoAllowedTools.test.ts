@@ -31,6 +31,8 @@ describe('MCP_AUTO_ALLOWED_TOOLS', () => {
       'git_stage',
       'git_commit',
       'run_task',
+      'web_search',
+      'web_fetch',
       ...MCP_APP_STATE_MUTATION_TOOLS
     ]) {
       expect(autoAllowedTools.has(tool)).toBe(false)
@@ -54,6 +56,8 @@ describe('READ_ONLY_MCP_ADVERTISE_TOOLS', () => {
       'git_stage',
       'git_commit',
       'run_task',
+      'web_search',
+      'web_fetch',
       ...MCP_APP_STATE_MUTATION_TOOLS
     ]) {
       expect(READ_ONLY_MCP_ADVERTISE_TOOLS).not.toContain(tool)
@@ -90,6 +94,8 @@ describe('isReadOnlyAdvertisedTool (bridge scope guard)', () => {
       'cancel_wakeup',
       'blackboard_post',
       'delegate_to_subthread',
+      'web_search',
+      'web_fetch',
       'totally_unknown_future_tool'
     ]) {
       expect(isReadOnlyAdvertisedTool(tool)).toBe(false)

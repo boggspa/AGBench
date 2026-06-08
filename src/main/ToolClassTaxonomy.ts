@@ -4,6 +4,7 @@
  *
  *   - workspace_read   non-mutating file / code reads (read_file, grep, …)
  *   - workspace_write  mutating tools (write_file, apply_patch, run_shell, …)
+ *   - web_read         read-only network lookups (web_search, web_fetch)
  *   - orchestration    non-mutating control / status / focus (status reads,
  *                      ensemble yield, scheduling, open-in-IDE focus changes)
  *   - ui_elicitation   asking the user (ask_user_question)
@@ -21,11 +22,17 @@
 
 import { MCP_APP_STATE_MUTATION_TOOLS } from './mcp/McpAutoAllowedTools'
 
-export type ToolClass = 'workspace_read' | 'workspace_write' | 'orchestration' | 'ui_elicitation'
+export type ToolClass =
+  | 'workspace_read'
+  | 'web_read'
+  | 'workspace_write'
+  | 'orchestration'
+  | 'ui_elicitation'
 
 /** Display order: the allowed-under-read-only classes first, writes last. */
 export const TOOL_CLASS_ORDER: readonly ToolClass[] = [
   'workspace_read',
+  'web_read',
   'orchestration',
   'ui_elicitation',
   'workspace_write'
@@ -33,6 +40,7 @@ export const TOOL_CLASS_ORDER: readonly ToolClass[] = [
 
 export const TOOL_CLASS_LABELS: Record<ToolClass, string> = {
   workspace_read: 'Workspace reads',
+  web_read: 'Web reads',
   workspace_write: 'Workspace writes',
   orchestration: 'Orchestration',
   ui_elicitation: 'User prompts'
@@ -52,6 +60,8 @@ const WORKSPACE_READ_TOOLS = new Set<string>([
 ])
 
 const UI_ELICITATION_TOOLS = new Set<string>(['ask_user_question'])
+
+const WEB_READ_TOOLS = new Set<string>(['web_search', 'web_fetch'])
 
 const ORCHESTRATION_TOOLS = new Set<string>([
   'approval_status',
@@ -106,6 +116,7 @@ const ORCHESTRATION_TOOLS = new Set<string>([
 export function classifyTool(name: string): ToolClass {
   if (UI_ELICITATION_TOOLS.has(name)) return 'ui_elicitation'
   if (WORKSPACE_READ_TOOLS.has(name)) return 'workspace_read'
+  if (WEB_READ_TOOLS.has(name)) return 'web_read'
   if (ORCHESTRATION_TOOLS.has(name)) return 'orchestration'
   return 'workspace_write'
 }
@@ -141,6 +152,7 @@ export function isReadOnlyBlockedTool(
 export function groupToolsByClass(names: readonly string[]): Record<ToolClass, string[]> {
   const out: Record<ToolClass, string[]> = {
     workspace_read: [],
+    web_read: [],
     orchestration: [],
     ui_elicitation: [],
     workspace_write: []

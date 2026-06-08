@@ -14,6 +14,8 @@ describe('classifyTool', () => {
   it('classifies each non-write class', () => {
     expect(classifyTool('read_file')).toBe('workspace_read')
     expect(classifyTool('grep')).toBe('workspace_read')
+    expect(classifyTool('web_search')).toBe('web_read')
+    expect(classifyTool('web_fetch')).toBe('web_read')
     expect(classifyTool('ask_user_question')).toBe('ui_elicitation')
     expect(classifyTool('ensemble_yield')).toBe('orchestration')
     expect(classifyTool('provider_usage_status')).toBe('orchestration')
@@ -45,11 +47,13 @@ describe('groupToolsByClass', () => {
   it('groups names into every class key', () => {
     const grouped = groupToolsByClass([
       'read_file',
+      'web_search',
       'ask_user_question',
       'ensemble_yield',
       'write_file'
     ])
     expect(grouped.workspace_read).toEqual(['read_file'])
+    expect(grouped.web_read).toEqual(['web_search'])
     expect(grouped.ui_elicitation).toEqual(['ask_user_question'])
     expect(grouped.orchestration).toEqual(['ensemble_yield'])
     expect(grouped.workspace_write).toEqual(['write_file'])
@@ -88,6 +92,8 @@ describe('workspace_write is exactly the read-only deny set', () => {
   it('never classifies a read / coordination tool as workspace_write', () => {
     for (const tool of [
       'read_file',
+      'web_search',
+      'web_fetch',
       'git_status',
       'git_diff',
       'test_result_summary',
@@ -115,6 +121,7 @@ describe('isReadOnlyBlockedTool', () => {
 
   it('never blocks reads / coordination, or anything when not read-only', () => {
     expect(isReadOnlyBlockedTool('read_file', ro)).toBe(false)
+    expect(isReadOnlyBlockedTool('web_search', ro)).toBe(false)
     expect(isReadOnlyBlockedTool('ensemble_yield', ro)).toBe(false)
     expect(isReadOnlyBlockedTool('ask_user_question', ro)).toBe(false)
     expect(isReadOnlyBlockedTool('write_file', { readOnly: false })).toBe(false)

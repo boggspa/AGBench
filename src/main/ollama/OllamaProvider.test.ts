@@ -3,7 +3,9 @@ import {
   humanizeOllamaModelId,
   normalizeOllamaBaseUrl,
   normalizeOllamaModels,
+  ollamaEmptyToolResponseRetryPrompt,
   ollamaLocalToolSystemPrompt,
+  ollamaToolResultFollowUpPrompt,
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput
 } from './OllamaProvider'
@@ -135,14 +137,14 @@ describe('parseOllamaMemoryPsOutput', () => {
 })
 
 describe('parseOllamaToolRequest', () => {
-  it('accepts TaskWraith local read-only tool requests', () => {
+  it('accepts TaskWraith read-only tool requests', () => {
     expect(
       parseOllamaToolRequest(
-        '{"taskwraith_tool":{"name":"workspace_search","arguments":{"query":"Ollama","path":"src"}}}'
+        '{"taskwraith_tool":{"name":"web_search","arguments":{"query":"Cambridge UK weather"}}}'
       )
     ).toEqual({
-      toolName: 'workspace_search',
-      arguments: { query: 'Ollama', path: 'src' }
+      toolName: 'web_search',
+      arguments: { query: 'Cambridge UK weather' }
     })
   })
 
@@ -158,6 +160,23 @@ describe('parseOllamaToolRequest', () => {
     expect(ollamaLocalToolSystemPrompt()).toContain(
       'Current Ollama tool-control tier: read-only workspace.'
     )
+    expect(ollamaLocalToolSystemPrompt()).toContain(
+      '- web_search: {"query":"current information to search for"}'
+    )
+    expect(ollamaLocalToolSystemPrompt()).toContain(
+      '- web_fetch: {"url":"https://example.com/page"}'
+    )
+  })
+
+  it('nudges local models to summarize after tool results instead of looping', () => {
+    expect(
+      ollamaToolResultFollowUpPrompt({
+        toolName: 'read_file',
+        output: 'README content',
+        ok: true
+      })
+    ).toContain('If the tool result is enough to answer the user, summarize')
+    expect(ollamaEmptyToolResponseRetryPrompt()).toContain('Answer the original user now')
   })
 })
 
@@ -167,7 +186,9 @@ describe('Ollama tool tiers', () => {
     expect(ollamaToolNamesForTier('read_only')).toEqual([
       'read_file',
       'list_directory',
-      'workspace_search'
+      'workspace_search',
+      'web_search',
+      'web_fetch'
     ])
     expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
   })

@@ -481,6 +481,7 @@ import {
 import {
   effectiveOllamaToolControlTier,
   ollamaToolAllowedInTier,
+  ollamaToolNamesForTier,
 } from './ollama/OllamaToolTiers'
 import {
   assertOllamaMutationIntent,
@@ -516,6 +517,7 @@ import {
   MCP_AUTO_ALLOWED_TOOLS,
   isReadOnlyAdvertisedTool
 } from './mcp/McpAutoAllowedTools'
+import { executeWebMcpTool, isWebMcpToolName } from './mcp/WebTools'
 import { inheritedSubThreadPermissions } from './SubThreadPermissions'
 import { isReadOnlyBlockedTool } from './ToolClassTaxonomy'
 import {
@@ -3574,6 +3576,26 @@ function previewForGeminiMcpTool(
           subThreadId: args.subThreadId || args.id,
           reason: args.reason
         }
+      }
+    }
+  }
+
+  if (toolName === 'web_search' || toolName === 'web_fetch') {
+    const queryOrUrl =
+      toolName === 'web_search'
+        ? String(args.query || args.q || '')
+        : String(args.url || args.uri || '')
+    return {
+      title:
+        toolName === 'web_search'
+          ? `Approve ${providerName} web search`
+          : `Approve ${providerName} web fetch`,
+      body: queryOrUrl,
+      service: 'mcpTools' as AgenticServiceId,
+      preview: {
+        kind: 'tool',
+        toolName,
+        params: args
       }
     }
   }
@@ -8911,6 +8933,8 @@ async function executeOllamaLocalTool(
     }
 
     if (
+      request.toolName === 'web_search' ||
+      request.toolName === 'web_fetch' ||
       request.toolName === 'write_file' ||
       request.toolName === 'replace' ||
       request.toolName === 'apply_patch' ||
@@ -9813,9 +9837,9 @@ const providerAdapters = createProviderAdapterRegistry<
         enabled,
         installed: true,
         serverName: 'TaskWraith-local',
-        tools: enabled ? ['read_file', 'list_directory', 'workspace_search'] : [],
+        tools: enabled ? ollamaToolNamesForTier('read_only') : [],
         message: enabled
-          ? 'Ollama uses a TaskWraith-controlled read-only tool loop for workspace list/read/search.'
+          ? 'Ollama uses a TaskWraith-controlled read-only tool loop for workspace reads and web lookups.'
           : 'Ollama read-only tools are blocked by TaskWraith MCP/tool settings.'
       }
     },
@@ -11027,10 +11051,17 @@ async function executeGeminiMcpTool(
           text = mcpJson(result.result)
         }
       } else {
-      const result = await workspaceToolExecutors.executeWorkspaceMcpTool(toolName, args, context, cwd)
-      toolIsError = result.isError
-      text = mcpJson(result.result)
+        const result = await workspaceToolExecutors.executeWorkspaceMcpTool(
+          toolName,
+          args,
+          context,
+          cwd
+        )
+        toolIsError = result.isError
+        text = mcpJson(result.result)
       }
+    } else if (isWebMcpToolName(toolName)) {
+      applyRichResult(await executeWebMcpTool(toolName, args))
     } else if (toolName === 'test_result_summary') {
       const runId = optionalString(args.runId)
       const sourceOutput =
