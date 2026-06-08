@@ -109,6 +109,12 @@ function isTerminatedSideChat(chat: ChatRecord): boolean {
   return chat.archived && !state
 }
 
+function isCurrentGuestParticipantChild(parentChat: ChatRecord, chat: ChatRecord): boolean {
+  if (chat.parentChatRelation !== 'sideChat') return false
+  if (chat.sideChatContext?.mode !== 'guestParticipant') return false
+  return parentChat.guestParticipant?.childChatId === chat.appChatId
+}
+
 function linkedStateLabel(chat: ChatRecord, running: boolean): string {
   if (running) return 'Running'
   if (chat.parentChatRelation !== 'sideChat') return 'Ready'
@@ -140,7 +146,9 @@ export function LinkedChatsStrip({
         !chat.archived &&
         !isTerminatedSideChat(chat) &&
         chat.parentChatId === currentChat.appChatId &&
-        (chat.parentChatRelation === 'sideChat' || isSubThreadChat(chat))
+        (chat.parentChatRelation === 'sideChat' || isSubThreadChat(chat)) &&
+        (chat.sideChatContext?.mode !== 'guestParticipant' ||
+          isCurrentGuestParticipantChild(currentChat, chat))
     )
     .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
 

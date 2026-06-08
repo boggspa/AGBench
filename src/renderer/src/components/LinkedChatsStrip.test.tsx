@@ -246,6 +246,89 @@ describe('LinkedChatsStrip', () => {
     expect(html).toContain('linked-chats-strip-agent-icon')
   })
 
+  it('shows only the currently attached guest participant in the linked strip', () => {
+    const parent = makeChat({
+      guestParticipant: {
+        childChatId: 'guest-current',
+        provider: 'cursor',
+        selectedModelType: 'composer-2.5-fast',
+        customModel: '',
+        createdAt: 2,
+        updatedAt: 5,
+        persistent: true
+      }
+    })
+    const supersededGuest = makeChat({
+      appChatId: 'guest-old',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'codex',
+      title: 'Guest participant (codex)',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'closed',
+        mode: 'guestParticipant',
+        transcriptVisibility: 'none'
+      }
+    })
+    const currentGuest = makeChat({
+      appChatId: 'guest-current',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'cursor',
+      title: 'Guest participant (cursor)',
+      sideChatContext: {
+        createdAt: 3,
+        lifecycleState: 'closed',
+        mode: 'guestParticipant',
+        transcriptVisibility: 'none'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, supersededGuest, currentGuest]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('1 linked | 1 side chat')
+    expect(html).toContain('Guest participant (cursor)')
+    expect(html).toContain('Gemini with Cursor guest')
+    expect(html).not.toContain('Guest participant (codex)')
+    expect(html).not.toContain('Gemini with Codex guest')
+  })
+
+  it('does not show detached guest participant children after the parent guest is removed', () => {
+    const parent = makeChat()
+    const detachedGuest = makeChat({
+      appChatId: 'guest-old',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'codex',
+      title: 'Guest participant (codex)',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'closed',
+        mode: 'guestParticipant',
+        transcriptVisibility: 'none'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, detachedGuest]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toBe('')
+  })
+
   it('labels run-result seeded side chats explicitly', () => {
     const parent = makeChat()
     const runSeededSideChat = makeChat({
