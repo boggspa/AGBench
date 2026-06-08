@@ -48,3 +48,31 @@ export function shouldShowViewportJump(input: {
 }): boolean {
   return !input.expanded && !input.following
 }
+
+/** Minimum overflow (px) before an edge fade is shown — avoids flicker at rest. */
+export const EDGE_FADE_OVERFLOW_PX = 4
+
+/**
+ * Whether top/bottom edge fades should show for a collapsed live viewport.
+ * Fades are overflow-aware: the top fade only appears when the user has
+ * scrolled up, and the bottom fade only when content extends below the window.
+ */
+export function edgeFadeState(metrics: {
+  scrollHeight: number
+  clientHeight: number
+  scrollTop: number
+}): { top: boolean; bottom: boolean } {
+  const { scrollHeight, clientHeight, scrollTop } = metrics
+  if (!Number.isFinite(scrollHeight) || !Number.isFinite(clientHeight) || !Number.isFinite(scrollTop)) {
+    return { top: false, bottom: false }
+  }
+  const overflow = scrollHeight - clientHeight
+  if (overflow <= EDGE_FADE_OVERFLOW_PX) {
+    return { top: false, bottom: false }
+  }
+  const distance = distanceFromBottom(metrics)
+  return {
+    top: scrollTop > EDGE_FADE_OVERFLOW_PX,
+    bottom: distance > EDGE_FADE_OVERFLOW_PX
+  }
+}
