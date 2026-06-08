@@ -2024,9 +2024,14 @@ describe('MessageChannelGatewayService', () => {
       expect.objectContaining({
         command: 'send_file',
         text: 'Sending docs/report.txt.',
-        attachmentPaths: [realFilePath]
+        attachmentPaths: expect.any(Array)
       })
     )
+    const sendDirectReplyCalls = delivery.sendDirectReply.mock.calls as unknown as Array<
+      [{ attachmentPaths?: string[] }]
+    >
+    const reply = sendDirectReplyCalls[0]?.[0]
+    expect(reply?.attachmentPaths?.map((path) => realpathSync(path))).toEqual([realFilePath])
     expect(auditRecords).toContainEqual(
       expect.objectContaining({
         kind: 'inbound_dispatched',
