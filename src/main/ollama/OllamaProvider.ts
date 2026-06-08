@@ -515,8 +515,9 @@ export function ollamaLocalToolSystemPrompt(
           'You CAN access the live internet through the web_search and web_fetch tools below. When the user asks about current events, weather, prices, or anything you cannot answer from memory, use web_search to find sources, then web_fetch to read a chosen page. web_fetch returns the readable text of the page, so you can summarize it directly.'
         ]
       : []),
-    'To request a tool, reply with ONLY a JSON object in this exact shape:',
+    'To request a tool, either emit a native tool/function call, or reply with ONLY a JSON object in this exact shape:',
     '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
+    'Do NOT announce or describe a tool call in prose (for example, "we need to use web_search" or "let\'s do web_search"). Either actually issue the tool call now, or give your final answer in normal prose. Describing a tool without calling it does nothing.',
     `Current Ollama tool-control tier: ${ollamaTierLabel(normalizedTier)}.`,
     'Available tools:'
   ]
@@ -804,6 +805,49 @@ export function ollamaReasoningOnlyNudgePrompt(): string {
   ].join(' ')
 }
 
+/** Nudge for models (notably gpt-oss) that ANNOUNCE a tool in prose
+ * ("We need to use web_search", "Let's do web_search") but never emit an
+ * actual structured tool call, then stop — handing an intent stub back to the
+ * user instead of acting. Push them to emit the real call (or, if no tool is
+ * actually needed, to answer) rather than describing the call in prose. */
+export function ollamaToolIntentNudgePrompt(toolNames: string[] = []): string {
+  const available = toolNames.filter(Boolean)
+  return [
+    'You described using a tool in prose but did not actually call one.',
+    'Stop announcing the tool and emit a real tool call now (a structured function call), not a description of it.',
+    available.length ? `Available tools: ${available.join(', ')}.` : '',
+    'If you do not actually need a tool, give your complete final answer to the user in normal assistant prose instead.'
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** Heuristic: does this turn's visible `content` merely ANNOUNCE a tool call
+ * (without an accompanying structured tool call) rather than answer the user?
+ * Used to re-prompt instead of finalizing an intent stub like
+ * "We need to use web_search tool." Conservative: requires a short response
+ * that names an available tool AND uses an action cue, so substantive answers
+ * that merely mention a tool aren't misclassified. */
+export function looksLikeOllamaToolIntent(content: string, toolNames: string[]): boolean {
+  const text = (content || '').trim().toLowerCase()
+  if (!text) return false
+  // Intent stubs are short; a real answer that happens to mention a tool is not.
+  if (text.length > 400) return false
+  const names = (toolNames || [])
+    .map((name) => (name || '').trim().toLowerCase())
+    .filter(Boolean)
+  const mentionsToolName = names.some((name) => name && text.includes(name))
+  const mentionsGenericTool = /\b(tool|function call|function)\b/.test(text)
+  if (!mentionsToolName && !mentionsGenericTool) return false
+  // Action cue announcing an intent to act. `\buse\b` deliberately does not
+  // match "used" so past-tense summaries of completed calls don't trigger.
+  const actionCue =
+    /\b(use|using|call|calling|invoke|invoking|run|running|perform|performing|let'?s|lets|let us|need to|needs to|should|going to|gonna|will|i'?ll|we'?ll|proceed to|do)\b/.test(
+      text
+    )
+  return actionCue
+}
+
 /** Resolve the text TaskWraith should treat as the model's turn output.
  * Prefers the normal `content` channel; falls back to harmony reasoning
  * (`thinking`) so models like gpt-oss that emit their answer into the
@@ -952,6 +996,7 @@ export async function runOllamaProvider(
     const nativeToolDefs = toolProtocolEnabled
       ? ollamaNativeToolDefinitions(toolControlTier)
       : []
+    const availableToolNames = nativeToolDefs.map((def) => def.function.name)
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
         ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier) }]
@@ -1044,6 +1089,23 @@ export async function runOllamaProvider(
               toolCallCount > 0
                 ? ollamaEmptyToolResponseRetryPrompt()
                 : ollamaEmptyResponseRetryPrompt()
+          })
+          continue
+        }
+        // Tool-intent stub: the model announced a tool in prose ("We need to
+        // use web_search") but emitted no structured tool call, then stopped.
+        // Re-prompt it to actually call the tool instead of handing the stub
+        // back to the user.
+        if (
+          hasContent &&
+          toolProtocolEnabled &&
+          turnIndex < OLLAMA_TOOL_LOOP_LIMIT &&
+          looksLikeOllamaToolIntent(turn.content, availableToolNames)
+        ) {
+          messages.push({ role: 'assistant', content: turn.content })
+          messages.push({
+            role: 'user',
+            content: ollamaToolIntentNudgePrompt(availableToolNames)
           })
           continue
         }

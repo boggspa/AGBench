@@ -9,7 +9,9 @@ import {
   ollamaLocalToolSystemPrompt,
   ollamaNativeToolDefinitions,
   ollamaReasoningOnlyNudgePrompt,
+  ollamaToolIntentNudgePrompt,
   ollamaToolResultFollowUpPrompt,
+  looksLikeOllamaToolIntent,
   parseOllamaToolRequest,
   parseOllamaMemoryPsOutput,
   resolveOllamaVisibleText,
@@ -200,6 +202,12 @@ describe('parseOllamaToolRequest', () => {
     expect(prompt).toContain('web_fetch returns the readable text')
   })
 
+  it('tells local models not to announce a tool call without issuing it', () => {
+    const prompt = ollamaLocalToolSystemPrompt('read_only')
+    expect(prompt).toContain('Do NOT announce or describe a tool call in prose')
+    expect(prompt).toContain('Describing a tool without calling it does nothing')
+  })
+
   it('falls back to the thinking channel when content is empty (gpt-oss)', () => {
     expect(resolveOllamaVisibleText({ content: 'final answer', thinking: 'reasoning' })).toBe(
       'final answer'
@@ -219,6 +227,51 @@ describe('parseOllamaToolRequest', () => {
     expect(shouldEmitOllamaReasoning({ content: '   ', thinking: 'the answer' }, 0)).toBe(false)
     // No reasoning text → skip.
     expect(shouldEmitOllamaReasoning({ content: 'done', thinking: '   ' }, 0)).toBe(false)
+  })
+
+  it('detects tool-intent stubs that announce a tool without calling it', () => {
+    const tools = ['web_search', 'web_fetch', 'read_file']
+    // The exact gpt-oss symptoms from the bug report.
+    expect(looksLikeOllamaToolIntent('We need to use web_search tool.', tools)).toBe(true)
+    expect(looksLikeOllamaToolIntent('We need to use the web_search tool.', tools)).toBe(true)
+    expect(looksLikeOllamaToolIntent("Let's do web_search.", tools)).toBe(true)
+    expect(
+      looksLikeOllamaToolIntent(
+        'We need to perform a web search for "weather in Cambridge today UK". Use web_search.',
+        tools
+      )
+    ).toBe(true)
+    // Generic "tool" mention with an action cue, no specific name.
+    expect(looksLikeOllamaToolIntent('I should call a tool to do this.', tools)).toBe(true)
+  })
+
+  it('does not misclassify real answers or completed-call summaries', () => {
+    const tools = ['web_search', 'web_fetch']
+    // Past-tense summary of a completed call (\\buse\\b must not match "used").
+    expect(
+      looksLikeOllamaToolIntent(
+        'I used web_search and the weather in Cambridge today is 14°C with light rain.',
+        tools
+      )
+    ).toBe(false)
+    // A substantive answer with no tool mention.
+    expect(
+      looksLikeOllamaToolIntent('The capital of France is Paris, a city on the Seine.', tools)
+    ).toBe(false)
+    // Empty content.
+    expect(looksLikeOllamaToolIntent('   ', tools)).toBe(false)
+    // Long substantive answer that happens to mention a tool is not a stub.
+    expect(looksLikeOllamaToolIntent(`Here is a detailed plan. ${'x'.repeat(420)} web_search`, tools)).toBe(
+      false
+    )
+  })
+
+  it('nudges tool-intent stubs to emit a real call and lists tools', () => {
+    const prompt = ollamaToolIntentNudgePrompt(['web_search', 'web_fetch'])
+    expect(prompt).toContain('did not actually call one')
+    expect(prompt).toContain('emit a real tool call now')
+    expect(prompt).toContain('Available tools: web_search, web_fetch.')
+    expect(prompt).toContain('give your complete final answer')
   })
 })
 
