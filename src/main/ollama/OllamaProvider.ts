@@ -10,9 +10,15 @@ import {
   type OllamaModelPreflightResult
 } from './OllamaModelPreflight'
 import {
+  ollamaLocalToolSystemPrompt,
+  ollamaModelFamilyTemperature,
+  ollamaStruggleHandoffMessage
+} from './OllamaModelProfiles'
+
+export { ollamaLocalToolSystemPrompt } from './OllamaModelProfiles'
+import {
   OLLAMA_KNOWN_TOOL_NAMES,
   effectiveOllamaToolControlTier,
-  normalizeOllamaToolControlTier,
   ollamaTierLabel,
   ollamaToolNamesForTier,
   type OllamaToolName
@@ -197,7 +203,14 @@ export interface OllamaToolRequest {
 }
 
 const OLLAMA_TOOL_LOOP_LIMIT = 8
+const OLLAMA_TOOL_RESULT_MAX_CHARS = 2400
 const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
+
+export function truncateOllamaToolResultOutput(output: string, maxChars = OLLAMA_TOOL_RESULT_MAX_CHARS): string {
+  const value = String(output || '')
+  if (value.length <= maxChars) return value
+  return `${value.slice(0, maxChars)}\n[tool result truncated for local model context]`
+}
 
 export function normalizeOllamaBaseUrl(value?: string | null): string {
   const raw = String(value || '').trim() || DEFAULT_OLLAMA_BASE_URL
@@ -521,68 +534,6 @@ function ollamaUsageStats(chunk: OllamaChatChunk): Record<string, unknown> {
       : {}),
     ...(typeof chunk.eval_duration === 'number' ? { evalDurationNs: chunk.eval_duration } : {})
   }
-}
-
-export function ollamaLocalToolSystemPrompt(
-  tier: OllamaToolControlTier | string | undefined | null = 'read_only'
-): string {
-  const normalizedTier = normalizeOllamaToolControlTier(tier)
-  const tools = ollamaToolNamesForTier(normalizedTier)
-  const hasWebTools = tools.includes('web_search') || tools.includes('web_fetch')
-  const lines = [
-    'You are running inside TaskWraith through local Ollama.',
-    'You do not have direct shell or filesystem access, but TaskWraith DOES give you working tools (listed below) that you can call right now. Use them instead of telling the user you lack a capability.',
-    ...(hasWebTools
-      ? [
-          'You CAN access the live internet through the web_search and web_fetch tools below. When the user asks about current events, weather, prices, or anything you cannot answer from memory, use web_search to find sources, then web_fetch to read a chosen page. web_fetch returns the readable text of the page, so you can summarize it directly.'
-        ]
-      : []),
-    'To request a tool, either emit a native tool/function call, or reply with ONLY a JSON object in this exact shape:',
-    '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
-    'Do NOT announce or describe a tool call in prose (for example, "we need to use web_search" or "let\'s do web_search"). Either actually issue the tool call now, or give your final answer in normal prose. Describing a tool without calling it does nothing.',
-    `Current Ollama tool-control tier: ${ollamaTierLabel(normalizedTier)}.`,
-    'Available tools:'
-  ]
-  const describeTool = (toolName: OllamaToolName): string | null => {
-    if (toolName === 'list_directory') return '- list_directory: {"path":"."}'
-    if (toolName === 'read_file') return '- read_file: {"path":"relative/path.txt"}'
-    if (toolName === 'workspace_search') {
-      return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}'
-    }
-    if (toolName === 'web_search') {
-      return '- web_search: {"query":"current information to search for"} — returns a ranked list of result titles and URLs from the live web.'
-    }
-    if (toolName === 'web_fetch') {
-      return '- web_fetch: {"url":"https://example.com/page"} — downloads a page and returns its readable text (HTML markup is stripped), ready for you to read and summarize.'
-    }
-    if (toolName === 'write_file') {
-      return '- write_file: {"path":"relative/path.txt","content":"...","intent":"short reason before changing files"}'
-    }
-    if (toolName === 'replace') {
-      return '- replace: {"path":"relative/path.txt","old_string":"...","new_string":"...","intent":"short reason before changing files"}'
-    }
-    if (toolName === 'apply_patch') {
-      return '- apply_patch: {"patch":"unified diff","intent":"short reason before changing files"}'
-    }
-    if (toolName === 'run_shell_command') {
-      return '- run_shell_command: {"command":"exact command","intent":"short reason before running it"}'
-    }
-    return `- ${toolName}: use the TaskWraith MCP argument schema for this tool.`
-  }
-  for (const toolName of tools) {
-    const line = describeTool(toolName)
-    if (line) lines.push(line)
-  }
-  lines.push(
-    'Paths must stay inside the active workspace.',
-    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
-    'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
-    'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
-    'Do not invent file contents or workspace facts when a tool result is needed.'
-  )
-  return [
-    ...lines
-  ].join('\n')
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> | null {
@@ -943,6 +894,7 @@ async function runOllamaChatTurn(input: {
   messages: OllamaChatMessage[]
   signal: AbortSignal
   tools?: OllamaNativeToolDefinition[]
+  temperature?: number
 }): Promise<OllamaChatTurnResult> {
   const response = await fetch(endpoint(input.baseUrl, '/api/chat'), {
     method: 'POST',
@@ -954,7 +906,7 @@ async function runOllamaChatTurn(input: {
       messages: input.messages,
       ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
       options: {
-        temperature: 0.2
+        temperature: input.temperature ?? 0.2
       }
     })
   })
@@ -1077,9 +1029,10 @@ export async function runOllamaProvider(
       ? ollamaNativeToolDefinitions(toolControlTier)
       : []
     const availableToolNames = nativeToolDefs.map((def) => def.function.name)
+    const modelTemperature = ollamaModelFamilyTemperature(model)
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
-        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier) }]
+        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier, model) }]
         : []),
       { role: 'user', content: payload.prompt }
     ]
@@ -1091,7 +1044,8 @@ export async function runOllamaProvider(
         model,
         messages,
         signal: controller.signal,
-        tools: nativeToolDefs
+        tools: nativeToolDefs,
+        ...(modelTemperature != null ? { temperature: modelTemperature } : {})
       })
       if (turn.lastDone) lastDone = turn.lastDone
       // gpt-oss and other harmony-format models emit their answer into the
@@ -1228,7 +1182,7 @@ export async function runOllamaProvider(
             id: 'ollama-tool-loop-limit',
             severity: 'warning',
             title: 'Ollama tool loop limit reached',
-            message: 'The local model kept requesting tools; TaskWraith stopped the tool loop.'
+            message: ollamaStruggleHandoffMessage(modelLabel)
           },
           route
         )
@@ -1284,12 +1238,13 @@ export async function runOllamaProvider(
           },
           route
         )
+        const truncatedOutput = truncateOllamaToolResultOutput(toolResult.output)
         if (usingNativeToolCalls) {
           // Native protocol: feed the result back as a `role: 'tool'` message
           // so the model resumes naturally on the next turn.
           messages.push({
             role: 'tool',
-            content: toolResult.output,
+            content: truncatedOutput,
             tool_name: toolRequest.toolName
           })
         } else {
@@ -1301,7 +1256,7 @@ export async function runOllamaProvider(
             role: 'user',
             content: ollamaToolResultFollowUpPrompt({
               toolName: toolRequest.toolName,
-              output: toolResult.output,
+              output: truncatedOutput,
               ok: toolResult.ok
             })
           })

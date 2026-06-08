@@ -1,7 +1,10 @@
+import { ollamaScoutDelegateWorkflowHint } from './ollama/OllamaModelProfiles'
+import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
 import type {
   ChatMessage,
   GuestParticipantConfig,
   NativeSubAgentRequestPolicy,
+  OllamaToolControlTier,
   ProviderId
 } from './store/types'
 import { TASKWRAITH_MCP_TOOL_LIST } from './TaskWraithMcpTools'
@@ -41,6 +44,30 @@ export const MAX_CONTEXT_CHARS_PER_TURN = 420
 /** Aggregate cap on the entire context block (after concatenation). Anything
  * over this gets sliced and tagged `[context truncated]`. */
 export const MAX_CONTEXT_BLOCK_CHARS = 6000
+
+export interface ContextBudget {
+  maxTurns: number
+  maxCharsPerTurn: number
+  maxBlockChars: number
+}
+
+const DEFAULT_CONTEXT_BUDGET: ContextBudget = {
+  maxTurns: MAX_CONTEXT_TURNS,
+  maxCharsPerTurn: MAX_CONTEXT_CHARS_PER_TURN,
+  maxBlockChars: MAX_CONTEXT_BLOCK_CHARS
+}
+
+const OLLAMA_CONTEXT_BUDGET: ContextBudget = {
+  maxTurns: 8,
+  maxCharsPerTurn: 260,
+  maxBlockChars: 3200
+}
+
+/** Provider/model-aware caps for the compact conversation-context block. */
+export function resolveContextBudget(provider: ProviderId, _modelId?: string): ContextBudget {
+  if (provider === 'ollama') return OLLAMA_CONTEXT_BUDGET
+  return DEFAULT_CONTEXT_BUDGET
+}
 
 const TASKWRAITH_MCP_TOOL_GROUPS =
   'workspace/file tools: read_file, list_directory, workspace_search, workspace_symbols, open_workspace_file; ' +
@@ -212,16 +239,19 @@ export function buildGuestParticipantReplyContextBlock(
  *   - <= 0       ⇒ 0 (disable context entirely)
  *   - otherwise  ⇒ clamped to [1, MAX_CONTEXT_TURNS]
  */
-export function clampContextTurns(value: number | undefined | null): number {
+export function clampContextTurns(
+  value: number | undefined | null,
+  budget: ContextBudget = DEFAULT_CONTEXT_BUDGET
+): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
-    return DEFAULT_CONTEXT_TURNS
+    return Math.min(DEFAULT_CONTEXT_TURNS, budget.maxTurns)
   }
   const integer = Math.trunc(parsed)
   if (integer <= 0) {
     return 0
   }
-  return Math.max(1, Math.min(MAX_CONTEXT_TURNS, integer))
+  return Math.max(1, Math.min(budget.maxTurns, integer))
 }
 
 /**
@@ -235,7 +265,8 @@ export function clampContextTurns(value: number | undefined | null): number {
 export function buildConversationContextBlock(
   messages: ChatMessage[],
   maxTurns: number,
-  latestPrompt: string
+  latestPrompt: string,
+  budget: ContextBudget = DEFAULT_CONTEXT_BUDGET
 ): string {
   if (maxTurns <= 0) {
     return ''
@@ -271,7 +302,7 @@ export function buildConversationContextBlock(
 
   const lines = windowedMessages.map((item) => {
     const content = isChannelInboundMessage(item) ? channelInboundReplayText(item) : item.content
-    return `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(content, MAX_CONTEXT_CHARS_PER_TURN)}`
+    return `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(content, budget.maxCharsPerTurn)}`
   })
 
   const contextBlock = [
@@ -279,11 +310,11 @@ export function buildConversationContextBlock(
     ...lines
   ].join('\n')
 
-  if (contextBlock.length <= MAX_CONTEXT_BLOCK_CHARS) {
+  if (contextBlock.length <= budget.maxBlockChars) {
     return contextBlock
   }
 
-  return `${contextBlock.slice(0, MAX_CONTEXT_BLOCK_CHARS - 18)}\n[context truncated]`
+  return `${contextBlock.slice(0, budget.maxBlockChars - 18)}\n[context truncated]`
 }
 
 /**
@@ -299,9 +330,10 @@ export function appendConversationContext(
   prompt: string,
   messages: ChatMessage[],
   maxTurns: number,
-  latestPrompt: string
+  latestPrompt: string,
+  budget: ContextBudget = DEFAULT_CONTEXT_BUDGET
 ): string {
-  const context = buildConversationContextBlock(messages, maxTurns, latestPrompt)
+  const context = buildConversationContextBlock(messages, maxTurns, latestPrompt, budget)
   if (!context) return prompt
   return `${context}\nCurrent user request:\n${prompt}`
 }
@@ -338,6 +370,8 @@ export interface ComposeRunPromptInput {
   lastCompletedCodexModel?: string | null
   /** The model selected for the upcoming run. */
   nextModel?: string
+  /** Ollama tool tier — used for pre-run tier suggestions. */
+  ollamaToolControlTier?: OllamaToolControlTier
   /** The set of handoff-keys already applied to this chat (so we only inject
    * once per direction). */
   codexHandoffsApplied: string[]
@@ -390,8 +424,10 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     isGlobalRun,
     approvalMode,
     providerLabel,
-    nativeSubAgentRequests
+    nativeSubAgentRequests,
+    ollamaToolControlTier
   } = input
+  const contextBudget = resolveContextBudget(provider, nextModel)
   const nativeSubAgentInstruction = nativeSubAgentPromptInstruction(
     nativeSubAgentRequests,
     provider
@@ -438,16 +474,18 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   const shouldAppendContextForRun =
     kimiNeedsContextInjection || geminiNeedsContextInjection || ollamaNeedsContextInjection
 
-  let contextTurnsApplied = shouldAppendContextForRun ? clampContextTurns(chatContextTurns) : 0
+  let contextTurnsApplied = shouldAppendContextForRun
+    ? clampContextTurns(chatContextTurns, contextBudget)
+    : 0
   let contextualPrompt = injectAdditionalPeerContext(
     shouldAppendContextForRun
-      ? appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt)
+      ? appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt, contextBudget)
       : finalPrompt
   )
   let applicationLog = kimiNeedsContextInjection
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
     : ollamaNeedsContextInjection
-      ? `Context turns: ${contextTurnsApplied} (Ollama: appending compact conversation context because the local HTTP adapter is stateless)`
+      ? `Context turns: ${contextTurnsApplied} (Ollama: compact local context — search/read narrowly; ${contextBudget.maxBlockChars} char cap)`
     : provider !== 'gemini'
       ? `Context turns: 0 (${providerLabel} provider/session history is authoritative when available)`
       : resumeSessionId
@@ -470,9 +508,9 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     const handoffKey = `${previousModelKey}->${nextModelKey}`
 
     if (modelChangedAfterWork && !codexHandoffsApplied.includes(handoffKey)) {
-      contextTurnsApplied = clampContextTurns(chatContextTurns)
+      contextTurnsApplied = clampContextTurns(chatContextTurns, contextBudget)
       contextualPrompt = injectAdditionalPeerContext(
-        appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt)
+        appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt, contextBudget)
       )
       applicationLog = `Context turns: ${contextTurnsApplied} (Codex model changed from ${lastCompletedCodexModel} to ${nextModel}; applying chat context once)`
       codexHandoffApplied = {
@@ -637,6 +675,17 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       'If the TaskWraith MCP tools are unavailable, stop and report the exact missing tool names instead of planning edits without applying them.'
     ].join('\n')
     contextualPrompt = `${parityPreamble}\n\n${contextualPrompt}`
+  }
+
+  if (provider === 'ollama' && !isGlobalRun) {
+    contextualPrompt = `${ollamaScoutDelegateWorkflowHint(nextModel)}\n\n${contextualPrompt}`
+  }
+
+  if (provider === 'ollama' && ollamaToolControlTier) {
+    const tierSuggestion = suggestOllamaTierBump(finalPrompt, ollamaToolControlTier)
+    if (tierSuggestion && !uiNoticeMessage) {
+      uiNoticeMessage = tierSuggestion.message
+    }
   }
 
   return {

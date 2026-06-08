@@ -27,6 +27,11 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('ollama', 'gpt-oss:20b')).toBe(131_072)
   })
 
+  it('prefers live Ollama context_length from /api/tags over static table', () => {
+    expect(resolveContextWindow('ollama', 'qwen3.5:9b', undefined, 128_000)).toBe(128_000)
+    expect(resolveContextWindow('ollama', 'unknown-local', undefined, 65_536)).toBe(65_536)
+  })
+
   it('uses provider fallbacks for all seven providers when the model is unknown', () => {
     const expected: Record<ProviderId, number> = {
       gemini: 1_048_576,

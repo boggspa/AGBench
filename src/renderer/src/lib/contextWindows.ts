@@ -62,7 +62,8 @@ const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {
 export function resolveContextWindow(
   provider: ProviderId | undefined,
   modelId: string | undefined,
-  statsTotalTokenLimit?: number
+  statsTotalTokenLimit?: number,
+  liveModelContextLength?: number
 ): number {
   if (
     typeof statsTotalTokenLimit === 'number' &&
@@ -70,6 +71,14 @@ export function resolveContextWindow(
     statsTotalTokenLimit > 0
   ) {
     return statsTotalTokenLimit
+  }
+  if (
+    provider === 'ollama' &&
+    typeof liveModelContextLength === 'number' &&
+    Number.isFinite(liveModelContextLength) &&
+    liveModelContextLength > 0
+  ) {
+    return liveModelContextLength
   }
   if (modelId && CONTEXT_WINDOWS_BY_MODEL[modelId]) {
     return CONTEXT_WINDOWS_BY_MODEL[modelId]

@@ -246,6 +246,41 @@ describe('composeRunPrompt sub-thread returns', () => {
 
     expect(result.contextualPrompt).not.toContain('TaskWraith runtime note')
   })
+
+  it('applies compact Ollama context budget and scout workflow hint', () => {
+    const long = 'x'.repeat(500)
+    const result = composeRunPrompt({
+      provider: 'ollama',
+      finalPrompt: 'Read README',
+      messages: [message({ role: 'assistant', content: long })],
+      chatContextTurns: 12,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Ollama',
+      nextModel: 'qwen3.5:9b'
+    })
+
+    expect(result.applicationLog).toContain('3200 char cap')
+    expect(result.contextualPrompt).toContain('local-scout workflow')
+    expect(result.contextTurnsApplied).toBeLessThanOrEqual(8)
+  })
+
+  it('surfaces an Ollama tier bump notice for ambitious prompts', () => {
+    const result = composeRunPrompt({
+      provider: 'ollama',
+      finalPrompt: 'Refactor this entire module and fix all tests',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Ollama',
+      ollamaToolControlTier: 'read_only'
+    })
+
+    expect(result.uiNoticeMessage).toContain('Approved edits')
+  })
 })
 
 describe('buildConversationContextBlock channel messages', () => {

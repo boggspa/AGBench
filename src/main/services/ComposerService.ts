@@ -8,6 +8,7 @@ import {
 } from '../channels/DiscordContextService'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
+import { effectiveOllamaToolControlTier } from '../ollama/OllamaToolTiers'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
 import {
   coalesceExternalPathGrants,
@@ -171,7 +172,15 @@ export class ComposerService {
       approvalMode,
       providerLabel: getProviderLabel(provider),
       nativeSubAgentRequests: settings.nativeSubAgentRequests,
-      guestParticipant: chat.guestParticipant
+      guestParticipant: chat.guestParticipant,
+      ...(provider === 'ollama'
+        ? {
+            ollamaToolControlTier: effectiveOllamaToolControlTier(
+              settings,
+              scope === 'global' ? undefined : input.workspace || chat.workspacePath
+            )
+          }
+        : {})
     })
 
     const providerMetadataPatchData = {

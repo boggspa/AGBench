@@ -295,6 +295,7 @@ import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components
 import { EnsembleModePicker } from './components/EnsembleModePicker'
 import { ComposerProviderPicker } from './components/ComposerProviderPicker'
 import { ContinuousHopsLimitChip } from './components/ContinuousHopsLimitChip'
+import { OllamaHealthChip } from './components/OllamaHealthChip'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
@@ -13341,10 +13342,17 @@ function App(): React.JSX.Element {
     chatTokenTally.totalTokens + (isCurrentChatRunning ? liveRunOutputTokens : 0)
   const latestRunLimits = extractUsageLimits(currentRun?.stats)
   const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
+  const ollamaLiveContextLength =
+    currentProvider === 'ollama' && Array.isArray(agentStatusByProvider.ollama?.models)
+      ? agentStatusByProvider.ollama.models.find((model: { id?: string; contextLength?: number }) =>
+          model.id === contextModelId
+        )?.contextLength
+      : undefined
   const contextWindowSize = resolveContextWindow(
     currentProvider,
     contextModelId,
-    latestRunLimits.totalTokenLimit
+    latestRunLimits.totalTokenLimit,
+    ollamaLiveContextLength
   )
   const contextUsedPercent =
     contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
@@ -16929,6 +16937,13 @@ function App(): React.JSX.Element {
                   )}
                   {currentProvider === 'gemini' && persistentSessionNeedsRestart && (
                     <span className="composer-chip warning">{sessionRestartReason}</span>
+                  )}
+                  {currentProvider === 'ollama' && (
+                    <OllamaHealthChip
+                      status={agentStatusByProvider.ollama}
+                      selectedModelId={selectedModelType}
+                      toolControlTier={ollamaToolControlTier}
+                    />
                   )}
                   {currentProviderCapabilityWarning && (
                     <span
