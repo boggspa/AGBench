@@ -2520,21 +2520,46 @@
   background: none !important;
   box-shadow: none !important;
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
   [data-composer-style="default"]
   .app-transcript
-  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   background: var(--composer-glass-bg);
   border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
+  color: rgba(29, 29, 31, 0.84) !important;
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
   [data-composer-style="default"]
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
-  > :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   background: transparent !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -2546,4 +2571,79 @@
   > * {
   position: relative;
   z-index: 1;
+}
+
+/* Merged instrument — kill per-row tint overlays inside the stack so
+ * segments read as neutral glass (shard 09 ensemble rules re-enable
+ * ::before on `.composer-above-bar` / `.ensemble-above-row` elsewhere). */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before {
+  display: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* Light themes — default-shell above-row label legibility on glass. */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  [data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
+  color: rgba(29, 29, 31, 0.84) !important;
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  [data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar
+  :is(.composer-above-bar-branch, .composer-above-bar-branch svg) {
+  color: rgba(29, 29, 31, 0.84) !important;
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  [data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar
+  .composer-above-bar-secondary-branch:not(
+    :is(.git-tone-main, .git-tone-feature, .git-tone-fix, .git-tone-release)
+  ) {
+  color: rgba(29, 29, 31, 0.62) !important;
+}
+
+/* Telemetry footer — reinforce glass frame (shard 03; late override). */
+[data-composer-style="default"] .app-transcript .composer-telemetry-row {
+  background: transparent !important;
+  border-top: 0 !important;
 }

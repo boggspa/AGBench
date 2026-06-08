@@ -2831,6 +2831,31 @@
     var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
 }
 
+/* Native default — merged above-bar cap stays neutral glass; coloured
+ * agent-aura rim lives on `.composer-surface` only (beats the rule
+ * above because this block is later in the cascade). */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-running,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-approval,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-failed {
+  box-shadow: var(--composer-shadow) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
 /* ----------------------------------------------------------------
  * Detached-pill above-bar stacks — fan agent-aura to each row.
  *

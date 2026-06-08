@@ -950,11 +950,63 @@
  * text colour AND the `<strong>` so the bold count stays
  * legible (some non-Codex shells used to bleed `<strong>` as
  * white even when the surrounding text recoloured correctly). */
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files {
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .composer-above-bar-files {
   color: rgba(29, 29, 31, 0.78);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files strong {
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .composer-above-bar-files
+  strong {
   color: rgba(29, 29, 31, 0.94);
+}
+/* Branch label — same light-on-light fix as the files-changed chip
+ * above. The row-level colour override in shard 08/09 does not
+ * always reach `.composer-above-bar-branch` once shard 07's dark
+ * default `color: #ffffff 80%` on `.composer-above-bar` wins in
+ * the merged-stack layout, so pin dark text on the branch cluster. */
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .composer-above-bar-branch,
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .composer-above-bar-branch
+  svg {
+  color: rgba(29, 29, 31, 0.84);
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .composer-above-bar-branch
+  .composer-above-bar-secondary-branch:not(
+    :is(.git-tone-main, .git-tone-feature, .git-tone-fix, .git-tone-release)
+  ) {
+  color: rgba(29, 29, 31, 0.62);
 }
 
 /* ============================================================

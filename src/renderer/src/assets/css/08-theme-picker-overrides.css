@@ -7320,29 +7320,95 @@
 
 /* TaskWraith / default shell — light-mode above-rows inherit the
  * liquid-glass instrument frame (shard 03/09), not opaque surface-2. */
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
   [data-composer-style="default"]
   .app-transcript
-  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   background: var(--composer-glass-bg);
   border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
-  color: rgba(29, 29, 31, 0.84);
+  color: rgba(29, 29, 31, 0.84) !important;
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
   [data-composer-style="default"]
   .app-transcript
-  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row)::before {
-  display: none;
+  :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before {
+  display: none !important;
+  background: none !important;
+  box-shadow: none !important;
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
   [data-appearance="native_glass"][data-reduce-transparency="false"]
   [data-composer-style="default"]
   .app-transcript
-  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  [data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar
+  :is(.composer-above-bar-branch, .composer-above-bar-branch svg, .composer-above-bar-stats) {
+  color: rgba(29, 29, 31, 0.84) !important;
+}
+:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  [data-composer-style="default"]
+  .app-transcript
+  .composer-above-bar
+  .composer-above-bar-secondary-branch:not(
+    :is(.git-tone-main, .git-tone-feature, .git-tone-fix, .git-tone-release)
+  ) {
+  color: rgba(29, 29, 31, 0.62) !important;
 }
 /* Mirror the suppression on Codex shell too — the same per-provider
  * gradient `::before` overlay was painting on top of the white
