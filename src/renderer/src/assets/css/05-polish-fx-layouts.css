@@ -444,6 +444,37 @@
     0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
+/* Inspector segmented toggles — the "This run / Workspace" picker in the
+ * Diff Studio toolbar and the Raw Events filter pills (all, stdout, stderr,
+ * tool) — used the solid `--accent` fill from the base `.btn` for their
+ * selected state, i.e. a blue accent bubble that clashed with the app's
+ * rim-highlight selection idiom. Swap that fill for the same accent
+ * inset-ring + faint inner-glow chrome the sidebar selection uses, so the
+ * active toggle reads as a "lit rim" rather than a "blue blob". Scoped to
+ * `.diff-studio-toolbar` selected `.btn.btn-sm` so genuine action CTAs in
+ * the inspector (Resume, Install / repair, Open terminal, etc.) keep their
+ * accent fill. Inactive siblings stay `.btn-ghost` and are excluded. */
+.app-inspector .diff-studio-toolbar .btn.btn-sm:not(.btn-ghost):not(.btn-danger) {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 17%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 60%,
+    transparent 100%
+  );
+  color: var(--text-primary);
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, var(--panel-border)),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.app-inspector .diff-studio-toolbar .btn.btn-sm:not(.btn-ghost):not(.btn-danger):hover {
+  opacity: 1;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 52%, var(--panel-border)),
+    inset 0 0 14px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 /* --- Inspector toolbar: refined frosted bar --------------------------- */
 .app-inspector .diff-studio-toolbar {
   padding: 9px 14px;
