@@ -2944,16 +2944,13 @@
  * (`data-composer-style="default"`) into an *instrument*. Two
  * nested surfaces:
  *
- *   OUTER  `.composer-surface`       → a translucent glass shown as
- *          the FRAME around the input (via the surface's perimeter
+ *   OUTER  `.composer-surface`       → a translucent LIQUID GLASS
+ *          frame around the input (via the surface's perimeter
  *          padding) AND as the bed under the relocated telemetry
- *          row. REFINEMENT (flips slice 2): it now follows theme
- *          POLARITY rather than contrast — a near-BLACK glass on
- *          DARK themes, a near-WHITE glass on the five LIGHT themes.
- *          So on dark the frame is darker/blacker than the theme-
- *          tone module (the module pops against a black frame); on
- *          light it is a clean white frame. Carries the slice-1
- *          provider rim on its ::after.
+ *          row. Theme-aware via `--composer-glass-bg` / blur so the
+ *          transcript shows through; the inner module stays opaque
+ *          enough for readable typing. Carries the slice-1 provider
+ *          rim on its ::after.
  *
  *   INNER  `.composer-inner-module`  → the actual INPUT (textarea
  *          + slash/mention menus + the control-footer), on a NORMAL
@@ -2984,116 +2981,44 @@
  * `default`, so they are untouched.
  * ============================================================ */
 
-/* OUTER frame — DARK themes (default): a near-BLACK glass tint so
- * the frame reads darker/blacker than the theme-tone module, which
- * pops against it. Background only; the variant's blur/shadow
- * survive. */
+/* OUTER frame — native shell liquid glass. Theme tokens carry polarity
+ * (dark themes → smoked glass, light themes → frosted white). Inner
+ * `.composer-inner-module` keeps the opaque theme-tone fill. */
 [data-composer-style="default"] .composer-surface {
-  /* Pure black frame — NO theme tint (per maintainer: black, not "dark"). */
-  background: rgba(0, 0, 0, 0.95);
+  background: var(--composer-glass-bg);
+  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 7%, transparent),
+    0 18px 46px color-mix(in srgb, #000000 24%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--text-primary) 9%, transparent);
 }
-[data-composer-style="default"][data-prompt-surface="liquid_glass"] .composer-surface,
-[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"] .composer-surface,
-[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"] .composer-surface,
-[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-surface,
-[data-composer-style="default"][data-prompt-surface="classic"] .composer-surface,
-[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-surface {
-  /* Glassy variants blur what's behind them; a pure-black veil (no theme
-   * tint) reads as a smoked black pane while the blur still breathes. */
-  background: rgba(0, 0, 0, 0.9);
+/* macOS Native Glass appearance already vibrancy-blurs behind panels —
+ * skip the redundant CSS backdrop pass (see shard 06). */
+[data-appearance="native_glass"][data-reduce-transparency="false"]
+  [data-composer-style="default"]
+  .composer-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 [data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
 [data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
-  /* No blur to lean on — pure opaque black (no theme tint). */
-  background: #000000;
+  background: var(--composer-bg-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-composer-style="default"] .composer-surface {
+    background: color-mix(in srgb, var(--composer-bg-solid) 88%, var(--composer-glass-bg) 12%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
-/* OUTER frame — the five LIGHT themes: PURE WHITE (no theme tint, per
- * maintainer: white, not "light") so the frame reads as a clean white
- * pane around the theme-tone module. Same variant split. */
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"]
-  .composer-surface {
-  background: rgba(255, 255, 255, 0.96);
-}
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="liquid_glass"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="liquid_glass"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="thin_material"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="classic"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"]
-  .composer-surface {
-  background: rgba(255, 255, 255, 0.91);
-}
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-prompt-surface="solid"]
-  .composer-surface,
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"][data-reduce-transparency="true"]
-  .composer-surface {
-  background: #ffffff;
-}
-
-/* ── Console refinement: SOLID outer frame (chat composers) ──────────
- * The maintainer wants the native composer's OUTER frame to read as a
- * pure black/white bezel with NO themed gradient — the theme tone lives
- * on the INNER module instead. Kill the surface side-vignette (::before:
+/* ── Console refinement: glass outer frame (chat composers) ──────────
+ * The native composer's OUTER frame is liquid glass; the theme tone
+ * lives on the INNER module instead. Kill the surface side-vignette (::before:
  * base + per-provider tints in this shard + the ensemble tints in shard
  * 09) for the default shell's CHAT composers. The provider RIM (::after)
  * is untouched. !important lets one rule beat the per-provider + ensemble
@@ -3105,33 +3030,33 @@
   box-shadow: none !important;
 }
 
-/* ── Console alignment: ABOVE-ROWS match the solid frame ─────────────
- * The Ensemble row, the Create-PR / Review row, and the Steer/Queue row
- * used the OLD composer look — `var(--composer-bg)` theme tone + a themed
- * side-vignette (::before) — the very treatment the console redesign
- * replaced on the surface. That left them clashing with the new solid
- * black/white frame below. Re-skin them to match the frame: solid pure
- * black (dark) / white (light) fill, vignette killed, with a neutral
- * hairline rim for definition. Provider colour stays on the chips, so the
- * whole stack (rows + composer) reads as one cohesive instrument. Native
- * chat composers only (single + ensemble); other shells untouched. */
+/* ── Console alignment: ABOVE-ROWS match the glass frame ─────────────
+ * Re-skin above-rows to the same liquid-glass fill as the outer surface
+ * so the stack reads as one instrument. Provider colour stays on the chips. */
 [data-composer-style="default"]
   .app-transcript
   :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
-  background: rgba(0, 0, 0, 0.95);
-  border-color: color-mix(in srgb, var(--text-primary) 17%, transparent);
+  background: var(--composer-glass-bg);
+  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"]
+[data-appearance="native_glass"][data-reduce-transparency="false"]
+  [data-composer-style="default"]
   .app-transcript
   :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-composer-style="default"][data-prompt-surface="solid"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row),
+[data-composer-style="default"][data-reduce-transparency="true"]
+  .app-transcript
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: var(--composer-bg-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 [data-composer-style="default"]
   .app-transcript
@@ -3155,23 +3080,33 @@
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack {
   gap: 0;
-  background: rgba(0, 0, 0, 0.95);
-  border: 1px solid var(--composer-border);
+  background: var(--composer-glass-bg);
+  border: 1px solid color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
   border-bottom: none;
   border-radius: calc(var(--radius-lg) * 2.45) calc(var(--radius-lg) * 2.45) 0 0;
   box-shadow: var(--composer-shadow);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"]
+[data-appearance="native_glass"][data-reduce-transparency="false"]
+  [data-composer-style="default"]
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack {
-  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-composer-style="default"][data-prompt-surface="solid"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack,
+[data-composer-style="default"][data-reduce-transparency="true"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack {
+  background: var(--composer-bg-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 /* Each above-row → flush, chrome-less segment (inherits the frame tone). */
 [data-composer-style="default"]
@@ -3323,9 +3258,9 @@
 }
 
 /* ── Console refinement: themed INNER in LIGHT (chat composers) ──────
- * The outer is now pure white in light themes, so the inner module's
- * near-white `--composer-bg` blended into it and the theme stopped
- * reading on the panel. Give the LIGHT inner a distinct themed surface:
+ * The outer frame is frosted glass in light themes, so the inner module's
+ * near-white `--composer-bg` can still blend unless we nudge it. Give the
+ * LIGHT inner a distinct themed surface:
  * a subtle vertical gradient nudged off pure-white toward the text
  * colour, so it reads as a themed panel the way the dark inner's tone
  * reads against black. Theme-relative (no per-theme values) so it holds
