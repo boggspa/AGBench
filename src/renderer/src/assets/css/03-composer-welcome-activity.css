@@ -910,6 +910,12 @@
   align-items: center;
   gap: 6px;
 }
+.ensemble-hierarchy-tile .sidebar-provider-icon,
+.ensemble-hierarchy-tile .sidebar-provider-icon svg {
+  width: 21.6px;
+  height: 21.6px;
+}
+
 .ensemble-hierarchy-tile {
   display: inline-flex;
   align-items: center;
