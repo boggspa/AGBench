@@ -259,6 +259,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
+  box-sizing: border-box;
+  width: max-content;
   z-index: 5;
   -webkit-app-region: no-drag;
 }
@@ -274,7 +276,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  max-width: calc(100% - 360px);
+  max-width: none;
   overflow: visible;
   -webkit-app-region: no-drag;
 }
@@ -394,6 +396,7 @@
 
 .chat-corner-controls .chat-corner-btn {
   position: relative;
+  flex: 0 0 auto;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
