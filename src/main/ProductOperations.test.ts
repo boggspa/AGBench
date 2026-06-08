@@ -291,6 +291,7 @@ describe('ProductOperations', () => {
       runQueue: [],
       runRecovery: [],
       scheduledTasks: [],
+      workflows: [],
       approvalLedger: [],
       workspaceChanges: [],
       recentCrashes: []

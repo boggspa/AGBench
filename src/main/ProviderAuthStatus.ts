@@ -57,7 +57,8 @@ const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   grok: false,
   // Cursor MCP is workspace-config-based (CR6), not a live status surface.
   cursor: false,
-  ollama: false
+  // Ollama exposes a TaskWraith-local read-only tool loop through the adapter.
+  ollama: true
 }
 
 export function buildProviderAuthStatusV2(input: ProviderAuthStatusV2Input): ProviderAuthStatusV2 {

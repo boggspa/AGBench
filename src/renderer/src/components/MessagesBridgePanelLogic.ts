@@ -57,6 +57,7 @@ export function messageBridgeSendBlocker(
   binding: MessageChannelBinding | null
 ): string | null {
   if (!binding) return 'Save an operator link first.'
+  if (binding.channel !== 'imessage') return null
   const databaseBlocker = messagesBridgeDatabaseBlocker(status)
   if (databaseBlocker) return databaseBlocker
   if (!status?.sendTextSupported) {
@@ -70,6 +71,7 @@ export function messageBridgeBindingPollBlocker(
   binding: MessageChannelBinding | null
 ): string | null {
   if (!binding) return 'Save an operator link first.'
+  if (binding.channel !== 'imessage') return null
   return messagesBridgeDatabaseBlocker(status)
 }
 
@@ -88,13 +90,13 @@ export function messagesBridgePollDiagnostic(
   if (!summary) return null
   const command = `${triggerPrefix.trim() || 'tw'} status`
   if (summary.polled <= 0) {
-    return `No new Messages rows were found. Send "${command}" to the TaskWraith contact, then poll again; if you already sent it, reset the cursor.`
+    return `No new channel rows were found. Send "${command}" to the TaskWraith contact, then poll again; if you already sent it, reset the cursor.`
   }
   if (summary.commands > 0) {
-    return 'TaskWraith handled a bridge command. If the reply is not visible yet, refresh the audit and check Messages automation permission.'
+    return 'TaskWraith handled a channel command. If the reply is not visible yet, refresh the audit and check the adapter delivery status.'
   }
   if (summary.dispatched > 0) {
-    return 'TaskWraith dispatched the iMessage prompt to the selected provider.'
+    return 'TaskWraith dispatched the channel prompt to the selected provider.'
   }
 
   const rejected = summary.rejected || {}
@@ -112,10 +114,12 @@ export function messagesBridgePollDiagnostic(
       return 'Messages reported the row as sent from this Mac. Send from your iPhone, or use a dedicated TaskWraith Apple Account signed into Messages.app.'
     case 'outbound-echo':
       return `Only TaskWraith's own outgoing message was seen. Send "${command}" from your iPhone and poll again.`
+    case 'rate-limited':
+      return 'Channel input was rate-limited before it reached a provider run. Wait briefly or raise the local gateway limit in development settings.'
     case 'duplicate-message':
       return `That message was already handled. Send a new "${command}" or reset the cursor before polling.`
     case 'no-binding':
-      return 'No saved TaskWraith contact link matched this conversation. Scan recent iMessages and save the link again.'
+      return 'No saved TaskWraith contact link matched this conversation. Save the channel binding again.'
     case 'binding-archived':
       return 'The matching TaskWraith contact link is archived. Restore or recreate the link before polling.'
     case 'unsupported-mode':
@@ -127,7 +131,7 @@ export function messagesBridgePollDiagnostic(
     case 'dispatch-not-started':
       return 'The provider did not start a run. Check the selected provider/runtime, then poll again.'
     default:
-      return `Messages rows were rejected: ${Object.entries(rejected)
+      return `Channel rows were rejected: ${Object.entries(rejected)
         .filter(([, count]) => count > 0)
         .map(([reason, count]) => `${reason} ${count}`)
         .join(', ')}.`
@@ -142,7 +146,7 @@ export function messagesBridgePollObservation(
     return total + (Number.isFinite(count) ? Math.max(0, count) : 0)
   }, 0)
   return [
-    `${summary.polled} Messages row${summary.polled === 1 ? '' : 's'} scanned`,
+    `${summary.polled} channel row${summary.polled === 1 ? '' : 's'} scanned`,
     `${summary.accepted} accepted`,
     `${summary.commands} command${summary.commands === 1 ? '' : 's'} handled`,
     `${summary.dispatched} provider run${summary.dispatched === 1 ? '' : 's'} dispatched`,
@@ -159,8 +163,8 @@ export function messagesBridgeStatusCommandState(
   if (hasHandledStatusCommand) return 'Status command accepted by TaskWraith.'
   if (summary?.commands) return 'Command accepted; waiting for reply audit.'
   if (summary?.accepted) return 'Message accepted; command parser did not see status yet.'
-  if (summary?.polled) return 'Messages rows were seen but not accepted. Read the diagnostic below.'
-  return 'Waiting for TaskWraith to see a new Messages row.'
+  if (summary?.polled) return 'Channel rows were seen but not accepted. Read the diagnostic below.'
+  return 'Waiting for TaskWraith to see a new channel row.'
 }
 
 export function messagesBridgePeekRowPreview(row: MessagesBridgeInboundMessage): string {
@@ -220,6 +224,7 @@ const rejectionPriority = [
   'sender-not-allowed',
   'from-self',
   'outbound-echo',
+  'rate-limited',
   'duplicate-message',
   'no-binding',
   'binding-archived',

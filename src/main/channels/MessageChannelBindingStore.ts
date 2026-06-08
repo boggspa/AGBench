@@ -9,13 +9,18 @@ import type {
 } from './MessageChannelTypes'
 import {
   MESSAGE_CHANNEL_ADAPTERS,
+  MESSAGE_CHANNEL_PROVIDER_OPTIONS,
+  defaultMessageChannelRouteTarget,
   defaultTriggerPrefix,
   isActiveMessageChannelKind,
+  isActiveMessageChannelRouteTarget,
+  isMessageChannelKind,
+  isMessageChannelRouteTarget,
   normalizeChannelHandle,
   normalizeChannelKey
 } from './MessageChannelTypes'
 
-const MESSAGE_CHANNEL_PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'])
+const MESSAGE_CHANNEL_PROVIDERS = new Set(MESSAGE_CHANNEL_PROVIDER_OPTIONS)
 
 interface BindingStoreFile {
   version: 1
@@ -163,11 +168,13 @@ export class MessageChannelBindingStore {
     const channel = requireMessageChannelKind(input.channel)
     const accountId = requireNonEmpty(normalizeChannelKey(input.accountId), 'accountId')
     const chatGuid = requireDirectOperatorChatGuid(
+      channel,
       requireNonEmpty(normalizeChannelKey(input.chatGuid), 'chatGuid')
     )
     const appChatId = requireNonEmpty(input.appChatId.trim(), 'appChatId')
     const allowedHandles = normalizeAllowedHandles(input.allowedHandles)
     const provider = requireMessageChannelProvider(input.provider)
+    const routeTarget = requireActiveMessageChannelRouteTarget(input.routeTarget)
     if (input.mode && input.mode !== 'operator') {
       throw new Error('Channel gateway currently supports operator channel bindings only')
     }
@@ -183,6 +190,7 @@ export class MessageChannelBindingStore {
       appChatId,
       ...(input.workspaceId?.trim() ? { workspaceId: input.workspaceId.trim() } : {}),
       provider,
+      routeTarget,
       mode: 'operator',
       requireTrigger: true,
       triggerPrefix: defaultTriggerPrefix(input.triggerPrefix),
@@ -197,7 +205,9 @@ export class MessageChannelBindingStore {
 function normalizeStoredBinding(value: unknown): MessageChannelBinding | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Partial<MessageChannelBinding>
-  if (record.channel !== 'imessage') return null
+  if (!isMessageChannelKind(record.channel) || !isActiveMessageChannelKind(record.channel)) {
+    return null
+  }
   if (
     typeof record.id !== 'string' ||
     typeof record.accountId !== 'string' ||
@@ -210,18 +220,22 @@ function normalizeStoredBinding(value: unknown): MessageChannelBinding | null {
   try {
     const nowIso = new Date(0).toISOString()
     const provider = requireMessageChannelProvider(record.provider)
+    const routeTarget = requireActiveMessageChannelRouteTarget(record.routeTarget)
     if (record.mode && record.mode !== 'operator') return null
+    const channel = requireMessageChannelKind(record.channel)
     return {
       id: record.id,
-      channel: record.channel,
+      channel,
       accountId: requireNonEmpty(normalizeChannelKey(record.accountId), 'accountId'),
       chatGuid: requireDirectOperatorChatGuid(
+        channel,
         requireNonEmpty(normalizeChannelKey(record.chatGuid), 'chatGuid')
       ),
       allowedHandles: normalizeAllowedHandles(record.allowedHandles || []),
       appChatId: requireNonEmpty(record.appChatId.trim(), 'appChatId'),
       ...(record.workspaceId?.trim() ? { workspaceId: record.workspaceId.trim() } : {}),
       provider,
+      routeTarget,
       mode: 'operator',
       requireTrigger: true,
       triggerPrefix: defaultTriggerPrefix(record.triggerPrefix),
@@ -250,14 +264,30 @@ function requireMessageChannelKind(value: unknown): MessageChannelKind {
 }
 
 function requireMessageChannelProvider(value: unknown): MessageChannelBinding['provider'] {
-  if (typeof value === 'string' && MESSAGE_CHANNEL_PROVIDERS.has(value)) {
+  if (
+    typeof value === 'string' &&
+    MESSAGE_CHANNEL_PROVIDERS.has(value as MessageChannelBinding['provider'])
+  ) {
     return value as MessageChannelBinding['provider']
   }
   throw new Error('Message channel provider is invalid')
 }
 
-function requireDirectOperatorChatGuid(chatGuid: string): string {
-  if (/^imessage;\+;/i.test(chatGuid)) {
+function requireActiveMessageChannelRouteTarget(
+  value: unknown
+): MessageChannelBinding['routeTarget'] {
+  if (typeof value === 'string' && !isMessageChannelRouteTarget(value)) {
+    throw new Error('Message channel route target is invalid')
+  }
+  const routeTarget = isMessageChannelRouteTarget(value) ? value : defaultMessageChannelRouteTarget()
+  if (isActiveMessageChannelRouteTarget(routeTarget)) {
+    return routeTarget
+  }
+  throw new Error(`Message channel route target ${routeTarget} is planned but not enabled yet`)
+}
+
+function requireDirectOperatorChatGuid(channel: MessageChannelKind, chatGuid: string): string {
+  if (channel === 'imessage' && /^imessage;\+;/i.test(chatGuid)) {
     throw new Error('iMessage local adapter currently supports one-to-one operator conversations')
   }
   return chatGuid
@@ -269,7 +299,7 @@ function normalizeAllowedHandles(handles: string[]): string[] {
   for (const raw of handles) {
     if (typeof raw !== 'string') continue
     if (raw.trim() === '*') {
-      throw new Error('allowedHandles must name exact iMessage handles; wildcard is not supported')
+      throw new Error('allowedHandles must name exact channel sender handles; wildcard is not supported')
     }
     const handle = normalizeChannelHandle(raw)
     if (!handle || seen.has(handle)) continue

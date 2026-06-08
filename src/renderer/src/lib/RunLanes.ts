@@ -138,6 +138,7 @@ export const buildRunLanes = (
     const chat = chatMap.get(task.chatId)
     lanes.push({
       id: `task:${task.id}`,
+      runId: task.runId,
       scheduledTaskId: task.id,
       provider: task.provider,
       phase: 'scheduled',

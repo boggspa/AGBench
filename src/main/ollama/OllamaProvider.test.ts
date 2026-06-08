@@ -3,6 +3,8 @@ import {
   humanizeOllamaModelId,
   normalizeOllamaBaseUrl,
   normalizeOllamaModels,
+  ollamaLocalToolSystemPrompt,
+  parseOllamaToolRequest,
   parseOllamaMemoryPsOutput
 } from './OllamaProvider'
 
@@ -113,5 +115,27 @@ describe('parseOllamaMemoryPsOutput', () => {
 
   it('returns null when no Ollama model runtime is present', () => {
     expect(parseOllamaMemoryPsOutput('125 50000 /usr/bin/other-process')).toBeNull()
+  })
+})
+
+describe('parseOllamaToolRequest', () => {
+  it('accepts TaskWraith local read-only tool requests', () => {
+    expect(
+      parseOllamaToolRequest(
+        '{"taskwraith_tool":{"name":"workspace_search","arguments":{"query":"Ollama","path":"src"}}}'
+      )
+    ).toEqual({
+      toolName: 'workspace_search',
+      arguments: { query: 'Ollama', path: 'src' }
+    })
+  })
+
+  it('extracts fenced JSON and rejects mutating tools', () => {
+    expect(
+      parseOllamaToolRequest(
+        '```json\n{"taskwraith_tool":{"name":"write_file","arguments":{"path":"x","content":"y"}}}\n```'
+      )
+    ).toBeNull()
+    expect(ollamaLocalToolSystemPrompt()).toContain('read-only workspace tools')
   })
 })

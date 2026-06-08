@@ -100,6 +100,7 @@
 /* --- Sidebar: Pinned + Recents sections ------------------------------- */
 .sidebar-pinned-section,
 .sidebar-recents-section,
+.sidebar-workflows-section,
 .sidebar-active-runs-section {
   display: flex;
   flex-direction: column;
@@ -182,6 +183,7 @@
 
 .sidebar-pinned-list,
 .sidebar-recents-list,
+.sidebar-workflow-list,
 .sidebar-active-runs-list {
   display: flex;
   flex-direction: column;
@@ -190,6 +192,7 @@
 
 .sidebar-pinned-item,
 .sidebar-recents-item,
+.sidebar-workflow-item,
 .sidebar-active-run-row {
   appearance: none;
   -webkit-appearance: none;
@@ -212,12 +215,14 @@
 
 .sidebar-pinned-item:hover,
 .sidebar-recents-item:hover,
+.sidebar-workflow-item:hover,
 .sidebar-active-run-row:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .sidebar-pinned-item:focus-visible,
 .sidebar-recents-item:focus-visible,
+.sidebar-workflow-item:focus-visible,
 .sidebar-active-run-row:focus-visible {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   outline: none;
@@ -225,6 +230,7 @@
 
 .sidebar-pinned-item.active,
 .sidebar-recents-item.active,
+.sidebar-workflow-item.active,
 .sidebar-active-run-row.active {
   /* Selection = rim-highlight chrome (accent inset ring + faint inner glow),
      replacing the old left-edge "fingernail" sliver. The opacity-gradient
@@ -243,7 +249,8 @@
 }
 
 .sidebar-pinned-label,
-.sidebar-recents-label {
+.sidebar-recents-label,
+.sidebar-workflow-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -333,6 +340,176 @@
   color: var(--text-muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.sidebar-workflow-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-workflow-item.is-paused {
+  opacity: 0.72;
+}
+
+.sidebar-workflow-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-workflow-name {
+  display: block;
+  line-height: 1.15;
+}
+
+.sidebar-workflow-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-workflow-status {
+  flex: 0 0 auto;
+  max-width: 76px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 42%, transparent);
+  background: color-mix(in srgb, var(--sidebar-text) 5%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 72%, transparent);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-workflow-status.tone-running,
+.sidebar-workflow-history-chip.tone-running {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.sidebar-workflow-status.tone-success,
+.sidebar-workflow-history-chip.tone-success {
+  border-color: color-mix(in srgb, var(--success, #34d399) 34%, transparent);
+  background: color-mix(in srgb, var(--success, #34d399) 12%, transparent);
+  color: color-mix(in srgb, var(--success, #34d399) 88%, var(--sidebar-text));
+}
+
+.sidebar-workflow-status.tone-warning,
+.sidebar-workflow-history-chip.tone-warning {
+  border-color: color-mix(in srgb, var(--warning, #fbbf24) 38%, transparent);
+  background: color-mix(in srgb, var(--warning, #fbbf24) 12%, transparent);
+  color: color-mix(in srgb, var(--warning, #fbbf24) 90%, var(--sidebar-text));
+}
+
+.sidebar-workflow-status.tone-danger,
+.sidebar-workflow-history-chip.tone-danger {
+  border-color: color-mix(in srgb, var(--danger, #f87171) 38%, transparent);
+  background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
+  color: color-mix(in srgb, var(--danger, #f87171) 88%, var(--sidebar-text));
+}
+
+.sidebar-workflow-detail {
+  margin-left: 28px;
+  margin-right: 4px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 34%, transparent);
+  background: color-mix(in srgb, var(--sidebar-text) 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-workflow-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.sidebar-workflow-detail-row strong {
+  min-width: 0;
+  color: color-mix(in srgb, var(--sidebar-text) 84%, transparent);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-workflow-actions,
+.sidebar-workflow-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sidebar-workflow-action,
+.sidebar-workflow-history-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 42%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sidebar-text) 5%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 82%, transparent);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.sidebar-workflow-action {
+  padding: 4px 7px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.sidebar-workflow-action:hover,
+.sidebar-workflow-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--sidebar-text);
+  outline: 0;
+}
+
+.sidebar-workflow-action.primary {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.sidebar-workflow-action.danger:hover,
+.sidebar-workflow-action.danger:focus-visible {
+  border-color: color-mix(in srgb, var(--danger, #f87171) 45%, transparent);
+  background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
+  color: color-mix(in srgb, var(--danger, #f87171) 88%, var(--sidebar-text));
+}
+
+.sidebar-workflow-action:disabled,
+.sidebar-workflow-create:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.sidebar-workflow-history-chip {
+  padding: 3px 6px;
+}
+
+.sidebar-workflow-empty {
+  padding: 4px var(--space-sm, 8px);
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 68%, transparent);
+  font-size: var(--font-size-xs);
 }
 
 /* Pin / unpin button — appears on hover for regular rows, always

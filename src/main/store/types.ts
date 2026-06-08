@@ -1770,6 +1770,7 @@ export interface ProductOperationsStatus {
     approvalLedgerRecords: number
     workspaceChangeSets: number
     scheduledTasks: number
+    workflows?: number
     runtimeProfiles?: number
     handoffCards?: number
   }
@@ -1794,6 +1795,7 @@ export interface ProductDiagnosticsSnapshot {
   runQueue: RunQueueJob[]
   runRecovery: RunRecoveryRecord[]
   scheduledTasks: ScheduledTask[]
+  workflows: WorkflowDefinition[]
   approvalLedger: ApprovalLedgerRecord[]
   workspaceChanges: WorkspaceChangeSet[]
   recentCrashes: ProductCrashRecord[]
@@ -1843,7 +1845,7 @@ export interface ChatMessage {
    * detect and treat it differently from a regular tool activity
    * (link back to the sub-thread, distinct visual treatment, etc.). */
   metadata?: {
-    kind?: 'subThreadReturn' | 'subThreadDelegation' | string
+    kind?: 'subThreadReturn' | 'subThreadDelegation' | 'guestParticipantReply' | string
     /** Sub-thread id for `kind: 'subThreadReturn' | 'subThreadDelegation'`. */
     subThreadId?: string
     /** Sub-thread's provider for badge/icon rendering. */
@@ -2463,6 +2465,53 @@ export type ScheduledTaskStatus =
   | 'failed'
   | 'cancelled'
 
+export type WorkflowTriggerKind = 'manual' | 'once' | 'interval' | 'cron'
+
+export interface WorkflowTrigger {
+  kind: WorkflowTriggerKind
+  /** ISO timestamp for one-shot workflows. */
+  runAt?: string
+  /** Fixed interval cadence for recurring workflows. */
+  intervalMs?: number
+  /** Optional cadence anchor. Defaults to workflow creation time. */
+  startAt?: string
+  /** Reserved for future cron support; cron expressions are not evaluated yet. */
+  cronExpression?: string
+  timezone?: string
+}
+
+export type WorkflowMissedRunPolicy = 'coalesce' | 'skip'
+export type WorkflowConcurrencyPolicy = 'skip' | 'enqueue'
+export type WorkflowExecutionStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped'
+
+export interface WorkflowLimits {
+  maxRunsPerDay?: number
+  maxConsecutiveFailures?: number
+  timeoutSeconds?: number
+  maxCostUsd?: number
+  maxTokens?: number
+}
+
+export interface WorkflowExecutionRecord {
+  id: string
+  workflowId: string
+  scheduledTaskId?: string
+  runId?: string
+  plannedFor: string
+  status: WorkflowExecutionStatus
+  createdAt: string
+  updatedAt: string
+  startedAt?: string
+  completedAt?: string
+  error?: string
+}
+
 /**
  * 1.0.4-AT3 — discriminant for solo vs ensemble scheduled runs.
  *
@@ -2533,6 +2582,7 @@ export interface ScheduledTask {
   geminiWorktree?: GeminiWorktreeConfig
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
   claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
@@ -2543,15 +2593,59 @@ export interface ScheduledTask {
   status: ScheduledTaskStatus
   createdAt: string
   updatedAt: string
+  runId?: string
   firedAt?: string
   completedAt?: string
   lastError?: string
+  workflowId?: string
+  workflowExecutionId?: string
+  workflowOccurrenceAt?: string
   /** 1.0.4-AT3 — discriminant. Undefined == legacy single-provider. */
   kind?: ScheduledTaskKind
   /** 1.0.4-AT3 — required when `kind === 'ensemble'`. Applied to
    * the chat's ensemble config at fire time so roster/mode edits
    * after scheduling don't reshape the dispatch. */
   ensembleSnapshot?: ScheduledEnsembleSnapshot
+}
+
+export type WorkflowRunTemplate = Omit<
+  ScheduledTask,
+  | 'id'
+  | 'runAt'
+  | 'timezone'
+  | 'status'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'runId'
+  | 'firedAt'
+  | 'completedAt'
+  | 'lastError'
+  | 'workflowId'
+  | 'workflowExecutionId'
+  | 'workflowOccurrenceAt'
+>
+
+export interface WorkflowDefinition {
+  id: string
+  name: string
+  workspaceId: string
+  workspacePath: string
+  enabled: boolean
+  trigger: WorkflowTrigger
+  template: WorkflowRunTemplate
+  missedRunPolicy: WorkflowMissedRunPolicy
+  concurrencyPolicy: WorkflowConcurrencyPolicy
+  limits: WorkflowLimits
+  nextRunAt?: string
+  lastRunAt?: string
+  lastCompletedAt?: string
+  lastStatus?: WorkflowExecutionStatus
+  lastError?: string
+  failureStreak: number
+  activeExecutionId?: string
+  history: WorkflowExecutionRecord[]
+  createdAt: string
+  updatedAt: string
 }
 
 export type RunQueueJobStatus =

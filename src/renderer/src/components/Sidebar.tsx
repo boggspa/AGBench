@@ -15,6 +15,8 @@ import type {
   WorkspaceRecord,
   ChatRecord,
   ChatListItem,
+  ScheduledTask,
+  WorkflowDefinition,
   ProviderId,
   ComposerStyle,
   ThemeAccentStyle,
@@ -78,6 +80,8 @@ interface SidebarProps {
     }>
   }>
   runningChatIds?: string[]
+  workflows?: WorkflowDefinition[]
+  scheduledTasks?: ScheduledTask[]
   /**
    * First-launch onboarding hint visibility. When true AND the
    * workspace list is empty, the sidebar renders a faint card
@@ -156,6 +160,12 @@ interface SidebarProps {
    * "Active runs" sidebar section navigates to the chat AND opens
    * the Run Inspector for that runId. */
   onInspectRun?: (runId: string, chatId: string | undefined) => void
+  onCreateWorkflow?: () => void
+  onRunWorkflowNow?: (workflowId: string) => void
+  onToggleWorkflowEnabled?: (workflow: WorkflowDefinition) => void
+  onEditWorkflowInterval?: (workflow: WorkflowDefinition) => void
+  onCancelWorkflowExecution?: (workflow: WorkflowDefinition) => void
+  onDeleteWorkflow?: (workflowId: string) => void
   /** Opens the iPhone/iPad pairing sheet (QR + JSON). When undefined
    * the remote-connection icon falls back to opening Settings →
    * Bridge Networking as a discoverability hint. */
@@ -260,8 +270,9 @@ const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sec
 const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION_KEY =
   'taskwraith-sidebar-collapsed-sections-default-version'
 const COLLAPSED_SIDEBAR_SECTIONS_DEFAULT_VERSION = 'all-collapsed-v1'
-type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
+type SidebarSectionId = 'workflows' | 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
 const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
+  'workflows',
   'pinned',
   'recents',
   'ensembles',
@@ -1155,6 +1166,70 @@ function formatChatAgeTitle(timestamp: number): string {
   })
 }
 
+function formatWorkflowTime(value?: string): string {
+  if (!value) return 'Manual'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unscheduled'
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatWorkflowTrigger(workflow: WorkflowDefinition): string {
+  const trigger = workflow.trigger
+  if (trigger.kind === 'manual') return 'Manual'
+  if (trigger.kind === 'once') return `Once · ${formatWorkflowTime(trigger.runAt)}`
+  if (trigger.kind === 'interval') {
+    const minutes = Math.max(1, Math.round((trigger.intervalMs || 60_000) / 60_000))
+    if (minutes < 60) return `Every ${minutes}m`
+    const hours = Math.round(minutes / 60)
+    return `Every ${hours}h`
+  }
+  return trigger.cronExpression ? `Cron · ${trigger.cronExpression}` : 'Cron'
+}
+
+function workflowMatchesSearch(workflow: WorkflowDefinition, query: string): boolean {
+  if (!query) return true
+  return [
+    workflow.name,
+    workflow.template.prompt,
+    workflow.template.provider,
+    workflow.lastStatus,
+    formatWorkflowTrigger(workflow)
+  ]
+    .join(' ')
+    .toLowerCase()
+    .includes(query)
+}
+
+const WORKFLOW_TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'skipped'])
+
+function isWorkflowExecutionActive(status?: string): boolean {
+  return Boolean(status && !WORKFLOW_TERMINAL_STATUSES.has(status))
+}
+
+function formatWorkflowStatus(status?: string): string {
+  if (!status) return 'Idle'
+  if (status === 'queued') return 'Queued'
+  if (status === 'running') return 'Running'
+  if (status === 'completed') return 'Done'
+  if (status === 'failed') return 'Failed'
+  if (status === 'cancelled') return 'Cancelled'
+  if (status === 'skipped') return 'Skipped'
+  return status
+}
+
+function workflowStatusTone(status?: string): 'running' | 'success' | 'warning' | 'danger' | 'muted' {
+  if (status === 'queued' || status === 'running') return 'running'
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'skipped') return 'warning'
+  return 'muted'
+}
+
 function getWorkspaceMeta(workspace: WorkspaceRecord): string {
   const pathParts = workspace.path.split(/[\\/]/).filter(Boolean)
   const compactPath = pathParts.length > 2 ? `.../${pathParts.slice(-2).join('/')}` : workspace.path
@@ -1216,6 +1291,8 @@ export function Sidebar({
   activeChatId,
   usageSummary,
   runningChatIds = [],
+  workflows = [],
+  scheduledTasks = [],
   showOnboardingHint = false,
   onDismissOnboardingHint,
   workspaceAddPointerActive = false,
@@ -1243,6 +1320,12 @@ export function Sidebar({
   onDeleteChat,
   onRenameChat,
   onInspectRun,
+  onCreateWorkflow,
+  onRunWorkflowNow,
+  onToggleWorkflowEnabled,
+  onEditWorkflowInterval,
+  onCancelWorkflowExecution,
+  onDeleteWorkflow,
   onShowPairingSheet
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
@@ -1270,6 +1353,7 @@ export function Sidebar({
   // commit / cancel callbacks below. Null when nothing is being
   // edited (the common case).
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
   // Wrap ref for the `+ New` menu so an outside-click / Escape listener
   // can dismiss the popover without each menu item having to remember
   // to call `setNewMenuOpen(false)`. Mirrors the standard pattern the
@@ -1368,6 +1452,18 @@ export function Sidebar({
     ? globalChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : globalChats
   const totalChatCount = chats.filter((chat) => !chat.archived).length
+  const workspaceWorkflowIds = new Set(workspaces.map((workspace) => workspace.id))
+  const scopedWorkflows = workflows
+    .filter((workflow) => workspaceWorkflowIds.has(workflow.workspaceId))
+    .slice()
+    .sort((left, right) => {
+      const leftRunAt = left.nextRunAt ? new Date(left.nextRunAt).getTime() : Number.POSITIVE_INFINITY
+      const rightRunAt = right.nextRunAt
+        ? new Date(right.nextRunAt).getTime()
+        : Number.POSITIVE_INFINITY
+      if (leftRunAt !== rightRunAt) return leftRunAt - rightRunAt
+      return left.name.localeCompare(right.name)
+    })
 
   // Pinned + Recents derivations. Both honor the search query so the
   // sections collapse alongside the rest of the sidebar when the user
@@ -1414,6 +1510,21 @@ export function Sidebar({
   const visibleRecentChats = isSidebarSearchActive
     ? recentChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : recentChats
+  const visibleWorkflows = isSidebarSearchActive
+    ? scopedWorkflows.filter((workflow) => workflowMatchesSearch(workflow, sidebarSearchQuery))
+    : scopedWorkflows
+  const scheduledTaskById = useMemo(() => {
+    const map = new Map<string, ScheduledTask>()
+    for (const task of scheduledTasks) map.set(task.id, task)
+    return map
+  }, [scheduledTasks])
+
+  useEffect(() => {
+    if (!selectedWorkflowId) return
+    if (!visibleWorkflows.some((workflow) => workflow.id === selectedWorkflowId)) {
+      setSelectedWorkflowId(null)
+    }
+  }, [selectedWorkflowId, visibleWorkflows])
 
   // Search result-count badge. Counts DISTINCT matching items across
   // every rendered bucket — previously it summed only workspace +
@@ -1425,6 +1536,8 @@ export function Sidebar({
   const sidebarSearchResultCount = (() => {
     const chatIds = new Set<string>()
     const workspaceIds = new Set<string>()
+    const workflowIds = new Set<string>()
+    for (const workflow of visibleWorkflows) workflowIds.add(workflow.id)
     for (const entry of visibleWorkspaceEntries) {
       workspaceIds.add(entry.workspace.id)
       for (const chat of entry.visibleChats) chatIds.add(chat.appChatId)
@@ -1434,7 +1547,7 @@ export function Sidebar({
     for (const chat of visibleRecentChats) chatIds.add(chat.appChatId)
     for (const chat of visibleEnsembleChats) chatIds.add(chat.appChatId)
     for (const workspace of visiblePinnedWorkspaces) workspaceIds.add(workspace.id)
-    return chatIds.size + workspaceIds.size
+    return chatIds.size + workspaceIds.size + workflowIds.size
   })()
 
   // 1.0.3 retiring inline tile action icons — `handleTogglePinChatClick`,
@@ -2286,6 +2399,178 @@ export function Sidebar({
             onSelectChat={onSelectChat}
             onInspectRun={onInspectRun}
           />
+
+          <div className="sidebar-workflows-section">
+            <div className="sidebar-section-header">
+              <button
+                type="button"
+                className="sidebar-section-header-toggle"
+                onClick={() => toggleSidebarSection('workflows')}
+                aria-expanded={!isSectionCollapsed('workflows')}
+                title={
+                  isSectionCollapsed('workflows') ? 'Expand Workflows' : 'Collapse Workflows'
+                }
+              >
+                <ChevronSymbolIcon isExpanded={!isSectionCollapsed('workflows')} />
+                <h4 className="sidebar-section-title">Workflows</h4>
+              </button>
+              <button
+                type="button"
+                className="sidebar-section-header-action sidebar-workflow-create"
+                onClick={onCreateWorkflow}
+                disabled={!onCreateWorkflow}
+                title="Create workflow from composer"
+                aria-label="Create workflow from composer"
+              >
+                <PlusSymbolIcon />
+              </button>
+            </div>
+            {!isSectionCollapsed('workflows') && (
+              <div className="sidebar-workflow-list">
+                {visibleWorkflows.length === 0 ? (
+                  <div className="sidebar-workflow-empty">
+                    {isSidebarSearchActive ? 'No matching workflows' : 'No workflows'}
+                  </div>
+                ) : (
+                  visibleWorkflows.map((workflow) => {
+                    const activeExecution = workflow.activeExecutionId
+                      ? workflow.history.find(
+                          (execution) => execution.id === workflow.activeExecutionId
+                        ) || null
+                      : null
+                    const activeTask = activeExecution?.scheduledTaskId
+                      ? scheduledTaskById.get(activeExecution.scheduledTaskId) || null
+                      : null
+                    const isActiveExecution =
+                      isWorkflowExecutionActive(activeExecution?.status) ||
+                      activeTask?.status === 'running' ||
+                      activeTask?.status === 'due'
+                    const latestExecution =
+                      workflow.history.length > 0
+                        ? workflow.history[workflow.history.length - 1]
+                        : null
+                    const status = isActiveExecution
+                      ? activeTask?.status === 'running'
+                        ? 'running'
+                        : activeExecution?.status || 'queued'
+                      : workflow.enabled
+                        ? workflow.lastStatus
+                        : 'paused'
+                    const statusLabel = workflow.enabled
+                      ? formatWorkflowStatus(status)
+                      : 'Paused'
+                    const selected = selectedWorkflowId === workflow.id
+                    const lastHistory = workflow.history.slice(-3).reverse()
+                    return (
+                      <div key={workflow.id} className="sidebar-workflow-block">
+                        <button
+                          type="button"
+                          className={`sidebar-workflow-item provider-${workflow.template.provider || 'gemini'} ${
+                            selected ? 'active' : ''
+                          } ${workflow.enabled ? '' : 'is-paused'}`}
+                          onClick={() =>
+                            setSelectedWorkflowId((current) =>
+                              current === workflow.id ? null : workflow.id
+                            )
+                          }
+                          aria-expanded={selected}
+                          title={workflow.name}
+                        >
+                          <ProviderBadgeIcon provider={workflow.template.provider} />
+                          <span className="sidebar-workflow-copy">
+                            <span className="sidebar-workflow-name">
+                              <HighlightMatch text={workflow.name} query={sidebarSearchQuery} />
+                            </span>
+                            <span className="sidebar-workflow-meta">
+                              {formatWorkflowTrigger(workflow)}
+                            </span>
+                          </span>
+                          <span
+                            className={`sidebar-workflow-status tone-${workflowStatusTone(status)}`}
+                          >
+                            {statusLabel}
+                          </span>
+                        </button>
+                        {selected && (
+                          <div className="sidebar-workflow-detail">
+                            <div className="sidebar-workflow-detail-row">
+                              <span>Next</span>
+                              <strong>{formatWorkflowTime(workflow.nextRunAt)}</strong>
+                            </div>
+                            {latestExecution && (
+                              <div className="sidebar-workflow-detail-row">
+                                <span>Last</span>
+                                <strong>{formatWorkflowStatus(latestExecution.status)}</strong>
+                              </div>
+                            )}
+                            <div className="sidebar-workflow-actions">
+                              <button
+                                type="button"
+                                className="sidebar-workflow-action primary"
+                                onClick={() => onRunWorkflowNow?.(workflow.id)}
+                                disabled={!onRunWorkflowNow}
+                              >
+                                Run now
+                              </button>
+                              <button
+                                type="button"
+                                className="sidebar-workflow-action"
+                                onClick={() => onToggleWorkflowEnabled?.(workflow)}
+                                disabled={!onToggleWorkflowEnabled}
+                              >
+                                {workflow.enabled ? 'Pause' : 'Resume'}
+                              </button>
+                              <button
+                                type="button"
+                                className="sidebar-workflow-action"
+                                onClick={() => onEditWorkflowInterval?.(workflow)}
+                                disabled={!onEditWorkflowInterval}
+                              >
+                                Cadence
+                              </button>
+                              {isActiveExecution && (
+                                <button
+                                  type="button"
+                                  className="sidebar-workflow-action danger"
+                                  onClick={() => onCancelWorkflowExecution?.(workflow)}
+                                  disabled={!onCancelWorkflowExecution}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="sidebar-workflow-action danger"
+                                onClick={() => onDeleteWorkflow?.(workflow.id)}
+                                disabled={!onDeleteWorkflow}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                            {lastHistory.length > 0 && (
+                              <div className="sidebar-workflow-history" aria-label="Recent runs">
+                                {lastHistory.map((execution) => (
+                                  <span
+                                    key={execution.id}
+                                    className={`sidebar-workflow-history-chip tone-${workflowStatusTone(
+                                      execution.status
+                                    )}`}
+                                    title={formatWorkflowTime(execution.startedAt || execution.plannedFor)}
+                                  >
+                                    {formatWorkflowStatus(execution.status)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
 
           {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
             <div className="sidebar-pinned-section" {...pinDropProps}>

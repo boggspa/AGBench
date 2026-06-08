@@ -36,7 +36,9 @@ describe('MessageChannelAuditStore', () => {
     })
     store.append({
       kind: 'outbound_sent',
-      channel: 'imessage',
+      channel: 'telegram',
+      accountId: 'telegram-bot',
+      chatGuid: 'telegram:123',
       bindingId: 'binding-1',
       appRunId: 'run-1',
       summary: 'Sent assistant reply'
@@ -51,6 +53,7 @@ describe('MessageChannelAuditStore', () => {
       expect.objectContaining({
         id: 'audit-2',
         kind: 'outbound_sent',
+        channel: 'telegram',
         appRunId: 'run-1'
       })
     ])

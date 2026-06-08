@@ -30,6 +30,10 @@ const operatorTarget = {
   accountId: 'mac-default',
   chatGuid: 'iMessage;-;operator-chat'
 }
+const operatorSendTarget = {
+  channel: 'imessage' as const,
+  ...operatorTarget
+}
 const operatorBindingTarget = {
   ...operatorTarget,
   appChatId: 'chat-1'
@@ -58,7 +62,7 @@ describe('MessageChannelDeliveryService', () => {
 
     await vi.waitFor(() => {
       expect(sendText).toHaveBeenCalledWith({
-        ...operatorTarget,
+        ...operatorSendTarget,
         recipientHandle: 'user@example.com',
         text: 'TaskWraith: Hello world'
       })
@@ -96,7 +100,7 @@ describe('MessageChannelDeliveryService', () => {
         appRunId: 'run-no-checker',
         ...operatorBindingTarget,
         payload: expect.objectContaining({
-          error: 'Recipient is not allowlisted for this iMessage binding.'
+          error: 'Recipient is not allowlisted for this channel binding.'
         })
       })
     )
@@ -128,7 +132,7 @@ describe('MessageChannelDeliveryService', () => {
         appRunId: 'run-blocked',
         senderHandle: 'intruder@example.com',
         payload: expect.objectContaining({
-          error: 'Recipient is not allowlisted for this iMessage binding.'
+          error: 'Recipient is not allowlisted for this channel binding.'
         })
       })
     )
@@ -165,7 +169,7 @@ describe('MessageChannelDeliveryService', () => {
         appRunId: 'run-revoked',
         senderHandle: 'user@example.com',
         payload: expect.objectContaining({
-          error: 'Recipient is no longer allowlisted for this iMessage binding.'
+          error: 'Recipient is no longer allowlisted for this channel binding.'
         })
       })
     )
@@ -195,19 +199,19 @@ describe('MessageChannelDeliveryService', () => {
 
     await vi.waitFor(() => {
       expect(sendText).toHaveBeenCalledWith({
-        ...operatorTarget,
+        ...operatorSendTarget,
         recipientHandle: 'user@example.com',
         text: 'TaskWraith: Done.'
       })
       expect(sendAttachment).toHaveBeenCalledTimes(2)
     })
     expect(sendAttachment).toHaveBeenNthCalledWith(1, {
-      ...operatorTarget,
+      ...operatorSendTarget,
       recipientHandle: 'user@example.com',
       filePath: '/tmp/report.pdf'
     })
     expect(sendAttachment).toHaveBeenNthCalledWith(2, {
-      ...operatorTarget,
+      ...operatorSendTarget,
       recipientHandle: 'user@example.com',
       filePath: '/tmp/screenshot.png'
     })
@@ -245,7 +249,7 @@ describe('MessageChannelDeliveryService', () => {
 
     await vi.waitFor(() => {
       expect(sendAttachment).toHaveBeenCalledWith({
-        ...operatorTarget,
+        ...operatorSendTarget,
         recipientHandle: 'user@example.com',
         filePath: '/tmp/report.pdf'
       })
@@ -321,7 +325,7 @@ describe('MessageChannelDeliveryService', () => {
 
     expect(result).toEqual({ attempted: true, sent: true })
     expect(sendText).toHaveBeenCalledWith({
-      ...operatorTarget,
+      ...operatorSendTarget,
       recipientHandle: 'user@example.com',
       text: 'TaskWraith: iMessage bridge is online.'
     })
@@ -354,7 +358,7 @@ describe('MessageChannelDeliveryService', () => {
 
     expect(result).toEqual({ attempted: true, sent: true })
     expect(sendText).toHaveBeenCalledWith({
-      ...operatorTarget,
+      ...operatorSendTarget,
       recipientHandle: 'user@example.com',
       text: 'TaskWraith: Already labeled.'
     })
@@ -388,7 +392,7 @@ describe('MessageChannelDeliveryService', () => {
         senderHandle: 'intruder@example.com',
         payload: expect.objectContaining({
           command: 'status',
-          error: 'Recipient is not allowlisted for this iMessage binding.'
+          error: 'Recipient is not allowlisted for this channel binding.'
         })
       })
     )
@@ -415,7 +419,7 @@ describe('MessageChannelDeliveryService', () => {
 
     await vi.waitFor(() => {
       expect(sendText).toHaveBeenCalledWith({
-        ...operatorTarget,
+        ...operatorSendTarget,
         recipientHandle: 'user@example.com',
         text: 'TaskWraith: Hello world'
       })

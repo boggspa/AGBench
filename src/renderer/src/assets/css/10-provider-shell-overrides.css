@@ -576,6 +576,11 @@
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
 }
 
+[data-theme="alabaster"][data-composer-style="codex"] .composer-surface,
+[data-theme="obsidian"][data-composer-style="codex"] .composer-surface {
+  border-color: transparent !important;
+}
+
 [data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea,
 [data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight,
 [data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight-content {

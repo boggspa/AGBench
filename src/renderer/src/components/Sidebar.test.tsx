@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types'
+import type { ChatRecord, WorkflowDefinition, WorkspaceRecord } from '../../../main/store/types'
 import { Sidebar } from './Sidebar'
 import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 
@@ -13,7 +13,14 @@ const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'taskwraith-sidebar-collapsed-sec
 // on child rows opt the relevant section(s) open the way a user would by clicking
 // the header. Persisting a non-empty collapsed list also bypasses the new-user
 // default migration, pinning exactly these sections open.
-const SIDEBAR_SECTION_IDS = ['pinned', 'recents', 'ensembles', 'workspaces', 'chats'] as const
+const SIDEBAR_SECTION_IDS = [
+  'workflows',
+  'pinned',
+  'recents',
+  'ensembles',
+  'workspaces',
+  'chats'
+] as const
 function collapseSectionsExcept(...expanded: string[]): string {
   return JSON.stringify(SIDEBAR_SECTION_IDS.filter((id) => !expanded.includes(id)))
 }
@@ -48,6 +55,48 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   }
 }
 
+function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
+  const now = '2026-06-07T20:00:00.000Z'
+  return {
+    id: 'workflow-1',
+    name: 'Audit loop',
+    workspaceId: 'ws-1',
+    workspacePath: '/repo',
+    enabled: true,
+    trigger: {
+      kind: 'interval',
+      intervalMs: 15 * 60_000,
+      startAt: now,
+      timezone: 'Europe/London'
+    },
+    template: {
+      workspaceId: 'ws-1',
+      workspacePath: '/repo',
+      chatId: 'parent-1',
+      provider: 'codex',
+      prompt: 'Review the current diff.',
+      selectedModelType: 'cli-default',
+      customModel: '',
+      approvalMode: 'default',
+      sessionTrust: false,
+      imageAttachments: []
+    },
+    missedRunPolicy: 'coalesce',
+    concurrencyPolicy: 'skip',
+    limits: {
+      maxRunsPerDay: 24,
+      maxConsecutiveFailures: 3
+    },
+    nextRunAt: '2026-06-07T20:15:00.000Z',
+    lastStatus: 'queued',
+    failureStreak: 0,
+    history: [],
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  }
+}
+
 function stubSidebarStorage(values: Record<string, string>) {
   const store = new Map(Object.entries(values))
   vi.stubGlobal('localStorage', {
@@ -66,7 +115,11 @@ function stubSidebarStorage(values: Record<string, string>) {
 
 function renderSidebar(
   chats: ChatRecord[],
-  options: { activeChatId?: string | null; ensembleModeEnabled?: boolean } = {}
+  options: {
+    activeChatId?: string | null
+    ensembleModeEnabled?: boolean
+    workflows?: WorkflowDefinition[]
+  } = {}
 ) {
   const workspace = makeWorkspace()
   return renderToStaticMarkup(
@@ -78,6 +131,7 @@ function renderSidebar(
       activeChatId={options.activeChatId}
       usageSummary={[]}
       runningChatIds={[]}
+      workflows={options.workflows}
       onSelectWorkspace={() => {}}
       onRemoveWorkspace={() => {}}
       onSelectWorkspaceDialog={() => {}}
@@ -118,6 +172,22 @@ describe('Sidebar active chat override', () => {
 
     expect(html).toContain('provider-codex active')
     expect(html).not.toContain('provider-gemini active')
+  })
+})
+
+describe('Sidebar workflows', () => {
+  it('renders workflow cadence and status in the Workflows section', () => {
+    stubSidebarStorage({
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workflows')
+    })
+
+    const html = renderSidebar([], { workflows: [makeWorkflow()] })
+
+    expect(html).toContain('Workflows')
+    expect(html).toContain('Audit loop')
+    expect(html).toContain('Every 15m')
+    expect(html).toContain('Queued')
+    expect(html).toContain('provider-codex')
   })
 })
 

@@ -15,11 +15,37 @@ export type MessageChannelAuthState = 'allowlisted_contact' | 'unmatched_contact
 export type MessageChannelRouteTarget =
   | 'existing_chat'
   | 'new_provider_thread'
+  | 'workspace_default_agent'
   | 'ensemble'
   | 'approval_status'
   | 'status_endpoint'
 
-export const ACTIVE_MESSAGE_CHANNEL_KINDS = ['imessage'] as const
+export const ACTIVE_MESSAGE_CHANNEL_ROUTE_TARGETS = [
+  'existing_chat',
+  'new_provider_thread',
+  'workspace_default_agent',
+  'ensemble',
+  'approval_status',
+  'status_endpoint'
+] as const satisfies readonly MessageChannelRouteTarget[]
+export const MESSAGE_CHANNEL_ROUTE_TARGET_LABELS: Record<MessageChannelRouteTarget, string> = {
+  existing_chat: 'Existing chat',
+  new_provider_thread: 'New provider thread',
+  workspace_default_agent: 'Workspace default agent',
+  ensemble: 'Ensemble',
+  approval_status: 'Approval/status endpoint',
+  status_endpoint: 'Status endpoint'
+}
+export const MESSAGE_CHANNEL_PROVIDER_OPTIONS: ProviderId[] = [
+  'codex',
+  'claude',
+  'gemini',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
+export const ACTIVE_MESSAGE_CHANNEL_KINDS = ['imessage', 'telegram', 'matrix', 'web'] as const
 export const MESSAGE_CHANNEL_KIND_LABELS: Record<MessageChannelKind, string> = {
   imessage: 'iMessage',
   telegram: 'Telegram',
@@ -62,26 +88,26 @@ export const MESSAGE_CHANNEL_ADAPTERS: MessageChannelAdapterDescriptor[] = [
   {
     channel: 'telegram',
     label: 'Telegram bot',
-    status: 'planned',
+    status: 'active',
     transport: 'byo_token',
     summary: 'Bot API long polling with a user-provided token; no TaskWraith-hosted relay.',
     capabilities: {
       polling: true,
       outboundText: true,
-      outboundFiles: true,
+      outboundFiles: false,
       richActions: true
     }
   },
   {
     channel: 'matrix',
     label: 'Matrix',
-    status: 'planned',
+    status: 'active',
     transport: 'self_hosted',
-    summary: 'Self-hosted or BYO homeserver adapter for durable room-based agent control.',
+    summary: 'BYO Matrix homeserver access token for room-based agent control.',
     capabilities: {
       polling: true,
       outboundText: true,
-      outboundFiles: true,
+      outboundFiles: false,
       richActions: false
     }
   },
@@ -114,11 +140,11 @@ export const MESSAGE_CHANNEL_ADAPTERS: MessageChannelAdapterDescriptor[] = [
   {
     channel: 'web',
     label: 'Local web chat',
-    status: 'planned',
+    status: 'active',
     transport: 'self_hosted',
-    summary: 'Local/PWA channel suitable for Tailscale or an optional user-managed tunnel.',
+    summary: 'In-process local/PWA channel suitable for Tailscale or a user-managed tunnel.',
     capabilities: {
-      polling: false,
+      polling: true,
       outboundText: true,
       outboundFiles: true,
       richActions: true
@@ -197,33 +223,42 @@ export const MESSAGE_CHANNEL_INTERACTION_PRIMITIVES: MessageChannelInteractionPr
   },
   {
     name: 'resume',
-    state: 'planned',
+    state: 'implemented',
     aliases: ['resume'],
-    summary: 'Resume a paused or cancelled channel-routed task once run checkpoints are exposed.'
+    summary: 'Retry the latest channel-routed task that failed before provider dispatch completed.'
   },
   {
     name: 'show_diff',
-    state: 'planned',
+    state: 'implemented',
     aliases: ['show diff', 'diff'],
-    summary: 'Send a compact file-change summary back through the channel.'
+    summary: 'Send a compact read-only file-change summary back through the channel.'
   },
   {
     name: 'open_thread',
-    state: 'planned',
+    state: 'implemented',
     aliases: ['open thread', 'thread'],
-    summary: 'Return or open the TaskWraith thread associated with this channel conversation.'
+    summary: 'Return a compact locator for the TaskWraith thread associated with this channel conversation.'
   },
   {
     name: 'send_file',
-    state: 'planned',
+    state: 'implemented',
     aliases: ['send file <path>'],
-    summary: 'Attach an allowlisted workspace file after TaskWraith path and policy checks.'
+    summary: 'Attach a regular file that resolves inside the linked workspace and is supported by the adapter.'
   },
   {
     name: 'handoff_provider',
-    state: 'planned',
-    aliases: ['handoff to codex', 'handoff to gemini', 'handoff to claude', 'handoff to kimi'],
-    summary: 'Route the next channel turn to a specific provider or ensemble participant.'
+    state: 'implemented',
+    aliases: [
+      'handoff to codex <prompt>',
+      'handoff to gemini <prompt>',
+      'handoff to claude <prompt>',
+      'handoff to kimi <prompt>',
+      'handoff to grok <prompt>',
+      'handoff to cursor <prompt>',
+      'handoff to ollama <prompt>',
+      'handoff to local <prompt>'
+    ],
+    summary: 'Route this channel turn to a specific provider through the normal TaskWraith dispatch path.'
   }
 ]
 
@@ -236,6 +271,7 @@ export interface MessageChannelBinding {
   appChatId: string
   workspaceId?: string
   provider: ProviderId
+  routeTarget?: MessageChannelRouteTarget
   mode: MessageChannelMode
   requireTrigger: boolean
   triggerPrefix?: string
@@ -254,6 +290,7 @@ export interface MessageChannelBindingInput {
   appChatId: string
   workspaceId?: string
   provider: ProviderId
+  routeTarget?: MessageChannelRouteTarget
   mode?: MessageChannelMode
   requireTrigger?: boolean
   triggerPrefix?: string
@@ -313,6 +350,7 @@ export interface ChannelInboundMetadata {
   messageGuid: string
   senderHandle: string
   authState: MessageChannelAuthState
+  routeTarget?: MessageChannelRouteTarget
   attachmentCount: number
   sourceTrust: 'external_untrusted'
   attachments?: MessageChannelAttachment[]
@@ -325,6 +363,7 @@ export interface RoutedMessageChannelTurn {
   appChatId: string
   workspaceId?: string
   provider: ProviderId
+  routeTarget: MessageChannelRouteTarget
   prompt: string
   source: InboundMessageChannelEnvelope
   metadata: ChannelInboundMetadata
@@ -359,6 +398,30 @@ export function defaultTriggerPrefix(prefix?: string): string {
 
 export function isActiveMessageChannelKind(value: MessageChannelKind): boolean {
   return (ACTIVE_MESSAGE_CHANNEL_KINDS as readonly MessageChannelKind[]).includes(value)
+}
+
+export function isMessageChannelKind(value: unknown): value is MessageChannelKind {
+  return typeof value === 'string' && value in MESSAGE_CHANNEL_KIND_LABELS
+}
+
+export function messageChannelKindLabel(channel: MessageChannelKind): string {
+  return MESSAGE_CHANNEL_KIND_LABELS[channel] || channel
+}
+
+export function isActiveMessageChannelRouteTarget(value: MessageChannelRouteTarget): boolean {
+  return (ACTIVE_MESSAGE_CHANNEL_ROUTE_TARGETS as readonly MessageChannelRouteTarget[]).includes(
+    value
+  )
+}
+
+export function isMessageChannelRouteTarget(value: unknown): value is MessageChannelRouteTarget {
+  return typeof value === 'string' && value in MESSAGE_CHANNEL_ROUTE_TARGET_LABELS
+}
+
+export function defaultMessageChannelRouteTarget(
+  routeTarget?: MessageChannelRouteTarget
+): MessageChannelRouteTarget {
+  return routeTarget || 'existing_chat'
 }
 
 export function messageChannelConversationId(input: {

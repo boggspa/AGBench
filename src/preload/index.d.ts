@@ -15,6 +15,7 @@ import {
   ChatScope,
   ExternalPathGrant,
   ScheduledTask,
+  WorkflowDefinition,
   GeminiMcpBridgeStatus,
   ProviderApiKeyStatus,
   GeminiAuthStatus,
@@ -57,6 +58,11 @@ import type {
   MessageChannelBinding,
   MessageChannelBindingInput
 } from '../main/channels/MessageChannelTypes'
+import type {
+  LocalWebChannelOutboundMessage,
+  LocalWebChannelSubmitInput
+} from '../main/channels/LocalWebChannelAdapter'
+import type { MessageChannelAdapterRuntimeStatus } from '../main/channels/MessageChannelAdapter'
 import type { MessageChannelCursor } from '../main/channels/MessageChannelCursorStore'
 import type { MessageChannelAuditRecord } from '../main/channels/MessageChannelAuditStore'
 import type {
@@ -876,6 +882,7 @@ declare global {
       removeGuestParticipant: (
         parentChatId: string
       ) => Promise<{ parent: ChatRecord; guest?: ChatRecord }>
+      listMessageChannelAdapters: () => Promise<MessageChannelAdapterRuntimeStatus[]>
       listMessageChannelBindings: () => Promise<MessageChannelBinding[]>
       upsertMessageChannelBinding: (
         input: MessageChannelBindingInput
@@ -915,6 +922,18 @@ declare global {
       pollMessageChannelsOnce: (
         params?: MessagesBridgePollParams
       ) => Promise<MessageChannelPollSummary>
+      submitLocalWebChannelMessage: (input: LocalWebChannelSubmitInput) => Promise<{
+        ok: true
+        message: MessagesBridgePollResult['messages'][number]
+        summary: MessageChannelPollSummary
+      }>
+      drainLocalWebChannelOutbox: (params?: {
+        accountId?: string
+        chatGuid?: string
+      }) => Promise<{
+        ok: true
+        messages: LocalWebChannelOutboundMessage[]
+      }>
       listMessageChannelCursors: () => Promise<MessageChannelCursor[]>
       clearMessageChannelCursors: () => Promise<{ ok: boolean }>
       clearMessageChannelBindingCursor: (
@@ -941,6 +960,22 @@ declare global {
         partial: Partial<ScheduledTask>
       ) => Promise<ScheduledTask | null>
       deleteScheduledTask: (id: string) => Promise<void>
+      getWorkflowDefinitions: (workspaceId?: string) => Promise<WorkflowDefinition[]>
+      saveWorkflowDefinition: (
+        workflow: Omit<
+          WorkflowDefinition,
+          'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'
+        > &
+          Partial<
+            Pick<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'>
+          >
+      ) => Promise<WorkflowDefinition>
+      updateWorkflowDefinition: (
+        id: string,
+        partial: Partial<WorkflowDefinition>
+      ) => Promise<WorkflowDefinition | null>
+      deleteWorkflowDefinition: (id: string) => Promise<void>
+      runWorkflowNow: (id: string) => Promise<ScheduledTask | null>
       getRunQueueJobs: (filter?: RunQueueJobFilter) => Promise<RunQueueJob[]>
       requestRunQueueJob: (
         job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'>
@@ -1040,6 +1075,7 @@ declare global {
       ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
+      onWorkflowDefinitionsChanged: (callback: (payload: WorkflowDefinition[]) => void) => void
       onUsageChanged: (callback: () => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => () => void
       onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void

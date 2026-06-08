@@ -51,6 +51,7 @@ describe('MessageChannelRouter', () => {
     if (decision.accepted) {
       expect(decision.turn.appChatId).toBe('chat-1')
       expect(decision.turn.provider).toBe('codex')
+      expect(decision.turn.routeTarget).toBe('existing_chat')
       expect(decision.turn.prompt).toBe('summarize status')
       expect(decision.turn.metadata).toMatchObject({
         kind: 'channelInbound',
@@ -59,8 +60,20 @@ describe('MessageChannelRouter', () => {
         chatGuid: 'chat-guid',
         messageGuid: 'message-1',
         senderHandle: 'user@example.com',
+        routeTarget: 'existing_chat',
         attachmentCount: 0
       })
+    }
+  })
+
+  it('carries endpoint route targets on accepted turns', () => {
+    const router = routerWith([binding({ routeTarget: 'approval_status' })])
+    const decision = router.routeInbound(envelope({ text: 'tw approve approval-1' }))
+
+    expect(decision.accepted).toBe(true)
+    if (decision.accepted) {
+      expect(decision.turn.routeTarget).toBe('approval_status')
+      expect(decision.turn.metadata.routeTarget).toBe('approval_status')
     }
   })
 

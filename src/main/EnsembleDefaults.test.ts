@@ -114,7 +114,7 @@ describe('createDefaultEnsembleConfig parity guard', () => {
 })
 
 describe('createDefaultEnsembleConfig — configured-provider seeding (E)', () => {
-  it('seeds all six when no configured set is supplied (back-compat)', () => {
+  it('seeds all seven when no configured set is supplied (back-compat)', () => {
     const providers = createDefaultEnsembleConfig('gemini').participants.map((p) => p.provider)
     expect(new Set(providers)).toEqual(new Set(EXPECTED_PROVIDERS))
   })

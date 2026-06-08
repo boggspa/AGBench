@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import type { MessageChannelKind } from './MessageChannelTypes'
-import { normalizeChannelKey } from './MessageChannelTypes'
+import { isMessageChannelKind, normalizeChannelKey } from './MessageChannelTypes'
 
 export interface MessageChannelCursor {
   channel: MessageChannelKind
@@ -104,7 +104,7 @@ export class MessageChannelCursorStore {
 function normalizeStoredCursor(value: unknown): MessageChannelCursor | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Partial<MessageChannelCursor>
-  if (record.channel !== 'imessage') return null
+  if (!isMessageChannelKind(record.channel)) return null
   if (
     typeof record.accountId !== 'string' ||
     typeof record.chatGuid !== 'string' ||

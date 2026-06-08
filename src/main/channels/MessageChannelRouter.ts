@@ -5,6 +5,7 @@ import type {
   MessageChannelRouteDecision
 } from './MessageChannelTypes'
 import {
+  defaultMessageChannelRouteTarget,
   defaultTriggerPrefix,
   normalizeChannelHandle,
   normalizeChannelKey
@@ -73,6 +74,7 @@ export class MessageChannelRouter {
     this.seenMessageGuids.add(messageKey)
     const attachments = normalizeAttachments(envelope.attachments)
     const imagePaths = imageAttachmentPaths(attachments)
+    const routeTarget = defaultMessageChannelRouteTarget(binding.routeTarget)
     return {
       accepted: true,
       turn: {
@@ -80,6 +82,7 @@ export class MessageChannelRouter {
         appChatId: binding.appChatId,
         workspaceId: binding.workspaceId,
         provider: binding.provider,
+        routeTarget,
         prompt: prompt.trim(),
         source: envelope,
         metadata: {
@@ -91,6 +94,7 @@ export class MessageChannelRouter {
           messageGuid: envelope.messageGuid,
           senderHandle: envelope.senderHandle,
           authState: 'allowlisted_contact',
+          routeTarget,
           attachmentCount: attachments.length,
           sourceTrust: 'external_untrusted',
           ...(attachments.length > 0 ? { attachments } : {}),

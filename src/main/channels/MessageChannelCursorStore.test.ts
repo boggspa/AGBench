@@ -33,6 +33,22 @@ describe('MessageChannelCursorStore', () => {
     })
   })
 
+  it('persists Telegram update cursors', () => {
+    const store = new MessageChannelCursorStore({
+      storagePath,
+      now: () => new Date('2026-06-06T10:00:00.000Z')
+    })
+    store.update({ channel: 'telegram', accountId: 'telegram-bot', chatGuid: 'telegram:123' }, 100)
+
+    const reloaded = new MessageChannelCursorStore({ storagePath })
+    expect(
+      reloaded.get({ channel: 'telegram', accountId: 'telegram-bot', chatGuid: 'telegram:123' })
+    ).toMatchObject({
+      channel: 'telegram',
+      lastRowId: 100
+    })
+  })
+
   it('never moves a cursor backwards', () => {
     const store = new MessageChannelCursorStore({ storagePath })
     const key = { channel: 'imessage' as const, accountId: 'mac-default', chatGuid: 'chat-guid' }

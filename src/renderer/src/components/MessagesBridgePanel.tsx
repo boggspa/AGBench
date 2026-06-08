@@ -2,8 +2,19 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type JSX } f
 import type { AppSettings, ChatRecord, ProviderId } from '../../../main/store/types'
 import type {
   MessageChannelBinding,
-  MessageChannelBindingInput
+  MessageChannelBindingInput,
+  MessageChannelKind,
+  MessageChannelRouteTarget
 } from '../../../main/channels/MessageChannelTypes'
+import {
+  ACTIVE_MESSAGE_CHANNEL_ROUTE_TARGETS,
+  MESSAGE_CHANNEL_ADAPTERS,
+  MESSAGE_CHANNEL_KIND_LABELS,
+  MESSAGE_CHANNEL_PROVIDER_OPTIONS,
+  MESSAGE_CHANNEL_ROUTE_TARGET_LABELS,
+  defaultMessageChannelRouteTarget
+} from '../../../main/channels/MessageChannelTypes'
+import type { MessageChannelAdapterRuntimeStatus } from '../../../main/channels/MessageChannelAdapter'
 import type { MessageChannelCursor } from '../../../main/channels/MessageChannelCursorStore'
 import type { MessageChannelAuditRecord } from '../../../main/channels/MessageChannelAuditStore'
 import type {
@@ -33,12 +44,14 @@ type BridgeSettingsState = {
 
 type BindingFormState = {
   id: string
+  channel: MessageChannelKind
   label: string
   accountId: string
   chatGuid: string
   allowedHandles: string
   appChatId: string
   provider: ProviderId
+  routeTarget: MessageChannelRouteTarget
   requireTrigger: boolean
   triggerPrefix: string
 }
@@ -58,7 +71,8 @@ type ValidationStep = {
   actions: ValidationAction[]
 }
 
-const PROVIDER_OPTIONS: ProviderId[] = ['codex', 'gemini', 'claude', 'kimi']
+const PROVIDER_OPTIONS: ProviderId[] = MESSAGE_CHANNEL_PROVIDER_OPTIONS
+const ROUTE_TARGET_OPTIONS: MessageChannelRouteTarget[] = [...ACTIVE_MESSAGE_CHANNEL_ROUTE_TARGETS]
 const DEFAULT_POLL_INTERVAL_MS = 30_000
 const MIN_POLL_INTERVAL_SECONDS = 5
 const FULL_DISK_ACCESS_SETTINGS_URL =
@@ -68,14 +82,39 @@ const AUTOMATION_SETTINGS_URL =
 const SECURITY_SETTINGS_FALLBACK_PATH = '/System/Library/PreferencePanes/Security.prefPane'
 const MESSAGES_APP_PATH = '/System/Applications/Messages.app'
 
-const emptyBindingForm = (): BindingFormState => ({
+const defaultAdapterStatuses = (): MessageChannelAdapterRuntimeStatus[] =>
+  MESSAGE_CHANNEL_ADAPTERS.map((adapter) => ({
+    ...adapter,
+    configured: adapter.channel === 'imessage' || adapter.channel === 'web',
+    available:
+      (adapter.channel === 'imessage' || adapter.channel === 'web') &&
+      adapter.status === 'active',
+    ...(adapter.channel === 'telegram'
+      ? { reason: 'Set TASKWRAITH_TELEGRAM_BOT_TOKEN to enable Telegram long polling.' }
+      : adapter.channel === 'matrix'
+        ? {
+            reason:
+              'Set TASKWRAITH_MATRIX_HOMESERVER_URL and TASKWRAITH_MATRIX_ACCESS_TOKEN to enable Matrix.'
+          }
+        : adapter.status === 'planned'
+          ? { reason: `${adapter.label} is planned but not implemented yet.` }
+          : {})
+  }))
+
+const ACTIVE_BINDING_CHANNELS = MESSAGE_CHANNEL_ADAPTERS.filter(
+  (adapter) => adapter.status === 'active'
+).map((adapter) => adapter.channel)
+
+const emptyBindingForm = (channel: MessageChannelKind = 'imessage'): BindingFormState => ({
   id: '',
+  channel,
   label: '',
-  accountId: 'mac-default',
+  accountId: defaultAccountIdForChannel(channel),
   chatGuid: '',
   allowedHandles: '',
   appChatId: '',
   provider: 'codex',
+  routeTarget: 'existing_chat',
   requireTrigger: true,
   triggerPrefix: 'tw'
 })
@@ -89,6 +128,9 @@ export function MessagesBridgePanel(): JSX.Element {
     String(DEFAULT_POLL_INTERVAL_MS / 1000)
   )
   const [status, setStatus] = useState<MessagesBridgeStatus | null>(null)
+  const [adapters, setAdapters] = useState<MessageChannelAdapterRuntimeStatus[]>(() =>
+    defaultAdapterStatuses()
+  )
   const [bindings, setBindings] = useState<MessageChannelBinding[]>([])
   const [conversations, setConversations] = useState<MessagesBridgeConversation[]>([])
   const [cursors, setCursors] = useState<MessageChannelCursor[]>([])
@@ -119,10 +161,11 @@ export function MessagesBridgePanel(): JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const [settings, bridgeStatus, nextBindings, nextCursors, nextAudit, nextChats] =
+      const [settings, bridgeStatus, nextAdapters, nextBindings, nextCursors, nextAudit, nextChats] =
         await Promise.all([
           window.api.getSettings(),
           window.api.getMessagesBridgeStatus(),
+          window.api.listMessageChannelAdapters(),
           window.api.listMessageChannelBindings(),
           window.api.listMessageChannelCursors(),
           window.api.listMessageChannelAudit(50),
@@ -132,6 +175,7 @@ export function MessagesBridgePanel(): JSX.Element {
       setBridgeSettings(nextSettings)
       setPollIntervalSeconds(String(Math.round(nextSettings.pollIntervalMs / 1000)))
       setStatus(bridgeStatus as MessagesBridgeStatus)
+      setAdapters(nextAdapters)
       setBindings(nextBindings)
       setCursors(nextCursors)
       setAudit(nextAudit.reverse())
@@ -251,6 +295,7 @@ export function MessagesBridgePanel(): JSX.Element {
     const selfToSelf = conversationAppearsSelfToSelf(conversation, form.accountId)
     setForm((current) => ({
       ...current,
+      channel: 'imessage',
       accountId: conversation.accountId || current.accountId || 'mac-default',
       chatGuid: conversation.chatGuid,
       label: current.label || conversationTitle(conversation),
@@ -276,13 +321,13 @@ export function MessagesBridgePanel(): JSX.Element {
     setError(null)
     setMessage(null)
     try {
-      const input = formToBindingInput(form)
+      const input = formToBindingInput(form, activeChats)
       const saved = await window.api.upsertMessageChannelBinding(input)
       setBindings((current) => upsertBindingInList(current, saved))
       setForm(bindingToForm(saved))
       const nextAudit = await window.api.listMessageChannelAudit(50)
       setAudit(nextAudit.reverse())
-      setMessage('iMessage binding saved.')
+      setMessage(`${messageChannelLabel(saved.channel)} binding saved.`)
       return saved
     } catch (err) {
       setError(messagesBridgePanelErrorMessage(err))
@@ -304,7 +349,7 @@ export function MessagesBridgePanel(): JSX.Element {
       const archived = await window.api.archiveMessageChannelBinding(bindingId)
       if (archived) {
         setBindings((current) => upsertBindingInList(current, archived))
-        setMessage('iMessage binding archived.')
+        setMessage(`${messageChannelLabel(archived.channel)} binding archived.`)
       }
       const nextAudit = await window.api.listMessageChannelAudit(50)
       setAudit(nextAudit.reverse())
@@ -319,6 +364,7 @@ export function MessagesBridgePanel(): JSX.Element {
     setMessage(null)
     try {
       if (
+        binding.channel === 'imessage' &&
         window.api.hostPlatform === 'darwin' &&
         !hasSentBridgeTest &&
         typeof window.api.openMessagesPermissionHelper === 'function'
@@ -384,7 +430,9 @@ export function MessagesBridgePanel(): JSX.Element {
       const result = await window.api.peekMessageChannelBinding(binding.id)
       setPeekBindingId(binding.id)
       setPeekRows(result.messages)
-      setMessage(`Read ${result.messages.length} latest Messages rows for this operator link.`)
+      setMessage(
+        `Read ${result.messages.length} latest ${messageChannelLabel(binding.channel)} rows for this operator link.`
+      )
       const nextAudit = await window.api.listMessageChannelAudit(50)
       setAudit(nextAudit.reverse())
     } catch (err) {
@@ -598,17 +646,26 @@ export function MessagesBridgePanel(): JSX.Element {
       messagesBridgeAuditRecordMatchesBinding(record, primaryBinding)
   )
   const conversationScanBlocker = messagesBridgeDatabaseBlocker(status)
-  const bindingSaveBlocker = bindingFormBlocker(form, hasBinding)
+  const bindingSaveBlocker = bindingFormBlocker(form)
   const canSaveWizardBinding = !bindingSaveBlocker
   const primarySendTestBlocker = messageBridgeSendBlocker(status, primaryBinding)
   const primaryPollBlocker = messageBridgeBindingPollBlocker(status, primaryBinding)
-  const pollOnceBlocker = messageBridgePollOnceBlocker(status, activeBindings.length)
+  const pollOnceBlocker = activeBindings.some((binding) => binding.channel === 'imessage')
+    ? messageBridgePollOnceBlocker(status, activeBindings.length)
+    : activeBindings.length > 0
+      ? null
+      : 'Save an operator link first.'
   const triggerPrefixForCommand =
     (primaryBinding?.triggerPrefix || form.triggerPrefix || 'tw').trim() || 'tw'
   const statusCommandText = `${triggerPrefixForCommand} status`
   const bridgeIdentityValue = primaryBinding?.accountId || form.accountId
   const bridgeIdentityLabel = formatBridgeIdentityLabel(bridgeIdentityValue)
   const bridgeIdentityIsPlaceholder = isPlaceholderBridgeIdentity(bridgeIdentityValue)
+  const formChannelLabel = messageChannelLabel(form.channel)
+  const formConversationFieldLabel = conversationFieldLabel(form.channel)
+  const formAccountFieldLabel = accountFieldLabel(form.channel)
+  const formAllowedHandlesLabel = allowedHandlesLabel(form.channel)
+  const formSetupHint = setupHintForChannel(form.channel)
   const copyStatusCommand = async (): Promise<void> => {
     setError(null)
     try {
@@ -815,9 +872,9 @@ export function MessagesBridgePanel(): JSX.Element {
           <span className="sidebar-section-title">Channels gateway</span>
           <strong>Local/self-hosted adapters, TaskWraith-controlled permissions.</strong>
           <small>
-            The active adapter is iMessage local experimental. Telegram, Matrix, Signal, email, and
-            local web chat can plug into the same canonical event, allowlist, routing, approval, and
-            audit path without a TaskWraith-hosted relay.
+            Active adapters include iMessage local experimental, Telegram bot, Matrix, and local
+            web chat. Signal, email, Discord, and Slack can plug into the same canonical event,
+            allowlist, routing, approval, and audit path without a TaskWraith-hosted relay.
           </small>
         </div>
         <div className="messages-bridge-identity-steps">
@@ -825,6 +882,37 @@ export function MessagesBridgePanel(): JSX.Element {
           <span>Trigger prefixes prevent accidental dispatch.</span>
           <span>Approvals, file access, and provider runs still go through TaskWraith policy.</span>
           <span>Portable commands: status, pause, approve &lt;code&gt;, deny &lt;code&gt;.</span>
+        </div>
+      </section>
+
+      <section className="messages-bridge-setup" aria-label="Channel adapters">
+        <div className="messages-bridge-subsection-header">
+          <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+            Adapters
+          </h4>
+          <p className="messages-bridge-validation-subtitle">
+            BYO/local transports only; no TaskWraith-hosted relay.
+          </p>
+        </div>
+        <div className="messages-bridge-setup-grid">
+          {adapters.map((adapter) => (
+            <div key={adapter.channel} className="messages-bridge-setup-row">
+              <div>
+                <strong>{adapter.label}</strong>
+                <span>{adapter.summary}</span>
+              </div>
+              <code>
+                {adapter.available
+                  ? 'Available'
+                  : adapter.configured
+                    ? 'Configured'
+                    : adapter.status === 'active'
+                      ? 'Needs config'
+                      : 'Planned'}
+              </code>
+              {adapter.reason && <span>{adapter.reason}</span>}
+            </div>
+          ))}
         </div>
       </section>
 
@@ -939,10 +1027,10 @@ export function MessagesBridgePanel(): JSX.Element {
                     <strong>{pollCommandState}</strong>
                   </div>
                   {pollDiagnostic && <p>{pollDiagnostic}</p>}
-                  <div className="messages-bridge-peek-list" aria-label="Latest Messages rows">
+                  <div className="messages-bridge-peek-list" aria-label="Latest channel rows">
                     {activePeekRows.length === 0 ? (
                       <small>
-                        Click Inspect rows to see the latest raw Messages rows for this saved
+                        Click Inspect rows to see the latest raw channel rows for this saved
                         conversation.
                       </small>
                     ) : (
@@ -1160,11 +1248,37 @@ export function MessagesBridgePanel(): JSX.Element {
           <button
             type="button"
             className="btn btn-sm btn-ghost"
-            onClick={() => setForm(emptyBindingForm())}
+            onClick={() => setForm(emptyBindingForm(form.channel))}
           >
             Clear
           </button>
         </div>
+        <label className="settings-field">
+          <span className="settings-field-label">Channel</span>
+          <select
+            className="settings-select"
+            value={form.channel}
+            onChange={(event) => {
+              const channel = event.target.value as MessageChannelKind
+              setForm((current) => ({
+                ...current,
+                channel,
+                accountId:
+                  current.accountId === defaultAccountIdForChannel(current.channel)
+                    ? defaultAccountIdForChannel(channel)
+                    : current.accountId,
+                chatGuid: '',
+                allowedHandles: ''
+              }))
+            }}
+          >
+            {ACTIVE_BINDING_CHANNELS.map((channel) => (
+              <option key={channel} value={channel}>
+                {messageChannelLabel(channel)}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="settings-field">
           <span className="settings-field-label">Label</span>
           <input
@@ -1174,71 +1288,82 @@ export function MessagesBridgePanel(): JSX.Element {
           />
         </label>
         <label className="settings-field">
-          <span className="settings-field-label">Mac Messages identity</span>
+          <span className="settings-field-label">{formAccountFieldLabel}</span>
           <input
             value={form.accountId}
             onChange={(event) =>
               setForm((current) => ({ ...current, accountId: event.target.value }))
             }
-            placeholder="taskwraith@example.com"
+            placeholder={accountPlaceholder(form.channel)}
             required
           />
         </label>
         <label className="settings-field messages-bridge-field-wide">
-          <span className="settings-field-label">Messages chat GUID</span>
+          <span className="settings-field-label">{formConversationFieldLabel}</span>
           <input
             value={form.chatGuid}
             onChange={(event) =>
               setForm((current) => ({ ...current, chatGuid: event.target.value }))
             }
-            placeholder="iMessage;-;+15551234567"
+            placeholder={conversationPlaceholder(form.channel)}
             required
           />
         </label>
-        <div className="messages-bridge-discovery messages-bridge-field-wide">
-          <div className="messages-bridge-subsection-header">
-            <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-              Recent iMessages
-            </h4>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              disabled={scanningConversations || Boolean(conversationScanBlocker)}
-              title={conversationScanBlocker || undefined}
-              onClick={() => void scanConversations()}
-            >
-              {scanningConversations ? 'Scanning...' : 'Scan recent'}
-            </button>
+        {form.channel === 'imessage' ? (
+          <div className="messages-bridge-discovery messages-bridge-field-wide">
+            <div className="messages-bridge-subsection-header">
+              <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                Recent iMessages
+              </h4>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                disabled={scanningConversations || Boolean(conversationScanBlocker)}
+                title={conversationScanBlocker || undefined}
+                onClick={() => void scanConversations()}
+              >
+                {scanningConversations ? 'Scanning...' : 'Scan recent'}
+              </button>
+            </div>
+            <p className="messages-bridge-discovery-hint">
+              Best: bind the conversation where your iPhone messages the TaskWraith contact. Use a
+              dedicated Apple Account or reachable email when possible. Avoid random human chats and
+              groups.
+            </p>
+            <div className="messages-bridge-conversation-list">
+              {conversations.length === 0 ? (
+                <div className="settings-audit-empty">No recent conversations loaded.</div>
+              ) : (
+                conversations.map((conversation) => (
+                  <button
+                    key={conversation.chatGuid}
+                    type="button"
+                    className="messages-bridge-conversation-row"
+                    onClick={() => applyConversation(conversation)}
+                  >
+                    <span>
+                      <strong>{conversationTitle(conversation)}</strong>
+                      <small>{conversationSubtitle(conversation, bridgeIdentityValue)}</small>
+                    </span>
+                    <span>
+                      <small>{formatConversationHandles(conversation)}</small>
+                      <em>{conversationPreview(conversation)}</em>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-          <p className="messages-bridge-discovery-hint">
-            Best: bind the conversation where your iPhone messages the TaskWraith contact. Use a
-            dedicated Apple Account or reachable email when possible. Avoid random human chats and
-            groups.
-          </p>
-          <div className="messages-bridge-conversation-list">
-            {conversations.length === 0 ? (
-              <div className="settings-audit-empty">No recent conversations loaded.</div>
-            ) : (
-              conversations.map((conversation) => (
-                <button
-                  key={conversation.chatGuid}
-                  type="button"
-                  className="messages-bridge-conversation-row"
-                  onClick={() => applyConversation(conversation)}
-                >
-                  <span>
-                    <strong>{conversationTitle(conversation)}</strong>
-                    <small>{conversationSubtitle(conversation, bridgeIdentityValue)}</small>
-                  </span>
-                  <span>
-                    <small>{formatConversationHandles(conversation)}</small>
-                    <em>{conversationPreview(conversation)}</em>
-                  </span>
-                </button>
-              ))
-            )}
+        ) : (
+          <div className="messages-bridge-discovery messages-bridge-field-wide">
+            <div className="messages-bridge-subsection-header">
+              <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                {formChannelLabel} setup
+              </h4>
+            </div>
+            <p className="messages-bridge-discovery-hint">{formSetupHint}</p>
           </div>
-        </div>
+        )}
         <label className="settings-field">
           <span className="settings-field-label">Operator channel</span>
           <select
@@ -1283,6 +1408,25 @@ export function MessagesBridgePanel(): JSX.Element {
           </select>
         </label>
         <label className="settings-field">
+          <span className="settings-field-label">Route target</span>
+          <select
+            className="settings-select"
+            value={form.routeTarget}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                routeTarget: event.target.value as MessageChannelRouteTarget
+              }))
+            }
+          >
+            {ROUTE_TARGET_OPTIONS.map((routeTarget) => (
+              <option key={routeTarget} value={routeTarget}>
+                {MESSAGE_CHANNEL_ROUTE_TARGET_LABELS[routeTarget]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="settings-field">
           <span className="settings-field-label">Trigger prefix</span>
           <input
             value={form.triggerPrefix}
@@ -1310,9 +1454,10 @@ export function MessagesBridgePanel(): JSX.Element {
             onChange={(event) =>
               setForm((current) => ({ ...current, allowedHandles: event.target.value }))
             }
-            placeholder="+15551234567, user@example.com"
+            placeholder={allowedHandlesPlaceholder(form.channel)}
             required
           />
+          <small>{formAllowedHandlesLabel}</small>
         </label>
         <div className="messages-bridge-form-actions">
           <button type="submit" className="btn btn-sm" disabled={savingBinding}>
@@ -1321,7 +1466,7 @@ export function MessagesBridgePanel(): JSX.Element {
         </div>
       </form>
 
-      <section className="messages-bridge-subsection" aria-label="iMessage bindings">
+      <section className="messages-bridge-subsection" aria-label="Channel bindings">
         <div className="messages-bridge-subsection-header">
           <h4 className="sidebar-section-title" style={{ margin: 0 }}>
             Bindings
@@ -1332,7 +1477,7 @@ export function MessagesBridgePanel(): JSX.Element {
         </div>
         <div className="messages-bridge-table">
           {bindings.length === 0 ? (
-            <div className="settings-audit-empty">No iMessage bindings configured.</div>
+            <div className="settings-audit-empty">No channel bindings configured.</div>
           ) : (
             bindings.map((binding) => {
               const archivedBlocker = binding.archived ? 'Archived links cannot be used.' : null
@@ -1349,7 +1494,16 @@ export function MessagesBridgePanel(): JSX.Element {
                     <span>{binding.chatGuid}</span>
                   </div>
                   <div>
-                    <span>{binding.provider}</span>
+                    <span>
+                      {messageChannelLabel(binding.channel)} / {binding.provider}
+                    </span>
+                    <small>
+                      {
+                        MESSAGE_CHANNEL_ROUTE_TARGET_LABELS[
+                          defaultMessageChannelRouteTarget(binding.routeTarget)
+                        ]
+                      }
+                    </small>
                     <code>{binding.triggerPrefix || 'tw'}</code>
                   </div>
                   <div>
@@ -1468,28 +1622,34 @@ function settingsToBridgeState(settings: AppSettings): BridgeSettingsState {
   }
 }
 
-function formToBindingInput(form: BindingFormState): MessageChannelBindingInput {
+function formToBindingInput(
+  form: BindingFormState,
+  chats: ChatRecord[] = []
+): MessageChannelBindingInput {
   const allowedHandles = parseAllowedHandles(form.allowedHandles)
+  const selectedChat = chats.find((chat) => chat.appChatId === form.appChatId.trim())
   if (allowedHandles.length === 0) {
-    throw new Error('Add at least one allowed iMessage handle.')
+    throw new Error(`Add one allowed ${messageChannelLabel(form.channel)} sender handle.`)
   }
   if (allowedHandles.some((handle) => handle === '*')) {
-    throw new Error('Allowed handles must be exact phone numbers or iMessage addresses.')
+    throw new Error('Allowed handles must be exact sender handles; wildcards are not supported.')
   }
   if (allowedHandles.length > 1) {
     throw new Error('Use one exact operator handle for this MVP.')
   }
-  if (isGroupIMessageChatGuid(form.chatGuid)) {
+  if (form.channel === 'imessage' && isGroupIMessageChatGuid(form.chatGuid)) {
     throw new Error('Use a one-to-one operator iMessage chat, not a group conversation.')
   }
   return {
     ...(form.id ? { id: form.id } : {}),
-    channel: 'imessage',
-    accountId: form.accountId.trim() || 'mac-default',
+    channel: form.channel,
+    accountId: form.accountId.trim() || defaultAccountIdForChannel(form.channel),
     chatGuid: form.chatGuid.trim(),
     allowedHandles,
     appChatId: form.appChatId.trim(),
+    ...(selectedChat?.workspaceId ? { workspaceId: selectedChat.workspaceId } : {}),
     provider: form.provider,
+    routeTarget: form.routeTarget,
     mode: 'operator',
     requireTrigger: true,
     triggerPrefix: form.triggerPrefix.trim() || 'tw',
@@ -1500,25 +1660,26 @@ function formToBindingInput(form: BindingFormState): MessageChannelBindingInput 
 function bindingToForm(binding: MessageChannelBinding): BindingFormState {
   return {
     id: binding.id,
+    channel: binding.channel,
     label: binding.label || '',
-    accountId: binding.accountId || 'mac-default',
+    accountId: binding.accountId || defaultAccountIdForChannel(binding.channel),
     chatGuid: binding.chatGuid,
     allowedHandles: binding.allowedHandles.join('\n'),
     appChatId: binding.appChatId,
     provider: binding.provider,
+    routeTarget: defaultMessageChannelRouteTarget(binding.routeTarget),
     requireTrigger: true,
     triggerPrefix: binding.triggerPrefix || 'tw'
   }
 }
 
-function bindingFormBlocker(form: BindingFormState, hasBinding: boolean): string | null {
-  if (hasBinding) return 'An active operator link already exists.'
-  if (isGroupIMessageChatGuid(form.chatGuid)) {
+function bindingFormBlocker(form: BindingFormState): string | null {
+  if (form.channel === 'imessage' && isGroupIMessageChatGuid(form.chatGuid)) {
     return 'Use a one-to-one operator iMessage chat. Group conversations are not part of this MVP.'
   }
   const handles = parseAllowedHandles(form.allowedHandles)
   if (handles.some((handle) => handle === '*')) {
-    return 'Allowed handle must be one exact phone number or iMessage address.'
+    return 'Allowed handle must be one exact sender handle.'
   }
   if (handles.length > 1) {
     return 'Use one exact operator handle. Group and multi-person bindings are not part of this MVP.'
@@ -1527,16 +1688,74 @@ function bindingFormBlocker(form: BindingFormState, hasBinding: boolean): string
     .filter((field) => !field.complete)
     .map((field) => field.label.toLowerCase())
   if (missing.length === 0) return null
-  return `Missing ${humanList(missing)}. Scan a recent iMessage to fill these automatically.`
+  return form.channel === 'imessage'
+    ? `Missing ${humanList(missing)}. Scan a recent iMessage to fill these automatically.`
+    : `Missing ${humanList(missing)}. Enter the ${messageChannelLabel(form.channel)} bot conversation details manually.`
 }
 
 function bindingFieldStatus(form: BindingFormState): Array<{ label: string; complete: boolean }> {
   const handles = parseAllowedHandles(form.allowedHandles)
   return [
-    { label: 'Chat GUID', complete: Boolean(form.chatGuid.trim()) },
+    { label: conversationFieldLabel(form.channel), complete: Boolean(form.chatGuid.trim()) },
     { label: 'One operator handle', complete: handles.length === 1 && handles[0] !== '*' },
     { label: 'Operator channel', complete: Boolean(form.appChatId.trim()) }
   ]
+}
+
+function messageChannelLabel(channel: MessageChannelKind): string {
+  return MESSAGE_CHANNEL_KIND_LABELS[channel] || channel
+}
+
+function defaultAccountIdForChannel(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'telegram-bot'
+  if (channel === 'web') return 'local-web'
+  return 'mac-default'
+}
+
+function accountFieldLabel(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'Telegram adapter account'
+  if (channel === 'web') return 'Local web account'
+  return 'Mac Messages identity'
+}
+
+function accountPlaceholder(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'telegram-bot'
+  if (channel === 'web') return 'local-web'
+  return 'taskwraith@example.com'
+}
+
+function conversationFieldLabel(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'Telegram chat ID'
+  if (channel === 'web') return 'Local web conversation ID'
+  return 'Messages chat GUID'
+}
+
+function conversationPlaceholder(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'telegram:123456789'
+  if (channel === 'web') return 'web:operator'
+  return 'iMessage;-;+15551234567'
+}
+
+function allowedHandlesLabel(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'Use the exact Telegram sender handle, usually telegram-user:<id>.'
+  if (channel === 'web') return 'Use the exact local web sender handle.'
+  return 'Use one exact phone number or iMessage address.'
+}
+
+function allowedHandlesPlaceholder(channel: MessageChannelKind): string {
+  if (channel === 'telegram') return 'telegram-user:42'
+  if (channel === 'web') return 'web-user:operator'
+  return '+15551234567, user@example.com'
+}
+
+function setupHintForChannel(channel: MessageChannelKind): string {
+  if (channel === 'telegram') {
+    return 'Create a Telegram bot with BotFather, set TASKWRAITH_TELEGRAM_BOT_TOKEN before launching TaskWraith, then bind the operator chat as telegram:<chat id> and the allowed sender as telegram-user:<user id>.'
+  }
+  if (channel === 'web') {
+    return 'Use the local web adapter for a self-hosted/PWA control surface. Bind a local conversation such as web:operator and an exact sender such as web-user:operator.'
+  }
+  return 'Bind one exact operator conversation and sender handle.'
 }
 
 function parseAllowedHandles(value: string): string[] {

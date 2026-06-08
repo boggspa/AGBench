@@ -17,6 +17,7 @@ import type {
   RunQueueJob,
   RunRecoveryRecord,
   ScheduledTask,
+  WorkflowDefinition,
   WorkspaceChangeSet,
   WorkspaceRecord,
   ChatRecord
@@ -447,6 +448,7 @@ export function buildProductOperationsStatus(input: {
   approvalLedger: ApprovalLedgerRecord[]
   workspaceChanges: WorkspaceChangeSet[]
   scheduledTasks: ScheduledTask[]
+  workflows?: WorkflowDefinition[]
   recentCrashes: ProductCrashRecord[]
   geminiBridgeStatus?: GeminiMcpBridgeStatus | null
   userDataExists: boolean
@@ -517,7 +519,8 @@ export function buildProductOperationsStatus(input: {
       interruptedRuns: input.runRecovery.length,
       approvalLedgerRecords: input.approvalLedger.length,
       workspaceChangeSets: input.workspaceChanges.length,
-      scheduledTasks: input.scheduledTasks.length
+      scheduledTasks: input.scheduledTasks.length,
+      workflows: input.workflows?.length
     }
   }
 }
@@ -529,6 +532,7 @@ export function buildDiagnosticsSnapshot(input: {
   runQueue: RunQueueJob[]
   runRecovery: RunRecoveryRecord[]
   scheduledTasks: ScheduledTask[]
+  workflows: WorkflowDefinition[]
   approvalLedger: ApprovalLedgerRecord[]
   workspaceChanges: WorkspaceChangeSet[]
   recentCrashes: ProductCrashRecord[]
@@ -557,6 +561,7 @@ export function buildDiagnosticsSnapshot(input: {
     runQueue: input.runQueue.slice(0, MAX_DIAGNOSTIC_RECORDS),
     runRecovery: input.runRecovery.slice(0, MAX_DIAGNOSTIC_RECORDS),
     scheduledTasks: input.scheduledTasks.slice(0, MAX_DIAGNOSTIC_RECORDS),
+    workflows: input.workflows.slice(0, MAX_DIAGNOSTIC_RECORDS),
     approvalLedger: input.approvalLedger.slice(0, MAX_DIAGNOSTIC_RECORDS),
     workspaceChanges: input.workspaceChanges.slice(0, MAX_DIAGNOSTIC_RECORDS),
     recentCrashes: input.recentCrashes.slice(0, MAX_DIAGNOSTIC_RECORDS)

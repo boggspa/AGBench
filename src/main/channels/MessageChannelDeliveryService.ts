@@ -2,6 +2,7 @@ import type { RunEvent, RunEventSink } from '../RunEventBus'
 import { extractProviderText } from '../providers/ProviderEventText'
 import type { MessageChannelAuditStore } from './MessageChannelAuditStore'
 import type { MessageChannelKind } from './MessageChannelTypes'
+import { messageChannelKindLabel } from './MessageChannelTypes'
 
 export interface MessageChannelRunTarget {
   appRunId: string
@@ -35,6 +36,7 @@ export interface MessageChannelDirectReplyResult {
 }
 
 export interface MessageChannelSendTextParams {
+  channel?: MessageChannelKind
   accountId?: string
   chatGuid?: string
   recipientHandle: string
@@ -42,6 +44,7 @@ export interface MessageChannelSendTextParams {
 }
 
 export interface MessageChannelSendAttachmentParams {
+  channel?: MessageChannelKind
   accountId?: string
   chatGuid?: string
   recipientHandle: string
@@ -110,7 +113,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
         text: '',
         attachmentPaths: target.attachmentPaths,
         appRunId: target.appRunId,
-        error: new Error('Recipient is not allowlisted for this iMessage binding.')
+        error: new Error('Recipient is not allowlisted for this channel binding.')
       })
       return
     }
@@ -152,12 +155,13 @@ export class MessageChannelDeliveryService implements RunEventSink {
         attachmentPaths,
         appRunId: target.appRunId,
         command: target.command,
-        error: new Error('Recipient is not allowlisted for this iMessage binding.')
+        error: new Error('Recipient is not allowlisted for this channel binding.')
       })
       return { attempted: false, sent: false, reason: 'not-allowlisted' }
     }
     try {
       await this.sendReplyParts(
+        target.channel,
         target.accountId,
         target.chatGuid,
         recipientHandle,
@@ -193,7 +197,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
         ...partialSendStatsFromError(err)
       })
       this.deps.log?.(
-        `[MessageChannelDelivery] failed to send iMessage direct reply${
+        `[MessageChannelDelivery] failed to send channel direct reply${
           target.command ? ` for command ${target.command}` : ''
         }: ${err instanceof Error ? err.message : String(err)}`
       )
@@ -266,13 +270,14 @@ export class MessageChannelDeliveryService implements RunEventSink {
         recipientHandle: target.recipientHandle,
         text,
         attachmentPaths: target.attachmentPaths,
-        error: new Error('Recipient is no longer allowlisted for this iMessage binding.')
+        error: new Error('Recipient is no longer allowlisted for this channel binding.')
       })
       return
     }
     target.sending = true
     try {
       await this.sendReplyParts(
+        target.channel,
         target.accountId,
         target.chatGuid,
         target.recipientHandle,
@@ -305,7 +310,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
         ...partialSendStatsFromError(err)
       })
       this.deps.log?.(
-        `[MessageChannelDelivery] failed to send iMessage reply for run ${appRunId}: ${
+        `[MessageChannelDelivery] failed to send channel reply for run ${appRunId}: ${
           err instanceof Error ? err.message : String(err)
         }`
       )
@@ -313,6 +318,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
   }
 
   private async sendReplyParts(
+    channel: MessageChannelKind,
     accountId: string | undefined,
     chatGuid: string | undefined,
     recipientHandle: string,
@@ -323,7 +329,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
     for (const filePath of attachmentPaths) {
       if (!this.deps.sendAttachment) {
         throw new MessageChannelPartialSendError(
-          new Error('Messages.app attachment sending is not available.'),
+          new Error('Channel adapter attachment sending is not available.'),
           {
             sentText: false,
             sentAttachmentCount
@@ -331,7 +337,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
         )
       }
       try {
-        await this.deps.sendAttachment({ accountId, chatGuid, recipientHandle, filePath })
+        await this.deps.sendAttachment({ channel, accountId, chatGuid, recipientHandle, filePath })
         sentAttachmentCount += 1
       } catch (err) {
         throw new MessageChannelPartialSendError(err, {
@@ -342,7 +348,7 @@ export class MessageChannelDeliveryService implements RunEventSink {
     }
     if (!text) return
     try {
-      await this.deps.sendText({ accountId, chatGuid, recipientHandle, text })
+      await this.deps.sendText({ channel, accountId, chatGuid, recipientHandle, text })
     } catch (err) {
       throw new MessageChannelPartialSendError(err, {
         sentText: false,
@@ -374,8 +380,8 @@ export class MessageChannelDeliveryService implements RunEventSink {
       ...(input.appRunId ? { appRunId: input.appRunId } : {}),
       senderHandle: input.recipientHandle,
       summary: input.command
-        ? `Sent iMessage command reply: ${input.command}.`
-        : 'Sent assistant reply through Messages.app.',
+        ? `Sent ${messageChannelKindLabel(input.channel)} command reply: ${input.command}.`
+        : `Sent assistant reply through ${messageChannelKindLabel(input.channel)}.`,
       payload: {
         textPreview: preview(input.text),
         ...(attachmentPaths.length
@@ -415,8 +421,8 @@ export class MessageChannelDeliveryService implements RunEventSink {
       ...(input.appRunId ? { appRunId: input.appRunId } : {}),
       senderHandle: input.recipientHandle,
       summary: input.command
-        ? `Failed to send iMessage command reply: ${input.command}.`
-        : 'Failed to send assistant reply through Messages.app.',
+        ? `Failed to send ${messageChannelKindLabel(input.channel)} command reply: ${input.command}.`
+        : `Failed to send assistant reply through ${messageChannelKindLabel(input.channel)}.`,
       payload: {
         error: input.error instanceof Error ? input.error.message : String(input.error),
         textPreview: preview(input.text),

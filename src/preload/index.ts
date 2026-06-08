@@ -10,6 +10,10 @@ import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsServic
 import type { SessionCheckpointRecord } from '../main/checkpoints/SessionCheckpoint'
 import type { MessageChannelBindingInput } from '../main/channels/MessageChannelTypes'
 import type {
+  LocalWebChannelOutboundMessage,
+  LocalWebChannelSubmitInput
+} from '../main/channels/LocalWebChannelAdapter'
+import type {
   MessagesBridgeConversationsParams,
   MessagesBridgePollResult,
   MessagesBridgePollParams
@@ -696,6 +700,7 @@ const api = {
   }) => ipcRenderer.invoke('set-guest-participant', args),
   removeGuestParticipant: (parentChatId: string) =>
     ipcRenderer.invoke('remove-guest-participant', parentChatId),
+  listMessageChannelAdapters: () => ipcRenderer.invoke('message-channels:list-adapters'),
   listMessageChannelBindings: () => ipcRenderer.invoke('message-channels:list-bindings'),
   upsertMessageChannelBinding: (input: MessageChannelBindingInput) =>
     ipcRenderer.invoke('message-channels:upsert-binding', input),
@@ -728,6 +733,13 @@ const api = {
     ipcRenderer.invoke('messages-bridge:list-conversations', params),
   pollMessageChannelsOnce: (params: MessagesBridgePollParams = {}) =>
     ipcRenderer.invoke('message-channels:poll-once', params),
+  submitLocalWebChannelMessage: (input: LocalWebChannelSubmitInput) =>
+    ipcRenderer.invoke('message-channels:submit-web-message', input),
+  drainLocalWebChannelOutbox: (params: { accountId?: string; chatGuid?: string } = {}) =>
+    ipcRenderer.invoke('message-channels:drain-web-outbox', params) as Promise<{
+      ok: true
+      messages: LocalWebChannelOutboundMessage[]
+    }>,
   listMessageChannelCursors: () => ipcRenderer.invoke('message-channels:list-cursors'),
   clearMessageChannelCursors: () => ipcRenderer.invoke('message-channels:clear-cursors'),
   clearMessageChannelBindingCursor: (bindingId: string) =>
@@ -755,6 +767,15 @@ const api = {
   updateScheduledTask: (id: string, partial: any) =>
     ipcRenderer.invoke('update-scheduled-task', id, partial),
   deleteScheduledTask: (id: string) => ipcRenderer.invoke('delete-scheduled-task', id),
+  getWorkflowDefinitions: (workspaceId?: string) =>
+    ipcRenderer.invoke('get-workflow-definitions', workspaceId),
+  saveWorkflowDefinition: (workflow: any) =>
+    ipcRenderer.invoke('save-workflow-definition', workflow),
+  updateWorkflowDefinition: (id: string, partial: any) =>
+    ipcRenderer.invoke('update-workflow-definition', id, partial),
+  deleteWorkflowDefinition: (id: string) =>
+    ipcRenderer.invoke('delete-workflow-definition', id),
+  runWorkflowNow: (id: string) => ipcRenderer.invoke('run-workflow-now', id),
   getRunQueueJobs: (filter: any = {}) => ipcRenderer.invoke('get-run-queue-jobs', filter),
   requestRunQueueJob: (job: any) => ipcRenderer.invoke('request-run-queue-job', job),
   leaseRunQueueJob: (request: any = {}) => ipcRenderer.invoke('lease-run-queue-job', request),
@@ -851,6 +872,9 @@ const api = {
   onScheduledTasksChanged: (callback: (payload: any) => void) => {
     ipcRenderer.on('scheduled-tasks-changed', (_event, payload) => callback(payload))
   },
+  onWorkflowDefinitionsChanged: (callback: (payload: any) => void) => {
+    ipcRenderer.on('workflow-definitions-changed', (_event, payload) => callback(payload))
+  },
   onUsageChanged: (callback: () => void) => {
     ipcRenderer.on('usage-changed', () => callback())
   },
@@ -939,6 +963,7 @@ const api = {
     ipcRenderer.removeAllListeners('update-status-changed')
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
+    ipcRenderer.removeAllListeners('workflow-definitions-changed')
     ipcRenderer.removeAllListeners('usage-changed')
     ipcRenderer.removeAllListeners('chat-updated')
     ipcRenderer.removeAllListeners('app-shell-stats-changed')

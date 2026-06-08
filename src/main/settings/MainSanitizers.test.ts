@@ -75,6 +75,7 @@ function makeSanitizers(settings: AppSettings) {
   return createMainSanitizers({
     getSettings: () => settings,
     getScheduledTasks: () => [],
+    getWorkflowDefinitions: () => [],
     findRegisteredWorkspace: () => undefined as WorkspaceRecord | undefined,
     requireRegisteredWorkspace: (workspacePath: string) => workspacePath,
     canonicalPath: (value: string) => value,

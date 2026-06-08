@@ -79,6 +79,45 @@ describe('shouldRenderWelcome', () => {
     ).toBe(true)
   })
 
+  it('hides the welcome surface for a summary-only chat with persisted messages', () => {
+    expect(
+      shouldRenderWelcome({
+        currentChat: { appChatId: 'chat-2', summaryOnly: true, messageCount: 3, runCount: 1 },
+        messages: [],
+        isCurrentChatRunning: false,
+        showFallbackUX: false
+      })
+    ).toBe(false)
+  })
+
+  it('hides the welcome surface for a summary-only linked child while it hydrates', () => {
+    expect(
+      shouldRenderWelcome({
+        currentChat: {
+          appChatId: 'subthread-1',
+          parentChatId: 'parent-1',
+          summaryOnly: true,
+          messageCount: 0,
+          runCount: 0
+        },
+        messages: [],
+        isCurrentChatRunning: false,
+        showFallbackUX: false
+      })
+    ).toBe(false)
+  })
+
+  it('hides the welcome surface for a linked child even after hydration', () => {
+    expect(
+      shouldRenderWelcome({
+        currentChat: { appChatId: 'subthread-2', parentChatId: 'parent-1' },
+        messages: [],
+        isCurrentChatRunning: false,
+        showFallbackUX: false
+      })
+    ).toBe(false)
+  })
+
   it('hides the welcome surface when the chat has assistant content', () => {
     expect(
       shouldRenderWelcome({

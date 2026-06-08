@@ -220,6 +220,35 @@ describe('ProviderCapabilities', () => {
     }
   })
 
+  it('advertises Ollama as TaskWraith-local read-only tooling in workspace chats', () => {
+    const contract = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(),
+      workspacePath: '/tmp/project',
+      status: { provider: 'ollama', available: true }
+    })
+
+    expect(contract.mcp.state).toBe('available')
+    expect(contract.mcp.serverName).toBe('TaskWraith-local')
+    expect(contract.mcp.tools).toEqual(['read_file', 'list_directory', 'workspace_search'])
+    expect(contract.tools.mcpTools.state).toBe('gated')
+    expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
+    expect(contract.tools.shellCommands.state).toBe('unavailable')
+    expect(contract.tools.fileChanges.state).toBe('unavailable')
+  })
+
+  it('does not advertise Ollama read-only tools outside a workspace', () => {
+    const contract = buildProviderCapabilityContract({
+      provider: 'ollama',
+      settings: settings(),
+      status: { provider: 'ollama', available: true }
+    })
+
+    expect(contract.mcp.state).toBe('unavailable')
+    expect(contract.tools.mcpTools.state).toBe('unavailable')
+    expect(contract.mcp.message).toContain('workspace thread')
+  })
+
   it('reflects a denied subThreadDelegation policy as a blocked delegate row', () => {
     const codex = buildProviderCapabilityContract({
       provider: 'codex',

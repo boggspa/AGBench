@@ -73,6 +73,7 @@ export interface OllamaProviderDeps {
     route?: AgentRunRoute | null,
     options?: { excludeIds?: string[] }
   ) => Promise<void>
+  executeTool?: (request: OllamaToolExecutionRequest) => Promise<OllamaToolExecutionResult>
 }
 
 interface OllamaTagsResponse {
@@ -107,6 +108,45 @@ interface OllamaChatChunk {
   prompt_eval_duration?: number
   eval_duration?: number
 }
+
+type OllamaToolName = 'read_file' | 'list_directory' | 'workspace_search'
+
+interface OllamaChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+interface OllamaChatTurnResult {
+  content: string
+  lastDone: OllamaChatChunk | null
+}
+
+export interface OllamaToolExecutionRequest {
+  toolName: OllamaToolName
+  arguments: Record<string, unknown>
+  workspacePath: string
+  appChatId?: string
+  appRunId?: string
+}
+
+export interface OllamaToolExecutionResult {
+  ok: boolean
+  output: string
+  structuredContent?: unknown
+}
+
+export interface OllamaToolRequest {
+  toolName: OllamaToolName
+  arguments: Record<string, unknown>
+}
+
+const OLLAMA_TOOL_LOOP_LIMIT = 4
+const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
+const OLLAMA_TOOL_NAMES = new Set<OllamaToolName>([
+  'read_file',
+  'list_directory',
+  'workspace_search'
+])
 
 export function normalizeOllamaBaseUrl(value?: string | null): string {
   const raw = String(value || '').trim() || DEFAULT_OLLAMA_BASE_URL
@@ -381,10 +421,19 @@ export async function getOllamaCapabilityContract(
     approvalMode: request.approvalMode || 'plan',
     status,
     mcpStatus: {
-      available: false,
-      enabled: false,
+      available:
+        Boolean(request.workspacePath) && settings.agenticServices?.mcpTools !== 'deny',
+      enabled: settings.agenticServices?.mcpTools !== 'deny',
+      installed: true,
+      serverName: OLLAMA_LOCAL_TOOL_SERVER,
+      tools:
+        Boolean(request.workspacePath) && settings.agenticServices?.mcpTools !== 'deny'
+          ? [...OLLAMA_TOOL_NAMES]
+          : [],
       message:
-        'Ollama local mode does not yet expose TaskWraith MCP tools; read-only search should run through a TaskWraith-controlled tool loop.'
+        Boolean(request.workspacePath) && settings.agenticServices?.mcpTools !== 'deny'
+          ? 'Ollama local mode uses a TaskWraith-controlled read-only tool loop for workspace list/read/search.'
+          : 'Ollama read-only tools require a workspace thread and enabled TaskWraith MCP/tool policy.'
     }
   })
 }
@@ -416,6 +465,125 @@ function ollamaUsageStats(chunk: OllamaChatChunk): Record<string, unknown> {
       : {}),
     ...(typeof chunk.eval_duration === 'number' ? { evalDurationNs: chunk.eval_duration } : {})
   }
+}
+
+export function ollamaLocalToolSystemPrompt(): string {
+  return [
+    'You are running inside TaskWraith through local Ollama.',
+    'You do not have direct shell or filesystem access. TaskWraith can provide read-only workspace tools when needed.',
+    'To request a tool, reply with ONLY a JSON object in this exact shape:',
+    '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
+    'Available read-only tools:',
+    '- list_directory: {"path":"."}',
+    '- read_file: {"path":"relative/path.txt"}',
+    '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}',
+    'Paths must stay inside the active workspace. After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
+    'Do not invent file contents or workspace facts when a tool result is needed.'
+  ].join('\n')
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function parseJsonObject(candidate: string): unknown | null {
+  try {
+    return JSON.parse(candidate)
+  } catch {
+    return null
+  }
+}
+
+function jsonCandidatesFromText(text: string): string[] {
+  const candidates: string[] = []
+  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    if (match[1]?.trim()) candidates.push(match[1].trim())
+  }
+  const trimmed = text.trim()
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    candidates.push(trimmed)
+  }
+  const keyIndex = trimmed.indexOf('"taskwraith_tool"')
+  if (keyIndex >= 0) {
+    const start = trimmed.lastIndexOf('{', keyIndex)
+    const end = trimmed.lastIndexOf('}')
+    if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1))
+  }
+  return [...new Set(candidates)]
+}
+
+export function parseOllamaToolRequest(text: string): OllamaToolRequest | null {
+  for (const candidate of jsonCandidatesFromText(text)) {
+    const parsed = recordFromUnknown(parseJsonObject(candidate))
+    if (!parsed) continue
+    const wrapper = recordFromUnknown(parsed.taskwraith_tool) || recordFromUnknown(parsed.tool)
+    if (!wrapper) continue
+    const name = typeof wrapper.name === 'string' ? wrapper.name.trim() : ''
+    if (!OLLAMA_TOOL_NAMES.has(name as OllamaToolName)) continue
+    const args = recordFromUnknown(wrapper.arguments) || recordFromUnknown(wrapper.args) || {}
+    return {
+      toolName: name as OllamaToolName,
+      arguments: args
+    }
+  }
+  return null
+}
+
+async function runOllamaChatTurn(input: {
+  baseUrl: string
+  model: string
+  messages: OllamaChatMessage[]
+  signal: AbortSignal
+}): Promise<OllamaChatTurnResult> {
+  const response = await fetch(endpoint(input.baseUrl, '/api/chat'), {
+    method: 'POST',
+    signal: input.signal,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: input.model,
+      stream: true,
+      messages: input.messages,
+      options: {
+        temperature: 0.2
+      }
+    })
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Ollama chat failed with HTTP ${response.status}.`)
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let content = ''
+  let lastDone: OllamaChatChunk | null = null
+  const handleChunk = (chunk: OllamaChatChunk) => {
+    if (chunk.error) {
+      throw new Error(chunk.error)
+    }
+    content += chunk.message?.content || ''
+    if (chunk.done) {
+      lastDone = chunk
+    }
+  }
+
+  for await (const value of response.body as any as AsyncIterable<Uint8Array>) {
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      handleChunk(JSON.parse(trimmed) as OllamaChatChunk)
+    }
+  }
+  const trailing = buffer.trim()
+  if (trailing) {
+    handleChunk(JSON.parse(trailing) as OllamaChatChunk)
+  }
+  return { content, lastDone }
 }
 
 export async function runOllamaProvider(
@@ -471,72 +639,107 @@ export async function runOllamaProvider(
       route
     )
 
-    const response = await fetch(endpoint(baseUrl, '/api/chat'), {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: [{ role: 'user', content: payload.prompt }],
-        options: {
-          temperature: 0.2
-        }
-      })
-    })
-
-    if (!response.ok || !response.body) {
-      throw new Error(`Ollama chat failed with HTTP ${response.status}.`)
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const toolProtocolEnabled =
+      Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
+      settings.agenticServices?.mcpTools !== 'deny'
+    const messages: OllamaChatMessage[] = [
+      ...(toolProtocolEnabled
+        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt() }]
+        : []),
+      { role: 'user', content: payload.prompt }
+    ]
     let lastDone: OllamaChatChunk | null = null
-    for await (const value of response.body as any as AsyncIterable<Uint8Array>) {
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        const chunk = JSON.parse(trimmed) as OllamaChatChunk
-        if (chunk.error) {
-          throw new Error(chunk.error)
-        }
-        const text = chunk.message?.content || ''
-        if (text) {
+    let toolCallCount = 0
+    for (let turnIndex = 0; turnIndex <= OLLAMA_TOOL_LOOP_LIMIT; turnIndex += 1) {
+      const turn = await runOllamaChatTurn({
+        baseUrl,
+        model,
+        messages,
+        signal: controller.signal
+      })
+      if (turn.lastDone) lastDone = turn.lastDone
+      const toolRequest = toolProtocolEnabled ? parseOllamaToolRequest(turn.content) : null
+      if (!toolRequest) {
+        if (turn.content) {
           deps.sendAgentCompatLine(
             event.sender,
             'ollama',
             {
               type: 'content',
-              text,
-              model: chunk.model || model,
-              modelLabel: humanizeOllamaModelId(chunk.model || model),
-              timestamp: chunk.created_at || new Date().toISOString()
+              text: turn.content,
+              model,
+              modelLabel,
+              timestamp: new Date().toISOString()
             },
             route
           )
         }
-        if (chunk.done) {
-          lastDone = chunk
-        }
+        break
       }
-    }
-    const trailing = buffer.trim()
-    if (trailing) {
-      const chunk = JSON.parse(trailing) as OllamaChatChunk
-      if (chunk.error) throw new Error(chunk.error)
-      const text = chunk.message?.content || ''
-      if (text) {
+      if (turnIndex >= OLLAMA_TOOL_LOOP_LIMIT) {
         deps.sendAgentCompatLine(
           event.sender,
           'ollama',
-          { type: 'content', text, model, modelLabel },
+          {
+            type: 'provider_warning',
+            id: 'ollama-tool-loop-limit',
+            severity: 'warning',
+            title: 'Ollama tool loop limit reached',
+            message: 'The local model kept requesting tools; TaskWraith stopped the tool loop.'
+          },
           route
         )
+        break
       }
-      if (chunk.done) lastDone = chunk
+      toolCallCount += 1
+      const toolId = `ollama-tool-${route.appRunId || Date.now()}-${toolCallCount}`
+      deps.sendAgentCompatLine(
+        event.sender,
+        'ollama',
+        {
+          type: 'tool_use',
+          tool_id: toolId,
+          tool_name: toolRequest.toolName,
+          parameters: toolRequest.arguments,
+          provider: 'ollama',
+          server: OLLAMA_LOCAL_TOOL_SERVER
+        },
+        route
+      )
+      const toolResult = await deps.executeTool!({
+        toolName: toolRequest.toolName,
+        arguments: toolRequest.arguments,
+        workspacePath: payload.workspace!,
+        appChatId: route.appChatId || payload.appChatId,
+        appRunId: route.appRunId || payload.appRunId
+      })
+      deps.sendAgentCompatLine(
+        event.sender,
+        'ollama',
+        {
+          type: 'tool_result',
+          tool_id: toolId,
+          tool_name: toolRequest.toolName,
+          status: toolResult.ok ? 'success' : 'error',
+          output: toolResult.output,
+          result: toolResult.structuredContent,
+          provider: 'ollama',
+          server: OLLAMA_LOCAL_TOOL_SERVER
+        },
+        route
+      )
+      messages.push({ role: 'assistant', content: turn.content })
+      messages.push({
+        role: 'user',
+        content: [
+          `TaskWraith tool result for ${toolRequest.toolName}:`,
+          toolResult.output,
+          '',
+          toolResult.ok
+            ? 'Use this result to continue. If another read-only workspace lookup is needed, request it with the same JSON tool protocol; otherwise answer normally.'
+            : 'The tool failed. Explain the limitation or try a different read-only workspace lookup.'
+        ].join('\n')
+      })
     }
 
     const hardwareStats = memoryMonitor ? await memoryMonitor.stop() : {}
@@ -551,6 +754,7 @@ export async function runOllamaProvider(
         modelLabel,
         stats: {
           ...(lastDone ? ollamaUsageStats(lastDone) : {}),
+          ...(toolCallCount > 0 ? { taskWraithToolCalls: toolCallCount } : {}),
           ...hardwareStats
         }
       },

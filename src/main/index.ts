@@ -165,12 +165,18 @@ import { RemoteAttentionApnsFanout } from './RemoteAttentionApnsFanout'
 import { MessageChannelBindingStore } from './channels/MessageChannelBindingStore'
 import { MessageChannelAuditStore } from './channels/MessageChannelAuditStore'
 import { MessageChannelCursorStore } from './channels/MessageChannelCursorStore'
+import { MessageChannelAdapterRegistry } from './channels/MessageChannelAdapter'
+import { TelegramChannelAdapter } from './channels/TelegramChannelAdapter'
+import { MatrixChannelAdapter } from './channels/MatrixChannelAdapter'
+import { LocalWebChannelAdapter } from './channels/LocalWebChannelAdapter'
 import {
   labelTaskWraithOutboundText,
   MessageChannelDeliveryService
 } from './channels/MessageChannelDeliveryService'
 import {
   MessageChannelGatewayService,
+  messageChannelCursorChatGuidForBinding,
+  messageChannelUsesAccountScopedPolling,
   type MessagesBridgeConversationListResult,
   type MessagesBridgeConversationsParams,
   type MessagesBridgePollParams,
@@ -301,7 +307,8 @@ import {
   EnsembleRunIdentity,
   EnsembleParticipant,
   EnsembleWakeupRecord,
-  RunEventKind
+  RunEventKind,
+  WorkflowDefinition
 } from './store/types'
 import type { AgentRunPayload, AgentRunRoute } from './run/AgentRunTypes'
 import {
@@ -386,8 +393,11 @@ import {
 } from './providers/ProviderAuthUsage'
 import {
   createWorkspaceToolExecutors,
+  formatScopedPath as formatWorkspaceToolScopedPath,
+  resolveMcpScopedPath as resolveWorkspaceToolScopedPath,
   WORKSPACE_MCP_TOOL_NAMES,
-  type WorkspaceMcpToolName
+  type WorkspaceMcpToolName,
+  type WorkspaceToolContext
 } from './mcp/WorkspaceToolExecutors'
 import {
   createDesktopToolExecutors,
@@ -462,7 +472,9 @@ import {
   getOllamaCapabilityContract,
   getOllamaStatusSnapshot,
   humanizeOllamaModelId,
-  runOllamaProvider
+  runOllamaProvider,
+  type OllamaToolExecutionRequest,
+  type OllamaToolExecutionResult
 } from './ollama/OllamaProvider'
 import {
   buildDiagnosticsSnapshot,
@@ -1318,6 +1330,8 @@ function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'):
 const {
   sanitizeScheduledTaskForSave,
   sanitizeScheduledTaskPatch,
+  sanitizeWorkflowForSave,
+  sanitizeWorkflowPatch,
   sanitizeRuntimeProfileForSave,
   sanitizeHandoffCardForSave,
   sanitizeHandoffCardPatch,
@@ -1326,6 +1340,7 @@ const {
 } = createMainSanitizers({
   getSettings: () => AppStore.getSettings(),
   getScheduledTasks: () => AppStore.getScheduledTasks(),
+  getWorkflowDefinitions: () => AppStore.getWorkflowDefinitions(),
   findRegisteredWorkspace,
   requireRegisteredWorkspace,
   canonicalPath,
@@ -3705,6 +3720,11 @@ function clearScheduledTaskTimer() {
 }
 
 function emitDueScheduledTasks() {
+  const materialized = AppStore.materializeDueWorkflows()
+  if (materialized.length > 0) {
+    mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+    mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+  }
   const dueTasks = AppStore.getDueScheduledTasks()
   for (const task of dueTasks) {
     const updated = AppStore.updateScheduledTask(task.id, {
@@ -3712,6 +3732,10 @@ function emitDueScheduledTasks() {
       firedAt: new Date().toISOString()
     })
     mainWindow?.webContents.send('scheduled-task-due', updated || task)
+  }
+  if (dueTasks.length > 0) {
+    mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+    mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
   }
   scheduleNextTaskTimer()
 }
@@ -3721,13 +3745,15 @@ function scheduleNextTaskTimer() {
   const nextTask = AppStore.getScheduledTasks()
     .filter((task) => task.status === 'pending')
     .sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime())[0]
-  if (!nextTask) {
+  const nextWorkflowMs = AppStore.getNextWorkflowRunAtMs()
+  const nextTaskMs = nextTask ? new Date(nextTask.runAt).getTime() : Number.NaN
+  const candidates = [nextTaskMs, nextWorkflowMs].filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value)
+  )
+  if (candidates.length === 0) {
     return
   }
-  const runAtMs = new Date(nextTask.runAt).getTime()
-  if (!Number.isFinite(runAtMs)) {
-    return
-  }
+  const runAtMs = Math.min(...candidates)
   const delay = Math.max(0, Math.min(MAX_SCHEDULE_TIMER_DELAY_MS, runAtMs - Date.now()))
   scheduledTaskTimer = setTimeout(emitDueScheduledTasks, delay)
 }
@@ -8754,6 +8780,97 @@ async function runCodexProvider(
   }
 }
 
+async function executeOllamaLocalTool(
+  request: OllamaToolExecutionRequest
+): Promise<OllamaToolExecutionResult> {
+  const workspacePath = canonicalPath(requireNonEmptyString(request.workspacePath, 'Workspace'))
+  const context: WorkspaceToolContext = {
+    scope: 'workspace',
+    cwd: workspacePath,
+    workspacePath,
+    appChatId: request.appChatId
+  }
+  try {
+    if (request.toolName === 'workspace_search') {
+      const result = await workspaceToolExecutors.executeWorkspaceSearch(
+        request.arguments,
+        context,
+        workspacePath
+      )
+      return {
+        ok:
+          isRecord(result) &&
+          (result.ok === true || result.exitCode === 0 || result.exitCode === 1) &&
+          result.timedOut !== true,
+        output: mcpJson(result),
+        structuredContent: result
+      }
+    }
+
+    if (request.toolName === 'read_file') {
+      const targetPath = resolveWorkspaceToolScopedPath(
+        context,
+        String(request.arguments.path || request.arguments.file_path || '')
+      )
+      const stat = await fs.stat(targetPath)
+      if (!stat.isFile()) throw new Error('Selected path is not a file.')
+      if (stat.size > MAX_EDITOR_FILE_BYTES) {
+        throw new Error('File is too large to read through the Ollama tool loop.')
+      }
+      const buffer = await fs.readFile(targetPath)
+      assertTextBuffer(buffer)
+      return {
+        ok: true,
+        output: buffer.toString('utf8'),
+        structuredContent: {
+          ok: true,
+          tool: 'read_file',
+          path: formatWorkspaceToolScopedPath(context, targetPath),
+          bytes: stat.size
+        }
+      }
+    }
+
+    const targetPath = resolveWorkspaceToolScopedPath(
+      context,
+      String(request.arguments.path || request.arguments.directory || '.'),
+      { allowWorkspaceRoot: true }
+    )
+    const stat = await fs.stat(targetPath)
+    if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')
+    const entries = await fs.readdir(targetPath, { withFileTypes: true })
+    const rows = entries
+      .sort((a, b) => {
+        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      .slice(0, 300)
+      .map((entry) => `${entry.isDirectory() ? 'directory' : 'file'}\t${entry.name}`)
+    return {
+      ok: true,
+      output: rows.join('\n'),
+      structuredContent: {
+        ok: true,
+        tool: 'list_directory',
+        path: formatWorkspaceToolScopedPath(context, targetPath),
+        count: rows.length,
+        truncated: entries.length > rows.length
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      output: message,
+      structuredContent: {
+        ok: false,
+        tool: request.toolName,
+        error: message
+      }
+    }
+  }
+}
+
 async function runOllamaProviderAdapter(
   event: Electron.IpcMainInvokeEvent,
   payload: AgentRunPayload
@@ -8780,7 +8897,8 @@ async function runOllamaProviderAdapter(
       sendAgentCompatError,
       sendAgentCompatExit,
       runManager,
-      emitProviderCapabilityWarnings
+      emitProviderCapabilityWarnings,
+      executeTool: executeOllamaLocalTool
     },
     event,
     {
@@ -9588,14 +9706,20 @@ const providerAdapters = createProviderAdapterRegistry<
     run: ({ event, payload }) => runOllamaProviderAdapter(event, payload),
     cancel: (runId) => cancelProviderRun('ollama', runId),
     getStatus: () => getOllamaStatusSnapshot(AppStore.getSettings()),
-    getMcpStatus: async () => ({
-      available: false,
-      enabled: false,
-      installed: false,
-      tools: [],
-      message:
-        'Ollama local mode does not yet expose TaskWraith MCP tools; read-only search should run through a TaskWraith-controlled tool loop.'
-    }),
+    getMcpStatus: async () => {
+      const settings = AppStore.getSettings()
+      const enabled = settings.agenticServices?.mcpTools !== 'deny'
+      return {
+        available: enabled,
+        enabled,
+        installed: true,
+        serverName: 'TaskWraith-local',
+        tools: enabled ? ['read_file', 'list_directory', 'workspace_search'] : [],
+        message: enabled
+          ? 'Ollama uses a TaskWraith-controlled read-only tool loop for workspace list/read/search.'
+          : 'Ollama read-only tools are blocked by TaskWraith MCP/tool settings.'
+      }
+    },
     getCapabilityContract: (request = {}) =>
       getOllamaCapabilityContract(
         { getSettings: () => AppStore.getSettings() },
@@ -10038,6 +10162,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
   const approvalLedger = AppStore.getApprovalLedger()
   const workspaceChanges = AppStore.getWorkspaceChangeSets()
   const scheduledTasks = AppStore.getScheduledTasks()
+  const workflows = AppStore.getWorkflowDefinitions()
   const recentCrashes = AppStore.getProductCrashes({ limit: 20 })
 
   return buildProductOperationsStatus({
@@ -10057,6 +10182,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
     approvalLedger,
     workspaceChanges,
     scheduledTasks,
+    workflows,
     recentCrashes,
     geminiBridgeStatus,
     userDataExists: await userDataDirectoryExists(),
@@ -10080,6 +10206,7 @@ async function buildCurrentDiagnosticsSnapshot() {
     runQueue: AppStore.getRunQueueJobs(),
     runRecovery: AppStore.getRunRecoveryRecords(),
     scheduledTasks: AppStore.getScheduledTasks(),
+    workflows: AppStore.getWorkflowDefinitions(),
     approvalLedger: AppStore.getApprovalLedger(),
     workspaceChanges: AppStore.getWorkspaceChangeSets(),
     recentCrashes: AppStore.getProductCrashes({ limit: 100 })
@@ -11285,8 +11412,9 @@ async function executeGeminiMcpTool(
       try {
         providerArg = assertProviderId(providerArgRaw)
       } catch {
+        const supportedProviders = availableProviderIds().join('/')
         throw new Error(
-          `delegate_to_subthread: provider must be one of gemini/codex/claude/kimi (got: ${providerArgRaw}).`
+          `delegate_to_subthread: provider must be one of ${supportedProviders} (got: ${providerArgRaw}).`
         )
       }
       if (!promptArg) {
@@ -12779,25 +12907,97 @@ if (isGeminiMcpBridgeProcess) {
           const messageChannelAuditStore = new MessageChannelAuditStore({
             storagePath: join(app.getPath('userData'), 'channels', 'message-audit.ndjson')
           })
+          const channelAdapterRegistry = new MessageChannelAdapterRegistry()
+          const localWebChannelAdapter = new LocalWebChannelAdapter()
+          channelAdapterRegistry.register({
+            channel: 'imessage',
+            label: 'iMessage local experimental',
+            status: () => ({
+              channel: 'imessage',
+              label: 'iMessage local experimental',
+              status: 'active',
+              transport: 'local',
+              summary: 'macOS Messages.app bridge using local database polling and AppleScript sends.',
+              capabilities: {
+                polling: true,
+                outboundText: true,
+                outboundFiles: true,
+                richActions: false
+              },
+              configured: true,
+              available: true
+            }),
+            poll: async (params) => {
+              const daemon = bridgeDaemonRef
+              if (!daemon) {
+                throw new Error('TaskWraith bridge daemon is not running.')
+              }
+              const result = await daemon.request<MessagesBridgePollResult>(
+                'messages.poll',
+                {
+                  accountId: params.accountId,
+                  chatGuid: params.chatGuid,
+                  afterRowId: params.afterRowId,
+                  limit: params.limit,
+                  includeFromMe: params.includeFromMe,
+                  latestFirst: params.latestFirst
+                },
+                { timeoutMs: 10_000 }
+              )
+              return { ...result, channel: 'imessage' as const }
+            },
+            sendText: async ({ accountId, chatGuid, recipientHandle, text }) => {
+              const daemon = bridgeDaemonRef
+              if (!daemon) {
+                throw new Error('TaskWraith bridge daemon is not running.')
+              }
+              return daemon.request(
+                'messages.sendText',
+                { accountId, chatGuid, recipientHandle, text },
+                { timeoutMs: 10_000 }
+              )
+            },
+            sendAttachment: async ({ accountId, chatGuid, recipientHandle, filePath }) => {
+              const daemon = bridgeDaemonRef
+              if (!daemon) {
+                throw new Error('TaskWraith bridge daemon is not running.')
+              }
+              return daemon.request(
+                'messages.sendAttachment',
+                { accountId, chatGuid, recipientHandle, filePath },
+                { timeoutMs: 30_000 }
+              )
+            }
+          })
+          const telegramBotToken = process.env.TASKWRAITH_TELEGRAM_BOT_TOKEN?.trim()
+          if (telegramBotToken) {
+            channelAdapterRegistry.register(
+              new TelegramChannelAdapter({
+                botToken: telegramBotToken,
+                accountId: process.env.TASKWRAITH_TELEGRAM_ACCOUNT_ID || 'telegram-bot'
+              })
+            )
+          }
+          const matrixHomeserverUrl = process.env.TASKWRAITH_MATRIX_HOMESERVER_URL?.trim()
+          const matrixAccessToken = process.env.TASKWRAITH_MATRIX_ACCESS_TOKEN?.trim()
+          if (matrixHomeserverUrl && matrixAccessToken) {
+            channelAdapterRegistry.register(
+              new MatrixChannelAdapter({
+                homeserverUrl: matrixHomeserverUrl,
+                accessToken: matrixAccessToken,
+                accountId: process.env.TASKWRAITH_MATRIX_ACCOUNT_ID || undefined
+              })
+            )
+          }
+          channelAdapterRegistry.register(localWebChannelAdapter)
           const messageChannelDeliveryService = new MessageChannelDeliveryService({
-            sendText: async (params) => {
-              const daemon = bridgeDaemonRef
-              if (!daemon) {
-                throw new Error('TaskWraith bridge daemon is not running.')
-              }
-              return daemon.request('messages.sendText', params, { timeoutMs: 10_000 })
-            },
-            sendAttachment: async (params) => {
-              const daemon = bridgeDaemonRef
-              if (!daemon) {
-                throw new Error('TaskWraith bridge daemon is not running.')
-              }
-              return daemon.request('messages.sendAttachment', params, { timeoutMs: 30_000 })
-            },
-            canSendToTarget: ({ bindingId, accountId, chatGuid, recipientHandle }) => {
+            sendText: (params) => channelAdapterRegistry.sendText(params),
+            sendAttachment: (params) => channelAdapterRegistry.sendAttachment(params),
+            canSendToTarget: ({ channel, bindingId, accountId, chatGuid, recipientHandle }) => {
               const binding = messageChannelBindingStore.get(bindingId)
               if (!binding || binding.archived) return false
               return (
+                binding.channel === channel &&
                 binding.accountId === accountId &&
                 binding.chatGuid === chatGuid &&
                 binding.allowedHandles.includes(normalizeChannelHandle(recipientHandle))
@@ -12863,6 +13063,8 @@ if (isGeminiMcpBridgeProcess) {
             messageChannelBindingStore,
             messageChannelCursorStore,
             messageChannelAuditStore,
+            channelAdapterRegistry,
+            localWebChannelAdapter,
             messageChannelDeliveryService
           }
         })()
@@ -14083,35 +14285,86 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-scheduled-tasks', (_, workspaceId?: string) =>
       AppStore.getScheduledTasks(workspaceId)
     )
-    ipcMain.handle(
-      'save-scheduled-task',
-      (
-        _,
-        task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
+	    ipcMain.handle(
+	      'save-scheduled-task',
+	      (
+	        _,
+	        task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
           Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
-      ) => {
-        const saved = AppStore.saveScheduledTask(sanitizeScheduledTaskForSave(task))
-        mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
-        scheduleNextTaskTimer()
-        emitDueScheduledTasks()
-        return saved
-      }
-    )
+	      ) => {
+	        const saved = AppStore.saveScheduledTask(sanitizeScheduledTaskForSave(task))
+	        mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+	        mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	        scheduleNextTaskTimer()
+	        emitDueScheduledTasks()
+	        return saved
+	      }
+	    )
     ipcMain.handle('update-scheduled-task', (_, id: string, partial: Partial<ScheduledTask>) => {
       const sanitized = sanitizeScheduledTaskPatch(id, partial)
-      if (!sanitized) return null
-      const updated = AppStore.updateScheduledTask(id, sanitized)
-      mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
-      scheduleNextTaskTimer()
-      return updated
-    })
-    ipcMain.handle('delete-scheduled-task', (_, id: string) => {
-      AppStore.deleteScheduledTask(id)
-      mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
-      scheduleNextTaskTimer()
-    })
+	      if (!sanitized) return null
+	      const updated = AppStore.updateScheduledTask(id, sanitized)
+	      mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+	      mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	      scheduleNextTaskTimer()
+	      return updated
+	    })
+	    ipcMain.handle('delete-scheduled-task', (_, id: string) => {
+	      AppStore.deleteScheduledTask(id)
+	      mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+	      mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	      scheduleNextTaskTimer()
+	    })
 
-    // Durable run queue. Renderer requests and observes; main owns persistence and leases.
+	    // Workflows
+	    ipcMain.handle('get-workflow-definitions', (_, workspaceId?: string) =>
+	      AppStore.getWorkflowDefinitions(workspaceId)
+	    )
+	    ipcMain.handle(
+	      'save-workflow-definition',
+	      (
+	        _,
+	        workflow: Omit<
+	          WorkflowDefinition,
+	          'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'
+	        > &
+	          Partial<
+	            Pick<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'>
+	          >
+	      ) => {
+	        const saved = AppStore.saveWorkflowDefinition(sanitizeWorkflowForSave(workflow))
+	        mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	        scheduleNextTaskTimer()
+	        emitDueScheduledTasks()
+	        return saved
+	      }
+	    )
+	    ipcMain.handle('update-workflow-definition', (_, id: string, partial: Partial<WorkflowDefinition>) => {
+	      const sanitized = sanitizeWorkflowPatch(id, partial)
+	      if (!sanitized) return null
+	      const updated = AppStore.updateWorkflowDefinition(id, sanitized)
+	      mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	      scheduleNextTaskTimer()
+	      return updated
+	    })
+	    ipcMain.handle('delete-workflow-definition', (_, id: string) => {
+	      AppStore.deleteWorkflowDefinition(id)
+	      mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	      mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+	      scheduleNextTaskTimer()
+	    })
+	    ipcMain.handle('run-workflow-now', (_, id: string) => {
+	      const task = AppStore.materializeWorkflowNow(id)
+	      if (task) {
+	        mainWindow?.webContents.send('workflow-definitions-changed', AppStore.getWorkflowDefinitions())
+	        mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
+	        mainWindow?.webContents.send('scheduled-task-due', task)
+	      }
+	      scheduleNextTaskTimer()
+	      return task
+	    })
+
+	    // Durable run queue. Renderer requests and observes; main owns persistence and leases.
     ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) =>
       runQueueService.getJobs(filter)
     )
@@ -15642,6 +15895,7 @@ if (isGeminiMcpBridgeProcess) {
         messageChannelBindingStore,
         messageChannelCursorStore,
         messageChannelAuditStore,
+        channelAdapterRegistry,
         messageChannelDeliveryService
       } = messageBridgeRuntime
       const cancelActiveMessageChannelRunsForChat = async (chatId: string): Promise<number> => {
@@ -15660,13 +15914,101 @@ if (isGeminiMcpBridgeProcess) {
         pollMessages: async (
           params: MessagesBridgePollParams
         ): Promise<MessagesBridgePollResult> => {
-          const daemon = bridgeDaemonRef
-          if (!daemon) {
-            throw new Error('TaskWraith bridge daemon is not running.')
+          return channelAdapterRegistry.poll(params.channel || 'imessage', params)
+        },
+        listAdapters: () => channelAdapterRegistry.listStatuses(),
+        createProviderThread: ({ binding, provider, title }) => {
+          const seedChat = AppStore.getChat(binding.appChatId)
+          const created =
+            seedChat?.workspaceId && seedChat.workspacePath
+              ? chatService.createChat(seedChat.workspaceId, seedChat.workspacePath)
+              : chatService.createGlobalChat()
+          const routedChat: ChatRecord = {
+            ...created,
+            provider,
+            title,
+            ...(seedChat?.settingsSnapshot ? { settingsSnapshot: seedChat.settingsSnapshot } : {})
           }
-          return daemon.request<MessagesBridgePollResult>('messages.poll', params, {
-            timeoutMs: 10_000
-          })
+          saveAndBroadcastChat(routedChat)
+          broadcastThreadUpdate(routedChat.appChatId)
+          return routedChat
+        },
+        createWorkspaceDefaultThread: ({ binding, provider, title }) => {
+          const seedChat = AppStore.getChat(binding.appChatId)
+          const candidates = seedChat?.workspaceId
+            ? AppStore.getChats(seedChat.workspaceId)
+            : AppStore.getChats().filter((chat) => chat.scope === 'global')
+          const existing = candidates.find(
+            (chat) =>
+              !chat.archived &&
+              chat.providerMetadata?.channelDefaultBindingId === binding.id &&
+              chat.providerMetadata?.channelDefaultRoute === 'workspace_default_agent'
+          )
+          const metadata = {
+            ...(existing?.providerMetadata || {}),
+            channelDefaultBindingId: binding.id,
+            channelDefaultRoute: 'workspace_default_agent',
+            channelDefaultProvider: provider
+          }
+          const created =
+            existing ||
+            (seedChat?.workspaceId && seedChat.workspacePath
+              ? chatService.createChat(seedChat.workspaceId, seedChat.workspacePath)
+              : chatService.createGlobalChat())
+          const routedChat: ChatRecord = {
+            ...created,
+            provider,
+            title: existing?.title || title,
+            providerMetadata: metadata,
+            ...(seedChat?.settingsSnapshot && !created.settingsSnapshot
+              ? { settingsSnapshot: seedChat.settingsSnapshot }
+              : {})
+          }
+          saveAndBroadcastChat(routedChat)
+          broadcastThreadUpdate(routedChat.appChatId)
+          return routedChat
+        },
+        createEnsembleThread: async ({ binding, title }) => {
+          if (AppStore.getSettings().ensembleModeEnabled === false) {
+            throw new Error('Ensemble Mode is disabled.')
+          }
+          const seedChat = AppStore.getChat(binding.appChatId)
+          const candidates = seedChat?.workspaceId
+            ? AppStore.getChats(seedChat.workspaceId)
+            : AppStore.getChats().filter((chat) => chat.scope === 'global')
+          const existing = candidates.find(
+            (chat) =>
+              !chat.archived &&
+              chat.chatKind === 'ensemble' &&
+              chat.providerMetadata?.channelDefaultBindingId === binding.id &&
+              chat.providerMetadata?.channelDefaultRoute === 'ensemble'
+          )
+          const metadata = {
+            ...(existing?.providerMetadata || {}),
+            channelDefaultBindingId: binding.id,
+            channelDefaultRoute: 'ensemble',
+            channelDefaultProvider: binding.provider
+          }
+          const created =
+            existing ||
+            (await chatService.createEnsembleChat(
+              seedChat?.workspaceId && seedChat.workspacePath
+                ? { workspaceId: seedChat.workspaceId, workspacePath: seedChat.workspacePath }
+                : undefined,
+              await detectConfiguredProviders(AppStore.getSettings())
+            ))
+          const routedChat: ChatRecord = {
+            ...created,
+            provider: binding.provider,
+            title: existing?.title || title,
+            providerMetadata: metadata,
+            ...(seedChat?.settingsSnapshot && !created.settingsSnapshot
+              ? { settingsSnapshot: seedChat.settingsSnapshot }
+              : {})
+          }
+          saveAndBroadcastChat(routedChat)
+          broadcastThreadUpdate(routedChat.appChatId)
+          return routedChat
         },
         getChat: (chatId) => AppStore.getChat(chatId),
         saveChat: saveAndBroadcastChat,
@@ -15684,6 +16026,33 @@ if (isGeminiMcpBridgeProcess) {
             return Promise.resolve({ dispatched: false, appRunId: '' })
           }
           return runCoordinator.dispatch(payload, { sender: mainWindow.webContents })
+        },
+        dispatchEnsembleRun: ({ chat, prompt, imagePaths }) => {
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            return { dispatched: false, status: 'no-window' }
+          }
+          const result = ensembleOrchestratorRef?.startRound({
+            chatId: chat.appChatId,
+            prompt,
+            event: { sender: mainWindow.webContents } as Electron.IpcMainInvokeEvent,
+            mode: 'normal',
+            ...(imagePaths?.length
+              ? {
+                  imageAttachments: imagePaths.map((imagePath) => ({
+                    path: imagePath,
+                    name: basename(imagePath)
+                  }))
+                }
+              : {})
+          })
+          return {
+            dispatched:
+              result?.status === 'started' ||
+              result?.status === 'queued' ||
+              result?.status === 'steered',
+            status: result?.status,
+            roundId: result?.roundId
+          }
         }
       })
     } else {
@@ -15760,8 +16129,14 @@ if (isGeminiMcpBridgeProcess) {
       const {
         messageChannelBindingStore,
         messageChannelCursorStore,
-        messageChannelAuditStore
+        messageChannelAuditStore,
+        channelAdapterRegistry,
+        localWebChannelAdapter
       } = messageBridgeRuntime
+
+      ipcMain.handle('message-channels:list-adapters', async () => {
+        return channelAdapterRegistry.listStatuses()
+      })
 
       ipcMain.handle('message-channels:list-bindings', async () => {
         return messageChannelBindingStore.list({ includeArchived: true })
@@ -15778,7 +16153,7 @@ if (isGeminiMcpBridgeProcess) {
             chatGuid: binding.chatGuid,
             bindingId: binding.id,
             appChatId: binding.appChatId,
-            summary: 'Upserted iMessage channel binding.',
+            summary: `Upserted ${binding.channel} channel binding.`,
             payload: {
               provider: binding.provider,
               mode: binding.mode,
@@ -15801,7 +16176,7 @@ if (isGeminiMcpBridgeProcess) {
           chatGuid: binding.chatGuid,
           bindingId: binding.id,
           appChatId: binding.appChatId,
-          summary: 'Archived iMessage channel binding.'
+          summary: `Archived ${binding.channel} channel binding.`
         })
       }
       return binding
@@ -15811,32 +16186,23 @@ if (isGeminiMcpBridgeProcess) {
       const id = requireNonEmptyString(bindingId, 'Message channel binding id')
       const binding = messageChannelBindingStore.get(id)
       if (!binding || binding.archived) {
-        throw new Error('Active iMessage binding was not found.')
+        throw new Error('Active channel binding was not found.')
       }
       const recipientHandle = requireNonEmptyString(
         binding.allowedHandles[0],
-        'Allowed iMessage handle'
+        'Allowed channel handle'
       )
       const text = labelTaskWraithOutboundText(
-        `iMessage bridge test sent at ${new Date().toISOString()}.`
+        `Channel gateway test sent via ${binding.channel} at ${new Date().toISOString()}.`
       )
       try {
-        const daemon = bridgeDaemonRef
-        if (!daemon) {
-          throw new Error('TaskWraith bridge daemon is not running.')
-        }
-        const result = await daemon.request(
-          'messages.sendText',
-          {
-            accountId: binding.accountId,
-            chatGuid: binding.chatGuid,
-            recipientHandle,
-            text
-          },
-          {
-            timeoutMs: 10_000
-          }
-        )
+        const result = await channelAdapterRegistry.sendText({
+          channel: binding.channel,
+          accountId: binding.accountId,
+          chatGuid: binding.chatGuid,
+          recipientHandle,
+          text
+        })
         messageChannelAuditStore.append({
           kind: 'outbound_sent',
           channel: binding.channel,
@@ -15845,7 +16211,7 @@ if (isGeminiMcpBridgeProcess) {
           bindingId: binding.id,
           appChatId: binding.appChatId,
           senderHandle: recipientHandle,
-          summary: 'Sent iMessage bridge test message.',
+          summary: `Sent ${binding.channel} channel test message.`,
           payload: {
             test: true,
             textPreview: text
@@ -15866,7 +16232,7 @@ if (isGeminiMcpBridgeProcess) {
           bindingId: binding.id,
           appChatId: binding.appChatId,
           senderHandle: recipientHandle,
-          summary: 'Failed to send iMessage bridge test message.',
+          summary: `Failed to send ${binding.channel} channel test message.`,
           payload: {
             test: true,
             error: err instanceof Error ? err.message : String(err),
@@ -15881,7 +16247,7 @@ if (isGeminiMcpBridgeProcess) {
       const id = requireNonEmptyString(bindingId, 'Message channel binding id')
       const binding = messageChannelBindingStore.get(id)
       if (!binding || binding.archived) {
-        throw new Error('Active iMessage binding was not found.')
+        throw new Error('Active channel binding was not found.')
       }
       const service = messageChannelGatewayServiceRef
       if (!service) {
@@ -15890,11 +16256,14 @@ if (isGeminiMcpBridgeProcess) {
       const cursor = messageChannelCursorStore.get({
         channel: binding.channel,
         accountId: binding.accountId,
-        chatGuid: binding.chatGuid
+        chatGuid: messageChannelCursorChatGuidForBinding(binding)
       })
+      const accountScoped = messageChannelUsesAccountScopedPolling(binding.channel)
       const summary = await service.pollOnce({
+        channel: binding.channel,
         accountId: binding.accountId,
-        chatGuid: binding.chatGuid,
+        chatGuid: messageChannelCursorChatGuidForBinding(binding),
+        ...(accountScoped ? { allConversations: true } : {}),
         afterRowId: cursor?.lastRowId ?? 0,
         includeFromMe: true
       })
@@ -15908,24 +16277,17 @@ if (isGeminiMcpBridgeProcess) {
       const id = requireNonEmptyString(bindingId, 'Message channel binding id')
       const binding = messageChannelBindingStore.get(id)
       if (!binding || binding.archived) {
-        throw new Error('Active iMessage binding was not found.')
+        throw new Error('Active channel binding was not found.')
       }
-      const daemon = bridgeDaemonRef
-      if (!daemon) {
-        throw new Error('TaskWraith bridge daemon is not running.')
-      }
-      const result = await daemon.request<MessagesBridgePollResult>(
-        'messages.poll',
-        {
-          accountId: binding.accountId,
-          chatGuid: binding.chatGuid,
-          afterRowId: 0,
-          limit: 8,
-          includeFromMe: true,
-          latestFirst: true
-        },
-        { timeoutMs: 10_000 }
-      )
+      const result = await channelAdapterRegistry.poll(binding.channel, {
+        channel: binding.channel,
+        accountId: binding.accountId,
+        chatGuid: binding.chatGuid,
+        afterRowId: 0,
+        limit: 8,
+        includeFromMe: true,
+        latestFirst: true
+      })
       messageChannelAuditStore.append({
         kind: 'poll',
         channel: binding.channel,
@@ -15933,7 +16295,7 @@ if (isGeminiMcpBridgeProcess) {
         chatGuid: binding.chatGuid,
         bindingId: binding.id,
         appChatId: binding.appChatId,
-        summary: `Peeked ${result.messages.length} latest iMessage rows for diagnostics.`,
+        summary: `Peeked ${result.messages.length} latest ${binding.channel} rows for diagnostics.`,
         payload: {
           diagnostic: true,
           latestFirst: true,
@@ -15960,12 +16322,12 @@ if (isGeminiMcpBridgeProcess) {
       const id = requireNonEmptyString(bindingId, 'Message channel binding id')
       const binding = messageChannelBindingStore.get(id)
       if (!binding || binding.archived) {
-        throw new Error('Active iMessage binding was not found.')
+        throw new Error('Active channel binding was not found.')
       }
       messageChannelCursorStore.clear({
         channel: binding.channel,
         accountId: binding.accountId,
-        chatGuid: binding.chatGuid
+        chatGuid: messageChannelCursorChatGuidForBinding(binding)
       })
       messageChannelAuditStore.append({
         kind: 'cursor_cleared',
@@ -15974,7 +16336,7 @@ if (isGeminiMcpBridgeProcess) {
         chatGuid: binding.chatGuid,
         bindingId: binding.id,
         appChatId: binding.appChatId,
-        summary: 'Cleared iMessage cursor for operator binding.'
+        summary: `Cleared ${binding.channel} cursor for operator binding.`
       })
       return { ok: true, bindingId: binding.id }
     })
@@ -16034,11 +16396,43 @@ if (isGeminiMcpBridgeProcess) {
         return service.pollOnce(params)
       }
     )
+
+    ipcMain.handle('message-channels:submit-web-message', async (_, input: unknown) => {
+      const service = messageChannelGatewayServiceRef
+      if (!service) {
+        throw new Error('Message channel gateway is not initialized.')
+      }
+      const message = localWebChannelAdapter.submitMessage(
+        input as Parameters<typeof localWebChannelAdapter.submitMessage>[0]
+      )
+      const summary = await service.pollOnce({
+        channel: 'web',
+        accountId: message.accountId,
+        chatGuid: message.chatGuid,
+        afterRowId: Math.max(0, message.rowId - 1),
+        includeFromMe: true
+      })
+      return {
+        ok: true,
+        message,
+        summary
+      }
+    })
+
+    ipcMain.handle('message-channels:drain-web-outbox', async (_, params: unknown = {}) => {
+      return {
+        ok: true,
+        messages: localWebChannelAdapter.drainOutbound(
+          params as Parameters<typeof localWebChannelAdapter.drainOutbound>[0]
+        )
+      }
+    })
     } else {
       const rejectMessagesBridgeIpc = async (): Promise<never> => {
         throw new Error(channelGatewayDisabledMessage)
       }
       ipcMain.handle('message-channels:list-bindings', rejectMessagesBridgeIpc)
+      ipcMain.handle('message-channels:list-adapters', async () => [])
       ipcMain.handle('message-channels:upsert-binding', rejectMessagesBridgeIpc)
       ipcMain.handle('message-channels:archive-binding', rejectMessagesBridgeIpc)
       ipcMain.handle('message-channels:send-test', rejectMessagesBridgeIpc)
@@ -16049,6 +16443,8 @@ if (isGeminiMcpBridgeProcess) {
       ipcMain.handle('message-channels:clear-binding-cursor', rejectMessagesBridgeIpc)
       ipcMain.handle('message-channels:list-audit', rejectMessagesBridgeIpc)
       ipcMain.handle('message-channels:poll-once', rejectMessagesBridgeIpc)
+      ipcMain.handle('message-channels:submit-web-message', rejectMessagesBridgeIpc)
+      ipcMain.handle('message-channels:drain-web-outbox', rejectMessagesBridgeIpc)
       ipcMain.handle('messages-bridge:status', async () => ({
         ok: false,
         platform: process.platform,

@@ -12,6 +12,9 @@ import type {
   ProductUpdateChangelog,
   RuntimeProfile,
   ScheduledTask,
+  WorkflowDefinition,
+  WorkflowRunTemplate,
+  WorkflowTrigger,
   WorkspaceRecord
 } from '../store/types'
 
@@ -93,6 +96,7 @@ export const MIN_WINDOW_HEIGHT = 600
 export interface MainSanitizerDeps {
   getSettings: () => AppSettings
   getScheduledTasks: () => ScheduledTask[]
+  getWorkflowDefinitions: () => WorkflowDefinition[]
   findRegisteredWorkspace: (workspacePath: string) => WorkspaceRecord | undefined
   requireRegisteredWorkspace: (workspacePath: string, label?: string) => string
   canonicalPath: (value: string) => string
@@ -363,6 +367,139 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     }
     if ('handoffSourceRunId' in input) {
       sanitized.handoffSourceRunId = optionalString(input.handoffSourceRunId)
+    }
+    return sanitized
+  }
+
+  function sanitizeWorkflowTrigger(value: unknown): WorkflowTrigger {
+    const input = requireRecord(value, 'Workflow trigger')
+    const kind =
+      input.kind === 'once' || input.kind === 'interval' || input.kind === 'cron'
+        ? input.kind
+        : input.kind === 'manual'
+          ? 'manual'
+          : 'manual'
+    if (kind === 'once') {
+      return {
+        kind,
+        runAt: optionalString(input.runAt) || new Date().toISOString(),
+        timezone: optionalString(input.timezone)
+      }
+    }
+    if (kind === 'interval') {
+      const intervalMs = Number(input.intervalMs)
+      return {
+        kind,
+        intervalMs: Number.isFinite(intervalMs) ? Math.max(60_000, Math.trunc(intervalMs)) : 60_000,
+        startAt: optionalString(input.startAt) || new Date().toISOString(),
+        timezone: optionalString(input.timezone)
+      }
+    }
+    if (kind === 'cron') {
+      return {
+        kind,
+        cronExpression: optionalString(input.cronExpression) || '',
+        timezone: optionalString(input.timezone)
+      }
+    }
+    return { kind: 'manual' }
+  }
+
+  function sanitizeWorkflowTemplate(value: unknown): WorkflowRunTemplate {
+    const input = requireRecord(value, 'Workflow template')
+    const workspace = assertScheduledTaskWorkspaceIdentity(
+      requireNonEmptyString(input.workspacePath, 'Workflow workspace'),
+      input.workspaceId
+    )
+    const prompt = typeof input.prompt === 'string' ? input.prompt : ''
+    if (!prompt.trim()) throw new Error('Workflow prompt is required.')
+    return {
+      ...input,
+      workspaceId: workspace.id,
+      workspacePath: deps.canonicalPath(workspace.path),
+      chatId: requireNonEmptyString(input.chatId, 'Workflow chat'),
+      provider: assertProviderId(input.provider),
+      prompt,
+      displayPrompt: optionalString(input.displayPrompt),
+      selectedModelType: optionalString(input.selectedModelType) || 'default',
+      customModel: optionalString(input.customModel) || '',
+      approvalMode: optionalString(input.approvalMode) || 'default',
+      sessionTrust: Boolean(input.sessionTrust),
+      imageAttachments: Array.isArray(input.imageAttachments) ? (input.imageAttachments as any) : [],
+      externalPathGrants: normalizeScheduledTaskExternalGrants(input.externalPathGrants),
+      geminiWorktree: input.geminiWorktree as any,
+      codexReasoningEffort: optionalString(input.codexReasoningEffort),
+      codexServiceTier: optionalString(input.codexServiceTier),
+      claudeFastMode:
+        typeof input.claudeFastMode === 'boolean' ? input.claudeFastMode : undefined,
+      kimiThinkingEnabled:
+        typeof input.kimiThinkingEnabled === 'boolean' ? input.kimiThinkingEnabled : undefined,
+      runtimeProfileId: optionalString(input.runtimeProfileId),
+      geminiAuthProfileId: optionalStringOrNull(input.geminiAuthProfileId),
+      handoffSourceRunId: optionalString(input.handoffSourceRunId),
+      kind: input.kind === 'ensemble' ? 'ensemble' : 'single',
+      ensembleSnapshot: input.ensembleSnapshot as any
+    } as WorkflowRunTemplate
+  }
+
+  function sanitizeWorkflowForSave(
+    workflow: unknown
+  ): Omit<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'> &
+    Partial<Pick<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'>> {
+    const input = requireRecord(workflow, 'Workflow')
+    const template = sanitizeWorkflowTemplate(input.template)
+    const limits = isRecord(input.limits) ? input.limits : {}
+    return {
+      id: optionalString(input.id),
+      name: requireNonEmptyString(input.name, 'Workflow name'),
+      workspaceId: template.workspaceId,
+      workspacePath: template.workspacePath,
+      enabled: input.enabled !== false,
+      trigger: sanitizeWorkflowTrigger(input.trigger),
+      template,
+      missedRunPolicy: input.missedRunPolicy === 'skip' ? 'skip' : 'coalesce',
+      concurrencyPolicy: input.concurrencyPolicy === 'enqueue' ? 'enqueue' : 'skip',
+      limits: {
+        maxRunsPerDay: Number.isFinite(Number(limits.maxRunsPerDay))
+          ? Math.max(1, Math.trunc(Number(limits.maxRunsPerDay)))
+          : undefined,
+        maxConsecutiveFailures: Number.isFinite(Number(limits.maxConsecutiveFailures))
+          ? Math.max(1, Math.trunc(Number(limits.maxConsecutiveFailures)))
+          : 3
+      }
+    }
+  }
+
+  function sanitizeWorkflowPatch(id: string, partial: unknown): Partial<WorkflowDefinition> | null {
+    const existing = deps.getWorkflowDefinitions().find((workflow) => workflow.id === id)
+    if (!existing) return null
+    const input = requireRecord(partial, 'Workflow update')
+    const sanitized: Partial<WorkflowDefinition> = {}
+    if ('name' in input) sanitized.name = requireNonEmptyString(input.name, 'Workflow name')
+    if ('enabled' in input) sanitized.enabled = input.enabled !== false
+    if ('trigger' in input) sanitized.trigger = sanitizeWorkflowTrigger(input.trigger)
+    if ('template' in input) sanitized.template = sanitizeWorkflowTemplate(input.template)
+    if ('missedRunPolicy' in input) {
+      sanitized.missedRunPolicy = input.missedRunPolicy === 'skip' ? 'skip' : 'coalesce'
+    }
+    if ('concurrencyPolicy' in input) {
+      sanitized.concurrencyPolicy = input.concurrencyPolicy === 'enqueue' ? 'enqueue' : 'skip'
+    }
+    if ('limits' in input && isRecord(input.limits)) {
+      sanitized.limits = {
+        ...existing.limits,
+        ...(Number.isFinite(Number(input.limits.maxRunsPerDay))
+          ? { maxRunsPerDay: Math.max(1, Math.trunc(Number(input.limits.maxRunsPerDay))) }
+          : {}),
+        ...(Number.isFinite(Number(input.limits.maxConsecutiveFailures))
+          ? {
+              maxConsecutiveFailures: Math.max(
+                1,
+                Math.trunc(Number(input.limits.maxConsecutiveFailures))
+              )
+            }
+          : {})
+      }
     }
     return sanitized
   }
@@ -800,6 +937,8 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
   return {
     sanitizeScheduledTaskForSave,
     sanitizeScheduledTaskPatch,
+    sanitizeWorkflowForSave,
+    sanitizeWorkflowPatch,
     sanitizeRuntimeProfileForSave,
     sanitizeHandoffCardForSave,
     sanitizeHandoffCardPatch,

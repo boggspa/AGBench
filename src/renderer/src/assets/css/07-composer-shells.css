@@ -24,7 +24,7 @@
   padding: 0;
   gap: 0;
   background: #212121;
-  border: 1px solid color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  border: 1px solid transparent;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 [data-composer-style="codex"] .composer-inner-module {
@@ -58,29 +58,16 @@
   margin-left: auto;
 }
 [data-composer-style="codex"] .composer-surface:focus-within {
-  border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
+  border-color: transparent;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.46);
 }
-/* 1.0.6-CS2 — Codex shell/interface, DARK themes only: remove the rim outline
- * on the composer surface + the detached above rows / ensemble stack. "Dark" =
- * the inverse of the codex light set (light/mist/sage), matching the codex
- * light-scoped flatten elsewhere. The visible rim is a 1px border; the
- * load-bearing one is set on `[data-interface-style="codex"] .composer-surface`
- * with `!important` (~20920), and the ensemble upper area is a
- * `.composer-above-bar-stack:has(.ensemble-above-row)` wrapper the light theme
- * already flattens but dark didn't. `!important` + higher specificity (0,4,0)
- * beats those; `transparent` keeps the 1px box (no reflow) and leaves the soft
- * drop-shadow intact (it's a shadow, not an outline). */
+/* Codex shell/interface: remove only the outer composer-surface rim.
+ * The detached above rows keep their own rim/tab treatment. */
 :not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))
   :is([data-composer-style="codex"], [data-interface-style="codex"])
   :is(
     .composer-surface,
-    .composer-surface:focus-within,
-    .composer-above-bar,
-    .ensemble-above-row,
-    .composer-create-pr-row,
-    .queued-messages-above-row,
-    .composer-above-bar-stack:has(.ensemble-above-row)
+    .composer-surface:focus-within
   ) {
   border-color: transparent !important;
 }
@@ -3060,7 +3047,7 @@
 
 [data-interface-style="codex"] .composer-surface {
   background: #212121 !important;
-  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
+  border-color: transparent !important;
   border-radius: 22px !important;
   padding: 0 !important;
   box-shadow: 0 18px 56px rgba(0, 0, 0, 0.36) !important;

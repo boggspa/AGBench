@@ -362,15 +362,49 @@ function providerManagedMcpCapability(provider: ProviderId): ProviderMcpCapabili
   }
 }
 
-function unavailableLocalMcpCapability(provider: ProviderId): ProviderMcpCapability {
+function ollamaLocalMcpCapability(input: {
+  enabled: boolean
+  blocked: boolean
+  hasWorkspace: boolean
+}): ProviderMcpCapability {
+  const tools = ['read_file', 'list_directory', 'workspace_search']
+  if (input.blocked) {
+    return {
+      state: 'blocked',
+      source: 'taskwraith',
+      available: false,
+      enabled: false,
+      installed: true,
+      serverName: 'TaskWraith-local',
+      tools: [],
+      message:
+        'Ollama read-only workspace tools are blocked by TaskWraith MCP/tool settings.'
+    }
+  }
+  if (!input.hasWorkspace) {
+    return {
+      state: 'unavailable',
+      source: 'taskwraith',
+      available: false,
+      enabled: input.enabled,
+      installed: true,
+      serverName: 'TaskWraith-local',
+      tools: [],
+      message:
+        'Ollama read-only tools require a workspace thread so paths can be scoped by TaskWraith.'
+    }
+  }
   return {
-    state: 'unavailable',
+    state: input.enabled ? 'available' : 'unavailable',
     source: 'taskwraith',
-    available: false,
-    enabled: false,
-    installed: false,
-    tools: [],
-    message: `${providerLabel(provider)} runs through TaskWraith's local HTTP adapter. Tool execution is not advertised in this MVP.`
+    available: input.enabled,
+    enabled: input.enabled,
+    installed: true,
+    serverName: 'TaskWraith-local',
+    tools: input.enabled ? tools : [],
+    message: input.enabled
+      ? 'Ollama uses a TaskWraith-controlled local tool loop for read-only workspace listing, file reads, and search. Shell commands and file mutations are not advertised.'
+      : 'Ollama local tools are not enabled.'
   }
 }
 
@@ -449,11 +483,11 @@ function approvalContract(
     return {
       requestedMode,
       effectiveMode: 'plan',
-      providerMode: 'local read-only',
+      providerMode: 'local read-only + TaskWraith tools',
       inAppApprovals: true,
       supportsWorkspaceGrants: false,
       notes: [
-        'Ollama runs through TaskWraith local HTTP. Current local mode is read-only; future search tools should be mediated by TaskWraith, not direct model shell access.'
+        'Ollama runs through TaskWraith local HTTP. Read-only workspace list/read/search tools are mediated by TaskWraith; shell commands and file mutations are not exposed.'
       ]
     }
   }
@@ -684,22 +718,34 @@ export function buildProviderCapabilityContract({
       )
     }
   } else if (provider === 'ollama') {
-    mcp = unavailableLocalMcpCapability(provider)
+    mcp = ollamaLocalMcpCapability({
+      enabled: services.mcpTools !== 'deny',
+      blocked: services.mcpTools === 'deny',
+      hasWorkspace: Boolean(workspacePath)
+    })
     shellCommands = unavailableCapability(
       'shellCommands',
       'taskwraith',
-      'Ollama local mode is read-only chat; shell commands are not advertised.'
+      'Ollama local mode does not expose shell commands.'
     )
     fileChanges = unavailableCapability(
       'fileChanges',
       'taskwraith',
-      'Ollama local mode is read-only chat; file edits are not advertised.'
+      'Ollama local mode does not expose file edits or patch tools.'
     )
-    mcpTools = unavailableCapability(
-      'mcpTools',
-      'taskwraith',
-      'Ollama does not yet expose TaskWraith MCP tools to the model; read-only search should be added through a TaskWraith-controlled tool loop.'
-    )
+    mcpTools = mcp.available
+      ? serviceCapability(
+          'mcpTools',
+          services.mcpTools,
+          'taskwraith',
+          mcp.tools,
+          mcp.message
+        )
+      : unavailableCapability(
+          'mcpTools',
+          'taskwraith',
+          mcp.message || 'Ollama read-only tools are not available.'
+        )
     elicit = unavailableCapability(
       'elicit',
       'taskwraith',

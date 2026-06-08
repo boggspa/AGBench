@@ -15,7 +15,15 @@ export interface WelcomeMessageLike {
  * rationale as `WelcomeMessageLike`: the helper inspects only the
  * fields that decide whether the welcome surface should render.
  */
-export type WelcomeChatLike = Pick<ChatRecord, 'appChatId'> | null
+export interface WelcomeChatRecordLike {
+  appChatId: ChatRecord['appChatId']
+  parentChatId?: ChatRecord['parentChatId']
+  summaryOnly?: boolean
+  messageCount?: number
+  runCount?: number
+}
+
+export type WelcomeChatLike = WelcomeChatRecordLike | null
 
 /**
  * Inputs the renderer feeds into `shouldRenderWelcome`. Encoded as a
@@ -80,6 +88,11 @@ export function shouldRenderWelcome(input: WelcomeStateInput): boolean {
   if (!input.currentChat) return false
   if (input.isCurrentChatRunning) return false
   if (input.showFallbackUX) return false
+  if (input.currentChat.parentChatId) return false
+  if (input.currentChat.summaryOnly) {
+    if ((input.currentChat.messageCount ?? 0) > 0) return false
+    if ((input.currentChat.runCount ?? 0) > 0) return false
+  }
   if (hasConversationContent(input.messages)) return false
   return true
 }

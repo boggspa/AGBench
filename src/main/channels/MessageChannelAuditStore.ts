@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { dirname } from 'path'
 import { randomUUID } from 'crypto'
-import type { MessageChannelKind } from './MessageChannelTypes'
+import { isMessageChannelKind, type MessageChannelKind } from './MessageChannelTypes'
 
 export type MessageChannelAuditKind =
   | 'poll'
@@ -104,7 +104,7 @@ function parseRecord(line: string): MessageChannelAuditRecord | null {
     if (
       typeof record.id !== 'string' ||
       typeof record.timestamp !== 'string' ||
-      record.channel !== 'imessage' ||
+      !isMessageChannelKind(record.channel) ||
       typeof record.kind !== 'string' ||
       typeof record.summary !== 'string'
     ) {

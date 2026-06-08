@@ -71,6 +71,18 @@ describe('MessagesBridgePanel setup blockers', () => {
       'Messages.app text sending is unavailable for the iMessage adapter.'
     )
     expect(messageBridgeSendBlocker(readyStatus, binding)).toBeNull()
+    expect(
+      messageBridgeSendBlocker(
+        { ...readyStatus, databaseReadable: false, sendTextSupported: false },
+        { ...binding, channel: 'telegram', chatGuid: 'telegram:123456' }
+      )
+    ).toBeNull()
+    expect(
+      messageBridgeSendBlocker(
+        { ...readyStatus, databaseReadable: false, sendTextSupported: false },
+        { ...binding, channel: 'web', accountId: 'local-web', chatGuid: 'web:operator' }
+      )
+    ).toBeNull()
   })
 
   it('blocks polling until a binding and readable Messages database are present', () => {
@@ -79,6 +91,18 @@ describe('MessagesBridgePanel setup blockers', () => {
     expect(
       messageBridgeBindingPollBlocker({ ...readyStatus, databaseReadable: false }, binding)
     ).toBe('Grant Full Disk Access, restart TaskWraith if needed, then recheck.')
+    expect(
+      messageBridgeBindingPollBlocker(
+        { ...readyStatus, databaseReadable: false },
+        { ...binding, channel: 'telegram', chatGuid: 'telegram:123456' }
+      )
+    ).toBeNull()
+    expect(
+      messageBridgeBindingPollBlocker(
+        { ...readyStatus, databaseReadable: false },
+        { ...binding, channel: 'web', accountId: 'local-web', chatGuid: 'web:operator' }
+      )
+    ).toBeNull()
     expect(messageBridgePollOnceBlocker(readyStatus, 1)).toBeNull()
   })
 
@@ -105,7 +129,8 @@ describe('MessagesBridgePanel setup blockers', () => {
 
     expect(html).toContain('Channels gateway')
     expect(html).toContain('iMessage local experimental')
-    expect(html).toContain('Telegram, Matrix, Signal, email, and')
+    expect(html).toContain('Telegram bot, Matrix, and local web chat')
+    expect(html).toContain('Signal, email, Discord, and Slack')
     expect(html).toContain('iMessage local identity')
     expect(html).toContain('This Mac will receive as:')
     expect(html).toContain('Open Messages.app, then choose Settings')
@@ -114,6 +139,57 @@ describe('MessagesBridgePanel setup blockers', () => {
     expect(html).toContain('TaskWraith cannot spoof another iMessage sender.')
     expect(html).toContain('Open Messages.app')
     expect(html).toContain('Mac Messages identity')
+  })
+
+  it('renders Telegram as a selectable channel binding adapter', () => {
+    const html = renderToStaticMarkup(<MessagesBridgePanel />)
+
+    expect(html).toContain('Channel')
+    expect(html).toContain('Telegram')
+    expect(html).toContain('Set TASKWRAITH_TELEGRAM_BOT_TOKEN')
+    expect(html).toContain('BYO/local transports only')
+  })
+
+  it('renders Matrix as a selectable self-hosted channel binding adapter', () => {
+    const html = renderToStaticMarkup(<MessagesBridgePanel />)
+
+    expect(html).toContain('Matrix')
+    expect(html).toContain('Set TASKWRAITH_MATRIX_HOMESERVER_URL')
+    expect(html).toContain('<option value="matrix">Matrix</option>')
+  })
+
+  it('renders local web as a selectable self-hosted channel adapter', () => {
+    const html = renderToStaticMarkup(<MessagesBridgePanel />)
+
+    expect(html).toContain('Local web chat')
+    expect(html).toContain('In-process local/PWA channel')
+    expect(html).toContain('<option value="web">Local web chat</option>')
+  })
+
+  it('renders all current providers as channel binding targets', () => {
+    const html = renderToStaticMarkup(<MessagesBridgePanel />)
+
+    for (const provider of ['codex', 'claude', 'gemini', 'kimi', 'grok', 'cursor', 'ollama']) {
+      expect(html).toMatch(new RegExp(`<option value="${provider}"[^>]*>${provider}</option>`))
+    }
+  })
+
+  it('renders active channel route targets while leaving planned targets out of setup', () => {
+    const html = renderToStaticMarkup(<MessagesBridgePanel />)
+
+    expect(html).toContain('Route target')
+    expect(html).toMatch(/<option value="existing_chat"[^>]*>Existing chat<\/option>/)
+    expect(html).toMatch(
+      /<option value="new_provider_thread"[^>]*>New provider thread<\/option>/
+    )
+    expect(html).toMatch(
+      /<option value="workspace_default_agent"[^>]*>Workspace default agent<\/option>/
+    )
+    expect(html).toMatch(/<option value="ensemble"[^>]*>Ensemble<\/option>/)
+    expect(html).toMatch(
+      /<option value="approval_status"[^>]*>Approval\/status endpoint<\/option>/
+    )
+    expect(html).toMatch(/<option value="status_endpoint"[^>]*>Status endpoint<\/option>/)
   })
 
   it('explains that Messages automation is validated by the bridge test send', () => {
@@ -153,7 +229,7 @@ describe('MessagesBridgePanel setup blockers', () => {
         commands: 0,
         rejected: {}
       })
-    ).toContain('No new Messages rows were found')
+    ).toContain('No new channel rows were found')
     expect(
       messagesBridgePollDiagnostic({
         polled: 1,
@@ -172,6 +248,15 @@ describe('MessagesBridgePanel setup blockers', () => {
         rejected: { 'sender-not-allowed': 1 }
       })
     ).toContain('Allowed handles')
+    expect(
+      messagesBridgePollDiagnostic({
+        polled: 1,
+        accepted: 0,
+        dispatched: 0,
+        commands: 0,
+        rejected: { 'rate-limited': 1 }
+      })
+    ).toContain('rate-limited')
   })
 
   it('summarizes what the last poll saw for step-five diagnostics', () => {
@@ -187,7 +272,7 @@ describe('MessagesBridgePanel setup blockers', () => {
         rejected: {}
       })
     ).toBe(
-      '1 Messages row scanned, 1 accepted, 1 command handled, 0 provider runs dispatched, 0 rejected'
+      '1 channel row scanned, 1 accepted, 1 command handled, 0 provider runs dispatched, 0 rejected'
     )
     expect(
       messagesBridgeStatusCommandState(
@@ -195,7 +280,7 @@ describe('MessagesBridgePanel setup blockers', () => {
         false,
         false
       )
-    ).toBe('Messages rows were seen but not accepted. Read the diagnostic below.')
+    ).toBe('Channel rows were seen but not accepted. Read the diagnostic below.')
     expect(messagesBridgeStatusCommandState(null, true, false)).toBe(
       'Status command accepted by TaskWraith.'
     )

@@ -44,6 +44,7 @@ describe('MessageChannelBindingStore', () => {
       appChatId: 'chat-1',
       workspaceId: 'workspace-1',
       provider: 'codex',
+      routeTarget: 'existing_chat',
       mode: 'operator',
       requireTrigger: true,
       triggerPrefix: 'tw',
@@ -134,12 +135,210 @@ describe('MessageChannelBindingStore', () => {
     ).toThrow(/one-to-one operator/i)
   })
 
+  it('creates and persists a Telegram binding', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      now: () => new Date('2026-06-06T10:00:00.000Z'),
+      createId: () => 'telegram-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'telegram',
+      accountId: 'telegram-bot',
+      chatGuid: 'telegram:123456',
+      allowedHandles: ['telegram-user:42'],
+      appChatId: 'chat-1',
+      provider: 'codex',
+      label: 'Telegram operator'
+    })
+
+    expect(binding).toMatchObject({
+      id: 'telegram-binding-1',
+      channel: 'telegram',
+      accountId: 'telegram-bot',
+      chatGuid: 'telegram:123456',
+      allowedHandles: ['telegram-user:42'],
+      mode: 'operator',
+      requireTrigger: true
+    })
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('telegram-binding-1')?.channel).toBe('telegram')
+  })
+
+  it('creates and persists a local web binding', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      now: () => new Date('2026-06-06T10:00:00.000Z'),
+      createId: () => 'web-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:operator',
+      allowedHandles: ['web-user:operator'],
+      appChatId: 'chat-1',
+      provider: 'codex',
+      label: 'Local web operator'
+    })
+
+    expect(binding).toMatchObject({
+      id: 'web-binding-1',
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:operator',
+      allowedHandles: ['web-user:operator'],
+      mode: 'operator',
+      requireTrigger: true
+    })
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('web-binding-1')?.channel).toBe('web')
+  })
+
+  it('creates and persists a Matrix binding', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      now: () => new Date('2026-06-06T10:00:00.000Z'),
+      createId: () => 'matrix-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'matrix',
+      accountId: 'matrix:matrix.example.org',
+      chatGuid: 'matrix:!room:matrix.example.org',
+      allowedHandles: ['@operator:matrix.example.org'],
+      appChatId: 'chat-1',
+      provider: 'codex',
+      label: 'Matrix operator'
+    })
+
+    expect(binding).toMatchObject({
+      id: 'matrix-binding-1',
+      channel: 'matrix',
+      accountId: 'matrix:matrix.example.org',
+      chatGuid: 'matrix:!room:matrix.example.org',
+      allowedHandles: ['@operator:matrix.example.org'],
+      mode: 'operator',
+      requireTrigger: true
+    })
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('matrix-binding-1')?.channel).toBe('matrix')
+  })
+
+  it.each(['grok', 'cursor', 'ollama'] as const)(
+    'accepts %s as a channel binding provider',
+    (provider) => {
+      const store = new MessageChannelBindingStore({
+        storagePath,
+        createId: () => `${provider}-binding-1`
+      })
+
+      const binding = store.upsert({
+        channel: 'web',
+        accountId: 'local-web',
+        chatGuid: `web:${provider}`,
+        allowedHandles: [`web-user:${provider}`],
+        appChatId: 'chat-1',
+        provider
+      })
+
+      expect(binding.provider).toBe(provider)
+    }
+  )
+
+  it('creates and persists active endpoint route targets', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      createId: () => 'status-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:status',
+      allowedHandles: ['web-user:status'],
+      appChatId: 'chat-1',
+      provider: 'codex',
+      routeTarget: 'approval_status'
+    })
+
+    expect(binding.routeTarget).toBe('approval_status')
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('status-binding-1')?.routeTarget).toBe('approval_status')
+  })
+
+  it('creates and persists new-provider-thread route targets', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      createId: () => 'new-thread-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:new-thread',
+      allowedHandles: ['web-user:operator'],
+      appChatId: 'chat-1',
+      provider: 'codex',
+      routeTarget: 'new_provider_thread'
+    })
+
+    expect(binding.routeTarget).toBe('new_provider_thread')
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('new-thread-binding-1')?.routeTarget).toBe('new_provider_thread')
+  })
+
+  it('creates and persists workspace-default-agent route targets', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      createId: () => 'workspace-default-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:workspace-default',
+      allowedHandles: ['web-user:operator'],
+      appChatId: 'chat-1',
+      provider: 'kimi',
+      routeTarget: 'workspace_default_agent'
+    })
+
+    expect(binding.routeTarget).toBe('workspace_default_agent')
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('workspace-default-binding-1')?.routeTarget).toBe(
+      'workspace_default_agent'
+    )
+  })
+
+  it('creates and persists ensemble route targets', () => {
+    const store = new MessageChannelBindingStore({
+      storagePath,
+      createId: () => 'ensemble-binding-1'
+    })
+
+    const binding = store.upsert({
+      channel: 'web',
+      accountId: 'local-web',
+      chatGuid: 'web:ensemble',
+      allowedHandles: ['web-user:operator'],
+      appChatId: 'chat-1',
+      provider: 'ollama',
+      routeTarget: 'ensemble'
+    })
+
+    expect(binding.routeTarget).toBe('ensemble')
+    expect(binding.provider).toBe('ollama')
+    const reloaded = new MessageChannelBindingStore({ storagePath })
+    expect(reloaded.get('ensemble-binding-1')?.routeTarget).toBe('ensemble')
+  })
+
   it('rejects planned channel bindings at runtime', () => {
     const store = new MessageChannelBindingStore({ storagePath, createId: () => 'binding-1' })
 
     expect(() =>
       store.upsert({
-        channel: 'telegram' as never,
+        channel: 'signal' as never,
         accountId: 'mac-default',
         chatGuid: 'chat-guid',
         allowedHandles: ['+15555550100'],
@@ -259,6 +458,32 @@ describe('MessageChannelBindingStore', () => {
             allowedHandles: ['+15555550100'],
             appChatId: 'chat-1',
             provider: 'unknown-provider',
+            createdAt: '2026-06-06T10:00:00.000Z',
+            updatedAt: '2026-06-06T10:00:00.000Z'
+          }
+        ]
+      }),
+      'utf8'
+    )
+    const store = new MessageChannelBindingStore({ storagePath })
+    expect(store.list({ includeArchived: true })).toEqual([])
+  })
+
+  it('drops stored bindings with unknown route targets', () => {
+    writeFileSync(
+      storagePath,
+      JSON.stringify({
+        version: 1,
+        bindings: [
+          {
+            id: 'binding-1',
+            channel: 'web',
+            accountId: 'local-web',
+            chatGuid: 'web:operator',
+            allowedHandles: ['web-user:operator'],
+            appChatId: 'chat-1',
+            provider: 'codex',
+            routeTarget: 'mystery_endpoint',
             createdAt: '2026-06-06T10:00:00.000Z',
             updatedAt: '2026-06-06T10:00:00.000Z'
           }

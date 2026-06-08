@@ -37,6 +37,9 @@ import {
   HandoffCard,
   HandoffCardFilter,
   ProductUpdateChangelog,
+  WorkflowDefinition,
+  WorkflowExecutionRecord,
+  WorkflowRunTemplate,
   PinnedMessageGroup
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
@@ -76,6 +79,12 @@ import {
 } from '../WorkspaceChangeModel'
 import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
 import { chatPathForId, isSafeChatId } from '../ChatPath'
+import {
+  isTerminalWorkflowExecutionStatus,
+  nextLocalDayBoundaryIso,
+  normalizeWorkflowTrigger,
+  resolveNextWorkflowRunAt
+} from '../workflows/WorkflowScheduler'
 
 function cloneEnsembleForSideChat(parent: ChatRecord, provider: ProviderId) {
   const source = parent.ensemble || createDefaultEnsembleConfig(provider)
@@ -112,6 +121,7 @@ const workspacesPath = path.join(userDataPath, 'workspaces.json')
 const usagePath = path.join(userDataPath, 'usage.json')
 const providerUsageSnapshotsPath = path.join(userDataPath, 'provider-usage-snapshots.json')
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json')
+const workflowsPath = path.join(userDataPath, 'workflows.json')
 const runQueuePath = path.join(userDataPath, 'run-queue.json')
 const runRecoveryPath = path.join(userDataPath, 'run-recovery.json')
 const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json')
@@ -129,6 +139,7 @@ const runEventsDir = path.join(userDataPath, 'run-events')
 const runArtifactsDir = path.join(userDataPath, 'run-artifacts')
 const runEventSequenceCache = new Map<string, number>()
 const runEventHashCache = new Map<string, string>()
+const WORKFLOW_HISTORY_LIMIT = 50
 // 1.0.6-CRUX27 — grok + cursor are first-class providers; seed their built-in
 // runtime profiles too (local + global per provider, see getDefaultRuntimeProfiles)
 // so their global chats have a usable runtime out of the box. Unconditional:
@@ -146,6 +157,151 @@ const LEGACY_TASKWRAITH_FONT_STACK =
   '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif'
 const TASKWRAITH_DEFAULT_FONT_STACK =
   '"Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif'
+
+function normalizeWorkflowExecutionRecord(
+  value: unknown,
+  workflowId: string
+): WorkflowExecutionRecord | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Partial<WorkflowExecutionRecord>
+  if (!input.id || typeof input.id !== 'string') return null
+  const status = input.status || 'queued'
+  if (
+    status !== 'queued' &&
+    status !== 'running' &&
+    status !== 'completed' &&
+    status !== 'failed' &&
+    status !== 'cancelled' &&
+    status !== 'skipped'
+  ) {
+    return null
+  }
+  const now = new Date().toISOString()
+  return {
+    id: input.id,
+    workflowId,
+    plannedFor:
+      typeof input.plannedFor === 'string' && input.plannedFor ? input.plannedFor : now,
+    status,
+    createdAt: typeof input.createdAt === 'string' && input.createdAt ? input.createdAt : now,
+    updatedAt: typeof input.updatedAt === 'string' && input.updatedAt ? input.updatedAt : now,
+    ...(typeof input.scheduledTaskId === 'string' ? { scheduledTaskId: input.scheduledTaskId } : {}),
+    ...(typeof input.runId === 'string' ? { runId: input.runId } : {}),
+    ...(typeof input.startedAt === 'string' ? { startedAt: input.startedAt } : {}),
+    ...(typeof input.completedAt === 'string' ? { completedAt: input.completedAt } : {}),
+    ...(typeof input.error === 'string' ? { error: input.error } : {})
+  }
+}
+
+function normalizeWorkflowTemplate(value: unknown): WorkflowRunTemplate | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Partial<WorkflowRunTemplate>
+  if (
+    !input.workspaceId ||
+    !input.workspacePath ||
+    !input.chatId ||
+    !input.provider ||
+    typeof input.prompt !== 'string'
+  ) {
+    return null
+  }
+  return {
+    ...input,
+    workspaceId: input.workspaceId,
+    workspacePath: input.workspacePath,
+    chatId: input.chatId,
+    provider: input.provider,
+    prompt: input.prompt,
+    displayPrompt: input.displayPrompt,
+    selectedModelType: input.selectedModelType || 'default',
+    customModel: input.customModel || '',
+    approvalMode: input.approvalMode || 'default',
+    sessionTrust: Boolean(input.sessionTrust),
+    imageAttachments: Array.isArray(input.imageAttachments) ? input.imageAttachments : [],
+    externalPathGrants: input.externalPathGrants,
+    geminiWorktree: input.geminiWorktree,
+    codexReasoningEffort: input.codexReasoningEffort,
+    codexServiceTier: input.codexServiceTier,
+    claudeFastMode: input.claudeFastMode,
+    kimiThinkingEnabled: input.kimiThinkingEnabled,
+    runtimeProfileId: input.runtimeProfileId,
+    geminiAuthProfileId: input.geminiAuthProfileId,
+    handoffSourceRunId: input.handoffSourceRunId,
+    kind: input.kind,
+    ensembleSnapshot: input.ensembleSnapshot
+  }
+}
+
+function normalizeWorkflowDefinitionRecord(
+  value: unknown,
+  nowMs: number
+): WorkflowDefinition | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Partial<WorkflowDefinition>
+  const template = normalizeWorkflowTemplate(input.template)
+  if (!template) return null
+  const nowIso = new Date(nowMs).toISOString()
+  const id = typeof input.id === 'string' && input.id ? input.id : randomUUID()
+  const trigger = normalizeWorkflowTrigger(input.trigger, nowMs)
+  const history = Array.isArray(input.history)
+    ? input.history
+        .map((item) => normalizeWorkflowExecutionRecord(item, id))
+        .filter((item): item is WorkflowExecutionRecord => Boolean(item))
+        .slice(-WORKFLOW_HISTORY_LIMIT)
+    : []
+  const enabled = input.enabled !== false
+  const nextRunAt =
+    typeof input.nextRunAt === 'string' && input.nextRunAt
+      ? input.nextRunAt
+      : enabled
+        ? resolveNextWorkflowRunAt(trigger, nowMs, nowMs)
+        : undefined
+  return {
+    id,
+    name:
+      typeof input.name === 'string' && input.name.trim()
+        ? input.name.trim()
+        : template.prompt.slice(0, 48) || 'Workflow',
+    workspaceId: template.workspaceId,
+    workspacePath: template.workspacePath,
+    enabled,
+    trigger,
+    template,
+    missedRunPolicy: input.missedRunPolicy === 'skip' ? 'skip' : 'coalesce',
+    concurrencyPolicy: input.concurrencyPolicy === 'enqueue' ? 'enqueue' : 'skip',
+    limits: {
+      ...(input.limits || {}),
+      maxConsecutiveFailures:
+        input.limits?.maxConsecutiveFailures && input.limits.maxConsecutiveFailures > 0
+          ? Math.floor(input.limits.maxConsecutiveFailures)
+          : 3
+    },
+    nextRunAt,
+    lastRunAt: typeof input.lastRunAt === 'string' ? input.lastRunAt : undefined,
+    lastCompletedAt: typeof input.lastCompletedAt === 'string' ? input.lastCompletedAt : undefined,
+    lastStatus: input.lastStatus,
+    lastError: typeof input.lastError === 'string' ? input.lastError : undefined,
+    failureStreak:
+      typeof input.failureStreak === 'number' && Number.isFinite(input.failureStreak)
+        ? Math.max(0, Math.floor(input.failureStreak))
+        : 0,
+    activeExecutionId:
+      typeof input.activeExecutionId === 'string' ? input.activeExecutionId : undefined,
+    history,
+    createdAt: typeof input.createdAt === 'string' && input.createdAt ? input.createdAt : nowIso,
+    updatedAt: typeof input.updatedAt === 'string' && input.updatedAt ? input.updatedAt : nowIso
+  }
+}
+
+function scheduledTaskStatusToWorkflowStatus(
+  status: ScheduledTask['status']
+): WorkflowExecutionRecord['status'] | null {
+  if (status === 'running') return 'running'
+  if (status === 'completed') return 'completed'
+  if (status === 'failed') return 'failed'
+  if (status === 'cancelled') return 'cancelled'
+  return null
+}
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -1646,6 +1802,320 @@ export class AppStore {
     writeJson(providerUsageSnapshotsPath, snapshots)
   }
 
+  // Workflows
+  static getWorkflowDefinitions(workspaceId?: string): WorkflowDefinition[] {
+    const nowMs = Date.now()
+    return readJson<unknown[]>(workflowsPath, [])
+      .map((item) => normalizeWorkflowDefinitionRecord(item, nowMs))
+      .filter((item): item is WorkflowDefinition => Boolean(item))
+      .filter((workflow) => !workspaceId || workflow.workspaceId === workspaceId)
+      .sort((a, b) => {
+        const aMs = a.nextRunAt ? new Date(a.nextRunAt).getTime() : Number.POSITIVE_INFINITY
+        const bMs = b.nextRunAt ? new Date(b.nextRunAt).getTime() : Number.POSITIVE_INFINITY
+        return aMs - bMs || b.updatedAt.localeCompare(a.updatedAt)
+      })
+  }
+
+  static getWorkflowDefinition(id: string): WorkflowDefinition | null {
+    return this.getWorkflowDefinitions().find((workflow) => workflow.id === id) || null
+  }
+
+  static saveWorkflowDefinition(
+    workflow: Omit<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'> &
+      Partial<Pick<WorkflowDefinition, 'id' | 'createdAt' | 'updatedAt' | 'history' | 'failureStreak'>>
+  ): WorkflowDefinition {
+    const workflows = this.getWorkflowDefinitions()
+    const nowMs = Date.now()
+    const nowIso = new Date(nowMs).toISOString()
+    const normalized = normalizeWorkflowDefinitionRecord(
+      {
+        ...workflow,
+        id: workflow.id || randomUUID(),
+        history: workflow.history || [],
+        failureStreak: workflow.failureStreak || 0,
+        createdAt: workflow.createdAt || nowIso,
+        updatedAt: nowIso
+      },
+      nowMs
+    )
+    if (!normalized) {
+      throw new Error('Workflow definition is invalid.')
+    }
+    if (!normalized.enabled) {
+      normalized.nextRunAt = undefined
+    } else if (!normalized.nextRunAt) {
+      normalized.nextRunAt = resolveNextWorkflowRunAt(normalized.trigger, nowMs, nowMs)
+    }
+    const index = workflows.findIndex((item) => item.id === normalized.id)
+    if (index >= 0) workflows[index] = { ...workflows[index], ...normalized, updatedAt: nowIso }
+    else workflows.push(normalized)
+    writeJson(workflowsPath, workflows)
+    return normalized
+  }
+
+  static updateWorkflowDefinition(
+    id: string,
+    partial: Partial<WorkflowDefinition>
+  ): WorkflowDefinition | null {
+    const workflows = this.getWorkflowDefinitions()
+    const index = workflows.findIndex((workflow) => workflow.id === id)
+    if (index < 0) return null
+    const nowMs = Date.now()
+    const nowIso = new Date(nowMs).toISOString()
+    const source = workflows[index]
+    const merged = {
+      ...source,
+      ...partial,
+      id,
+      template: partial.template ? { ...source.template, ...partial.template } : source.template,
+      trigger: partial.trigger ? normalizeWorkflowTrigger(partial.trigger, nowMs) : source.trigger,
+      limits: partial.limits ? { ...source.limits, ...partial.limits } : source.limits,
+      updatedAt: nowIso
+    }
+    const normalized = normalizeWorkflowDefinitionRecord(merged, nowMs)
+    if (!normalized) return null
+    if (normalized.enabled) {
+      if ('trigger' in partial || 'enabled' in partial) {
+        normalized.nextRunAt = resolveNextWorkflowRunAt(normalized.trigger, nowMs, nowMs)
+      }
+    } else {
+      normalized.nextRunAt = undefined
+    }
+    workflows[index] = normalized
+    writeJson(workflowsPath, workflows)
+    return normalized
+  }
+
+  static deleteWorkflowDefinition(id: string) {
+    const workflow = this.getWorkflowDefinition(id)
+    if (workflow) {
+      const linkedTasks = this.getScheduledTasks().filter(
+        (task) =>
+          task.workflowId === id &&
+          (task.status === 'pending' || task.status === 'due' || task.status === 'running')
+      )
+      for (const task of linkedTasks) {
+        this.updateScheduledTask(task.id, {
+          status: 'cancelled',
+          lastError: 'Workflow deleted.'
+        })
+      }
+    }
+    writeJson(
+      workflowsPath,
+      this.getWorkflowDefinitions().filter((item) => item.id !== id)
+    )
+  }
+
+  static getNextWorkflowRunAtMs(): number | null {
+    let next: number | null = null
+    for (const workflow of this.getWorkflowDefinitions()) {
+      if (!workflow.enabled || !workflow.nextRunAt) continue
+      const runAtMs = new Date(workflow.nextRunAt).getTime()
+      if (!Number.isFinite(runAtMs)) continue
+      if (next === null || runAtMs < next) next = runAtMs
+    }
+    return next
+  }
+
+  static materializeDueWorkflows(nowMs: number = Date.now()): ScheduledTask[] {
+    const workflows = this.getWorkflowDefinitions()
+    const materialized: ScheduledTask[] = []
+    let changed = false
+    for (const workflow of workflows) {
+      if (!workflow.enabled || !workflow.nextRunAt) continue
+      const nextRunAtMs = new Date(workflow.nextRunAt).getTime()
+      if (!Number.isFinite(nextRunAtMs) || nextRunAtMs > nowMs) continue
+      const before = JSON.stringify(workflow)
+      const task = this.materializeWorkflowTask(workflow, workflow.nextRunAt, nowMs)
+      if (task) {
+        materialized.push(task)
+      }
+      if (task || JSON.stringify(workflow) !== before) changed = true
+    }
+    if (changed) writeJson(workflowsPath, workflows)
+    return materialized
+  }
+
+  static materializeWorkflowNow(id: string, nowMs: number = Date.now()): ScheduledTask | null {
+    const workflows = this.getWorkflowDefinitions()
+    const workflow = workflows.find((item) => item.id === id)
+    if (!workflow) return null
+    const before = JSON.stringify(workflow)
+    const task = this.materializeWorkflowTask(workflow, new Date(nowMs).toISOString(), nowMs, true)
+    if (task || JSON.stringify(workflow) !== before) writeJson(workflowsPath, workflows)
+    return task
+  }
+
+  private static materializeWorkflowTask(
+    workflow: WorkflowDefinition,
+    plannedFor: string,
+    nowMs: number,
+    manual = false
+  ): ScheduledTask | null {
+    const nowIso = new Date(nowMs).toISOString()
+    const activeExecution = workflow.activeExecutionId
+      ? workflow.history.find((execution) => execution.id === workflow.activeExecutionId)
+      : null
+    if (
+      activeExecution &&
+      !isTerminalWorkflowExecutionStatus(activeExecution.status) &&
+      workflow.concurrencyPolicy !== 'enqueue'
+    ) {
+      workflow.nextRunAt = resolveNextWorkflowRunAt(workflow.trigger, nowMs, nowMs)
+      workflow.updatedAt = nowIso
+      if (workflow.missedRunPolicy === 'skip') {
+        const execution: WorkflowExecutionRecord = {
+          id: randomUUID(),
+          workflowId: workflow.id,
+          plannedFor,
+          status: 'skipped',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          completedAt: nowIso,
+          error: 'Skipped because a previous workflow execution is still active.'
+        }
+        workflow.history = [...workflow.history, execution].slice(-WORKFLOW_HISTORY_LIMIT)
+        workflow.lastStatus = 'skipped'
+        workflow.lastError = execution.error
+      }
+      return null
+    }
+
+    const maxRunsPerDay = workflow.limits.maxRunsPerDay
+    if (maxRunsPerDay && maxRunsPerDay > 0) {
+      const dayStart = new Date(nowMs)
+      dayStart.setHours(0, 0, 0, 0)
+      const runsToday = workflow.history.filter((execution) => {
+        const createdMs = new Date(execution.createdAt).getTime()
+        return (
+          Number.isFinite(createdMs) &&
+          createdMs >= dayStart.getTime() &&
+          execution.status !== 'skipped'
+        )
+      }).length
+      if (runsToday >= maxRunsPerDay) {
+        const execution: WorkflowExecutionRecord = {
+          id: randomUUID(),
+          workflowId: workflow.id,
+          plannedFor,
+          status: 'skipped',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          completedAt: nowIso,
+          error: `Daily workflow run limit reached (${maxRunsPerDay}).`
+        }
+        workflow.history = [...workflow.history, execution].slice(-WORKFLOW_HISTORY_LIMIT)
+        workflow.lastStatus = 'skipped'
+        workflow.lastError = execution.error
+        workflow.nextRunAt = nextLocalDayBoundaryIso(nowMs)
+        workflow.updatedAt = nowIso
+        return null
+      }
+    }
+
+    const executionId = randomUUID()
+    const task = this.saveScheduledTask({
+      ...workflow.template,
+      displayPrompt:
+        workflow.template.displayPrompt || `[workflow: ${workflow.name}] ${workflow.template.prompt}`,
+      runAt: nowIso,
+      timezone: workflow.trigger.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
+      status: 'due',
+      workflowId: workflow.id,
+      workflowExecutionId: executionId,
+      workflowOccurrenceAt: plannedFor
+    })
+    const execution: WorkflowExecutionRecord = {
+      id: executionId,
+      workflowId: workflow.id,
+      scheduledTaskId: task.id,
+      plannedFor,
+      status: 'queued',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    }
+    workflow.history = [...workflow.history, execution].slice(-WORKFLOW_HISTORY_LIMIT)
+    workflow.activeExecutionId = executionId
+    workflow.lastRunAt = nowIso
+    workflow.lastStatus = 'queued'
+    workflow.lastError = undefined
+    workflow.nextRunAt = resolveNextWorkflowRunAt(workflow.trigger, nowMs, nowMs)
+    workflow.updatedAt = nowIso
+    if (manual && workflow.trigger.kind === 'manual') {
+      workflow.nextRunAt = undefined
+    }
+    return task
+  }
+
+  static syncWorkflowFromScheduledTask(task: ScheduledTask): WorkflowDefinition | null {
+    if (!task.workflowId || !task.workflowExecutionId) return null
+    const workflows = this.getWorkflowDefinitions()
+    const index = workflows.findIndex((workflow) => workflow.id === task.workflowId)
+    if (index < 0) return null
+    const workflow = workflows[index]
+    const nextStatus = scheduledTaskStatusToWorkflowStatus(task.status)
+    if (!nextStatus) return workflow
+    const nowIso = new Date().toISOString()
+    const history = [...workflow.history]
+    let executionIndex = history.findIndex((execution) => execution.id === task.workflowExecutionId)
+    if (executionIndex < 0) {
+      history.push({
+        id: task.workflowExecutionId,
+        workflowId: workflow.id,
+        scheduledTaskId: task.id,
+        plannedFor: task.workflowOccurrenceAt || task.runAt,
+        status: nextStatus,
+        createdAt: task.createdAt || nowIso,
+        updatedAt: nowIso
+      })
+      executionIndex = history.length - 1
+    }
+    const previous = history[executionIndex]
+    const terminal = isTerminalWorkflowExecutionStatus(nextStatus)
+    history[executionIndex] = {
+      ...previous,
+      scheduledTaskId: task.id,
+      runId: task.runId || previous.runId,
+      status: nextStatus,
+      updatedAt: nowIso,
+      ...(nextStatus === 'running' && !previous.startedAt
+        ? { startedAt: task.firedAt || nowIso }
+        : {}),
+      ...(terminal ? { completedAt: task.completedAt || nowIso } : {}),
+      ...(task.lastError ? { error: task.lastError } : {})
+    }
+
+    workflow.history = history.slice(-WORKFLOW_HISTORY_LIMIT)
+    workflow.lastStatus = nextStatus
+    workflow.lastError = task.lastError
+    workflow.updatedAt = nowIso
+    if (nextStatus === 'running') {
+      workflow.activeExecutionId = task.workflowExecutionId
+    }
+    if (terminal) {
+      workflow.lastCompletedAt = task.completedAt || nowIso
+      if (workflow.activeExecutionId === task.workflowExecutionId) {
+        workflow.activeExecutionId = undefined
+      }
+      workflow.failureStreak = nextStatus === 'failed' ? workflow.failureStreak + 1 : 0
+      const maxFailures = workflow.limits.maxConsecutiveFailures || 3
+      if (nextStatus === 'failed' && workflow.failureStreak >= maxFailures) {
+        workflow.enabled = false
+        workflow.nextRunAt = undefined
+        workflow.lastError =
+          task.lastError || `Workflow auto-disabled after ${workflow.failureStreak} failures.`
+      } else if (workflow.enabled) {
+        workflow.nextRunAt = resolveNextWorkflowRunAt(workflow.trigger, Date.now(), Date.now())
+      } else {
+        workflow.nextRunAt = undefined
+      }
+    }
+    workflows[index] = workflow
+    writeJson(workflowsPath, workflows)
+    return workflow
+  }
+
   // Scheduled tasks
   static getScheduledTasks(workspaceId?: string): ScheduledTask[] {
     const tasks = readJson<ScheduledTask[]>(scheduledTasksPath, [])
@@ -1684,6 +2154,7 @@ export class AppStore {
     const updated = { ...tasks[index], ...partial, id, updatedAt: new Date().toISOString() }
     tasks[index] = updated
     writeJson(scheduledTasksPath, tasks)
+    this.syncWorkflowFromScheduledTask(updated)
     return updated
   }
 
@@ -1696,6 +2167,7 @@ export class AppStore {
 
   static getDueScheduledTasks(nowMs: number = Date.now()): ScheduledTask[] {
     return this.getScheduledTasks().filter((task) => {
+      if (task.status === 'due') return true
       if (task.status !== 'pending') return false
       const runAtMs = new Date(task.runAt).getTime()
       return Number.isFinite(runAtMs) && runAtMs <= nowMs

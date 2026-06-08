@@ -366,6 +366,7 @@ describe('IpcValidation', () => {
 
   it('accepts iMessage bridge settings panel IPC APIs', () => {
     expect(() => validateIpcArgs('message-channels:list-bindings', [])).not.toThrow()
+    expect(() => validateIpcArgs('message-channels:list-adapters', [])).not.toThrow()
     expect(() =>
       validateIpcArgs('message-channels:upsert-binding', [
         {

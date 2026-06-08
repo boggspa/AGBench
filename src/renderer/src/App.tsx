@@ -29,6 +29,7 @@ import {
   ProviderId,
   ExternalPathGrant,
   ScheduledTask,
+  WorkflowDefinition,
   AgenticServicesSettings,
   AgenticWorkspaceGrant,
   AgenticServiceId,
@@ -1734,6 +1735,7 @@ function App(): React.JSX.Element {
     'GEMINI.md memory has not been inspected yet.'
   )
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([])
   const [scheduleRunAtByChatId, setScheduleRunAtForChat] = usePerChatState('')
   const [dueScheduledTasks, setDueScheduledTasks] = useState<ScheduledTask[]>([])
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(new Set())
@@ -1959,6 +1961,7 @@ function App(): React.JSX.Element {
   const runSchedulerBusyRef = useRef(false)
   const persistentSessionActiveRef = useRef(false)
   const activeScheduledTaskIdRef = useRef<string | null>(null)
+  const scheduledTasksRef = useRef<ScheduledTask[]>([])
   const currentProvider = currentChat ? getChatProvider(currentChat) : activeProvider
   const currentChatScope = getChatScope(currentChat)
   const isCurrentGlobalChat = currentChatScope === 'global'
@@ -6346,7 +6349,12 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     void window.api.getScheduledTasks(currentWorkspace?.id).then(setScheduledTasks)
+    void window.api.getWorkflowDefinitions(currentWorkspace?.id).then(setWorkflowDefinitions)
   }, [currentWorkspace?.id])
+
+  useEffect(() => {
+    scheduledTasksRef.current = scheduledTasks
+  }, [scheduledTasks])
 
   useEffect(() => {
     const overdueTasks = scheduledTasks.filter((task) => {
@@ -7048,11 +7056,11 @@ function App(): React.JSX.Element {
             completedAt: new Date().toISOString(),
             lastError: exitCode === 0 ? undefined : `Run exited with code ${exitCode}`
           })
-          .then(() =>
-            window.api
-              .getScheduledTasks(currentWorkspaceIdRef.current || undefined)
-              .then(setScheduledTasks)
-          )
+          .then(async () => {
+            const workspaceId = currentWorkspaceIdRef.current || undefined
+            setScheduledTasks(await window.api.getScheduledTasks(workspaceId))
+            setWorkflowDefinitions(await window.api.getWorkflowDefinitions(workspaceId))
+          })
       }
 
       if (currentWorkspaceIdRef.current) {
@@ -7174,6 +7182,12 @@ function App(): React.JSX.Element {
     if (typeof window.api.onScheduledTasksChanged === 'function') {
       window.api.onScheduledTasksChanged((tasks) => {
         setScheduledTasks(tasks)
+      })
+    }
+
+    if (typeof window.api.onWorkflowDefinitionsChanged === 'function') {
+      window.api.onWorkflowDefinitionsChanged((workflows) => {
+        setWorkflowDefinitions(workflows)
       })
     }
 
@@ -10189,6 +10203,160 @@ function App(): React.JSX.Element {
     ])
   }
 
+  const refreshWorkflowState = async (workspaceId = currentWorkspace?.id) => {
+    setScheduledTasks(await window.api.getScheduledTasks(workspaceId))
+    setWorkflowDefinitions(await window.api.getWorkflowDefinitions(workspaceId))
+  }
+
+  const buildWorkflowTemplateFromRequest = (
+    request: ReturnType<typeof buildRunRequest>,
+    chat: ChatRecord,
+    workspace: WorkspaceRecord
+  ): WorkflowDefinition['template'] => {
+    const ensembleSnapshot =
+      chat.chatKind === 'ensemble'
+        ? buildScheduledEnsembleSnapshot(chat, {
+            dmTargetParticipantId: request.dmTargetParticipantId
+          })
+        : null
+    return {
+      workspaceId: workspace.id,
+      workspacePath: workspace.path,
+      chatId: chat.appChatId,
+      provider: request.provider,
+      prompt: request.prompt,
+      displayPrompt: request.displayPrompt,
+      selectedModelType: request.selectedModelType,
+      customModel: request.customModel,
+      approvalMode: request.approvalMode,
+      sessionTrust: request.sessionTrust,
+      imageAttachments: request.imageAttachments,
+      externalPathGrants: request.externalPathGrants,
+      geminiWorktree: request.geminiWorktree,
+      codexReasoningEffort: request.codexReasoningEffort,
+      codexServiceTier: request.codexServiceTier,
+      claudeFastMode: request.claudeFastMode,
+      kimiThinkingEnabled: request.kimiThinkingEnabled,
+      runtimeProfileId: request.runtimeProfileId,
+      geminiAuthProfileId: request.geminiAuthProfileId,
+      handoffSourceRunId: request.handoffSourceRunId,
+      ...(ensembleSnapshot
+        ? { kind: 'ensemble' as const, ensembleSnapshot }
+        : { kind: 'single' as const })
+    }
+  }
+
+  const handleCreateWorkflowFromComposer = async () => {
+    if (!currentWorkspace || !currentChat) {
+      setRawLogs((prev) => [
+        ...prev,
+        { type: 'info', content: 'Open a workspace chat before creating a workflow.' }
+      ])
+      return
+    }
+    const request = buildRunRequest()
+    if (!request.prompt.trim()) {
+      setRawLogs((prev) => [...prev, { type: 'info', content: 'Add a prompt before creating a workflow.' }])
+      return
+    }
+    const defaultName = request.prompt.replace(/\s+/g, ' ').trim().slice(0, 48) || 'Workflow'
+    const name = window.prompt('Workflow name', defaultName)
+    if (!name?.trim()) return
+    const intervalText = window.prompt('Run every how many minutes?', '60')
+    if (!intervalText) return
+    const intervalMinutes = Number(intervalText)
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+      setRawLogs((prev) => [...prev, { type: 'info', content: 'Workflow interval is invalid.' }])
+      return
+    }
+    const intervalMs = Math.max(60_000, Math.round(intervalMinutes * 60_000))
+    const saved = await window.api.saveWorkflowDefinition({
+      name: name.trim(),
+      workspaceId: currentWorkspace.id,
+      workspacePath: currentWorkspace.path,
+      enabled: true,
+      trigger: {
+        kind: 'interval',
+        intervalMs,
+        startAt: new Date(Date.now() + intervalMs).toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
+      },
+      template: buildWorkflowTemplateFromRequest(request, currentChat, currentWorkspace),
+      missedRunPolicy: 'coalesce',
+      concurrencyPolicy: 'skip',
+      limits: {
+        maxRunsPerDay: 24,
+        maxConsecutiveFailures: 3
+      }
+    })
+    await refreshWorkflowState(currentWorkspace.id)
+    setRawLogs((prev) => [
+      ...prev,
+      {
+        type: 'info',
+        content: `Workflow "${saved.name}" will run every ${Math.round(intervalMs / 60_000)} minutes.`
+      }
+    ])
+  }
+
+  const handleRunWorkflowNow = async (workflowId: string) => {
+    const task = await window.api.runWorkflowNow(workflowId)
+    if (!task) return
+    await refreshWorkflowState(currentWorkspace?.id)
+  }
+
+  const handleToggleWorkflowEnabled = async (workflow: WorkflowDefinition) => {
+    await window.api.updateWorkflowDefinition(workflow.id, { enabled: !workflow.enabled })
+    await refreshWorkflowState(currentWorkspace?.id)
+  }
+
+  const handleEditWorkflowInterval = async (workflow: WorkflowDefinition) => {
+    const currentMinutes =
+      workflow.trigger.kind === 'interval' && workflow.trigger.intervalMs
+        ? Math.max(1, Math.round(workflow.trigger.intervalMs / 60_000))
+        : 60
+    const intervalText = window.prompt('Run every how many minutes?', String(currentMinutes))
+    if (!intervalText) return
+    const intervalMinutes = Number(intervalText)
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return
+    const intervalMs = Math.max(60_000, Math.round(intervalMinutes * 60_000))
+    await window.api.updateWorkflowDefinition(workflow.id, {
+      trigger: {
+        kind: 'interval',
+        intervalMs,
+        startAt: new Date(Date.now() + intervalMs).toISOString(),
+        timezone: workflow.trigger.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
+      }
+    })
+    await refreshWorkflowState(currentWorkspace?.id)
+  }
+
+  const handleDeleteWorkflow = async (workflowId: string) => {
+    const workflow = workflowDefinitions.find((item) => item.id === workflowId)
+    const confirmed = window.confirm(
+      workflow ? `Delete workflow "${workflow.name}"?` : 'Delete this workflow?'
+    )
+    if (!confirmed) return
+    await window.api.deleteWorkflowDefinition(workflowId)
+    await refreshWorkflowState(currentWorkspace?.id)
+  }
+
+  const handleCancelWorkflowExecution = async (workflow: WorkflowDefinition) => {
+    const activeExecution = workflow.history.find(
+      (execution) => execution.id === workflow.activeExecutionId
+    )
+    if (!activeExecution?.scheduledTaskId) return
+    const task = scheduledTasksRef.current.find((item) => item.id === activeExecution.scheduledTaskId)
+    await window.api.updateScheduledTask(activeExecution.scheduledTaskId, {
+      status: 'cancelled',
+      lastError: 'Cancelled from Workflows.'
+    })
+    if (task?.runId) {
+      await window.api.cancelAgentRun(task.provider, task.runId).catch(() => {})
+    }
+    await refreshWorkflowState(currentWorkspace?.id)
+  }
+
   const getCockpitRunSource = (
     lane: RunLane
   ): { chat: ChatRecord | null; run: ChatRun | null; prompt: string } => {
@@ -10213,16 +10381,19 @@ function App(): React.JSX.Element {
 
   const handleCancelRunLane = (lane: RunLane) => {
     if (lane.scheduledTaskId) {
+      if (lane.runId && (lane.phase === 'active' || lane.status === 'running')) {
+        void window.api.cancelAgentRun(lane.provider, lane.runId).catch(() => {
+          if (lane.provider === 'gemini') {
+            void window.api.cancelGemini(lane.runId)
+          }
+        })
+      }
       void window.api
         .updateScheduledTask(lane.scheduledTaskId, {
           status: 'cancelled' as any,
           lastError: 'Cancelled from Cockpit.'
         })
-        .then(() =>
-          window.api
-            .getScheduledTasks(currentWorkspaceIdRef.current || undefined)
-            .then(setScheduledTasks)
-        )
+        .then(() => refreshWorkflowState(currentWorkspaceIdRef.current || undefined))
       return
     }
     if (!lane.runId) return
@@ -10493,13 +10664,16 @@ function App(): React.JSX.Element {
         setKimiThinkingEnabled(task.kimiThinkingEnabled !== false)
       }
 
+      const scheduledRunId = task.runId || `${task.provider}-scheduled-${Date.now()}`
       await window.api.updateScheduledTask(task.id, {
         status: 'running',
-        firedAt: task.firedAt || new Date().toISOString()
+        firedAt: task.firedAt || new Date().toISOString(),
+        runId: scheduledRunId
       })
       setScheduledTasks(await window.api.getScheduledTasks(currentWorkspace?.id))
 
       void executeRun({
+        appRunId: scheduledRunId,
         provider: task.provider,
         prompt: task.prompt,
         displayPrompt:
@@ -12416,6 +12590,9 @@ function App(): React.JSX.Element {
     chatId: currentChat?.appChatId || null
   })
   const currentProviderLabel = getProviderLabel(currentProvider)
+  const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
+    ? selectedModelType
+    : getDefaultModelForProvider(currentProvider)
   /*
     Composer-unification (Phase J1): placeholder follows the active
     provider, not the composer theme. Ensemble chats override this with
@@ -13400,9 +13577,6 @@ function App(): React.JSX.Element {
       void refreshChatList()
     })
   }
-  const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
-    ? selectedModelType
-    : getDefaultModelForProvider(currentProvider)
   const currentAgentStatus =
     currentProvider === 'codex' ? codexStatus : agentStatusByProvider[currentProvider]
   const currentAgentMcpStatus =
@@ -14768,6 +14942,8 @@ function App(): React.JSX.Element {
                 activeChatId={activeSidebarChatId}
                 usageSummary={usageSummary}
                 runningChatIds={runningChatIdsArray}
+                workflows={workflowDefinitions}
+                scheduledTasks={scheduledTasks}
                 showOnboardingHint={showOnboardingHint}
                 onDismissOnboardingHint={handleDismissOnboardingHint}
                 workspaceAddPointerActive={workspaceAddPointerActive}
@@ -14803,6 +14979,12 @@ function App(): React.JSX.Element {
                 onToggleArchiveChat={handleToggleArchiveChat}
                 onDeleteChat={handleDeleteChat}
                 onRenameChat={handleRenameChat}
+                onCreateWorkflow={handleCreateWorkflowFromComposer}
+                onRunWorkflowNow={handleRunWorkflowNow}
+                onToggleWorkflowEnabled={handleToggleWorkflowEnabled}
+                onEditWorkflowInterval={handleEditWorkflowInterval}
+                onCancelWorkflowExecution={handleCancelWorkflowExecution}
+                onDeleteWorkflow={handleDeleteWorkflow}
                 onInspectRun={(runId, chatId) => {
                   // Navigate to the chat first (handleSelectChat fires via
                   // ActiveRunsSection.onSelectChat above), then open the
@@ -18560,9 +18742,7 @@ function App(): React.JSX.Element {
                           aria-label="Cancel scheduled task"
                           onClick={async () => {
                             await window.api.updateScheduledTask(task.id, { status: 'cancelled' })
-                            setScheduledTasks(
-                              await window.api.getScheduledTasks(currentWorkspace?.id)
-                            )
+                            await refreshWorkflowState(currentWorkspace?.id)
                           }}
                         >
                           <XSymbolIcon />
