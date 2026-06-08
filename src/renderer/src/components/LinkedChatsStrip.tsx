@@ -33,22 +33,23 @@ function linkedKindLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation === 'sideChat') {
     if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
     if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
-    if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
-    return 'Side chat'
+    if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest'
+    if (chat.sideChatContext?.mode === 'singleProvider') return 'Isolated side chat'
+    return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Isolated side chat'
   }
-  return 'Agent sub-thread'
+  return 'Sub-thread'
 }
 
 function linkedModeLabel(chat: ChatRecord): string {
-  if (chat.parentChatRelation !== 'sideChat') return 'Delegated agent'
+  if (chat.parentChatRelation !== 'sideChat') return 'Delegated child'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
-  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Attached peer'
   if (chat.sideChatContext?.mode === 'singleProvider') {
     const participantLabel = linkedParticipantLabel(chat)
-    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated'
+    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated sidecar'
   }
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out'
-  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Isolated sidecar'
 }
 
 function linkedParticipantLabel(chat: ChatRecord): string {
@@ -96,10 +97,12 @@ function linkedRouteLabel(chat: ChatRecord, parentChat: ChatRecord): string {
 
 function linkedContextLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Parent transcript peer'
   if (chat.sideChatContext?.originMessageId) return 'Seeded from selected message'
   if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
   if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
-  return 'No parent context'
+  if (chat.sideChatContext?.transcriptVisibility === 'snapshot') return 'Copied parent snapshot'
+  return 'Isolated context'
 }
 
 function isTerminatedSideChat(chat: ChatRecord): boolean {
@@ -156,17 +159,25 @@ export function LinkedChatsStrip({
 
   const visibleChats = linkedChats.slice(0, 4)
   const hiddenCount = linkedChats.length - visibleChats.length
-  const sideChatCount = linkedChats.filter((chat) => chat.parentChatRelation === 'sideChat').length
-  const subThreadCount = linkedChats.length - sideChatCount
+  const guestCount = linkedChats.filter(
+    (chat) =>
+      chat.parentChatRelation === 'sideChat' && chat.sideChatContext?.mode === 'guestParticipant'
+  ).length
+  const sideChatCount = linkedChats.filter(
+    (chat) =>
+      chat.parentChatRelation === 'sideChat' && chat.sideChatContext?.mode !== 'guestParticipant'
+  ).length
+  const subThreadCount = linkedChats.length - sideChatCount - guestCount
   const runningCount = linkedChats.filter((chat) => runningSet.has(chat.appChatId)).length
   const summaryParts = [
     `${linkedChats.length} linked`,
     runningCount > 0 ? `${runningCount} running` : '',
     sideChatCount > 0 ? countLabel(sideChatCount, 'side chat') : '',
-    subThreadCount > 0 ? countLabel(subThreadCount, 'agent') : ''
+    guestCount > 0 ? countLabel(guestCount, 'guest') : '',
+    subThreadCount > 0 ? countLabel(subThreadCount, 'sub-thread') : ''
   ].filter(Boolean)
-  const markerLabel = sideChatCount > 0 ? 'Side chats opened' : 'Linked threads'
-  const compactMarkerLabel = sideChatCount > 0 ? 'Side chats' : 'Linked'
+  const markerLabel = 'Linked chats'
+  const compactMarkerLabel = 'Linked'
   const compactSummaryParts = [
     String(linkedChats.length),
     runningCount > 0 ? `${runningCount} running` : ''
@@ -184,7 +195,7 @@ export function LinkedChatsStrip({
         aria-expanded={!collapsed}
         aria-controls={listId}
         onClick={() => setCollapsed((value) => !value)}
-        title={`${collapsed ? 'Show linked side chats' : 'Hide linked side chats'}: ${summaryParts.join(
+        title={`${collapsed ? 'Show linked chats' : 'Hide linked chats'}: ${summaryParts.join(
           ' | '
         )}`}
       >

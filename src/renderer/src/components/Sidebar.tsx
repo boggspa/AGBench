@@ -171,9 +171,9 @@ const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedPartic
 const getSideChatChildKindLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'fanOut') return 'Fan-out side chat'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Side ensemble'
-  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
-  if (chat.sideChatContext?.mode === 'singleProvider') return 'Side chat'
-  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Side chat'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest'
+  if (chat.sideChatContext?.mode === 'singleProvider') return 'Isolated side chat'
+  return chat.chatKind === 'ensemble' ? 'Side ensemble' : 'Isolated side chat'
 }
 
 const getSideChatChildParticipantLabel = (chat: ChatRecord): string => {
@@ -187,19 +187,21 @@ const getSideChatChildParticipantLabel = (chat: ChatRecord): string => {
 const getSideChatChildModeLabel = (chat: ChatRecord): string => {
   if (chat.sideChatContext?.mode === 'fanOut') return 'Parallel fan-out'
   if (chat.sideChatContext?.mode === 'ensembleClone') return 'Ensemble clone'
-  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Guest participant'
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Attached peer'
   if (chat.sideChatContext?.mode === 'singleProvider') {
     const participantLabel = getSideChatChildParticipantLabel(chat)
-    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated'
+    return participantLabel ? `Participant: ${participantLabel}` : 'Isolated sidecar'
   }
-  return chat.chatKind === 'ensemble' ? 'Ensemble clone' : 'Isolated'
+  return chat.chatKind === 'ensemble' ? 'Ensemble clone' : 'Isolated sidecar'
 }
 
 const getSideChatChildContextLabel = (chat: ChatRecord): string => {
+  if (chat.sideChatContext?.mode === 'guestParticipant') return 'Parent transcript peer'
   if (chat.sideChatContext?.originMessageId) return 'Seeded from selected message'
   if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
   if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
-  return 'No parent context'
+  if (chat.sideChatContext?.transcriptVisibility === 'snapshot') return 'Copied parent snapshot'
+  return 'Isolated context'
 }
 
 const getSideChatChildLifecycleLabel = (chat: ChatRecord): string => {
@@ -2011,7 +2013,7 @@ export function Sidebar({
     const subRunning = runningChatIdSet.has(subChat.appChatId)
     const subLastStatus = getLastRunStatus(subChat)
     const subIsSideChat = isSideChatRecord(subChat)
-    const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Agent sub-thread'
+    const subKindLabel = subIsSideChat ? getSideChatChildKindLabel(subChat) : 'Sub-thread'
     const subParentChat =
       subChat.parentChatId ? chats.find((chat) => chat.appChatId === subChat.parentChatId) || null : null
     const subRouteLabel = getLinkedChildRouteLabel(subChat, subParentChat)
@@ -2091,7 +2093,7 @@ export function Sidebar({
           </span>
         </span>
         <SidebarOverflowMenu
-          triggerLabel={subIsSideChat ? 'Side chat actions' : 'Sub-thread actions'}
+          triggerLabel={`${subKindLabel} actions`}
           items={buildChatMenuItems(subChat)}
         />
       </button>

@@ -1194,7 +1194,9 @@ export class AppStore {
     const scope = parent.scope ?? 'workspace'
     const title =
       args.title?.trim() ||
-      `Side chat${parent.title && parent.title !== 'New Chat' ? ` from ${parent.title}` : ''}`
+      `Isolated side chat${
+        parent.title && parent.title !== 'New Chat' ? ` from ${parent.title}` : ''
+      }`
 
     const base: ChatRecord = {
       appChatId: randomUUID(),

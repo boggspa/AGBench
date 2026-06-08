@@ -177,7 +177,7 @@ describe('Sidebar sub-thread collapse', () => {
     expect(html).toContain('Parallel side branch')
     expect(html).toContain('Fan-out side chat')
     expect(html).toContain('Parallel fan-out')
-    expect(html).toContain('No parent context')
+    expect(html).toContain('Isolated context')
     expect(html).toContain('Gemini parallel fan-out')
   })
 
@@ -213,7 +213,7 @@ describe('Sidebar sub-thread collapse', () => {
     ])
 
     expect(html).toContain('Reviewer branch')
-    expect(html).toContain('Side chat')
+    expect(html).toContain('Isolated side chat')
     expect(html).toContain('Participant: Reviewer')
     expect(html).toContain('Seeded from selected message')
     expect(html).toContain('Gemini dedicated branch to Reviewer')
@@ -251,7 +251,7 @@ describe('Sidebar sub-thread collapse', () => {
     ])
 
     expect(html).toContain('Side Codex chat')
-    expect(html).toContain('Isolated')
+    expect(html).toContain('Isolated sidecar')
     expect(html).toContain('Codex isolated side chat')
     expect(html).not.toContain('Codex side branch to Codex')
     expect(html).not.toContain('sidebar-sub-thread-identicon')
@@ -285,6 +285,36 @@ describe('Sidebar sub-thread collapse', () => {
 
     expect(html).toContain('Run follow-up')
     expect(html).toContain('Seeded from run result')
+  })
+
+  it('labels copied parent snapshots for isolated side-chat children', () => {
+    stubSidebarStorage({
+      [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('workspaces')
+    })
+
+    const html = renderSidebar([
+      makeChat(),
+      makeChat({
+        appChatId: 'snapshot-side-1',
+        provider: 'claude',
+        title: 'Snapshot sidecar',
+        parentChatId: 'parent-1',
+        parentChatRelation: 'sideChat',
+        sideChatContext: {
+          createdAt: 2,
+          mode: 'singleProvider',
+          lifecycleState: 'active',
+          transcriptVisibility: 'snapshot'
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    ])
+
+    expect(html).toContain('Snapshot sidecar')
+    expect(html).toContain('Copied parent snapshot')
+    expect(html).not.toContain('Seeded from run result')
   })
 
   it('hides sub-thread children when the parent is persisted as collapsed', () => {

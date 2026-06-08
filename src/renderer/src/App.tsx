@@ -519,6 +519,9 @@ const GUEST_PARTICIPANT_STEERING_PREAMBLE =
 const GUEST_PARENT_CONTEXT_TURN_LIMIT = 20
 const GUEST_PARENT_CONTEXT_CHAR_LIMIT = 12000
 const GUEST_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT = 1800
+const SIDE_CHAT_PARENT_CONTEXT_TURN_LIMIT = 8
+const SIDE_CHAT_PARENT_CONTEXT_CHAR_LIMIT = 5000
+const SIDE_CHAT_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT = 700
 
 function truncateGuestContextText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value
@@ -570,6 +573,61 @@ function buildGuestParentTranscriptContext(parentChat: ChatRecord): string {
   return `${heading}\n${lines.join('\n\n')}`
 }
 
+function formatSideChatParentContextMessage(
+  message: ChatMessage,
+  parentProvider: ProviderId
+): string | null {
+  const content = message.content?.trim()
+  if (!content) return null
+  if (message.role === 'user') {
+    return `User: ${truncateGuestContextText(content, SIDE_CHAT_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT)}`
+  }
+  if (message.role === 'assistant') {
+    return `${getProviderLabel(parentProvider)} parent agent: ${truncateGuestContextText(
+      content,
+      SIDE_CHAT_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT
+    )}`
+  }
+  if (message.role === 'system' && message.metadata?.kind === 'guestParticipantReply') {
+    const provider =
+      typeof message.metadata.guestProvider === 'string'
+        ? getProviderLabel(message.metadata.guestProvider as ProviderId)
+        : 'Guest'
+    return `${provider} guest: ${truncateGuestContextText(
+      content,
+      SIDE_CHAT_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT
+    )}`
+  }
+  if (message.role === 'system' && message.metadata?.kind === 'subThreadReturn') {
+    return `Returned sub-thread: ${truncateGuestContextText(
+      content,
+      SIDE_CHAT_PARENT_CONTEXT_MESSAGE_CHAR_LIMIT
+    )}`
+  }
+  return null
+}
+
+function buildIsolatedSideChatContextSeed(parentChat: ChatRecord): string {
+  const parentProvider = getChatProvider(parentChat)
+  const turns = (parentChat.messages || [])
+    .map((message) => formatSideChatParentContextMessage(message, parentProvider))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(-SIDE_CHAT_PARENT_CONTEXT_TURN_LIMIT)
+  if (turns.length === 0) return ''
+  const heading =
+    'Use this lightweight parent context snapshot as background for this isolated side chat. It was copied when the side chat was created and will not update automatically.'
+  const lines: string[] = []
+  let remaining = SIDE_CHAT_PARENT_CONTEXT_CHAR_LIMIT - heading.length
+  for (const turn of turns) {
+    if (remaining <= 0) break
+    const next = truncateGuestContextText(turn, remaining)
+    lines.push(next)
+    remaining -= next.length + 2
+  }
+  if (lines.length === 0) return ''
+  return [heading, '', 'Parent context snapshot:', ...lines, '', 'Side-chat request:'].join('\n')
+}
+
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
   if (chat.sideChatContext?.mode) return chat.sideChatContext.mode
   return chat.chatKind === 'ensemble' ? 'ensembleClone' : 'singleProvider'
@@ -608,6 +666,9 @@ function getLinkedChatAgentIdentity(chat: ChatRecord | null | undefined) {
     !['singleProvider', 'guestParticipant'].includes(getSideChatMode(chat))
   )
     return null
+  if (getSideChatMode(chat) === 'guestParticipant') {
+    return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:guest`)
+  }
   const participantId = getSideChatSelectedParticipantId(chat)
   if (!participantId) return null
   return assignAgentIdentityFromSeed(`${chat.parentChatId || chat.appChatId}:${participantId}`)
@@ -638,10 +699,10 @@ function getLinkedChatKindLabel(chat: ChatRecord): string {
     const mode = getSideChatMode(chat)
     if (mode === 'fanOut') return 'Fan-out side chat'
     if (mode === 'ensembleClone') return 'Side ensemble'
-    if (mode === 'guestParticipant') return 'Guest participant'
-    return 'Side chat'
+    if (mode === 'guestParticipant') return 'Guest'
+    return 'Isolated side chat'
   }
-  return 'Agent sub-thread'
+  return 'Sub-thread'
 }
 
 function getSideChatModeLabel(chat: ChatRecord): string {
@@ -649,10 +710,10 @@ function getSideChatModeLabel(chat: ChatRecord): string {
   const mode = getSideChatMode(chat)
   if (mode === 'fanOut') return 'Parallel fan-out'
   if (mode === 'ensembleClone') return 'Ensemble clone'
-  if (mode === 'guestParticipant') return 'Guest participant'
+  if (mode === 'guestParticipant') return 'Attached peer'
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (participantLabel) return `Participant: ${participantLabel}`
-  return 'Isolated'
+  return 'Isolated sidecar'
 }
 
 function getSideChatModeDescription(chat: ChatRecord): string {
@@ -661,21 +722,23 @@ function getSideChatModeDescription(chat: ChatRecord): string {
   if (mode === 'fanOut') return 'Participants answer in parallel from this linked side thread.'
   if (mode === 'ensembleClone') return 'A linked ensemble clone with the parent participants.'
   if (mode === 'guestParticipant') {
-    return 'A persistent guest participant attached to the parent chat.'
+    return 'A persistent guest peer attached to the parent transcript.'
   }
   const participantLabel = getSideChatSelectedParticipantLabel(chat)
   if (participantLabel) {
     return `A dedicated side chat with ${participantLabel}, isolated from the parent transcript.`
   }
-  return 'A linked provider chat with isolated context.'
+  return 'An isolated sidecar chat. New side chats start with a copied parent snapshot, but context does not sync after creation.'
 }
 
 function getLinkedChatContextLabel(chat: ChatRecord): string {
   if (chat.parentChatRelation !== 'sideChat') return 'Delegation context'
+  if (getSideChatMode(chat) === 'guestParticipant') return 'Parent transcript peer'
   if (chat.sideChatContext?.originMessageId) return 'Seeded from selected message'
   if (chat.sideChatContext?.originRunId) return 'Seeded from run result'
   if (chat.sideChatContext?.transcriptVisibility === 'summary') return 'Seeded from summary'
-  return 'No parent context'
+  if (chat.sideChatContext?.transcriptVisibility === 'snapshot') return 'Copied parent snapshot'
+  return 'Isolated context'
 }
 
 function applySideChatLifecycle(
@@ -2048,8 +2111,8 @@ function App(): React.JSX.Element {
         ? 'sideChat'
         : 'linkedChat'
     : null
-  const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Side chat'
-  const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'No parent context'
+  const sidePanelKindLabel = sideChat ? getLinkedChatKindLabel(sideChat) : 'Isolated side chat'
+  const sidePanelContextLabel = sideChat ? getLinkedChatContextLabel(sideChat) : 'Isolated context'
   const sidePanelModeLabel = sideChat ? getSideChatModeLabel(sideChat) : ''
   const sidePanelModeDescription = sideChat ? getSideChatModeDescription(sideChat) : ''
   const sidePanelAgentIdentity = getLinkedChatAgentIdentity(sideChat)
@@ -2074,7 +2137,7 @@ function App(): React.JSX.Element {
   const currentLinkedContextLabel =
     currentLinkedParentChat && currentChat
       ? getLinkedChatContextLabel(currentChat)
-      : 'No parent context'
+      : 'Isolated context'
   const currentLinkedModeLabel =
     currentLinkedParentChat && currentChat?.parentChatRelation === 'sideChat'
       ? getSideChatModeLabel(currentChat)
@@ -9159,6 +9222,14 @@ function App(): React.JSX.Element {
       const sideParticipantLabel = selectedSideParticipant
         ? selectedSideParticipant.role || getProviderLabel(selectedSideParticipant.provider)
         : getProviderLabel(sideProvider)
+      const shouldSeedIsolatedContextSnapshot =
+        !seedPrompt.trim() &&
+        sideChatMode === 'singleProvider' &&
+        !selectedSideParticipant &&
+        parentChat.chatKind !== 'ensemble'
+      const effectiveSeedPrompt = shouldSeedIsolatedContextSnapshot
+        ? buildIsolatedSideChatContextSeed(parentChat)
+        : seedPrompt
       const createdSideChat = await window.api.createSideChat({
         parentChatId: parentChat.appChatId,
         chatKind:
@@ -9174,7 +9245,7 @@ function App(): React.JSX.Element {
             ? `Fan-out side chat from ${parentChat.title || 'ensemble chat'}`
             : sideChatMode === 'ensembleClone'
               ? `Side ensemble from ${parentChat.title || 'ensemble chat'}`
-              : `Side ${sideParticipantLabel} chat from ${
+              : `Isolated ${sideParticipantLabel} side chat from ${
                   parentChat.title || getProviderLabel(parentProvider)
                 }`
       })
@@ -9185,7 +9256,9 @@ function App(): React.JSX.Element {
           ? 'selected'
           : seedContext.originRunId
             ? 'snapshot'
-            : undefined)
+            : shouldSeedIsolatedContextSnapshot && effectiveSeedPrompt
+              ? 'snapshot'
+              : undefined)
       if (selectedSideParticipant) {
         const participantMetadata: Record<string, unknown> = {
           selectedModelType:
@@ -9258,7 +9331,7 @@ function App(): React.JSX.Element {
         setSideChatId(nextSideChat.appChatId)
         setRightDockTab('chat')
       }
-      setChatPromptDraft(nextSideChat.appChatId, seedPrompt)
+      setChatPromptDraft(nextSideChat.appChatId, effectiveSeedPrompt)
       if (clearParentDraft) {
         setChatPromptDraft(parentChat.appChatId, '')
       }
@@ -9699,7 +9772,7 @@ function App(): React.JSX.Element {
           updateRunQueueJobStatus(
             request.appRunId,
             'cancelled',
-            'Side chat was ended before this queued run started.'
+            'Linked chat was ended before this queued run started.'
           )
         }
         return false
@@ -9710,7 +9783,7 @@ function App(): React.JSX.Element {
       updateRunQueueJobStatus(
         job.runId || job.id,
         'cancelled',
-        'Side chat was ended before this queued run started.'
+        'Linked chat was ended before this queued run started.'
       )
     }
   }
@@ -9761,8 +9834,34 @@ function App(): React.JSX.Element {
     }
   }
 
-  const handleTerminateSideChat = async () => {
+  const handleEndSidePanelChat = async () => {
+    if (!sideChat) return
+    if (getSideChatMode(sideChat) === 'guestParticipant') {
+      const parentId = sideChat.parentChatId
+      if (!parentId) return
+      const result = await window.api.removeGuestParticipant(parentId)
+      applyHydratedChat(result.parent)
+      if (result.guest) applyHydratedChat(result.guest)
+      if (sideChatId === sideChat.appChatId) setSideChatId(null)
+      setSideChatMenuOpen(false)
+      void refreshChatList()
+      return
+    }
     await handleTerminateSideChatRecord(sideChat)
+  }
+
+  const handleEndCurrentLinkedMainChat = async () => {
+    if (!currentChat || currentChat.parentChatRelation !== 'sideChat') return
+    if (getSideChatMode(currentChat) === 'guestParticipant' && currentChat.parentChatId) {
+      const result = await window.api.removeGuestParticipant(currentChat.parentChatId)
+      applyHydratedChat(result.parent)
+      if (result.guest) applyHydratedChat(result.guest)
+      setSideChatMenuOpen(false)
+      void refreshChatList()
+      await handleSelectChat(result.parent)
+      return
+    }
+    await handleTerminateSideChatRecord(currentChat)
   }
 
   /**
@@ -11081,7 +11180,7 @@ function App(): React.JSX.Element {
             : `${message.role} message`
       const seedPrompt = [
         `Use this selected ${roleLabel} from the parent chat as the starting point.`,
-        'This side chat is isolated and does not have the rest of the parent transcript unless I paste it here.',
+        'This isolated side chat does not have the rest of the parent transcript unless I paste it here.',
         '',
         message.content.trim()
       ].join('\n')
@@ -11147,7 +11246,7 @@ function App(): React.JSX.Element {
     if (!canCreateSideChatFromCurrent || !currentChat || !sideChatSummarySeed?.content) return
     const seedPrompt = [
       `Use this ${sideChatSummarySeed.label.toLowerCase()} from the parent chat as the starting point.`,
-      'This side chat is isolated and only receives the pasted summary below, not the full parent transcript.',
+      'This isolated side chat only receives the pasted summary below, not the full parent transcript.',
       '',
       sideChatSummarySeed.content
     ].join('\n')
@@ -14315,8 +14414,8 @@ function App(): React.JSX.Element {
       kind: 'action',
       id: 'taskwraith-side',
       command: '/side',
-      label: 'Open side chat',
-      description: 'Open a parallel side pane. Type /side drawer or /side popout for layout.',
+      label: 'Open isolated side chat',
+      description: 'Open an isolated sidecar with a copied parent snapshot.',
       group: 'Custom',
       run: () => {
         openSideChatFromSlashCommand({
@@ -14329,8 +14428,8 @@ function App(): React.JSX.Element {
       kind: 'action',
       id: 'taskwraith-side-drawer',
       command: '/side-drawer',
-      label: 'Open side drawer',
-      description: 'Open the linked side chat as the right drawer presentation.',
+      label: 'Open isolated side drawer',
+      description: 'Open the isolated sidecar as the right drawer presentation.',
       group: 'Custom',
       run: () => {
         openSideChatFromSlashCommand({
@@ -14343,8 +14442,8 @@ function App(): React.JSX.Element {
       kind: 'action',
       id: 'taskwraith-side-popout',
       command: '/side-popout',
-      label: 'Pop out side chat',
-      description: 'Open the linked side chat in a separate chat window.',
+      label: 'Pop out linked chat',
+      description: 'Open the linked chat in a separate chat window.',
       group: 'Custom',
       run: () => {
         openSideChatFromSlashCommand({
@@ -14357,8 +14456,8 @@ function App(): React.JSX.Element {
       kind: 'action',
       id: 'taskwraith-side-main',
       command: '/side-main',
-      label: 'Open side chat as main',
-      description: 'Navigate the main pane to the linked side chat.',
+      label: 'Open linked chat as main',
+      description: 'Navigate the main pane to the linked chat.',
       group: 'Custom',
       run: () => {
         openSideChatFromSlashCommand({
@@ -14489,7 +14588,7 @@ function App(): React.JSX.Element {
         null
       : null
   const chatPopoutKindLabel =
-    isLinkedChatPopout && currentChat ? getLinkedChatKindLabel(currentChat) : 'Side chat'
+    isLinkedChatPopout && currentChat ? getLinkedChatKindLabel(currentChat) : 'Isolated side chat'
   const chatPopoutContextLabel =
     isLinkedChatPopout && currentChat ? getLinkedChatContextLabel(currentChat) : ''
   const chatPopoutModeLabel =
@@ -15008,8 +15107,8 @@ function App(): React.JSX.Element {
                   }
                   void openCurrentSideChatPresentation('split')
                 }}
-                title={isSideSplitOpen ? 'Hide side chat pane' : 'Open side split'}
-                aria-label={isSideSplitOpen ? 'Hide side chat pane' : 'Open side split'}
+                title={isSideSplitOpen ? 'Hide linked chat pane' : 'Open isolated side chat'}
+                aria-label={isSideSplitOpen ? 'Hide linked chat pane' : 'Open isolated side chat'}
                 disabled={!currentChat}
               >
                 <SplitChatIcon />
@@ -15021,8 +15120,8 @@ function App(): React.JSX.Element {
                   setPopoutMenuOpen(false)
                   setSideChatMenuOpen((open) => !open)
                 }}
-                title="Choose side chat layout"
-                aria-label="Choose side chat layout"
+                title="Choose linked chat"
+                aria-label="Choose linked chat"
                 aria-haspopup="menu"
                 aria-expanded={sideChatMenuOpen}
                 disabled={!currentChat}
@@ -15032,42 +15131,77 @@ function App(): React.JSX.Element {
                 </span>
               </button>
               {sideChatMenuOpen && (
-                <div className="side-chat-layout-menu" role="menu" aria-label="Side chat layouts">
+                <div className="side-chat-layout-menu" role="menu" aria-label="Linked chat options">
                   <div className="side-chat-layout-menu-section" role="presentation">
-                    Layout
+                    Isolated side chat
                   </div>
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void openCurrentSideChatPresentation('split')}
+                    onClick={() => void openCurrentSideChatPresentation('split', 'singleProvider')}
                   >
-                    <span>Open side split</span>
-                    <small>Main pane divider</small>
+                    <span>Open isolated side split</span>
+                    <small>Separate sidecar with a copied parent snapshot</small>
                   </button>
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void openCurrentSideChatPresentation('drawer')}
+                    onClick={() => void openCurrentSideChatPresentation('drawer', 'singleProvider')}
                   >
-                    <span>Open side drawer</span>
-                    <small>Right overlay</small>
+                    <span>Open isolated side drawer</span>
+                    <small>Right overlay sidecar</small>
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => void openCurrentSideChatPresentation('popout')}
                   >
-                    <span>Pop out side chat</span>
-                    <small>Separate chat window</small>
+                    <span>Pop out linked chat</span>
+                    <small>Separate window for the current linked chat</small>
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => void openCurrentSideChatPresentation('main')}
                   >
-                    <span>Open as main chat</span>
+                    <span>Open linked chat as main</span>
                     <small>Navigate to linked chat</small>
                   </button>
+                  {!isCurrentEnsembleChat && currentGuestParticipantChatId && (
+                    <>
+                      <div className="side-chat-layout-menu-section" role="presentation">
+                        Guest
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() =>
+                          handleOpenLinkedChatInSidePanelById(currentGuestParticipantChatId)
+                        }
+                      >
+                        <span>Open current guest</span>
+                        <small>Attached peer on the parent transcript</small>
+                      </button>
+                    </>
+                  )}
+                  {canCreateSideChatFromCurrent && currentChat && (
+                    <>
+                      <div className="side-chat-layout-menu-section" role="presentation">
+                        Sub-thread
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSideChatMenuOpen(false)
+                          setSubThreadCreatorParent(currentChat)
+                        }}
+                      >
+                        <span>Delegate sub-thread</span>
+                        <small>New child agent with a delegated prompt</small>
+                      </button>
+                    </>
+                  )}
                   {isCurrentEnsembleChat && (
                     <>
                       <div className="side-chat-layout-menu-section" role="presentation">
@@ -15090,7 +15224,7 @@ function App(): React.JSX.Element {
                           void openCurrentSideChatPresentation('split', 'singleProvider')
                         }
                       >
-                        <span>Single participant chat</span>
+                        <span>Isolated participant side chat</span>
                         <small>
                           {selectedParticipant
                             ? selectedParticipant.role ||
@@ -15114,7 +15248,7 @@ function App(): React.JSX.Element {
                               )
                             }
                           >
-                            <span>Open {participantLabel} side chat</span>
+                            <span>Open {participantLabel} isolated side chat</span>
                             <small>{getProviderLabel(participant.provider)}</small>
                           </button>
                         )
@@ -15423,10 +15557,14 @@ function App(): React.JSX.Element {
                   <button
                     type="button"
                     className="side-chat-header-btn side-chat-header-btn-danger"
-                    onClick={() => void handleTerminateSideChatRecord(currentChat)}
-                    title="End this ephemeral side chat, cancel queued work, and archive it"
+                    onClick={() => void handleEndCurrentLinkedMainChat()}
+                    title={
+                      getSideChatMode(currentChat) === 'guestParticipant'
+                        ? 'Remove this guest participant from the parent chat'
+                        : 'End this isolated side chat, cancel queued work, and archive it'
+                    }
                   >
-                    End
+                    {getSideChatMode(currentChat) === 'guestParticipant' ? 'Remove' : 'End'}
                   </button>
                 )}
               </div>
@@ -18531,7 +18669,7 @@ function App(): React.JSX.Element {
                     ? ({ '--agent-rim': sidePanelAgentIdentity.accent } as CSSProperties)
                     : undefined
                 }
-                aria-label="Side chat"
+              aria-label="Linked chat"
               >
             <div className="side-chat-header">
               <div className="side-chat-title-wrap">
@@ -18595,7 +18733,7 @@ function App(): React.JSX.Element {
                   type="button"
                   className="side-chat-header-btn"
                   onClick={() => void openLinkedChatAsMain(sideChat)}
-                  title="Open side chat as the main thread"
+                  title="Open linked chat as the main thread"
                 >
                   Open as main
                 </button>
@@ -18603,10 +18741,14 @@ function App(): React.JSX.Element {
                   <button
                     type="button"
                     className="side-chat-header-btn side-chat-header-btn-danger"
-                    onClick={() => void handleTerminateSideChat()}
-                    title="End this ephemeral side chat, cancel queued work, and archive it"
+                    onClick={() => void handleEndSidePanelChat()}
+                    title={
+                      getSideChatMode(sideChat) === 'guestParticipant'
+                        ? 'Remove this guest participant from the parent chat'
+                        : 'End this isolated side chat, cancel queued work, and archive it'
+                    }
                   >
-                    End
+                    {getSideChatMode(sideChat) === 'guestParticipant' ? 'Remove' : 'End'}
                   </button>
                 )}
                 <button
@@ -18621,7 +18763,7 @@ function App(): React.JSX.Element {
               </div>
             </div>
             {sideChatIsWelcome && (
-              <div className="side-chat-welcome" aria-label="Side chat welcome">
+              <div className="side-chat-welcome" aria-label="Linked chat welcome">
                 <span className="side-chat-welcome-kicker">{sidePanelKindLabel}</span>
                 {sidePanelAgentIdentity && (
                   <span className="side-chat-welcome-agent" title={sidePanelAgentIdentity.name}>
@@ -18637,7 +18779,7 @@ function App(): React.JSX.Element {
                 )}
                 <h2>
                   {sidePanelRelation === 'subThread'
-                    ? 'Agent sub-thread'
+                    ? 'Sub-thread'
                     : sidePanelKindLabel}
                 </h2>
                 <p>{sidePanelModeDescription}</p>
@@ -18772,7 +18914,7 @@ function App(): React.JSX.Element {
                       }
                     }}
                     placeholder={`Ask ${sidePanelKindLabel.toLowerCase()}`}
-                    aria-label="Side chat prompt"
+                    aria-label="Linked chat prompt"
                     rows={2}
                     disabled={!sideCanRun}
                   />
@@ -18798,7 +18940,7 @@ function App(): React.JSX.Element {
                               ? 'Side ensemble provider is configured by participants'
                               : sidePanelRelation === 'subThread'
                                 ? 'Sub-thread provider'
-                                : 'Side chat provider'
+                                : `${sidePanelKindLabel} provider`
                           }
                         />
                         <CombinedModelPicker
@@ -18899,8 +19041,8 @@ function App(): React.JSX.Element {
                               type="button"
                               className="composer-action-btn stop-btn"
                               onClick={() => void handleSideCancel()}
-                              title="Stop side chat run"
-                              aria-label="Stop side chat run"
+                              title="Stop linked chat run"
+                              aria-label="Stop linked chat run"
                             >
                               <StopSymbolIcon />
                             </button>
@@ -18914,12 +19056,12 @@ function App(): React.JSX.Element {
                             title={
                               sideCanRun
                                 ? isSideChatRunning
-                                  ? 'Queue side chat prompt'
-                                  : 'Run side chat prompt'
-                                : 'Side chat workspace is unavailable'
+                                  ? 'Queue linked chat prompt'
+                                  : 'Run linked chat prompt'
+                                : 'Linked chat workspace is unavailable'
                             }
                             aria-label={
-                              isSideChatRunning ? 'Queue side chat prompt' : 'Run side chat prompt'
+                              isSideChatRunning ? 'Queue linked chat prompt' : 'Run linked chat prompt'
                             }
                           >
                             {isSideChatRunning ? (

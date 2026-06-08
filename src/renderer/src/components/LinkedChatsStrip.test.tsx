@@ -82,17 +82,17 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
-    expect(html).toContain('Side chats opened')
+    expect(html).toContain('Linked chats')
     expect(html).toContain('aria-expanded="true"')
-    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
-    expect(html).toContain('Side chat')
+    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 sub-thread')
+    expect(html).toContain('Isolated side chat')
     expect(html).toContain('Scratch beside parent')
     expect(html).toContain('Active')
-    expect(html).toContain('Isolated')
+    expect(html).toContain('Isolated sidecar')
     expect(html).toContain('Seeded from selected message')
-    expect(html).toContain('Agent sub-thread')
+    expect(html).toContain('Sub-thread')
     expect(html).toContain('Investigate tests')
-    expect(html).toContain('Delegated agent')
+    expect(html).toContain('Delegated child')
     expect(html).toContain('Delegation context')
     expect(html).toContain('Gemini side branch to Codex')
     expect(html).toContain('Gemini delegated to Claude')
@@ -136,7 +136,7 @@ describe('LinkedChatsStrip', () => {
     )
 
     expect(html).toContain('Side Codex chat')
-    expect(html).toContain('Isolated')
+    expect(html).toContain('Isolated sidecar')
     expect(html).toContain('Codex isolated side chat')
     expect(html).not.toContain('Codex side branch to Codex')
     expect(html).not.toContain('linked-chats-strip-agent-icon')
@@ -169,9 +169,9 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
-    expect(html).toContain('Side chats opened')
+    expect(html).toContain('Linked chats')
     expect(html).toContain('aria-expanded="false"')
-    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 agent')
+    expect(html).toContain('2 linked | 1 running | 1 side chat | 1 sub-thread')
     expect(html).not.toContain('Scratch beside parent')
     expect(html).not.toContain('Investigate tests')
   })
@@ -204,7 +204,7 @@ describe('LinkedChatsStrip', () => {
 
     expect(html).toContain('Fan-out side chat')
     expect(html).toContain('Fan-out')
-    expect(html).toContain('No parent context')
+    expect(html).toContain('Isolated context')
     expect(html).toContain('Gemini parallel fan-out')
   })
 
@@ -238,7 +238,7 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
-    expect(html).toContain('Side chat')
+    expect(html).toContain('Isolated side chat')
     expect(html).toContain('Reviewer branch')
     expect(html).toContain('Participant: Reviewer')
     expect(html).toContain('Gemini dedicated branch to Reviewer')
@@ -294,7 +294,7 @@ describe('LinkedChatsStrip', () => {
       />
     )
 
-    expect(html).toContain('1 linked | 1 side chat')
+    expect(html).toContain('1 linked | 1 guest')
     expect(html).toContain('Guest participant (cursor)')
     expect(html).toContain('Gemini with Cursor guest')
     expect(html).not.toContain('Guest participant (codex)')
@@ -357,6 +357,36 @@ describe('LinkedChatsStrip', () => {
 
     expect(html).toContain('Run follow-up')
     expect(html).toContain('Seeded from run result')
+  })
+
+  it('labels copied parent snapshots separately from run-result seeds', () => {
+    const parent = makeChat()
+    const snapshotSeededSideChat = makeChat({
+      appChatId: 'snapshot-side-1',
+      parentChatId: 'parent-1',
+      parentChatRelation: 'sideChat',
+      provider: 'claude',
+      title: 'Snapshot sidecar',
+      sideChatContext: {
+        createdAt: 2,
+        lifecycleState: 'active',
+        mode: 'singleProvider',
+        transcriptVisibility: 'snapshot'
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      <LinkedChatsStrip
+        currentChat={parent}
+        chats={[parent, snapshotSeededSideChat]}
+        runningChatIds={[]}
+        onOpenBeside={() => {}}
+      />
+    )
+
+    expect(html).toContain('Snapshot sidecar')
+    expect(html).toContain('Copied parent snapshot')
+    expect(html).not.toContain('Seeded from run result')
   })
 
   it('renders nothing without linked children', () => {
