@@ -4555,7 +4555,14 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const usage = extractProviderUsage(state.provider, event)
   if (usage) state.tokenUsage = mergeProviderUsage(state.provider, state.tokenUsage, usage)
   emitCliProviderToolEvent(state, event)
-  if (state.provider === 'kimi') {
+  if (state.provider === 'kimi' || state.provider === 'claude') {
+    // Claude (SDK + CLI) carries reasoning as `thinking` content blocks on the
+    // cumulative assistant envelope; surface it as a streamed reasoning note so
+    // it renders in the live activity viewport. `extractProviderThinkingText`
+    // only reads thinking from the envelope (not the incremental stream_event
+    // deltas), so this fires once per turn without double-counting, and
+    // `emitCliProviderThinkingEvent` guards empty text when no thinking is
+    // present (e.g. extended thinking disabled).
     emitCliProviderThinkingEvent(state, extractProviderThinkingText(event))
   }
 
