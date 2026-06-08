@@ -1771,6 +1771,10 @@ function App(): React.JSX.Element {
   // conversation stage; RunInspector mounts inside RunRailPanel.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
   const [sideChatId, setSideChatId] = useState<string | null>(null)
+  // Whether the side chat is the actively-open right-dock panel (distinct
+  // from sideChatId — the session can stay alive while another dock tab
+  // is selected).
+  const [isSideChatDockPanelOpen, setIsSideChatDockPanelOpen] = useState(false)
   const [sidePanelPresentation, setSidePanelPresentation] =
     useState<SidePanelPresentation>('split')
   const [sideChatMenuOpen, setSideChatMenuOpen] = useState(false)
@@ -9550,6 +9554,7 @@ function App(): React.JSX.Element {
       if (presentInline) {
         setSidePanelPresentation(presentation)
         setSideChatId(nextSideChat.appChatId)
+        setIsSideChatDockPanelOpen(true)
         setRightDockTab('chat')
       }
       setChatPromptDraft(nextSideChat.appChatId, effectiveSeedPrompt)
@@ -9616,6 +9621,7 @@ function App(): React.JSX.Element {
     }
     setSidePanelPresentation(presentation)
     setSideChatId(nextChat.appChatId)
+    setIsSideChatDockPanelOpen(true)
     setRightDockTab('chat')
     setSideChatMenuOpen(false)
     requestAnimationFrame(() => {
@@ -10019,6 +10025,7 @@ function App(): React.JSX.Element {
       )
     }
     setSideChatId(null)
+    setIsSideChatDockPanelOpen(false)
     setSideChatMenuOpen(false)
   }
 
@@ -14525,7 +14532,11 @@ function App(): React.JSX.Element {
   const isTerminalDockAvailable = showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext
   const rightDockTabs = [
     { id: 'run' as const, label: 'Run', available: showCockpit },
-    { id: 'chat' as const, label: 'Chat', available: Boolean(sideChat) },
+    {
+      id: 'chat' as const,
+      label: 'Chat',
+      available: Boolean(sideChat) && isSideChatDockPanelOpen
+    },
     { id: 'inspector' as const, label: 'Inspect', available: appearance.showInspector },
     { id: 'files' as const, label: 'Files', available: showFileEditor && hasWorkspaceContext },
     { id: 'media' as const, label: 'Media', available: isChatMediaPanelOpen },
@@ -14581,8 +14592,33 @@ function App(): React.JSX.Element {
   if (isTerminalDockAvailable) {
     dockTabDefs.push({ id: 'terminal', label: 'Term', icon: <AppleTerminalIcon />, enabled: true })
   }
-  const activateRightDockTab = (id: RightDockTab) => {
-    switch (id) {
+  const closeRightDockPanel = (panelId: RightDockTab) => {
+    switch (panelId) {
+      case 'run':
+        setShowCockpit(false)
+        break
+      case 'media':
+        setIsChatMediaPanelOpen(false)
+        break
+      case 'pins':
+        setIsPinnedMessagesPanelOpen(false)
+        break
+      case 'files':
+        setShowFileEditor(false)
+        break
+      case 'inspector':
+        appearance.update({ showInspector: false })
+        break
+      case 'terminal':
+        setShowGeminiTerminal(false)
+        break
+      case 'chat':
+        setIsSideChatDockPanelOpen(false)
+        break
+    }
+  }
+  const openRightDockPanel = (panelId: RightDockTab) => {
+    switch (panelId) {
       case 'run':
         setShowCockpit(true)
         break
@@ -14602,10 +14638,25 @@ function App(): React.JSX.Element {
         setShowGeminiTerminal(true)
         break
       case 'chat':
-        // Side chats can't be conjured here — the tab is only enabled
-        // when one already exists, so selection is all that's needed.
+        if (sideChat) setIsSideChatDockPanelOpen(true)
         break
     }
+  }
+  const activateRightDockTab = (id: RightDockTab) => {
+    // Exclusive dock lifecycle: opening/switching to a tab closes every
+    // other panel's open flag so glass-pill actives don't stack up.
+    for (const panelId of [
+      'chat',
+      'run',
+      'media',
+      'pins',
+      'files',
+      'inspector',
+      'terminal'
+    ] as const) {
+      if (panelId !== id) closeRightDockPanel(panelId)
+    }
+    openRightDockPanel(id)
     setRightDockTab(id)
   }
   // The stored `inspectorWidth` is an absolute px preference. Applied
@@ -19228,13 +19279,8 @@ function App(): React.JSX.Element {
                   type="button"
                   className="right-dock-close"
                   onClick={() => {
-                    if (activeRightDockTab === 'run') setShowCockpit(false)
                     if (activeRightDockTab === 'chat') hideSideChatPane()
-                    if (activeRightDockTab === 'inspector') appearance.update({ showInspector: false })
-                    if (activeRightDockTab === 'files') setShowFileEditor(false)
-                    if (activeRightDockTab === 'media') setIsChatMediaPanelOpen(false)
-                    if (activeRightDockTab === 'pins') setIsPinnedMessagesPanelOpen(false)
-                    if (activeRightDockTab === 'terminal') setShowGeminiTerminal(false)
+                    else closeRightDockPanel(activeRightDockTab)
                   }}
                   title="Close active dock tab"
                   aria-label="Close active dock tab"
