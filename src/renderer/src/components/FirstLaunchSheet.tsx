@@ -24,7 +24,14 @@ import { formatResetShort } from '../lib/UsageFormat'
 import { QuotaProgressBar } from './QuotaProgressBar'
 import { ProviderInstallCommands } from './ProviderInstallCommands'
 
-type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 'grok'
+type OnboardingProviderId =
+  | 'codex'
+  | 'claude'
+  | 'gemini'
+  | 'kimi'
+  | 'cursor'
+  | 'grok'
+  | 'ollama'
 
 /**
  * FirstLaunchSheet — onboarding overlay for fresh TaskWraith testers.
@@ -98,6 +105,9 @@ export interface FirstLaunchSheetProps {
    * Optional so older hosts / static tests can omit them. */
   cursorProviderAvailable?: boolean
   grokProviderAvailable?: boolean
+  /** Ollama local mode has no sign-in; this only reflects whether
+   * TaskWraith can see a local Ollama runtime/service. */
+  ollamaProviderAvailable?: boolean
   /** Per-provider quota aggregates (App.tsx#usageSummary). Lets a
    * signed-in provider card flip to an explicit "out of usage" state
    * when its window hits ~100% — otherwise a rate-limited provider
@@ -128,6 +138,8 @@ interface ProviderRowSpec {
   deemphasised?: boolean
   /** When true, the card is marked optional but still actionable. */
   optional?: boolean
+  /** Local setup rows do not show provider-owned sign-in / sign-out actions. */
+  localOnly?: boolean
   /** Set when the provider is signed in but its quota window is at
    * ~100% — drives the "out of usage" card treatment + progress bar. */
   usage?: { fraction: number; resetAt?: string }
@@ -369,6 +381,7 @@ export function FirstLaunchSheet({
   geminiAuthStatus,
   cursorProviderAvailable = false,
   grokProviderAvailable = false,
+  ollamaProviderAvailable = false,
   usageSummary,
   themeAppearance = 'system',
   composerStyle = 'default',
@@ -507,6 +520,20 @@ export function FirstLaunchSheet({
       ...grokSummary,
       deemphasised: true,
       optional: true
+    },
+    {
+      id: 'ollama',
+      label: 'Ollama',
+      description:
+        'Local models running through Ollama. Best for people who already want on-device Qwen, Gemma, or GPT OSS testing. No cloud account is needed.',
+      variant: ollamaProviderAvailable ? 'signed-in' : 'partial',
+      statusText: ollamaProviderAvailable ? 'Local runtime ready' : 'Local setup optional',
+      hint: ollamaProviderAvailable
+        ? 'Pick Local / Ollama in the provider picker, then choose an installed model in Settings or the composer.'
+        : 'Install Ollama, then pull a model such as `qwen3:4b-instruct`, `gemma4:12b`, or `gpt-oss`.',
+      deemphasised: true,
+      optional: true,
+      localOnly: true
     }
   ]
   // Flip any signed-in provider whose quota window is maxed to the
@@ -565,9 +592,10 @@ export function FirstLaunchSheet({
           <p className="first-launch-sheet-prose">
             TaskWraith is a multi-provider AI CLI manager. It wraps <strong>Codex</strong>,{' '}
             <strong>Claude</strong>, <strong>Gemini</strong>, <strong>Kimi</strong>,{' '}
-            <strong>Cursor</strong>, and <strong>Grok</strong> inside one consistent chrome so you
-            can run and compare them side-by-side in the same UI. Each provider keeps its own auth —
-            sign in to the ones you want to use, skip the rest.
+            <strong>Cursor</strong>, <strong>Grok</strong>, and local{' '}
+            <strong>Ollama</strong> models inside one consistent chrome so you can run and compare
+            them side-by-side in the same UI. Each provider keeps its own auth — sign in to the
+            ones you want to use, skip the rest.
           </p>
         </section>
 
@@ -618,9 +646,10 @@ export function FirstLaunchSheet({
             Providers sign in three ways: <strong>Codex</strong>, <strong>Cursor</strong>, and{' '}
             <strong>Grok</strong> log in through their own CLI in a Terminal;{' '}
             <strong>Claude</strong> and <strong>Gemini</strong> use in-app OAuth or an API key;{' '}
-            <strong>Kimi</strong> takes an API key. TaskWraith can&apos;t see Cursor&apos;s or
-            Grok&apos;s CLI login, so those two dots stay amber even after you sign in — that&apos;s
-            expected.
+            <strong>Kimi</strong> takes an API key. <strong>Ollama</strong> is local-only: install
+            Ollama, pull a model, and no cloud account is needed. TaskWraith can&apos;t see
+            Cursor&apos;s or Grok&apos;s CLI login, so those two dots stay amber even after you sign
+            in — that&apos;s expected.
           </p>
           <div className="first-launch-sheet-provider-grid">
             {providerRows.map((row) => (
@@ -639,7 +668,7 @@ export function FirstLaunchSheet({
             <summary>Don&apos;t have a CLI yet? Official install commands</summary>
             <p className="first-launch-sheet-section-helper">
               Run one in your terminal, then come back and sign in. (npm commands need Node 20+; the
-              curl installers are self-contained.)
+              curl installers are self-contained. Ollama is local: install it, then pull a model.)
             </p>
             <ProviderInstallCommands />
           </details>
@@ -984,7 +1013,8 @@ export function FirstLaunchSheet({
           </div>
           <p className="first-launch-sheet-prose">
             Every run also shows a live token + cost tally next to Send, and the dashboard fills in
-            usage heatmaps and per-provider totals as you go.
+            usage heatmaps and per-provider totals as you go. Local Ollama runs have no cloud quota,
+            but their token totals still appear in usage history.
           </p>
         </section>
 
@@ -1189,7 +1219,7 @@ function ProviderCard({
       <p className="first-launch-sheet-provider-card-description">{row.description}</p>
       <p className="first-launch-sheet-provider-card-hint">{row.hint}</p>
       <div className="first-launch-sheet-provider-card-actions">
-        {row.id !== 'gemini' && onProviderLogin && (
+        {row.id !== 'gemini' && !row.localOnly && onProviderLogin && (
           <button
             type="button"
             className="btn btn-sm btn-primary"
@@ -1199,7 +1229,7 @@ function ProviderCard({
             Sign in
           </button>
         )}
-        {row.variant === 'signed-in' && row.id !== 'gemini' && onProviderLogout && (
+        {row.variant === 'signed-in' && row.id !== 'gemini' && !row.localOnly && onProviderLogout && (
           <button
             type="button"
             className="btn btn-sm btn-ghost"

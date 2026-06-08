@@ -138,6 +138,7 @@ import {
   getDiffWorkspacePath
 } from './lib/geminiWorktree'
 import { humaniseModelId } from './lib/modelDisplayName'
+import { resolveOllamaDisplayBrand } from './lib/ollamaDisplayBrand'
 import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
 import {
   buildChatTokenTally,
@@ -12444,7 +12445,7 @@ function App(): React.JSX.Element {
   // apply the matching `.provider-{name}` class to the thinking-indicator's
   // message-meta — same provider-tint treatment as the assistant labels
   // in the rest of the transcript.
-  const { thinkingProviderLabel, thinkingProvider, thinkingModelBadge } = (() => {
+  const { thinkingProviderLabel, thinkingProvider, thinkingProviderClass, thinkingModelBadge } = (() => {
     const activeRound = currentChat?.ensemble?.activeRound
     if (activeRound?.activeParticipantId) {
       const participant = currentChat?.ensemble?.participants.find(
@@ -12477,6 +12478,7 @@ function App(): React.JSX.Element {
         return {
           thinkingProviderLabel: getProviderLabel(participant.provider),
           thinkingProvider: participant.provider as ProviderId | null,
+          thinkingProviderClass: participant.provider as string | null,
           // Show the short model name alongside the "Codex Thinking…"
           // chip so the user can see at a glance which configured
           // model is actually producing the in-flight output. Empty
@@ -12501,6 +12503,7 @@ function App(): React.JSX.Element {
       return {
         thinkingProviderLabel: 'Ensemble',
         thinkingProvider: null as ProviderId | null,
+        thinkingProviderClass: null as string | null,
         thinkingModelBadge: null as string | null
       }
     }
@@ -12511,15 +12514,19 @@ function App(): React.JSX.Element {
         latestRun?.requestedModel ||
         (selectedModelType === 'custom' ? customModel : selectedModelType) ||
         ollamaDefaultModel
+      const modelLabel = humaniseModelId('ollama', model)
+      const brand = resolveOllamaDisplayBrand(model, modelLabel)
       return {
-        thinkingProviderLabel: humaniseModelId('ollama', model) || currentProviderLabel,
+        thinkingProviderLabel: brand?.providerLabel || modelLabel || currentProviderLabel,
         thinkingProvider: currentProvider as ProviderId | null,
-        thinkingModelBadge: null as string | null
+        thinkingProviderClass: brand?.providerClass || currentProvider,
+        thinkingModelBadge: brand?.modelLabel || null
       }
     }
     return {
       thinkingProviderLabel: currentProviderLabel,
       thinkingProvider: currentProvider as ProviderId | null,
+      thinkingProviderClass: currentProvider as string | null,
       thinkingModelBadge: null as string | null
     }
   })()
@@ -12556,9 +12563,32 @@ function App(): React.JSX.Element {
   const sideRunCompleteNotice = sideChat
     ? deriveRunCompleteNotice(sideChat, isSideChatRunning)
     : null
+  const sideThinkingOllamaModel =
+    sideProvider === 'ollama'
+      ? sideRun?.actualModel ||
+        sideRun?.requestedModel ||
+        sideChat?.runs?.[sideChat.runs.length - 1]?.actualModel ||
+        sideChat?.runs?.[sideChat.runs.length - 1]?.requestedModel ||
+        ''
+      : ''
+  const sideThinkingOllamaModelLabel =
+    sideProvider === 'ollama' ? humaniseModelId('ollama', sideThinkingOllamaModel) : ''
+  const sideThinkingOllamaBrand =
+    sideProvider === 'ollama'
+      ? resolveOllamaDisplayBrand(sideThinkingOllamaModel, sideThinkingOllamaModelLabel)
+      : null
   const sideThinkingProviderLabel =
-    sideChat?.chatKind === 'ensemble' ? 'Ensemble' : getProviderLabel(sideProvider)
+    sideChat?.chatKind === 'ensemble'
+      ? 'Ensemble'
+      : sideThinkingOllamaBrand?.providerLabel ||
+        sideThinkingOllamaModelLabel ||
+        getProviderLabel(sideProvider)
   const sideThinkingProvider = sideChat?.chatKind === 'ensemble' ? null : sideProvider
+  const sideThinkingProviderClass =
+    sideChat?.chatKind === 'ensemble'
+      ? null
+      : sideThinkingOllamaBrand?.providerClass || sideProvider
+  const sideThinkingModelBadge = sideThinkingOllamaBrand?.modelLabel || null
   const sideCanRun = Boolean(sideChat && (getChatScope(sideChat) === 'global' || sideWorkspace))
   const sideComposerSelection = sideChat ? getChatComposerSelection(sideChat, sideProvider) : null
   const sideComposerProvider = sideComposerSelection?.provider || sideProvider
@@ -15596,6 +15626,7 @@ function App(): React.JSX.Element {
                 currentProvider={currentProvider}
                 thinkingProviderLabel={thinkingProviderLabel}
                 thinkingProvider={thinkingProvider}
+                thinkingProviderClass={thinkingProviderClass}
                 thinkingModelBadge={thinkingModelBadge}
                 displayFileChangeSummaries={displayFileChangeSummaries}
                 fileChangeSummaryText={fileChangeSummaryText}
@@ -18790,7 +18821,8 @@ function App(): React.JSX.Element {
               currentProvider={sideProvider}
               thinkingProviderLabel={sideThinkingProviderLabel}
               thinkingProvider={sideThinkingProvider}
-              thinkingModelBadge={null}
+              thinkingProviderClass={sideThinkingProviderClass}
+              thinkingModelBadge={sideThinkingModelBadge}
               displayFileChangeSummaries={[]}
               fileChangeSummaryText=""
               fileChangeShouldShowStats={false}
@@ -19298,6 +19330,7 @@ function App(): React.JSX.Element {
         geminiAuthStatus={geminiAuthStatus}
         cursorProviderAvailable={cursorProviderAvailable}
         grokProviderAvailable={grokProviderAvailable}
+        ollamaProviderAvailable={agentStatusByProvider.ollama?.available === true}
         usageSummary={usageSummary}
         themeAppearance={appearance.themeAppearance || 'system'}
         composerStyle={appearance.composerStyle || 'default'}

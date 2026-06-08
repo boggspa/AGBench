@@ -213,6 +213,34 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('Side chat')
   })
 
+  it('renders Ollama brand providers with model badges in message headers', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          currentProviderLabel: 'Ollama',
+          currentProvider: 'ollama',
+          messages: [
+            {
+              id: 'assistant-qwen',
+              role: 'assistant',
+              content: 'Local response',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              metadata: {
+                providerModel: 'qwen3:4b-instruct',
+                providerModelLabel: 'Qwen 3 (4B Param)'
+              }
+            }
+          ]
+        })}
+      />
+    )
+
+    expect(html).toContain('provider-qwen')
+    expect(html).toContain('Qwen')
+    expect(html).toContain('Qwen 3 (4B Param)')
+  })
+
   it('renders a run-result side chat action on historical run boundary cards', () => {
     const html = renderToStaticMarkup(
       <TranscriptPanel

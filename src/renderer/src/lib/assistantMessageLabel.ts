@@ -1,13 +1,21 @@
 import { reasoningDisplayLabel, shortModelName } from './composerChipFormat'
 import { humaniseModelId } from './modelDisplayName'
+import { resolveOllamaDisplayBrand } from './ollamaDisplayBrand'
 import { getProviderLabel } from './providerLabels'
 import type { ChatMessage, ProviderId } from '../../../main/store/types'
+
+type AssistantMessageLabelPresentation = {
+  label: string
+  provider: ProviderId | null
+  providerClass: string | null
+  modelBadge: string | null
+}
 
 const formatAssistantMessageLabel = (
   message: ChatMessage,
   fallbackLabel: string,
   fallbackProvider: ProviderId | null
-): { label: string; provider: ProviderId | null; modelBadge: string | null } => {
+): AssistantMessageLabelPresentation => {
   if (message.metadata?.kind === 'guestParticipantReply') {
     const guestProvider = (message.metadata?.guestProvider as ProviderId | undefined) ?? null
     const guestRole =
@@ -21,6 +29,7 @@ const formatAssistantMessageLabel = (
         ? `${getProviderLabel(guestProvider)} / ${guestRole}`
         : `Guest / ${guestRole}`,
       provider: guestProvider,
+      providerClass: guestProvider,
       modelBadge: guestProvider && guestModel ? shortModelName(guestProvider, '', guestModel) : null
     }
   }
@@ -33,15 +42,34 @@ const formatAssistantMessageLabel = (
         typeof message.metadata?.providerModelLabel === 'string'
           ? message.metadata.providerModelLabel
           : humaniseModelId('ollama', model)
+      const brand = resolveOllamaDisplayBrand(model, modelLabel)
+      if (brand) {
+        return {
+          label: brand.providerLabel,
+          provider: fallbackProvider,
+          providerClass: brand.providerClass,
+          modelBadge: brand.modelLabel
+        }
+      }
       if (modelLabel) {
-        return { label: modelLabel, provider: fallbackProvider, modelBadge: null }
+        return {
+          label: modelLabel,
+          provider: fallbackProvider,
+          providerClass: fallbackProvider,
+          modelBadge: null
+        }
       }
     }
     // Solo chats: use the chat-level provider as the colouring hook.
     // The label is still the plain provider name (no role suffix
     // since there's no ensemble context). The composer chip already
     // shows the model in solo chats — no need to duplicate it here.
-    return { label: fallbackLabel, provider: fallbackProvider, modelBadge: null }
+    return {
+      label: fallbackLabel,
+      provider: fallbackProvider,
+      providerClass: fallbackProvider,
+      modelBadge: null
+    }
   }
   const role =
     typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
@@ -90,8 +118,10 @@ const formatAssistantMessageLabel = (
   return {
     label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
     provider,
+    providerClass: provider,
     modelBadge: modelBadge || null
   }
 }
 
 export { formatAssistantMessageLabel }
+export type { AssistantMessageLabelPresentation }

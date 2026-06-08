@@ -125,6 +125,11 @@
   --provider-cursor-color: #E3B91E;
   /* Ollama / Local — green-teal for on-device inference. */
   --provider-ollama-color: #20A77A;
+  /* Ollama-backed display brands. Runtime provider remains `ollama`; these
+   * presentation aliases let local models wear their upstream brand hue. */
+  --provider-qwen-color: #D946EF;
+  --provider-google-color: var(--provider-gemini-color);
+  --provider-openai-color: var(--provider-codex-color);
 
   /* Phase L6 slice 2 — Quota warning palette. Drives the
    * progressive bar gradient on the Model Usage Card: the fill

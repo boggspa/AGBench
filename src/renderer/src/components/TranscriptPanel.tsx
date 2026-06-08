@@ -109,6 +109,12 @@ type TranscriptPanelProps = {
    */
   thinkingProvider?: ProviderId | null
   /**
+   * Optional presentation-only provider class. Used for local Ollama
+   * model brands that should look like Qwen / Google / OpenAI in the
+   * transcript while remaining runtime provider `ollama`.
+   */
+  thinkingProviderClass?: string | null
+  /**
    * Short model name (e.g. "5.5", "Opus 4.7", "K2.6", "2.5 Pro") for
    * the in-flight ensemble participant. Rendered as a dim chip after
    * the "Codex Thinking…" label so the user knows *which configured
@@ -663,6 +669,7 @@ export const TranscriptPanel = memo(
     currentProvider,
     thinkingProviderLabel,
     thinkingProvider,
+    thinkingProviderClass,
     thinkingModelBadge,
     displayFileChangeSummaries,
     fileChangeSummaryText,
@@ -1040,11 +1047,8 @@ export const TranscriptPanel = memo(
                         return <div className="message-meta">Error</div>
                       }
                       if (msg.role === 'assistant' || isGuestReply) {
-                        const { label, provider, modelBadge } = formatAssistantMessageLabel(
-                          msg,
-                          currentProviderLabel,
-                          currentProvider
-                        )
+                        const { label, provider, providerClass, modelBadge } =
+                          formatAssistantMessageLabel(msg, currentProviderLabel, currentProvider)
                         // 1.0.7 — participant-rename continuity. The
                         // header keeps the FROZEN role label; this quiet
                         // badge tells the reader the seat has since been
@@ -1059,7 +1063,13 @@ export const TranscriptPanel = memo(
                           currentChat?.ensemble?.sessionActivityLedger
                         )
                         return (
-                          <div className={`message-meta${provider ? ` provider-${provider}` : ''}`}>
+                          <div
+                            className={`message-meta${
+                              providerClass || provider
+                                ? ` provider-${providerClass || provider}`
+                                : ''
+                            }`}
+                          >
                             <span className="message-meta-label">{label}</span>
                             {modelBadge && (
                               <span
@@ -1305,7 +1315,11 @@ export const TranscriptPanel = memo(
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
               <div
-                className={`message-meta${thinkingProvider ? ` provider-${thinkingProvider}` : ''}`}
+                className={`message-meta${
+                  thinkingProviderClass || thinkingProvider
+                    ? ` provider-${thinkingProviderClass || thinkingProvider}`
+                    : ''
+                }`}
               >
                 <span className="message-meta-label">
                   {thinkingProviderLabel || currentProviderLabel}
@@ -1526,6 +1540,7 @@ export const TranscriptPanel = memo(
     previous.currentProvider === next.currentProvider &&
     previous.thinkingProviderLabel === next.thinkingProviderLabel &&
     previous.thinkingProvider === next.thinkingProvider &&
+    previous.thinkingProviderClass === next.thinkingProviderClass &&
     previous.thinkingModelBadge === next.thinkingModelBadge &&
     previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
     previous.fileChangeSummaryText === next.fileChangeSummaryText &&

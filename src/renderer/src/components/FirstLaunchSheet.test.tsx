@@ -58,7 +58,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toBe('')
   })
 
-  it('renders all four provider cards when open', () => {
+  it('renders provider cards including local Ollama when open', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
         open={true}
@@ -74,6 +74,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('data-provider="claude"')
     expect(html).toContain('data-provider="gemini"')
     expect(html).toContain('data-provider="kimi"')
+    expect(html).toContain('data-provider="ollama"')
   })
 
   it('renders Welcome heading and the numbered onboarding sections', () => {
@@ -139,7 +140,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('data-provider="claude"')
     expect(html).toContain('data-provider="gemini"')
     expect(html).toContain('data-provider="kimi"')
-    // Cursor + Grok complete the 6-provider roster (the chips use <em>).
+    // Cursor + Grok complete the CLI/cloud ensemble preview roster (the chips use <em>).
     expect(html).toContain('<em>Cursor</em>')
     expect(html).toContain('<em>Grok</em>')
     expect(html).toContain('Turn / Continuous in the composer')
@@ -200,11 +201,29 @@ describe('FirstLaunchSheet', () => {
         geminiAuthStatus={null}
       />
     )
-    // Four cards are optional (Gemini, Kimi, Cursor, Grok — the latter two
-    // are CLI-login providers added in 1.0.6). Count "Optional" badges.
+    // Five cards are optional (Gemini, Kimi, Cursor, Grok, Ollama).
     const badges = html.match(/first-launch-sheet-provider-card-optional-badge/g)
     expect(badges).toBeTruthy()
-    expect(badges!.length).toBe(4)
+    expect(badges!.length).toBe(5)
+  })
+
+  it('renders Ollama as a local-only optional provider without sign-in copy', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        ollamaProviderAvailable={true}
+      />
+    )
+    expect(html).toContain('Local runtime ready')
+    expect(html).toContain('No cloud account is needed')
+    expect(html).not.toContain('aria-label="Sign in to Ollama"')
+    expect(html).not.toContain('aria-label="Sign out of Ollama"')
   })
 
   it('Codex card surfaces "signed in" when codexStatus.codexUsage.planType is present', () => {
@@ -438,6 +457,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('npm i -g @openai/codex')
     expect(html).toContain('https://claude.ai/install.sh')
     expect(html).toContain('https://code.kimi.com/install.sh')
+    expect(html).toContain('https://ollama.com/install.sh')
     expect(html).toContain('Official install commands')
   })
 })

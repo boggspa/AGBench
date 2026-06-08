@@ -4,6 +4,34 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.3.0 — In progress
+
+### Added
+- **Local Ollama provider.** TaskWraith can talk to a local Ollama runtime without
+  a cloud API key, starting with curated presets for Qwen 3 4B, Gemma 4 12B, and
+  GPT OSS 20B. Local transcript labels present those models by their upstream
+  family — Qwen, Google/Gemma, and OpenAI/GPT OSS — while the runtime remains
+  the local Ollama provider.
+- **Guest participants in normal chats.** Standard chats can now invite linked
+  provider guests for focused side replies, with deduped side-chat chips and
+  clearer linked-chat sidecar presentation.
+- **Pinned messages dock.** Important transcript messages can be pinned and
+  reviewed from a dedicated dock/settings surface.
+
+### Changed
+- **Side-chat UX polish.** Linked sidecars have cleaner copy, sizing, and run
+  presentation so they read as attached work surfaces rather than stray chats.
+- **Faster chat hydration.** Thread selection and chat-list IPC are now hydrated
+  after paint, reducing initial selection stalls on heavier workspaces.
+- **First-launch local-model signposting.** Onboarding now includes a minimal
+  Ollama card and install hint without treating local models like a cloud sign-in
+  provider.
+
+### Security
+- **Message-channel groundwork remains gated.** The channel-gateway/iMessage
+  internals continue behind development/debug surfaces while the remote message
+  pipeline settles, preserving the 1.2.1 public-build boundary.
+
 ## 1.2.1 — 2026-06-07
 
 ### Changed

@@ -11,7 +11,7 @@ const assistant = (metadata?: ChatMessage['metadata']): ChatMessage => ({
 })
 
 describe('formatAssistantMessageLabel', () => {
-  it('uses the Ollama model name as the solo assistant sender label', () => {
+  it('uses the Qwen brand as the solo Ollama assistant sender label', () => {
     expect(
       formatAssistantMessageLabel(
         assistant({ providerModel: 'qwen3:4b-instruct' }),
@@ -19,9 +19,40 @@ describe('formatAssistantMessageLabel', () => {
         'ollama'
       )
     ).toEqual({
-      label: 'Qwen 3 (4B Param)',
+      label: 'Qwen',
       provider: 'ollama',
-      modelBadge: null
+      providerClass: 'qwen',
+      modelBadge: 'Qwen 3 (4B Param)'
+    })
+  })
+
+  it('uses the Google brand for Gemma through Ollama', () => {
+    expect(
+      formatAssistantMessageLabel(
+        assistant({ providerModel: 'gemma4:12b' }),
+        'Ollama',
+        'ollama'
+      )
+    ).toEqual({
+      label: 'Google',
+      provider: 'ollama',
+      providerClass: 'google',
+      modelBadge: 'Gemma 4 (12B Param)'
+    })
+  })
+
+  it('uses the OpenAI brand for GPT OSS through Ollama', () => {
+    expect(
+      formatAssistantMessageLabel(
+        assistant({ providerModel: 'gpt-oss' }),
+        'Ollama',
+        'ollama'
+      )
+    ).toEqual({
+      label: 'OpenAI',
+      provider: 'ollama',
+      providerClass: 'openai',
+      modelBadge: 'GPT OSS (20B Param)'
     })
   })
 
@@ -29,6 +60,7 @@ describe('formatAssistantMessageLabel', () => {
     expect(formatAssistantMessageLabel(assistant(), 'Codex', 'codex')).toEqual({
       label: 'Codex',
       provider: 'codex',
+      providerClass: 'codex',
       modelBadge: null
     })
   })

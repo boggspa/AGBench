@@ -23,6 +23,7 @@ interface ProviderInstallEntry {
  *   Kimi   — Moonshot:  curl -LsSf https://code.kimi.com/install.sh    (moonshotai.github.io/kimi-cli)
  *   Cursor — Cursor:    curl https://cursor.com/install -fsS | bash    (cursor.com/docs/cli/installation)
  *   Grok   — xAI:       curl -fsSL https://x.ai/cli/install.sh | bash  (x.ai/cli)
+ *   Ollama — Ollama:    curl -fsSL https://ollama.com/install.sh | sh  (ollama.com)
  * (npm commands need Node 20+; the curl installers are self-contained.)
  */
 const PROVIDER_INSTALL_COMMANDS: ProviderInstallEntry[] = [
@@ -51,6 +52,12 @@ const PROVIDER_INSTALL_COMMANDS: ProviderInstallEntry[] = [
     label: 'Grok',
     command: 'curl -fsSL https://x.ai/cli/install.sh | bash',
     source: 'xAI'
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    command: 'curl -fsSL https://ollama.com/install.sh | sh',
+    source: 'Ollama'
   }
 ]
 

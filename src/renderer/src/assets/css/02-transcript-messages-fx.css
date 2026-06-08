@@ -2957,6 +2957,18 @@
 .message-meta.provider-cursor {
   color: var(--provider-cursor-color) !important;
 }
+.message-meta.provider-ollama {
+  color: var(--provider-ollama-color) !important;
+}
+.message-meta.provider-qwen {
+  color: var(--provider-qwen-color) !important;
+}
+.message-meta.provider-google {
+  color: var(--provider-google-color) !important;
+}
+.message-meta.provider-openai {
+  color: var(--provider-openai-color) !important;
+}
 
 .message-bubble {
   padding: var(--space-md) var(--space-lg);
