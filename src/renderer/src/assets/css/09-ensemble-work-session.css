@@ -1,6 +1,22 @@
+/* Roster preset row inside the above-bar stack — never its own orphan
+ * rect. Merged shells (default / cursor / codex-ensemble) inherit the
+ * stack frame; detached pill shells mirror `.ensemble-above-row` chrome. */
 .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
-  padding: 6px 10px 2px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 8px 14px;
+  gap: 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact .ensemble-roster-preset-picker-chip {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  border-color: color-mix(in srgb, currentColor 14%, transparent);
 }
 [data-composer-style="cursor"]
   .composer-above-bar-stack
@@ -1123,20 +1139,29 @@
  * still want their accent borders but on a light base, mirroring
  * the composer-surface light-mode treatment. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .ensemble-above-row,
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact {
   background: var(--surface-2);
   border-color: color-mix(in srgb, #5a8cff 32%, var(--surface-border));
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
   color: var(--surface-text);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .ensemble-above-row,
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact {
   background: var(--surface-2);
   border-color: color-mix(in srgb, #a9bd55 32%, var(--surface-border));
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
   color: var(--surface-text);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .ensemble-above-row {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .ensemble-above-row,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact {
   background: color-mix(in srgb, var(--surface-2) 88%, transparent);
   border-color: color-mix(in srgb, var(--surface-border) 82%, transparent);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
@@ -1527,13 +1552,21 @@
  * treatment so the chip strip reads as a sibling to the composer
  * pill below it (Gemini composer-surface: 28px radius / `#0e1218
  * 94%` / `#5a8cff 18%` border / `0 4px 28px` shadow). */
-[data-composer-style="gemini"] .ensemble-above-row {
+[data-composer-style="gemini"] .ensemble-above-row,
+[data-composer-style="gemini"] .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
   border-radius: 28px;
   background: color-mix(in srgb, #0e1218 94%, transparent);
   border: 1px solid color-mix(in srgb, #5a8cff 18%, transparent);
   box-shadow: 0 4px 28px rgba(0, 0, 0, 0.42);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+[data-composer-style="gemini"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  background: color-mix(in srgb, #5a8cff 8%, transparent);
+  border-color: color-mix(in srgb, #5a8cff 22%, transparent);
 }
 [data-composer-style="gemini"] .ensemble-above-chip.is-selected {
   border-color: color-mix(in srgb, #5a8cff 65%, transparent);
@@ -1546,13 +1579,21 @@
  * Kimi composer-surface chrome (18px radius / `#0a0a0c 96%` /
  * `#ffffff 8%` border / `0 4px 16px` shadow) so the strip reads
  * as a matching pill. */
-[data-composer-style="kimi"] .ensemble-above-row {
+[data-composer-style="kimi"] .ensemble-above-row,
+[data-composer-style="kimi"] .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
   border-radius: 18px;
   background: color-mix(in srgb, #0a0a0c 96%, transparent);
   border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+[data-composer-style="kimi"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  background: color-mix(in srgb, #a9bd55 8%, transparent);
+  border-color: color-mix(in srgb, #a9bd55 22%, transparent);
 }
 [data-composer-style="kimi"] .ensemble-above-chip.is-selected {
   border-color: color-mix(in srgb, #a9bd55 65%, transparent);
@@ -1567,7 +1608,8 @@
  * pass, match the textarea chrome instead of the flat above-bar
  * so the chip strip reads as a matching sibling pill to the
  * composer below. */
-[data-composer-style="modular"] .ensemble-above-row {
+[data-composer-style="modular"] .ensemble-above-row,
+[data-composer-style="modular"] .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
   border-radius: 18px;
   background: color-mix(in srgb, var(--composer-bg-solid) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
@@ -1576,24 +1618,98 @@
   -webkit-backdrop-filter: none;
 }
 
-/* Satellite shell — same as modular: transparent / 0 padding,
- * but a slightly wider chip gap to match the existing satellite
- * above-bar gap of 12px. */
-[data-composer-style="satellite"] .ensemble-above-row {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  padding: 0;
+/* Satellite shell — fully satellite: no row containers, only floating
+ * labels + text-token chips. Wider gap matches the above-bar family. */
+[data-composer-style="satellite"] .ensemble-above-row,
+[data-composer-style="satellite"] .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
   gap: 12px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible;
+}
+[data-composer-style="satellite"] .ensemble-above-row {
+  isolation: auto;
+  overflow: visible;
+}
+[data-composer-style="satellite"] .ensemble-above-row::before,
+[data-composer-style="satellite"] .ensemble-above-row::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+[data-composer-style="satellite"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura
+  > .ensemble-above-row::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
+}
+[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-label {
+  color: color-mix(in srgb, var(--text-primary) 52%, transparent);
+  letter-spacing: 0.06em;
+}
+[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
+}
+[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent) !important;
+}
+[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip-save {
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 18%, transparent) !important;
+}
+[data-composer-style="satellite"]
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura
+  > .ensemble-roster-preset-picker.is-compact::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  color: rgba(29, 29, 31, 0.84);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-label {
+  color: rgba(29, 29, 31, 0.58);
 }
 
 /* Stub shell — tan-paper texture with serif typeface + 14px
  * radius + dotted-line gradient overlay. Mirror the existing
  * `.composer-above-bar` stub styling so the chip strip reads as
  * part of the same notebook-page family. */
-[data-composer-style="stub"] .ensemble-above-row {
+[data-composer-style="stub"] .ensemble-above-row,
+[data-composer-style="stub"] .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact {
   background:
     repeating-linear-gradient(135deg, rgba(255, 248, 230, 0.04) 0 2px, transparent 2px 6px),
     color-mix(in srgb, #fcf6e6 14%, var(--composer-bg-solid));
@@ -2378,7 +2494,12 @@
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
-  > :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -2389,7 +2510,12 @@
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
-  > :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row)::before {
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before {
   display: none !important;
   background: none !important;
   box-shadow: none !important;

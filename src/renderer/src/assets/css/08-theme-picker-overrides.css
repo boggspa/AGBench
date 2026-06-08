@@ -5585,7 +5585,10 @@
 [data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar,
 [data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-row,
 [data-composer-style="obsidian"][data-composer-style="obsidian"] .queued-messages-above-row,
-[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-create-pr-row {
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-create-pr-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact {
   background: var(--obsidian-composer-fill) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -5978,7 +5981,10 @@
 [data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar,
 [data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-row,
 [data-composer-style="alabaster"][data-composer-style="alabaster"] .queued-messages-above-row,
-[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-create-pr-row {
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-create-pr-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact {
   background: var(--alabaster-composer-fill) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -8757,7 +8763,9 @@
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .ensemble-above-row,
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > .queued-messages-above-row {
+  > .queued-messages-above-row,
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .ensemble-roster-preset-picker.is-compact {
   border: 0;
   border-radius: 0;
   background: transparent;

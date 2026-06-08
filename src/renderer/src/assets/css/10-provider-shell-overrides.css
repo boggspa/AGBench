@@ -1222,13 +1222,26 @@
 /* Detached rows above the composer — flat monochrome panels with a
  * bright top-edge rim shine. */
 [data-composer-style="grok"][data-composer-style="grok"]
-  :is(.composer-above-bar, .ensemble-above-row, .composer-create-pr-row, .queued-messages-above-row) {
+  :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .composer-create-pr-row,
+    .queued-messages-above-row,
+    .composer-above-bar-stack > .ensemble-roster-preset-picker.is-compact
+  ) {
   border-radius: 22px !important;
   background: var(--grok-surface) !important;
   border: 1px solid var(--grok-border-strong) !important;
   box-shadow: inset 0 1px 0 var(--grok-rim) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="grok"]
+  .composer-above-bar-stack
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  background: color-mix(in srgb, var(--grok-rim) 6%, transparent) !important;
+  border-color: color-mix(in srgb, var(--grok-border-strong) 72%, transparent) !important;
 }
 /* Kill every provider/theme gradient overlay painted on the
  * composer + its detached rows — the ensemble chip strip's
@@ -1759,6 +1772,11 @@
   /* Flat, quiet top-edge rim — a faint neutral lip, not a bright shine. */
   --cursor-shell-rim: rgba(216, 216, 216, 0.22);
   --cursor-shell-rim-strong: rgba(216, 216, 216, 0.42);
+  /* Merged above-bar stack + input capsule — subtler than the old
+   * ~26px pill; top segment reads darker than the body in dark mode. */
+  --cursor-shell-stack-radius: 14px;
+  --cursor-shell-capsule-radius: 18px;
+  --cursor-shell-stack-header: #101010;
 }
 /* Light themes flip to dark-gray-on-light-gray (still gray, not white). */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])[data-composer-style="cursor"] {
@@ -1774,6 +1792,7 @@
   /* Faint neutral lip — flat, no gloss. */
   --cursor-shell-rim: rgba(46, 46, 46, 0.14);
   --cursor-shell-rim-strong: rgba(46, 46, 46, 0.3);
+  --cursor-shell-stack-header: transparent;
 }
 /* `system` theme follows the OS appearance. */
 @media (prefers-color-scheme: light) {
@@ -1789,6 +1808,7 @@
     --cursor-shell-fill: rgba(46, 46, 46, 0.08);
     --cursor-shell-rim: rgba(46, 46, 46, 0.14);
     --cursor-shell-rim-strong: rgba(46, 46, 46, 0.3);
+    --cursor-shell-stack-header: transparent;
   }
 }
 
@@ -1852,8 +1872,8 @@
   margin-bottom: 6px !important;
   background: color-mix(in srgb, var(--cursor-shell-surface) 72%, transparent) !important;
   border: 1px solid var(--cursor-shell-border-strong) !important;
-  border-bottom: none !important;
-  border-radius: calc(var(--radius-lg) * 2.45) calc(var(--radius-lg) * 2.45) 0 0 !important;
+  border-bottom: 1px solid var(--cursor-shell-border-strong) !important;
+  border-radius: var(--cursor-shell-stack-radius) !important;
   box-shadow: 0 4px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 var(--cursor-shell-rim) !important;
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -1891,15 +1911,17 @@
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
   > *:first-child {
-  border-top-left-radius: calc(var(--radius-lg) * 2.45) !important;
-  border-top-right-radius: calc(var(--radius-lg) * 2.45) !important;
+  border-top-left-radius: var(--cursor-shell-stack-radius) !important;
+  border-top-right-radius: var(--cursor-shell-stack-radius) !important;
+  background: var(--cursor-shell-stack-header) !important;
 }
 [data-composer-style="cursor"]
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack
-  > .ensemble-roster-preset-picker.is-compact {
-  border-bottom: 1px solid var(--cursor-shell-border) !important;
+  > *:last-child {
+  border-bottom-left-radius: var(--cursor-shell-stack-radius) !important;
+  border-bottom-right-radius: var(--cursor-shell-stack-radius) !important;
 }
 [data-composer-style="cursor"] .composer-above-bar::before,
 [data-composer-style="cursor"] .ensemble-above-row::before,
@@ -1956,7 +1978,7 @@
   padding: 3px 0;
   background: var(--cursor-shell-surface);
   border: 1px solid var(--cursor-shell-border-strong);
-  border-radius: 26px;
+  border-radius: var(--cursor-shell-capsule-radius);
   box-shadow: inset 0 1px 0 var(--cursor-shell-rim);
   transition: border-color 200ms ease, box-shadow 200ms ease;
   /* 1.0.6-CRUX22 — anchor target for the lifted +/model/send so they

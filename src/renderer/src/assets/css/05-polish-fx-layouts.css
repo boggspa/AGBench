@@ -2831,6 +2831,275 @@
     var(--shadow-md, 0 16px 34px rgb(0 0 0 / 0.2));
 }
 
+/* ----------------------------------------------------------------
+ * Detached-pill above-bar stacks — fan agent-aura to each row.
+ *
+ * On Gemini / Grok / Kimi / Modular / Satellite / Stub / Obsidian /
+ * Alabaster / Terminal (and solo Codex without an ensemble strip),
+ * `.composer-above-bar-stack` is only a gap wrapper: no fill, no
+ * border-radius. Stack-level `.fx-agent-aura` therefore paints a
+ * sharp teal rectangle behind every row. Merged stacks (native
+ * default, Cursor, Codex+ensemble) keep the stack treatment above.
+ * ---------------------------------------------------------------- */
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura {
+  box-shadow: none !important;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura::after,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura::after {
+  display: none !important;
+  content: none !important;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ),
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
+  position: relative;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.28),
+    0 18px 58px rgb(var(--agent-aura-rgb, 87 148 255) / 0.18);
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-running
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-running
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-rgb, 87 148 255) / 0.5),
+    0 22px 68px rgb(var(--agent-aura-rgb, 87 148 255) / 0.24);
+  animation: composer-aura-rim-pulse 2.8s ease-in-out infinite;
+  will-change: opacity;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-approval
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-approval
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-warn-rgb) / 0.5),
+    0 18px 58px rgb(var(--agent-aura-warn-rgb) / 0.2);
+  animation: none;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-failed
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-failed
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  box-shadow:
+    0 0 0 1px rgb(var(--agent-aura-danger-rgb) / 0.42),
+    0 18px 58px rgb(var(--agent-aura-danger-rgb) / 0.2);
+  animation: none;
+}
+:root[data-reduce-motion="true"]
+  :is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="grok"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="satellite"],
+    [data-composer-style="stub"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"],
+    [data-composer-style="terminal"]
+  )
+  .app-transcript
+  .composer-above-bar-stack.fx-agent-aura.fx-status-running
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+:root[data-reduce-motion="true"]
+  [data-composer-style="codex"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-running
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  animation: none;
+  opacity: 0;
+}
+
 /* Active sidebar rows under the agent-aura FX — RIM chrome, NOT the old
  * left "fingernail" sliver (`inset 2px 0 0`). Provider-tinted rim that
  * matches the non-aura `.active` treatment + a soft aura outer glow, so
