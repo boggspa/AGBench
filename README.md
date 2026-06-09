@@ -42,16 +42,26 @@ workspace state on the user's machine.
 
 - **Workspace Safety**: Workspace selection, trust-state visibility, approval
   modes, and run-scoped safety state before agents operate on local files.
-- **Provider Runs**: Integrated run surfaces for supported coding-agent
-  providers, with provider names used only to describe compatible integrations.
-- **Activity Review**: Compact timelines for tool calls, command output,
-  status, durations, and raw event inspection.
+- **Provider Runs**: Integrated run surfaces for Codex, Claude, Gemini, Kimi,
+  Grok, Cursor, and **local Ollama** (curated Qwen, Gemma, and GPT-OSS presets).
+  Provider names describe compatible integrations only — CLIs and accounts stay
+  user-installed.
+- **Ensemble Mode**: Multi-provider single-thread chats with up to six named
+  participants, turn-bound or continuous orchestration, optional parallel fan-out,
+  and TaskWraith MCP tools shared across providers.
+- **Local Ollama**: Tiered workspace tools (read-only through provider parity),
+  optional live web search/fetch, per-model context engineering, and session memory
+  across runs — all policy-gated like cloud providers.
+- **Activity Review**: Live activity viewport for in-flight tools and thinking,
+  compact timelines, durations, and raw event inspection.
 - **Diff Studio**: File-list and diff-detail review for run-scoped changes and
   current workspace changes, including previews for newly created text files.
 - **Local History and Usage**: Local-only chat, run, and usage state for repeat
   work without a hosted backend.
 - **Release Tooling**: Security, dependency, packaging, and signing hooks for
   reproducible local release work.
+
+Current release: **v1.4.4** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Public Source Boundary
 

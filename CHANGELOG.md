@@ -4,6 +4,91 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.4.4 — 2026-06-09
+
+### Added
+- **Ollama context engineering.** Per-model conversation budgets (Qwen 4B vs 9B vs
+  GPT-OSS vs Gemma differ), a pre-run workspace index (shallow file tree + symbol
+  sample), retrieval-first read policy (search before unfamiliar `read_file`),
+  heuristic tool-result summarization, and rolling working-memory compaction after
+  every few tool turns so locals keep generation headroom.
+- **Ollama session continuity.** Pruned tool trajectory (calls + summaries, not full
+  file bodies) persists on each chat and re-injects on the next solo run.
+- **GPT-OSS tool protocol hardening.** Compact tool schemas, one-tool-per-turn,
+  JSON response mode when supported, and few-shot search→read→patch trajectories in
+  the system prompt.
+- **Mid-run Ollama tier guidance.** When a tool exceeds the active tier, the run
+  surfaces a provider warning with the tier to raise instead of failing opaquely.
+- **Ensemble Ollama reliability.** Dynamic transcript budgeting, degenerate-turn
+  retry, compact tool schemas in ensemble runs, composer context-pressure hints,
+  and concurrent fan-out lanes on by default with serial fallback when disabled.
+
+### Changed
+- **Concurrent ensemble lanes** default on (`TASKWRAITH_CONCURRENT_LANES` opt-out).
+- **Ensemble thinking state** survives chat switches without losing the in-flight
+  indicator.
+
+### Fixed
+- **Renderer crash** when reading Ollama feature gates from `process.env` in the
+  packaged app (gates now come from the native capability snapshot).
+- **Ensemble Ollama brand spoofing** no longer clobbers other participants' labels
+  or merges provider assistant deltas into the orchestrator-owned transcript.
+
+## 1.4.3 — 2026-06-09
+
+### Added
+- **Saved ensemble roster presets** with a recall picker above the work-in-folder row.
+- **Role presets and goal brief** in the participant overflow popover; **apply-to-all**
+  permissions control.
+- **External-path grant preflight** in the composer when panelists need signed grants
+  for connected workspaces (Ollama excluded from dispatch issuance).
+- **Paste image/file attachments** into the composer; **Open in Finder** on the
+  workspace picker; dismiss workspaces from the welcome folder row.
+- **Composer context menu** and model-usage resize grip; dedicated git status counts
+  row in the PR popover.
+
+### Changed
+- **Liquid-glass native composer** outer frame; agent aura fans to detached above-bar
+  rows; Satellite shell flattens roster + ensemble rows; Cursor above-rows match the
+  merged frosted instrument frame.
+- **Continuous ensemble mode** max handoff cap raised to 100; welcome ensemble
+  hierarchy provider icons enlarged.
+
+### Fixed
+- **Composer glass/aura** polish on default and native instrument shells (neutral
+  smoked glass, no blue wash on above-bar stacks).
+- **IPC schema** for `shell:reveal-in-finder`; external-path grant preflight types
+  and `deferPersist` preload contract.
+
+## 1.4.2 — 2026-06-08
+
+### Added
+- **Goal-step checklist (`todo_write`).** Universal TaskWraith MCP tool with a
+  compact transcript card and live-viewport pin (Ollama from approved-edits tier).
+- **Ollama local-model tuning.** Per-model preflight, model-aware prompts and
+  compaction, tier suggestions, struggle handoff, health chip, and scout→implementer
+  workflow hint.
+
+### Changed
+- **Live activity viewport** gains overflow-aware top/bottom edge fades and fixed
+  jump/expand overlays while streaming.
+
+## 1.4.1 — 2026-06-08
+
+### Added
+- **Native Ollama tool-calling** via Ollama's `tools` API (structured `tool_calls`
+  instead of JSON-in-prose only).
+- **Cursor-style live activity viewport** for in-flight tool calls and thinking
+  (Settings → Density; on by default).
+- **Cross-provider reasoning notes** — Ollama, Gemini API, and Claude stream
+  internal reasoning as first-class thinking activity.
+
+### Fixed
+- **GPT-OSS empty replies** when answers land in the reasoning channel only.
+- **Tool-intent stubs** and **malformed tool JSON** (tolerant re-parse + re-prompt
+  instead of leaking protocol blobs to the user).
+- **Multi-step Ollama tool loops** — raised cap and clearer follow-up prompting.
+
 ## 1.4.0 — 2026-06-08
 
 ### Added
