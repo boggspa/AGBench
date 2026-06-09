@@ -360,6 +360,7 @@
     inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 24%, rgba(255, 255, 255, 0.12)),
     inset 0 0 10px color-mix(in srgb, var(--text-primary) 6%, transparent),
     0 4px 14px rgba(0, 0, 0, 0.1);
+  --chat-corner-segment-divider: color-mix(in srgb, var(--text-primary) 16%, transparent);
 }
 
 .chat-corner-controls-right {
@@ -383,7 +384,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--chat-corner-segment-divider);
   pointer-events: none;
   z-index: 2;
 }
