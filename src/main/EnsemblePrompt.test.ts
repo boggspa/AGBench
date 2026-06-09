@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildDupProviderModelLabels,
   buildEnsembleParticipantPrompt,
   buildParticipantTokenMap,
   formatRoundModeInstructions,
@@ -326,11 +327,14 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('refer to the active workspace named in `Round subject:`')
   })
 
-  it('1.0.5-EW18: rules block tells agents to prefer @Role / @Model over @provider', () => {
+  it('1.0.5-EW18: rules block tells agents to address by @Role / @Model over @provider', () => {
     // Regression for the same shape — even without models on the
     // panel, the rules section must include the directive nudging
     // agents away from bare provider names when alternatives
-    // exist.
+    // exist. (1.0.7 sharpened "prefer" into an imperative
+    // address-by-name rule; this match tracks the new phrasing
+    // without locking exact wording — resilient to copy edits,
+    // just not to deletion.)
     const prompt = buildEnsembleParticipantPrompt({
       chat: chat(),
       config: ensemble,
@@ -338,10 +342,8 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'Please review this.',
       roundId: 'round-1'
     })
-    // The new rule line. Match the role-name + model-name
-    // phrasing without locking the exact wording — we want this
-    // resilient to future copy edits, just not to deletion.
-    expect(prompt).toMatch(/prefer.*role name.*model name/i)
+    expect(prompt).toMatch(/address participants by their.*\(role\) name.*model name/i)
+    expect(prompt).toMatch(/do not address peers by bare provider name/i)
     expect(prompt).toMatch(/bare provider name.*non-deterministic/i)
   })
 
@@ -1260,5 +1262,149 @@ describe('Ollama ensemble prompt budgeting', () => {
     expect(prompt).toContain('TaskWraith gives you real workspace tools')
     expect(prompt).toContain('compacted for your local context window')
     expect(prompt).toContain('TaskWraith local-scout workflow')
+  })
+})
+
+describe('Same-provider duplicate panels carry model labels (1.0.7)', () => {
+  // Two Gemini seats + one Claude seat. Pre-change every identity surface
+  // showed `Gemini / <Role>` for both Gemini participants — agents mirrored
+  // the blur back as ambiguous `@gemini` tags. Now the self-label, roster
+  // lines, and transcript tags all carry the short model label for
+  // duplicated-provider seats, so the unambiguous addressing form is the
+  // one agents read, not just a rule they're told.
+  const dupEnsemble: EnsembleConfig = {
+    enabled: true,
+    maxParticipants: 4,
+    participants: [
+      {
+        id: 'gem-a',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only',
+        model: 'gemini-2.5-flash'
+      },
+      {
+        id: 'gem-b',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Critic',
+        instructions: 'Critique.',
+        order: 2,
+        permissionPresetId: 'read_only',
+        model: 'gemini-2.5-pro'
+      },
+      {
+        id: 'claude-solo',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 3,
+        permissionPresetId: 'read_only',
+        model: 'claude-sonnet-4-6'
+      }
+    ]
+  }
+
+  function dupChat(): ChatRecord {
+    return {
+      appChatId: 'chat-dup',
+      chatKind: 'ensemble',
+      scope: 'workspace',
+      provider: 'gemini',
+      title: 'Ensemble',
+      workspaceId: 'ws-1',
+      workspacePath: '/repo',
+      createdAt: 1,
+      updatedAt: 1,
+      archived: false,
+      messages: [
+        { id: 'u1', role: 'user', content: 'Go', timestamp: '2026-06-09T00:00:00.000Z' },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: 'Research findings',
+          timestamp: '2026-06-09T00:00:01.000Z',
+          metadata: {
+            ensembleProvider: 'gemini',
+            ensembleRole: 'Researcher',
+            ensembleParticipantId: 'gem-a'
+          }
+        }
+      ],
+      runs: [],
+      ensemble: dupEnsemble
+    }
+  }
+
+  it('roster lines + self-label carry the model for duplicated-provider seats only', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: dupChat(),
+      config: dupEnsemble,
+      participant: dupEnsemble.participants[0],
+      currentPrompt: 'Proceed.',
+      roundId: 'round-dup',
+      chatContextTurns: 4
+    })
+    // Self-label: `You are Gemini / Researcher (2.5 Flash) #p…`
+    expect(prompt).toMatch(/You are Gemini \/ Researcher \(2\.5 Flash\) #p\d/)
+    // Both Gemini roster lines disambiguate by model…
+    expect(prompt).toMatch(/Gemini \/ Researcher \(2\.5 Flash\) #p\d/)
+    expect(prompt).toMatch(/Gemini \/ Critic \(2\.5 Pro\) #p\d/)
+    // …while the solo Claude seat stays clean (no noise where unambiguous).
+    expect(prompt).toMatch(/Claude \/ Reviewer #p\d/)
+    expect(prompt).not.toMatch(/Claude \/ Reviewer \(/)
+  })
+
+  it('transcript tags carry the model label for duplicated-provider authors', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: dupChat(),
+      config: dupEnsemble,
+      participant: dupEnsemble.participants[1],
+      currentPrompt: 'Critique it.',
+      roundId: 'round-dup',
+      chatContextTurns: 4
+    })
+    expect(prompt).toMatch(/\[Gemini \/ Researcher \(2\.5 Flash\) #p\d\]/)
+  })
+
+  it('states the imperative address-by-name rule with provider tags as the exception', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: dupChat(),
+      config: dupEnsemble,
+      participant: dupEnsemble.participants[0],
+      currentPrompt: 'Proceed.',
+      roundId: 'round-dup',
+      chatContextTurns: 4
+    })
+    expect(prompt).toContain('Address participants by their **participant (role) name**')
+    expect(prompt).toContain(
+      'Do NOT address peers by bare provider name (`@gemini`, `@claude`) unless that provider has exactly one participant on this panel'
+    )
+  })
+
+  it('buildDupProviderModelLabels maps only duplicated providers, skipping cli-default', () => {
+    const labels = buildDupProviderModelLabels([
+      ...dupEnsemble.participants,
+      {
+        id: 'gem-c',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Scout',
+        instructions: 'Scout.',
+        order: 4,
+        permissionPresetId: 'read_only',
+        model: 'cli-default'
+      }
+    ])
+    expect(labels.get('gem-a')).toBe('2.5 Flash')
+    expect(labels.get('gem-b')).toBe('2.5 Pro')
+    // cli-default has no useful label — the seat keeps its bare form.
+    expect(labels.has('gem-c')).toBe(false)
+    // Solo-provider seats are never labelled.
+    expect(labels.has('claude-solo')).toBe(false)
   })
 })

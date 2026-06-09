@@ -226,9 +226,20 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // why the `#`-prefixed token is resolver-safe.
   const participantTokens = buildParticipantTokenMap(input.config.participants)
   const selfToken = participantTokens.get(input.participant.id)
+  // 1.0.7 — same-provider identity sharpening. When a provider fields 2+
+  // participants, `Provider / Role` stops being a distinguishing identity
+  // (worst case both seats read `Gemini / Participant`) and agents mirror
+  // the blur back as `@gemini` tags. For exactly that case, thread the
+  // short model label through every surface where identity appears — the
+  // self-label, the roster lines, and the transcript tags — so the
+  // unambiguous addressing forms are also the ones agents SEE, not just
+  // the ones a rule tells them about. Single-provider-per-seat panels are
+  // byte-identical to before (no extra noise where there's no ambiguity).
+  const dupProviderModelLabels = buildDupProviderModelLabels(input.config.participants)
+  const selfModelLabel = dupProviderModelLabels.get(input.participant.id)
   const participantLabel = `${providerLabel(input.participant.provider)} / ${input.participant.role || 'Participant'}${
-    selfToken ? ` #${selfToken}` : ''
-  }`
+    selfModelLabel ? ` (${selfModelLabel})` : ''
+  }${selfToken ? ` #${selfToken}` : ''}`
   const orchestrationMode =
     input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
   const activeConcurrentMode = Boolean(input.config.activeRound?.concurrentMode)
@@ -348,7 +359,11 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
       // tie a renamed seat back to its earlier frozen-role messages.
       const rosterToken = participantTokens.get(participant.id)
       const tokenSuffix = rosterToken ? ` #${rosterToken}` : ''
-      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${tokenSuffix}${marker}${hint}`
+      // Same-provider duplicate → surface the model inline so the roster
+      // line itself disambiguates (mirrors the transcript tag form).
+      const dupModelLabel = dupProviderModelLabels.get(participant.id)
+      const modelSuffix = dupModelLabel ? ` (${dupModelLabel})` : ''
+      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${modelSuffix}${tokenSuffix}${marker}${hint}`
     })
     .join('\n')
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
@@ -377,7 +392,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     input.chat.messages || [],
     ollamaTranscriptBudget?.contextTurns ?? input.chatContextTurns ?? 6,
     participantTokens,
-    ollamaTranscriptBudget?.contextChars ?? input.config.ensembleContextChars
+    ollamaTranscriptBudget?.contextChars ?? input.config.ensembleContextChars,
+    dupProviderModelLabels
   )
 
   return [
@@ -431,10 +447,16 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // @gemini, @gemini" addresses that resolved non-
     // deterministically. The role and model forms are
     // unambiguous and route directly to the intended participant.
-    // Provider name as a fallback still works for single-provider-
-    // per-role panels — we mention it last so agents don't think
-    // it's banned, just deprecated.
-    '- When tagging another participant, prefer the **role name** (e.g. `@Farmer`, `@Merchant`) or the **model name** (e.g. `@Sonnet 4.6`, `@Flash Lite`) shown in the roster — both forms route deterministically to the specific participant you mean. Use the bare provider name (`@gemini`, `@claude`) only when the panel has just one participant from that provider; with multiple same-provider participants the bare provider name resolves non-deterministically and your message may reach the wrong panelist.',
+    // 1.0.7 — sharpened from "prefer X / use provider only when" to
+    // an imperative address-by-name rule with provider tags framed
+    // as the exception. The polite form still left agents reaching
+    // for provider tags whenever a panel felt simple; pairing the
+    // imperative with the model-labelled roster/transcript tags
+    // (same slice) closes the gap between what the rule says and
+    // what the prompt visually models. Provider tags stay legal for
+    // the genuinely unambiguous case so agents don't treat them as
+    // banned, just exceptional.
+    '- Address participants by their **participant (role) name** (e.g. `@Farmer`, `@Merchant`) or **model name** (e.g. `@Sonnet 4.6`, `@Flash Lite`) exactly as shown in the roster — these route deterministically to the participant you mean. Do NOT address peers by bare provider name (`@gemini`, `@claude`) unless that provider has exactly one participant on this panel: with same-provider peers a provider tag resolves non-deterministically and your message may reach the wrong panelist.',
     '- If another participant should handle this turn, call ensemble_yield with a short reason and optional target.',
     '- Use ensemble_fanout when multiple peers should work in parallel. Default read_only fan-out only targets read-only participants; locked_writers fan-out is feature-gated and relies on workspace write locks.',
     '- Use blackboard_post only for durable shared facts, decisions, risks, or do-not-repeat notes. Do not use the blackboard for conversational side messages.',
@@ -752,7 +774,8 @@ function buildTaggedTranscript(
   messages: ChatMessage[],
   contextTurns: number,
   participantTokens?: Map<string, string>,
-  contextChars?: number
+  contextChars?: number,
+  modelLabels?: Map<string, string>
 ): string {
   // Total shared-transcript char budget — user-adjustable per ensemble
   // (5K–500K via the Turn picker); falls back to the default cap. This is the
@@ -776,7 +799,7 @@ function buildTaggedTranscript(
   let truncated = false
   for (let i = relevant.length - 1; i >= 0; i--) {
     const message = relevant[i]
-    const tag = messageTag(message, participantTokens)
+    const tag = messageTag(message, participantTokens, modelLabels)
     // M6 (1.0.7) — thinking-ephemerality. Strip any inlined reasoning chain
     // from a message authored by an ephemeral-reasoning provider before it
     // enters FUTURE-round context, keyed on the message's own authoring
@@ -808,7 +831,11 @@ function buildTaggedTranscript(
   return lines.join('\n\n')
 }
 
-function messageTag(message: ChatMessage, participantTokens?: Map<string, string>): string {
+function messageTag(
+  message: ChatMessage,
+  participantTokens?: Map<string, string>,
+  modelLabels?: Map<string, string>
+): string {
   if (message.role === 'user') return 'User'
   if (message.role === 'assistant') {
     const provider = message.metadata?.ensembleProvider as ProviderId | undefined
@@ -828,7 +855,14 @@ function messageTag(message: ChatMessage, participantTokens?: Map<string, string
           : ''
       const token = participantId ? participantTokens?.get(participantId) : undefined
       const tokenSuffix = token ? ` #${token}` : ''
-      return `${providerLabel(provider)}${role ? ` / ${role}` : ''}${tokenSuffix}`
+      // Same-provider duplicate on the CURRENT roster → include the model
+      // label so transcript tags model the addressing form we want agents
+      // to use (`@<model>` resolves; the bare provider tag is ambiguous).
+      // Agents mimic what they read far more reliably than what a rule
+      // tells them — make the unambiguous identity the visible one.
+      const modelLabel = participantId ? modelLabels?.get(participantId) : undefined
+      const modelSuffix = modelLabel ? ` (${modelLabel})` : ''
+      return `${providerLabel(provider)}${role ? ` / ${role}` : ''}${modelSuffix}${tokenSuffix}`
     }
     return 'Assistant'
   }
@@ -947,6 +981,41 @@ export function providerLabel(provider: ProviderId): string {
  * single-provider-per-role ensembles (the 1.0.3 common case) see
  * no extra prompt overhead.
  */
+/**
+ * 1.0.7 — per-participant model labels for same-provider-duplicate panels.
+ *
+ * Keyed on participant id, populated ONLY for participants whose provider
+ * fields 2+ roster seats (the case where `Provider / Role` stops being a
+ * distinguishing identity). Threaded into the self-label, roster lines, and
+ * transcript tags so the model name — the unambiguous @-addressing form —
+ * is the identity agents actually SEE, instead of an abstract rule. Built
+ * from the FULL roster (like `buildParticipantTokenMap`) so a message from
+ * a since-disabled participant still resolves its label. Uses the same
+ * `shortModelLabel` form as the disambiguation note + composer chips, so
+ * every surface suggests an identical, resolver-valid spelling. Empty for
+ * single-provider-per-seat panels — those prompts stay byte-identical.
+ */
+export function buildDupProviderModelLabels(
+  participants: readonly EnsembleParticipant[] | undefined
+): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!participants || participants.length === 0) return map
+  const byProvider = new Map<ProviderId, EnsembleParticipant[]>()
+  for (const participant of participants) {
+    const group = byProvider.get(participant.provider)
+    if (group) group.push(participant)
+    else byProvider.set(participant.provider, [participant])
+  }
+  for (const [provider, group] of byProvider) {
+    if (group.length < 2) continue
+    for (const participant of group) {
+      const label = shortModelLabel(provider, participant.model)
+      if (label) map.set(participant.id, label)
+    }
+  }
+  return map
+}
+
 export function formatSameProviderDisambiguationNote(participants: EnsembleParticipant[]): string {
   const groups = new Map<ProviderId, EnsembleParticipant[]>()
   for (const p of participants) {
