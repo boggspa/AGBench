@@ -970,18 +970,64 @@
   :is(.composer-workspace-access-inline, .composer-workspace-access) {
   order: 65;
 }
-:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-secondary-access {
+/* Direct-child only — nested copies inside `.composer-above-bar-trailing-cluster`
+ * keep DOM order + the cluster's own order ladder below. */
+:not([data-composer-style="cursor"]) .composer-above-bar > .composer-above-bar-secondary-access {
   order: 70;
   margin-left: 0;
 }
-:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-secondary-revoke {
+:not([data-composer-style="cursor"]) .composer-above-bar > .composer-above-bar-secondary-revoke {
   order: 75;
 }
-:not([data-composer-style="cursor"]) .composer-above-bar .composer-diff-action-menu-wrap {
+:not([data-composer-style="cursor"]) .composer-above-bar > .composer-diff-action-menu-wrap {
   order: 80;
 }
 :not([data-composer-style="cursor"]) .composer-above-bar-secondary .composer-diff-action-menu-wrap {
   margin-left: 0;
+}
+
+.composer-above-bar-center-cluster,
+.composer-above-bar-trailing-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.composer-above-bar-center-cluster {
+  order: 30;
+}
+.composer-above-bar-trailing-cluster {
+  order: 70;
+}
+.composer-above-bar-center-cluster .composer-above-bar-files,
+.composer-above-bar-center-cluster .composer-above-bar-stats {
+  margin-left: 0;
+  margin-right: 0;
+}
+/* DOM order inside trailing cluster: action → access → revoke.
+ * !important beats the global 70/75/80 order ladder on secondary rows. */
+.composer-above-bar-trailing-cluster > * {
+  margin-left: 0;
+  margin-right: 0;
+}
+.composer-above-bar-trailing-cluster .composer-diff-action-menu-wrap {
+  order: 1 !important;
+}
+.composer-above-bar-trailing-cluster .composer-above-bar-secondary-access {
+  order: 2 !important;
+}
+.composer-above-bar-trailing-cluster .composer-above-bar-secondary-revoke {
+  order: 3 !important;
+}
+/* When display:contents fails, pill wrappers still sort correctly. */
+.composer-above-bar-pill--git {
+  order: 10;
+}
+.composer-above-bar-pill--changes {
+  order: 30;
+}
+.composer-above-bar-pill--action {
+  order: 80;
 }
 
 .composer-above-bar-files {

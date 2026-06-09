@@ -291,60 +291,28 @@ export function ExternalPathAboveRow({
     access: effectiveAccess
   })
 
-  return (
-    <div
-      className="composer-above-bar composer-above-bar-secondary style-unified"
-      data-external-path-grant-id={grant.id}
-      data-external-path-is-repo={descriptor.isRepo ? 'true' : 'false'}
-      title={`${grant.path}\n\n${originTooltip}`}
-    >
-      <span className="composer-above-bar-branch">
-        {descriptor.isRepo ? <BranchGlyph /> : <FileGlyph />}
-        <span>
-          {descriptor.basename}
-          {descriptor.isRepo && (snapshot?.branch || descriptor.branch) ? (
-            <>
-              {' · '}
-              <em
-                className={`composer-above-bar-secondary-branch git-tone-${branchTone(
-                  snapshot?.detached ? undefined : (snapshot?.branch ?? descriptor.branch),
-                  snapshot?.detached ?? false
-                )}`}
-              >
-                {snapshot?.detached ? 'detached HEAD' : snapshot?.branch || descriptor.branch}
-              </em>
-            </>
-          ) : null}
-        </span>
-      </span>
-      {snapshot && <GitMergeBadge snapshot={snapshot} />}
-      {snapshot && <GitSyncChip snapshot={snapshot} />}
-      {hasDiff && (
-        <>
-          <span
-            className="composer-above-bar-files"
-            title={`${diffStats!.filesChanged} ${
-              diffStats!.filesChanged === 1 ? 'file' : 'files'
-            } changed in this path`}
-          >
-            <strong>{diffStats!.filesChanged}</strong>{' '}
-            {diffStats!.filesChanged === 1 ? 'file changed' : 'files changed'}
-          </span>
-          {(diffStats!.additions > 0 || diffStats!.deletions > 0) && (
-            <span className="composer-above-bar-stats">
-              <span className="composer-diff-add">+{diffStats!.additions}</span>
-              <span className="composer-diff-del">-{diffStats!.deletions}</span>
-            </span>
-          )}
-        </>
-      )}
+  const diffCluster = hasDiff ? (
+    <span className="composer-above-bar-center-cluster">
       <span
-        className="composer-above-bar-secondary-access composer-above-bar-secondary-access-icon"
-        title={`${isWrite ? 'Edit' : 'Read'} access — ${originTooltip}`}
-        aria-label={isWrite ? 'Edit access' : 'Read access'}
+        className="composer-above-bar-files"
+        title={`${diffStats!.filesChanged} ${
+          diffStats!.filesChanged === 1 ? 'file' : 'files'
+        } changed in this path`}
       >
-        {isWrite ? <WriteGlyph /> : <ReadGlyph />}
+        <strong>{diffStats!.filesChanged}</strong>{' '}
+        {diffStats!.filesChanged === 1 ? 'file changed' : 'files changed'}
       </span>
+      {(diffStats!.additions > 0 || diffStats!.deletions > 0) && (
+        <span className="composer-above-bar-stats">
+          <span className="composer-diff-add">+{diffStats!.additions}</span>
+          <span className="composer-diff-del">-{diffStats!.deletions}</span>
+        </span>
+      )}
+    </span>
+  ) : null
+
+  const trailingCluster = (
+    <span className="composer-above-bar-trailing-cluster">
       {showRepoActions && (
         <span className="composer-diff-action-menu-wrap">
           <button
@@ -378,6 +346,13 @@ export function ExternalPathAboveRow({
           )}
         </span>
       )}
+      <span
+        className="composer-above-bar-secondary-access composer-above-bar-secondary-access-icon"
+        title={`${isWrite ? 'Edit' : 'Read'} access — ${originTooltip}`}
+        aria-label={isWrite ? 'Edit access' : 'Read access'}
+      >
+        {isWrite ? <WriteGlyph /> : <ReadGlyph />}
+      </span>
       <button
         type="button"
         className="composer-above-bar-secondary-revoke"
@@ -387,6 +362,43 @@ export function ExternalPathAboveRow({
       >
         <RevokeGlyph />
       </button>
+    </span>
+  )
+
+  return (
+    <div
+      className="composer-above-bar composer-above-bar-secondary style-unified"
+      data-external-path-grant-id={grant.id}
+      data-external-path-is-repo={descriptor.isRepo ? 'true' : 'false'}
+      title={`${grant.path}\n\n${originTooltip}`}
+    >
+      <div className="composer-above-bar-pill composer-above-bar-pill--git">
+        <span className="composer-above-bar-branch">
+          {descriptor.isRepo ? <BranchGlyph /> : <FileGlyph />}
+          <span>
+            {descriptor.basename}
+            {descriptor.isRepo && (snapshot?.branch || descriptor.branch) ? (
+              <>
+                {' · '}
+                <em
+                  className={`composer-above-bar-secondary-branch git-tone-${branchTone(
+                    snapshot?.detached ? undefined : (snapshot?.branch ?? descriptor.branch),
+                    snapshot?.detached ?? false
+                  )}`}
+                >
+                  {snapshot?.detached ? 'detached HEAD' : snapshot?.branch || descriptor.branch}
+                </em>
+              </>
+            ) : null}
+          </span>
+        </span>
+        {snapshot && <GitMergeBadge snapshot={snapshot} />}
+        {snapshot && <GitSyncChip snapshot={snapshot} />}
+      </div>
+      {hasDiff ? (
+        <div className="composer-above-bar-pill composer-above-bar-pill--changes">{diffCluster}</div>
+      ) : null}
+      <div className="composer-above-bar-pill composer-above-bar-pill--action">{trailingCluster}</div>
     </div>
   )
 }
