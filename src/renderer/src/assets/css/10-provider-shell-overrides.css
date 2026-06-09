@@ -2425,8 +2425,20 @@
   top: auto !important;
   right: auto !important;
   left: auto !important;
+  /* Strip shell-specific model-pill chrome (e.g. Gemini blue tier pill)
+   * so the nested trigger inherits the guest provider tint from
+   * `.composer-guest-control.provider-*` instead. */
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  min-height: unset !important;
+  border-radius: 0 !important;
   color: var(--guest-accent) !important;
   z-index: auto !important;
+}
+
+.composer-guest-control [data-composer-control="model"]:hover {
+  background: transparent !important;
 }
 
 .composer-guest-control

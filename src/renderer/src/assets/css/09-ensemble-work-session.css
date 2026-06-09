@@ -655,6 +655,9 @@
 .ensemble-above-chip.provider-cursor[data-linked-session="true"]::after {
   background: var(--provider-cursor-color, var(--accent));
 }
+.ensemble-above-chip.provider-ollama[data-linked-session="true"]::after {
+  background: var(--provider-ollama-color, var(--accent));
+}
 
 .ensemble-above-chip-body {
   display: flex;
@@ -923,6 +926,9 @@
 }
 .ensemble-above-chip.provider-cursor .ensemble-above-chip-role {
   color: var(--provider-cursor-color);
+}
+.ensemble-above-chip.provider-ollama .ensemble-above-chip-role {
+  color: var(--provider-ollama-color);
 }
 
 /* Neutralise the per-provider chip-border overrides — the chip
