@@ -79,6 +79,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'geminiMcpBridgeEnabled',
   'geminiMcpBridgeLastStatus',
   'bridgeDaemonEnabled',
+  'localServersDetachSpawns',
+  'localServersStopOnQuit',
   'messageBridgeEnabled',
   'messageBridgePollIntervalMs',
   'codexSandboxFallback',
@@ -943,6 +945,14 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     if ('bridgeDaemonEnabled' in sanitized) {
       const value = sanitized.bridgeDaemonEnabled
       sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
+    }
+    if ('localServersDetachSpawns' in sanitized) {
+      const value = sanitized.localServersDetachSpawns
+      sanitized.localServersDetachSpawns = typeof value === 'boolean' ? value : Boolean(value)
+    }
+    if ('localServersStopOnQuit' in sanitized) {
+      const value = sanitized.localServersStopOnQuit
+      sanitized.localServersStopOnQuit = typeof value === 'boolean' ? value : Boolean(value)
     }
     if ('messageBridgeEnabled' in sanitized) {
       const value = sanitized.messageBridgeEnabled

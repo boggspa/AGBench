@@ -50,6 +50,7 @@ import {
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
+import type { LocalServersSnapshot } from '../main/localServers/types'
 import type { NativeCapabilitySnapshot } from '../main/NativeCapabilities'
 import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 import type { AppShellStatsSnapshot } from '../main/services/AppShellStatsService'
@@ -597,6 +598,11 @@ declare global {
       changelogSnapshot: () => Promise<ProductChangelogSnapshot>
       markChangelogSeen: (version: string) => Promise<ProductChangelogSnapshot>
       onUpdateStatusChanged: (callback: (snapshot: UpdateStateSnapshot) => void) => () => void
+      localServersSnapshot: () => Promise<LocalServersSnapshot>
+      localServersRefresh: () => Promise<LocalServersSnapshot>
+      localServersStop: (pid: number) => Promise<{ ok: boolean }>
+      localServersStopAll: () => Promise<{ stopped: number }>
+      onLocalServersChanged: (callback: (snapshot: LocalServersSnapshot) => void) => () => void
       bridgeNetworkingStatus: () => Promise<{
         lan: {
           enabled: boolean

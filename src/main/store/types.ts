@@ -1558,6 +1558,12 @@ export interface AppSettings {
    */
   approvalModeElevationAcknowledgements?: Record<string, boolean>
   bridgeDaemonEnabled?: boolean
+  /** Local Servers — run agent shell commands in their own process group so the
+   * Local Servers panel can group-kill the whole tree on Stop. Off by default. */
+  localServersDetachSpawns?: boolean
+  /** Local Servers — stop agent-spawned servers still running when TaskWraith
+   * quits. Off by default. */
+  localServersStopOnQuit?: boolean
   /** Local macOS Messages.app bridge polling. Off by default; when enabled,
    * main polls allowlisted iMessage bindings through the local bridge daemon. */
   messageBridgeEnabled?: boolean

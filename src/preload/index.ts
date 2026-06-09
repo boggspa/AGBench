@@ -478,6 +478,18 @@ const api = {
     ipcRenderer.on('update-status-changed', listener)
     return () => ipcRenderer.removeListener('update-status-changed', listener)
   },
+
+  // Local Servers — dev servers/watchers running under the user's workspaces.
+  localServersSnapshot: () => ipcRenderer.invoke('local-servers-snapshot'),
+  localServersRefresh: () => ipcRenderer.invoke('local-servers-refresh'),
+  localServersStop: (pid: number) => ipcRenderer.invoke('local-servers-stop', pid),
+  localServersStopAll: () => ipcRenderer.invoke('local-servers-stop-all'),
+  onLocalServersChanged: (callback: (snapshot: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown): void =>
+      callback(snapshot)
+    ipcRenderer.on('local-servers-changed', listener)
+    return () => ipcRenderer.removeListener('local-servers-changed', listener)
+  },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
   bridgeBeginPairing: (displayName?: string) =>

@@ -146,6 +146,24 @@ describe('MainSanitizers settings patches', () => {
     })
   })
 
+  it('sanitizes the local-servers lifecycle toggles', () => {
+    const settings = makeSettings()
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+    const sanitized = sanitizeSettingsPatch({
+      localServersDetachSpawns: true,
+      localServersStopOnQuit: true
+    })
+    expect(sanitized.localServersDetachSpawns).toBe(true)
+    expect(sanitized.localServersStopOnQuit).toBe(true)
+    // Non-booleans coerce to real booleans.
+    const coerced = sanitizeSettingsPatch({
+      localServersDetachSpawns: 1 as unknown as boolean,
+      localServersStopOnQuit: 0 as unknown as boolean
+    })
+    expect(coerced.localServersDetachSpawns).toBe(true)
+    expect(coerced.localServersStopOnQuit).toBe(false)
+  })
+
   it('sanitizes changelog persistence settings', () => {
     const settings = makeSettings()
     const { sanitizeSettingsPatch } = makeSanitizers(settings)

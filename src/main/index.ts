@@ -196,6 +196,8 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { LocalServersService } from './LocalServersService'
+import { SpawnRegistry } from './localServers/SpawnRegistry'
 import { getNativeCapabilitySnapshot } from './NativeCapabilities'
 import { AuditService } from './services/AuditService'
 import {
@@ -841,6 +843,10 @@ let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
 let sessionCheckpointStoreRef: SessionCheckpointStore | null = null
 let updateServiceRef: UpdateService | null = null
+let localServersServiceRef: LocalServersService | null = null
+/** Processes TaskWraith spawns for agent tool calls — tracked so the Local
+ * Servers panel can attribute them and group-kill them cleanly. */
+const spawnRegistry = new SpawnRegistry()
 let faviconServiceRef: FaviconService | null = null
 // 1.0.5-EW37 — Solo-chat wakeup service. Extends the Phase N
 // wakeup infrastructure off the ensemble-only path so a solo chat
@@ -3722,6 +3728,11 @@ function runHostCommand(
     let settled = false
     let child: ChildProcess
     const commandText = codexCommandText(command)
+    // When enabled (Settings → Local servers), run agent commands in their own
+    // process group so the Local Servers panel can group-kill the whole tree
+    // (npm → node → workers), not just the wrapper. Default off — does not
+    // change the blocking/await + timeout contract below.
+    const detachSpawns = AppStore.getSettings().localServersDetachSpawns === true
 
     try {
       if (Array.isArray(command) && command.length > 0) {
@@ -3729,6 +3740,8 @@ function runHostCommand(
         child = spawn(binary, args, {
           cwd,
           shell: false,
+          detached: detachSpawns,
+          windowsHide: true,
           env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, binary)
         })
       } else {
@@ -3741,6 +3754,8 @@ function runHostCommand(
         child = spawn(shellCommand, shellArgs, {
           cwd,
           shell: false,
+          detached: detachSpawns,
+          windowsHide: true,
           env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, shellCommand)
         })
       }
@@ -3756,10 +3771,35 @@ function runHostCommand(
       return
     }
 
+    // Track the spawn so the Local Servers panel can attribute + reap any
+    // long-running server it (or a descendant) leaves behind. Untracked the
+    // moment this command settles.
+    if (child.pid) {
+      spawnRegistry.track({
+        pid: child.pid,
+        pgid: detachSpawns ? child.pid : undefined,
+        startedAt: new Date().toISOString(),
+        workspacePath: cwd
+      })
+    }
+    const untrackChild = (): void => {
+      if (child?.pid) spawnRegistry.untrack(child.pid)
+    }
+
     const timeout = setTimeout(() => {
       if (settled) return
       settled = true
-      child.kill('SIGTERM')
+      untrackChild()
+      if (detachSpawns && child.pid) {
+        // Group-kill the whole tree the detached spawn leads.
+        try {
+          process.kill(-child.pid, 'SIGTERM')
+        } catch {
+          child.kill('SIGTERM')
+        }
+      } else {
+        child.kill('SIGTERM')
+      }
       resolveRun({
         stdout,
         stderr,
@@ -3782,6 +3822,7 @@ function runHostCommand(
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      untrackChild()
       resolveRun({
         stdout,
         stderr,
@@ -3795,6 +3836,7 @@ function runHostCommand(
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      untrackChild()
       resolveRun({
         stdout,
         stderr,
@@ -13839,6 +13881,20 @@ if (isGeminiMcpBridgeProcess) {
     app.on('will-quit', () => {
       stopMessageChannelPolling()
       stopBridgeDaemon()
+      localServersServiceRef?.stop()
+      // Opt-in (Settings → Local servers): tidy up agent-spawned servers still
+      // running when TaskWraith quits. Synchronous best-effort so it completes
+      // before the process exits; scoped strictly to processes we spawned.
+      if (AppStore.getSettings().localServersStopOnQuit === true) {
+        for (const tracked of spawnRegistry.list()) {
+          try {
+            const target = tracked.pgid && tracked.pgid > 0 ? -tracked.pgid : tracked.pid
+            process.kill(target, 'SIGTERM')
+          } catch {
+            // Already gone — ignore.
+          }
+        }
+      }
     })
 
     const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
@@ -13939,6 +13995,37 @@ if (isGeminiMcpBridgeProcess) {
       channel: initialSettings.updateChannel,
       enabled: autoUpdateEnabled
     })
+
+    // Local Servers — detect dev servers/watchers running under the user's
+    // workspaces (and the ones our agents spawned) so the user can see + stop
+    // them. Polls in the background and broadcasts snapshots to the renderer.
+    const localServersService = new LocalServersService({
+      getWorkspaces: () =>
+        AppStore.getWorkspaces().map((workspace) => ({
+          id: workspace.id,
+          path: workspace.path,
+          displayName: workspace.displayName
+        })),
+      getTracked: () => spawnRegistry.list(),
+      platform: process.platform,
+      log: (line) => console.log(line)
+    })
+    localServersServiceRef = localServersService
+    localServersService.subscribe((snapshot) => {
+      try {
+        mainWindow?.webContents.send('local-servers-changed', snapshot)
+      } catch {
+        // Window may be gone — ignore.
+      }
+    })
+    localServersService.start()
+    ipcMain.handle('local-servers-snapshot', () => localServersService.snapshot())
+    ipcMain.handle('local-servers-refresh', () => localServersService.refreshNow())
+    ipcMain.handle('local-servers-stop', (_event, pid) =>
+      localServersService.stopServer(Number(pid))
+    )
+    ipcMain.handle('local-servers-stop-all', () => localServersService.stopAll())
+
     const updateSnapshotToChangelog = (
       snapshot: UpdateStateSnapshot
     ): ProductUpdateChangelog | undefined => {
