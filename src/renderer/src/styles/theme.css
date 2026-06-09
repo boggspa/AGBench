@@ -79,12 +79,11 @@
   --theme-gradient-sidebar:
     radial-gradient(ellipse at 0% 8%, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-strong), transparent), transparent 48%),
     linear-gradient(180deg, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-soft), transparent), transparent 46%);
-  /* Transcript pane: a subtle top vertical wash ONLY. The two radial edge
-   * washes — blue-left (`ellipse at 7% 0%`, chroma-1) + warm-right
-   * (`ellipse at 94% 18%`, chroma-2) — painted persistent blue/red side glows
-   * on the main pane (unrelated to Agent Aura / weather) and were removed. */
-  --theme-gradient-transcript:
-    linear-gradient(180deg, color-mix(in srgb, var(--theme-chroma-3) 7%, transparent), transparent 38%);
+  /* Transcript pane — flat fill only. Prior versions stacked radial side
+   * washes (chroma-1 left / chroma-2 right, commit 969fd730) plus a top
+   * vertical wash (chroma-3); all dropped so theme tint does not compete
+   * with weather / FX on the main reading surface. */
+  --theme-gradient-transcript: none;
   --theme-gradient-panel:
     radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-medium), transparent), transparent 48%),
     linear-gradient(160deg, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-soft), transparent), transparent 56%);
