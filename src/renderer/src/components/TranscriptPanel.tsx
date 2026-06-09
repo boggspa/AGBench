@@ -1054,7 +1054,9 @@ export const TranscriptPanel = memo(
                       }
                       if (msg.role === 'assistant' || isGuestReply) {
                         const { label, provider, providerClass, modelBadge } =
-                          formatAssistantMessageLabel(msg, currentProviderLabel, currentProvider)
+                          formatAssistantMessageLabel(msg, currentProviderLabel, currentProvider, {
+                            isEnsembleChat: currentChat?.chatKind === 'ensemble'
+                          })
                         // 1.0.7 — participant-rename continuity. The
                         // header keeps the FROZEN role label; this quiet
                         // badge tells the reader the seat has since been

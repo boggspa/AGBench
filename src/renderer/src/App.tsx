@@ -8740,6 +8740,15 @@ function App(): React.JSX.Element {
             // Handled manually before run
           } else if (event.type === 'assistant_message_delta') {
             if (isVisibleRunChat()) setIsThinking(false)
+            // Ensemble transcripts are materialised by EnsembleOrchestrator
+            // (`flushRun` → chat-updated). Provider compat lines still reach
+            // the renderer, but merging them here races the orchestrator and
+            // can stamp Ollama `providerModel` metadata onto the wrong
+            // assistant bubble (backward-scan finds another participant's
+            // message). Skip transcript mutation; orchestrator is canonical.
+            if (updated.chatKind === 'ensemble') {
+              return updated
+            }
             // Phase K-followup — H2 garbling fix. Codex interleaves
             // reasoning + tool-call events between content deltas. The
             // naive `last = messages[length-1]` would see the tool
@@ -8877,21 +8886,23 @@ function App(): React.JSX.Element {
             const assistantMessageId =
               last && last.role === 'assistant' ? last.id : createMessageId()
 
-            if (last && last.role === 'assistant') {
-              updated.messages = [
-                ...updated.messages.slice(0, -1),
-                { ...last, content: event.content }
-              ]
-            } else {
-              updated.messages = [
-                ...updated.messages,
-                {
-                  id: assistantMessageId,
-                  role: 'assistant',
-                  content: event.content,
-                  timestamp: new Date().toISOString()
-                }
-              ]
+            if (updated.chatKind !== 'ensemble') {
+              if (last && last.role === 'assistant') {
+                updated.messages = [
+                  ...updated.messages.slice(0, -1),
+                  { ...last, content: event.content }
+                ]
+              } else {
+                updated.messages = [
+                  ...updated.messages,
+                  {
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: event.content,
+                    timestamp: new Date().toISOString()
+                  }
+                ]
+              }
             }
             const resetHints = extractResetHintsFromText(event.content)
             for (const hint of resetHints) {
@@ -12702,8 +12713,13 @@ function App(): React.JSX.Element {
   const activeEnsembleConcurrentMode =
     currentEnsembleRound?.concurrentMode ?? currentEnsembleConcurrentMode
   const currentEnsembleContinuationHops = currentEnsembleRound?.continuationHops || 0
+  // Prefer chat-level cap so the hops meter updates as soon as the user
+  // saves — an in-flight round still carries its own snapshot, but the
+  // composer chip should reflect the user's latest setting immediately.
   const currentEnsembleMaxContinuationHops =
-    currentEnsembleRound?.maxContinuationHops || currentChat?.ensemble?.maxContinuationHops || 6
+    currentChat?.ensemble?.maxContinuationHops ??
+    currentEnsembleRound?.maxContinuationHops ??
+    6
   const isCurrentEnsembleRoundRunning = currentEnsembleRound?.status === 'running'
   // Slice F v2 (1.0.3) — write-through helper used by the composer
   // pickers when an ensemble chip is selected. Patches the targeted
@@ -12897,23 +12913,30 @@ function App(): React.JSX.Element {
 
   // 1.0.6 — persist the user-set max handoff turns for continuous rounds onto
   // chat.ensemble.maxContinuationHops. Range-clamped at the call site
-  // (ContinuousHopsLimitChip enforces 1–50); we still guard here so a malformed
-  // value never lands in the store. New value takes effect immediately for the
-  // NEXT round; an in-flight round keeps its captured cap (currentEnsembleMax-
-  // ContinuationHops reads `round.maxContinuationHops || chat.ensemble.max…`),
-  // which matches the rest of the per-round captured-config pattern in this app.
+  // (ContinuousHopsLimitChip enforces 1–100); we still guard here so a malformed
+  // value never lands in the store. Also mirror onto activeRound when a round is
+  // in flight so the hops meter and persisted round snapshot stay in sync.
   const updateCurrentEnsembleMaxContinuationHops = useCallback(
     (nextMax: number) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
-      const safeMax = Math.max(1, Math.min(50, Math.round(Number(nextMax) || 0)))
+      const safeMax = Math.max(1, Math.min(100, Math.round(Number(nextMax) || 0)))
       if (!Number.isFinite(safeMax) || safeMax <= 0) return
       updateChatById(currentChat.appChatId, (source) => {
         if (!source.ensemble) return source
+        const activeRound = source.ensemble.activeRound
         const patched: ChatRecord = {
           ...source,
           ensemble: {
             ...source.ensemble,
             maxContinuationHops: safeMax,
+            ...(activeRound
+              ? {
+                  activeRound: {
+                    ...activeRound,
+                    maxContinuationHops: safeMax
+                  }
+                }
+              : {}),
             updatedAt: new Date().toISOString()
           }
         }
@@ -13159,19 +13182,29 @@ function App(): React.JSX.Element {
                 participant.provider === 'kimi' ? participant.thinkingEnabled : undefined
             })
           : ''
+        const ollamaBrand =
+          participant.provider === 'ollama' && participant.model
+            ? resolveOllamaDisplayBrand(
+                participant.model,
+                humaniseModelId('ollama', participant.model)
+              )
+            : null
         return {
-          thinkingProviderLabel: getProviderLabel(participant.provider),
+          thinkingProviderLabel:
+            ollamaBrand?.providerLabel || getProviderLabel(participant.provider),
           thinkingProvider: participant.provider as ProviderId | null,
-          thinkingProviderClass: participant.provider as string | null,
+          thinkingProviderClass: ollamaBrand?.providerClass || (participant.provider as string),
           // Show the short model name alongside the "Codex Thinking…"
           // chip so the user can see at a glance which configured
           // model is actually producing the in-flight output. Empty
           // for participants without a custom model (legacy chats).
-          thinkingModelBadge: baseModelName
-            ? thinkingReasoningSuffix
-              ? `${baseModelName} ${thinkingReasoningSuffix}`
-              : baseModelName
-            : null
+          thinkingModelBadge: ollamaBrand?.modelLabel
+            ? ollamaBrand.modelLabel
+            : baseModelName
+              ? thinkingReasoningSuffix
+                ? `${baseModelName} ${thinkingReasoningSuffix}`
+                : baseModelName
+              : null
         }
       }
     }

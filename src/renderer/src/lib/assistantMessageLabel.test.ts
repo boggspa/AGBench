@@ -79,4 +79,58 @@ describe('formatAssistantMessageLabel', () => {
       modelBadge: null
     })
   })
+
+  it('does not apply chat-level Ollama spoofing to ensemble messages missing ensembleProvider', () => {
+    expect(
+      formatAssistantMessageLabel(
+        assistant({ providerModel: 'qwen3.5:9b', providerModelLabel: 'Qwen 3.5 (9B Param)' }),
+        'Ollama',
+        'ollama',
+        { isEnsembleChat: true }
+      )
+    ).toEqual({
+      label: 'Ollama',
+      provider: 'ollama',
+      providerClass: 'ollama',
+      modelBadge: null
+    })
+  })
+
+  it('brands ensemble Ollama participant bubbles without touching other providers', () => {
+    expect(
+      formatAssistantMessageLabel(
+        assistant({
+          ensembleProvider: 'ollama',
+          ensembleRole: 'Local',
+          ensembleModel: 'qwen3.5:9b'
+        }),
+        'Ollama',
+        'ollama',
+        { isEnsembleChat: true }
+      )
+    ).toEqual({
+      label: 'Qwen / Local',
+      provider: 'ollama',
+      providerClass: 'qwen',
+      modelBadge: 'Qwen 3.5 (9B Param)'
+    })
+
+    expect(
+      formatAssistantMessageLabel(
+        assistant({
+          ensembleProvider: 'codex',
+          ensembleRole: 'Builder',
+          ensembleModel: 'gpt-5.5-codex'
+        }),
+        'Ollama',
+        'ollama',
+        { isEnsembleChat: true }
+      )
+    ).toEqual({
+      label: 'Codex / Builder',
+      provider: 'codex',
+      providerClass: 'codex',
+      modelBadge: '5.5-Codex'
+    })
+  })
 })

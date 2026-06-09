@@ -11,10 +11,46 @@ type AssistantMessageLabelPresentation = {
   modelBadge: string | null
 }
 
+type FormatAssistantMessageLabelOptions = {
+  /**
+   * Ensemble chats stamp each assistant bubble with `ensembleProvider`.
+   * Messages that lack it are not Ollama turns — never apply chat-level
+   * Ollama brand spoofing to them (that was clobbering Codex/Claude headers
+   * when `chat.provider` was `ollama` or stray `providerModel` leaked in).
+   */
+  isEnsembleChat?: boolean
+}
+
+const ollamaBrandPresentation = (
+  modelId: string,
+  modelLabel: string,
+  role?: string
+): AssistantMessageLabelPresentation | null => {
+  const brand = resolveOllamaDisplayBrand(modelId, modelLabel)
+  if (brand) {
+    return {
+      label: role ? `${brand.providerLabel} / ${role}` : brand.providerLabel,
+      provider: 'ollama',
+      providerClass: brand.providerClass,
+      modelBadge: brand.modelLabel
+    }
+  }
+  if (modelLabel) {
+    return {
+      label: role ? `${modelLabel} / ${role}` : modelLabel,
+      provider: 'ollama',
+      providerClass: 'ollama',
+      modelBadge: null
+    }
+  }
+  return null
+}
+
 const formatAssistantMessageLabel = (
   message: ChatMessage,
   fallbackLabel: string,
-  fallbackProvider: ProviderId | null
+  fallbackProvider: ProviderId | null,
+  options?: FormatAssistantMessageLabelOptions
 ): AssistantMessageLabelPresentation => {
   if (message.metadata?.kind === 'guestParticipantReply') {
     const guestProvider = (message.metadata?.guestProvider as ProviderId | undefined) ?? null
@@ -35,30 +71,15 @@ const formatAssistantMessageLabel = (
   }
   const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
   if (!provider) {
-    if (fallbackProvider === 'ollama') {
+    if (!options?.isEnsembleChat && fallbackProvider === 'ollama') {
       const model =
         typeof message.metadata?.providerModel === 'string' ? message.metadata.providerModel : ''
       const modelLabel =
         typeof message.metadata?.providerModelLabel === 'string'
           ? message.metadata.providerModelLabel
           : humaniseModelId('ollama', model)
-      const brand = resolveOllamaDisplayBrand(model, modelLabel)
-      if (brand) {
-        return {
-          label: brand.providerLabel,
-          provider: fallbackProvider,
-          providerClass: brand.providerClass,
-          modelBadge: brand.modelLabel
-        }
-      }
-      if (modelLabel) {
-        return {
-          label: modelLabel,
-          provider: fallbackProvider,
-          providerClass: fallbackProvider,
-          modelBadge: null
-        }
-      }
+      const branded = ollamaBrandPresentation(model, modelLabel)
+      if (branded) return branded
     }
     // Solo chats: use the chat-level provider as the colouring hook.
     // The label is still the plain provider name (no role suffix
@@ -115,6 +136,17 @@ const formatAssistantMessageLabel = (
       ? `${modelName} ${reasoningSuffix}`
       : modelName
     : null
+  if (provider === 'ollama' && ensembleModel) {
+    const humanLabel = humaniseModelId('ollama', ensembleModel)
+    const branded = ollamaBrandPresentation(ensembleModel, humanLabel, role)
+    if (branded) {
+      return {
+        ...branded,
+        // Keep reasoning suffix on the badge when the participant carried one.
+        modelBadge: modelBadge || branded.modelBadge
+      }
+    }
+  }
   return {
     label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
     provider,
@@ -124,4 +156,4 @@ const formatAssistantMessageLabel = (
 }
 
 export { formatAssistantMessageLabel }
-export type { AssistantMessageLabelPresentation }
+export type { AssistantMessageLabelPresentation, FormatAssistantMessageLabelOptions }

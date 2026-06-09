@@ -227,8 +227,8 @@ export function ContinuousHopsLimitChip({
                   aria-describedby="continuous-hops-help"
                 />
                 <p className="continuous-hops-popover-help" id="continuous-hops-help">
-                  Cap for a continuous round (between {MIN_HOPS}–{MAX_HOPS}). Applies from the next
-                  round when one is already running.
+                  Cap for a continuous round (between {MIN_HOPS}–{MAX_HOPS}). Updates the meter
+                  immediately when you click Set.
                 </p>
                 <div className="continuous-hops-popover-actions">
                   <button
