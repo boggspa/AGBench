@@ -2230,12 +2230,13 @@
   opacity: 0.78;
 }
 
-/* 1.0.6-CRUX19 — Gemini + button: SATELLITE (no bubble) + 2x glyph, matching
- * the official Gemini composer's large borderless "+". Reverts CRUX12's tinted
- * circle: transparent fill, no border, colour-only hover (no fill/transform),
- * and the SF-symbol glyph doubled 14px → 28px. The button is lifted/absolute
- * (not inside the capsule), so the larger glyph isn't clipped, and the 46px
- * textarea left gutter still clears it. */
+/* 1.0.6-CRUX19 — Gemini + button: SATELLITE (no bubble), matching the
+ * official Gemini composer's large borderless "+". Reverts CRUX12's tinted
+ * circle: transparent fill, no border, colour-only hover (no fill/transform).
+ * Glyph size (14px → 28px) lives in shard 03's cross-shell
+ * `.composer-image-picker-btn` rule. The button is lifted/absolute (not inside
+ * the capsule), so the larger glyph isn't clipped, and the 46px textarea left
+ * gutter still clears it. */
 [data-composer-style="gemini"] .composer-image-picker-btn {
   width: 32px;
   height: 32px;

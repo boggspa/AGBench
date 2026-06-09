@@ -4994,6 +4994,14 @@
   cursor: not-allowed;
 }
 
+/* Attach "+" — 2× the default 14px SF-symbol glyph across every
+ * composer shell; per-shell button width/height/bubble chrome unchanged. */
+.composer-image-picker-btn .sf-symbol-icon,
+.composer-image-picker-btn .sf-symbol-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
 .composer-attached-window-pill {
   margin: 0;
   padding: 0 var(--space-sm);
@@ -5730,6 +5738,15 @@
   height: 22px;
   stroke-width: 2.2;
   transition: transform 0.12s ease, filter 0.2s ease;
+}
+
+/* Send glyph — 2× the default 14px SF-symbol glyph across every shell;
+ * per-shell send-button width/height/bubble chrome unchanged. Queue also
+ * carries `run-btn` but keeps the smaller icon for visual hierarchy. */
+.composer-action-btn.run-btn:not(.queue) .sf-symbol-icon,
+.composer-action-btn.run-btn:not(.queue) .sf-symbol-icon svg {
+  width: 28px;
+  height: 28px;
 }
 
 .composer-action-btn:hover:not(:disabled) .sf-symbol-icon {
