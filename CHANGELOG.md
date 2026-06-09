@@ -24,7 +24,7 @@ history, and workspace state stay on your machine throughout.
   and concurrent fan-out lanes on by default with serial fallback when disabled.
 - **One-click update pill.** When a new build is available, a rim-highlight pill
   appears at the top of the workspaces sidebar — click to download, then restart
-  to install. The app also polls for updates hourly in the background.
+  to install. The app also polls for updates every 15 minutes in the background.
 
 ### Changed
 - **Concurrent ensemble lanes** default on (`TASKWRAITH_CONCURRENT_LANES` opt-out).

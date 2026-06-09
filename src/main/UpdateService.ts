@@ -56,7 +56,7 @@ export interface UpdateServiceEvents {
 }
 
 /** Background poll interval when auto-update is enabled (packaged builds). */
-export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
+export const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 
 export type UpdateStatus =
   | 'disabled'

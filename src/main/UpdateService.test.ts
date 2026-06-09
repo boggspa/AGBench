@@ -311,7 +311,7 @@ describe('UpdateService', () => {
     expect(svc.snapshot().status).toBe('disabled')
   })
 
-  it('polls for updates hourly when enabled', async () => {
+  it('polls for updates every 15 minutes when enabled', async () => {
     vi.useFakeTimers()
     try {
       mockAutoUpdater.checkForUpdates.mockImplementation(async () => {
@@ -334,7 +334,7 @@ describe('UpdateService', () => {
     }
   })
 
-  it('stops hourly polling when auto-update is disabled', async () => {
+  it('stops periodic polling when auto-update is disabled', async () => {
     vi.useFakeTimers()
     try {
       const svc = new UpdateService()
