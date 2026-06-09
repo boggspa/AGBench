@@ -25,7 +25,6 @@ import {
   UsageRecord,
   ToolActivity,
   RunDiffResult,
-  GeminiWorktreeConfig,
   ProviderId,
   ExternalPathGrant,
   ScheduledTask,
@@ -287,7 +286,6 @@ import { applyWorkSessionConfirmation, cancelWorkSessionOnChat } from './lib/wor
 // per-participant config now lives inline in the composer above-row
 // (EnsembleParticipantsAboveRow) where each chip opens a flyout in the
 // same visual language as the rest of the composer pickers.
-import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { AgentIdentityIcon } from './components/icons/AgentIdentityIcon'
 import { assignAgentIdentityFromSeed } from './lib/agentIdentitySeed'
@@ -4248,60 +4246,6 @@ function App(): React.JSX.Element {
       updatedAt: Date.now()
     }))
   }
-
-  // 1.0.5-EW53 — useCallback'd so WorkspaceAccessControls (now
-  // memo'd) doesn't re-render on every keystroke. Deps narrow to
-  // the only values the body genuinely closes over (currentWorkspace
-  // + isRunning); state setters and imported helpers are stable.
-  // `persistentSessionActiveRef` is read via `.current` lazily — no
-  // dep needed.
-  const handleGeminiWorktreeToggle = useCallback(async () => {
-    if (!currentWorkspace || isRunning) {
-      return
-    }
-
-    const isEnabled = Boolean(resolveGeminiWorktreeConfig(currentWorkspace)?.enabled)
-    const geminiWorktree: GeminiWorktreeConfig = isEnabled ? { enabled: false } : { enabled: true }
-
-    const updatedWorkspace = await window.api.addOrUpdateWorkspace(currentWorkspace.path, {
-      geminiWorktree
-    })
-    setCurrentWorkspace(updatedWorkspace)
-    setWorkspaces((prev) =>
-      prev.map((workspace) => (workspace.id === updatedWorkspace.id ? updatedWorkspace : workspace))
-    )
-    setRunDiff(null)
-
-    const nextWorktree = resolveGeminiWorktreeConfig(updatedWorkspace)
-    if (isGeminiWorktreeDiffUnavailable(nextWorktree)) {
-      setDiff(createWorktreeDiffUnavailable())
-      setDiffView('workspace')
-      setDiffRefreshStatus('Diff disabled: worktree path unknown.')
-    } else {
-      setDiff(null)
-      setDiffRefreshStatus('')
-    }
-
-    if (persistentSessionActiveRef.current) {
-      setPersistentSessionNeedsRestart(true)
-      setRawLogs((prev) => [
-        ...prev,
-        {
-          type: 'info',
-          content:
-            'Gemini worktree setting changed. Restart the persistent session to apply --worktree.'
-        }
-      ])
-    }
-  }, [currentWorkspace, isRunning])
-  // 1.0.5-EW53 — Stable wrapper for the `() => void` prop signature
-  // on WorkspaceAccessControls. The inner handler returns a Promise;
-  // wrapping each call site in an inline arrow created a fresh
-  // function identity every render and defeated the parent's memo
-  // wrapper. This callback is stable as long as the inner handler is.
-  const onGeminiWorktreeToggleProp = useCallback((): void => {
-    void handleGeminiWorktreeToggle()
-  }, [handleGeminiWorktreeToggle])
 
   const refreshCodexThreads = async () => {
     if (typeof window.api.listAgentThreads !== 'function') {
@@ -14696,12 +14640,6 @@ function App(): React.JSX.Element {
       ? 'attached to persistent session'
       : 'waiting for Gemini'
   const visibleGeminiTerminalLogs = rawLogs.slice(-500)
-  const currentWorktreeDiffUnavailable = isGeminiWorktreeDiffUnavailable(currentGeminiWorktree)
-  const worktreeToggleLabel = currentGeminiWorktree?.enabled
-    ? currentWorktreeDiffUnavailable
-      ? 'Worktree: diff off'
-      : `Worktree ${currentGeminiWorktree.name || 'auto'}`
-    : 'Worktree off'
   const sessionRestartReason = persistentSessionNeedsRestart
     ? 'Restart session to apply run mode changes'
     : ''
@@ -14711,7 +14649,6 @@ function App(): React.JSX.Element {
     appearance.composerStyle !== 'alabaster'
   const showComposerChips =
     showComposerBranchChip ||
-    (currentProvider === 'gemini' && currentWorktreeDiffUnavailable) ||
     (currentProvider === 'gemini' && persistentSessionNeedsRestart) ||
     Boolean(currentProviderCapabilityWarning) ||
     queuedRunQueueCount > 0
@@ -16753,28 +16690,6 @@ function App(): React.JSX.Element {
               providerShellCapabilityChips computation kept for any
               future use but the row no longer mounts in any shell.
             */}
-            {/*
-                Composer-unification (Phase J1): welcome-state satellite
-                slot for the cross-provider External Path + Worktree
-                controls. Replaces the Codex-only header row that
-                previously floated the External Path picker above the
-                composer. The same component re-mounts inside the
-                above-bar once the chat has activity (see below).
-              */}
-            {isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
-              <WorkspaceAccessControls
-                variant="satellite"
-                provider={currentProvider}
-                currentWorkspace={currentWorkspace}
-                isCurrentGlobalChat={isCurrentGlobalChat}
-                isCurrentComposerLocked={isCurrentComposerLocked}
-                hasWorkspaceContext={hasWorkspaceContext}
-                currentGeminiWorktree={currentGeminiWorktree}
-                onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
-                worktreeToggleLabel={worktreeToggleLabel}
-                worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
-              />
-            )}
             {isWelcomeChat &&
               isCurrentEnsembleChat &&
               (() => {
@@ -17094,18 +17009,6 @@ function App(): React.JSX.Element {
                       {primaryGitSnapshot && <GitMergeBadge snapshot={primaryGitSnapshot} />}
                       {primaryGitSnapshot && <GitSyncChip snapshot={primaryGitSnapshot} />}
                       <GitCiChip pr={primaryPr} />
-                      <WorkspaceAccessControls
-                        variant="inline"
-                        provider={currentProvider}
-                        currentWorkspace={currentWorkspace}
-                        isCurrentGlobalChat={isCurrentGlobalChat}
-                        isCurrentComposerLocked={isCurrentComposerLocked}
-                        hasWorkspaceContext={hasWorkspaceContext}
-                        currentGeminiWorktree={currentGeminiWorktree}
-                        onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
-                        worktreeToggleLabel={worktreeToggleLabel}
-                        worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
-                      />
                       </div>
                       <div className="composer-above-bar-pill composer-above-bar-pill--action">
                       {(() => {
@@ -17366,9 +17269,6 @@ function App(): React.JSX.Element {
             >
               {showComposerChips && (
                 <div className="composer-chips">
-                  {currentProvider === 'gemini' && currentWorktreeDiffUnavailable && (
-                    <span className="composer-chip warning">Worktree diff disabled</span>
-                  )}
                   {currentProvider === 'gemini' && persistentSessionNeedsRestart && (
                     <span className="composer-chip warning">{sessionRestartReason}</span>
                   )}
@@ -17403,9 +17303,7 @@ function App(): React.JSX.Element {
                 toggles moved into the command palette popover (see
                 `geminiQuickToggleItems` below) so the visible top row is
                 identical across providers: session indicator + permission
-                indicator + schedule + runtime profile. Worktree, External
-                Path, and Trust are surfaced as cross-provider satellite
-                / above-bar pills via WorkspaceAccessControls. Provider
+                indicator + schedule + runtime profile. Provider
                 identity is expressed through theme tokens only.
               */}
               {/*
