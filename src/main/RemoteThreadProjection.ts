@@ -55,6 +55,12 @@ export interface RemoteThreadRow {
   runId?: string
   role: ChatMessage['role']
   kind: RemoteThreadRowKind
+  /** Ensemble identity of the authoring participant — the SAME form the
+   * desktop transcript tag uses minus the #pN handle:
+   * `Provider / Role (Model)`, model included only on same-provider-
+   * duplicate panels. Absent for solo chats and user rows, so remote
+   * clients render "Agent"/"You" exactly like a solo desktop chat. */
+  speaker?: string
   /** Bounded + sanitized one-screen preview of the row body. */
   preview: string
   /** True when `preview` was clipped from a longer body. */
@@ -144,6 +150,11 @@ export interface RemoteProjectionOptions {
   attentionRowIds?: ReadonlySet<string>
   /** Stable timestamp for `generatedAt` (tests pass a fixed value). */
   generatedAt?: string
+  /** Ensemble speaker labeler — the bridge passes
+   * `ensembleSpeakerForMessage(chat.ensemble.participants)` for ensemble
+   * chats so each assistant row carries its participant identity. Solo
+   * chats omit it (rows stay speaker-less). */
+  speakerForMessage?: (message: ChatMessage) => string | undefined
 }
 
 const DEFAULT_PREVIEW_MAX = 280
@@ -445,6 +456,13 @@ export function projectRemoteThread(
     return null
   }
 
+  const toRow = (message: ChatMessage, att: RemoteAttentionKind | null): RemoteThreadRow => {
+    const row = buildRow(message, previewMax, att)
+    const speaker = opts.speakerForMessage?.(message)
+    if (speaker) row.speaker = speaker
+    return row
+  }
+
   const base = {
     threadId: opts.threadId,
     schemaVersion: 1 as const,
@@ -472,7 +490,7 @@ export function projectRemoteThread(
       const att = attentionFor(message)
       if (!att) continue
       matched++
-      if (rows.length < cap) rows.push(buildRow(message, previewMax, att))
+      if (rows.length < cap) rows.push(toRow(message, att))
     }
     return {
       ...base,
@@ -503,7 +521,7 @@ export function projectRemoteThread(
     const slice = all.slice(start, end)
     return {
       ...base,
-      rows: slice.map((m) => buildRow(m, previewMax, attentionFor(m))),
+      rows: slice.map((m) => toRow(m, attentionFor(m))),
       windowStartIndex: start,
       hasMoreAbove: start > 0,
       hasMoreBelow: end < totalRows
@@ -516,7 +534,7 @@ export function projectRemoteThread(
   const slice = all.slice(start)
   return {
     ...base,
-    rows: slice.map((m) => buildRow(m, previewMax, attentionFor(m))),
+    rows: slice.map((m) => toRow(m, attentionFor(m))),
     windowStartIndex: start,
     hasMoreAbove: start > 0,
     hasMoreBelow: false

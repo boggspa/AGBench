@@ -376,4 +376,24 @@ describe('RemoteThreadProjection', () => {
       expect(empty.hasMoreAbove).toBe(false)
     })
   })
+
+  describe('speakerForMessage (ensemble identity parity)', () => {
+    it('stamps the labeler result on rows and omits the field when undefined', () => {
+      const messages = [
+        msg(0), // user
+        msg(1, { metadata: { ensembleProvider: 'gemini', ensembleRole: 'Researcher' } }),
+        msg(3) // assistant with no ensemble metadata (labeler returns undefined)
+      ]
+      const snapshot = project({ kind: 'latestN', n: 10 }, messages, [], {
+        speakerForMessage: (message) =>
+          message.metadata?.ensembleProvider ? 'Gemini / Researcher (2.5 Flash)' : undefined
+      })
+      expect(snapshot.rows[0].speaker).toBeUndefined() // user row
+      expect(snapshot.rows[1].speaker).toBe('Gemini / Researcher (2.5 Flash)')
+      expect(snapshot.rows[2].speaker).toBeUndefined()
+      // No labeler at all → identical rows, no field (solo-chat parity).
+      const solo = project({ kind: 'latestN', n: 10 }, messages)
+      expect(solo.rows.every((row) => row.speaker === undefined)).toBe(true)
+    })
+  })
 })

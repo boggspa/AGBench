@@ -162,6 +162,7 @@ import {
   type RemoteTaskCapabilities
 } from './RemoteTaskProjection'
 import { projectRemoteThread } from './RemoteThreadProjection'
+import { ensembleSpeakerForMessage } from './EnsemblePrompt'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import {
@@ -13861,7 +13862,12 @@ if (isGeminiMcpBridgeProcess) {
           threadId: chat.appChatId,
           mode: { kind: 'latestN', n: 24 },
           previewMaxChars: 320,
-          generatedAt
+          generatedAt,
+          // Ensemble parity on remote clients: rows carry the same
+          // participant identity the desktop transcript tag shows.
+          speakerForMessage: chat.ensemble?.enabled
+            ? ensembleSpeakerForMessage(chat.ensemble.participants)
+            : undefined
         })
         envelopes.push(
           buildRemoteProjectionEnvelope({

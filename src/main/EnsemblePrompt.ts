@@ -1016,6 +1016,36 @@ export function buildDupProviderModelLabels(
   return map
 }
 
+/**
+ * 1.0.7 — remote-transcript speaker labeler (iOS parity).
+ *
+ * Returns the SAME identity form the desktop tagged transcript shows, minus
+ * the #pN routing handle: `Provider / Role (Model)`, with the model label
+ * included only on same-provider-duplicate panels (via
+ * `buildDupProviderModelLabels`). The bridge passes this to
+ * `projectRemoteThread` for ensemble chats so a phone renders panel
+ * messages with the exact participant identity the desktop shows —
+ * undefined for user/system rows and for solo (non-ensemble) authors.
+ */
+export function ensembleSpeakerForMessage(
+  participants: readonly EnsembleParticipant[] | undefined
+): (message: ChatMessage) => string | undefined {
+  const modelLabels = buildDupProviderModelLabels(participants)
+  return (message) => {
+    if (message.role !== 'assistant') return undefined
+    const provider = message.metadata?.ensembleProvider as ProviderId | undefined
+    if (!provider) return undefined
+    const role =
+      typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
+    const participantId =
+      typeof message.metadata?.ensembleParticipantId === 'string'
+        ? message.metadata.ensembleParticipantId
+        : ''
+    const modelLabel = participantId ? modelLabels.get(participantId) : undefined
+    return `${providerLabel(provider)}${role ? ` / ${role}` : ''}${modelLabel ? ` (${modelLabel})` : ''}`
+  }
+}
+
 export function formatSameProviderDisambiguationNote(participants: EnsembleParticipant[]): string {
   const groups = new Map<ProviderId, EnsembleParticipant[]>()
   for (const p of participants) {

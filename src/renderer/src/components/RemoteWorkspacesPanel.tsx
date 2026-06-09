@@ -211,8 +211,15 @@ function AddEntryForm({ onAdded }: { onAdded: () => void | Promise<void> }): Rea
   const [workspaceId, setWorkspaceId] = useState('')
   const [path, setPath] = useState('')
   const [mode, setMode] = useState<'read-only' | 'read-write'>('read-only')
-  const [providers, setProviders] = useState<Set<string>>(new Set(['gemini']))
-  const [approvalModes, setApprovalModes] = useState<Set<string>>(new Set(['default']))
+  // Default-select EVERY provider + both approval modes so granting a
+  // workspace is one tap — the per-provider gate stays available (untick
+  // chips) but is no longer the default friction. The phone's compose
+  // picker offers all providers; the Mac still enforces whatever subset
+  // is saved here on every action.
+  const [providers, setProviders] = useState<Set<string>>(new Set(PROVIDER_OPTIONS))
+  const [approvalModes, setApprovalModes] = useState<Set<string>>(
+    new Set(APPROVAL_MODE_OPTIONS)
+  )
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -241,8 +248,8 @@ function AddEntryForm({ onAdded }: { onAdded: () => void | Promise<void> }): Rea
       setWorkspaceId('')
       setPath('')
       setMode('read-only')
-      setProviders(new Set(['gemini']))
-      setApprovalModes(new Set(['default']))
+      setProviders(new Set(PROVIDER_OPTIONS))
+      setApprovalModes(new Set(APPROVAL_MODE_OPTIONS))
       await onAdded()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err))

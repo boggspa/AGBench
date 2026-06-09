@@ -3,6 +3,7 @@ import {
   buildDupProviderModelLabels,
   buildEnsembleParticipantPrompt,
   buildParticipantTokenMap,
+  ensembleSpeakerForMessage as buildEnsembleSpeaker,
   formatRoundModeInstructions,
   formatSameProviderDisambiguationNote,
   formatToolTraceSummary,
@@ -1384,6 +1385,44 @@ describe('Same-provider duplicate panels carry model labels (1.0.7)', () => {
     expect(prompt).toContain(
       'Do NOT address peers by bare provider name (`@gemini`, `@claude`) unless that provider has exactly one participant on this panel'
     )
+  })
+
+  it('ensembleSpeakerForMessage mirrors the transcript tag minus the #pN handle', () => {
+    const speakerFor = buildEnsembleSpeaker(dupEnsemble.participants)
+    expect(
+      speakerFor({
+        id: 'a1',
+        role: 'assistant',
+        content: 'x',
+        timestamp: 't',
+        metadata: {
+          ensembleProvider: 'gemini',
+          ensembleRole: 'Researcher',
+          ensembleParticipantId: 'gem-a'
+        }
+      })
+    ).toBe('Gemini / Researcher (2.5 Flash)')
+    // Solo-provider seat → no model suffix.
+    expect(
+      speakerFor({
+        id: 'a2',
+        role: 'assistant',
+        content: 'x',
+        timestamp: 't',
+        metadata: {
+          ensembleProvider: 'claude',
+          ensembleRole: 'Reviewer',
+          ensembleParticipantId: 'claude-solo'
+        }
+      })
+    ).toBe('Claude / Reviewer')
+    // User rows + non-ensemble assistants stay unlabelled.
+    expect(
+      speakerFor({ id: 'u1', role: 'user', content: 'x', timestamp: 't' })
+    ).toBeUndefined()
+    expect(
+      speakerFor({ id: 'a3', role: 'assistant', content: 'x', timestamp: 't' })
+    ).toBeUndefined()
   })
 
   it('buildDupProviderModelLabels maps only duplicated providers, skipping cli-default', () => {
