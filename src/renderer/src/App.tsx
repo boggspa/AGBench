@@ -17115,6 +17115,7 @@ function App(): React.JSX.Element {
                               workspacePath: group.path
                             })
                           }
+                          cursorLeadDetached={appearance.composerStyle === 'cursor'}
                         />
                       ))
                     : null

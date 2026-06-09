@@ -120,6 +120,8 @@ interface ExternalPathAboveRowProps {
   onCreatePr?: (grant: ExternalPathGrant) => void
   /** Per-path "Review changes" — opens Diff Studio scoped to this path. */
   onReviewChanges?: () => void
+  /** Cursor shell — detached satellite pills above the merged stack. */
+  cursorLeadDetached?: boolean
 }
 
 function BranchGlyph(): React.JSX.Element {
@@ -228,7 +230,8 @@ export function ExternalPathAboveRow({
   onRevoke,
   createPrState,
   onCreatePr,
-  onReviewChanges
+  onReviewChanges,
+  cursorLeadDetached = false
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
   // Union access (write if ANY provider for this path can write) drives the
@@ -293,20 +296,24 @@ export function ExternalPathAboveRow({
 
   const diffCluster = hasDiff ? (
     <span className="composer-above-bar-center-cluster">
-      <span
-        className="composer-above-bar-files"
-        title={`${diffStats!.filesChanged} ${
-          diffStats!.filesChanged === 1 ? 'file' : 'files'
-        } changed in this path`}
-      >
-        <strong>{diffStats!.filesChanged}</strong>{' '}
-        {diffStats!.filesChanged === 1 ? 'file changed' : 'files changed'}
-      </span>
-      {(diffStats!.additions > 0 || diffStats!.deletions > 0) && (
-        <span className="composer-above-bar-stats">
-          <span className="composer-diff-add">+{diffStats!.additions}</span>
-          <span className="composer-diff-del">-{diffStats!.deletions}</span>
+      <div className="composer-above-bar-pill composer-above-bar-pill--changes">
+        <span
+          className="composer-above-bar-files"
+          title={`${diffStats!.filesChanged} ${
+            diffStats!.filesChanged === 1 ? 'file' : 'files'
+          } changed in this path`}
+        >
+          <strong>{diffStats!.filesChanged}</strong>{' '}
+          {diffStats!.filesChanged === 1 ? 'file changed' : 'files changed'}
         </span>
+      </div>
+      {(diffStats!.additions > 0 || diffStats!.deletions > 0) && (
+        <div className="composer-above-bar-pill composer-above-bar-pill--stats">
+          <span className="composer-above-bar-stats">
+            <span className="composer-diff-add">+{diffStats!.additions}</span>
+            <span className="composer-diff-del">-{diffStats!.deletions}</span>
+          </span>
+        </div>
       )}
     </span>
   ) : null
@@ -367,7 +374,9 @@ export function ExternalPathAboveRow({
 
   return (
     <div
-      className="composer-above-bar composer-above-bar-secondary style-unified"
+      className={`composer-above-bar composer-above-bar-secondary style-unified${
+        cursorLeadDetached ? ' composer-above-bar--cursor-lead' : ''
+      }`}
       data-external-path-grant-id={grant.id}
       data-external-path-is-repo={descriptor.isRepo ? 'true' : 'false'}
       title={`${grant.path}\n\n${originTooltip}`}
@@ -395,9 +404,7 @@ export function ExternalPathAboveRow({
         {snapshot && <GitMergeBadge snapshot={snapshot} />}
         {snapshot && <GitSyncChip snapshot={snapshot} />}
       </div>
-      {hasDiff ? (
-        <div className="composer-above-bar-pill composer-above-bar-pill--changes">{diffCluster}</div>
-      ) : null}
+      {diffCluster}
       <div className="composer-above-bar-pill composer-above-bar-pill--action">{trailingCluster}</div>
     </div>
   )
