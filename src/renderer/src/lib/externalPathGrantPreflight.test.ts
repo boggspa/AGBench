@@ -34,10 +34,12 @@ function ensembleChat(): ChatRecord {
     messages: [],
     runs: [],
     ensemble: {
+      enabled: true,
+      maxParticipants: 6,
       participants: [
-        { id: 'p1', provider: 'codex', role: 'Codex', order: 1, enabled: true, model: 'cli-default' },
-        { id: 'p2', provider: 'ollama', role: 'Local', order: 2, enabled: true, model: 'cli-default' },
-        { id: 'p3', provider: 'claude', role: 'Claude', order: 3, enabled: true, model: 'cli-default' }
+        { id: 'p1', provider: 'codex', role: 'Codex', order: 1, enabled: true, model: 'cli-default', instructions: '' },
+        { id: 'p2', provider: 'ollama', role: 'Local', order: 2, enabled: true, model: 'cli-default', instructions: '' },
+        { id: 'p3', provider: 'claude', role: 'Claude', order: 3, enabled: true, model: 'cli-default', instructions: '' }
       ],
       updatedAt: new Date().toISOString()
     }

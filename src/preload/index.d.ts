@@ -292,6 +292,9 @@ declare global {
         // 1.0.6-EW69 — optional explicit path skips the OS dialog
         // (attach a known workspace as a secondary).
         path?: string
+        // Defer metadata persistence until the user confirms grants in
+        // the composer preflight modal.
+        deferPersist?: boolean
       }) => Promise<
         | { ok: true; grants: ExternalPathGrant[]; path: string }
         | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
