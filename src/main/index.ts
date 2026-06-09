@@ -626,6 +626,13 @@ const remoteQuestionRegistry = new RemoteQuestionRegistry({
   defaultTtlMs: AGENT_QUESTION_TIMEOUT_MS
 })
 let bridgeBroadcasterRef: BridgeBroadcaster | null = null
+// Deferred hook: the provider-model catalog builder is defined inside the
+// app-ready scope (it reuses the get-agent-models extraction); the
+// establish-time callback fires through this indirection.
+let remoteProviderModelsTrigger: (() => void) | null = null
+const registerRemoteProviderModelsTrigger = (fn: () => void): void => {
+  remoteProviderModelsTrigger = fn
+}
 const remoteTaskAttentionKeys = new Map<string, string>()
 
 /**
@@ -14108,6 +14115,8 @@ if (isGeminiMcpBridgeProcess) {
           onBroadcasterChange: (broadcaster) => {
             bridgeBroadcaster = broadcaster
             bridgeBroadcasterRef = broadcaster
+            // Establish → ship the provider→model catalogs (async build).
+            if (broadcaster) remoteProviderModelsTrigger?.()
           },
           pairingStore: new RemotePairingStore(
             join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
@@ -16654,7 +16663,10 @@ if (isGeminiMcpBridgeProcess) {
       }
     )
 
-    ipcMain.handle('get-agent-models', async (_, provider: ProviderId) => {
+    // Single source for per-provider model catalogs: the renderer's picker
+    // (get-agent-models IPC) and the paired-device broadcast both call this,
+    // so the phone's hierarchical picker can never drift from the desktop's.
+    const listAgentModelsForProvider = async (provider: ProviderId): Promise<unknown[]> => {
       if (provider === 'ollama') {
         try {
           const settings = AppStore.getSettings()
@@ -16733,7 +16745,54 @@ if (isGeminiMcpBridgeProcess) {
       } catch {
         return codexStaticFallback
       }
-    })
+    }
+    ipcMain.handle('get-agent-models', (_, provider: ProviderId) =>
+      listAgentModelsForProvider(provider)
+    )
+
+    // Ship the same catalogs to the paired device — drives the phone's
+    // hierarchical provider→model picker. Async (the Codex live list +
+    // Ollama tags can take seconds); fires on establish and pushes through
+    // the broadcaster whenever it lands.
+    const REMOTE_MODEL_PROVIDERS: ProviderId[] = [
+      'claude',
+      'codex',
+      'gemini',
+      'kimi',
+      'grok',
+      'cursor',
+      'ollama'
+    ]
+    const broadcastProviderModelsToRemote = (): void => {
+      void (async () => {
+        const broadcaster = bridgeBroadcasterRef
+        if (!broadcaster) return
+        const providers = await Promise.all(
+          REMOTE_MODEL_PROVIDERS.map(async (provider) => {
+            const models = (await listAgentModelsForProvider(provider).catch(() => [])) as Array<{
+              id?: unknown
+              label?: unknown
+              isDefault?: unknown
+            }>
+            return {
+              provider,
+              models: models
+                .filter((model) => typeof model?.id === 'string')
+                .slice(0, 40)
+                .map((model) => ({
+                  id: model.id as string,
+                  label: typeof model.label === 'string' ? model.label : (model.id as string),
+                  isDefault: Boolean(model.isDefault)
+                }))
+            }
+          })
+        )
+        bridgeBroadcasterRef?.broadcastProviderModels({
+          providers: providers.filter((entry) => entry.models.length > 0)
+        })
+      })()
+    }
+    registerRemoteProviderModelsTrigger(broadcastProviderModelsToRemote)
 
     // Dispatch an agent run with explicit sender + event. Extracted Phase
     // C-late from the `run-agent` IPC handler body so bridge-initiated

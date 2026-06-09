@@ -114,7 +114,21 @@ export interface BridgeBroadcasterOptions {
   canonicalChatWorkspaceId?: (workspaceId: string | null | undefined) => string | null
 }
 
+export interface ProviderModelOption {
+  id: string
+  label: string
+  isDefault?: boolean
+}
+
+/** Per-provider model catalogs — drives the remote client's hierarchical
+ * provider→model picker. Assembled by the caller (live CLI/daemon queries
+ * + static fallbacks); the broadcaster only ships it. */
+export interface ProviderModelsMessage {
+  providers: Array<{ provider: string; models: ProviderModelOption[] }>
+}
+
 export const BRIDGE_BROADCAST_METHODS = {
+  providerModels: 'bridge.broadcastProviderModels',
   workspaceList: 'bridge.broadcastWorkspaceList',
   threadList: 'bridge.broadcastThreadList',
   workspaceUpdated: 'bridge.broadcastWorkspaceUpdated',
@@ -286,6 +300,13 @@ export class BridgeBroadcaster {
   private canonicalizeChats(chats: ChatRecord[]): ChatRecord[] {
     if (!this.canonicalChatWorkspaceId) return chats
     return chats.map((chat) => this.canonicalizeChat(chat))
+  }
+
+  /** Ship the per-provider model catalogs (see ProviderModelsMessage). */
+  broadcastProviderModels(message: ProviderModelsMessage): void {
+    const method = BRIDGE_BROADCAST_METHODS.providerModels
+    if (!this.shouldEmit(method)) return
+    this.sendNotify(method, message)
   }
 
   /** Build a current snapshot from AppStore + emit

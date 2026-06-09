@@ -293,6 +293,29 @@ describe('BridgeBroadcaster', () => {
     )
   })
 
+  it('broadcastProviderModels ships the caller-assembled catalog (throttled)', () => {
+    const notify = vi.fn()
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: makeFakeStore([], []),
+      now: () => 1000
+    })
+    const message = {
+      providers: [
+        {
+          provider: 'claude',
+          models: [{ id: 'claude-fable-5', label: 'Claude Fable 5', isDefault: true }]
+        }
+      ]
+    }
+    broadcaster.broadcastProviderModels(message)
+    broadcaster.broadcastProviderModels(message) // throttled — same tick
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [method, params] = notify.mock.calls[0]
+    expect(method).toBe(BRIDGE_BROADCAST_METHODS.providerModels)
+    expect(params).toEqual(message)
+  })
+
   it('canonicalChatWorkspaceId rescues legacy display-name chat ids in lists + counts', () => {
     const notify = vi.fn()
     // One chat keyed by uuid, one by the legacy display-name convention.
