@@ -27,6 +27,7 @@ describe('chatHasInFlightThinkingWork', () => {
           chatKind: 'ensemble',
           ensemble: {
             enabled: true,
+            maxParticipants: 6,
             participants: [],
             activeRound: {
               roundId: 'round-1',
@@ -50,6 +51,7 @@ describe('chatHasInFlightThinkingWork', () => {
           chatKind: 'ensemble',
           ensemble: {
             enabled: true,
+            maxParticipants: 6,
             participants: [],
             activeRound: {
               roundId: 'round-1',
