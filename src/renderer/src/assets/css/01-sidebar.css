@@ -123,6 +123,135 @@
   opacity: 0.65;
 }
 
+/* Local servers — dev servers detected under the user's workspaces. Mirrors
+ * the Active runs section; the section is hidden entirely when nothing is
+ * running (the component returns null), so it costs no space in the common
+ * case. */
+.sidebar-local-servers-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+}
+.sidebar-local-servers-count {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+.sidebar-local-servers-stop-all {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.sidebar-local-servers-stop-all:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #d9534f) 14%, transparent);
+  color: var(--text-primary);
+}
+.sidebar-local-servers-stop-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sidebar-local-servers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-local-server-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--sidebar-row-font-size);
+  color: color-mix(in srgb, var(--sidebar-text) 86%, transparent);
+}
+.sidebar-local-server-row:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+.sidebar-local-server-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.2;
+}
+.sidebar-local-server-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+.sidebar-local-server-workspace {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.72em;
+}
+.sidebar-local-server-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.sidebar-local-server-port {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 90%, transparent);
+  font: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sidebar-local-server-port:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.sidebar-local-server-stop {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.sidebar-local-server-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #d9534f) 16%, transparent);
+  color: var(--text-primary);
+}
+.sidebar-local-server-stop:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /*
  * 1.0.5-SB5 — Drag-and-drop pin affordances.
  *

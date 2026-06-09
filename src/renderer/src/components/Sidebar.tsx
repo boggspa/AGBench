@@ -26,6 +26,7 @@ import type {
 import { selectRecentChats } from '../lib/recentChatsList'
 import { IOS_REMOTE_ENABLED } from '../lib/featureFlags'
 import { ActiveRunsSection } from './ActiveRunsSection'
+import { LocalServersSection } from './LocalServersSection'
 import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
@@ -2406,6 +2407,8 @@ export function Sidebar({
             onSelectChat={onSelectChat}
             onInspectRun={onInspectRun}
           />
+
+          <LocalServersSection />
 
           <div className="sidebar-workflows-section">
             <div className="sidebar-section-header">

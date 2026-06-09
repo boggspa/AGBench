@@ -5201,3 +5201,125 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ====================================================================== */
+
+/* Settings → Local servers — dev servers detected under the user's workspaces. */
+.settings-local-servers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-local-servers-title {
+  margin: 0;
+  font-size: var(--font-size-lg, 1.1rem);
+  font-weight: 700;
+}
+.settings-local-servers-intro,
+.settings-local-servers-note,
+.settings-local-servers-empty {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  max-width: 64ch;
+}
+.settings-local-servers-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.settings-local-servers-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-local-servers-toggle-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.settings-local-servers-list-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+}
+.settings-local-servers-list-count {
+  font-weight: 600;
+  margin-right: auto;
+}
+.settings-local-servers-list-header button,
+.settings-local-server-port,
+.settings-local-server-stop {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.settings-local-servers-list-header button:disabled,
+.settings-local-server-stop:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings-local-servers-stop-all:hover:not(:disabled),
+.settings-local-server-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #d9534f) 16%, transparent);
+}
+.settings-local-servers-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-local-servers-group-title {
+  margin: 8px 0 2px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.settings-local-server-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  font-size: var(--font-size-sm);
+}
+.settings-local-server-name {
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.settings-local-server-cmd {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+.settings-local-server-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.settings-local-server-port {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.settings-local-server-stop {
+  flex: 0 0 auto;
+}

@@ -79,6 +79,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 // page.
 import { PairingPage } from './PairingPage'
 import { MessagesBridgePanel } from './MessagesBridgePanel'
+import { LocalServersSettingsPanel } from './LocalServersSettingsPanel'
 import { PinnedMessagesSettingsPage } from './PinnedMessagesSettingsPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
@@ -1036,6 +1037,7 @@ export type SettingsTab =
   | 'workspaces'
   | 'pinned-messages'
   | 'model-usage'
+  | 'local-servers'
 
 /**
  * Tab grouping discriminator. The settings sidebar renders a visual
@@ -1088,6 +1090,9 @@ export const SETTINGS_TABS: Array<{
   // tiles). Not in the maintainer's explicit order list, kept at the tail of the settings
   // group rather than dropped.
   { id: 'model-usage', label: 'Model usage', group: 'settings' },
+  // "Local servers" — dev servers/watchers running under the user's workspaces,
+  // with Stop controls + the lifecycle toggles (mirrors the sidebar section).
+  { id: 'local-servers', label: 'Local servers', group: 'settings' },
   // "Devices" merges the legacy Pairing + Remote Workspaces + Bridge Networking
   // tabs (canonical id `pairing`). It stays hidden until the iOS remote
   // TestFlight surface is ready.
@@ -5287,6 +5292,9 @@ export function SettingsPanel({
 
         {/* ── Channels (local/self-hosted message gateway) ─────────────── */}
         {activeTab === 'messages' && <MessagesBridgePanel />}
+
+        {/* ── Local servers (dev servers under workspaces) ─────────────── */}
+        {activeTab === 'local-servers' && <LocalServersSettingsPanel />}
 
         {/* ── Model usage (cross-provider) ──────────────────────────────── */}
         {activeTab === 'model-usage' &&
