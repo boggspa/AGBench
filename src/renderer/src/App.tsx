@@ -14996,11 +14996,11 @@ function App(): React.JSX.Element {
       : rightDockTabs[0]?.id || 'run'
   // Canonical dock tab strip (1.4.1) — all six dock views are always
   // rendered as icon tabs in the dock header (matching the main-pane
-  // glass-pill row), so switching no longer requires bouncing back to
+  // rim-highlight row), so switching no longer requires bouncing back to
   // the composer pill row. Clicking a tab OPENS that panel (the same
-  // state toggles the glass-pill icons drive) and selects it. Tabs that
+  // state toggles the rim-highlight icons drive) and selects it. Tabs that
   // need missing context (a side chat to exist, a chat to be open, a
-  // workspace to be bound) render disabled, mirroring the glass pill.
+  // workspace to be bound) render disabled, mirroring the rim highlight.
   // The Gemini terminal stays a conditional 7th tab so we don't regress
   // it. Icon-only keeps all tabs visible at the dock's min width without
   // truncation.
@@ -15090,7 +15090,7 @@ function App(): React.JSX.Element {
   }
   const activateRightDockTab = (id: RightDockTab) => {
     // Exclusive dock lifecycle: opening/switching to a tab closes every
-    // other panel's open flag so glass-pill actives don't stack up.
+    // other panel's open flag so rim-highlight actives don't stack up.
     for (const panelId of [
       'chat',
       'run',

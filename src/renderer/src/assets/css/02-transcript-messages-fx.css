@@ -346,19 +346,20 @@
   gap: 0;
   align-items: stretch;
   padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.11);
+  border: none;
   border-radius: 999px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
-    rgba(18, 24, 38, 0.18);
+  /* Rim-highlight chrome (sidebar update-pill idiom) — inset ring + faint
+   * tint, no frosted-glass fill or backdrop blur. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text-primary) 9%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary) 4%, transparent) 58%,
+    transparent 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.11),
-    0 10px 24px rgba(0, 0, 0, 0.14);
-  /* Frosted glass — now that the pill is 1.6x larger the blur reads, so blur the
-   * transcript content behind it (re-added; previously dropped as invisible at
-   * the old small size). */
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 24%, rgba(255, 255, 255, 0.12)),
+    inset 0 0 10px color-mix(in srgb, var(--text-primary) 6%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
 .chat-corner-controls-right {
@@ -401,7 +402,7 @@
   z-index: 1;
 }
 
-/* Circular blob glow — avoids square hover bleeding past the pill rim. */
+/* Per-icon rim highlight — circular inset ring; stays inside the capsule. */
 .chat-corner-controls .chat-corner-btn::after {
   content: '';
   position: absolute;
@@ -421,8 +422,8 @@
 
 .chat-corner-controls .chat-corner-btn:hover::after {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 20%, transparent);
 }
 
 .chat-corner-controls .chat-corner-btn.active {
@@ -431,13 +432,15 @@
 
 .chat-corner-controls .chat-corner-btn.active::after {
   opacity: 1;
-  background: radial-gradient(
-    circle,
-    rgba(103, 142, 255, 0.42) 0%,
-    rgba(97, 215, 255, 0.16) 58%,
-    transparent 72%
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent, #5a8cff) 22%, transparent) 0%,
+    color-mix(in srgb, var(--accent, #5a8cff) 8%, transparent) 65%,
+    transparent 100%
   );
-  box-shadow: 0 0 20px rgba(103, 142, 255, 0.24);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent, #5a8cff) 42%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--accent, #5a8cff) 11%, transparent);
 }
 
 .chat-corner-controls .side-chat-menu-trigger.chat-corner-btn::after {
@@ -445,7 +448,7 @@
   height: 22px;
 }
 
-/* Glass-pill transcript chrome — inner glyphs 15% smaller; pill padding/size unchanged. */
+/* Rim-highlight transcript chrome — inner glyphs 15% smaller; capsule size unchanged. */
 .chat-corner-controls .chat-corner-symbol {
   width: 24px;
   height: 24px;

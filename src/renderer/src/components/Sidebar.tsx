@@ -90,7 +90,7 @@ interface SidebarProps {
    * workspace list is empty, the sidebar renders a faint card
    * under the `+` button pointing the user at "Click + above to
    * add your first workspace". The visibility itself is owned by
-   * App.tsx (so the `?` button in the chat-corner pill can flip
+   * App.tsx (so the `?` button in the chat-corner rim highlight can flip
    * it on/off); the dismissal flag persists in localStorage via
    * `onDismissOnboardingHint`.
    */

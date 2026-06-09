@@ -1483,7 +1483,7 @@
 /* Header text-cluster (ghost mascot + title + subtitle). Lays out
  * the ghost glyph to the left of the heading so the sheet greets
  * the user with the same mascot they'll see on the ghost-button
- * in the chat-corner pill. */
+ * in the chat-corner rim highlight. */
 .first-launch-sheet-header-text {
   display: flex;
   align-items: center;
@@ -3141,7 +3141,7 @@
 
 /* Sidebar section headers should not paint full-width bars behind labels.
    Pinned + Ensembles join Workspaces/Chats/Recents on the strip-the-rect
-   list so the inline glass-pill treatment below applies uniformly. */
+   list so the inline rim-highlight treatment below applies uniformly. */
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header.sidebar-chats-header,
 .app-sidebar .sidebar-active-runs-section .sidebar-section-header,
