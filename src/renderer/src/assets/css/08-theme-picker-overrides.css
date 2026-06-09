@@ -1491,11 +1491,9 @@
   flex: 1;
   min-width: 0;
 }
-/* Branded TaskWraith ghost mark next to the welcome heading. The
- * SVG itself ships gradients + rim treatment, so the wrapper is
- * just sizing — no tinted-circle background. Slightly larger
- * than the earlier inline-glyph variant (32 → 40px) so the
- * branded artwork gets the visual weight it's designed for. */
+/* Branded TaskWraith ghost mark next to the welcome heading (WWDC26
+ * chrome PNG). Glow lives on `.taskwraith-brand-ghost` in
+ * 05-polish-fx-layouts.css; this rule is sizing only. */
 .first-launch-sheet-ghost {
   flex-shrink: 0;
   width: 40px;

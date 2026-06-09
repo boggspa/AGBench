@@ -14,7 +14,7 @@ import {
   summariseProviderApiKeyStatus,
   type ProviderAuthVariant
 } from '../lib/providerAuthSummary'
-import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.svg'
+import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 // 1.0.7-EW — onboarding "out of usage" card state. ModelUsageAggregate is the
 // same per-provider quota shape the sidebar Model Usage card consumes; type-only
@@ -561,15 +561,16 @@ export function FirstLaunchSheet({
         <header className="first-launch-sheet-header">
           <div className="first-launch-sheet-header-text">
             {/*
-              TaskWraith's branded ghost mark. Lives at
-              `src/renderer/src/assets/taskwraith-ghost-mark.svg`, copied
-              from `design-assets/ghost/ghost-guy-mark.svg` so the
-              renderer can `import` it (Vite asset import). The SVG
-              ships its own gradients + rim, so the wrapper here is
-              just sizing — no tinted-circle background like the
-              earlier inline-glyph variant carried.
+              TaskWraith's branded ghost mark (WWDC26 chrome render).
+              `taskwraith-ghost-mark.png` ← `design-assets/ghost/ghost-guy-wwdc26 alpha.png`.
+              `.taskwraith-brand-ghost` adds the subtle cyan rim glow.
             */}
-            <img src={taskwraithGhostMark} alt="" className="first-launch-sheet-ghost" aria-hidden />
+            <img
+              src={taskwraithGhostMark}
+              alt=""
+              className="first-launch-sheet-ghost taskwraith-brand-ghost"
+              aria-hidden
+            />
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to TaskWraith</h2>
               <p className="first-launch-sheet-subtitle">

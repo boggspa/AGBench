@@ -1761,11 +1761,20 @@
   text-transform: none;
 }
 
+/* WWDC26 chrome ghost — shared by sidebar masthead + onboarding sheet.
+ * Drop-shadow stack matches the PNG's ice-cyan rim (#78c8ff family). */
+.taskwraith-brand-ghost {
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(118, 200, 255, 0.52))
+    drop-shadow(0 0 10px rgba(92, 168, 255, 0.34))
+    drop-shadow(0 0 20px rgba(72, 140, 240, 0.18));
+}
+
 .sidebar-product-ghost {
   width: 37px;
   height: 37px;
   flex: 0 0 auto;
-  object-fit: contain;
   margin-top: -1px;
 }
 

@@ -2276,7 +2276,7 @@ export function Sidebar({
             <span className="sidebar-product-label">
               <img
                 src={taskwraithGhostMark}
-                className="sidebar-product-ghost"
+                className="sidebar-product-ghost taskwraith-brand-ghost"
                 alt=""
                 aria-hidden
               />
