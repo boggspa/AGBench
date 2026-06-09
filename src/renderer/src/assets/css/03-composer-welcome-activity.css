@@ -2994,14 +2994,24 @@
  * `default`, so they are untouched.
  * ============================================================ */
 
-/* Polarity-neutral instrument glass — NOT theme-chroma glass. The default
- * dark theme's `--composer-glass-bg` / `--composer-glass-border` are navy
- * + periwinkle (rgba(6,14,34) / rgba(124,158,255)); using them on the
- * native outer frame reads as a blue accent wash on every above-row
- * segment. Smoked neutral black / frosted neutral white instead. */
+/* Polarity-neutral instrument glass — NOT theme-chroma glass. Outer frame +
+ * above-rows use a gray glass bezel; the inner module is a pure white (light)
+ * or pure black (dark) typing surface so the two layers never compete. */
 [data-composer-style="default"] .app-transcript {
-  --native-instrument-glass-bg: rgba(0, 0, 0, 0.46);
+  --native-instrument-inner-bg: #141418;
+  --native-instrument-inner-bg-solid: #141418;
+  --native-instrument-inner-rim: color-mix(in srgb, var(--text-primary) 24%, rgba(255, 255, 255, 0.1));
+  --native-instrument-inner-rim-glow: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --native-instrument-outer-solid: var(--surface-2);
+  --native-instrument-outer-rim: color-mix(in srgb, var(--text-primary) 22%, rgba(255, 255, 255, 0.1));
+  --native-instrument-outer-rim-glow: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --native-instrument-glass-bg: color-mix(in srgb, var(--surface-2) 46%, transparent);
   --native-instrument-glass-border: color-mix(in srgb, var(--text-primary) 11%, transparent);
+  --native-instrument-outer-shadow:
+    inset 0 0 0 1px var(--native-instrument-outer-rim),
+    inset 0 0 14px var(--native-instrument-outer-rim-glow),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 8%, transparent),
+    0 18px 46px color-mix(in srgb, #000000 20%, transparent);
 }
 :is(
     [data-theme="light"],
@@ -3011,8 +3021,20 @@
     [data-theme="alabaster"]
   )[data-composer-style="default"]
   .app-transcript {
-  --native-instrument-glass-bg: rgba(255, 255, 255, 0.48);
+  --native-instrument-inner-bg: #f0f0f3;
+  --native-instrument-inner-bg-solid: #f0f0f3;
+  --native-instrument-inner-rim: color-mix(in srgb, var(--text-primary) 20%, rgba(255, 255, 255, 0.14));
+  --native-instrument-inner-rim-glow: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --native-instrument-outer-solid: var(--surface-2);
+  --native-instrument-outer-rim: color-mix(in srgb, var(--text-primary) 18%, rgba(255, 255, 255, 0.12));
+  --native-instrument-outer-rim-glow: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  --native-instrument-glass-bg: color-mix(in srgb, var(--surface-2) 58%, transparent);
   --native-instrument-glass-border: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  --native-instrument-outer-shadow:
+    inset 0 0 0 1px var(--native-instrument-outer-rim),
+    inset 0 0 14px var(--native-instrument-outer-rim-glow),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 7%, transparent),
+    0 18px 46px color-mix(in srgb, #000000 14%, transparent);
 }
 
 /* OUTER frame — native shell liquid glass. Polarity-neutral smoked /
@@ -3022,10 +3044,12 @@
   border-color: var(--native-instrument-glass-border);
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
-  box-shadow:
+  box-shadow: var(
+    --native-instrument-outer-shadow,
     inset 0 1px 0 color-mix(in srgb, var(--text-primary) 7%, transparent),
     0 18px 46px color-mix(in srgb, #000000 24%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--text-primary) 9%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--text-primary) 9%, transparent)
+  );
 }
 /* macOS Native Glass appearance already vibrancy-blurs behind panels —
  * skip the redundant CSS backdrop pass (see shard 06). */
@@ -3037,13 +3061,13 @@
 }
 [data-composer-style="default"][data-prompt-surface="solid"] .composer-surface,
 [data-composer-style="default"][data-reduce-transparency="true"] .composer-surface {
-  background: var(--composer-bg-solid);
+  background: var(--native-instrument-outer-solid);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   [data-composer-style="default"] .composer-surface {
-    background: color-mix(in srgb, var(--composer-bg-solid) 88%, var(--composer-glass-bg) 12%);
+    background: var(--native-instrument-outer-solid, var(--composer-bg-solid));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -3073,6 +3097,7 @@
   border-color: var(--native-instrument-glass-border);
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
+  box-shadow: var(--native-instrument-outer-shadow, var(--composer-shadow));
 }
 [data-appearance="native_glass"][data-reduce-transparency="false"]
   [data-composer-style="default"]
@@ -3087,7 +3112,7 @@
 [data-composer-style="default"][data-reduce-transparency="true"]
   .app-transcript
   :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
-  background: var(--composer-bg-solid);
+  background: var(--native-instrument-outer-solid);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -3118,7 +3143,7 @@
   border: 1px solid var(--native-instrument-glass-border);
   border-bottom: none;
   border-radius: calc(var(--radius-lg) * 2.45) calc(var(--radius-lg) * 2.45) 0 0;
-  box-shadow: var(--composer-shadow);
+  box-shadow: var(--native-instrument-outer-shadow, var(--composer-shadow));
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
@@ -3138,7 +3163,7 @@
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack {
-  background: var(--composer-bg-solid);
+  background: var(--native-instrument-outer-solid);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -3258,7 +3283,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  background: var(--composer-bg);
+  background: var(--native-instrument-inner-bg, var(--composer-bg));
   /* Refinement — FULL WIDTH + HARD CORNERS. The maintainer wants the
    * module as a crisp edge-to-edge instrument panel rather than a
    * rounded inset card. Bleed across the surface's 14px horizontal
@@ -3275,14 +3300,34 @@
   margin-left: -14px;
   margin-right: -14px;
   border-radius: 0;
-  /* Seat into the contrast frame: a hairline ring + a soft inner
-   * seam so the module reads as a panel dropped into the glass. */
+  /* Rim-highlight textarea panel — inset ring + faint inner glow
+   * (transcript corner-chrome / sidebar-pill idiom). */
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 60%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent),
-    0 1px 2px rgba(0, 0, 0, 0.18);
+    inset 0 0 0 1px var(--native-instrument-inner-rim, color-mix(in srgb, var(--text-primary) 22%, transparent)),
+    inset 0 0 14px var(--native-instrument-inner-rim-glow, color-mix(in srgb, var(--text-primary) 5%, transparent)),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 9%, transparent);
   padding: 10px 10px 6px;
   transition: box-shadow 160ms ease;
+}
+
+[data-composer-style="default"] .composer-inner-module::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--text-primary) 8%, transparent) 0%,
+    transparent 46%,
+    color-mix(in srgb, var(--text-primary) 3%, transparent) 100%
+  );
+}
+
+[data-composer-style="default"] .composer-inner-module > * {
+  position: relative;
+  z-index: 2;
 }
 
 /* The inner module owns the theme-tone fill, so neutralise the
@@ -3298,13 +3343,13 @@
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="auto"] .composer-inner-module,
 [data-composer-style="default"][data-prompt-surface="classic"] .composer-inner-module,
 [data-composer-style="default"][data-prompt-surface="theme"][data-visual-effect="classic"] .composer-inner-module {
-  background: color-mix(in srgb, var(--composer-bg) 86%, var(--composer-bg-solid) 14%);
+  background: var(--native-instrument-inner-bg, var(--composer-bg));
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
 [data-composer-style="default"][data-prompt-surface="solid"] .composer-inner-module,
 [data-composer-style="default"][data-reduce-transparency="true"] .composer-inner-module {
-  background: var(--composer-bg-solid);
+  background: var(--native-instrument-inner-bg-solid, var(--composer-bg-solid));
 }
 
 /* Welcome mode keeps the hard-cornered full-width panel; only the
@@ -3318,33 +3363,6 @@
   margin-right: -16px;
 }
 
-/* ── Console refinement: themed INNER in LIGHT (chat composers) ──────
- * The outer frame is frosted glass in light themes, so the inner module's
- * near-white `--composer-bg` can still blend unless we nudge it. Give the
- * LIGHT inner a distinct themed surface:
- * a subtle vertical gradient nudged off pure-white toward the text
- * colour, so it reads as a themed panel the way the dark inner's tone
- * reads against black. Theme-relative (no per-theme values) so it holds
- * across light / citrus / mist / sage / alabaster; the extra
- * `.app-transcript` class beats the glass/solid inner variants. The DARK
- * inner is deliberately left as the flat `--composer-bg` tone (the
- * maintainer confirmed dark reads correctly). */
-:is(
-    [data-theme="light"],
-    [data-theme="citrus"],
-    [data-theme="mist"],
-    [data-theme="sage"],
-    [data-theme="alabaster"]
-  )[data-composer-style="default"]
-  .app-transcript
-  .composer-inner-module {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--composer-bg) 93%, var(--text-primary) 7%),
-    color-mix(in srgb, var(--composer-bg) 87%, var(--text-primary) 13%)
-  );
-}
-
 /* ── Console refinement: telemetry on the glass frame ────────────────
  * The timecode row sits on the outer `.composer-surface` padding zone
  * below the opaque inner module. Drop the inner module's external
@@ -3356,9 +3374,10 @@
 [data-composer-style="default"] .app-transcript .composer-inner-module {
   margin-bottom: 6px;
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 60%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+    inset 0 0 0 1px var(--native-instrument-inner-rim, color-mix(in srgb, var(--text-primary) 22%, transparent)),
+    inset 0 0 14px var(--native-instrument-inner-rim-glow, color-mix(in srgb, var(--text-primary) 5%, transparent)),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 9%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 11%, transparent);
 }
 [data-composer-style="default"] .app-transcript .composer-telemetry-row {
   background: transparent;
