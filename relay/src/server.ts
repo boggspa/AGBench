@@ -11,7 +11,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
-import { handleResolve } from './resolve'
+import { createResolveDirectory, type ResolveDirectoryOptions } from './resolve'
 
 type Role = 'mac' | 'iphone'
 
@@ -27,11 +27,14 @@ export interface RelayOptions {
   maxFrameBytes?: number
   /** Drop an idle room after this long with no traffic. */
   idleTtlMs?: number
+  /** Trusted-reconnect directory tuning (freshness window, max TTL). */
+  resolve?: ResolveDirectoryOptions
 }
 
 export interface RelayServerHandle {
   port: number
   roomCount: () => number
+  registrationCount: () => number
   close: () => Promise<void>
 }
 
@@ -42,10 +45,11 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
   const maxFrameBytes = options.maxFrameBytes ?? 256 * 1024
   const idleTtlMs = options.idleTtlMs ?? 5 * 60 * 1000
   const rooms = new Map<string, Room>()
+  const resolveDirectory = createResolveDirectory(options.resolve)
 
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
-    if (req.method === 'POST' && (req.url || '').startsWith('/v1/resolve')) {
-      handleResolve(req, res)
+    if ((req.url || '').startsWith('/v1/resolve')) {
+      resolveDirectory.handle(req, res)
       return
     }
     res.statusCode = 404
@@ -116,9 +120,11 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
       resolve({
         port,
         roomCount: () => rooms.size,
+        registrationCount: () => resolveDirectory.registrationCount(),
         close: () =>
           new Promise<void>((res) => {
             clearInterval(sweeper)
+            resolveDirectory.close()
             for (const room of rooms.values()) {
               room.mac?.terminate()
               room.iphone?.terminate()
