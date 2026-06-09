@@ -11,5 +11,6 @@ describe('OllamaRetrievalFirst', () => {
     expect(ollamaReadFileExemptFromRetrievalFirst('README.md')).toBe(true)
     expect(ollamaReadFileExemptFromRetrievalFirst('src/main/Foo.ts')).toBe(false)
     expect(ollamaRetrievalFirstBlockedMessage('src/main/Foo.ts')).toContain('workspace_search')
+    expect(ollamaRetrievalFirstBlockedMessage('src/main/Foo.ts')).toContain('list_directory')
   })
 })

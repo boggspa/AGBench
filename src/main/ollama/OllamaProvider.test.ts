@@ -22,7 +22,9 @@ import {
   sanitizeLooseJsonEscapes,
   parseOllamaMemoryPsOutput,
   resolveOllamaVisibleText,
-  shouldEmitOllamaReasoning
+  shouldEmitOllamaReasoning,
+  accumulateOllamaUsageStats,
+  ollamaUsageStats
 } from './OllamaProvider'
 import {
   effectiveOllamaToolControlTier,
@@ -32,6 +34,44 @@ import {
   ollamaToolNamesForTier,
   ollamaToolRequiresIntent
 } from './OllamaToolTiers'
+
+describe('ollamaUsageStats', () => {
+  it('emits canonical snake_case fields for ensemble token chips', () => {
+    expect(
+      ollamaUsageStats({
+        prompt_eval_count: 4200,
+        eval_count: 900,
+        total_duration: 3_500_000_000
+      })
+    ).toMatchObject({
+      input_tokens: 4200,
+      output_tokens: 900,
+      total_tokens: 5100,
+      duration_ms: 3500,
+      inputTokens: 4200,
+      outputTokens: 900
+    })
+  })
+
+  it('accumulates usage across multi-turn tool loops', () => {
+    const first = accumulateOllamaUsageStats(undefined, {
+      prompt_eval_count: 1200,
+      eval_count: 80,
+      total_duration: 1_000_000_000
+    })
+    const total = accumulateOllamaUsageStats(first, {
+      prompt_eval_count: 900,
+      eval_count: 220,
+      total_duration: 2_000_000_000
+    })
+    expect(total).toMatchObject({
+      input_tokens: 2100,
+      output_tokens: 300,
+      total_tokens: 2400,
+      duration_ms: 3000
+    })
+  })
+})
 
 describe('normalizeOllamaBaseUrl', () => {
   it('defaults to the local Ollama service when unset or invalid', () => {

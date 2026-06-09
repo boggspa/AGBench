@@ -3970,9 +3970,18 @@ function statusToRunStatus(status: EnsembleParticipantStatus): string {
 function mergeTokenTotals(existing: EnsembleParticipant['tokenTotals'], stats: any) {
   if (!stats || typeof stats !== 'object') return existing
   const next = { ...(existing || {}) }
-  for (const key of ['input_tokens', 'output_tokens', 'total_tokens', 'duration_ms'] as const) {
-    const value = Number(stats[key])
-    if (Number.isFinite(value) && value > 0) next[key] = (next[key] || 0) + value
+  const read = (snake: keyof NonNullable<EnsembleParticipant['tokenTotals']>, camel: string) => {
+    const value = Number(stats[snake] ?? stats[camel])
+    return Number.isFinite(value) && value > 0 ? value : 0
+  }
+  for (const [snake, camel] of [
+    ['input_tokens', 'inputTokens'],
+    ['output_tokens', 'outputTokens'],
+    ['total_tokens', 'totalTokens'],
+    ['duration_ms', 'durationMs']
+  ] as const) {
+    const value = read(snake, camel)
+    if (value > 0) next[snake] = (next[snake] || 0) + value
   }
   return Object.keys(next).length > 0 ? next : existing
 }

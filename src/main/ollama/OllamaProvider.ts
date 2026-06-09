@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { normalizeProviderUsage } from '../ProviderRunStats'
 import { buildProviderCapabilityContract } from '../ProviderCapabilities'
 import type { AgentRunPayload, AgentRunRoute } from '../run/AgentRunTypes'
 import type { RunManager, RunSessionStatus } from '../RunManager'
@@ -27,10 +28,15 @@ import {
   ollamaUsesCompactToolSchemas
 } from './OllamaModelProtocol'
 import {
-  ollamaEnforcesRetrievalFirst,
-  ollamaReadFileExemptFromRetrievalFirst,
-  ollamaRetrievalFirstBlockedMessage
-} from './OllamaRetrievalFirst'
+  createOllamaHarnessRunState,
+  evaluateOllamaHarnessGate,
+  ollamaHarnessEnforced,
+  ollamaHarnessKickoffPrompt,
+  ollamaHarnessToolFollowUpPrompt,
+  ollamaHarnessWorkflowSystemLine,
+  recordOllamaHarnessToolResult,
+  type OllamaHarnessRunState
+} from './OllamaHarnessGates'
 import { summarizeOllamaToolResult } from './OllamaToolResultSummary'
 import { buildOllamaWorkspaceIndexBlock } from './OllamaWorkspaceIndex'
 import {
@@ -554,19 +560,63 @@ function resolveRequestedOllamaModel(
   return models.find((model) => model.isDefault)?.id || models[0]?.id || ''
 }
 
-function ollamaUsageStats(chunk: OllamaChatChunk): Record<string, unknown> {
-  return {
-    ...(typeof chunk.prompt_eval_count === 'number'
-      ? { inputTokens: chunk.prompt_eval_count }
-      : {}),
-    ...(typeof chunk.eval_count === 'number' ? { outputTokens: chunk.eval_count } : {}),
-    ...(typeof chunk.total_duration === 'number' ? { totalDurationNs: chunk.total_duration } : {}),
-    ...(typeof chunk.load_duration === 'number' ? { loadDurationNs: chunk.load_duration } : {}),
-    ...(typeof chunk.prompt_eval_duration === 'number'
-      ? { promptEvalDurationNs: chunk.prompt_eval_duration }
-      : {}),
-    ...(typeof chunk.eval_duration === 'number' ? { evalDurationNs: chunk.eval_duration } : {})
+/** Map an Ollama chat `done` chunk to canonical run stats (snake_case +
+ * camelCase) so ensemble participant token chips, usage recording, and the
+ * composer thread tally all read the same fields. */
+export function ollamaUsageStats(chunk: OllamaChatChunk): Record<string, unknown> {
+  const inputTokens =
+    typeof chunk.prompt_eval_count === 'number' && Number.isFinite(chunk.prompt_eval_count)
+      ? Math.max(0, Math.trunc(chunk.prompt_eval_count))
+      : 0
+  const outputTokens =
+    typeof chunk.eval_count === 'number' && Number.isFinite(chunk.eval_count)
+      ? Math.max(0, Math.trunc(chunk.eval_count))
+      : 0
+  const durationMs =
+    typeof chunk.total_duration === 'number' && chunk.total_duration > 0
+      ? Math.max(0, Math.round(chunk.total_duration / 1_000_000))
+      : 0
+  if (inputTokens <= 0 && outputTokens <= 0 && durationMs <= 0) return {}
+  return normalizeProviderUsage('ollama', {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: inputTokens + outputTokens,
+    duration_ms: durationMs,
+    inputTokens,
+    outputTokens,
+    totalDurationNs: chunk.total_duration,
+    loadDurationNs: chunk.load_duration,
+    promptEvalDurationNs: chunk.prompt_eval_duration,
+    evalDurationNs: chunk.eval_duration
+  })
+}
+
+export function accumulateOllamaUsageStats(
+  accumulated: Record<string, unknown> | undefined,
+  chunk: OllamaChatChunk
+): Record<string, unknown> | undefined {
+  const next = ollamaUsageStats(chunk)
+  if (!next || Object.keys(next).length === 0) return accumulated
+  if (!accumulated) return { ...next }
+  const sum = (key: 'input_tokens' | 'output_tokens' | 'total_tokens' | 'duration_ms') => {
+    const left = Number(accumulated[key])
+    const right = Number(next[key])
+    return (Number.isFinite(left) ? left : 0) + (Number.isFinite(right) ? right : 0)
   }
+  const inputTokens = sum('input_tokens')
+  const outputTokens = sum('output_tokens')
+  const totalTokens = sum('total_tokens')
+  const durationMs = sum('duration_ms')
+  return normalizeProviderUsage('ollama', {
+    ...accumulated,
+    ...next,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+    duration_ms: durationMs,
+    inputTokens,
+    outputTokens
+  })
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> | null {
@@ -1132,7 +1182,8 @@ export async function runOllamaProvider(
       persistedMemory && persistedMemory.modelId === model
         ? persistedMemory
         : createEmptyOllamaSessionMemory(model)
-    let hasSearchedThisRun = false
+    let harnessState: OllamaHarnessRunState = createOllamaHarnessRunState()
+    const harnessEnabled = toolProtocolEnabled && ollamaHarnessEnforced(model)
     let userPrompt = payload.prompt
     if (ensembleRun) {
       const shellChars = Math.max(0, userPrompt.indexOf('Recent tagged transcript:'))
@@ -1151,15 +1202,20 @@ export async function runOllamaProvider(
         : ''
     const systemPromptParts = [
       toolProtocolEnabled ? ollamaLocalToolSystemPrompt(toolControlTier, model) : '',
+      harnessEnabled ? ollamaHarnessWorkflowSystemLine(toolControlTier) : '',
       workspaceIndexBlock
     ].filter(Boolean)
     const messages: OllamaChatMessage[] = [
       ...(systemPromptParts.length
         ? [{ role: 'system' as const, content: systemPromptParts.join('\n\n') }]
         : []),
-      { role: 'user', content: userPrompt }
+      { role: 'user', content: userPrompt },
+      ...(harnessEnabled
+        ? [{ role: 'user' as const, content: ollamaHarnessKickoffPrompt(toolControlTier) }]
+        : [])
     ]
     let lastDone: OllamaChatChunk | null = null
+    let runUsageStats: Record<string, unknown> | undefined
     let toolCallCount = 0
     for (let turnIndex = 0; turnIndex <= OLLAMA_TOOL_LOOP_LIMIT; turnIndex += 1) {
       const turn = await runOllamaChatTurn({
@@ -1171,7 +1227,10 @@ export async function runOllamaProvider(
         jsonToolFallback: toolProtocolEnabled && ollamaPrefersJsonToolProtocol(model),
         ...(modelTemperature != null ? { temperature: modelTemperature } : {})
       })
-      if (turn.lastDone) lastDone = turn.lastDone
+      if (turn.lastDone) {
+        lastDone = turn.lastDone
+        runUsageStats = accumulateOllamaUsageStats(runUsageStats, turn.lastDone)
+      }
       // gpt-oss and other harmony-format models emit their answer into the
       // reasoning (`thinking`) channel and may leave `content` empty; fall
       // back so the run still produces a visible reply instead of nothing.
@@ -1355,26 +1414,20 @@ export async function runOllamaProvider(
           route
         )
         let toolResult: OllamaToolExecutionResult
-        if (
-          toolRequest.toolName === 'read_file' &&
-          ollamaEnforcesRetrievalFirst(model) &&
-          !hasSearchedThisRun
-        ) {
-          const readPath = String(toolRequest.arguments.path || toolRequest.arguments.file_path || '')
-          if (!ollamaReadFileExemptFromRetrievalFirst(readPath)) {
-            toolResult = {
-              ok: false,
-              output: ollamaRetrievalFirstBlockedMessage(readPath)
-            }
-          } else {
-            toolResult = await deps.executeTool!({
+        const harnessGate = harnessEnabled
+          ? evaluateOllamaHarnessGate({
+              modelId: model,
+              tier: toolControlTier,
+              state: harnessState,
               toolName: toolRequest.toolName,
-              arguments: toolRequest.arguments,
-              workspacePath: payload.workspace!,
-              appChatId: route.appChatId || payload.appChatId,
-              appRunId: route.appRunId || payload.appRunId,
-              toolControlTier
+              args: toolRequest.arguments,
+              requireTodoScaffold: !harnessState.publishedTodos && toolCallCount === 1
             })
+          : { blocked: false as const }
+        if (harnessGate.blocked) {
+          toolResult = {
+            ok: false,
+            output: harnessGate.message || 'Harness gate blocked this tool call.'
           }
         } else {
           toolResult = await deps.executeTool!({
@@ -1401,8 +1454,13 @@ export async function runOllamaProvider(
             route
           )
         }
-        if (toolRequest.toolName === 'workspace_search' && toolResult.ok) {
-          hasSearchedThisRun = true
+        if (harnessEnabled) {
+          harnessState = recordOllamaHarnessToolResult(
+            harnessState,
+            toolRequest.toolName,
+            toolRequest.arguments,
+            toolResult.ok
+          )
         }
         deps.sendAgentCompatLine(
           event.sender,
@@ -1455,11 +1513,19 @@ export async function runOllamaProvider(
           })
           messages.push({
             role: 'user',
-            content: ollamaToolResultFollowUpPrompt({
-              toolName: toolRequest.toolName,
-              output: truncatedOutput,
-              ok: toolResult.ok
-            })
+            content: harnessEnabled
+              ? ollamaHarnessToolFollowUpPrompt({
+                  toolName: toolRequest.toolName,
+                  output: truncatedOutput,
+                  ok: toolResult.ok,
+                  state: harnessState,
+                  tier: toolControlTier
+                })
+              : ollamaToolResultFollowUpPrompt({
+                  toolName: toolRequest.toolName,
+                  output: truncatedOutput,
+                  ok: toolResult.ok
+                })
           })
         }
       }
@@ -1480,7 +1546,7 @@ export async function runOllamaProvider(
         model,
         modelLabel,
         stats: {
-          ...(lastDone ? ollamaUsageStats(lastDone) : {}),
+          ...(runUsageStats || {}),
           ...(toolCallCount > 0 ? { taskWraithToolCalls: toolCallCount } : {}),
           ...hardwareStats
         }

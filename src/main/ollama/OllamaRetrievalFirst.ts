@@ -36,7 +36,7 @@ export function ollamaSuggestedSearchQueryForRead(pathValue: string): string {
 export function ollamaRetrievalFirstBlockedMessage(pathValue: string): string {
   const query = ollamaSuggestedSearchQueryForRead(pathValue)
   return [
-    'Retrieval-first policy: run workspace_search before read_file on unfamiliar paths.',
+    'Retrieval-first policy: run workspace_search or list_directory before read_file on unfamiliar paths.',
     `Suggested next step: workspace_search({"query":"${query}","path":".","maxResults":25,"contextLines":1})`,
     'Then read only the highest-ranked file you actually need.'
   ].join(' ')

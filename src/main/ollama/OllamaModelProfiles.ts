@@ -34,6 +34,7 @@ export function ollamaModelFamilyPromptLines(modelId: string): string[] {
         'When embedding code in JSON tool args, escape backslashes correctly (Swift \\(…), Windows paths).',
         'Prefer native tool/function calls over describing tools in prose.',
         'Call exactly one TaskWraith tool per turn.',
+        'Use todo_write (merge:true) to publish the harness checklist, then follow explore → read → edit → verify.',
         'Worked trajectories:',
         ...ollamaGptOssFewShotTrajectories()
       ]

@@ -267,6 +267,48 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
   })
 
+  it('accumulates Ollama participant tokenTotals from camelCase run stats', async () => {
+    const chat = makeChat()
+    chat.ensemble!.participants = [
+      {
+        id: 'ollama-1',
+        provider: 'ollama',
+        enabled: true,
+        role: 'Local',
+        instructions: 'Work locally.',
+        order: 1,
+        model: 'qwen3:4b-instruct',
+        permissionPresetId: 'read_only'
+      }
+    ]
+    const harness = makeHarness({ initialChat: chat })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Summarize the repo.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.handleProviderOutput(
+      'ollama',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: { inputTokens: 2500, outputTokens: 1200, totalTokens: 3700, durationMs: 4100 }
+      }
+    )
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.participants[0]?.tokenTotals).toMatchObject({
+        input_tokens: 2500,
+        output_tokens: 1200,
+        total_tokens: 3700,
+        duration_ms: 4100
+      })
+    )
+  })
+
   it('1.0.7 — records participant usage into the shared store on run completion', async () => {
     const recorded: Array<Omit<UsageRecord, 'id' | 'timestamp'>> = []
     const harness = makeHarness({
