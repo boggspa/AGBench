@@ -2,6 +2,7 @@ import type {
   BridgeApprovalReplyAction,
   BridgeCancelRunAction,
   BridgeComposerPromptAction,
+  BridgeThreadSnapshotRequestAction,
   BridgeEnsembleCancelRoundAction,
   BridgeEnsembleCancelWakeupAction,
   BridgeEnsembleQueuePromptAction,
@@ -59,6 +60,9 @@ export interface BridgeActionExecutor {
   executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult>
   executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult>
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
+  executeThreadSnapshotRequest(
+    action: BridgeThreadSnapshotRequestAction
+  ): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
   executeEnsembleCancelRound(
     action: BridgeEnsembleCancelRoundAction
@@ -111,6 +115,11 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeComposerPromptAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('composerPrompt', action.threadId)
+  }
+  async executeThreadSnapshotRequest(
+    action: BridgeThreadSnapshotRequestAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('threadSnapshotRequest', action.threadId)
   }
   async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
     return notWired('cancelRun', action.runId)
@@ -225,6 +234,14 @@ export interface MainProcessActionExecutorDependencies {
   /** Callback the executor uses to register an iOS device's APNs token.
    * The caller in main/index.ts forwards to `BridgeApnsTokenStore.upsert`.
    * Returns true on success, false (with a reason) on validation failure. */
+  /** Callback that projects a bounded transcript window for one thread
+   * and pushes it to the paired device as a single threadSnapshot
+   * envelope (`bridge.broadcastRemoteProjection`). The ack only reports
+   * ok/reason — the snapshot itself travels on the broadcast channel. */
+  threadSnapshotRequestFn?: (action: BridgeThreadSnapshotRequestAction) => Promise<{
+    ok: boolean
+    reason?: string
+  }>
   registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
     registered: boolean
     reason?: string
@@ -360,6 +377,27 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
         executed: false,
         message: `Question reject dispatch failed: ${errMessage}`
       }
+    }
+  }
+
+  async executeThreadSnapshotRequest(
+    action: BridgeThreadSnapshotRequestAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.threadSnapshotRequestFn) {
+      return notWired('threadSnapshotRequest', action.threadId)
+    }
+    try {
+      const result = await this.deps.threadSnapshotRequestFn(action)
+      return result.ok
+        ? { executed: true, message: `Thread snapshot pushed for ${action.threadId}` }
+        : {
+            executed: false,
+            message: `Thread snapshot unavailable${result.reason ? `: ${result.reason}` : ''}`
+          }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] threadSnapshotRequest failed: ${message}`)
+      return { executed: false, message: `Thread snapshot failed: ${message}` }
     }
   }
 

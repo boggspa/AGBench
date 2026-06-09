@@ -13723,6 +13723,53 @@ if (isGeminiMcpBridgeProcess) {
           }
           return { ok, ...result }
         },
+        threadSnapshotRequestFn: async (action) => {
+          // On-demand bounded transcript window — the periodic snapshot only
+          // ships threadSnapshots for the most-recent few chats (relay frame
+          // budget); opening anything older lands here. Read-only: gated by
+          // the 'monitor' capability, works on read-only workspace entries.
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat) {
+            return { ok: false, reason: `Thread "${action.threadId}" not found` }
+          }
+          const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+          if (!canonical || canonical !== action.workspaceId) {
+            return { ok: false, reason: 'Thread does not belong to the requested workspace' }
+          }
+          const limit = Math.max(1, Math.min(100, Math.floor(action.limit ?? 40)))
+          const generatedAt = new Date().toISOString()
+          const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+            threadId: chat.appChatId,
+            mode: { kind: 'latestN', n: limit },
+            previewMaxChars: 320,
+            generatedAt,
+            speakerForMessage: chat.ensemble?.enabled
+              ? ensembleSpeakerForMessage(chat.ensemble.participants)
+              : undefined
+          })
+          const broadcaster = bridgeBroadcasterRef
+          if (!broadcaster) {
+            return { ok: false, reason: 'No connected device to push the snapshot to' }
+          }
+          broadcaster.broadcastRemoteProjection(
+            buildRemoteProjectionEnvelope({
+              kind: 'threadSnapshot',
+              payload: {
+                ...threadSnapshot,
+                taskId: chat.appChatId,
+                workspaceId: canonical,
+                provider: chat.provider
+              },
+              generatedAt,
+              workspaceId: canonical,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: threadSnapshot.runSummary?.runId,
+              envelopeId: `remote-thread:${chat.appChatId}:on-demand:${generatedAt}`
+            })
+          )
+          return { ok: true }
+        },
         composerPromptFn: async (action) => {
           // Resolve workspace path from the iOS-supplied workspaceId.
           const workspaceRecord = AppStore.getWorkspaces().find((w) => w.id === action.workspaceId)

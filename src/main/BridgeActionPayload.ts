@@ -101,6 +101,18 @@ export interface BridgeComposerPromptAction extends BridgeActionMetadata {
   contextTurns?: number
 }
 
+/** On-demand bounded transcript window for one thread. The phone sends
+ * this when opening a chat outside the recent-N snapshot window (the
+ * periodic snapshot only ships threadSnapshots for the most-recent few —
+ * relay frame budget). Gated by the `monitor` capability. */
+export interface BridgeThreadSnapshotRequestAction extends BridgeActionMetadata {
+  kind: 'threadSnapshotRequest'
+  workspaceId: string
+  threadId: string
+  /** Requested row-window size; the executor clamps to 1–100 (default 40). */
+  limit?: number
+}
+
 export interface BridgeRegisterApnsTokenAction extends BridgeActionMetadata {
   kind: 'registerApnsToken'
   /** Pair identifier this device token belongs to. iOS knows it from the
@@ -217,6 +229,7 @@ export type BridgeActionPayload =
   | BridgeQuestionReplyAction
   | BridgeQuestionRejectAction
   | BridgeComposerPromptAction
+  | BridgeThreadSnapshotRequestAction
   | BridgeCancelRunAction
   | BridgeEnsembleCancelRoundAction
   | BridgeEnsembleSkipActiveParticipantAction
@@ -313,6 +326,7 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'questionReply':
     case 'questionReject':
     case 'composerPrompt':
+    case 'threadSnapshotRequest':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -350,6 +364,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'questionReply':
     case 'questionReject':
     case 'composerPrompt':
+    case 'threadSnapshotRequest':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -415,6 +430,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'approvalReply':
     case 'questionReject':
     case 'registerApnsToken':
+    case 'threadSnapshotRequest':
       return false
     case 'unknown':
       return true
@@ -444,6 +460,10 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isComposerPrompt(parsed)
         ? (parsed as unknown as BridgeComposerPromptAction)
         : { kind: 'unknown', rawKind: 'composerPrompt', raw: parsed }
+    case 'threadSnapshotRequest':
+      return isThreadSnapshotRequest(parsed)
+        ? (parsed as unknown as BridgeThreadSnapshotRequestAction)
+        : { kind: 'unknown', rawKind: 'threadSnapshotRequest', raw: parsed }
     case 'cancelRun':
       return isCancelRun(parsed)
         ? (parsed as unknown as BridgeCancelRunAction)
@@ -552,6 +572,16 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
       (typeof v.contextTurns === 'number' &&
         Number.isInteger(v.contextTurns) &&
         v.contextTurns >= 0))
+  )
+}
+
+function isThreadSnapshotRequest(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    typeof v.threadId === 'string' &&
+    (v.limit === undefined ||
+      (typeof v.limit === 'number' && Number.isInteger(v.limit) && v.limit > 0))
   )
 }
 

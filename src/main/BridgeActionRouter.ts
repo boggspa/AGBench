@@ -462,6 +462,8 @@ export class BridgeActionRouter {
         return this.executor.executeQuestionReject(payload)
       case 'composerPrompt':
         return this.executor.executeComposerPrompt(payload)
+      case 'threadSnapshotRequest':
+        return this.executor.executeThreadSnapshotRequest(payload)
       case 'cancelRun':
         return this.executor.executeCancelRun(payload)
       case 'ensembleCancelRound':
@@ -852,6 +854,8 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
       return 'answer'
     case 'composerPrompt':
       return 'startTurn'
+    case 'threadSnapshotRequest':
+      return 'monitor'
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleCancelWakeup':

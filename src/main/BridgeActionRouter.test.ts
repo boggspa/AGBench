@@ -38,6 +38,10 @@ function makeStubExecutor(
       executed: true,
       message: 'composerPrompt done'
     }),
+    executeThreadSnapshotRequest: make('executeThreadSnapshotRequest', {
+      executed: true,
+      message: 'threadSnapshotRequest done'
+    }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
     executeEnsembleCancelRound: make('executeEnsembleCancelRound', {
       executed: true,

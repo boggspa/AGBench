@@ -52,6 +52,9 @@ export interface RemoteProjectionEnvelope<TPayload = unknown> {
 export interface RemoteTaskCard {
   id: string
   threadId: string
+  /** Present for sub-threads / isolated side chats — remote clients nest
+   * these under the parent thread like the desktop sidebar. */
+  parentChatId?: string
   workspaceId: string | null
   workspacePath?: string
   provider: ProviderId
@@ -491,6 +494,7 @@ export function buildRemoteTaskCard(
   const card: RemoteTaskCard = {
     id: chat.appChatId,
     threadId: chat.appChatId,
+    ...(chat.parentChatId ? { parentChatId: chat.parentChatId } : {}),
     workspaceId: chat.workspaceId && chat.workspaceId.length > 0 ? chat.workspaceId : null,
     provider: chat.provider ?? 'gemini',
     title: chat.title || 'Untitled chat',

@@ -85,6 +85,30 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.kind).toBe('questionReject')
     })
 
+    it('decodes a threadSnapshotRequest and classifies it read-only', () => {
+      const wire = encode({
+        kind: 'threadSnapshotRequest',
+        actionId: 'a-snap-1',
+        workspaceId: 'ws-1',
+        threadId: 't-1',
+        limit: 40
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('threadSnapshotRequest')
+      if (payload.kind === 'threadSnapshotRequest') {
+        expect(payload.threadId).toBe('t-1')
+        expect(payload.limit).toBe(40)
+      }
+      expect(workspaceIdFromPayload(payload)).toBe('ws-1')
+      expect(payloadRequiresWorkspaceGating(payload)).toBe(true)
+      expect(payloadIsMutating(payload)).toBe(false)
+      // Bad limit → unknown (defensive decode).
+      const bad = decodeBridgeActionPayload(
+        encode({ kind: 'threadSnapshotRequest', actionId: 'x', workspaceId: 'w', threadId: 't', limit: -2 })
+      )
+      expect(bad.payload.kind).toBe('unknown')
+    })
+
     it('decodes a composerPrompt with optional fields', () => {
       const wire = encode({
         kind: 'composerPrompt',
