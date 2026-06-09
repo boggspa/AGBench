@@ -6031,24 +6031,6 @@
   }
 }
 
-/* Match the Claude above-bar order: files → stats → action
- * right-anchored trio. Same rules as obsidian EW58. */
-[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-above-bar-files {
-  order: 8;
-  margin-left: auto;
-}
-[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-above-bar-stats {
-  order: 9;
-  margin-left: 0;
-}
-[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-diff-action-menu-wrap {
-  order: 10;
-  margin-left: 0;
-}
-[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-diff-action-menu-wrap .composer-above-bar-action {
-  margin-left: -6px;
-}
-
 /* Satellite picker chrome — flatten all control triggers
  * (model / permission / ensemble-mode / etc.) to floating
  * dark text on the cream surface. Mirror of the obsidian
@@ -8515,63 +8497,6 @@
 }
 
 /* ============================================================
- * ABOVE-BAR RIGHT-CLUSTER — universal pattern
- *
- * The Claude shell slice (commit 6c53add) introduced a right-
- * cluster pattern where `[N files changed]` + `[+/- diff]` + the
- * `Create PR` action button live as a tight group on the row's
- * right edge, mirroring real Claude Code's `+100 -0 Commit changes`
- * pair. The pattern reads naturally — workspace identity on the
- * left, "what you'll do with it" on the right — and is worth
- * spreading across every shell. Codex shell stays as its tucked
- * tab where the natural content-width packing already groups
- * stats + action tightly, so we exclude it from the right-cluster
- * to avoid double-affecting layout.
- * ============================================================ */
-
-.composer-above-bar:not([data-composer-style="codex"]) .composer-above-bar-files,
-[data-composer-style="default"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="modular"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="stub"] .composer-above-bar .composer-above-bar-files,
-[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-files {
-  order: 8;
-  margin-left: auto;
-}
-[data-composer-style="default"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="modular"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="stub"] .composer-above-bar .composer-above-bar-stats,
-[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-stats {
-  order: 9;
-}
-[data-composer-style="default"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="modular"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="stub"] .composer-above-bar .composer-above-bar-action,
-[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action {
-  order: 10;
-  margin-left: -2px;
-}
-
-[data-composer-style="default"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="gemini"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="kimi"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="modular"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="terminal"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="stub"] .composer-above-bar .composer-diff-action-menu-wrap,
-[data-composer-style="satellite"] .composer-above-bar .composer-diff-action-menu-wrap {
-  order: 10;
-  margin-left: -2px;
-}
-
-/* ============================================================
  * COMPOSER ABOVE-BAR STACK — Slice 3 of external-path-redesign
  * --------------------------------------------------------------
  * The above-bar is now a vertical stack: one primary row (the
@@ -8660,6 +8585,162 @@
   margin-right: 8px;
   padding: 2px 9px;
   font-size: calc(var(--font-size-xs) - 0.5px);
+}
+
+/* ============================================================
+ * Above-bar zone alignment — primary + secondary workspace rows
+ * --------------------------------------------------------------
+ * Default native: secondary row centers files+diff; trailing
+ * (access · revoke · action) hugs the right edge.
+ *
+ * Claude-family shells: primary row right-anchors files+diff before
+ * Create PR; secondary row right-anchors files+diff + trailing
+ * cluster as one block. Codex + Grok unchanged.
+ * ============================================================ */
+
+[data-composer-style="default"] .composer-above-bar-secondary .composer-above-bar-center-cluster {
+  margin-left: auto;
+  margin-right: auto;
+}
+[data-composer-style="default"] .composer-above-bar-secondary .composer-above-bar-trailing-cluster {
+  margin-left: auto;
+}
+
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="terminal"],
+    [data-composer-style="stub"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  :is(.composer-above-bar-files-cluster, .composer-above-bar-files) {
+  margin-left: auto;
+  margin-right: 0;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="terminal"],
+    [data-composer-style="stub"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  .composer-diff-action-menu-wrap {
+  margin-left: 0;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="terminal"],
+    [data-composer-style="stub"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-above-bar-secondary
+  .composer-above-bar-center-cluster {
+  margin-left: auto;
+  margin-right: 0;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="terminal"],
+    [data-composer-style="stub"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-above-bar-secondary
+  .composer-above-bar-trailing-cluster {
+  margin-left: 0;
+}
+:is(
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"],
+    [data-composer-style="modular"],
+    [data-composer-style="terminal"],
+    [data-composer-style="stub"],
+    [data-composer-style="satellite"],
+    [data-composer-style="obsidian"],
+    [data-composer-style="alabaster"]
+  )
+  .composer-above-bar-secondary:not(:has(.composer-above-bar-center-cluster))
+  .composer-above-bar-trailing-cluster {
+  margin-left: auto;
+}
+
+/* Codex + Grok — primary row three-zone layout: branch/upstream left,
+ * files+diff centred, Create-PR / Review action right.
+ * Pill wrappers are real flex items here (override `display: contents`). */
+[data-composer-style="codex"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill,
+[data-composer-style="grok"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+[data-composer-style="codex"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--git,
+[data-composer-style="grok"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--git {
+  flex: 1 1 auto;
+  order: 10;
+}
+[data-composer-style="codex"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--changes,
+[data-composer-style="grok"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--changes {
+  flex: 0 0 auto;
+  order: 30;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+[data-composer-style="codex"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--changes
+  .composer-above-bar-files-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-composer-style="codex"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--action,
+[data-composer-style="grok"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--action {
+  flex: 0 0 auto;
+  order: 80;
+  margin-left: auto !important;
+}
+[data-composer-style="grok"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  > .composer-above-bar-pill--git
+  .composer-above-bar-branch {
+  flex: 0 1 auto;
 }
 
 /* Tucked Codex tab — when secondary rows are present, the bottom
