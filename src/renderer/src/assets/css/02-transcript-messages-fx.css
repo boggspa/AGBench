@@ -727,6 +727,7 @@
   width: 178px;
   height: 62px;
   border-radius: 50% 48% 46% 54% / 58% 64% 36% 42%;
+  filter: blur(7px);
   background:
     radial-gradient(ellipse at 12% 68%, rgba(255, 255, 255, 0.34) 0 15%, transparent 16%),
     radial-gradient(ellipse at 25% 48%, rgba(255, 255, 255, 0.56) 0 23%, transparent 24%),
@@ -860,23 +861,23 @@
 .sky-day.sky-mist .sky-cloud,
 .sky-day.sky-fog .sky-cloud {
   opacity: 0.7;
-  filter: saturate(0.55) brightness(0.9);
+  filter: blur(8px) saturate(0.55) brightness(0.9);
 }
 
 .sky-day.sky-overcast .sky-cloud {
   opacity: 0.86;
-  filter: saturate(0.4) brightness(0.78);
+  filter: blur(9px) saturate(0.4) brightness(0.78);
 }
 
 .sky-day.sky-rain .sky-cloud {
   opacity: 0.74;
-  filter: saturate(0.52) brightness(0.78);
+  filter: blur(8px) saturate(0.52) brightness(0.78);
 }
 
 .sky-day.sky-heavy_rain .sky-cloud,
 .sky-day.sky-storm .sky-cloud {
   opacity: 0.86;
-  filter: saturate(0.42) brightness(0.62);
+  filter: blur(9px) saturate(0.42) brightness(0.62);
 }
 
 .sky-rainfall,
