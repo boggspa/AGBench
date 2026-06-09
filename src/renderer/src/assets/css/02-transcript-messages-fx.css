@@ -419,6 +419,37 @@
   border-color: rgba(170, 202, 255, 0.34);
 }
 
+/* Glass-pill transcript chrome — inner glyphs 15% smaller; pill padding/size unchanged. */
+.chat-corner-controls .chat-corner-symbol {
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
+}
+
+.chat-corner-controls .chat-corner-symbol svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chat-corner-controls .chat-corner-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.chat-corner-controls .chat-corner-thread-title {
+  font-size: calc(var(--font-size-sm) * 0.85);
+}
+
+.chat-corner-controls .chat-corner-count {
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  font-size: 7px;
+  line-height: 11px;
+  right: -4px;
+  top: -5px;
+}
+
 .sky-visual-fx {
   position: absolute;
   top: 0;

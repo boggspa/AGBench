@@ -2875,6 +2875,10 @@
   font-weight: 700;
   line-height: 1;
 }
+
+.chat-corner-controls .chat-corner-update-pill-label {
+  font-size: 0.612rem;
+}
 .chat-corner-controls .chat-corner-update-pill-downloading {
   min-width: 36px;
 }
@@ -3141,12 +3145,14 @@
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header.sidebar-chats-header,
 .app-sidebar .sidebar-active-runs-section .sidebar-section-header,
+.app-sidebar .sidebar-local-servers-section .sidebar-section-header,
 .app-sidebar .sidebar-workflows-section .sidebar-section-header,
 .app-sidebar .sidebar-recents-section .sidebar-section-header,
 .app-sidebar .sidebar-pinned-section .sidebar-section-header,
 .app-sidebar .sidebar-ensembles-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-active-runs-section .sidebar-section-header,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-local-servers-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workflows-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-pinned-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-ensembles-section .sidebar-section-header {
@@ -3158,6 +3164,7 @@
 }
 
 .app-sidebar .sidebar-active-runs-section .sidebar-section-title,
+.app-sidebar .sidebar-local-servers-section .sidebar-section-title,
 .app-sidebar .sidebar-workflows-section .sidebar-section-title,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
 .app-sidebar .sidebar-chats-header .sidebar-section-title,
@@ -3175,6 +3182,7 @@
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-active-runs-section .sidebar-section-title,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-local-servers-section .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workflows-section .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-chats-header .sidebar-section-title,

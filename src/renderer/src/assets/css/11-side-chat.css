@@ -804,6 +804,12 @@
   margin-left: -7px;
 }
 
+.chat-corner-controls .side-chat-menu-trigger.chat-corner-btn {
+  width: 15px;
+  min-width: 15px;
+  margin-left: -6px;
+}
+
 .side-chat-menu-chevron {
   display: inline-flex;
   align-items: center;
@@ -811,6 +817,10 @@
   color: currentColor;
   font-size: 11px;
   line-height: 1;
+}
+
+.chat-corner-controls .side-chat-menu-chevron {
+  font-size: 9px;
 }
 
 .side-chat-layout-menu {
