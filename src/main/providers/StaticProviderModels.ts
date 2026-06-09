@@ -71,9 +71,22 @@ const CLAUDE_STATIC_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   {
+    id: 'claude-fable-5',
+    label: 'Claude Fable 5',
+    description: 'Most intelligent — new tier above Opus',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    // No Fast tier — Fast mode is Opus-only (Opus 4.8/4.7/4.6).
+  },
+  {
+    id: 'claude-fable-5-1m',
+    label: 'Claude Fable 5 1M',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
+  {
     id: 'claude-opus-4-8',
     label: 'Claude Opus 4.8',
-    description: 'Most capable — extended thinking',
+    description: 'Most capable Opus — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
     additionalSpeedTiers: ['fast']
   },
@@ -198,7 +211,7 @@ export function normalizeCliProviderModel(provider: ProviderId, model?: string |
   if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best')
     return 'default'
   if (provider === 'claude') {
-    if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
+    if (['default', 'sonnet', 'opus', 'haiku', 'fable'].includes(trimmed)) return trimmed
     if (trimmed.startsWith('claude-')) {
       // The `-1m` suffix is an TaskWraith-internal marker for the 1M-context
       // variant — it drives the context-window meter (contextWindows.ts) and

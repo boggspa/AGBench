@@ -105,6 +105,16 @@ describe('generateModelAliases', () => {
     expect(aliases).toContain('claude sonnet 4.7')
   })
 
+  it('claude: fable single-digit version — the -1m marker is a suffix, not a minor version', () => {
+    const aliases = generateModelAliases('claude', 'claude-fable-5-1m')
+    expect(aliases).toContain('fable')
+    expect(aliases).toContain('fable 5')
+    expect(aliases).toContain('claude fable 5')
+    expect(aliases).toContain('fable 5 1m')
+    // Must NOT parse the context marker as a version (no "fable 5.1").
+    expect(aliases).not.toContain('fable 5.1')
+  })
+
   it('kimi: K2.6 + Kimi K2.6 + suffix forms', () => {
     const aliases = generateModelAliases('kimi', 'kimi-k2.6-thinking')
     expect(aliases).toContain('k2.6')

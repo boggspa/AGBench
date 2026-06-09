@@ -53,6 +53,10 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   'gpt-5.2': 'GPT-5.2',
 
   // ── Claude ────────────────────────────────────────────────
+  'claude-fable-5': 'Claude Fable 5',
+  'claude-fable-5-1m': 'Claude Fable 5 (1M)',
+  'claude-opus-4-8': 'Claude Opus 4.8',
+  'claude-opus-4-8-1m': 'Claude Opus 4.8 (1M)',
   'claude-opus-4-7': 'Claude Opus 4.7',
   'claude-opus-4-7-1m': 'Claude Opus 4.7 (1M)',
   'claude-sonnet-4-6': 'Claude Sonnet 4.6',
@@ -62,6 +66,7 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   sonnet: 'Claude Sonnet',
   opus: 'Claude Opus',
   haiku: 'Claude Haiku',
+  fable: 'Claude Fable',
 
   // ── Kimi (extends the original welcomeUsageDashboard.ts
   // mappings; includes the variants visible in the user's

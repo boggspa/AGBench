@@ -80,9 +80,23 @@ const CLAUDE_DEFAULT_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   {
+    id: 'claude-fable-5',
+    label: 'Claude Fable 5',
+    description: 'Most intelligent — new tier above Opus',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    // No Fast tier — Fast mode is Opus-only (Opus 4.8/4.7/4.6).
+  },
+  {
+    id: 'claude-fable-5-1m',
+    label: 'Claude Fable 5 1M',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    // 1M variants are intentionally excluded from the paid Fast tier.
+  },
+  {
     id: 'claude-opus-4-8',
     label: 'Claude Opus 4.8',
-    description: 'Most capable — extended thinking',
+    description: 'Most capable Opus — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
     additionalSpeedTiers: ['fast']
   },
@@ -183,7 +197,10 @@ const CLAUDE_MODEL_IDS = new Set([
   'sonnet',
   'opus',
   'haiku',
+  'fable',
   'custom',
+  'claude-fable-5',
+  'claude-fable-5-1m',
   'claude-opus-4-8',
   'claude-opus-4-8-1m',
   'claude-opus-4-7',

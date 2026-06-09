@@ -22,6 +22,15 @@ describe('shortModelName', () => {
     expect(shortModelName('claude', 'Claude Haiku 4.0', 'claude-haiku-4-0')).toBe('Haiku 4.0')
   })
 
+  it('extracts the single-digit Fable version without eating the -1m marker', () => {
+    expect(shortModelName('claude', 'Claude Fable 5', 'claude-fable-5')).toBe('Fable 5')
+    // -1m is the TaskWraith context-variant marker, NOT a minor version —
+    // claude-fable-5-1m must never render as "Fable 5.1".
+    expect(shortModelName('claude', 'Claude Fable 5 1M', 'claude-fable-5-1m')).toBe('Fable 5')
+    // Two-digit families with the marker keep their existing rendering.
+    expect(shortModelName('claude', 'Claude Opus 4.8 1M', 'claude-opus-4-8-1m')).toBe('Opus 4.8')
+  })
+
   it('extracts Kimi version', () => {
     expect(shortModelName('kimi', 'Kimi K2.6 Thinking', 'kimi-k2.6-thinking')).toBe('K2.6')
     expect(shortModelName('kimi', 'Kimi K2.6', 'kimi-k2.6')).toBe('K2.6')
