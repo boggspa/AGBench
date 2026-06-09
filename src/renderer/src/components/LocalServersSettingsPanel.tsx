@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
+import { localServerWorkspaceLabel } from '../../../shared/localServerWorkspaceLabel'
 import { useLocalServers } from '../hooks/useLocalServers'
 import type { LocalServerEntry } from '../../../main/localServers/types'
 
@@ -12,11 +13,7 @@ function groupByWorkspace(servers: LocalServerEntry[]): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
   for (const server of servers) {
     const key = server.workspacePath || server.workspaceId || 'unknown'
-    const label =
-      server.workspaceName ||
-      (server.workspacePath
-        ? server.workspacePath.split(/[\\/]/).filter(Boolean).pop() || server.workspacePath
-        : 'Other')
+    const label = localServerWorkspaceLabel(server) || 'Other'
     if (!groups.has(key)) groups.set(key, { key, label, servers: [] })
     groups.get(key)?.servers.push(server)
   }

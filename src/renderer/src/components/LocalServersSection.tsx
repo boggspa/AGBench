@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import type { LocalServerEntry } from '../../../main/localServers/types'
+import { localServerWorkspaceLabel } from '../../../shared/localServerWorkspaceLabel'
 import { useLocalServers } from '../hooks/useLocalServers'
 
 /** Right-chevron matching the other sidebar section headers. */
@@ -21,13 +21,6 @@ function SectionChevron({ isExpanded }: { isExpanded: boolean }): JSX.Element {
       </svg>
     </span>
   )
-}
-
-function workspaceLabel(server: LocalServerEntry): string {
-  if (server.workspaceName) return server.workspaceName
-  const path = server.workspacePath
-  if (!path) return ''
-  return path.split(/[\\/]/).filter(Boolean).pop() || path
 }
 
 /**
@@ -77,8 +70,10 @@ export function LocalServersSection(): JSX.Element | null {
             >
               <span className="sidebar-local-server-main">
                 <span className="sidebar-local-server-name">{server.name}</span>
-                {workspaceLabel(server) && (
-                  <span className="sidebar-local-server-workspace">{workspaceLabel(server)}</span>
+                {localServerWorkspaceLabel(server) && (
+                  <span className="sidebar-local-server-workspace">
+                    {localServerWorkspaceLabel(server)}
+                  </span>
                 )}
               </span>
               {server.origin === 'agent-spawned' && (

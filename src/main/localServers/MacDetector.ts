@@ -10,6 +10,7 @@
 import { execFile } from 'child_process'
 import { realpathSync } from 'fs'
 import { promisify } from 'util'
+import { formatLocalServerWorkspaceLabel } from '../../shared/localServerWorkspaceLabel'
 import {
   deriveServerName,
   findTrackedAncestor,
@@ -111,7 +112,9 @@ export class MacDetector implements LocalServerDetector {
         cwd,
         workspaceId: workspace?.id,
         workspacePath: workspace?.path || tracked?.workspacePath,
-        workspaceName: workspace?.displayName,
+        workspaceName: workspace?.displayName
+          ? formatLocalServerWorkspaceLabel(workspace.displayName)
+          : undefined,
         origin: tracked ? 'agent-spawned' : 'detected',
         rssBytes: cmdByPid.get(pid)?.rssBytes,
         pgid: tracked?.pgid,
