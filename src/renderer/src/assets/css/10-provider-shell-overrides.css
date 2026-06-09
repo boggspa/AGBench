@@ -2477,6 +2477,61 @@
   align-items: center;
 }
 
+/* Secondary workspace rows — detached satellite pills above the merged
+ * stack (same slot as `.composer-above-bar--cursor-lead`). */
+[data-composer-style="cursor"] .composer-area > .composer-above-bar-secondary,
+[data-composer-style="cursor"] .composer-above-bar-stack > .composer-above-bar-secondary {
+  margin: 0 0 6px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+[data-composer-style="cursor"]
+  .composer-above-bar-stack
+  > .composer-above-bar-secondary:first-child {
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  background: transparent !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-pill--git {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary > .composer-above-bar-pill--action {
+  /* Flatten so Review-changes / Push renders as its own pill, then
+   * access + revoke icons sit after it at the far right of the row. */
+  display: contents;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-trailing-cluster {
+  display: contents;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-diff-action-menu-wrap {
+  order: 1 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--cursor-shell-fill) !important;
+  border: 1px solid var(--cursor-shell-border) !important;
+  color: var(--cursor-shell-fg) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-access {
+  order: 2 !important;
+  margin-right: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-revoke {
+  order: 3 !important;
+}
+
 /* Inline Review-changes / Create-PR menu (not portaled). */
 [data-composer-style="cursor"] .composer-diff-action-menu {
   background: var(--cursor-shell-surface) !important;

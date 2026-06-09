@@ -17086,9 +17086,43 @@ function App(): React.JSX.Element {
                     </div>
                   ) : null
 
+                const externalWorkspaceAboveRows =
+                  !isWelcomeChat && currentWorkspace
+                    ? externalWorkspaceGroups.map((group) => (
+                        <ExternalPathAboveRow
+                          key={group.path}
+                          grant={group.representative}
+                          access={group.access}
+                          providers={group.providers}
+                          repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
+                          snapshot={externalGitSnapshots[group.path] ?? null}
+                          diffStats={(() => {
+                            const snap = externalGitSnapshots[group.path]
+                            return snap
+                              ? {
+                                  filesChanged: snap.counts?.changed ?? 0,
+                                  additions: snap.lineStats?.additions ?? 0,
+                                  deletions: snap.lineStats?.deletions ?? 0
+                                }
+                              : undefined
+                          })()}
+                          onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
+                          createPrState={getCreatePrState(group.path)}
+                          onCreatePr={() => handleCreateGithubPr(group.path)}
+                          onReviewChanges={() =>
+                            void window.api.openWorkspacePopout({
+                              kind: 'diff-studio',
+                              workspacePath: group.path
+                            })
+                          }
+                        />
+                      ))
+                    : null
+
                 return (
                   <>
                     {appearance.composerStyle === 'cursor' && primaryWorkspaceAboveBar}
+                    {appearance.composerStyle === 'cursor' && externalWorkspaceAboveRows}
                     <div className={`composer-above-bar-stack ${composerAboveBarStackAuraClass}`}>
                       {appearance.composerStyle !== 'cursor' && primaryWorkspaceAboveBar}
                       {/* Slice 3 of the external-path-redesign arc. One stacked
@@ -17101,37 +17135,7 @@ function App(): React.JSX.Element {
                     PR state is keyed by `grant.path`, so an ensemble's
                     several same-path write grants share one repo's PR
                     progress. READ grants keep the reference-only banner. */}
-                      {!isWelcomeChat &&
-                        currentWorkspace &&
-                        externalWorkspaceGroups.map((group) => (
-                          <ExternalPathAboveRow
-                            key={group.path}
-                            grant={group.representative}
-                            access={group.access}
-                            providers={group.providers}
-                            repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
-                            snapshot={externalGitSnapshots[group.path] ?? null}
-                            diffStats={(() => {
-                              const snap = externalGitSnapshots[group.path]
-                              return snap
-                                ? {
-                                    filesChanged: snap.counts?.changed ?? 0,
-                                    additions: snap.lineStats?.additions ?? 0,
-                                    deletions: snap.lineStats?.deletions ?? 0
-                                  }
-                                : undefined
-                            })()}
-                            onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
-                            createPrState={getCreatePrState(group.path)}
-                            onCreatePr={() => handleCreateGithubPr(group.path)}
-                            onReviewChanges={() =>
-                              void window.api.openWorkspacePopout({
-                                kind: 'diff-studio',
-                                workspacePath: group.path
-                              })
-                            }
-                          />
-                        ))}
+                      {appearance.composerStyle !== 'cursor' && externalWorkspaceAboveRows}
                 {/*
                   Slice F (1.0.3) — ensemble participants live in the
                   composer above-row stack now. Sits below the unified
