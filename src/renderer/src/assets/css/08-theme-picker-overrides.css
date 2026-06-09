@@ -8606,6 +8606,22 @@
   margin-left: auto;
 }
 
+/* Default native primary — branch/files left, Create-PR action last.
+ * Resets stray pill-order / margin-left:auto overrides that were
+ * right-aligning the whole row with the action leading. */
+[data-composer-style="default"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  :is(.composer-above-bar-files, .composer-above-bar-stats, .composer-above-bar-files-cluster) {
+  margin-left: 0;
+  margin-right: 0;
+}
+[data-composer-style="default"]
+  .composer-above-bar:not(.composer-above-bar-secondary)
+  .composer-diff-action-menu-wrap {
+  order: 80;
+  margin-left: auto;
+}
+
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
@@ -8636,6 +8652,7 @@
   .composer-above-bar:not(.composer-above-bar-secondary)
   .composer-diff-action-menu-wrap {
   margin-left: 0;
+  order: 80 !important;
 }
 :is(
     [data-composer-style="claude"],
@@ -8909,6 +8926,7 @@
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .ensemble-roster-preset-picker.is-compact {
   border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -8920,7 +8938,7 @@
   align-self: stretch;
 }
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > *:not(:first-child) {
+  > *:not(:first-child):not(.ensemble-roster-preset-picker.is-compact) {
   border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
 }
 /*

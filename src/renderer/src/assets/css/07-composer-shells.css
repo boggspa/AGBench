@@ -1004,33 +1004,20 @@
   margin-left: 0;
   margin-right: 0;
 }
-/* DOM order inside trailing cluster: action → access → revoke.
+/* DOM order inside trailing cluster: access → revoke → action (action last).
  * !important beats the global 70/75/80 order ladder on secondary rows. */
 .composer-above-bar-trailing-cluster > * {
   margin-left: 0;
   margin-right: 0;
 }
-.composer-above-bar-trailing-cluster .composer-diff-action-menu-wrap {
+.composer-above-bar-trailing-cluster .composer-above-bar-secondary-access {
   order: 1 !important;
 }
-.composer-above-bar-trailing-cluster .composer-above-bar-secondary-access {
+.composer-above-bar-trailing-cluster .composer-above-bar-secondary-revoke {
   order: 2 !important;
 }
-.composer-above-bar-trailing-cluster .composer-above-bar-secondary-revoke {
+.composer-above-bar-trailing-cluster .composer-diff-action-menu-wrap {
   order: 3 !important;
-}
-/* When display:contents fails, pill wrappers still sort correctly. */
-.composer-above-bar-pill--git {
-  order: 10;
-}
-.composer-above-bar-pill--changes {
-  order: 30;
-}
-.composer-above-bar-pill--stats {
-  order: 35;
-}
-.composer-above-bar-pill--action {
-  order: 80;
 }
 .composer-above-bar-center-cluster > .composer-above-bar-pill--changes,
 .composer-above-bar-center-cluster > .composer-above-bar-pill--stats {
