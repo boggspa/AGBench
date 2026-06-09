@@ -2279,7 +2279,9 @@ export function SettingsPanel({
                           tabIndex={-1}
                           aria-hidden="true"
                         >
-                          Review changes
+                          {composerStyle === 'codex' || composerStyle === 'grok'
+                            ? 'Create PR'
+                            : 'Review changes'}
                         </button>
                       </div>
                     </div>

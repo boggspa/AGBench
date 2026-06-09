@@ -252,6 +252,47 @@
   min-width: 0;
 }
 
+/* Codex + Grok previews — mirror the live tucked-tab stack (narrower row
+ * nested under the composer lip). Generic preview rules above force full
+ * width + a 6px gap; undo those for shells that tuck the above-row. */
+.settings-composer-preview-card[data-composer-style="codex"]
+  .settings-composer-preview-area.composer-area,
+.settings-composer-preview-card[data-composer-style="grok"]
+  .settings-composer-preview-area.composer-area {
+  gap: 0;
+  align-items: center;
+}
+.settings-composer-preview-card[data-composer-style="codex"]
+  .settings-composer-preview-area
+  .composer-above-bar-stack,
+.settings-composer-preview-card[data-composer-style="grok"]
+  .settings-composer-preview-area
+  .composer-above-bar-stack {
+  width: min(calc(100% - 80px), 900px);
+  max-width: min(calc(100% - 80px), 900px);
+  align-self: center;
+}
+.settings-composer-preview-card[data-composer-style="codex"]
+  .settings-composer-preview-area
+  .composer-above-bar,
+.settings-composer-preview-card[data-composer-style="grok"]
+  .settings-composer-preview-area
+  .composer-above-bar {
+  margin-bottom: -10px;
+  width: 100%;
+  max-width: 100%;
+}
+.settings-composer-preview-card[data-composer-style="codex"]
+  .settings-composer-preview-area
+  .composer-surface,
+.settings-composer-preview-card[data-composer-style="grok"]
+  .settings-composer-preview-area
+  .composer-surface {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+}
+
 .settings-composer-preview-area .composer-above-bar-branch,
 .settings-composer-preview-area .composer-above-bar-files,
 .settings-composer-preview-area .composer-above-bar-stats,
