@@ -8771,9 +8771,20 @@
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
-  border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
+}
+[data-composer-style="codex"] .composer-above-bar-secondary.style-unified {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+}
+[data-composer-style="grok"] .composer-above-bar-secondary.style-unified {
+  border: none !important;
+}
+/* Codex — hairline above the external-path (2nd workspace) row only. */
+[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar-secondary {
+  border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent) !important;
 }
 [data-composer-style="codex"] .composer-above-bar-secondary::before,
 [data-composer-style="grok"] .composer-above-bar-secondary::before {
@@ -8926,7 +8937,6 @@
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .ensemble-roster-preset-picker.is-compact {
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -8938,7 +8948,13 @@
   align-self: stretch;
 }
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > *:not(:first-child):not(.ensemble-roster-preset-picker.is-compact) {
+  > .ensemble-roster-preset-picker.is-compact {
+  border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child):not(.composer-above-bar-secondary):not(
+    .ensemble-roster-preset-picker.is-compact
+  ) {
   border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
 }
 /*
