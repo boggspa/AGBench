@@ -14272,6 +14272,20 @@ if (isGeminiMcpBridgeProcess) {
     // which persists at `<userData>/bridge/remote-workspaces.json`. They are
     // unconditionally registered so the renderer can manage allowlist entries
     // even when the daemon is not running.
+    // Allowlist mutations change what a paired phone is ALLOWED TO SEE — the
+    // workspace list and every projection are filtered through the allowlist.
+    // Re-broadcast after each mutation so the phone's workspace picker and
+    // task feed update immediately instead of waiting for an unrelated chat
+    // mutation or a reconnect. No-ops when no device is connected.
+    const broadcastAllowlistVisibilityChange = (): void => {
+      broadcastWorkspaceList()
+      broadcastThreadList()
+      try {
+        bridgeBroadcaster?.broadcastRemoteProjectionSnapshot()
+      } catch (err) {
+        console.error('[BridgeBroadcaster] allowlist visibility broadcast failed:', err)
+      }
+    }
     ipcMain.handle('bridge-allowlist-list', () => workspaceService.listRemoteAllowlist())
     ipcMain.handle(
       'bridge-allowlist-upsert',
@@ -14285,12 +14299,22 @@ if (isGeminiMcpBridgeProcess) {
           allowedApprovalModes: string[]
           expiresAt?: number
         }
-      ) => workspaceService.upsertRemoteAllowlist(entry)
+      ) => {
+        const result = workspaceService.upsertRemoteAllowlist(entry)
+        broadcastAllowlistVisibilityChange()
+        return result
+      }
     )
-    ipcMain.handle('bridge-allowlist-remove', (_, workspaceId: string) =>
-      workspaceService.removeRemoteAllowlist(workspaceId)
-    )
-    ipcMain.handle('bridge-allowlist-clear', () => workspaceService.clearRemoteAllowlist())
+    ipcMain.handle('bridge-allowlist-remove', (_, workspaceId: string) => {
+      const result = workspaceService.removeRemoteAllowlist(workspaceId)
+      broadcastAllowlistVisibilityChange()
+      return result
+    })
+    ipcMain.handle('bridge-allowlist-clear', () => {
+      const result = workspaceService.clearRemoteAllowlist()
+      broadcastAllowlistVisibilityChange()
+      return result
+    })
 
     // Phase E3: Bridge Networking — detection + status for the
     // Settings panel. Returns the LAN serviceName (used for Bonjour
