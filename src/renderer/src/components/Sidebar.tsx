@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { MascotGhost } from './AppChromeSymbols'
 import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
-import { UpdatePill } from './UpdatePill'
+import { isUpdatePillVisible, UpdatePill } from './UpdatePill'
 import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 import type {
   WorkspaceRecord,
@@ -113,10 +113,10 @@ interface SidebarProps {
   onSelectChat: (chat: ChatRecord) => void
   onOpenChatInSidePanel?: (chat: ChatRecord, presentation?: 'split' | 'drawer') => void
   onOpenSettings: () => void
-  /** Live update snapshot + opener for the masthead update pill. The pill
-   * renders only when an update is actionable, so the sidebar stays clean at
-   * rest and becomes minorly prominent when an update is available. */
+  /** Live update snapshot for the one-click pill above the masthead. */
   updateSnapshot?: UpdateStateSnapshot | null
+  /** Download / restart / retry without opening Settings. */
+  onQuickUpdate?: () => void
   onOpenChangelog?: () => void
   appearanceQuickSettings?: {
     composerStyle: ComposerStyle
@@ -1310,6 +1310,7 @@ export function Sidebar({
   onOpenChatInSidePanel,
   onOpenSettings,
   updateSnapshot,
+  onQuickUpdate,
   onOpenChangelog,
   appearanceQuickSettings,
   onAppearanceQuickChange,
@@ -2260,6 +2261,16 @@ export function Sidebar({
   return (
     <div className={`app-sidebar${animationClassName ? ` ${animationClassName}` : ''}`}>
       <div className="sidebar-content">
+        {isUpdatePillVisible(updateSnapshot) && (onQuickUpdate || onOpenChangelog) ? (
+          <div className="sidebar-update-pill-row">
+            <UpdatePill
+              snapshot={updateSnapshot ?? null}
+              onQuickUpdate={onQuickUpdate}
+              onOpen={onOpenChangelog}
+              variant="sidebar"
+            />
+          </div>
+        ) : null}
         <div className="sidebar-masthead">
           <div className="sidebar-masthead-copy">
             <span className="sidebar-product-label">
@@ -2280,13 +2291,6 @@ export function Sidebar({
                 {currentScopeTitle}
               </strong>
             )}
-            {onOpenChangelog ? (
-              <UpdatePill
-                snapshot={updateSnapshot ?? null}
-                onOpen={onOpenChangelog}
-                variant="sidebar"
-              />
-            ) : null}
           </div>
           <div className="sidebar-new-menu-wrap" ref={newMenuWrapRef}>
             <button

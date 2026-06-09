@@ -1681,38 +1681,62 @@
   gap: 3px;
 }
 
-/* Update-available pill in the sidebar masthead. UpdatePill only renders it
- * when an update is actionable, so it's absent at rest and minorly prominent
- * when there's something to do. Accent-tinted; recolours for downloaded
- * (ready to restart) + error. */
+/* One-click update pill — top of the workspaces sidebar, above the masthead.
+ * Uses the same rim-highlight chrome as sidebar selection; hidden at rest. */
+.sidebar-update-pill-row {
+  display: flex;
+  padding: 0 12px 8px;
+}
 .sidebar-update-pill {
-  justify-self: start;
-  margin-top: 2px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
   font-size: var(--font-size-xs);
   font-weight: 650;
   cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--accent-color, #6f9dff) 55%, transparent);
-  background: color-mix(in srgb, var(--accent-color, #6f9dff) 16%, transparent);
-  color: var(--accent-color, #6f9dff);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  border: none;
+  color: var(--text-primary);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 17%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 60%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, var(--panel-border)),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 9%, transparent);
+  transition:
+    box-shadow 0.15s ease,
+    background 0.15s ease;
 }
 .sidebar-update-pill:hover {
-  background: color-mix(in srgb, var(--accent-color, #6f9dff) 28%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 52%, var(--panel-border)),
+    inset 0 0 14px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .sidebar-update-pill-downloaded {
-  border-color: color-mix(in srgb, #6ddfa8 60%, transparent);
-  background: color-mix(in srgb, #6ddfa8 16%, transparent);
-  color: #6ddfa8;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #6ddfa8 17%, transparent) 0%,
+    color-mix(in srgb, #6ddfa8 7%, transparent) 60%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #6ddfa8 42%, var(--panel-border)),
+    inset 0 0 12px color-mix(in srgb, #6ddfa8 10%, transparent);
 }
 .sidebar-update-pill-error {
-  border-color: color-mix(in srgb, #f0a35a 60%, transparent);
-  background: color-mix(in srgb, #f0a35a 16%, transparent);
-  color: #f0a35a;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #f0a35a 17%, transparent) 0%,
+    color-mix(in srgb, #f0a35a 7%, transparent) 60%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #f0a35a 42%, var(--panel-border)),
+    inset 0 0 12px color-mix(in srgb, #f0a35a 10%, transparent);
 }
 
 /* 1.0.5-EW63 — Accent tint dialled from 86% to 60%. On the

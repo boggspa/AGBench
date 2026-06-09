@@ -21,7 +21,7 @@ vi.mock('electron-updater', () => ({
   autoUpdater: mockAutoUpdater
 }))
 
-import { UpdateService } from './UpdateService'
+import { UPDATE_CHECK_INTERVAL_MS, UpdateService } from './UpdateService'
 
 function emitUpdaterEvent(name: string, payload?: unknown): void {
   const handler = mockAutoUpdater.on.mock.calls.find((call) => call[0] === name)?.[1]
@@ -309,5 +309,43 @@ describe('UpdateService', () => {
     expect(svc.snapshot().status).toBe('idle')
     svc.configure({ channel: 'debug', enabled: true })
     expect(svc.snapshot().status).toBe('disabled')
+  })
+
+  it('polls for updates hourly when enabled', async () => {
+    vi.useFakeTimers()
+    try {
+      mockAutoUpdater.checkForUpdates.mockImplementation(async () => {
+        emitUpdaterEvent('update-not-available')
+        return null
+      })
+      const svc = new UpdateService()
+      svc.configure({ channel: 'stable', enabled: true })
+      mockAutoUpdater.checkForUpdates.mockClear()
+
+      await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS)
+      expect(mockAutoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+      expect(svc.snapshot().status).toBe('not-available')
+
+      await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS)
+      expect(mockAutoUpdater.checkForUpdates).toHaveBeenCalledTimes(2)
+    } finally {
+      mockAutoUpdater.checkForUpdates.mockImplementation(async () => null)
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops hourly polling when auto-update is disabled', async () => {
+    vi.useFakeTimers()
+    try {
+      const svc = new UpdateService()
+      svc.configure({ channel: 'stable', enabled: true })
+      svc.configure({ channel: 'debug', enabled: true })
+      mockAutoUpdater.checkForUpdates.mockClear()
+
+      await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS)
+      expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

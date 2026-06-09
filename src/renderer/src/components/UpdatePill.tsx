@@ -3,10 +3,12 @@ import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 
 interface UpdatePillProps {
   snapshot: UpdateStateSnapshot | null
-  onOpen: () => void
-  /** 'corner' = the chat-corner icon button (default); 'sidebar' = the accent
-   * pill in the sidebar masthead. Both gate on the same actionable statuses,
-   * so the pill is absent at rest. */
+  /** Opens the changelog sheet (corner affordance / fallback). */
+  onOpen?: () => void
+  /** One-click update action (sidebar pill). When set, click runs this instead of onOpen. */
+  onQuickUpdate?: () => void
+  /** 'corner' = the chat-corner icon button (default); 'sidebar' = rim-highlight
+   * pill above the workspaces masthead. Hidden unless an update is actionable. */
   variant?: 'corner' | 'sidebar'
 }
 
@@ -17,23 +19,30 @@ const ACTIONABLE_UPDATE_STATUSES = new Set<UpdateStateSnapshot['status']>([
   'error'
 ])
 
+export function isUpdatePillVisible(snapshot: UpdateStateSnapshot | null | undefined): boolean {
+  return Boolean(snapshot && ACTIONABLE_UPDATE_STATUSES.has(snapshot.status))
+}
+
 export function UpdatePill({
   snapshot,
   onOpen,
+  onQuickUpdate,
   variant = 'corner'
 }: UpdatePillProps): React.JSX.Element | null {
-  if (!snapshot || !ACTIONABLE_UPDATE_STATUSES.has(snapshot.status)) return null
+  if (!isUpdatePillVisible(snapshot) || !snapshot) return null
 
   const label = labelForSnapshot(snapshot)
   const className =
     variant === 'sidebar'
       ? `sidebar-update-pill sidebar-update-pill-${snapshot.status}`
       : `chat-corner-btn chat-corner-update-pill chat-corner-update-pill-${snapshot.status}`
+  const handleClick = onQuickUpdate ?? onOpen
   return (
     <button
       className={className}
       type="button"
-      onClick={onOpen}
+      onClick={handleClick}
+      disabled={!handleClick}
       title={titleForSnapshot(snapshot)}
       aria-label={titleForSnapshot(snapshot)}
     >
@@ -63,12 +72,12 @@ function titleForSnapshot(snapshot: UpdateStateSnapshot): string {
   switch (snapshot.status) {
     case 'available':
       return snapshot.latestVersion
-        ? `TaskWraith ${snapshot.latestVersion} is available`
-        : 'An TaskWraith update is available'
+        ? `Download TaskWraith ${snapshot.latestVersion}`
+        : 'Download the latest TaskWraith update'
     case 'downloading':
       return 'TaskWraith update is downloading'
     case 'downloaded':
-      return 'Restart TaskWraith to install the downloaded update'
+      return 'Restart TaskWraith to install the update now'
     case 'error':
       return snapshot.errorMessage || 'TaskWraith update check failed'
     default:

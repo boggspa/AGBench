@@ -55,6 +55,9 @@ export interface UpdateServiceEvents {
   'update-downloaded': (info: UpdateInfo) => void
 }
 
+/** Background poll interval when auto-update is enabled (packaged builds). */
+export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
+
 export type UpdateStatus =
   | 'disabled'
   | 'idle'
@@ -97,6 +100,7 @@ export class UpdateService {
   private lastCheckedAt: string | undefined
   private listeners = new Set<Listener>()
   private wired = false
+  private periodicCheckTimer: ReturnType<typeof setInterval> | null = null
   private log: (line: string) => void
   private hostPlatform: string
   private hostArch: string
@@ -124,6 +128,7 @@ export class UpdateService {
       this.downloadProgress = undefined
       this.errorMessage = undefined
       this.clearReleaseMetadata()
+      this.stopPeriodicChecks()
       this.publish()
       return
     }
@@ -150,6 +155,7 @@ export class UpdateService {
     this.downloadProgress = undefined
     this.errorMessage = undefined
     this.clearReleaseMetadata()
+    this.startPeriodicChecks()
     this.publish()
   }
 
@@ -303,6 +309,23 @@ export class UpdateService {
     this.errorMessage = message
     this.log(`[UpdateService] error: ${message}`)
     this.publish()
+  }
+
+  private startPeriodicChecks(): void {
+    this.stopPeriodicChecks()
+    this.periodicCheckTimer = setInterval(() => {
+      if (this.status === 'disabled' || this.status === 'checking' || this.status === 'downloading') {
+        return
+      }
+      void this.checkForUpdates()
+    }, UPDATE_CHECK_INTERVAL_MS)
+  }
+
+  private stopPeriodicChecks(): void {
+    if (this.periodicCheckTimer) {
+      clearInterval(this.periodicCheckTimer)
+      this.periodicCheckTimer = null
+    }
   }
 
   private publish(): void {

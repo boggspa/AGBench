@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ChangelogSheet, formatReleaseNotes, resolveChangelogEntry } from './ChangelogSheet'
-import { UpdatePill } from './UpdatePill'
+import { isUpdatePillVisible, UpdatePill } from './UpdatePill'
 import type { ProductChangelogSnapshot } from '../../../main/store/types'
 import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 
@@ -35,6 +35,35 @@ describe('UpdatePill', () => {
     )
     expect(html).toContain('chat-corner-update-pill-available')
     expect(html).toContain('Update 1.0.73')
+  })
+
+  it('renders a rim-highlight sidebar pill for available updates', () => {
+    const html = renderToStaticMarkup(
+      <UpdatePill
+        snapshot={{
+          status: 'available',
+          enabled: true,
+          channel: 'stable',
+          latestVersion: '1.4.4'
+        }}
+        onQuickUpdate={() => {}}
+        variant="sidebar"
+      />
+    )
+    expect(html).toContain('sidebar-update-pill-available')
+    expect(html).toContain('Update 1.4.4')
+  })
+
+  it('isUpdatePillVisible gates quiet update states', () => {
+    expect(isUpdatePillVisible({ status: 'idle', enabled: true, channel: 'stable' })).toBe(false)
+    expect(
+      isUpdatePillVisible({
+        status: 'available',
+        enabled: true,
+        channel: 'stable',
+        latestVersion: '1.4.4'
+      })
+    ).toBe(true)
   })
 
   it('renders download progress for downloading updates', () => {

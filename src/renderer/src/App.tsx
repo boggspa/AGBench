@@ -1406,6 +1406,24 @@ function App(): React.JSX.Element {
     setShowChangelogSheet(true)
     void refreshChangelogSnapshot()
   }, [refreshChangelogSnapshot])
+  const handleSidebarQuickUpdate = useCallback(() => {
+    const status = updateStatus.snapshot?.status
+    if (status === 'available') {
+      void updateStatus.downloadUpdate()
+      return
+    }
+    if (status === 'downloaded') {
+      void updateStatus.installUpdateNow()
+      return
+    }
+    if (status === 'error') {
+      void updateStatus.checkForUpdates()
+      return
+    }
+    if (status === 'downloading') {
+      handleOpenChangelogSheet()
+    }
+  }, [handleOpenChangelogSheet, updateStatus])
   /** 1.0.4-AK2 — Work Session setup sheet open/closed state.
    * Opened by the composer's "Work Session" button (alongside
    * Turn/Continuous). On confirm, persists the WorkSessionConfig
@@ -15705,6 +15723,7 @@ function App(): React.JSX.Element {
                 }
                 onOpenSettings={() => setShowSettings(true)}
                 updateSnapshot={updateStatus.snapshot}
+                onQuickUpdate={handleSidebarQuickUpdate}
                 onOpenChangelog={handleOpenChangelogSheet}
                 appearanceQuickSettings={{
                   composerStyle: appearance.composerStyle,
