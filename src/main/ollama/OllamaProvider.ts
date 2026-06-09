@@ -14,10 +14,31 @@ import {
   resolveOllamaEnsembleTranscriptCharsForBudget
 } from './OllamaEnsembleContext'
 import {
+  appendOllamaTrajectoryEntry,
+  compressOllamaMessagesWithWorkingMemory,
+  createEmptyOllamaSessionMemory,
+  pruneOllamaSessionMemoryForPersist,
+  shouldRollOllamaRunSummary,
+  type OllamaSessionMemory
+} from './OllamaRunMemory'
+import {
+  ollamaOneToolAtATime,
+  ollamaPrefersJsonToolProtocol,
+  ollamaUsesCompactToolSchemas
+} from './OllamaModelProtocol'
+import {
+  ollamaEnforcesRetrievalFirst,
+  ollamaReadFileExemptFromRetrievalFirst,
+  ollamaRetrievalFirstBlockedMessage
+} from './OllamaRetrievalFirst'
+import { summarizeOllamaToolResult } from './OllamaToolResultSummary'
+import { buildOllamaWorkspaceIndexBlock } from './OllamaWorkspaceIndex'
+import {
   ollamaLocalToolSystemPrompt,
   ollamaModelFamilyTemperature,
   ollamaStruggleHandoffMessage
 } from './OllamaModelProfiles'
+import { buildOllamaMidRunTierBumpWarning } from './OllamaTierSuggestion'
 
 export { ollamaLocalToolSystemPrompt } from './OllamaModelProfiles'
 import {
@@ -114,6 +135,8 @@ export interface OllamaProviderDeps {
     options?: { excludeIds?: string[] }
   ) => Promise<void>
   executeTool?: (request: OllamaToolExecutionRequest) => Promise<OllamaToolExecutionResult>
+  getOllamaSessionMemory?: (chatId: string) => OllamaSessionMemory | null | undefined
+  saveOllamaSessionMemory?: (chatId: string, memory: OllamaSessionMemory) => void
 }
 
 interface OllamaTagsResponse {
@@ -199,6 +222,7 @@ export interface OllamaToolExecutionResult {
   ok: boolean
   output: string
   structuredContent?: unknown
+  tierBumpRequired?: boolean
 }
 
 export interface OllamaToolRequest {
@@ -210,7 +234,12 @@ const OLLAMA_TOOL_LOOP_LIMIT = 8
 const OLLAMA_TOOL_RESULT_MAX_CHARS = 2400
 const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
 
-export function truncateOllamaToolResultOutput(output: string, maxChars = OLLAMA_TOOL_RESULT_MAX_CHARS): string {
+export function truncateOllamaToolResultOutput(
+  output: string,
+  maxChars = OLLAMA_TOOL_RESULT_MAX_CHARS,
+  toolName?: OllamaToolName | string
+): string {
+  if (toolName) return summarizeOllamaToolResult(toolName, output, maxChars)
   const value = String(output || '')
   if (value.length <= maxChars) return value
   return `${value.slice(0, maxChars)}\n[tool result truncated for local model context]`
@@ -955,6 +984,7 @@ async function runOllamaChatTurn(input: {
   signal: AbortSignal
   tools?: OllamaNativeToolDefinition[]
   temperature?: number
+  jsonToolFallback?: boolean
 }): Promise<OllamaChatTurnResult> {
   const response = await fetch(endpoint(input.baseUrl, '/api/chat'), {
     method: 'POST',
@@ -965,6 +995,7 @@ async function runOllamaChatTurn(input: {
       stream: true,
       messages: input.messages,
       ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
+      ...(input.jsonToolFallback ? { format: 'json' } : {}),
       options: {
         temperature: input.temperature ?? 0.2
       }
@@ -1086,11 +1117,22 @@ export async function runOllamaProvider(
       settings.agenticServices?.mcpTools !== 'deny'
     const ensembleRun = Boolean(payload.ensembleRun)
     const toolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
+    const compactToolSchemas = ensembleRun || ollamaUsesCompactToolSchemas(model)
     const nativeToolDefs = toolProtocolEnabled
-      ? ollamaNativeToolDefinitions(toolControlTier, { compact: ensembleRun })
+      ? ollamaNativeToolDefinitions(toolControlTier, { compact: compactToolSchemas })
       : []
     const availableToolNames = nativeToolDefs.map((def) => def.function.name)
     const modelTemperature = ollamaModelFamilyTemperature(model)
+    const chatId = route.appChatId || payload.appChatId
+    const persistedMemory =
+      chatId && deps.getOllamaSessionMemory
+        ? deps.getOllamaSessionMemory(chatId)
+        : null
+    let sessionMemory =
+      persistedMemory && persistedMemory.modelId === model
+        ? persistedMemory
+        : createEmptyOllamaSessionMemory(model)
+    let hasSearchedThisRun = false
     let userPrompt = payload.prompt
     if (ensembleRun) {
       const shellChars = Math.max(0, userPrompt.indexOf('Recent tagged transcript:'))
@@ -1103,9 +1145,17 @@ export async function runOllamaProvider(
       const maxPromptChars = shellChars + budget.contextChars + 2_400
       userPrompt = compactOllamaEnsemblePromptText(userPrompt, maxPromptChars)
     }
+    const workspaceIndexBlock =
+      toolProtocolEnabled && payload.workspace
+        ? buildOllamaWorkspaceIndexBlock(payload.workspace)
+        : ''
+    const systemPromptParts = [
+      toolProtocolEnabled ? ollamaLocalToolSystemPrompt(toolControlTier, model) : '',
+      workspaceIndexBlock
+    ].filter(Boolean)
     const messages: OllamaChatMessage[] = [
-      ...(toolProtocolEnabled
-        ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier, model) }]
+      ...(systemPromptParts.length
+        ? [{ role: 'system' as const, content: systemPromptParts.join('\n\n') }]
         : []),
       { role: 'user', content: userPrompt }
     ]
@@ -1118,6 +1168,7 @@ export async function runOllamaProvider(
         messages,
         signal: controller.signal,
         tools: nativeToolDefs,
+        jsonToolFallback: toolProtocolEnabled && ollamaPrefersJsonToolProtocol(model),
         ...(modelTemperature != null ? { temperature: modelTemperature } : {})
       })
       if (turn.lastDone) lastDone = turn.lastDone
@@ -1134,11 +1185,14 @@ export async function runOllamaProvider(
         !usingNativeToolCalls && toolProtocolEnabled
           ? parseOllamaToolRequest(visibleText)
           : null
-      const toolRequests: OllamaToolRequest[] = usingNativeToolCalls
+      let toolRequests: OllamaToolRequest[] = usingNativeToolCalls
         ? nativeCalls
         : fallbackRequest
           ? [fallbackRequest]
           : []
+      if (ollamaOneToolAtATime(model) && toolRequests.length > 1) {
+        toolRequests = toolRequests.slice(0, 1)
+      }
       // Surface the model's reasoning (`thinking`) channel as a streamed
       // reasoning note so it renders inside the live activity viewport — except
       // when thinking is being promoted to the visible answer (no content + no
@@ -1300,14 +1354,56 @@ export async function runOllamaProvider(
           },
           route
         )
-        const toolResult = await deps.executeTool!({
-          toolName: toolRequest.toolName,
-          arguments: toolRequest.arguments,
-          workspacePath: payload.workspace!,
-          appChatId: route.appChatId || payload.appChatId,
-          appRunId: route.appRunId || payload.appRunId,
-          toolControlTier
-        })
+        let toolResult: OllamaToolExecutionResult
+        if (
+          toolRequest.toolName === 'read_file' &&
+          ollamaEnforcesRetrievalFirst(model) &&
+          !hasSearchedThisRun
+        ) {
+          const readPath = String(toolRequest.arguments.path || toolRequest.arguments.file_path || '')
+          if (!ollamaReadFileExemptFromRetrievalFirst(readPath)) {
+            toolResult = {
+              ok: false,
+              output: ollamaRetrievalFirstBlockedMessage(readPath)
+            }
+          } else {
+            toolResult = await deps.executeTool!({
+              toolName: toolRequest.toolName,
+              arguments: toolRequest.arguments,
+              workspacePath: payload.workspace!,
+              appChatId: route.appChatId || payload.appChatId,
+              appRunId: route.appRunId || payload.appRunId,
+              toolControlTier
+            })
+          }
+        } else {
+          toolResult = await deps.executeTool!({
+            toolName: toolRequest.toolName,
+            arguments: toolRequest.arguments,
+            workspacePath: payload.workspace!,
+            appChatId: route.appChatId || payload.appChatId,
+            appRunId: route.appRunId || payload.appRunId,
+            toolControlTier
+          })
+        }
+        if (toolResult.tierBumpRequired) {
+          const warning = buildOllamaMidRunTierBumpWarning(toolRequest.toolName, toolControlTier)
+          deps.sendAgentCompatLine(
+            event.sender,
+            'ollama',
+            {
+              type: 'provider_warning',
+              id: warning.id,
+              severity: warning.severity,
+              title: warning.title,
+              message: warning.message
+            },
+            route
+          )
+        }
+        if (toolRequest.toolName === 'workspace_search' && toolResult.ok) {
+          hasSearchedThisRun = true
+        }
         deps.sendAgentCompatLine(
           event.sender,
           'ollama',
@@ -1323,7 +1419,27 @@ export async function runOllamaProvider(
           },
           route
         )
-        const truncatedOutput = truncateOllamaToolResultOutput(toolResult.output)
+        const truncatedOutput = truncateOllamaToolResultOutput(
+          toolResult.output,
+          OLLAMA_TOOL_RESULT_MAX_CHARS,
+          toolRequest.toolName
+        )
+        sessionMemory = appendOllamaTrajectoryEntry(sessionMemory, {
+          toolName: toolRequest.toolName,
+          args: toolRequest.arguments,
+          ok: toolResult.ok,
+          resultSummary: truncatedOutput
+        })
+        if (shouldRollOllamaRunSummary(sessionMemory.toolTurnCount)) {
+          messages.splice(
+            0,
+            messages.length,
+            ...(compressOllamaMessagesWithWorkingMemory(
+              messages,
+              sessionMemory.workingMemory
+            ) as OllamaChatMessage[])
+          )
+        }
         if (usingNativeToolCalls) {
           // Native protocol: feed the result back as a `role: 'tool'` message
           // so the model resumes naturally on the next turn.
@@ -1347,6 +1463,10 @@ export async function runOllamaProvider(
           })
         }
       }
+    }
+
+    if (chatId && deps.saveOllamaSessionMemory && sessionMemory.toolTurnCount > 0) {
+      deps.saveOllamaSessionMemory(chatId, pruneOllamaSessionMemoryForPersist(sessionMemory))
     }
 
     const hardwareStats = memoryMonitor ? await memoryMonitor.stop() : {}

@@ -487,6 +487,8 @@ import {
   ollamaToolAllowedInTier,
   ollamaToolNamesForTier,
 } from './ollama/OllamaToolTiers'
+import { normalizeOllamaSessionMemory } from './ollama/OllamaRunMemory'
+import { ollamaMidRunTierBumpMessage } from './ollama/OllamaTierSuggestion'
 import {
   assertOllamaMutationIntent,
   assertOllamaProtectedWritePaths,
@@ -8920,7 +8922,11 @@ async function executeOllamaLocalTool(
   }
   try {
     if (!ollamaToolAllowedInTier(request.toolName, tier)) {
-      throw new Error(`Ollama ${tier} tier does not allow ${request.toolName}.`)
+      return {
+        ok: false,
+        tierBumpRequired: true,
+        output: ollamaMidRunTierBumpMessage(request.toolName, tier)
+      }
     }
     assertOllamaMutationIntent(request.toolName, request.arguments)
     assertOllamaProtectedWritePaths(request.toolName, request.arguments, context, workspacePath)
@@ -9110,7 +9116,14 @@ async function runOllamaProviderAdapter(
       sendAgentCompatExit,
       runManager,
       emitProviderCapabilityWarnings,
-      executeTool: executeOllamaLocalTool
+      executeTool: executeOllamaLocalTool,
+      getOllamaSessionMemory: (chatId) =>
+        normalizeOllamaSessionMemory(AppStore.getChat(chatId)?.ollamaSessionMemory),
+      saveOllamaSessionMemory: (chatId, memory) => {
+        const chat = AppStore.getChat(chatId)
+        if (!chat) return
+        AppStore.saveChat({ ...chat, ollamaSessionMemory: memory })
+      }
     },
     event,
     {
