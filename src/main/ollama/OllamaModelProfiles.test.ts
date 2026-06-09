@@ -18,6 +18,17 @@ describe('ollamaModelFamilyPromptLines', () => {
     expect(lines.join(' ')).toContain('tool-intent stub')
     expect(lines.join(' ')).toContain('escape backslashes')
   })
+
+  it('keeps only tool-call discipline for conversational GPT-OSS turns', () => {
+    const lines = ollamaModelFamilyPromptLines('gpt-oss:latest', 'conversational')
+    expect(lines.join(' ')).toContain('tool-intent stub')
+    expect(lines.join(' ')).not.toContain('harness checklist')
+    expect(lines.join(' ')).not.toContain('Worked trajectories')
+  })
+
+  it('drops workflow scaffolding for conversational turns on other families', () => {
+    expect(ollamaModelFamilyPromptLines('qwen3.5:9b', 'conversational')).toEqual([])
+  })
 })
 
 describe('ollamaLocalToolSystemPrompt', () => {
@@ -25,6 +36,21 @@ describe('ollamaLocalToolSystemPrompt', () => {
     const prompt = ollamaLocalToolSystemPrompt('read_only', 'qwen3.5:9b')
     expect(prompt).toContain('Model profile (Qwen 3.5 9B)')
     expect(prompt).toContain('workspace_search')
+  })
+
+  it('tells conversational turns to answer directly without the checklist ritual', () => {
+    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest', {
+      intent: 'conversational'
+    })
+    expect(prompt).toContain('Answer it directly in friendly prose')
+    expect(prompt).not.toContain('harness checklist')
+    expect(prompt).not.toContain('Worked trajectories')
+  })
+
+  it('keeps the workspace scaffold by default', () => {
+    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest')
+    expect(prompt).toContain('harness checklist')
+    expect(prompt).not.toContain('The current user message is conversational')
   })
 })
 

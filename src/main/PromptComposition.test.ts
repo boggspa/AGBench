@@ -266,6 +266,48 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextTurnsApplied).toBeLessThanOrEqual(6)
   })
 
+  it('skips the scout hint for conversational Ollama prompts', () => {
+    const result = composeRunPrompt({
+      provider: 'ollama',
+      finalPrompt: 'Hi OSS how are you?',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Ollama',
+      nextModel: 'gpt-oss:latest'
+    })
+
+    expect(result.contextualPrompt).not.toContain('local-scout workflow')
+    expect(result.contextualPrompt).toContain('Hi OSS how are you?')
+  })
+
+  it('keeps thanks-only follow-ups free of the prior tool trajectory block', () => {
+    const result = composeRunPrompt({
+      provider: 'ollama',
+      finalPrompt: 'thanks, that looks great!',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Ollama',
+      nextModel: 'gpt-oss:latest',
+      ollamaSessionMemory: {
+        modelId: 'gpt-oss:latest',
+        updatedAt: Date.now(),
+        workingMemory: '1. workspace_search query=foo → ok: 2 matches',
+        toolTurnCount: 3,
+        trajectory: []
+      }
+    })
+
+    expect(result.contextualPrompt).not.toContain('Prior Ollama session memory')
+    expect(result.contextualPrompt).not.toContain('local-scout workflow')
+    expect(result.contextualPrompt).toContain('thanks, that looks great!')
+  })
+
   it('injects persisted Ollama session memory ahead of the scout hint', () => {
     const result = composeRunPrompt({
       provider: 'ollama',

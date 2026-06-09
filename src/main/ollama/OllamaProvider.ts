@@ -40,6 +40,11 @@ import {
 import { summarizeOllamaToolResult } from './OllamaToolResultSummary'
 import { buildOllamaWorkspaceIndexBlock } from './OllamaWorkspaceIndex'
 import {
+  classifyOllamaPromptIntent,
+  extractOllamaCurrentRequestText,
+  type OllamaPromptIntent
+} from './OllamaPromptIntent'
+import {
   ollamaLocalToolSystemPrompt,
   ollamaModelFamilyTemperature,
   ollamaStruggleHandoffMessage
@@ -193,7 +198,7 @@ interface OllamaChatChunk {
   eval_duration?: number
 }
 
-interface OllamaChatMessage {
+export interface OllamaChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   /** Echoed back on an assistant turn that made native tool calls so the model
@@ -239,6 +244,44 @@ export interface OllamaToolRequest {
 const OLLAMA_TOOL_LOOP_LIMIT = 8
 const OLLAMA_TOOL_RESULT_MAX_CHARS = 2400
 const OLLAMA_LOCAL_TOOL_SERVER = 'TaskWraith-local'
+
+export interface OllamaOpeningMessagesInput {
+  toolProtocolEnabled: boolean
+  harnessEnabled: boolean
+  promptIntent: OllamaPromptIntent
+  toolControlTier: OllamaToolControlTier | string | undefined | null
+  model: string
+  workspaceIndexBlock: string
+  userPrompt: string
+}
+
+/** Opening transcript for a local run. Workspace intent gets the full harness
+ * scaffold (workflow system line, workspace index, todo-first kickoff after
+ * the request); conversational intent gets only the tool catalog and the
+ * user's words, so small models answer the person instead of the harness. */
+export function buildOllamaOpeningMessages(input: OllamaOpeningMessagesInput): OllamaChatMessage[] {
+  const workspaceIntent = input.promptIntent === 'workspace'
+  const systemPromptParts = [
+    input.toolProtocolEnabled
+      ? ollamaLocalToolSystemPrompt(input.toolControlTier, input.model, {
+          intent: input.promptIntent
+        })
+      : '',
+    input.harnessEnabled && workspaceIntent
+      ? ollamaHarnessWorkflowSystemLine(input.toolControlTier)
+      : '',
+    workspaceIntent ? input.workspaceIndexBlock : ''
+  ].filter(Boolean)
+  return [
+    ...(systemPromptParts.length
+      ? [{ role: 'system' as const, content: systemPromptParts.join('\n\n') }]
+      : []),
+    { role: 'user' as const, content: input.userPrompt },
+    ...(input.harnessEnabled && workspaceIntent
+      ? [{ role: 'user' as const, content: ollamaHarnessKickoffPrompt(input.toolControlTier) }]
+      : [])
+  ]
+}
 
 export function truncateOllamaToolResultOutput(
   output: string,
@@ -1196,24 +1239,28 @@ export async function runOllamaProvider(
       const maxPromptChars = shellChars + budget.contextChars + 2_400
       userPrompt = compactOllamaEnsemblePromptText(userPrompt, maxPromptChars)
     }
+    // Ensemble shells are always structured work; otherwise classify the live
+    // request (composition may have prepended context above the marker) so
+    // greetings and small talk skip the harness scaffold entirely.
+    const promptIntent: OllamaPromptIntent = ensembleRun
+      ? 'workspace'
+      : classifyOllamaPromptIntent(extractOllamaCurrentRequestText(userPrompt), {
+          ongoingWork: sessionMemory.toolTurnCount > 0
+        })
+    const workspaceIntent = promptIntent === 'workspace'
     const workspaceIndexBlock =
-      toolProtocolEnabled && payload.workspace
+      toolProtocolEnabled && workspaceIntent && payload.workspace
         ? buildOllamaWorkspaceIndexBlock(payload.workspace)
         : ''
-    const systemPromptParts = [
-      toolProtocolEnabled ? ollamaLocalToolSystemPrompt(toolControlTier, model) : '',
-      harnessEnabled ? ollamaHarnessWorkflowSystemLine(toolControlTier) : '',
-      workspaceIndexBlock
-    ].filter(Boolean)
-    const messages: OllamaChatMessage[] = [
-      ...(systemPromptParts.length
-        ? [{ role: 'system' as const, content: systemPromptParts.join('\n\n') }]
-        : []),
-      { role: 'user', content: userPrompt },
-      ...(harnessEnabled
-        ? [{ role: 'user' as const, content: ollamaHarnessKickoffPrompt(toolControlTier) }]
-        : [])
-    ]
+    const messages: OllamaChatMessage[] = buildOllamaOpeningMessages({
+      toolProtocolEnabled,
+      harnessEnabled,
+      promptIntent,
+      toolControlTier,
+      model,
+      workspaceIndexBlock,
+      userPrompt
+    })
     let lastDone: OllamaChatChunk | null = null
     let runUsageStats: Record<string, unknown> | undefined
     let toolCallCount = 0
@@ -1421,7 +1468,8 @@ export async function runOllamaProvider(
               state: harnessState,
               toolName: toolRequest.toolName,
               args: toolRequest.arguments,
-              requireTodoScaffold: !harnessState.publishedTodos && toolCallCount === 1
+              requireTodoScaffold:
+                workspaceIntent && !harnessState.publishedTodos && toolCallCount === 1
             })
           : { blocked: false as const }
         if (harnessGate.blocked) {

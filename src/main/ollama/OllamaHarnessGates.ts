@@ -76,17 +76,23 @@ export function ollamaHarnessKickoffPrompt(
   tier: OllamaToolControlTier | string | undefined | null
 ): string {
   const tools = ollamaToolNamesForTier(tier)
+  // Anchor the workflow to the request that precedes this message — without
+  // it, small models treat this kickoff as the task and go hunting for work.
+  const anchor =
+    'Your task is the user request in the previous message — keep every step anchored to that request, and answer it in prose when the steps are done.'
   if (!tools.includes('todo_write')) {
     return [
       'Workspace coding task: start by grounding in the repo.',
       'Call workspace_search or list_directory before read_file on unfamiliar paths.',
-      'Read a file before replace/write_file/apply_patch on it.'
+      'Read a file before replace/write_file/apply_patch on it.',
+      anchor
     ].join(' ')
   }
   return [
     'Workspace coding task: publish the harness checklist with todo_write first (merge:true).',
     'Then explore with workspace_search or list_directory, read only what you need, and edit one file at a time.',
-    `Suggested todos: ${JSON.stringify(ollamaHarnessDefaultTodos())}`
+    `Suggested todos: ${JSON.stringify(ollamaHarnessDefaultTodos())}`,
+    anchor
   ].join(' ')
 }
 
@@ -262,7 +268,8 @@ export function ollamaHarnessToolFollowUpPrompt(input: {
       }
     } else if (input.toolName === 'read_file') {
       guidance.push(
-        'If you need to edit, use replace with an exact old_string copied from this file content — one file per turn.'
+        'If you need to edit, use replace with an exact old_string copied from this file content — one file per turn.',
+        'If the edit target is elsewhere or hard to pin down, run workspace_search (ripgrep) with a distinctive literal from the code to locate the exact lines first.'
       )
       if (ollamaToolNamesForTier(input.tier).includes('todo_write') && input.state.publishedTodos) {
         guidance.push('Advance the harness todos: read in_progress or completed before editing.')

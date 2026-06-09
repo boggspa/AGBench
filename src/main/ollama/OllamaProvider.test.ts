@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildOllamaOpeningMessages,
   humanizeOllamaModelId,
   normalizeOllamaBaseUrl,
   normalizeOllamaModels,
@@ -333,9 +334,9 @@ describe('parseOllamaToolRequest', () => {
     // Empty content.
     expect(looksLikeOllamaToolIntent('   ', tools)).toBe(false)
     // Long substantive answer that happens to mention a tool is not a stub.
-    expect(looksLikeOllamaToolIntent(`Here is a detailed plan. ${'x'.repeat(420)} web_search`, tools)).toBe(
-      false
-    )
+    expect(
+      looksLikeOllamaToolIntent(`Here is a detailed plan. ${'x'.repeat(420)} web_search`, tools)
+    ).toBe(false)
   })
 
   it('nudges tool-intent stubs to emit a real call and lists tools', () => {
@@ -360,9 +361,7 @@ describe('parseOllamaToolRequest', () => {
   it('detects degenerate single-token stubs and nudges for a full answer', () => {
     expect(looksLikeDegenerateOllamaStub('The')).toBe(true)
     expect(looksLikeDegenerateOllamaStub('I agree.')).toBe(false)
-    expect(
-      isDegenerateOllamaTurn({ content: 'The', thinking: '' }, 'The', 0, 1)
-    ).toBe(true)
+    expect(isDegenerateOllamaTurn({ content: 'The', thinking: '' }, 'The', 0, 1)).toBe(true)
     expect(
       isDegenerateOllamaTurn(
         { content: '', thinking: 'long reasoning ' + 'x'.repeat(120) },
@@ -371,9 +370,7 @@ describe('parseOllamaToolRequest', () => {
         5
       )
     ).toBe(false)
-    expect(isDegenerateOllamaTurn({ content: 'done', thinking: '' }, 'done', 1, 1)).toBe(
-      false
-    )
+    expect(isDegenerateOllamaTurn({ content: 'done', thinking: '' }, 'done', 1, 1)).toBe(false)
     const prompt = ollamaDegenerateResponseNudgePrompt()
     expect(prompt).toContain('too short to count as a turn')
     expect(prompt).toContain('Do not stop after a single word')
@@ -438,9 +435,7 @@ describe('normalizeOllamaNativeToolCall', () => {
   })
 
   it('rejects unknown tool names', () => {
-    expect(
-      normalizeOllamaNativeToolCall({ function: { name: 'rm_rf', arguments: {} } })
-    ).toBeNull()
+    expect(normalizeOllamaNativeToolCall({ function: { name: 'rm_rf', arguments: {} } })).toBeNull()
   })
 })
 
@@ -486,5 +481,61 @@ describe('Ollama tool tiers', () => {
     expect(ollamaProviderParityWorkspaceGranted(settings, '/tmp/other')).toBe(false)
     expect(effectiveOllamaToolControlTier(settings, '/tmp/granted')).toBe('provider_parity')
     expect(effectiveOllamaToolControlTier(settings, '/tmp/other')).toBe('read_only')
+  })
+})
+
+describe('buildOllamaOpeningMessages', () => {
+  it('keeps the full harness scaffold for workspace tasks', () => {
+    const messages = buildOllamaOpeningMessages({
+      toolProtocolEnabled: true,
+      harnessEnabled: true,
+      promptIntent: 'workspace',
+      toolControlTier: 'approved_edits',
+      model: 'gpt-oss:latest',
+      workspaceIndexBlock: 'Workspace index:\nsrc/',
+      userPrompt: 'fix the bug in src/main.ts'
+    })
+
+    expect(messages).toHaveLength(3)
+    expect(messages[0].role).toBe('system')
+    expect(messages[0].content).toContain('Harness workflow')
+    expect(messages[0].content).toContain('Workspace index')
+    expect(messages[1]).toEqual({ role: 'user', content: 'fix the bug in src/main.ts' })
+    expect(messages[2].role).toBe('user')
+    expect(messages[2].content).toContain('todo_write')
+    expect(messages[2].content).toContain('previous message')
+  })
+
+  it('sends only the tool catalog and the user words for conversational turns', () => {
+    const messages = buildOllamaOpeningMessages({
+      toolProtocolEnabled: true,
+      harnessEnabled: true,
+      promptIntent: 'conversational',
+      toolControlTier: 'approved_edits',
+      model: 'gpt-oss:latest',
+      workspaceIndexBlock: 'Workspace index:\nsrc/',
+      userPrompt: 'Hi OSS how are you?'
+    })
+
+    expect(messages).toHaveLength(2)
+    expect(messages[0].role).toBe('system')
+    expect(messages[0].content).not.toContain('Harness workflow')
+    expect(messages[0].content).not.toContain('Workspace index')
+    expect(messages[0].content).toContain('Answer it directly in friendly prose')
+    expect(messages[1]).toEqual({ role: 'user', content: 'Hi OSS how are you?' })
+  })
+
+  it('sends the bare prompt when the tool protocol is disabled', () => {
+    const messages = buildOllamaOpeningMessages({
+      toolProtocolEnabled: false,
+      harnessEnabled: false,
+      promptIntent: 'conversational',
+      toolControlTier: 'read_only',
+      model: 'gpt-oss:latest',
+      workspaceIndexBlock: '',
+      userPrompt: 'hello!'
+    })
+
+    expect(messages).toEqual([{ role: 'user', content: 'hello!' }])
   })
 })

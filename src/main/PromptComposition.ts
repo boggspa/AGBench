@@ -1,5 +1,6 @@
 import { resolveOllamaContextBudget } from './ollama/OllamaContextBudget'
 import { formatOllamaSessionMemoryForPrompt, type OllamaSessionMemory } from './ollama/OllamaRunMemory'
+import { classifyOllamaPromptIntent } from './ollama/OllamaPromptIntent'
 import { ollamaScoutDelegateWorkflowHint } from './ollama/OllamaModelProfiles'
 import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
 import type {
@@ -677,9 +678,19 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   }
 
   if (provider === 'ollama' && !isGlobalRun) {
-    const sessionMemoryBlock = formatOllamaSessionMemoryForPrompt(ollamaSessionMemory)
-    const scoutHint = ollamaScoutDelegateWorkflowHint(nextModel)
-    contextualPrompt = [sessionMemoryBlock, scoutHint, contextualPrompt].filter(Boolean).join('\n\n')
+    // Small local models latch onto whatever scaffolding surrounds the prompt,
+    // so greetings/small talk get neither the scout-workflow hint nor the prior
+    // tool-trajectory block — just the user's words. Work prompts keep both.
+    const promptIntent = classifyOllamaPromptIntent(finalPrompt, {
+      ongoingWork: (ollamaSessionMemory?.toolTurnCount ?? 0) > 0
+    })
+    if (promptIntent === 'workspace') {
+      const sessionMemoryBlock = formatOllamaSessionMemoryForPrompt(ollamaSessionMemory)
+      const scoutHint = ollamaScoutDelegateWorkflowHint(nextModel)
+      contextualPrompt = [sessionMemoryBlock, scoutHint, contextualPrompt]
+        .filter(Boolean)
+        .join('\n\n')
+    }
   }
 
   if (provider === 'ollama' && ollamaToolControlTier) {

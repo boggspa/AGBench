@@ -1,5 +1,6 @@
 import { ollamaGptOssFewShotTrajectories } from './OllamaModelProtocol'
 import { resolveOllamaModelFamily } from './OllamaModelPreflight'
+import type { OllamaPromptIntent } from './OllamaPromptIntent'
 import type { OllamaToolControlTier } from '../store/types'
 import {
   normalizeOllamaToolControlTier,
@@ -8,9 +9,27 @@ import {
   type OllamaToolName
 } from './OllamaToolTiers'
 
-/** Family-specific lines appended to the local tool system prompt. */
-export function ollamaModelFamilyPromptLines(modelId: string): string[] {
+/** Family-specific lines appended to the local tool system prompt.
+ *
+ * Conversational turns keep only the tool-call discipline lines (the failure
+ * modes they guard are universal); the explore/read/edit workflow, checklist
+ * ritual, and worked trajectories are workspace-task scaffolding that small
+ * models otherwise apply to "hi, how are you?". */
+export function ollamaModelFamilyPromptLines(
+  modelId: string,
+  intent: OllamaPromptIntent = 'workspace'
+): string[] {
   const family = resolveOllamaModelFamily(modelId)
+  if (intent === 'conversational') {
+    if (family === 'gpt_oss_20b') {
+      return [
+        'Model profile (GPT OSS): you may reason internally, but you MUST emit a real tool call or a final answer — never stop on a tool-intent stub.',
+        'Prefer native tool/function calls over describing tools in prose.',
+        'Call exactly one TaskWraith tool per turn.'
+      ]
+    }
+    return []
+  }
   switch (family) {
     case 'qwen3_5_9b':
       return [
@@ -57,7 +76,7 @@ function describeTool(toolName: OllamaToolName): string | null {
   if (toolName === 'list_directory') return '- list_directory: {"path":"."}'
   if (toolName === 'read_file') return '- read_file: {"path":"relative/path.txt"}'
   if (toolName === 'workspace_search') {
-    return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1}'
+    return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1} — ripgrep over the workspace; search a distinctive literal string to pinpoint the exact file and line you will read or edit.'
   }
   if (toolName === 'web_search') {
     return '- web_search: {"query":"current information to search for"} — returns a ranked list of result titles and URLs from the live web.'
@@ -86,12 +105,14 @@ function describeTool(toolName: OllamaToolName): string | null {
 /** Baseline + per-family tuning for the Ollama local tool system prompt. */
 export function ollamaLocalToolSystemPrompt(
   tier: OllamaToolControlTier | string | undefined | null = 'read_only',
-  modelId?: string | null
+  modelId?: string | null,
+  options: { intent?: OllamaPromptIntent } = {}
 ): string {
+  const intent = options.intent ?? 'workspace'
   const normalizedTier = normalizeOllamaToolControlTier(tier)
   const tools = ollamaToolNamesForTier(normalizedTier)
   const hasWebTools = tools.includes('web_search') || tools.includes('web_fetch')
-  const familyLines = modelId?.trim() ? ollamaModelFamilyPromptLines(modelId) : []
+  const familyLines = modelId?.trim() ? ollamaModelFamilyPromptLines(modelId, intent) : []
   const lines = [
     'You are running inside TaskWraith through local Ollama.',
     'You do not have direct shell or filesystem access, but TaskWraith DOES give you working tools (listed below) that you can call right now. Use them instead of telling the user you lack a capability.',
@@ -104,6 +125,11 @@ export function ollamaLocalToolSystemPrompt(
     '{"taskwraith_tool":{"name":"read_file","arguments":{"path":"README.md"}}}',
     'Do NOT announce or describe a tool call in prose (for example, "we need to use web_search" or "let\'s do web_search"). Either actually issue the tool call now, or give your final answer in normal prose. Describing a tool without calling it does nothing.',
     `Current Ollama tool-control tier: ${ollamaTierLabel(normalizedTier)}.`,
+    ...(intent === 'conversational'
+      ? [
+          'The current user message is conversational (a greeting, thanks, or general question — not a coding task). Answer it directly in friendly prose. Do not call tools, explore the workspace, or publish todo checklists unless the question genuinely needs live web data or workspace facts — and then call at most one tool before answering.'
+        ]
+      : []),
     ...familyLines,
     'Available tools:'
   ]
