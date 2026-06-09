@@ -1,5 +1,6 @@
 import type { OllamaToolControlTier, ProviderCapabilityWarning } from '../store/types'
-import { normalizeOllamaToolControlTier } from './OllamaToolTiers'
+import { normalizeOllamaToolControlTier, ollamaToolNamesForTier } from './OllamaToolTiers'
+import type { OllamaToolName } from './OllamaToolTiers'
 
 const TIER_ORDER: OllamaToolControlTier[] = [
   'read_only',
@@ -24,6 +25,35 @@ function nextTier(tier: OllamaToolControlTier): OllamaToolControlTier | null {
   const index = TIER_ORDER.indexOf(tier)
   if (index < 0 || index >= TIER_ORDER.length - 1) return null
   return TIER_ORDER[index + 1]
+}
+
+export function minimumOllamaTierForTool(toolName: OllamaToolName | string): OllamaToolControlTier {
+  for (const tier of TIER_ORDER) {
+    if (ollamaToolNamesForTier(tier).includes(toolName as OllamaToolName)) return tier
+  }
+  return 'provider_parity'
+}
+
+/** Mid-run warning when a tool call exceeds the active tier. */
+export function buildOllamaMidRunTierBumpWarning(
+  toolName: string,
+  currentTier: OllamaToolControlTier | string | undefined | null
+): ProviderCapabilityWarning {
+  const normalized = normalizeOllamaToolControlTier(currentTier)
+  const required = minimumOllamaTierForTool(toolName)
+  return {
+    id: 'ollama-midrun-tier-bump',
+    severity: 'warning',
+    title: 'Raise Ollama tool tier to continue',
+    message: `${toolName} needs ${tierLabel(required)} tools, but this run is on ${tierLabel(normalized)}. Open Settings → Behavior → Ollama, raise the tier, then retry — or delegate to Codex/Claude.`
+  }
+}
+
+export function ollamaMidRunTierBumpMessage(
+  toolName: string,
+  currentTier: OllamaToolControlTier | string | undefined | null
+): string {
+  return buildOllamaMidRunTierBumpWarning(toolName, currentTier).message
 }
 
 /** Suggest bumping the Ollama tool tier before a run stalls on policy. */

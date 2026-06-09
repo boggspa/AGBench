@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestOllamaTierBump } from './OllamaTierSuggestion'
+import { buildOllamaMidRunTierBumpWarning, suggestOllamaTierBump } from './OllamaTierSuggestion'
 
 describe('suggestOllamaTierBump', () => {
   it('suggests approved edits for refactor prompts at read-only tier', () => {
@@ -16,5 +16,12 @@ describe('suggestOllamaTierBump', () => {
   it('returns null when the current tier already covers the request', () => {
     expect(suggestOllamaTierBump('Refactor this module', 'approved_edits')).toBeNull()
     expect(suggestOllamaTierBump('hello', 'read_only')).toBeNull()
+  })
+
+  it('builds a mid-run tier bump warning for blocked mutating tools', () => {
+    const warning = buildOllamaMidRunTierBumpWarning('write_file', 'read_only')
+    expect(warning.id).toBe('ollama-midrun-tier-bump')
+    expect(warning.message).toContain('write_file')
+    expect(warning.message).toContain('Approved edits')
   })
 })
