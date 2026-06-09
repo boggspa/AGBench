@@ -1293,7 +1293,11 @@
   align-self: stretch;
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > *:not(:first-child) {
+  > .ensemble-roster-preset-picker.is-compact {
+  border-top: 1px solid var(--grok-border) !important;
+}
+[data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
+  > *:not(:first-child):not(.ensemble-roster-preset-picker.is-compact) {
   border-top: 1px solid var(--grok-border);
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
@@ -2422,8 +2426,15 @@
   box-shadow: none !important;
 }
 [data-composer-style="cursor"] .composer-above-bar-pill--git {
+  order: 10;
   flex: 1 1 auto;
   min-width: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill--changes {
+  order: 30;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill--stats {
+  order: 35;
 }
 [data-composer-style="cursor"] .composer-above-bar-pill--git .composer-above-bar-branch {
   min-width: 0;
@@ -2435,6 +2446,7 @@
   white-space: nowrap;
 }
 [data-composer-style="cursor"] .composer-above-bar-pill--action {
+  order: 80;
   flex: 0 0 auto;
 }
 [data-composer-style="cursor"]
@@ -2485,8 +2497,12 @@
   margin-bottom: 6px !important;
 }
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-pill--git {
+  order: 10;
   flex: 1 1 auto;
   min-width: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-center-cluster {
+  order: 30;
 }
 [data-composer-style="cursor"] .composer-above-bar-secondary > .composer-above-bar-pill--action {
   /* Flatten so Review-changes / Push renders as its own pill, then
@@ -2496,8 +2512,15 @@
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-trailing-cluster {
   display: contents;
 }
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-access {
+  order: 70 !important;
+  margin-right: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-revoke {
+  order: 75 !important;
+}
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-diff-action-menu-wrap {
-  order: 1 !important;
+  order: 80 !important;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2507,13 +2530,6 @@
   border: 1px solid var(--cursor-shell-border) !important;
   color: var(--cursor-shell-fg) !important;
   box-shadow: none !important;
-}
-[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-access {
-  order: 2 !important;
-  margin-right: 0;
-}
-[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-revoke {
-  order: 3 !important;
 }
 
 /* Inline Review-changes / Create-PR menu (not portaled). */
