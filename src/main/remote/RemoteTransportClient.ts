@@ -99,6 +99,13 @@ export class RemoteTransportClient {
     return exportRawEd25519PublicKey(this.opts.identityKeyPair.publicKey)
   }
 
+  /** The pinned iPhone identity key (raw 32B), null until pairing is confirmed.
+   * The runtime derives the audit `pairID` from this — never from a
+   * client-supplied field. */
+  trustedPeerIdentityRaw(): Buffer | null {
+    return this.trustedPeerRaw
+  }
+
   dispose(): void {
     this.disposed = true
     this.stopPing()
