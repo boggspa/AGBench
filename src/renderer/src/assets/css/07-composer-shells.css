@@ -1026,8 +1026,16 @@
 .composer-above-bar-pill--changes {
   order: 30;
 }
+.composer-above-bar-pill--stats {
+  order: 35;
+}
 .composer-above-bar-pill--action {
   order: 80;
+}
+.composer-above-bar-center-cluster > .composer-above-bar-pill--changes,
+.composer-above-bar-center-cluster > .composer-above-bar-pill--stats {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .composer-above-bar-files {
