@@ -4,6 +4,29 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.4.5 — 2026-06-09
+
+### Added
+- **Ollama explore-before-edit harness.** Local models are gated through an
+  explore→read→edit workflow with a `todo_write` scaffold, replacing the narrower
+  retrieval-first read policy — fewer blind edits, more grounded local runs.
+- **Grok tucked above-row shell.** The Grok composer adopts the Codex-style
+  tucked-tab stack (a narrower row nested under the composer lip), with matching
+  Settings and First-Launch previews and a "Create PR" preview label.
+
+### Changed
+- **Accurate Ollama token chips in ensembles.** Per-participant token spend now
+  reads the same canonical totals (snake_case + camelCase reconciled) as usage
+  recording and the composer tally.
+
+### Fixed
+- **Ensemble participant chips collapsing to slivers.** On every composer shell,
+  ensembles of 1–6 participants rendered as ~2px status-dot slivers (and, in an
+  earlier state, overlapping labels). Chips now size to their content — short
+  roles stay compact, long roles truncate with an ellipsis — and the Work Session
+  band no longer crushes the strip. Root cause was inline-size containment on the
+  chip zeroing its content-derived width in the single-row flex layout.
+
 ## 1.4.4 — 2026-06-09
 
 ### Added
