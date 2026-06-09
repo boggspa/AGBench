@@ -318,6 +318,7 @@ export function ExternalPathAboveRow({
         </span>
       </span>
       {snapshot && <GitMergeBadge snapshot={snapshot} />}
+      {snapshot && <GitSyncChip snapshot={snapshot} />}
       {hasDiff && (
         <>
           <span
@@ -337,7 +338,6 @@ export function ExternalPathAboveRow({
           )}
         </>
       )}
-      {snapshot && <GitSyncChip snapshot={snapshot} />}
       <span
         className="composer-above-bar-secondary-access composer-above-bar-secondary-access-icon"
         title={`${isWrite ? 'Edit' : 'Read'} access — ${originTooltip}`}

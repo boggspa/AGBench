@@ -946,27 +946,42 @@
   order: 10;
 }
 :not([data-composer-style="cursor"]) .composer-above-bar .git-status-merge {
+  order: 15;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .git-status-push {
   order: 20;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .git-status-ci {
+  order: 25;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-files-cluster {
+  order: 30;
 }
 :not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-files {
   order: 30;
+  margin-left: 6px;
 }
 :not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-stats {
   order: 40;
-}
-:not([data-composer-style="cursor"]) .composer-above-bar .git-status-push {
-  order: 50;
-}
-:not([data-composer-style="cursor"]) .composer-above-bar .git-status-ci {
-  order: 60;
+  margin-left: 4px;
 }
 :not([data-composer-style="cursor"])
   .composer-above-bar
   :is(.composer-workspace-access-inline, .composer-workspace-access) {
+  order: 65;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-secondary-access {
   order: 70;
+  margin-left: 0;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-secondary-revoke {
+  order: 75;
 }
 :not([data-composer-style="cursor"]) .composer-above-bar .composer-diff-action-menu-wrap {
   order: 80;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar-secondary .composer-diff-action-menu-wrap {
+  margin-left: 0;
 }
 
 .composer-above-bar-files {

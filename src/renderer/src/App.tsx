@@ -16936,39 +16936,6 @@ function App(): React.JSX.Element {
                   row into three Cursor-style pills (changes | git | action).
                   Default `display: contents` keeps other shells unchanged.
                 */}
-                      <div className="composer-above-bar-pill composer-above-bar-pill--changes">
-                      <span className="composer-above-bar-files-cluster">
-                        {/*
-                    Order: files-changed pill FIRST, then the diff
-                    stats (`+N -M`). Matches the user's stated
-                    preference ("X files changed | +diff"). The
-                    non-Codex shells (cluster has `display: contents`)
-                    inherit this order too since the children
-                    participate directly in the parent flex.
-                  */}
-                        <span
-                          className="composer-above-bar-files"
-                          title={
-                            workspaceDiffStats.filesChanged > 0
-                              ? `${workspaceDiffStats.filesChanged} uncommitted ${workspaceDiffStats.filesChanged === 1 ? 'file' : 'files'} in the working tree`
-                              : 'Working tree clean — nothing to commit'
-                          }
-                        >
-                          <strong>{workspaceDiffStats.filesChanged}</strong>{' '}
-                          {workspaceDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
-                        </span>
-                        {(workspaceDiffStats.additions > 0 || workspaceDiffStats.deletions > 0) && (
-                          <span className="composer-above-bar-stats">
-                            <span className="composer-diff-add">
-                              +{workspaceDiffStats.additions}
-                            </span>
-                            <span className="composer-diff-del">
-                              -{workspaceDiffStats.deletions}
-                            </span>
-                          </span>
-                        )}
-                      </span>
-                      </div>
                       <div className="composer-above-bar-pill composer-above-bar-pill--git">
                       <span className="composer-above-bar-branch">
                         <svg
@@ -17009,6 +16976,31 @@ function App(): React.JSX.Element {
                       {primaryGitSnapshot && <GitMergeBadge snapshot={primaryGitSnapshot} />}
                       {primaryGitSnapshot && <GitSyncChip snapshot={primaryGitSnapshot} />}
                       <GitCiChip pr={primaryPr} />
+                      </div>
+                      <div className="composer-above-bar-pill composer-above-bar-pill--changes">
+                      <span className="composer-above-bar-files-cluster">
+                        <span
+                          className="composer-above-bar-files"
+                          title={
+                            workspaceDiffStats.filesChanged > 0
+                              ? `${workspaceDiffStats.filesChanged} uncommitted ${workspaceDiffStats.filesChanged === 1 ? 'file' : 'files'} in the working tree`
+                              : 'Working tree clean — nothing to commit'
+                          }
+                        >
+                          <strong>{workspaceDiffStats.filesChanged}</strong>{' '}
+                          {workspaceDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
+                        </span>
+                        {(workspaceDiffStats.additions > 0 || workspaceDiffStats.deletions > 0) && (
+                          <span className="composer-above-bar-stats">
+                            <span className="composer-diff-add">
+                              +{workspaceDiffStats.additions}
+                            </span>
+                            <span className="composer-diff-del">
+                              -{workspaceDiffStats.deletions}
+                            </span>
+                          </span>
+                        )}
+                      </span>
                       </div>
                       <div className="composer-above-bar-pill composer-above-bar-pill--action">
                       {(() => {

@@ -5679,18 +5679,6 @@
  * use across the Obsidian shell — beats the base
  * `.composer-diff-action-menu-wrap { margin-left: auto }` at
  * 0,1,0 with our 0,2,1. */
-[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-above-bar-files {
-  order: 8;
-  margin-left: auto;
-}
-[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-above-bar-stats {
-  order: 9;
-  margin-left: 0;
-}
-[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-diff-action-menu-wrap {
-  order: 10;
-  margin-left: 0;
-}
 [data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-diff-action-menu-wrap .composer-above-bar-action {
   margin-left: -6px;
 }
@@ -7238,6 +7226,8 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  order: 30;
+  margin-left: 6px;
 }
 [data-composer-style="codex"] .composer-above-bar > .git-status-push,
 [data-composer-style="codex"] .composer-above-bar > .git-status-ci {
@@ -7646,23 +7636,11 @@
   right: 14px !important;
 }
 
-/* 3) Right-cluster: files-changed button + diff button + Create
- *    PR, all sitting tight at the row's right edge.
- *
- *    `.composer-above-bar-files` (the "N files changed" element)
- *    becomes a gray button matching the diff button + Create PR.
- *    It gets `margin-left: auto` to consume all leftover space
- *    in the row, pushing it + the diff + action to the right end.
- *
- *    `.composer-above-bar-stats` (the "+N -M" diff) stays gray
- *    button styled, ordered just after files.
- *
- *    The diff-to-Create-PR gap is tightened with a negative
- *    margin on the action so the pair reads as tightly grouped
- *    (matches real Claude's `+100 -0 Commit changes` spacing). */
+/* 3) Files-changed + diff chips — gray button chrome, linear row order
+ *    (workspace → branch → upstream → files → diff → action). Inherits
+ *    the shared flex `order` ladder from shard 07; only the visual skin
+ *    lives here. */
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-files {
-  order: 8;
-  margin-left: auto;
   background: #3a3a3a !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: var(--radius-md, 10px) !important;
@@ -7672,8 +7650,6 @@
 }
 
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
-  order: 9;
-  margin-left: 0;
   background: #3a3a3a !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: var(--radius-md, 10px) !important;
@@ -7687,27 +7663,6 @@
  * Claude shows. -6px lands on a 4px effective gap. */
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
   margin-left: -6px;
-}
-/*
- * 1.0.4 fix — the action button is wrapped in
- * `.composer-diff-action-menu-wrap` (App.tsx:15589, base rule
- * at main.css:17305), which is the actual flex child of
- * `.composer-above-bar`. Order needs to live on the WRAPPER
- * for the right-anchored trio (files → stats → action) to
- * reflow correctly — setting `order: 10` on the inner button
- * was a no-op since the inner button isn't a flex item, which
- * left the wrapper at default `order: 0` ahead of files
- * (order 8) and stats (order 9) and parked Review changes
- * mid-row instead of at the far right end.
- *
- * Also overrides the base rule's `margin-left: auto`
- * (main.css:17308) so the wrapper sits tight to stats — the
- * files chip is the single auto-margin that consumes leftover
- * space and pushes the whole trio to the right.
- */
-[data-composer-style="claude"] .composer-above-bar .composer-diff-action-menu-wrap {
-  order: 10;
-  margin-left: 0;
 }
 
 /* Light-mode counterparts for the new files-changed button skin. */
@@ -8654,7 +8609,6 @@
 }
 
 .composer-above-bar-secondary-access {
-  margin-left: auto;
   margin-right: 8px;
   font-size: calc(var(--font-size-xs) - 0.5px);
   font-variant: small-caps;
@@ -8758,11 +8712,9 @@
   > .composer-above-bar::before {
   display: none;
 }
-/* One-line layout, matching the other shells. The tucked stack's distributed
- * auto-margins were centering the middle chips + wrapping the trailing revoke ×.
- * Reset child left-margins so chips flow left, re-anchor ONLY the trailing
- * action / access cluster to the right (one auto-margin), keep the row on a
- * single line, and let the branch summary ellipsize so nothing wraps. */
+/* One-line layout, matching the other shells. Keep the canonical left-to-right
+ * sequence (workspace → branch → upstream → files → diff → access → action)
+ * on a single line; let the branch summary ellipsize so nothing wraps. */
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar {
   /* THE root fix: the Codex shell makes .composer-above-bar a 3-column grid
@@ -8783,31 +8735,14 @@
   > * {
   margin-left: 0;
 }
-/* Three-zone layout: [branch] … [files+diff centered] … [sync · action/access · ×].
- * Two margin-left:auto points do it — one on the files cluster (centers it in the
- * free space) and one on the sync chip (starts the right-hand group so "no
- * upstream / ↑N" sits next to Create PR / Read Access). */
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > .composer-above-bar
-  > .composer-above-bar-files,
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar
   > .composer-above-bar-files-cluster {
-  margin-left: auto;
+  margin-left: 6px;
 }
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
   > .composer-above-bar
-  > .git-status-push {
-  margin-left: auto;
-}
-/* Fallback when the branch is synced (no sync chip): anchor the right group on
- * the action / access pill instead, so the files cluster still centers. */
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-diff-action-menu-wrap,
-[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-above-bar-secondary-access {
+  > .composer-diff-action-menu-wrap {
   margin-left: auto;
 }
 [data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)

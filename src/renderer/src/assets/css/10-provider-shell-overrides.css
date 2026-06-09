@@ -1311,23 +1311,12 @@
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
   > .composer-above-bar
-  > .composer-above-bar-files,
-[data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .composer-above-bar
   > .composer-above-bar-files-cluster {
-  margin-left: auto;
+  margin-left: 6px;
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
   > .composer-above-bar
-  > .git-status-push {
-  margin-left: auto;
-}
-[data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-diff-action-menu-wrap,
-[data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-above-bar-secondary-access {
+  > .composer-diff-action-menu-wrap {
   margin-left: auto;
 }
 [data-composer-style="grok"]
@@ -1636,6 +1625,8 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  order: 30;
+  margin-left: 6px;
 }
 [data-composer-style="grok"] .composer-above-bar-files-cluster .composer-above-bar-files {
   order: 1 !important;
@@ -1651,23 +1642,7 @@
 [data-composer-style="grok"]
   .composer-above-bar-stack:not(:has(> :nth-child(2)))
   > .composer-above-bar
-  > .composer-above-bar-files-cluster {
-  margin-left: auto;
-}
-[data-composer-style="grok"]
-  .composer-above-bar-stack:not(:has(> :nth-child(2)))
-  > .composer-above-bar
-  > .git-status-push {
-  margin-left: auto;
-}
-[data-composer-style="grok"]
-  .composer-above-bar-stack:not(:has(> :nth-child(2)))
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-diff-action-menu-wrap,
-[data-composer-style="grok"]
-  .composer-above-bar-stack:not(:has(> :nth-child(2)))
-  > .composer-above-bar:not(:has(.git-status-push))
-  > .composer-above-bar-secondary-access {
+  > .composer-diff-action-menu-wrap {
   margin-left: auto;
 }
 /* The inline WorkspaceAccessControls renders an empty div for non-Gemini
