@@ -261,9 +261,35 @@ describe('composeRunPrompt sub-thread returns', () => {
       nextModel: 'qwen3.5:9b'
     })
 
-    expect(result.applicationLog).toContain('3200 char cap')
+    expect(result.applicationLog).toContain('2600 char cap')
     expect(result.contextualPrompt).toContain('local-scout workflow')
-    expect(result.contextTurnsApplied).toBeLessThanOrEqual(8)
+    expect(result.contextTurnsApplied).toBeLessThanOrEqual(6)
+  })
+
+  it('injects persisted Ollama session memory ahead of the scout hint', () => {
+    const result = composeRunPrompt({
+      provider: 'ollama',
+      finalPrompt: 'Continue the refactor',
+      messages: [],
+      chatContextTurns: 4,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Ollama',
+      nextModel: 'gpt-oss:20b',
+      ollamaSessionMemory: {
+        modelId: 'gpt-oss:20b',
+        updatedAt: Date.now(),
+        workingMemory: '1. workspace_search query=foo → ok: 2 matches',
+        toolTurnCount: 1,
+        trajectory: []
+      }
+    })
+
+    expect(result.contextualPrompt).toContain('Prior Ollama session memory')
+    expect(result.contextualPrompt.indexOf('Prior Ollama session memory')).toBeLessThan(
+      result.contextualPrompt.indexOf('local-scout workflow')
+    )
   })
 
   it('surfaces an Ollama tier bump notice for ambitious prompts', () => {

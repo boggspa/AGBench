@@ -1,3 +1,5 @@
+import { resolveOllamaContextBudget } from './ollama/OllamaContextBudget'
+import { formatOllamaSessionMemoryForPrompt, type OllamaSessionMemory } from './ollama/OllamaRunMemory'
 import { ollamaScoutDelegateWorkflowHint } from './ollama/OllamaModelProfiles'
 import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
 import type {
@@ -57,15 +59,9 @@ const DEFAULT_CONTEXT_BUDGET: ContextBudget = {
   maxBlockChars: MAX_CONTEXT_BLOCK_CHARS
 }
 
-const OLLAMA_CONTEXT_BUDGET: ContextBudget = {
-  maxTurns: 8,
-  maxCharsPerTurn: 260,
-  maxBlockChars: 3200
-}
-
 /** Provider/model-aware caps for the compact conversation-context block. */
-export function resolveContextBudget(provider: ProviderId, _modelId?: string): ContextBudget {
-  if (provider === 'ollama') return OLLAMA_CONTEXT_BUDGET
+export function resolveContextBudget(provider: ProviderId, modelId?: string): ContextBudget {
+  if (provider === 'ollama') return resolveOllamaContextBudget(modelId)
   return DEFAULT_CONTEXT_BUDGET
 }
 
@@ -372,6 +368,8 @@ export interface ComposeRunPromptInput {
   nextModel?: string
   /** Ollama tool tier — used for pre-run tier suggestions. */
   ollamaToolControlTier?: OllamaToolControlTier
+  /** Pruned Ollama session memory persisted on the chat (tool trajectory summaries). */
+  ollamaSessionMemory?: OllamaSessionMemory | null
   /** The set of handoff-keys already applied to this chat (so we only inject
    * once per direction). */
   codexHandoffsApplied: string[]
@@ -425,7 +423,8 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     approvalMode,
     providerLabel,
     nativeSubAgentRequests,
-    ollamaToolControlTier
+    ollamaToolControlTier,
+    ollamaSessionMemory
   } = input
   const contextBudget = resolveContextBudget(provider, nextModel)
   const nativeSubAgentInstruction = nativeSubAgentPromptInstruction(
@@ -678,7 +677,9 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   }
 
   if (provider === 'ollama' && !isGlobalRun) {
-    contextualPrompt = `${ollamaScoutDelegateWorkflowHint(nextModel)}\n\n${contextualPrompt}`
+    const sessionMemoryBlock = formatOllamaSessionMemoryForPrompt(ollamaSessionMemory)
+    const scoutHint = ollamaScoutDelegateWorkflowHint(nextModel)
+    contextualPrompt = [sessionMemoryBlock, scoutHint, contextualPrompt].filter(Boolean).join('\n\n')
   }
 
   if (provider === 'ollama' && ollamaToolControlTier) {

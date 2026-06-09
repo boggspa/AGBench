@@ -2120,6 +2120,22 @@ export interface ChatRecord {
    * is set for a `parentChatRelation: 'subThread'` record. Records WHY
    * this sub-thread exists so the audit trail + future auto-orchestration
    * can reconstruct intent. */
+  /**
+   * 1.4.4 — Pruned Ollama transcript memory for session continuity across runs.
+   * Stores compressed tool trajectory (calls + summaries), not full file bodies.
+   */
+  ollamaSessionMemory?: {
+    modelId: string
+    updatedAt: number
+    workingMemory: string
+    toolTurnCount: number
+    trajectory?: Array<{
+      toolName: string
+      argsSummary: string
+      ok: boolean
+      resultSummary: string
+    }>
+  }
   delegationContext?: {
     /** When the delegation was created (ms since epoch). */
     createdAt: number

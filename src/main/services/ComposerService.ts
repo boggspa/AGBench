@@ -8,6 +8,7 @@ import {
 } from '../channels/DiscordContextService'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import { experimentalCursorProviderEnabled } from '../cursorGate'
+import { normalizeOllamaSessionMemory } from '../ollama/OllamaRunMemory'
 import { effectiveOllamaToolControlTier } from '../ollama/OllamaToolTiers'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
 import {
@@ -178,7 +179,8 @@ export class ComposerService {
             ollamaToolControlTier: effectiveOllamaToolControlTier(
               settings,
               scope === 'global' ? undefined : input.workspace || chat.workspacePath
-            )
+            ),
+            ollamaSessionMemory: normalizeOllamaSessionMemory(chat.ollamaSessionMemory)
           }
         : {})
     })
