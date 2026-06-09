@@ -415,12 +415,16 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     )
     try {
       const result = await this.deps.composerPromptFn(action)
-      if (result.dispatched && result.appRunId) {
+      if (result.dispatched) {
+        // `appRunId` may be null: the dispatcher acks at ACCEPTANCE and
+        // runs preflight/dispatch async so the phone's ack window isn't
+        // held hostage to provider startup. The run id reaches the phone
+        // via the projection snapshot that follows dispatch.
         return {
           executed: true,
-          message: `Run dispatched for workspace "${action.workspaceId}" (provider="${action.provider}"); appRunId=${result.appRunId}`,
+          message: `Run accepted for workspace "${action.workspaceId}" (provider="${action.provider}")${result.appRunId ? `; appRunId=${result.appRunId}` : ''}`,
           data: {
-            appRunId: result.appRunId,
+            ...(result.appRunId ? { appRunId: result.appRunId } : {}),
             workspaceId: action.workspaceId,
             threadId: action.threadId,
             provider: action.provider

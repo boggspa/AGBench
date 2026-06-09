@@ -409,7 +409,7 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
     expect(composerPromptFn).toHaveBeenCalledTimes(1)
     expect(composerPromptFn).toHaveBeenCalledWith(sample.composerPrompt)
     expect(result.executed).toBe(true)
-    expect(result.message).toMatch(/run dispatched/i)
+    expect(result.message).toMatch(/run accepted/i)
     expect(result.message).toMatch(/run-xyz/)
     expect(result.data).toMatchObject({
       appRunId: 'run-xyz',
@@ -443,13 +443,17 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
     expect(log).toHaveBeenCalled()
   })
 
-  it('reports executed=false when composerPromptFn returns dispatched=true but no appRunId', async () => {
-    // Defensive: shouldn't happen in practice but the contract requires
-    // an appRunId for a successful dispatch.
+  it('treats dispatched=true with no appRunId as ACCEPTED (async dispatch)', async () => {
+    // The dispatcher acks at acceptance and runs preflight/dispatch async
+    // (provider startup can outlive the phone's ack window), so a null
+    // appRunId is the NORMAL success shape — the run id reaches the phone
+    // via the projection snapshot that follows dispatch.
     const composerPromptFn = vi.fn().mockResolvedValue({ dispatched: true, appRunId: null })
     const executor = new MainProcessActionExecutor({ cancelRunFn, composerPromptFn })
     const result = await executor.executeComposerPrompt(sample.composerPrompt)
-    expect(result.executed).toBe(false)
+    expect(result.executed).toBe(true)
+    expect(result.message).toMatch(/run accepted/i)
+    expect(result.data?.appRunId).toBeUndefined()
   })
 })
 

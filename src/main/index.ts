@@ -13817,22 +13817,30 @@ if (isGeminiMcpBridgeProcess) {
             approvalMode: action.approvalMode,
             model: action.model
           }
-          try {
-            const result = await dispatchAgentRun(payload, fakeEvent)
-            return {
-              dispatched: result.dispatched,
-              appRunId: result.appRunId || null,
-              reason: result.dispatched
-                ? undefined
-                : 'Run preflight failed or runtime profile error'
-            }
-          } catch (err) {
-            return {
-              dispatched: false,
-              appRunId: null,
-              reason: err instanceof Error ? err.message : String(err)
-            }
-          }
+          // Ack at ACCEPTANCE, not completion. dispatchAgentRun includes
+          // heavy provider preflight (Ollama model/RAM probes, Codex
+          // ensureStarted) that can outlive the phone's 8s ack window —
+          // holding the ack made every send read as "timeout" while the
+          // run actually started. Validation is done at this point;
+          // dispatch proceeds async and failures surface exactly like a
+          // desktop-initiated run (run events / transcript) plus a fresh
+          // projection snapshot for the phone either way.
+          void dispatchAgentRun(payload, fakeEvent)
+            .then((result) => {
+              if (!result.dispatched) {
+                console.warn(
+                  `[remote-bridge] composerPrompt run did not dispatch (thread=${action.threadId}): preflight/profile`
+                )
+              }
+              bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            })
+            .catch((err) => {
+              console.error(
+                `[remote-bridge] composerPrompt dispatch failed (thread=${action.threadId}):`,
+                err
+              )
+            })
+          return { dispatched: true, appRunId: null }
         },
         log: (line) => {
           console.log(line)
