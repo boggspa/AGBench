@@ -205,4 +205,86 @@ describe('WorkspaceService', () => {
     expect(service.checkTrust('/input')).toEqual({ status: 'trusted' })
     expect(deps.checkTrust).toHaveBeenCalledWith('/repo')
   })
+
+  describe('allowlist identifier resolution', () => {
+    const realWorkspaces = [
+      makeWorkspace({ id: 'uuid-1', displayName: 'Test 1', path: '/Users/x/Test 1' }),
+      makeWorkspace({ id: 'uuid-2', displayName: 'Test 2', path: '/Users/x/Test 2' }),
+      makeWorkspace({ id: 'uuid-3', displayName: 'Dup', path: '/Users/x/dup-a' }),
+      makeWorkspace({ id: 'uuid-4', displayName: 'Dup', path: '/Users/x/dup-b' })
+    ]
+    const resolutionDeps = (): ReturnType<typeof makeDeps> =>
+      makeDeps({
+        appStore: makeStore({ getWorkspaces: vi.fn(() => realWorkspaces) }),
+        canonicalPath: vi.fn((value: string) => value)
+      })
+    const upsertInput = (
+      workspaceId: string,
+      path: string
+    ): Parameters<WorkspaceService['upsertRemoteAllowlist']>[0] => ({
+      workspaceId,
+      path,
+      mode: 'read-write',
+      allowedProviders: ['gemini'],
+      allowedApprovalModes: ['default']
+    })
+
+    it('resolves a quoted path + display-name id to the real workspace uuid', () => {
+      const { deps, allowlist } = resolutionDeps()
+      new WorkspaceService(deps).upsertRemoteAllowlist(upsertInput('Test 1', "'/Users/x/Test 1'"))
+      expect(allowlist.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: 'uuid-1', path: '/Users/x/Test 1' })
+      )
+    })
+
+    it('resolves by unique displayName when the path matches nothing', () => {
+      const { deps, allowlist } = resolutionDeps()
+      new WorkspaceService(deps).upsertRemoteAllowlist(upsertInput('Test 2', '/wrong/path'))
+      expect(allowlist.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: 'uuid-2', path: '/Users/x/Test 2' })
+      )
+    })
+
+    it('keeps unresolvable + ambiguous-name input as-is (trimmed, unquoted)', () => {
+      const { deps, allowlist } = resolutionDeps()
+      const service = new WorkspaceService(deps)
+      service.upsertRemoteAllowlist(upsertInput(' custom-id ', '"/missing/path"'))
+      expect(allowlist.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: 'custom-id', path: '/missing/path' })
+      )
+      service.upsertRemoteAllowlist(upsertInput('Dup', '/missing/elsewhere'))
+      expect(allowlist.upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ workspaceId: 'Dup', path: '/missing/elsewhere' })
+      )
+    })
+
+    it('reconcileRemoteAllowlist repairs hand-typed entries and leaves the rest', () => {
+      const { deps, allowlist } = resolutionDeps()
+      const entries = [
+        makeAllowlistEntry({
+          workspaceId: 'Test 1',
+          path: "'/Users/x/Test 1'",
+          allowedProviders: ['gemini', 'claude'],
+          expiresAt: 999
+        }),
+        makeAllowlistEntry({ workspaceId: 'uuid-2', path: '/Users/x/Test 2' }),
+        makeAllowlistEntry({ workspaceId: 'nope', path: '/nope' })
+      ]
+      ;(allowlist.list as ReturnType<typeof vi.fn>).mockReturnValue(entries)
+      const log = vi.fn()
+      const repaired = new WorkspaceService(deps).reconcileRemoteAllowlist(log)
+      expect(repaired).toBe(1)
+      expect(allowlist.remove).toHaveBeenCalledWith('Test 1')
+      expect(allowlist.upsert).toHaveBeenCalledTimes(1)
+      expect(allowlist.upsert).toHaveBeenCalledWith({
+        workspaceId: 'uuid-1',
+        path: '/Users/x/Test 1',
+        mode: 'read-write',
+        allowedProviders: ['gemini', 'claude'],
+        allowedApprovalModes: ['default', 'plan'],
+        expiresAt: 999
+      })
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("'Test 1' → uuid-1"))
+    })
+  })
 })

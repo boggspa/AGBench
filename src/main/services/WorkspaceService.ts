@@ -100,14 +100,88 @@ export class WorkspaceService {
         'bridge-allowlist-upsert: expiresAt must be a positive number (ms since epoch)'
       )
     }
+    const target = this.resolveAllowlistTarget(workspaceId, path)
     return this.deps.allowlist.upsert({
-      workspaceId,
-      path,
+      workspaceId: target.workspaceId,
+      path: target.path,
       mode: entry.mode,
       allowedProviders: entry.allowedProviders,
       allowedApprovalModes: entry.allowedApprovalModes,
       expiresAt: entry.expiresAt
     })
+  }
+
+  /**
+   * Resolve user-supplied allowlist identifiers to the REAL workspace
+   * record. Allowlist visibility + per-action evaluation match on the
+   * store's workspace `id` (a uuid the user has no way to know), but the
+   * Settings form historically accepted free text — entries like
+   * `workspaceId: "Test 1"` / `path: "'/Users/x/Test 1'"` (display name
+   * as id, quotes pasted into the path) matched nothing and silently
+   * denied everything. Resolution order: exact id → canonicalized path →
+   * displayName (only when unambiguous). Unresolvable input is kept
+   * as-is (trimmed/unquoted) so policy stays deny-by-default rather than
+   * guessing.
+   */
+  private resolveAllowlistTarget(
+    workspaceId: string,
+    path: string
+  ): { workspaceId: string; path: string } {
+    const cleanId = workspaceId.trim()
+    const cleanPath = stripWrappingQuotes(path.trim())
+    const workspaces = this.deps.appStore.getWorkspaces()
+    const byId = workspaces.find((ws) => ws.id === cleanId)
+    if (byId) return { workspaceId: byId.id, path: byId.path }
+    const normalized = this.tryCanonicalPath(cleanPath)
+    if (normalized) {
+      const byPath = workspaces.find(
+        (ws) => this.tryCanonicalPath(ws.path) === normalized
+      )
+      if (byPath) return { workspaceId: byPath.id, path: byPath.path }
+    }
+    const byName = workspaces.filter((ws) => (ws.displayName || '').trim() === cleanId)
+    if (byName.length === 1) return { workspaceId: byName[0].id, path: byName[0].path }
+    return { workspaceId: cleanId, path: cleanPath }
+  }
+
+  /**
+   * Startup repair for the misentered-identifier class above: any
+   * persisted entry whose workspaceId doesn't match a real workspace is
+   * re-resolved (path, then unique displayName) and rewritten with the
+   * real id + canonical path. Returns the number of repaired entries.
+   * Unresolvable entries are left untouched — they keep denying, and the
+   * Settings panel shows them for manual cleanup.
+   */
+  reconcileRemoteAllowlist(log?: (line: string) => void): number {
+    const knownIds = new Set(this.deps.appStore.getWorkspaces().map((ws) => ws.id))
+    let repaired = 0
+    for (const entry of this.deps.allowlist.list()) {
+      if (knownIds.has(entry.workspaceId)) continue
+      const target = this.resolveAllowlistTarget(entry.workspaceId, entry.path)
+      if (!knownIds.has(target.workspaceId)) continue
+      this.deps.allowlist.remove(entry.workspaceId)
+      this.deps.allowlist.upsert({
+        workspaceId: target.workspaceId,
+        path: target.path,
+        mode: entry.mode,
+        allowedProviders: entry.allowedProviders,
+        allowedApprovalModes: entry.allowedApprovalModes,
+        expiresAt: entry.expiresAt
+      })
+      repaired++
+      log?.(
+        `[remote-allowlist] repaired entry '${entry.workspaceId}' → ${target.workspaceId} (${target.path})`
+      )
+    }
+    return repaired
+  }
+
+  private tryCanonicalPath(value: string): string | null {
+    try {
+      return this.deps.canonicalPath(value)
+    } catch {
+      return null
+    }
   }
 
   removeRemoteAllowlist(workspaceId: string): boolean {
@@ -185,6 +259,19 @@ function sanitizeWorkspaceGeminiWorktree(
 function requireNonEmptyString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${label} is required.`)
+  }
+  return value
+}
+
+/** Strip one matching pair of wrapping quotes — `'/a/b'` or `"/a/b"` →
+ * `/a/b`. Pasted shell-quoted paths are the common allowlist typo. */
+function stripWrappingQuotes(value: string): string {
+  if (value.length >= 2) {
+    const first = value[0]
+    const last = value[value.length - 1]
+    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+      return value.slice(1, -1).trim()
+    }
   }
   return value
 }

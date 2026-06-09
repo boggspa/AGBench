@@ -13201,6 +13201,17 @@ if (isGeminiMcpBridgeProcess) {
       },
       checkTrust: (workspacePath) => TrustStatusService.checkTrust(workspacePath)
     })
+    // Repair allowlist entries whose ids were hand-typed before the picker
+    // existed (display names / quoted paths) — they silently denied
+    // everything because visibility matches on the store's workspace uuid.
+    const repairedAllowlistEntries = workspaceService.reconcileRemoteAllowlist((line) =>
+      console.log(line)
+    )
+    if (repairedAllowlistEntries > 0) {
+      console.log(
+        `[remote-allowlist] ${repairedAllowlistEntries} entr${repairedAllowlistEntries === 1 ? 'y' : 'ies'} repaired at startup`
+      )
+    }
     const runQueueService = new RunQueueService({
       appStore: AppStore,
       getRunRepository,

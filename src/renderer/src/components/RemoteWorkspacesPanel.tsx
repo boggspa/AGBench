@@ -16,12 +16,14 @@ import type { ReactElement } from 'react'
  *
  * UX shape (deliberately minimal for v1):
  *   - List of current entries with mode/providers/expiry inline
- *   - One-form "Add entry" inline at the top (workspaceId + path + checkboxes)
+ *   - One-form "Add entry" inline at the top: a PICKER over the user's
+ *     actual registered workspaces (id + path filled from the selection —
+ *     free-text ids matched nothing because visibility keys on the store's
+ *     workspace uuid) + mode/provider/approval checkboxes
  *   - Per-row "Remove" action
  *   - "Clear all" footer action with confirm
  *
  * Future polish (deferred):
- *   - Workspace picker that surfaces the user's actual registered workspaces
  *   - Expiry as a date picker, not raw ms
  *   - Per-row inline edit
  */
@@ -207,7 +209,14 @@ function ChipList({ values, emptyLabel }: { values: string[]; emptyLabel: string
   )
 }
 
+interface WorkspacePickerOption {
+  id: string
+  displayName?: string
+  path: string
+}
+
 function AddEntryForm({ onAdded }: { onAdded: () => void | Promise<void> }): ReactElement {
+  const [workspaceOptions, setWorkspaceOptions] = useState<WorkspacePickerOption[]>([])
   const [workspaceId, setWorkspaceId] = useState('')
   const [path, setPath] = useState('')
   const [mode, setMode] = useState<'read-only' | 'read-write'>('read-only')
@@ -222,6 +231,27 @@ function AddEntryForm({ onAdded }: { onAdded: () => void | Promise<void> }): Rea
   )
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    window.api
+      .getWorkspaces()
+      .then((list) => {
+        if (active) setWorkspaceOptions(list)
+      })
+      .catch(() => {
+        // Picker stays empty; the form's disabled state explains itself.
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const selectWorkspace = (id: string): void => {
+    const workspace = workspaceOptions.find((option) => option.id === id)
+    setWorkspaceId(id)
+    setPath(workspace?.path ?? '')
+  }
 
   const toggle = (set: Set<string>, value: string, setter: (s: Set<string>) => void): void => {
     const next = new Set(set)
@@ -266,27 +296,28 @@ function AddEntryForm({ onAdded }: { onAdded: () => void | Promise<void> }): Rea
       </div>
 
       <div className="remote-workspaces-form-grid">
-        <label className="remote-workspaces-field">
-          <span>Workspace ID</span>
-          <input
-            type="text"
-            placeholder="ws-myproject"
-            value={workspaceId}
-            onChange={(e) => setWorkspaceId(e.target.value)}
-            className="settings-input remote-workspaces-input"
-            disabled={submitting}
-          />
-        </label>
         <label className="remote-workspaces-field remote-workspaces-path-field">
-          <span>Workspace path</span>
-          <input
-            type="text"
-            placeholder="/Users/you/projects/myproject"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
+          <span>Workspace</span>
+          <select
+            value={workspaceId}
+            onChange={(e) => selectWorkspace(e.target.value)}
             className="settings-input remote-workspaces-input"
-            disabled={submitting}
-          />
+            disabled={submitting || workspaceOptions.length === 0}
+          >
+            <option value="" disabled>
+              {workspaceOptions.length === 0
+                ? 'No workspaces registered yet'
+                : 'Select a workspace…'}
+            </option>
+            {workspaceOptions.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>
+                {workspace.displayName || workspace.path}
+              </option>
+            ))}
+          </select>
+          {path ? (
+            <small className="remote-workspaces-path-preview">{path}</small>
+          ) : null}
         </label>
       </div>
 

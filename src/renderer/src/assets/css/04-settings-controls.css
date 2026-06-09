@@ -3544,8 +3544,17 @@ input:disabled, select:disabled, textarea:disabled {
 
 .remote-workspaces-form-grid {
   display: grid;
-  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.4fr);
+  grid-template-columns: minmax(220px, 1fr);
   gap: 10px;
+}
+
+.remote-workspaces-path-preview {
+  color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-workspaces-field {
