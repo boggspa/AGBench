@@ -10,9 +10,11 @@ history, and workspace state stay on your machine throughout.
 - **Local Servers.** TaskWraith detects workspace dev servers (Vite, Next, etc.),
   surfaces them in a new sidebar section and Settings tab, and maps legacy AGBench
   workspace labels to TaskWraith.
-- **iOS transport foundation (T0–T1).** `taskwraith-e2ee-v1` protocol library +
-  relay, Mac transport client, identity store, and WebSocket socket adapter — the
-  Mac-side groundwork for the paired iOS companion.
+- **iOS transport foundation (T0–T3).** `taskwraith-e2ee-v1` protocol library +
+  relay, Mac transport client, identity store, pairing flow, and the bridge
+  runtime piping projections/actions through the encrypted channel — proven
+  end-to-end by a fake-iPhone harness (pair → snapshot → actions → drop/resume).
+  Dark by default; enabled via `IOS_REMOTE_TRUE=1` + `TASKWRAITH_RELAY_URL`.
 - **Claude Fable 5.** Anthropic's new frontier tier (above Opus) joins the Claude
   model/reasoning picker as Claude Fable 5 and Claude Fable 5 1M, with context
   meter, usage rates, and ensemble support. Claude usage rates refreshed to the
