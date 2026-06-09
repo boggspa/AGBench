@@ -661,6 +661,15 @@
   opacity: 0.72;
 }
 
+[data-appearance="native_glass"][data-reduce-transparency="false"] .fx-agent-aura-root .app-transcript::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .fx-agent-aura-root .app-transcript.provider-codex::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .fx-agent-aura-root .app-transcript.provider-claude::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .fx-agent-aura-root .app-transcript.provider-kimi::after,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .fx-agent-aura-root .app-transcript.provider-gemini::after {
+  background: none !important;
+  opacity: 0 !important;
+}
+
 [data-appearance="native_glass"][data-reduce-transparency="false"] .workspace-sidebar-resize-handle::before,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .panel-resize-handle::before {
   background: rgba(236, 246, 255, 0.12);

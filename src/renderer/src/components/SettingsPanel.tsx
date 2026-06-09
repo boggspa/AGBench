@@ -2599,8 +2599,8 @@ export function SettingsPanel({
                         <span>
                           Agent Aura
                           <small>
-                            Provider-colored backgrounds, composer rims, inspector edges, and
-                            run-state bursts.
+                            Composer rims, inspector edges, sidebar highlights, and run-state
+                            bursts.
                           </small>
                         </span>
                         <input

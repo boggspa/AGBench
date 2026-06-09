@@ -2549,6 +2549,17 @@
   --agent-aura-rgb: var(--agent-aura-danger-rgb);
 }
 
+/* Agent Aura — keep rim / burst / edge / sidebar FX; drop the provider-coloured
+ * transcript ::after wash (reads as a flat tint on the main pane). */
+.fx-agent-aura-root .app-transcript::after,
+.fx-agent-aura-root .app-transcript.provider-gemini::after,
+.fx-agent-aura-root .app-transcript.provider-codex::after,
+.fx-agent-aura-root .app-transcript.provider-claude::after,
+.fx-agent-aura-root .app-transcript.provider-kimi::after {
+  background: none;
+  opacity: 0;
+}
+
 .app-transcript.fx-labs-active {
   isolation: isolate;
 }
