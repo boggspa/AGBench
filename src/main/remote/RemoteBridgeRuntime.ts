@@ -107,6 +107,10 @@ export interface RemoteBridgeRuntimeOptions {
   appStore: BridgeBroadcasterAppStore
   allowlist?: BridgeBroadcasterAllowlist
   projectionSource: BridgeBroadcasterProjectionSource
+  /** Resolver for legacy chat workspace ids (display-name/path → uuid);
+   * forwarded into the BridgeBroadcaster so workspace/thread lists count
+   * those chats. See WorkspaceIdentity.ts. */
+  canonicalChatWorkspaceId?: (workspaceId: string | null | undefined) => string | null
   /** The policy spine — `BridgeActionRouter.route` in production. */
   routeAction: (method: string, params: unknown) => Promise<unknown>
   /** `runEventBus.subscribe` in production; returns the unsubscribe fn. */
@@ -329,6 +333,7 @@ export class RemoteBridgeRuntime {
         appStore: this.opts.appStore,
         allowlist: this.opts.allowlist,
         projectionSource: this.opts.projectionSource,
+        canonicalChatWorkspaceId: this.opts.canonicalChatWorkspaceId,
         log: this.opts.log
       })
       this.opts.onBroadcasterChange?.(this.broadcaster)

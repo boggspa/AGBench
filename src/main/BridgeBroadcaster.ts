@@ -103,6 +103,15 @@ export interface BridgeBroadcasterOptions {
   throttleMs?: number
   /** Injectable clock for deterministic tests. Defaults to `Date.now`. */
   now?: () => number
+  /**
+   * Resolver for legacy chat workspace ids (see WorkspaceIdentity.ts):
+   * chat records may carry display-name ids ("Test 3") instead of the
+   * workspace uuid. When provided, every chat read is canonicalized
+   * before visibility checks / counts / summaries — otherwise those
+   * chats silently vanish from allowlisted workspaces. Returns null
+   * when unresolvable (the chat keeps its raw id and stays invisible).
+   */
+  canonicalChatWorkspaceId?: (workspaceId: string | null | undefined) => string | null
 }
 
 export const BRIDGE_BROADCAST_METHODS = {
@@ -247,6 +256,9 @@ export class BridgeBroadcaster {
   private readonly log?: (line: string) => void
   private readonly throttleMs: number
   private readonly now: () => number
+  private readonly canonicalChatWorkspaceId?: (
+    workspaceId: string | null | undefined
+  ) => string | null
   /** Per-throttle-key timestamp of the last successful emit. List
    * methods key on the bare method name; updated methods key on
    * `method:id` so two different chats can update in the same tick. */
@@ -260,6 +272,20 @@ export class BridgeBroadcaster {
     this.log = options.log
     this.throttleMs = options.throttleMs ?? 1000
     this.now = options.now ?? Date.now
+    this.canonicalChatWorkspaceId = options.canonicalChatWorkspaceId
+  }
+
+  private canonicalizeChat(chat: ChatRecord): ChatRecord {
+    const resolve = this.canonicalChatWorkspaceId
+    if (!resolve || !chat.workspaceId) return chat
+    const canonical = resolve(chat.workspaceId)
+    if (!canonical || canonical === chat.workspaceId) return chat
+    return { ...chat, workspaceId: canonical }
+  }
+
+  private canonicalizeChats(chats: ChatRecord[]): ChatRecord[] {
+    if (!this.canonicalChatWorkspaceId) return chats
+    return chats.map((chat) => this.canonicalizeChat(chat))
   }
 
   /** Build a current snapshot from AppStore + emit
@@ -271,7 +297,7 @@ export class BridgeBroadcaster {
     let workspaces: WorkspaceRecord[]
     try {
       workspaces = this.appStore.getWorkspaces()
-      chats = this.appStore.getChats()
+      chats = this.canonicalizeChats(this.appStore.getChats())
     } catch (err) {
       this.logErr(`failed to load workspaces/chats for ${method}`, err)
       return
@@ -290,7 +316,7 @@ export class BridgeBroadcaster {
     if (!this.shouldEmit(method)) return
     let chats: ChatRecord[]
     try {
-      chats = this.appStore.getChats()
+      chats = this.canonicalizeChats(this.appStore.getChats())
     } catch (err) {
       this.logErr(`failed to load chats for ${method}`, err)
       return
@@ -311,7 +337,7 @@ export class BridgeBroadcaster {
     let chats: ChatRecord[]
     try {
       workspaces = this.appStore.getWorkspaces()
-      chats = this.appStore.getChats()
+      chats = this.canonicalizeChats(this.appStore.getChats())
     } catch (err) {
       this.logErr(`failed to load workspace ${workspaceId} for ${method}`, err)
       return
@@ -345,6 +371,7 @@ export class BridgeBroadcaster {
       this.log?.(`[BridgeBroadcaster] ${method} skipped — chat ${chatId} not found`)
       return
     }
+    chat = this.canonicalizeChat(chat)
     if (!this.isChatVisible(chat)) {
       this.log?.(`[BridgeBroadcaster] ${method} skipped — chat ${chatId} not allowed`)
       return

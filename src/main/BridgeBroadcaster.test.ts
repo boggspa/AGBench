@@ -293,6 +293,55 @@ describe('BridgeBroadcaster', () => {
     )
   })
 
+  it('canonicalChatWorkspaceId rescues legacy display-name chat ids in lists + counts', () => {
+    const notify = vi.fn()
+    // One chat keyed by uuid, one by the legacy display-name convention.
+    const store = makeFakeStore(
+      [makeWorkspace({ id: 'uuid-3', displayName: 'Test 3', path: '/Users/x/Test 3' })],
+      [
+        makeChat({ appChatId: 'chat-uuid', workspaceId: 'uuid-3' }),
+        makeChat({ appChatId: 'chat-legacy', workspaceId: 'Test 3' })
+      ]
+    )
+    const canonical = (id: string | null | undefined): string | null =>
+      id === 'Test 3' || id === 'uuid-3' ? 'uuid-3' : null
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      allowlist: makeAllowlist(['uuid-3']),
+      canonicalChatWorkspaceId: canonical,
+      now: () => 1000
+    })
+    broadcaster.broadcastWorkspaceList()
+    const workspaces = (
+      notify.mock.calls[0][1] as { workspaces: Array<{ workspaceId: string; chatCount: number }> }
+    ).workspaces
+    expect(workspaces[0]).toMatchObject({ workspaceId: 'uuid-3', chatCount: 2 })
+
+    broadcaster.resetThrottle()
+    notify.mockClear()
+    broadcaster.broadcastThreadList()
+    const threads = (
+      notify.mock.calls[0][1] as { threads: Array<{ chatId: string; workspaceId: string | null }> }
+    ).threads
+    expect(threads).toHaveLength(2)
+    expect(threads.map((t) => t.workspaceId)).toEqual(['uuid-3', 'uuid-3'])
+
+    // Without the canonicalizer the legacy chat vanishes — the regression shape.
+    const bare = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      allowlist: makeAllowlist(['uuid-3']),
+      now: () => 1000
+    })
+    notify.mockClear()
+    bare.broadcastWorkspaceList()
+    const bareWorkspaces = (
+      notify.mock.calls[0][1] as { workspaces: Array<{ chatCount: number }> }
+    ).workspaces
+    expect(bareWorkspaces[0].chatCount).toBe(1)
+  })
+
   it('broadcastWorkspaceUpdated silently no-ops when the workspace is missing', () => {
     const notify = vi.fn()
     const log = vi.fn()

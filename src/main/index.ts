@@ -163,6 +163,7 @@ import {
 } from './RemoteTaskProjection'
 import { projectRemoteThread } from './RemoteThreadProjection'
 import { ensembleSpeakerForMessage } from './EnsemblePrompt'
+import { resolveCanonicalWorkspaceId } from './WorkspaceIdentity'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import {
@@ -1281,7 +1282,17 @@ function validateChatWorkspaceIdentity(
     throw new Error('Global chats cannot be used for workspace-scoped runs.')
   }
   if (workspace && chat.workspaceId && chat.workspaceId !== workspace.id) {
-    throw new Error('Chat workspace does not match the selected workspace.')
+    // Legacy chats may reference their workspace by display name or path
+    // instead of the uuid (see WorkspaceIdentity.ts) — resolve before
+    // declaring a mismatch, or follow-up turns on those chats are rejected.
+    const canonical = resolveCanonicalWorkspaceId(
+      chat.workspaceId,
+      AppStore.getWorkspaces(),
+      canonicalPath
+    )
+    if (canonical !== workspace.id) {
+      throw new Error('Chat workspace does not match the selected workspace.')
+    }
   }
 }
 
@@ -13813,18 +13824,41 @@ if (isGeminiMcpBridgeProcess) {
       }
     }
 
+    // Chat records carry two workspace-id conventions (real uuids + legacy
+    // display-name ids like "Test 3" — see WorkspaceIdentity.ts). Resolve to
+    // the real id before any allowlist comparison or remote payload, or
+    // allowlisted workspaces project EMPTY to a paired phone.
+    const canonicalRemoteWorkspaceId = (workspaceId: string | null | undefined): string | null =>
+      resolveCanonicalWorkspaceId(workspaceId, AppStore.getWorkspaces(), canonicalPath)
+
     const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
-      if (!workspaceId) return false
-      return bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' }).allowed
+      const canonical = canonicalRemoteWorkspaceId(workspaceId)
+      if (!canonical) return false
+      return bridgeAllowlist.evaluate({ workspaceId: canonical, capability: 'monitor' }).allowed
     }
 
+    /** Relay frames cap out (1 MB) and snapshots ship every visible chat —
+     * bound the heavyweight per-chat threadSnapshots to the most recent N.
+     * Task cards (small) still ship for every visible chat; older threads
+     * open with their card and fetch transcripts in a later slice. */
+    const REMOTE_THREAD_SNAPSHOT_CAP = 12
+
     const listRemoteProjectionEnvelopes = (): RemoteProjectionEnvelope[] => {
-      const chats = AppStore.getChats().filter((chat) => remoteWorkspaceIsVisible(chat.workspaceId))
-      const approvalCards = (approvalService?.listProjectionCards() ?? []).filter((approval) =>
-        remoteWorkspaceIsVisible(approval.workspaceId)
-      )
+      const canonicalizeChat = <T extends { workspaceId?: string | null }>(record: T): T => {
+        const canonical = canonicalRemoteWorkspaceId(record.workspaceId)
+        return canonical && canonical !== record.workspaceId
+          ? { ...record, workspaceId: canonical }
+          : record
+      }
+      const chats = AppStore.getChats()
+        .map(canonicalizeChat)
+        .filter((chat) => remoteWorkspaceIsVisible(chat.workspaceId))
+      const approvalCards = (approvalService?.listProjectionCards() ?? [])
+        .map(canonicalizeChat)
+        .filter((approval) => remoteWorkspaceIsVisible(approval.workspaceId))
       const questionCards = remoteQuestionRegistry
         .listProjectionCards()
+        .map(canonicalizeChat)
         .filter((question) => remoteWorkspaceIsVisible(question.workspaceId))
       const generatedAt = new Date().toISOString()
       const questionCounts = new Map<string, number>()
@@ -13847,7 +13881,7 @@ if (isGeminiMcpBridgeProcess) {
         })
       )
       const sortedChats = [...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-      for (const chat of sortedChats) {
+      for (const [chatIndex, chat] of sortedChats.entries()) {
         const capabilities = remoteTaskCapabilitiesForWorkspace(chat.workspaceId)
         const taskCard = buildRemoteTaskCard(chat, {
           generatedAt,
@@ -13869,34 +13903,36 @@ if (isGeminiMcpBridgeProcess) {
           })
         )
 
-        const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
-          threadId: chat.appChatId,
-          mode: { kind: 'latestN', n: 24 },
-          previewMaxChars: 320,
-          generatedAt,
-          // Ensemble parity on remote clients: rows carry the same
-          // participant identity the desktop transcript tag shows.
-          speakerForMessage: chat.ensemble?.enabled
-            ? ensembleSpeakerForMessage(chat.ensemble.participants)
-            : undefined
-        })
-        envelopes.push(
-          buildRemoteProjectionEnvelope({
-            kind: 'threadSnapshot',
-            payload: {
-              ...threadSnapshot,
-              taskId: chat.appChatId,
-              workspaceId: chat.workspaceId ?? null,
-              provider: chat.provider
-            },
-            generatedAt,
-            workspaceId: chat.workspaceId ?? null,
-            workspacePath: chat.workspacePath,
+        if (chatIndex < REMOTE_THREAD_SNAPSHOT_CAP) {
+          const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
             threadId: chat.appChatId,
-            runId: threadSnapshot.runSummary?.runId,
-            envelopeId: `remote-thread:${chat.appChatId}:${threadSnapshot.runSummary?.runId || 'no-run'}`
+            mode: { kind: 'latestN', n: 24 },
+            previewMaxChars: 320,
+            generatedAt,
+            // Ensemble parity on remote clients: rows carry the same
+            // participant identity the desktop transcript tag shows.
+            speakerForMessage: chat.ensemble?.enabled
+              ? ensembleSpeakerForMessage(chat.ensemble.participants)
+              : undefined
           })
-        )
+          envelopes.push(
+            buildRemoteProjectionEnvelope({
+              kind: 'threadSnapshot',
+              payload: {
+                ...threadSnapshot,
+                taskId: chat.appChatId,
+                workspaceId: chat.workspaceId ?? null,
+                provider: chat.provider
+              },
+              generatedAt,
+              workspaceId: chat.workspaceId ?? null,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: threadSnapshot.runSummary?.runId,
+              envelopeId: `remote-thread:${chat.appChatId}:${threadSnapshot.runSummary?.runId || 'no-run'}`
+            })
+          )
+        }
 
         if (taskCard.diffSummary) {
           envelopes.push(
@@ -14004,6 +14040,7 @@ if (isGeminiMcpBridgeProcess) {
           appStore: AppStore,
           allowlist: bridgeAllowlist,
           projectionSource: { listRemoteProjectionEnvelopes },
+          canonicalChatWorkspaceId: canonicalRemoteWorkspaceId,
           routeAction: (method, params) => transportActionRouter.route(method, params),
           subscribeRunEvents: (sink) => runEventBus.subscribe(sink),
           onPairingPrompt: (prompt) => {

@@ -42,7 +42,10 @@ const ROLE_HEADER = 'x-taskwraith-role'
 const SESSION_PATH = /^\/v1\/session\/([A-Za-z0-9._-]+)$/
 
 export function createRelayServer(options: RelayOptions = {}): Promise<RelayServerHandle> {
-  const maxFrameBytes = options.maxFrameBytes ?? 256 * 1024
+  // Snapshot frames carry every visible chat's projections in one app
+  // message; 256K was too tight once real workspaces went on the allowlist
+  // (ws kills the CONNECTION on violation — code 1009 — not just the frame).
+  const maxFrameBytes = options.maxFrameBytes ?? 1024 * 1024
   const idleTtlMs = options.idleTtlMs ?? 5 * 60 * 1000
   const rooms = new Map<string, Room>()
   const resolveDirectory = createResolveDirectory(options.resolve)
