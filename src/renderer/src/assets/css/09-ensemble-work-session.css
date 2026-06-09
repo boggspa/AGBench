@@ -1221,6 +1221,31 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   color: var(--surface-text);
 }
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--surface-border) 86%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--surface-text);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child) {
+  border-top-color: color-mix(in srgb, var(--surface-border) 70%, transparent);
+}
 /* Codex unified container (when ensemble) in light mode: white
  * `--surface-2` base to match the composer-surface + Create-PR row
  * exactly (the maintainer's call — the unified container should read as
@@ -1580,6 +1605,8 @@
  * touch more inset than the Create-PR row's `8px 14px` because
  * the chip strip's content is denser than a single branch label
  * + Create PR button. */
+/* Fallback when the chip strip renders outside a merged stack (should
+ * not happen in normal ensemble layout — the stack rule below wins). */
 [data-composer-style="claude"] .ensemble-above-row {
   background: #151515;
   border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
@@ -1592,6 +1619,139 @@
   border-color: color-mix(in srgb, var(--accent-color) 65%, transparent);
   background: color-mix(in srgb, var(--accent-color) 16%, transparent);
   box-shadow: none;
+}
+
+/* Claude shell — ensemble merged stack: one textarea-family card
+ * (14px radius / #161616 fill / hairline rim / soft drop shadow)
+ * instead of detached hard rectangles with per-row agent-aura glows.
+ * Inner segments go transparent with hairline dividers — mirrors the
+ * default / cursor / grok merged-instrument pattern but uses the
+ * Claude textarea chrome the user sees on `.composer-textarea`. */
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack:has(.ensemble-above-row))
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  gap: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, #161616 94%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-composer-style="claude"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  ) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  margin: 0 !important;
+  width: 100%;
+  max-width: 100%;
+  align-self: stretch;
+}
+[data-composer-style="claude"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child) {
+  border-top: 1px solid color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="claude"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:first-child {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+[data-composer-style="claude"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > .ensemble-roster-preset-picker.is-compact
+  .ensemble-roster-preset-picker-chip {
+  background: color-mix(in srgb, #ffffff 5%, transparent);
+  border-color: color-mix(in srgb, #ffffff 14%, transparent);
+}
+/* Kill provider tint + agent-aura per-row rims inside the merged frame. */
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-running
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-approval
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-failed
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-running,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-approval,
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura.fx-status-failed {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32) !important;
+}
+[data-composer-style="claude"]
+  .app-transcript
+  .composer-above-bar-stack:has(.ensemble-above-row).fx-agent-aura::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
 }
 
 /* Gemini shell — `.composer-above-bar` is `display: none` here so
