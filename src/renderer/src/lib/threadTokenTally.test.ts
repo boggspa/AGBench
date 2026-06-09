@@ -54,4 +54,22 @@ describe('formatTallySuffix', () => {
     )
     expect(suffix).toContain('£')
   })
+
+  it('shows cost and peak RAM together for ensemble/guest dual telemetry', () => {
+    const suffix = formatTallySuffix(
+      'codex',
+      {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        explicitCostUsd: 1.79,
+        peakMemoryRssGb: 41.4
+      },
+      'GBP',
+      0,
+      { dualCostAndRam: true }
+    )
+    expect(suffix).toContain('£')
+    expect(suffix).toContain('41.4GB')
+  })
 })

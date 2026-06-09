@@ -108,6 +108,30 @@ describe('buildEnsembleRoundSummaryRows', () => {
     )
     expect(cost?.value).toBe('$0.50')
   })
+
+  it('appends a RAM row when an Ollama lane reports peak RSS', () => {
+    const chat = {
+      chatKind: 'ensemble',
+      runs: [
+        run({ provider: 'claude', stats: { cost_usd: 0.31, inputTokens: 100, outputTokens: 20 } }),
+        run({
+          provider: 'ollama',
+          stats: {
+            inputTokens: 50,
+            outputTokens: 10,
+            ollamaMemoryPeakRssGb: 41,
+            ollamaMemorySampleCount: 9
+          }
+        })
+      ],
+      ensemble: { activeRound: { roundId: 'r1', participants: [] } }
+    } as unknown as ChatRecord
+    const rows = buildEnsembleRoundSummaryRows(chat, false, { currency: 'GBP' })
+    expect(rows.find((r) => r.label === 'Cost')?.value).toContain('£')
+    expect(rows.find((r) => r.label === 'RAM')?.value).toBe(
+      '41 GB llama-server peak, 9 samples'
+    )
+  })
 })
 
 describe('buildRunCompleteSummaryRows', () => {

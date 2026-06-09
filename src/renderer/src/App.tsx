@@ -143,7 +143,8 @@ import { resolveOllamaDisplayBrand } from './lib/ollamaDisplayBrand'
 import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
 import {
   buildChatTokenTally,
-  formatEnsembleTokenBreakdown
+  formatEnsembleTokenBreakdown,
+  mergeCompanionPeakMemoryRssGb
 } from './lib/threadTokenTally'
 import { buildCodexUsageWindows } from './lib/codexUsageWindows'
 import type { QueuedRunRequest, RunRouteEventPayload, ActiveRunContext } from './lib/runRequestTypes'
@@ -13833,6 +13834,20 @@ function App(): React.JSX.Element {
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const currentGuestParticipant =
     currentChat && currentChat.chatKind !== 'ensemble' ? currentChat.guestParticipant : undefined
+  const guestCompanionRuns = useMemo(() => {
+    const childId = currentGuestParticipant?.childChatId
+    if (!childId) return []
+    return chats.find((chat) => chat.appChatId === childId)?.runs || []
+  }, [chats, currentGuestParticipant?.childChatId])
+  const composerTokenTally = useMemo(
+    () => mergeCompanionPeakMemoryRssGb(chatTokenTally, guestCompanionRuns),
+    [chatTokenTally, guestCompanionRuns]
+  )
+  const dualComposerTelemetry = Boolean(
+    isCurrentEnsembleChat ||
+      currentGuestParticipant ||
+      (currentChat && getSideChatMode(currentChat) === 'guestParticipant')
+  )
   const currentGuestParticipantChatId = currentGuestParticipant?.childChatId || null
   const hasCurrentGuestActiveRunQueueJob = Boolean(
     currentGuestParticipantChatId &&
@@ -19561,8 +19576,9 @@ function App(): React.JSX.Element {
                 )}
                 {threadTokenTallyHasValue && (
                   <LiveThreadTokenTally
-                    baseTally={chatTokenTally}
+                    baseTally={composerTokenTally}
                     currency={displayCurrency}
+                    dualCostAndRam={dualComposerTelemetry}
                     model={contextModelId}
                     overestimatePercent={overestimatePercent}
                     provider={currentProvider}

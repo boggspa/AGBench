@@ -1,4 +1,4 @@
-import { formatCost, type DisplayCurrency } from './formatCost'
+import { formatCost, formatCostAlwaysOn, type DisplayCurrency } from './formatCost'
 import { formatContextTokens } from './contextWindows'
 import { extractOllamaPeakRssGb, formatOllamaComposerPeakGb } from './ollamaMemoryDisplay'
 import { extractUsageCostUsd, extractUsageCountsFromCandidate } from './usageStats'
@@ -37,13 +37,42 @@ const formatTallySuffix = (
   provider: ProviderId,
   tally: ChatTokenTally,
   currency: DisplayCurrency,
-  overestimatePercent: number
+  overestimatePercent: number,
+  options?: { dualCostAndRam?: boolean; projectedCost?: boolean }
 ): string => {
-  if (provider === 'ollama' && tally.peakMemoryRssGb > 0) {
-    return ` · ${formatOllamaComposerPeakGb(tally.peakMemoryRssGb)}`
-  }
+  const ram =
+    tally.peakMemoryRssGb > 0 ? formatOllamaComposerPeakGb(tally.peakMemoryRssGb) : ''
   const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
+
+  if (options?.dualCostAndRam) {
+    const parts: string[] = []
+    if (tally.explicitCostUsd > 0) {
+      const costLabel = formatCostAlwaysOn(
+        tally.explicitCostUsd,
+        currency,
+        undefined,
+        overestimatePercent
+      )
+      parts.push(options.projectedCost ? `~${costLabel}` : costLabel)
+    }
+    if (ram) parts.push(ram)
+    return parts.length > 0 ? ` · ${parts.join(' · ')}` : ''
+  }
+
+  if (provider === 'ollama' && ram) {
+    return ` · ${ram}`
+  }
   return cost ? ` · ${cost}` : ''
+}
+
+/** Fold guest-child (or other companion) Ollama peak RAM into a thread tally. */
+const mergeCompanionPeakMemoryRssGb = (
+  tally: ChatTokenTally,
+  companionRuns: ChatRun[] = []
+): ChatTokenTally => {
+  const companionPeak = buildChatTokenTally(companionRuns).peakMemoryRssGb
+  if (companionPeak <= tally.peakMemoryRssGb) return tally
+  return { ...tally, peakMemoryRssGb: companionPeak }
 }
 // 1.0.5-EW25 — Routes through `formatCost` so the user's selected
 // display currency wins. Pre-EW25 this hard-coded the `$` symbol +
@@ -136,5 +165,6 @@ export {
   formatExplicitCostUsd,
   formatTallySuffix,
   formatThreadTokenTally,
-  formatEnsembleTokenBreakdown
+  formatEnsembleTokenBreakdown,
+  mergeCompanionPeakMemoryRssGb
 }

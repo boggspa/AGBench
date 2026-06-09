@@ -16,7 +16,9 @@ import { shouldCollapseUserMessage, truncateUserMessagePreview } from '../lib/Us
 import {
   buildEnsembleRoundSummaryRows,
   buildEscalationChips,
-  buildRunCompleteSummaryRows
+  buildGuestCompanionRamRow,
+  buildRunCompleteSummaryRows,
+  resolveGuestCompanionRuns
 } from '../lib/runCompleteSummary'
 import { decideMeasurePass, MAX_MEASURE_REWRITE_PASSES } from '../lib/transcriptMeasureConvergence'
 import {
@@ -736,8 +738,16 @@ export const TranscriptPanel = memo(
           providerRates
         })
       }
-      return buildRunCompleteSummaryRows(currentRun)
+      const rows = buildRunCompleteSummaryRows(currentRun)
+      if (!rows.some((row) => row.label === 'RAM')) {
+        const guestRam = buildGuestCompanionRamRow(
+          resolveGuestCompanionRuns(currentChat, chats)
+        )
+        if (guestRam) rows.push(guestRam)
+      }
+      return rows
     }, [
+      chats,
       currentChat,
       currentRun,
       runCompleteNotice?.exitCode,

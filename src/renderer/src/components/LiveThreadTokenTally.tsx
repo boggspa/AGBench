@@ -11,6 +11,8 @@ const APPROX_CHARS_PER_TOKEN = 4
 type LiveThreadTokenTallyProps = {
   baseTally: ChatTokenTally
   currency: DisplayCurrency
+  /** Ensemble / guest threads show API cost and Ollama peak RAM together. */
+  dualCostAndRam?: boolean
   model: string | undefined
   overestimatePercent: number
   provider: ProviderId
@@ -28,6 +30,7 @@ export function estimateLiveOutputTokensFromChars(charCount: number): number {
 export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
   baseTally,
   currency,
+  dualCostAndRam = false,
   model,
   overestimatePercent,
   provider,
@@ -73,7 +76,7 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
     const tokenLabel = `${formatContextTokens(baseTally.inputTokens)} in / ${formatContextTokens(
       displayedOutputTokens
     )} out`
-    if (provider === 'ollama') {
+    if (!dualCostAndRam && provider === 'ollama') {
       return `${tokenLabel}${formatTallySuffix(provider, baseTally, currency, overestimatePercent)}`
     }
     const liveOutputExtra = Math.max(0, displayedOutputTokens - baseTally.outputTokens)
@@ -81,6 +84,16 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
       ? estimateRunCostUsd(providerRates, provider, model, 0, liveOutputExtra)
       : 0
     const totalCostUsd = baseTally.explicitCostUsd + liveCostUsd
+    if (dualCostAndRam) {
+      const tallyForSuffix =
+        running && liveCostUsd > 0
+          ? { ...baseTally, explicitCostUsd: totalCostUsd }
+          : baseTally
+      return `${tokenLabel}${formatTallySuffix(provider, tallyForSuffix, currency, overestimatePercent, {
+        dualCostAndRam: true,
+        projectedCost: running && liveCostUsd > 0
+      })}`
+    }
     const cost =
       totalCostUsd > 0
         ? formatCostAlwaysOn(totalCostUsd, currency, undefined, overestimatePercent)
@@ -94,6 +107,7 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
     baseTally.outputTokens,
     baseTally.peakMemoryRssGb,
     currency,
+    dualCostAndRam,
     displayedOutputTokens,
     model,
     overestimatePercent,
@@ -106,12 +120,16 @@ export const LiveThreadTokenTally = memo(function LiveThreadTokenTally({
 
   const liveTitle =
     running && liveOutputTokens > 0
-      ? provider === 'ollama'
-        ? `${title}\n\nLive output updates once per second while this run is active. Peak RAM updates when the run finishes.`
-        : `${title}\n\nLive output and projected cost update once per second while this run is active.`
-      : provider === 'ollama' && baseTally.peakMemoryRssGb > 0
-        ? `${title}\n\nPeak llama-server RAM from the latest completed Ollama run.`
-        : title
+      ? dualCostAndRam
+        ? `${title}\n\nLive output and projected cost update once per second while this run is active. Peak RAM updates when an Ollama lane finishes.`
+        : provider === 'ollama'
+          ? `${title}\n\nLive output updates once per second while this run is active. Peak RAM updates when the run finishes.`
+          : `${title}\n\nLive output and projected cost update once per second while this run is active.`
+      : dualCostAndRam && baseTally.peakMemoryRssGb > 0
+        ? `${title}\n\nCost from provider-reported spend and API-equivalent estimates. Peak RAM from the latest completed Ollama lane.`
+        : provider === 'ollama' && baseTally.peakMemoryRssGb > 0
+          ? `${title}\n\nPeak llama-server RAM from the latest completed Ollama run.`
+          : title
 
   return (
     <span

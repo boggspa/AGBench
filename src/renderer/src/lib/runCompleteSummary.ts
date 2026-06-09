@@ -204,19 +204,69 @@ const readPositiveNumber = (obj: any, paths: Array<string | string[]>): number =
   return 0
 }
 
-const buildOllamaRamRow = (run: ChatRun): RunCompleteSummaryRow | null => {
-  if (run.provider !== 'ollama') return null
-  const peakGb = extractOllamaPeakRssGb(run.stats)
+const OLLAMA_RAM_SAMPLE_PATHS: Array<string | string[]> = [
+  ['ollamaMemorySampleCount'],
+  ['hardware', 'ram', 'sampleCount']
+]
+
+const buildOllamaRamRowFromPeak = (
+  peakGb: number,
+  samples: number
+): RunCompleteSummaryRow | null => {
   if (peakGb <= 0) return null
-  const samples = readPositiveNumber(run.stats, [
-    ['ollamaMemorySampleCount'],
-    ['hardware', 'ram', 'sampleCount']
-  ])
   const suffix = samples > 1 ? ` peak, ${Math.round(samples)} samples` : ' RSS'
   return {
     label: 'RAM',
     value: `${formatOllamaSummaryMemoryGb(peakGb)} llama-server${suffix}`
   }
+}
+
+const findPeakOllamaRamFromRuns = (
+  runs: ChatRun[]
+): { peakGb: number; samples: number } => {
+  let peakGb = 0
+  let samples = 0
+  for (const run of runs) {
+    const peak = extractOllamaPeakRssGb(run.stats)
+    if (peak <= peakGb) continue
+    peakGb = peak
+    samples = readPositiveNumber(run.stats, OLLAMA_RAM_SAMPLE_PATHS)
+  }
+  return { peakGb, samples }
+}
+
+const buildOllamaRamRow = (run: ChatRun): RunCompleteSummaryRow | null => {
+  if (run.provider !== 'ollama') return null
+  const peakGb = extractOllamaPeakRssGb(run.stats)
+  if (peakGb <= 0) return null
+  const samples = readPositiveNumber(run.stats, OLLAMA_RAM_SAMPLE_PATHS)
+  return buildOllamaRamRowFromPeak(peakGb, samples)
+}
+
+/** Peak llama-server RSS across Ollama participant runs in an ensemble round. */
+export const buildEnsembleRoundOllamaRamRow = (
+  roundRuns: ChatRun[]
+): RunCompleteSummaryRow | null => {
+  const ollamaRuns = roundRuns.filter((run) => run.provider === 'ollama')
+  const { peakGb, samples } = findPeakOllamaRamFromRuns(ollamaRuns)
+  return buildOllamaRamRowFromPeak(peakGb, samples)
+}
+
+/** Guest-child Ollama peak RAM for a standard chat's run-complete summary. */
+export const buildGuestCompanionRamRow = (
+  companionRuns: ChatRun[] = []
+): RunCompleteSummaryRow | null => {
+  const { peakGb, samples } = findPeakOllamaRamFromRuns(companionRuns)
+  return buildOllamaRamRowFromPeak(peakGb, samples)
+}
+
+export const resolveGuestCompanionRuns = (
+  chat: ChatRecord | null | undefined,
+  chats: ChatRecord[]
+): ChatRun[] => {
+  const childId = chat?.guestParticipant?.childChatId
+  if (!childId) return []
+  return chats.find((entry) => entry.appChatId === childId)?.runs || []
 }
 
 export const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSummaryRow[] => {
@@ -375,6 +425,10 @@ export const buildEnsembleRoundSummaryRows = (
   // API-equivalent for subscription/credit seats that emit no cost_usd.
   const costRow = buildEnsembleRoundCostRow(roundRuns, costOptions)
   if (costRow) rows.push(costRow)
+
+  // RAM — peak llama-server RSS from any Ollama lane (shown alongside Cost).
+  const ramRow = buildEnsembleRoundOllamaRamRow(roundRuns)
+  if (ramRow) rows.push(ramRow)
 
   return rows
 }
