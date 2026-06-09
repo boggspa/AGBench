@@ -46,7 +46,7 @@ import { experimentalGrokProviderEnabled } from '../grokGate'
 
 /** Snapshot date for the baked-in rate values. Bump alongside the
  * rate values themselves when the manual diligence cycle runs. */
-export const RATE_TABLE_VERSION = '2026-05-29'
+export const RATE_TABLE_VERSION = '2026-06-09'
 
 /**
  * Per-model rate entry. Rates are USD per 1,000,000 tokens (so
@@ -218,51 +218,70 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
     pricingUrl: 'https://www.anthropic.com/pricing',
     models: [
       {
+        modelId: 'claude-fable-5',
+        inputUsdPerMillion: 10.0,
+        outputUsdPerMillion: 50.0,
+        cachedInputUsdPerMillion: 1.0,
+        sourceUrl: 'https://www.anthropic.com/pricing',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Frontier tier above Opus (added 2026-06-09). $10/$50 per published rate.'
+      },
+      {
+        modelId: 'claude-fable-5-1m',
+        inputUsdPerMillion: 10.0,
+        outputUsdPerMillion: 50.0,
+        cachedInputUsdPerMillion: 1.0,
+        sourceUrl: 'https://www.anthropic.com/pricing',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: '1M context window at standard rates — no long-context premium published.'
+      },
+      {
         modelId: 'claude-opus-4-8',
-        inputUsdPerMillion: 15.0,
-        outputUsdPerMillion: 75.0,
-        cachedInputUsdPerMillion: 1.5,
+        inputUsdPerMillion: 5.0,
+        outputUsdPerMillion: 25.0,
+        cachedInputUsdPerMillion: 0.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
         notes:
-          'Current-gen Opus (added 2026-05-29). Pricing assumed equal to Opus 4.7 ($15/$75) pending a published rate — verify on the pricing page.'
+          'Current-gen Opus. Published rate $5/$25 (2026-06-09 diligence cycle; replaces the $15/$75 placeholder assumed from the pre-4.5 Opus tier).'
       },
       {
         modelId: 'claude-opus-4-8-1m',
-        inputUsdPerMillion: 30.0,
-        outputUsdPerMillion: 150.0,
-        cachedInputUsdPerMillion: 3.0,
+        inputUsdPerMillion: 5.0,
+        outputUsdPerMillion: 25.0,
+        cachedInputUsdPerMillion: 0.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
         notes:
-          '1M context window (~2x standard Opus). Pricing assumed equal to Opus 4.7 1M pending a published rate.'
+          '1M context window at standard API pricing — Anthropic dropped the long-context premium from Opus 4.7 onward.'
       },
       {
         modelId: 'claude-opus-4-7',
-        inputUsdPerMillion: 15.0,
-        outputUsdPerMillion: 75.0,
-        cachedInputUsdPerMillion: 1.5,
+        inputUsdPerMillion: 5.0,
+        outputUsdPerMillion: 25.0,
+        cachedInputUsdPerMillion: 0.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
-        notes: 'Legacy as of Opus 4.8.'
+        notes: 'Legacy as of Opus 4.8. Published rate $5/$25 (2026-06-09 diligence cycle).'
       },
       {
         modelId: 'claude-opus-4-7-1m',
-        inputUsdPerMillion: 30.0,
-        outputUsdPerMillion: 150.0,
-        cachedInputUsdPerMillion: 3.0,
+        inputUsdPerMillion: 5.0,
+        outputUsdPerMillion: 25.0,
+        cachedInputUsdPerMillion: 0.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
-        notes: '1M context window surcharge; ~2x standard Opus pricing. Legacy as of Opus 4.8.'
+        notes:
+          '1M context window at standard API pricing (no long-context premium on 4.7+). Legacy as of Opus 4.8.'
       },
       {
         modelId: 'claude-opus-4-6',
-        inputUsdPerMillion: 15.0,
-        outputUsdPerMillion: 75.0,
-        cachedInputUsdPerMillion: 1.5,
+        inputUsdPerMillion: 5.0,
+        outputUsdPerMillion: 25.0,
+        cachedInputUsdPerMillion: 0.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
-        notes: 'Previous-gen Opus; same rates as 4.7 typically.'
+        notes: 'Previous-gen Opus; same published $5/$25 rate as 4.7/4.8.'
       },
       {
         modelId: 'claude-sonnet-4-6',
@@ -274,11 +293,12 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
       },
       {
         modelId: 'claude-haiku-4-5',
-        inputUsdPerMillion: 0.8,
-        outputUsdPerMillion: 4.0,
-        cachedInputUsdPerMillion: 0.08,
+        inputUsdPerMillion: 1.0,
+        outputUsdPerMillion: 5.0,
+        cachedInputUsdPerMillion: 0.1,
         sourceUrl: 'https://www.anthropic.com/pricing',
-        lastVerified: RATE_TABLE_VERSION
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Corrected to the published $1/$5 rate (2026-06-09 diligence cycle).'
       }
     ]
   },
