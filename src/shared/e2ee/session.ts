@@ -98,6 +98,19 @@ export class E2eeSession {
   private sendSeq = 0
   private lastRecvSeq = -1
 
+  // Resume gating (per connection). After (re)establish, NEW outbound app
+  // messages are buffered-but-held until the peer's TRANSPORT_RESUME tells us
+  // its high-water msgId — otherwise fresh messages (higher msgIds) would
+  // outrun the replay of buffered ones and the peer's monotonic msgId dedup
+  // would silently discard the replays. The flush then sends everything
+  // unacked in msgId order. `peerResumeReceived` tolerates the synchronous-
+  // transport case where the peer's resume arrives BEFORE our own
+  // markEstablished has run. CryptoKit port note: the iOS side must mirror
+  // this hold-until-resume rule.
+  private awaitingPeerResume = false
+  private peerResumeReceived = false
+  private peerResumeLastAcked = 0
+
   // Cross-reconnect app-message state.
   private nextOutboundMsgId = 1
   private lastDeliveredInboundMsgId = 0
@@ -151,6 +164,9 @@ export class E2eeSession {
     this.established = false
     this.sendSeq = 0
     this.lastRecvSeq = -1
+    this.awaitingPeerResume = false
+    this.peerResumeReceived = false
+    this.peerResumeLastAcked = 0
   }
 
   async handleFrame(frame: E2eeFrame): Promise<void> {
@@ -198,6 +214,19 @@ export class E2eeSession {
   }
 
   private onClientHello(clientEphB64: string, clientNonceB64: string): void {
+    // A clientHello ALWAYS begins a fresh handshake. When the relay keeps the
+    // Mac's socket alive across an iPhone drop/reconnect, this session object
+    // still holds the previous connection's keys + transport counters — left
+    // in place, the old lastRecvSeq would discard every frame of the new
+    // connection (seq restarts at 0) and the old ephemeral would be reused.
+    // Reset per-connection state + mint a fresh ephemeral; app msgIds and the
+    // replay buffer survive by design (the dual-counter scheme). A forged
+    // clientHello can only force a re-handshake it cannot complete (the
+    // transcript signature still has to verify against the pinned identity),
+    // which is the same DoS power the relay already holds.
+    this.resetConnectionState()
+    this.ephemeral = generateEphemeralKeyPair()
+    this.myNonce = randomBytes(NONCE_BYTES)
     this.clientEphB64 = clientEphB64
     this.clientNonceB64 = clientNonceB64
     this.serverEphB64 = b64.encode(exportRawX25519PublicKey(this.ephemeral!.publicKey))
@@ -285,6 +314,13 @@ export class E2eeSession {
 
   private markEstablished(): void {
     this.established = true
+    if (this.peerResumeReceived) {
+      // Synchronous transport: the peer's resume already landed mid-handshake.
+      this.awaitingPeerResume = false
+      this.replayUnacked(this.peerResumeLastAcked)
+    } else {
+      this.awaitingPeerResume = true
+    }
     this.opts.onEstablished?.()
     // Tell the peer where we are so it can replay anything we missed.
     this.sendControl(TRANSPORT_RESUME, { lastAckedMsgId: this.lastDeliveredInboundMsgId })
@@ -292,13 +328,16 @@ export class E2eeSession {
 
   // ── Sending ────────────────────────────────────────────────────────────────
 
-  /** Send an application message (method/params); buffered for replay. */
+  /** Send an application message (method/params); buffered for replay. While
+   * awaiting the peer's post-handshake resume, messages buffer without
+   * transmitting — the resume flush sends them in msgId order behind any
+   * replays, preserving strict in-order app delivery. */
   sendApp(method: string, params?: unknown): void {
     if (!this.established) throw new Error('session not established')
     const msgId = this.nextOutboundMsgId++
     const plaintext = Buffer.from(JSON.stringify({ msgId, method, params } as AppMessage), 'utf8')
     this.bufferOutbound({ msgId, plaintext })
-    this.encryptAndSend(plaintext)
+    if (!this.awaitingPeerResume) this.encryptAndSend(plaintext)
   }
 
   /** Transport control message (ping/pong/resume) — not buffered, no msgId. */
@@ -380,8 +419,16 @@ export class E2eeSession {
       this.sendControl(TRANSPORT_PONG)
     } else if (msg.method === TRANSPORT_RESUME) {
       const lastAcked = Number((msg.params as { lastAckedMsgId?: number })?.lastAckedMsgId ?? 0)
+      this.peerResumeReceived = true
+      this.peerResumeLastAcked = lastAcked
       this.trimReplayBuffer(lastAcked)
-      this.replayUnacked(lastAcked)
+      if (this.awaitingPeerResume) {
+        this.awaitingPeerResume = false
+        this.replayUnacked(lastAcked)
+      } else if (this.established) {
+        // Peer re-resumed mid-connection (defensive) — replay what it lacks.
+        this.replayUnacked(lastAcked)
+      }
     }
     // TRANSPORT_PONG: keepalive ack, nothing to do here (caller tracks liveness).
   }

@@ -145,4 +145,31 @@ describe('E2eeSession reconnect + replay', () => {
     await w.pump()
     expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(1)
   })
+
+  it('re-handshakes when ONLY the iphone reconnects (relay kept the Mac socket alive)', async () => {
+    // The relay frees just the dropped role's slot — the Mac side never sees a
+    // socket close, so its session object still holds the old keys + transport
+    // counters when the fresh clientHello arrives. onClientHello must reset
+    // per-connection state (and mint a fresh ephemeral), or the stale
+    // lastRecvSeq discards every frame of the new connection.
+    const w = wire()
+    await w.establish()
+    // Traffic in both directions so both transport counters are > 0.
+    w.mac.sendApp('bridge.runEvent', { n: 1 })
+    w.iphone.sendApp('bridge.requestActionAck', { ok: true })
+    await w.pump()
+
+    w.drop() // iphone's socket dies; mac session object untouched
+    w.iphone.reconnect() // fresh clientHello against the established mac session
+    await w.pump()
+
+    expect(w.mac.isEstablished).toBe(true)
+    expect(w.iphone.isEstablished).toBe(true)
+    // The new channel works in both directions.
+    w.mac.sendApp('bridge.runEvent', { n: 2 })
+    w.iphone.sendApp('bridge.requestActionAck', { ok: true, n: 2 })
+    await w.pump()
+    expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(2)
+    expect(w.macReceived.filter((m) => m.method === 'bridge.requestActionAck')).toHaveLength(2)
+  })
 })
