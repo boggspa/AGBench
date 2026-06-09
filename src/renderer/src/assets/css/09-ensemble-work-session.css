@@ -450,8 +450,14 @@
 
 .ensemble-above-row-chips {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  /* Reclaim the full row width (especially on the wrapped line below a
+   * work-session band). `min-width: 0` lets the slot shrink when the row
+   * is tight; chip children use `flex: 0 0 auto` so they never overlap. */
+  flex: 1 1 0;
   min-width: 0;
-  flex: 1;
   gap: 6px;
   /* 1.0.5-EW39 — Was `overflow-x: auto` (pre-EW37) to defensively
    * scroll long rosters. Per CSS spec, when `overflow-x` is
@@ -519,16 +525,40 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  /* 1.0.5-EW43 — Containment lives here, NOT on the base chip. The grid
+   * track gives each chip a definite (grid-derived) width, so inline-size
+   * containment is safe — it can't collapse a content-sized box — and the
+   * `@container ensemble-chip` role font-scaling still fires in narrow
+   * cells. See the base `.ensemble-above-chip` note for why it can't live
+   * on every chip. */
+  container-type: inline-size;
+  container-name: ensemble-chip;
 }
 
-/* Single-row flex layout (1–6 chips): let each chip shrink and cap
- * width so long custom role names don't paint over their neighbours.
- * Ellipsis on `.ensemble-above-chip-role` carries the readable cue;
- * the chip `title` still exposes the full string on hover. */
+/* Single-row flex layout (1–6 chips): content-width pills in a centred
+ * row. `flex: 0 0 auto` makes each chip size to its own content, so short
+ * roles ("Codex") stay compact instead of stretching to an equal share
+ * (the original `flex: 1 1 0` bug). `max-width` caps long roles; the
+ * role's inherited `overflow: hidden` + ellipsis truncate beyond it.
+ *
+ * 1.0.5-EW43 — The ~0px-sliver regression that survived earlier
+ * `min-width` tweaks was a containment bug, not a min-width one — see the
+ * `container-type` note on the base `.ensemble-above-chip`. The
+ * `min-width: auto` lines below are harmless redundancy retained to keep
+ * this fix minimal. */
 .ensemble-above-row-chips:not(.is-wrapped) .ensemble-above-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 11.5rem;
+  flex: 0 0 auto;
+  min-width: auto;
+  max-width: 10.5rem;
+}
+.ensemble-above-row-chips:not(.is-wrapped) .ensemble-above-chip-body {
+  min-width: auto;
+  max-width: 100%;
+}
+.ensemble-above-row-chips:not(.is-wrapped) .ensemble-above-chip-role {
+  flex: 0 1 auto;
+  min-width: auto;
+  max-width: 7.5rem;
 }
 
 /* 1.0.5-EW2 — The "+ add participant" button is now a SIBLING of
@@ -586,8 +616,17 @@
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  container-type: inline-size;
-  container-name: ensemble-chip;
+  /* 1.0.5-EW43 — `container-type` is deliberately NOT set here. Inline-
+   * size containment sizes an element "as if it had no contents" in the
+   * inline axis, which collapsed every single-row chip (`flex: 0 0 auto`,
+   * width derived FROM its content) to a ~2px sliver — the status-dot-only
+   * regression that survived three rounds of flex/min-width tweaks.
+   * Wrapped grid mode was immune because there the chip width is grid-
+   * derived (`width: 100%` of a 1fr track), not content-derived. The
+   * container declaration now lives ONLY on the wrapped-grid chip rule
+   * (`.ensemble-above-row-chips.is-wrapped .ensemble-above-chip`), so the
+   * `@container ensemble-chip` role font-scaling still fires in the narrow
+   * grid cells where it matters and single-row chips size to content. */
   padding: 0;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -850,8 +889,11 @@
   white-space: nowrap;
 }
 
-/* Scale down role text inside very narrow chips (wrapped grid cells,
- * dense single rows) so more characters stay legible before ellipsis. */
+/* Scale down role text inside very narrow chips so more characters stay
+ * legible before ellipsis. 1.0.5-EW43 — only fires in wrapped grid mode
+ * now: the `ensemble-chip` query container lives on `.is-wrapped` chips,
+ * and single-row chips are content-sized so they never get narrow enough
+ * to need it. */
 @container ensemble-chip (max-width: 108px) {
   .ensemble-above-chip-role {
     font-size: 11px;
@@ -885,17 +927,17 @@
 .ensemble-above-chip-tokens {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  margin-left: 2px;
-  border-radius: 6px;
+  padding: 1px 5px;
+  margin-left: 0;
+  border-radius: 5px;
   background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
   color: color-mix(in srgb, var(--text-secondary) 90%, transparent);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-  letter-spacing: 0.02em;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
   user-select: none;
 }
 
@@ -1293,7 +1335,7 @@
 .ensemble-above-chip-status {
   display: inline-flex;
   align-items: center;
-  margin-left: 4px;
+  margin-left: 2px;
   color: var(--text-secondary);
 }
 
@@ -1767,7 +1809,20 @@
 .ensemble-above-row {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  /* Was `overflow: hidden` for the gradient ::before mask. That clipped
+   * participant chips when the flex slot for `.ensemble-above-row-chips`
+   * ran tight — only the status dot survived as a vertical sliver.
+   * `flex-wrap: wrap` lets the work-session band (`flex-basis: 100%`)
+   * sit on its own row above the chip strip instead of crushing it
+   * horizontally. */
+  overflow: visible;
+  flex-wrap: wrap;
+}
+/* After a full-width work-session band, the chip strip + +/- controls
+ * share the next row and the strip reclaims all remaining width. */
+.ensemble-above-row:has(.work-session-strip) .ensemble-above-row-chips {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .ensemble-above-row::before {
   content: '';

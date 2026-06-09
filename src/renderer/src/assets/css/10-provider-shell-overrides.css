@@ -282,6 +282,10 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  /* Lives inside `.ensemble-above-row` (flex row). Force a full-width
+   * band above the chip strip instead of competing horizontally and
+   * crushing `.ensemble-above-row-chips` (flex:1, min-width:0). */
+  flex: 1 1 100%;
   gap: 10px;
   padding: 8px 12px;
   margin: 0 0 6px;
