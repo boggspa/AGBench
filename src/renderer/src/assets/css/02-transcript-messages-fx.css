@@ -583,10 +583,10 @@
 
 .sky-orb {
   position: absolute;
-  top: 24px;
+  top: 79px;
   right: clamp(54px, 12vw, 150px);
-  width: 54px;
-  height: 54px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 1) 0 13%, rgba(255, 248, 177, 0.98) 26%, rgba(255, 210, 71, 0.96) 58%, rgba(255, 151, 41, 0.78) 82%, rgba(255, 151, 41, 0) 84%);
@@ -609,7 +609,7 @@
   position: absolute;
   pointer-events: none;
   border-radius: 50%;
-  inset: -24px;
+  inset: -28px;
 }
 
 .sky-day .sky-orb::before {
@@ -624,7 +624,7 @@
 }
 
 .sky-day .sky-orb::after {
-  inset: -64px;
+  inset: -74px;
   background:
     radial-gradient(circle, rgba(255, 241, 168, 0.34), rgba(255, 205, 84, 0.12) 36%, transparent 68%);
   filter: blur(3px);
@@ -632,8 +632,8 @@
 }
 
 .sky-night .sky-orb {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   right: clamp(62px, 14vw, 168px);
   background:
     radial-gradient(circle at 64% 35%, rgba(18, 24, 38, 0.88) 0 34%, transparent 35%),
