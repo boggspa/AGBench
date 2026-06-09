@@ -1,3 +1,4 @@
+import { ollamaGptOssFewShotTrajectories } from './OllamaModelProtocol'
 import { resolveOllamaModelFamily } from './OllamaModelPreflight'
 import type { OllamaToolControlTier } from '../store/types'
 import {
@@ -31,7 +32,10 @@ export function ollamaModelFamilyPromptLines(modelId: string): string[] {
       return [
         'Model profile (GPT OSS): you may reason internally, but you MUST emit a real tool call or a final answer — never stop on a tool-intent stub.',
         'When embedding code in JSON tool args, escape backslashes correctly (Swift \\(…), Windows paths).',
-        'Prefer native tool/function calls over describing tools in prose.'
+        'Prefer native tool/function calls over describing tools in prose.',
+        'Call exactly one TaskWraith tool per turn.',
+        'Worked trajectories:',
+        ...ollamaGptOssFewShotTrajectories()
       ]
     default:
       return [
