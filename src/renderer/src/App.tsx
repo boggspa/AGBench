@@ -358,6 +358,10 @@ import {
   shouldShowJumpToLatestPill,
   CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
+import {
+  composerAboveRowClearancePx,
+  countComposerAboveRowStrips
+} from './lib/composerScrollClearance'
 import { buildRunDiffByPath } from './lib/RunWorkspaceDiff'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
@@ -5940,14 +5944,23 @@ function App(): React.JSX.Element {
     }
 
     let lastWrittenHeight = -1
+    let lastAboveRowClearance = -1
     const updateComposerReservation = () => {
       const height = Math.ceil(composerArea.getBoundingClientRect().height)
-      // Skip CSS-var writes when the height hasn't actually changed — otherwise
-      // we trigger a style recalc which cascades into the transcript
-      // ResizeObserver below and produces a feedback loop / flicker.
-      if (height === lastWrittenHeight) return
+      const aboveRowStack = composerArea.querySelector('.composer-above-bar-stack')
+      const aboveRowClearance = composerAboveRowClearancePx(
+        countComposerAboveRowStrips(aboveRowStack)
+      )
+      // Skip CSS-var writes when nothing changed — otherwise we trigger a style
+      // recalc which cascades into the transcript ResizeObserver below and
+      // produces a feedback loop / flicker.
+      if (height === lastWrittenHeight && aboveRowClearance === lastAboveRowClearance) {
+        return
+      }
       lastWrittenHeight = height
+      lastAboveRowClearance = aboveRowClearance
       transcript.style.setProperty('--composer-reserved-height', `${height}px`)
+      transcript.style.setProperty('--composer-above-row-clearance', `${aboveRowClearance}px`)
     }
 
     updateComposerReservation()

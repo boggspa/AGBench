@@ -33,11 +33,15 @@
    * multi-workspace stacks automatically) + --composer-bottom-gap + this
    * clearance. So a composer that grows to a third of the pane is honoured
    * without us guessing; this value is only the breathing room on top.
-   * Bumped 56→140→224 (~1.6x) for denser composers. */
-  --composer-scroll-clearance: 224px;
+   * Bumped 56→140→224 (~1.6x) for denser composers; trimmed to 110px base
+   * clearance. Each *additional* above-row strip in `.composer-above-bar-stack`
+   * adds `--composer-above-row-clearance` (+20px per strip, set in App.tsx)
+   * on top of the live `--composer-reserved-height` from ResizeObserver. */
+  --composer-scroll-clearance: 110px;
+  --composer-above-row-clearance: 0px;
   --composer-scroll-under-padding: calc(
     var(--composer-reserved-height) + var(--composer-bottom-gap) + var(--composer-scroll-clearance) +
-      env(safe-area-inset-bottom, 0px)
+      var(--composer-above-row-clearance) + env(safe-area-inset-bottom, 0px)
   );
   --composer-terminal-scroll-under-padding: calc(
     var(--composer-scroll-under-padding) + var(--gemini-terminal-height) +
