@@ -1,6 +1,7 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { localServerWorkspaceLabel } from '../../../shared/localServerWorkspaceLabel'
 import { useLocalServers } from '../hooks/useLocalServers'
+import { SidebarOverflowMenu } from './SidebarOverflowMenu'
 
 /** Right-chevron matching the other sidebar section headers. */
 function SectionChevron({ isExpanded }: { isExpanded: boolean }): JSX.Element {
@@ -31,6 +32,21 @@ function SectionChevron({ isExpanded }: { isExpanded: boolean }): JSX.Element {
 export function LocalServersSection(): JSX.Element | null {
   const { servers, busy, stop, stopAll } = useLocalServers()
   const [collapsed, setCollapsed] = useState(false)
+  const headerMenuItems = useMemo(
+    () => [
+      {
+        id: 'local-servers-stop-all',
+        label: 'Stop all servers',
+        onSelect: () => {
+          if (window.confirm(`Stop all ${servers.length} local server(s)?`)) void stopAll()
+        },
+        disabled: busy,
+        danger: true,
+        group: 'destructive' as const
+      }
+    ],
+    [busy, servers.length, stopAll]
+  )
 
   if (servers.length === 0) return null
 
@@ -48,17 +64,12 @@ export function LocalServersSection(): JSX.Element | null {
           <h4 className="sidebar-section-title">Local servers</h4>
         </button>
         <span className="sidebar-local-servers-count">{servers.length}</span>
-        <button
-          type="button"
-          className="sidebar-local-servers-stop-all"
-          onClick={() => {
-            if (window.confirm(`Stop all ${servers.length} local server(s)?`)) void stopAll()
-          }}
-          disabled={busy}
-          title="Stop every detected local server"
-        >
-          Stop all
-        </button>
+        <SidebarOverflowMenu
+          triggerLabel="Local servers actions"
+          alwaysVisible
+          className="sidebar-section-header-action"
+          items={headerMenuItems}
+        />
       </div>
       {!collapsed && (
         <div className="sidebar-local-servers-list">
