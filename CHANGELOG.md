@@ -4,6 +4,42 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.4.6 — 2026-06-09
+
+### Added
+- **Local Servers.** TaskWraith detects workspace dev servers (Vite, Next, etc.),
+  surfaces them in a new sidebar section and Settings tab, and maps legacy AGBench
+  workspace labels to TaskWraith.
+- **iOS transport foundation (T0–T1).** `taskwraith-e2ee-v1` protocol library +
+  relay, Mac transport client, identity store, and WebSocket socket adapter — the
+  Mac-side groundwork for the paired iOS companion.
+- **Claude Fable 5.** Anthropic's new frontier tier (above Opus) joins the Claude
+  model/reasoning picker as Claude Fable 5 and Claude Fable 5 1M, with context
+  meter, usage rates, and ensemble support. Claude usage rates refreshed to the
+  published pricing (Opus $5/$25, Haiku $1/$5, no 1M premium).
+- **WWDC26 ghost mascot.** App chrome uses the new chrome PNG with cyan glow;
+  source artwork lives under `design-assets/`.
+- **Sidebar section reorder.** Drag to rearrange hierarchy sections (Pinned,
+  Recents, Workspaces, etc.).
+
+### Changed
+- **Composer above-bar polish across every shell.** Canonical element order
+  restored (git → files/diff → action); secondary rows group trailing controls as
+  Push/Review → access icon → revoke; Cursor secondary workspaces render as
+  detached satellite pills; Codex/Grok primary rows centre the files cluster;
+  Claude ensemble above-rows use detached pills; native composer glass bezel and
+  textarea chrome refined; attach/send glyphs doubled in size.
+- **Transcript chrome.** Corner pills restyled as rim highlights; glass-pill
+  dividers, hover glow, and title spacing polished; Agent Aura / Living Workspace
+  background glows neutralised; top-edge chroma wash and side glows removed.
+
+### Fixed
+- **Above-bar trailing order regressions.** Push/Review no longer sits after the
+  read/write and ✕ icons on secondary workspace rows.
+- **Codex secondary workspace divider.** Hairline appears above the 2nd workspace
+  row only (not duplicated on roster presets).
+- **Grok roster presets divider.** Upper divider removed per shell design.
+
 ## 1.4.5 — 2026-06-09
 
 ### Added
