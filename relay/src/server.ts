@@ -113,7 +113,14 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
   }, Math.max(1000, Math.floor(idleTtlMs / 4)))
   sweeper.unref?.()
 
-  return new Promise<RelayServerHandle>((resolve) => {
+  return new Promise<RelayServerHandle>((resolve, reject) => {
+    // Surface bind failures (EADDRINUSE etc.) as a rejection instead of an
+    // uncaught 'error' event — the embedded-relay path in Electron main
+    // catches this and disables pairing with a clear log line.
+    http.once('error', (err) => {
+      clearInterval(sweeper)
+      reject(err)
+    })
     http.listen(options.port ?? 0, () => {
       const addr = http.address()
       const port = typeof addr === 'object' && addr ? addr.port : 0
@@ -137,11 +144,8 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
   })
 }
 
-// Allow `node relay/dist/server.js` (or tsx) to run a standalone relay.
-if (require.main === module) {
-  const port = Number(process.env.PORT || 8787)
-  void createRelayServer({ port }).then((handle) => {
-    // eslint-disable-next-line no-console
-    console.log(`[taskwraith-relay] listening on :${handle.port}`)
-  })
-}
+// Standalone runs live in ./cli.ts (`npx tsx relay/src/cli.ts`). The old
+// `require.main === module` auto-start was removed deliberately: this module
+// is now ALSO imported by Electron main (the embedded relay), where the
+// bundled top-level `module` IS `require.main` — the guard would have
+// auto-bound a rogue relay on every app launch, gate or no gate.

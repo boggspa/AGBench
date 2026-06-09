@@ -173,6 +173,8 @@ import { RemoteBridgeRuntime } from './remote/RemoteBridgeRuntime'
 import { RemoteIdentityStore } from './remote/RemoteIdentityStore'
 import { RemotePairingStore } from './remote/RemotePairingStore'
 import { wsTransportSocketFactory } from './remote/wsTransportSocket'
+import { pickRelayAdvertiseHost } from './remote/relayAdvertise'
+import { createRelayServer, type RelayServerHandle } from '../../relay/src/server'
 import {
   type BridgeApnsPusher,
   type BridgeRemoteAttentionPushPayload
@@ -13961,58 +13963,95 @@ if (isGeminiMcpBridgeProcess) {
     // `bridgeBroadcaster` stays null (mutation hooks no-op). The runtime owns
     // its own BridgeActionRouter instance with the SAME policy spine
     // (allowlist + audit + executor) the daemon path used.
-    const iosRemoteRuntime: RemoteBridgeRuntime | null = (() => {
-      if (process.env.IOS_REMOTE_TRUE !== '1') return null
-      const relayUrl = (process.env.TASKWRAITH_RELAY_URL || '').trim()
-      if (!relayUrl) {
-        console.warn(
-          '[remote-bridge] IOS_REMOTE_TRUE=1 but TASKWRAITH_RELAY_URL is unset — remote iOS stays disabled'
-        )
-        return null
-      }
-      const identity = new RemoteIdentityStore(
-        join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
-        safeStorage,
-        (line) => console.log(line)
-      ).load()
-      const transportActionRouter = BridgeActionRouter.fromEnvironment(
-        (line) => console.log(line),
-        bridgeAllowlist,
-        createBridgeActionExecutor()
-      )
-      console.log(`[remote-bridge] iOS remote transport enabled — relay ${relayUrl}`)
-      const runtime = new RemoteBridgeRuntime({
-        relayUrl,
-        macDisplayName: `${app.getName() || 'TaskWraith'} on ${os.hostname()}`,
-        identity,
-        socketFactory: wsTransportSocketFactory,
-        appStore: AppStore,
-        allowlist: bridgeAllowlist,
-        projectionSource: { listRemoteProjectionEnvelopes },
-        routeAction: (method, params) => transportActionRouter.route(method, params),
-        subscribeRunEvents: (sink) => runEventBus.subscribe(sink),
-        onPairingPrompt: (prompt) => {
-          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-            mainWindow.webContents.send('bridge-pairing-response-received', prompt)
-          }
-        },
-        onBroadcasterChange: (broadcaster) => {
-          bridgeBroadcaster = broadcaster
-          bridgeBroadcasterRef = broadcaster
-        },
-        pairingStore: new RemotePairingStore(
-          join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
+    // Mutable: the embedded-relay path assigns it asynchronously once the
+    // relay binds. The pairing IPC handlers + will-quit read it at call time.
+    let iosRemoteRuntime: RemoteBridgeRuntime | null = null
+    let embeddedRelayHandle: RelayServerHandle | null = null
+    if (process.env.IOS_REMOTE_TRUE === '1') {
+      const startRuntime = (relayUrl: string): void => {
+        const identity = new RemoteIdentityStore(
+          join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
+          safeStorage,
           (line) => console.log(line)
-        ),
-        log: (line) => console.log(line)
-      })
-      // Trusted reconnect (T5): resume the persisted pairing at startup — the
-      // phone finds this session via the relay's resolve directory, no QR.
-      if (runtime.startListening()) {
-        console.log('[remote-bridge] resumed persisted pairing — listening for trusted reconnect')
+        ).load()
+        const transportActionRouter = BridgeActionRouter.fromEnvironment(
+          (line) => console.log(line),
+          bridgeAllowlist,
+          createBridgeActionExecutor()
+        )
+        const runtime = new RemoteBridgeRuntime({
+          relayUrl,
+          macDisplayName: `${app.getName() || 'TaskWraith'} on ${os.hostname()}`,
+          identity,
+          socketFactory: wsTransportSocketFactory,
+          appStore: AppStore,
+          allowlist: bridgeAllowlist,
+          projectionSource: { listRemoteProjectionEnvelopes },
+          routeAction: (method, params) => transportActionRouter.route(method, params),
+          subscribeRunEvents: (sink) => runEventBus.subscribe(sink),
+          onPairingPrompt: (prompt) => {
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+              mainWindow.webContents.send('bridge-pairing-response-received', prompt)
+            }
+          },
+          onBroadcasterChange: (broadcaster) => {
+            bridgeBroadcaster = broadcaster
+            bridgeBroadcasterRef = broadcaster
+          },
+          pairingStore: new RemotePairingStore(
+            join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
+            (line) => console.log(line)
+          ),
+          log: (line) => console.log(line)
+        })
+        iosRemoteRuntime = runtime
+        // Trusted reconnect (T5): resume the persisted pairing at startup —
+        // the phone finds this session via the resolve directory, no QR.
+        if (runtime.startListening()) {
+          console.log(
+            '[remote-bridge] resumed persisted pairing — listening for trusted reconnect'
+          )
+        }
       }
-      return runtime
-    })()
+
+      const configuredRelayUrl = (process.env.TASKWRAITH_RELAY_URL || '').trim()
+      if (configuredRelayUrl) {
+        // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
+        console.log(
+          `[remote-bridge] iOS remote transport enabled — external relay ${configuredRelayUrl}`
+        )
+        startRuntime(configuredRelayUrl)
+      } else {
+        // No external relay configured → run the relay IN-PROCESS. The relay
+        // is a plain Node http+ws server and Electron main is Node, so users
+        // never have to run a terminal command for the built-in case. The QR
+        // advertises the Mac's Tailscale IP when present (reachable across
+        // networks), else the LAN IP (same-Wi-Fi pairing).
+        const port = Number(process.env.TASKWRAITH_RELAY_PORT || '8787')
+        void createRelayServer({ port })
+          .then((handle) => {
+            embeddedRelayHandle = handle
+            const advertised = pickRelayAdvertiseHost()
+            const relayUrl = `ws://${advertised.host}:${handle.port}`
+            if (advertised.kind === 'loopback') {
+              console.warn(
+                '[remote-bridge] no Tailscale/LAN address found — the pairing QR will only be reachable from this machine'
+              )
+            }
+            console.log(
+              `[remote-bridge] embedded relay listening on :${handle.port} — advertising ${relayUrl} (${advertised.kind})`
+            )
+            startRuntime(relayUrl)
+          })
+          .catch((err: unknown) => {
+            console.error(
+              `[remote-bridge] embedded relay failed to start on :${port} (${
+                err instanceof Error ? err.message : String(err)
+              }) — remote iOS pairing disabled. Free the port, set TASKWRAITH_RELAY_PORT, or point TASKWRAITH_RELAY_URL at an external relay.`
+            )
+          })
+      }
+    }
 
     const subscribeBridgeRunEvents = (_daemon: BridgeDaemonClient): void => {
       if (unsubscribeBridgeRunSink) return
@@ -14187,6 +14226,7 @@ if (isGeminiMcpBridgeProcess) {
       stopMessageChannelPolling()
       stopBridgeDaemon()
       iosRemoteRuntime?.dispose()
+      void embeddedRelayHandle?.close()
       localServersServiceRef?.stop()
       // Opt-in (Settings → Local servers): tidy up agent-spawned servers still
       // running when TaskWraith quits. Synchronous best-effort so it completes
