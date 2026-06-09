@@ -36,6 +36,11 @@ export type TransportSocketFactory = (
 export interface RemoteTransportClientOptions {
   identityKeyPair: KeyPair
   socketFactory: TransportSocketFactory
+  /** Resumed pairing: pre-pin the iPhone identity so the handshake
+   * auto-trusts (no user prompt). Omit for a fresh QR pairing. */
+  pinnedPeerIdentityRaw?: Buffer
+  /** Fired ONLY when trust is genuinely held for the user's decision — a
+   * pinned-key reconnect establishes silently. */
   onConfirmCode?: (sessionId: string, code: string) => void
   onMessage?: (method: string, params: unknown) => void
   onEstablished?: (sessionId: string) => void
@@ -64,6 +69,7 @@ export class RemoteTransportClient {
 
   constructor(options: RemoteTransportClientOptions) {
     this.opts = options
+    this.trustedPeerRaw = options.pinnedPeerIdentityRaw ?? null
   }
 
   /** Begin listening for an iPhone on a (freshly minted) pairing session. */
@@ -126,14 +132,15 @@ export class RemoteTransportClient {
       peerIdentityPublicKey: undefined,
       send: (frame: E2eeFrame) => this.socket?.send(JSON.stringify(frame)),
       onAppMessage: (method, params) => this.opts.onMessage?.(method, params),
-      onConfirmCode: (code) => this.opts.onConfirmCode?.(this.sessionId, code),
+      // The confirm code surfaces from decideTrust (unpinned path only) so a
+      // trusted reconnect never re-prompts the user.
       onEstablished: () => {
         this.reconnectAttempt = 0
         this.setConnected(true)
         this.startPing()
         this.opts.onEstablished?.(this.sessionId)
       },
-      trustPeer: (peerRaw, _code) => this.decideTrust(peerRaw),
+      trustPeer: (peerRaw, code) => this.decideTrust(peerRaw, code),
       log: this.opts.log
     })
 
@@ -153,10 +160,12 @@ export class RemoteTransportClient {
     )
   }
 
-  /** Trust-on-reconnect (pinned key matches) → auto; otherwise hold for finalize. */
-  private decideTrust(peerRaw: Buffer): boolean | Promise<boolean> {
+  /** Trust-on-reconnect (pinned key matches) → auto; otherwise surface the
+   * confirm code and hold for finalize. */
+  private decideTrust(peerRaw: Buffer, code: string): boolean | Promise<boolean> {
     if (this.trustedPeerRaw && this.trustedPeerRaw.equals(peerRaw)) return true
     this.pendingPeerRaw = peerRaw
+    this.opts.onConfirmCode?.(this.sessionId, code)
     return new Promise<boolean>((resolve) => {
       this.trustResolver = resolve
     })

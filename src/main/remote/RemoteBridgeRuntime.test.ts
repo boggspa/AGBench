@@ -1,12 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { RemoteBridgeRuntime, type RemotePairingPrompt } from './RemoteBridgeRuntime'
+import {
+  RemoteBridgeRuntime,
+  relayHttpBase,
+  type RemotePairingPrompt,
+  type RemotePairingPersistence
+} from './RemoteBridgeRuntime'
+import type { PersistedRemotePairing } from './RemotePairingStore'
 import type { TransportSocketFactory, TransportSocketHandlers } from './RemoteTransportClient'
 import { E2eeSession } from '../../shared/e2ee/session'
 import {
   b64,
+  exportRawEd25519PublicKey,
   generateIdentityKeyPair,
   importRawEd25519PublicKey
 } from '../../shared/e2ee/keys'
+import { verifyRegisterRequest, type RegisterRequest } from '../../shared/e2ee/resolve'
 import { buildRemoteProjectionEnvelope } from '../RemoteTaskProjection'
 import type { E2eeFrame } from '../../shared/e2ee/protocol'
 import type { RunEventSink } from '../RunEventBus'
@@ -19,7 +27,31 @@ const emptyAppStore = {
   getChat: () => null
 }
 
-function harness(opts: { pairingWindowMs?: number } = {}) {
+function memoryPairingStore(initial: PersistedRemotePairing | null = null): {
+  store: RemotePairingPersistence
+  current: () => PersistedRemotePairing | null
+} {
+  let record = initial
+  return {
+    store: {
+      load: () => record,
+      save: (pairing) => {
+        record = pairing
+      },
+      clear: () => {
+        record = null
+      }
+    },
+    current: () => record
+  }
+}
+
+function harness(
+  opts: {
+    pairingWindowMs?: number
+    pairingStore?: RemotePairingPersistence
+  } = {}
+) {
   const macId = generateIdentityKeyPair()
   const iphoneId = generateIdentityKeyPair()
   const prompts: RemotePairingPrompt[] = []
@@ -47,6 +79,8 @@ function harness(opts: { pairingWindowMs?: number } = {}) {
     envelopeId: 'remote-task:chat-1:no-run'
   })
 
+  const registrations: Array<{ url: string; body: RegisterRequest }> = []
+
   const runtime = new RemoteBridgeRuntime({
     relayUrl: 'ws://relay.test',
     macDisplayName: 'Test Mac',
@@ -66,7 +100,12 @@ function harness(opts: { pairingWindowMs?: number } = {}) {
     },
     onPairingPrompt: (prompt) => prompts.push(prompt),
     onBroadcasterChange: (b) => broadcasterChanges.push(b !== null),
-    pairingWindowMs: opts.pairingWindowMs
+    pairingWindowMs: opts.pairingWindowMs,
+    pairingStore: opts.pairingStore,
+    postRegistration: async (url, body) => {
+      registrations.push({ url, body })
+      return { ok: true, status: 200 }
+    }
   })
 
   /** Scan the QR: build the iPhone session from ONLY the bootstrap payload. */
@@ -88,12 +127,15 @@ function harness(opts: { pairingWindowMs?: number } = {}) {
 
   return {
     runtime,
+    macId,
+    iphoneId,
     scanAndConnect,
     prompts,
     iphoneMessages,
     iphoneCodes,
     routed,
     broadcasterChanges,
+    registrations,
     sendFromIphone: (m: string, p?: unknown) => iphone!.sendApp(m, p),
     getSink: () => capturedSink
   }
@@ -253,5 +295,127 @@ describe('RemoteBridgeRuntime established channel', () => {
       ok: false,
       error: 'decode failed'
     })
+  })
+})
+
+describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
+  it('persists the pairing + posts a signed registration on confirm', async () => {
+    const memory = memoryPairingStore()
+    const h = harness({ pairingStore: memory.store })
+    const { bootstrap } = h.runtime.beginPairing('My iPad')
+    await settle()
+    h.scanAndConnect(bootstrap.bootstrapPayload)
+    await settle()
+    h.runtime.finalizePairing(bootstrap.pairingSessionID, true)
+    await settle()
+
+    const phoneKeyB64 = b64.encode(exportRawEd25519PublicKey(h.iphoneId.publicKey))
+    expect(memory.current()).toMatchObject({
+      v: 1,
+      iphoneIdentityPubKey: phoneKeyB64,
+      controllerDisplayName: 'My iPad'
+    })
+
+    expect(h.registrations.length).toBeGreaterThanOrEqual(1)
+    const { url, body } = h.registrations[0]
+    expect(url).toBe('http://relay.test/v1/resolve/register')
+    expect(body).toMatchObject({
+      v: 1,
+      sessionId: bootstrap.pairingSessionID,
+      allowedPeers: [phoneKeyB64],
+      macIdentityPubKey: b64.encode(exportRawEd25519PublicKey(h.macId.publicKey))
+    })
+    expect(verifyRegisterRequest(body)).toBe(true)
+  })
+
+  it('startListening resumes the persisted pairing — established with NO prompt', async () => {
+    const phoneId = generateIdentityKeyPair()
+    const memory = memoryPairingStore()
+    const h = harness({ pairingStore: memory.store })
+    // Seed as if a previous app run had paired this phone.
+    memory.store.save({
+      v: 1,
+      iphoneIdentityPubKey: b64.encode(exportRawEd25519PublicKey(h.iphoneId.publicKey)),
+      controllerDisplayName: 'Resumed iPad',
+      pairedAt: '2026-06-09T12:00:00.000Z'
+    })
+    void phoneId
+
+    expect(h.runtime.startListening()).toBe(true)
+    await settle()
+    // The registration reveals the freshly minted sessionId (what the phone
+    // gets from the resolve directory).
+    expect(h.registrations.length).toBeGreaterThanOrEqual(1)
+    const sessionId = h.registrations[0].body.sessionId
+
+    h.scanAndConnect({
+      sessionId,
+      macIdentityPubKey: b64.encode(exportRawEd25519PublicKey(h.macId.publicKey))
+    })
+    await settle()
+
+    expect(h.runtime.isEstablished).toBe(true)
+    expect(h.prompts).toHaveLength(0) // trusted reconnect — never re-prompt
+    expect(
+      h.iphoneMessages.some((m) => m.method === 'bridge.broadcastRemoteProjectionSnapshot')
+    ).toBe(true)
+  })
+
+  it('startListening is a no-op without a persisted pairing', () => {
+    const memory = memoryPairingStore()
+    const h = harness({ pairingStore: memory.store })
+    expect(h.runtime.startListening()).toBe(false)
+    expect(h.registrations).toHaveLength(0)
+  })
+
+  it('a declined re-pairing falls back to listening for the persisted pairing', async () => {
+    const previousPhone = generateIdentityKeyPair()
+    const previousKeyB64 = b64.encode(exportRawEd25519PublicKey(previousPhone.publicKey))
+    const memory = memoryPairingStore({
+      v: 1,
+      iphoneIdentityPubKey: previousKeyB64,
+      controllerDisplayName: 'Old iPad',
+      pairedAt: '2026-06-09T12:00:00.000Z'
+    })
+    const h = harness({ pairingStore: memory.store })
+
+    const { bootstrap } = h.runtime.beginPairing('New iPad')
+    await settle()
+    h.scanAndConnect(bootstrap.bootstrapPayload)
+    await settle()
+    expect(h.prompts).toHaveLength(1)
+
+    h.runtime.finalizePairing(bootstrap.pairingSessionID, false)
+    await settle()
+
+    // The old pairing survives and a fresh registration for it was posted.
+    expect(memory.current()?.iphoneIdentityPubKey).toBe(previousKeyB64)
+    const fallback = h.registrations.at(-1)
+    expect(fallback?.body.allowedPeers).toEqual([previousKeyB64])
+    expect(fallback?.body.sessionId).not.toBe(bootstrap.pairingSessionID)
+  })
+
+  it('unpair clears persistence and tears the session down', async () => {
+    const memory = memoryPairingStore()
+    const h = harness({ pairingStore: memory.store })
+    const { bootstrap } = h.runtime.beginPairing('My iPad')
+    await settle()
+    h.scanAndConnect(bootstrap.bootstrapPayload)
+    await settle()
+    h.runtime.finalizePairing(bootstrap.pairingSessionID, true)
+    await settle()
+    expect(memory.current()).not.toBeNull()
+
+    h.runtime.unpair()
+    expect(memory.current()).toBeNull()
+    expect(h.runtime.isEstablished).toBe(false)
+    expect(h.runtime.hasPersistedPairing).toBe(false)
+  })
+})
+
+describe('relayHttpBase', () => {
+  it('maps ws/wss schemes to http/https and strips trailing slashes', () => {
+    expect(relayHttpBase('ws://relay.test')).toBe('http://relay.test')
+    expect(relayHttpBase('wss://relay.example.com/')).toBe('https://relay.example.com')
   })
 })

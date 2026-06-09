@@ -171,6 +171,7 @@ import {
 } from './RemoteWorkspaceAllowlist'
 import { RemoteBridgeRuntime } from './remote/RemoteBridgeRuntime'
 import { RemoteIdentityStore } from './remote/RemoteIdentityStore'
+import { RemotePairingStore } from './remote/RemotePairingStore'
 import { wsTransportSocketFactory } from './remote/wsTransportSocket'
 import {
   type BridgeApnsPusher,
@@ -13980,7 +13981,7 @@ if (isGeminiMcpBridgeProcess) {
         createBridgeActionExecutor()
       )
       console.log(`[remote-bridge] iOS remote transport enabled — relay ${relayUrl}`)
-      return new RemoteBridgeRuntime({
+      const runtime = new RemoteBridgeRuntime({
         relayUrl,
         macDisplayName: `${app.getName() || 'TaskWraith'} on ${os.hostname()}`,
         identity,
@@ -13999,8 +14000,18 @@ if (isGeminiMcpBridgeProcess) {
           bridgeBroadcaster = broadcaster
           bridgeBroadcasterRef = broadcaster
         },
+        pairingStore: new RemotePairingStore(
+          join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
+          (line) => console.log(line)
+        ),
         log: (line) => console.log(line)
       })
+      // Trusted reconnect (T5): resume the persisted pairing at startup — the
+      // phone finds this session via the relay's resolve directory, no QR.
+      if (runtime.startListening()) {
+        console.log('[remote-bridge] resumed persisted pairing — listening for trusted reconnect')
+      }
+      return runtime
     })()
 
     const subscribeBridgeRunEvents = (_daemon: BridgeDaemonClient): void => {

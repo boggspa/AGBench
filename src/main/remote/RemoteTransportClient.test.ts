@@ -5,13 +5,13 @@ import {
   type TransportSocketHandlers
 } from './RemoteTransportClient'
 import { E2eeSession } from '../../shared/e2ee/session'
-import { generateIdentityKeyPair } from '../../shared/e2ee/keys'
+import { exportRawEd25519PublicKey, generateIdentityKeyPair } from '../../shared/e2ee/keys'
 import type { E2eeFrame } from '../../shared/e2ee/protocol'
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 10))
 
 /** Build a Mac client wired to a fake-iPhone E2eeSession via an in-memory socket. */
-function harness() {
+function harness(opts: { pinPeer?: boolean } = {}) {
   const macId = generateIdentityKeyPair()
   const iphoneId = generateIdentityKeyPair()
   const macConfirmCodes: string[] = []
@@ -34,6 +34,9 @@ function harness() {
   const client = new RemoteTransportClient({
     identityKeyPair: macId,
     socketFactory,
+    pinnedPeerIdentityRaw: opts.pinPeer
+      ? exportRawEd25519PublicKey(iphoneId.publicKey)
+      : undefined,
     onConfirmCode: (_sessionId, code) => macConfirmCodes.push(code),
     onMessage: (method, params) => macMessages.push({ method, params }),
     onEstablished: (sessionId) => established.push(sessionId)
@@ -88,6 +91,17 @@ describe('RemoteTransportClient pairing', () => {
     h.client.finalizePairing(false)
     await settle()
     expect(h.client.isConnected).toBe(false)
+  })
+
+  it('auto-trusts a pinned peer identity without surfacing a confirm code', async () => {
+    const h = harness({ pinPeer: true })
+    h.client.beginSession('ws://relay.test', 'sess-T1')
+    await settle()
+    h.startIphone()
+    await settle()
+    // Established with NO finalizePairing and NO prompt — trusted reconnect.
+    expect(h.client.isConnected).toBe(true)
+    expect(h.macConfirmCodes).toHaveLength(0)
   })
 })
 

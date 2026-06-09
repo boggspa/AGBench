@@ -40,7 +40,9 @@ import { makeBridgeRunEventSink } from '../BridgeRunEventSink'
 import type { RunEventSink } from '../RunEventBus'
 import { E2EE_PROTOCOL, type PairingBootstrapPayload } from '../../shared/e2ee/protocol'
 import { b64, type KeyPair } from '../../shared/e2ee/keys'
+import { signRegisterRequest, type RegisterRequest } from '../../shared/e2ee/resolve'
 import { RemoteTransportClient, type TransportSocketFactory } from './RemoteTransportClient'
+import type { PersistedRemotePairing } from './RemotePairingStore'
 
 /** Pushed to the renderer's `bridge-pairing-response-received` listener
  * (IncomingPairingPrompt) when the iPhone's clientAuth arrives. */
@@ -68,6 +70,34 @@ export interface FinalizePairingResult {
  * else is rejected (audited surface stays exactly the router's). */
 const ROUTABLE_METHODS = new Set(['bridge.requestActionAck', 'bridge.requestPrepareStartTurnAck'])
 
+/** The slice of RemotePairingStore the runtime needs (injectable for tests). */
+export interface RemotePairingPersistence {
+  load(): PersistedRemotePairing | null
+  save(pairing: PersistedRemotePairing): void
+  clear(): void
+}
+
+/** POSTs a signed registration to the relay's resolve directory. The default
+ * uses global fetch; tests inject a spy. */
+export type PostRegistration = (
+  registerUrl: string,
+  body: RegisterRequest
+) => Promise<{ ok: boolean; status: number }>
+
+const defaultPostRegistration: PostRegistration = async (registerUrl, body) => {
+  const response = await fetch(registerUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  return { ok: response.ok, status: response.status }
+}
+
+/** ws://host → http://host (the resolve directory rides the same listener). */
+export function relayHttpBase(relayUrl: string): string {
+  return relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/$/, '')
+}
+
 export interface RemoteBridgeRuntimeOptions {
   relayUrl: string
   /** Shown on the iPhone's pairing sheet ("Pair with <macDisplayName>"). */
@@ -87,6 +117,12 @@ export interface RemoteBridgeRuntimeOptions {
   onBroadcasterChange?: (broadcaster: BridgeBroadcaster | null) => void
   /** Pairing QR validity window; the un-paired socket is torn down after. */
   pairingWindowMs?: number
+  /** Trusted reconnect (T5): persisted pairing + relay resolve registration.
+   * Without a store the runtime is QR-pairing-only (T1–T3 behavior). */
+  pairingStore?: RemotePairingPersistence
+  /** Resolve-directory registration lifetime; refreshed at half-life. */
+  registrationTtlMs?: number
+  postRegistration?: PostRegistration
   log?: (line: string) => void
 }
 
@@ -99,9 +135,52 @@ export class RemoteBridgeRuntime {
   private runSinkUnsub: (() => void) | null = null
   private controllerDisplayName = 'iOS device'
   private pairingExpiryTimer: ReturnType<typeof setTimeout> | null = null
+  private registrationTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(options: RemoteBridgeRuntimeOptions) {
     this.opts = options
+  }
+
+  /** Resume the persisted pairing (trusted reconnect): mint a fresh session,
+   * pre-pin the phone's identity (no prompt), open the relay socket, and
+   * register with the resolve directory so the phone can find us. No-op
+   * without a persisted pairing. */
+  startListening(): boolean {
+    const pairing = this.opts.pairingStore?.load()
+    if (!pairing) return false
+    this.teardownClient()
+    this.controllerDisplayName = pairing.controllerDisplayName
+    const sessionId = randomUUID()
+    const client = new RemoteTransportClient({
+      identityKeyPair: this.opts.identity,
+      socketFactory: this.opts.socketFactory,
+      pinnedPeerIdentityRaw: b64.decode(pairing.iphoneIdentityPubKey),
+      onConfirmCode: (sessionID, code) =>
+        this.opts.onPairingPrompt({
+          sessionID,
+          controllerDisplayName: this.controllerDisplayName,
+          code
+        }),
+      onMessage: (method, params) => void this.handleInbound(method, params),
+      onEstablished: () => this.onEstablished(),
+      onConnectionChange: (connected) =>
+        this.opts.log?.(`[remote-bridge] transport ${connected ? 'established' : 'down'}`),
+      log: this.opts.log
+    })
+    this.client = client
+    client.beginSession(this.opts.relayUrl, sessionId)
+    this.startRegistrationRefresh(pairing.iphoneIdentityPubKey)
+    return true
+  }
+
+  get hasPersistedPairing(): boolean {
+    return Boolean(this.opts.pairingStore?.load())
+  }
+
+  /** Forget the paired device entirely: clear persistence + drop the session. */
+  unpair(): void {
+    this.opts.pairingStore?.clear()
+    this.teardownClient()
   }
 
   /** Mint a fresh pairing session + QR bootstrap. Replaces any previous
@@ -165,10 +244,24 @@ export class RemoteBridgeRuntime {
     }
     this.client.finalizePairing(userConfirmed)
     if (!userConfirmed) {
-      // Declined → the handshake fails on the phone; drop our side too so a
-      // fresh QR is required for the next attempt.
+      // Declined → the handshake fails on the phone; drop our side too. If an
+      // EARLIER pairing is still persisted, resume listening for it.
       this.teardownClient()
+      this.startListening()
       return { ok: true, paired: false }
+    }
+    // Confirmed: persist the pinned identity for trusted reconnect + tell the
+    // relay's resolve directory where this Mac is listening.
+    const peerRaw = this.client.trustedPeerIdentityRaw()
+    if (peerRaw && this.opts.pairingStore) {
+      const iphoneIdentityPubKey = b64.encode(peerRaw)
+      this.opts.pairingStore.save({
+        v: 1,
+        iphoneIdentityPubKey,
+        controllerDisplayName: this.controllerDisplayName,
+        pairedAt: new Date().toISOString()
+      })
+      this.startRegistrationRefresh(iphoneIdentityPubKey)
     }
     return { ok: true, paired: true }
   }
@@ -182,6 +275,46 @@ export class RemoteBridgeRuntime {
   }
 
   // ── internals ───────────────────────────────────────────────────────────────
+
+  /** Register (and keep registering at half-life) the current session with
+   * the relay's resolve directory. Fire-and-forget: a failed registration
+   * only degrades cold reconnect, never the live channel. */
+  private startRegistrationRefresh(iphoneIdentityPubKey: string): void {
+    this.stopRegistrationRefresh()
+    const ttlMs = this.opts.registrationTtlMs ?? 60 * 60 * 1000
+    const post = (): void => {
+      const sessionId = this.client?.currentSessionId
+      if (!sessionId) return
+      const request = signRegisterRequest(this.opts.identity, {
+        sessionId,
+        allowedPeers: [iphoneIdentityPubKey],
+        issuedAt: Date.now(),
+        ttlMs
+      })
+      const postRegistration = this.opts.postRegistration ?? defaultPostRegistration
+      void postRegistration(`${relayHttpBase(this.opts.relayUrl)}/v1/resolve/register`, request)
+        .then((result) => {
+          if (!result.ok) {
+            this.opts.log?.(`[remote-bridge] resolve registration failed (${result.status})`)
+          }
+        })
+        .catch((err: unknown) => {
+          this.opts.log?.(
+            `[remote-bridge] resolve registration error: ${err instanceof Error ? err.message : String(err)}`
+          )
+        })
+    }
+    post()
+    this.registrationTimer = setInterval(post, Math.max(10_000, Math.floor(ttlMs / 2)))
+    this.registrationTimer.unref?.()
+  }
+
+  private stopRegistrationRefresh(): void {
+    if (this.registrationTimer) {
+      clearInterval(this.registrationTimer)
+      this.registrationTimer = null
+    }
+  }
 
   private send(method: string, params?: unknown): void {
     this.client?.send(method, params)
@@ -262,6 +395,7 @@ export class RemoteBridgeRuntime {
       clearTimeout(this.pairingExpiryTimer)
       this.pairingExpiryTimer = null
     }
+    this.stopRegistrationRefresh()
     this.runSinkUnsub?.()
     this.runSinkUnsub = null
     if (this.broadcaster) {
