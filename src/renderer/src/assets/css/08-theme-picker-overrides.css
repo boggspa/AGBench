@@ -7336,8 +7336,8 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   ) {
-  background: var(--composer-glass-bg);
-  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent);
+  background: var(--native-instrument-glass-bg);
+  border-color: var(--native-instrument-glass-border);
   color: rgba(29, 29, 31, 0.84) !important;
   backdrop-filter: blur(20px) saturate(155%);
   -webkit-backdrop-filter: blur(20px) saturate(155%);

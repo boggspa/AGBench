@@ -2623,8 +2623,13 @@
   .app-transcript
   .composer-area:has(.composer-above-bar-stack)
   .composer-above-bar-stack.fx-agent-aura.fx-status-failed {
+  background: var(--native-instrument-glass-bg) !important;
   box-shadow: var(--composer-shadow) !important;
-  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent) !important;
+  border-color: var(--native-instrument-glass-border) !important;
+}
+[data-composer-style="default"] .app-transcript .composer-surface {
+  background: var(--native-instrument-glass-bg) !important;
+  border-color: var(--native-instrument-glass-border) !important;
 }
 [data-composer-style="default"]
   .app-transcript
