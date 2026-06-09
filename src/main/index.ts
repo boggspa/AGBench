@@ -153,11 +153,25 @@ import { BridgeBroadcaster } from './BridgeBroadcaster'
 import { RemoteQuestionRegistry, type RemoteQuestionResolution } from './RemoteQuestionRegistry'
 import {
   buildMobileQuestionCard,
-  buildRemoteProjectionEnvelope
+  buildRemoteEnsembleState,
+  buildRemoteProjectionEnvelope,
+  buildRemoteShellAppearance,
+  buildRemoteTaskCard,
+  type RemoteProjectionEnvelope,
+  type RemoteTaskCard,
+  type RemoteTaskCapabilities
 } from './RemoteTaskProjection'
+import { projectRemoteThread } from './RemoteThreadProjection'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
-import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
+import {
+  RemoteWorkspaceAllowlist,
+  capabilitiesForRemoteWorkspaceEntry,
+  type RemoteWorkspaceCapability
+} from './RemoteWorkspaceAllowlist'
+import { RemoteBridgeRuntime } from './remote/RemoteBridgeRuntime'
+import { RemoteIdentityStore } from './remote/RemoteIdentityStore'
+import { wsTransportSocketFactory } from './remote/wsTransportSocket'
 import {
   type BridgeApnsPusher,
   type BridgeRemoteAttentionPushPayload
@@ -607,6 +621,39 @@ const remoteQuestionRegistry = new RemoteQuestionRegistry({
   defaultTtlMs: AGENT_QUESTION_TIMEOUT_MS
 })
 let bridgeBroadcasterRef: BridgeBroadcaster | null = null
+const remoteTaskAttentionKeys = new Map<string, string>()
+
+/**
+ * APNs nudge when a task flips into a needs-attention state (awaiting an
+ * approval or a question). Deduped per task on a composite key so the
+ * snapshot builder — which runs on every broadcast — only fires a push
+ * when the attention state actually changed. (Resurrected with the iOS
+ * transport rebuild; identical to the pre-removal behavior.)
+ */
+function maybeNotifyRemoteTaskNeedsAttention(taskCard: RemoteTaskCard): void {
+  const needsAttention =
+    taskCard.status === 'awaitingApproval' || taskCard.status === 'awaitingQuestion'
+  const attentionKey = [
+    taskCard.status,
+    taskCard.runId || taskCard.latestRunId || '',
+    taskCard.pendingApprovalCount,
+    taskCard.pendingQuestionCount
+  ].join(':')
+  const previousKey = remoteTaskAttentionKeys.get(taskCard.id)
+  if (previousKey === attentionKey) return
+  remoteTaskAttentionKeys.set(taskCard.id, attentionKey)
+  if (!needsAttention) return
+
+  remoteAttentionApnsFanoutRef?.notify({
+    reason: 'taskNeedsAttention',
+    workspaceId: taskCard.workspaceId,
+    threadId: taskCard.threadId,
+    runId: taskCard.runId || taskCard.latestRunId,
+    taskId: taskCard.id,
+    projectionKind: 'RemoteTaskCard',
+    generatedAt: new Date().toISOString()
+  })
+}
 
 /**
  * Cancel every outstanding question tied to a run. Called when the
@@ -13703,11 +13750,265 @@ if (isGeminiMcpBridgeProcess) {
       })
     }
 
+    // ── Remote iOS transport (taskwraith-e2ee-v1 rebuild) ─────────────────────
+    // Projection-source helpers resurrected from the pre-removal wiring
+    // (commit 2ca82258^): the allowlist-filtered envelope list the
+    // BridgeBroadcaster snapshots from. Identical shapes — the iOS domain
+    // layer (RemoteTaskProjection/RemoteThreadProjection) never changed.
+    const remoteTaskCapabilitiesForWorkspace = (
+      workspaceId: string | null | undefined
+    ): RemoteTaskCapabilities => {
+      const empty: RemoteTaskCapabilities = {
+        monitor: false,
+        approve: false,
+        answer: false,
+        cancel: false,
+        startTurn: false,
+        diffReview: false,
+        steer: false,
+        pin: false,
+        yolo: false,
+        cancelRound: false,
+        skipActiveParticipant: false,
+        wakeNow: false,
+        cancelWakeup: false,
+        queuePrompt: false
+      }
+      if (!workspaceId) return empty
+      const decision = bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' })
+      if (!decision.allowed) return empty
+      const capabilities = new Set<RemoteWorkspaceCapability>(
+        capabilitiesForRemoteWorkspaceEntry(decision.entry)
+      )
+      return {
+        monitor: capabilities.has('monitor'),
+        approve: capabilities.has('approve'),
+        answer: capabilities.has('answer'),
+        cancel: capabilities.has('cancel'),
+        startTurn: capabilities.has('startTurn'),
+        diffReview: capabilities.has('diffReview'),
+        steer: capabilities.has('steer'),
+        pin: capabilities.has('pin'),
+        yolo: capabilities.has('yolo'),
+        cancelRound: capabilities.has('cancel'),
+        skipActiveParticipant: capabilities.has('steer'),
+        wakeNow: capabilities.has('steer'),
+        cancelWakeup: capabilities.has('cancel'),
+        queuePrompt: capabilities.has('steer')
+      }
+    }
+
+    const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
+      if (!workspaceId) return false
+      return bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' }).allowed
+    }
+
+    const listRemoteProjectionEnvelopes = (): RemoteProjectionEnvelope[] => {
+      const chats = AppStore.getChats().filter((chat) => remoteWorkspaceIsVisible(chat.workspaceId))
+      const approvalCards = (approvalService?.listProjectionCards() ?? []).filter((approval) =>
+        remoteWorkspaceIsVisible(approval.workspaceId)
+      )
+      const questionCards = remoteQuestionRegistry
+        .listProjectionCards()
+        .filter((question) => remoteWorkspaceIsVisible(question.workspaceId))
+      const generatedAt = new Date().toISOString()
+      const questionCounts = new Map<string, number>()
+      for (const question of questionCards) {
+        if (!question.threadId) continue
+        questionCounts.set(question.threadId, (questionCounts.get(question.threadId) ?? 0) + 1)
+      }
+      const approvalCounts = new Map<string, number>()
+      for (const approval of approvalCards) {
+        if (!approval.threadId) continue
+        approvalCounts.set(approval.threadId, (approvalCounts.get(approval.threadId) ?? 0) + 1)
+      }
+      const envelopes: RemoteProjectionEnvelope[] = []
+      envelopes.push(
+        buildRemoteProjectionEnvelope({
+          kind: 'shellAppearance',
+          payload: buildRemoteShellAppearance(AppStore.getSettings(), { generatedAt }),
+          generatedAt,
+          envelopeId: 'remote-shell-appearance:global'
+        })
+      )
+      const sortedChats = [...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      for (const chat of sortedChats) {
+        const capabilities = remoteTaskCapabilitiesForWorkspace(chat.workspaceId)
+        const taskCard = buildRemoteTaskCard(chat, {
+          generatedAt,
+          pendingQuestionCount: questionCounts.get(chat.appChatId) ?? 0,
+          pendingApprovalCount: approvalCounts.get(chat.appChatId) ?? 0,
+          capabilities
+        })
+        maybeNotifyRemoteTaskNeedsAttention(taskCard)
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'taskCard',
+            payload: taskCard,
+            generatedAt,
+            workspaceId: chat.workspaceId ?? null,
+            workspacePath: chat.workspacePath,
+            threadId: chat.appChatId,
+            runId: taskCard.runId,
+            envelopeId: `remote-task:${chat.appChatId}:${taskCard.runId || 'no-run'}`
+          })
+        )
+
+        const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+          threadId: chat.appChatId,
+          mode: { kind: 'latestN', n: 24 },
+          previewMaxChars: 320,
+          generatedAt
+        })
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'threadSnapshot',
+            payload: {
+              ...threadSnapshot,
+              taskId: chat.appChatId,
+              workspaceId: chat.workspaceId ?? null,
+              provider: chat.provider
+            },
+            generatedAt,
+            workspaceId: chat.workspaceId ?? null,
+            workspacePath: chat.workspacePath,
+            threadId: chat.appChatId,
+            runId: threadSnapshot.runSummary?.runId,
+            envelopeId: `remote-thread:${chat.appChatId}:${threadSnapshot.runSummary?.runId || 'no-run'}`
+          })
+        )
+
+        if (taskCard.diffSummary) {
+          envelopes.push(
+            buildRemoteProjectionEnvelope({
+              kind: 'diffSummary',
+              payload: taskCard.diffSummary,
+              generatedAt,
+              workspaceId: chat.workspaceId ?? null,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: taskCard.diffSummary.runId,
+              envelopeId: `remote-diff:${chat.appChatId}:${taskCard.diffSummary.runId}`
+            })
+          )
+        }
+
+        const ensembleState = taskCard.ensembleState ?? buildRemoteEnsembleState(chat)
+        if (ensembleState) {
+          envelopes.push(
+            buildRemoteProjectionEnvelope({
+              kind: 'ensembleState',
+              payload: {
+                ...ensembleState,
+                taskId: chat.appChatId,
+                workspaceId: chat.workspaceId ?? null,
+                capabilities
+              },
+              generatedAt,
+              workspaceId: chat.workspaceId ?? null,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: taskCard.runId,
+              envelopeId: `remote-ensemble:${chat.appChatId}:${ensembleState.roundId || 'idle'}`
+            })
+          )
+        }
+      }
+
+      for (const approval of approvalCards) {
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'approvalCard',
+            payload: {
+              ...approval,
+              taskId: approval.threadId
+            },
+            generatedAt,
+            workspaceId: approval.workspaceId,
+            workspacePath: approval.workspacePath,
+            threadId: approval.threadId,
+            runId: approval.runId,
+            envelopeId: `remote-approval:${approval.toolCallId}:pending`
+          })
+        )
+      }
+
+      for (const question of questionCards) {
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'questionCard',
+            payload: {
+              ...question,
+              taskId: question.threadId
+            },
+            generatedAt,
+            workspaceId: question.workspaceId,
+            workspacePath: question.workspacePath,
+            threadId: question.threadId,
+            runId: question.runId,
+            envelopeId: `remote-question:${question.questionId}:${question.status}`
+          })
+        )
+      }
+      return envelopes
+    }
+
+    // T1/T2 of the iOS transport rebuild: the WebSocket-relay + E2EE runtime.
+    // Dark by default — constructed ONLY when IOS_REMOTE_TRUE=1 and a relay
+    // URL are present, so the shipping build keeps the pairing IPC stubs'
+    // behavior (handlers below return the "not available" error) and
+    // `bridgeBroadcaster` stays null (mutation hooks no-op). The runtime owns
+    // its own BridgeActionRouter instance with the SAME policy spine
+    // (allowlist + audit + executor) the daemon path used.
+    const iosRemoteRuntime: RemoteBridgeRuntime | null = (() => {
+      if (process.env.IOS_REMOTE_TRUE !== '1') return null
+      const relayUrl = (process.env.TASKWRAITH_RELAY_URL || '').trim()
+      if (!relayUrl) {
+        console.warn(
+          '[remote-bridge] IOS_REMOTE_TRUE=1 but TASKWRAITH_RELAY_URL is unset — remote iOS stays disabled'
+        )
+        return null
+      }
+      const identity = new RemoteIdentityStore(
+        join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
+        safeStorage,
+        (line) => console.log(line)
+      ).load()
+      const transportActionRouter = BridgeActionRouter.fromEnvironment(
+        (line) => console.log(line),
+        bridgeAllowlist,
+        createBridgeActionExecutor()
+      )
+      console.log(`[remote-bridge] iOS remote transport enabled — relay ${relayUrl}`)
+      return new RemoteBridgeRuntime({
+        relayUrl,
+        macDisplayName: `${app.getName() || 'TaskWraith'} on ${os.hostname()}`,
+        identity,
+        socketFactory: wsTransportSocketFactory,
+        appStore: AppStore,
+        allowlist: bridgeAllowlist,
+        projectionSource: { listRemoteProjectionEnvelopes },
+        routeAction: (method, params) => transportActionRouter.route(method, params),
+        subscribeRunEvents: (sink) => runEventBus.subscribe(sink),
+        onPairingPrompt: (prompt) => {
+          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('bridge-pairing-response-received', prompt)
+          }
+        },
+        onBroadcasterChange: (broadcaster) => {
+          bridgeBroadcaster = broadcaster
+          bridgeBroadcasterRef = broadcaster
+        },
+        log: (line) => console.log(line)
+      })
+    })()
+
     const subscribeBridgeRunEvents = (_daemon: BridgeDaemonClient): void => {
       if (unsubscribeBridgeRunSink) return
-      // Remote-iOS run-event forwarding was removed from the bridge daemon.
-      // Keep this hook as a no-op so lifecycle code can stay structurally
-      // unchanged while Screen Watch continues to use the same daemon process.
+      // Remote-iOS run-event forwarding now belongs to the transport runtime
+      // (RemoteBridgeRuntime subscribes its own BridgeRunEventSink on
+      // establish). Keep this daemon hook as a no-op so lifecycle code stays
+      // structurally unchanged while Screen Watch uses the same daemon.
       unsubscribeBridgeRunSink = () => {}
     }
 
@@ -13750,8 +14051,6 @@ if (isGeminiMcpBridgeProcess) {
           const wasActiveDaemon = bridgeDaemon === daemon
           if (wasActiveDaemon) {
             bridgeDaemon = null
-            bridgeBroadcaster = null
-            bridgeBroadcasterRef = null
           }
           if (bridgeDaemonRef === daemon) {
             bridgeDaemonRef = null
@@ -13778,11 +14077,10 @@ if (isGeminiMcpBridgeProcess) {
       })
       bridgeDaemon = daemon
       bridgeDaemonRef = daemon
-      // Remote-iOS projection broadcasting was removed with the bridge
-      // transport layer. Leave the refs null so existing mutation hooks are
-      // no-ops while Screen Watch continues to use the daemon.
-      bridgeBroadcaster = null
-      bridgeBroadcasterRef = null
+      // Remote-iOS projection broadcasting belongs to the transport runtime
+      // now (`RemoteBridgeRuntime` sets `bridgeBroadcaster`/`bridgeBroadcasterRef`
+      // via onBroadcasterChange) — the Screen Watch daemon lifecycle must not
+      // touch those refs, or toggling the daemon would sever a live iOS session.
       const startPromise = daemon
         .start()
         .then(() => {
@@ -13800,8 +14098,6 @@ if (isGeminiMcpBridgeProcess) {
           unsubscribeBridgeRunEvents()
           if (bridgeDaemon === daemon) {
             bridgeDaemon = null
-            bridgeBroadcaster = null
-            bridgeBroadcasterRef = null
           }
           if (bridgeDaemonRef === daemon) {
             bridgeDaemonRef = null
@@ -13819,8 +14115,6 @@ if (isGeminiMcpBridgeProcess) {
       unsubscribeBridgeRunEvents()
       const daemon = bridgeDaemon
       bridgeDaemon = null
-      bridgeBroadcaster = null
-      bridgeBroadcasterRef = null
       bridgeDaemonStartPromise = null
       if (bridgeDaemonRef === daemon) {
         bridgeDaemonRef = null
@@ -13881,6 +14175,7 @@ if (isGeminiMcpBridgeProcess) {
     app.on('will-quit', () => {
       stopMessageChannelPolling()
       stopBridgeDaemon()
+      iosRemoteRuntime?.dispose()
       localServersServiceRef?.stop()
       // Opt-in (Settings → Local servers): tidy up agent-spawned servers still
       // running when TaskWraith quits. Synchronous best-effort so it completes
@@ -14141,23 +14436,33 @@ if (isGeminiMcpBridgeProcess) {
       'bridge-finalize-pairing',
       async (_, sessionID: string, userConfirmed: boolean) => {
         const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')
-        void pairingSessionID
-        void userConfirmed
-        return {
-          ok: false,
-          error: 'Remote iOS pairing is not available in this build.'
+        if (!iosRemoteRuntime) {
+          return {
+            ok: false,
+            error: 'Remote iOS pairing is not available in this build.'
+          }
         }
+        return iosRemoteRuntime.finalizePairing(pairingSessionID, Boolean(userConfirmed))
       }
     )
 
-    // Remote iOS pairing was removed with the Swift transport layer. Keep
-    // the IPC shape stable so older renderer surfaces fail gracefully.
+    // Remote iOS pairing rides the taskwraith-e2ee-v1 relay transport. Gated
+    // dark (IOS_REMOTE_TRUE=1 + TASKWRAITH_RELAY_URL) — without the gate the
+    // handlers keep the stub behavior so older renderer surfaces fail
+    // gracefully. Response shape is locked to PairingPage:
+    // `{ ok, bootstrap: { pairingSessionID, bootstrapPayload } }`.
     ipcMain.handle('bridge-begin-pairing', async (_, displayName?: string) => {
-      void displayName
-      return {
-        ok: false,
-        error: 'Remote iOS pairing is not available in this build.'
+      if (!iosRemoteRuntime) {
+        return {
+          ok: false,
+          error:
+            'Remote iOS pairing is not available in this build. ' +
+            'Set IOS_REMOTE_TRUE=1 and TASKWRAITH_RELAY_URL to enable the preview transport.'
+        }
       }
+      return iosRemoteRuntime.beginPairing(
+        typeof displayName === 'string' ? displayName : undefined
+      )
     })
 
     // Attached-window picker (Appshots-equivalent). The renderer invokes
