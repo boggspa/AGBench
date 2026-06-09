@@ -2647,3 +2647,74 @@
   background: transparent !important;
   border-top: 0 !important;
 }
+
+/* ============================================================
+ * Native default — merged instrument NEUTRAL GLASS (final pass)
+ * --------------------------------------------------------------
+ * Even with stack-level fx-agent-aura removed in App.tsx, shard
+ * 05 still paints a 58px outer glow on `.composer-surface.fx-agent-
+ * aura` that stacks ABOVE the glass cap (surface z-index:2 + seam
+ * overlap). Ensemble tint ::before rules (this shard ~2285+) and
+ * provider-gradient ::before on `.ensemble-above-row` (~1779+) also
+ * fight the neutral cap. This block wins last in shard 09. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack {
+  position: relative;
+  z-index: 3;
+  box-shadow: var(--composer-shadow) !important;
+  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-running,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-approval,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-failed {
+  box-shadow: var(--composer-shadow) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before,
+[data-composer-style="default"]
+  .app-transcript.chat-kind-ensemble
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row)::before,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > *::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+[data-composer-style="default"]
+  .app-transcript.chat-kind-ensemble
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row) {
+  border-color: transparent !important;
+}

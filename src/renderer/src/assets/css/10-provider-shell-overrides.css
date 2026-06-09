@@ -2599,3 +2599,65 @@
 [data-main-pane-opacity-override="true"] .app-transcript::after {
   opacity: var(--main-pane-opacity-factor) !important;
 }
+
+/* Native default merged instrument — beat every late shard (05 aura,
+ * 07/09 provider + ensemble ::before tints). Highest-priority neutral
+ * glass cap; running pulse stays on `.composer-surface::after` only. */
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack.fx-agent-aura,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack.fx-agent-aura.fx-status-running,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack.fx-agent-aura.fx-status-approval,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack.fx-agent-aura.fx-status-failed {
+  box-shadow: var(--composer-shadow) !important;
+  border-color: color-mix(in srgb, var(--composer-glass-border) 82%, transparent) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-running,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-approval,
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-surface.fx-agent-aura.fx-status-failed {
+  box-shadow: var(--composer-shadow) !important;
+}
+[data-composer-style="default"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar-stack)
+  .composer-above-bar-stack
+  > :is(
+    .composer-above-bar,
+    .ensemble-above-row,
+    .queued-messages-above-row,
+    .composer-create-pr-row,
+    .ensemble-roster-preset-picker.is-compact
+  )::before {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+}

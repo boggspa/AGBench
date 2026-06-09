@@ -14466,6 +14466,14 @@ function App(): React.JSX.Element {
   const composerAgentAuraClass = showAgentAuraFx
     ? `fx-agent-aura fx-provider-${auraProviderKey} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
     : ''
+  /* Native default shell — agent-aura outer glow on `.composer-surface`
+   * bleeds upward over the merged above-bar stack (surface z-index:2 +
+   * negative seam margin). Keep aura on the input surface only; the
+   * glass cap stays neutral (shard 09/10). */
+  const composerAboveBarStackAuraClass =
+    composerAgentAuraClass && appearance.composerStyle !== 'default'
+      ? composerAgentAuraClass
+      : ''
   // Phase K-followup — `providerSessionLabel` ("New Codex thread" /
   // "{Provider} session linked") removed alongside its only consumer
   // (the non-interactive pill in the composer top-toggles row). The
@@ -16838,7 +16846,7 @@ function App(): React.JSX.Element {
               currentWorkspace &&
               (!isWelcomeChat || isCurrentEnsembleChat)) ||
               (isCurrentGlobalChat && isCurrentEnsembleChat)) && (
-              <div className={`composer-above-bar-stack ${composerAgentAuraClass}`}>
+              <div className={`composer-above-bar-stack ${composerAboveBarStackAuraClass}`}>
                 {/* 1.0.4-AQ5 — file-changes / Create-PR / external-path
                   rows are workspace-only by construction. Guard with
                   `currentWorkspace` so the new global-ensemble-chat
