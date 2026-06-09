@@ -9082,6 +9082,7 @@ async function executeOllamaLocalTool(
       request.toolName === 'replace' ||
       request.toolName === 'apply_patch' ||
       request.toolName === 'run_shell_command' ||
+      request.toolName === 'todo_write' ||
       tier === 'provider_parity'
     ) {
       const result = await executeGeminiMcpTool(
@@ -9097,32 +9098,41 @@ async function executeOllamaLocalTool(
       }
     }
 
-    const targetPath = resolveWorkspaceToolScopedPath(
-      context,
-      String(request.arguments.path || request.arguments.directory || '.'),
-      { allowWorkspaceRoot: true }
-    )
-    const stat = await fs.stat(targetPath)
-    if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')
-    const entries = await fs.readdir(targetPath, { withFileTypes: true })
-    const rows = entries
-      .sort((a, b) => {
-        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
-      .slice(0, 300)
-      .map((entry) => `${entry.isDirectory() ? 'directory' : 'file'}\t${entry.name}`)
-    return {
-      ok: true,
-      output: rows.join('\n'),
-      structuredContent: {
+    if (request.toolName === 'list_directory') {
+      const targetPath = resolveWorkspaceToolScopedPath(
+        context,
+        String(request.arguments.path || request.arguments.directory || '.'),
+        { allowWorkspaceRoot: true }
+      )
+      const stat = await fs.stat(targetPath)
+      if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')
+      const entries = await fs.readdir(targetPath, { withFileTypes: true })
+      const rows = entries
+        .sort((a, b) => {
+          if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+        .slice(0, 300)
+        .map((entry) => `${entry.isDirectory() ? 'directory' : 'file'}\t${entry.name}`)
+      return {
         ok: true,
-        tool: 'list_directory',
-        path: formatWorkspaceToolScopedPath(context, targetPath),
-        count: rows.length,
-        truncated: entries.length > rows.length
+        output: rows.join('\n'),
+        structuredContent: {
+          ok: true,
+          tool: 'list_directory',
+          path: formatWorkspaceToolScopedPath(context, targetPath),
+          count: rows.length,
+          truncated: entries.length > rows.length
+        }
       }
     }
+
+    // No silent fallback: an unrouted tool name used to fall through to the
+    // list_directory branch above, so e.g. todo_write returned a directory
+    // listing and the model re-published its checklist every turn.
+    throw new Error(
+      `Tool ${request.toolName} has no local Ollama executor at the ${tier} tier.`
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return {
