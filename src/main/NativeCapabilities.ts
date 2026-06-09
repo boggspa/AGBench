@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import os from 'os'
 import { join } from 'path'
 import { spawnSync } from 'child_process'
+import { buildRuntimeFeatureGateSnapshot, type RuntimeFeatureGateSnapshot } from '../shared/runtimeFeatureGates'
 
 export interface NativeFeatureCapability {
   available: boolean
@@ -24,6 +25,8 @@ export interface NativeCapabilitySnapshot {
   appwatch: NativeFeatureCapability
   ocr: NativeFeatureCapability
   appleEvents: NativeFeatureCapability
+  /** Main-process feature gates — safe for the renderer to read (no process.env). */
+  featureGates: RuntimeFeatureGateSnapshot
 }
 
 export interface NativeCapabilityInput {
@@ -111,7 +114,8 @@ export function getNativeCapabilitySnapshot(
     ocr: bridge.available
       ? { available: true, reason: 'Vision OCR is optional and capture remains available if OCR fails.' }
       : nativeBridgeFeature,
-    appleEvents: appleEventsFeature
+    appleEvents: appleEventsFeature,
+    featureGates: buildRuntimeFeatureGateSnapshot(process.env)
   }
 }
 

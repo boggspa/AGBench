@@ -867,7 +867,9 @@ function getFaviconService(): FaviconService {
  *
  * - `TASKWRAITH_CONCURRENT_LANES` — gates the per-lane Ensemble state
  *   model + the per-workspace write-intent registry (C1 + C2).
- *   Without this flag, Ensemble dispatches serially as before.
+ *   Defaults ON; set `=0` to force serial dispatch. When fan-out is
+ *   requested but the flag is off, rounds fall back to serial with a
+ *   transcript note instead of failing the run.
  * - `TASKWRAITH_PERMISSION_ENVELOPES` — gates child-agent permission
  *   envelope derivation + enforcement on sub-thread delegations
  *   (C3 + C4). Without it, sub-threads inherit parent permissions

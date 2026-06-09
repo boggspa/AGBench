@@ -5,7 +5,10 @@ import {
   formatRoundModeInstructions,
   formatSameProviderDisambiguationNote,
   formatToolTraceSummary,
-  getOrderedEnsembleParticipants
+  getOrderedEnsembleParticipants,
+  OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS,
+  OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS,
+  resolveOllamaEnsembleTranscriptBudget
 } from './EnsemblePrompt'
 import type { ChatRecord, EnsembleConfig, EnsembleParticipant, ToolActivity } from './store/types'
 
@@ -1215,5 +1218,47 @@ describe('formatRoundModeInstructions (AR13)', () => {
     })
     expect(prompt).toContain('CHAIR-SUMMARY')
     expect(prompt).toContain('SYNTHESIZER')
+  })
+})
+
+describe('Ollama ensemble prompt budgeting', () => {
+  it('clamps transcript budget for Ollama participants', () => {
+    expect(
+      resolveOllamaEnsembleTranscriptBudget(120_000, 12).contextChars
+    ).toBe(OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS)
+    expect(resolveOllamaEnsembleTranscriptBudget(120_000, 12).contextTurns).toBe(
+      OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS
+    )
+    expect(resolveOllamaEnsembleTranscriptBudget(8_000, 3).contextChars).toBe(8_000)
+    expect(resolveOllamaEnsembleTranscriptBudget(8_000, 3).contextTurns).toBe(3)
+  })
+
+  it('adds local empowerment notes for Ollama ensemble participants', () => {
+    const ollamaParticipant: EnsembleParticipant = {
+      id: 'ollama-gemma',
+      provider: 'ollama',
+      enabled: true,
+      role: 'Builder',
+      instructions: 'Add smoke tests.',
+      order: 4,
+      permissionPresetId: 'workspace_write',
+      model: 'gemma4:12b'
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: {
+        ...ensemble,
+        participants: [...ensemble.participants, ollamaParticipant],
+        ensembleContextChars: 200_000
+      },
+      participant: ollamaParticipant,
+      currentPrompt: 'Add a Zig joke test.',
+      roundId: 'round-ollama',
+      chatContextTurns: 10
+    })
+    expect(prompt).toContain('Local Ollama participant notes:')
+    expect(prompt).toContain('TaskWraith gives you real workspace tools')
+    expect(prompt).toContain('compacted for your local context window')
+    expect(prompt).toContain('TaskWraith local-scout workflow')
   })
 })

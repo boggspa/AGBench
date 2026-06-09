@@ -20,6 +20,14 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 const MAX_MESSAGE_CHARS = 4000
 const MAX_TRANSCRIPT_CHARS = 24000
 import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
+import { ollamaScoutDelegateWorkflowHint } from './ollama/OllamaModelProfiles'
+import {
+  OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS,
+  OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS,
+  resolveOllamaEnsembleTranscriptCharsForBudget
+} from './ollama/OllamaEnsembleContext'
+
+export { OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS, OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS }
 // 1.0.5-EW18 — Pull canonical alias set from the shared resolver so
 // the prompt's "address with @X or @Y" hints exactly match the
 // strings the renderer + orchestrator will recognise. Otherwise we
@@ -175,8 +183,40 @@ function applyActiveWorkSessionRoster(
   return next
 }
 
+export function resolveOllamaEnsembleTranscriptBudget(
+  configuredChars: number | undefined,
+  configuredTurns: number | undefined,
+  options?: {
+    modelId?: string | null
+    contextLength?: number
+    promptShellChars?: number
+    toolsEnabled?: boolean
+  }
+): { contextChars: number; contextTurns: number; autoCompacted: boolean } {
+  if (options?.modelId || options?.promptShellChars) {
+    return resolveOllamaEnsembleTranscriptCharsForBudget({
+      configuredChars: configuredChars ?? MAX_TRANSCRIPT_CHARS,
+      configuredTurns,
+      promptWithoutTranscriptChars: options.promptShellChars ?? 5_500,
+      modelId: options.modelId,
+      contextLength: options.contextLength,
+      toolsEnabled: options.toolsEnabled ?? true
+    })
+  }
+  const baseChars = configuredChars ?? MAX_TRANSCRIPT_CHARS
+  const baseTurns = configuredTurns ?? 6
+  return {
+    contextChars: Math.min(baseChars, OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS),
+    contextTurns: Math.min(baseTurns, OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS),
+    autoCompacted:
+      Math.min(baseChars, OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS) < baseChars ||
+      Math.min(baseTurns, OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS) < baseTurns
+  }
+}
+
 export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput): string {
   const orderedParticipants = getOrderedEnsembleParticipants(input.config, input.currentPrompt)
+  const isOllamaParticipant = input.participant.provider === 'ollama'
   // 1.0.7 — rename-stable participant handles (`#p3`) keyed on the
   // immutable participant id. Built from the FULL roster (not just the
   // enabled/ordered subset) so a message authored by a participant who
@@ -322,11 +362,22 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // Threaded into the tagged-transcript builder so every
   // `[Provider / Role #pN]` header carries the same handle the
   // roster + self-label use.
+  const ollamaTranscriptBudget = isOllamaParticipant
+    ? resolveOllamaEnsembleTranscriptBudget(
+        input.config.ensembleContextChars,
+        input.chatContextTurns,
+        {
+          modelId: input.participant.model,
+          promptShellChars: 5_800,
+          toolsEnabled: input.chat.scope !== 'global'
+        }
+      )
+    : null
   const transcript = buildTaggedTranscript(
     input.chat.messages || [],
-    input.chatContextTurns || 6, // matches DEFAULT_CONTEXT_TURNS (was a stray 8)
+    ollamaTranscriptBudget?.contextTurns ?? input.chatContextTurns ?? 6,
     participantTokens,
-    input.config.ensembleContextChars
+    ollamaTranscriptBudget?.contextChars ?? input.config.ensembleContextChars
   )
 
   return [
@@ -357,6 +408,18 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     sanitizeText(
       input.participant.instructions || 'Contribute a concise, useful response for your role.'
     ),
+    ...(isOllamaParticipant
+      ? [
+          '',
+          'Local Ollama participant notes:',
+          '- TaskWraith gives you real workspace tools (search, read, write with approval, shell with approval). Use them instead of claiming you lack access.',
+          '- Prefer one concrete workspace action per turn (a smoke test, a targeted read, a small edit) over long meta commentary.',
+          ollamaTranscriptBudget?.autoCompacted
+            ? '- The tagged transcript below is auto-compacted for your local context window; call list_directory or read_file when you need file contents the transcript omitted.'
+            : '- The tagged transcript below is sized for your local context window; call list_directory or read_file when you need more file detail.',
+          ollamaScoutDelegateWorkflowHint(input.participant.model)
+        ]
+      : []),
     '',
     'Rules:',
     '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages. For visible participant-to-participant notes, call ensemble_send; those messages appear inline for the user and become context for later turns.',

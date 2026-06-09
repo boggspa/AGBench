@@ -3704,19 +3704,67 @@ Next action:
     }
   })
 
-  it('1.0.8: rejects requested concurrent mode when the feature gate is off', () => {
+  it('1.0.8: falls back to serial dispatch when concurrent lanes are explicitly disabled', () => {
     const previous = process.env.TASKWRAITH_CONCURRENT_LANES
-    delete process.env.TASKWRAITH_CONCURRENT_LANES
+    process.env.TASKWRAITH_CONCURRENT_LANES = '0'
     try {
       const harness = makeHarness()
-      expect(() =>
-        harness.orchestrator.startRound({
-          chatId: 'ensemble-chat',
-          prompt: 'Try parallel.',
-          event: { sender: {} as Electron.WebContents },
-          concurrentMode: true
-        })
-      ).toThrow('TASKWRAITH_CONCURRENT_LANES')
+      const result = harness.orchestrator.startRound({
+        chatId: 'ensemble-chat',
+        prompt: 'Try parallel.',
+        event: { sender: {} as Electron.WebContents },
+        concurrentMode: true
+      })
+      expect(result.status).toBe('started')
+      expect(harness.chat.ensemble?.activeRound?.concurrentMode).toBeUndefined()
+      expect(harness.chat.messages.at(-1)?.content).toContain('running participants serially')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TASKWRAITH_CONCURRENT_LANES
+      } else {
+        process.env.TASKWRAITH_CONCURRENT_LANES = previous
+      }
+    }
+  })
+
+  it('1.0.8: fans out read-only Ollama participants in concurrent mode', async () => {
+    const previous = process.env.TASKWRAITH_CONCURRENT_LANES
+    process.env.TASKWRAITH_CONCURRENT_LANES = '1'
+    try {
+      const harness = makeHarness()
+      harness.chat.ensemble!.participants = [
+        {
+          id: 'ollama-a',
+          provider: 'ollama',
+          enabled: true,
+          role: 'Scout A',
+          instructions: 'Scout.',
+          order: 1,
+          permissionPresetId: 'read_only',
+          model: 'qwen3.5:9b'
+        },
+        {
+          id: 'ollama-b',
+          provider: 'ollama',
+          enabled: true,
+          role: 'Scout B',
+          instructions: 'Scout.',
+          order: 2,
+          permissionPresetId: 'read_only',
+          model: 'gemma4:12b'
+        }
+      ]
+
+      harness.orchestrator.startRound({
+        chatId: 'ensemble-chat',
+        prompt: 'Fan out locally.',
+        event: { sender: {} as Electron.WebContents },
+        concurrentMode: true
+      })
+
+      await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), { timeout: 1000 })
+      expect(harness.dispatched.map((payload) => payload.provider)).toEqual(['ollama', 'ollama'])
+      expect(harness.chat.messages.at(-1)?.content).toContain('2 Ollama lane(s)')
     } finally {
       if (previous === undefined) {
         delete process.env.TASKWRAITH_CONCURRENT_LANES

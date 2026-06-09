@@ -72,4 +72,20 @@ describe('NativeCapabilities', () => {
     expect(snapshot.screenWatch).toMatchObject(snapshot.appwatch)
     expect(snapshot.ocr).toMatchObject(snapshot.appwatch)
   })
+
+  it('includes renderer-safe runtime feature gates', () => {
+    const snapshot = getNativeCapabilitySnapshot({
+      platform: 'darwin',
+      arch: 'arm64',
+      osRelease: '24.5.0',
+      macosVersion: '15.5',
+      binaryPath: '/tmp/TaskWraithBridgeDaemon',
+      binaryExists: true,
+      binaryArchs: ['arm64']
+    })
+    expect(snapshot.featureGates).toMatchObject({
+      concurrentLanes: true,
+      concurrentWriteLanes: false
+    })
+  })
 })

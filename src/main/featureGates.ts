@@ -3,14 +3,14 @@ export function ensembleWakeupsEnabled(): boolean {
   return value === '1' || value === 'true' || value === 'yes'
 }
 
+import { buildRuntimeFeatureGateSnapshot } from '../shared/runtimeFeatureGates'
+
 export function concurrentLanesEnabled(): boolean {
-  const value = process.env.TASKWRAITH_CONCURRENT_LANES
-  return value === '1' || value === 'true' || value === 'yes'
+  return buildRuntimeFeatureGateSnapshot(process.env).concurrentLanes
 }
 
 export function concurrentWriteLanesEnabled(): boolean {
-  const value = process.env.TASKWRAITH_CONCURRENT_WRITE_LANES
-  return value === '1' || value === 'true' || value === 'yes'
+  return buildRuntimeFeatureGateSnapshot(process.env).concurrentWriteLanes
 }
 
 export function permissionEnvelopesEnabled(): boolean {

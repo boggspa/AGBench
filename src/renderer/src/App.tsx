@@ -138,6 +138,7 @@ import {
   isGeminiWorktreeDiffUnavailable,
   getDiffWorkspacePath
 } from './lib/geminiWorktree'
+import { chatHasInFlightThinkingWork } from './lib/chatThinkingState'
 import { humaniseModelId } from './lib/modelDisplayName'
 import { resolveOllamaDisplayBrand } from './lib/ollamaDisplayBrand'
 import { normalizeGeminiResumeTarget, resolveGeminiResumeForRun } from './lib/geminiResume'
@@ -317,6 +318,10 @@ import { OllamaHealthChip } from './components/OllamaHealthChip'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
+import {
+  estimateOllamaEnsembleUiPressure,
+  ollamaContextPressureMessage
+} from '../../main/ollama/OllamaEnsembleContext'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
 import {
   buildRunLanes,
@@ -1716,6 +1721,8 @@ function App(): React.JSX.Element {
   const [nativeCapabilities, setNativeCapabilities] = useState<NativeCapabilitySnapshot | null>(
     null
   )
+  const ensembleConcurrentLanesAvailable =
+    nativeCapabilities?.featureGates?.concurrentLanes ?? true
   // 1.0.5-AU — Track which chat owns the current attachment so we
   // can auto-detach when the user switches away. Pre-AU the
   // `attachedWindow` state was app-global: attach in Chat A, switch
@@ -2684,6 +2691,28 @@ function App(): React.JSX.Element {
     return false
   }
 
+  const collectActiveRunChatIds = (): Set<string> => {
+    const ids = new Set<string>()
+    for (const ctx of activeRunsRef.current.values()) {
+      if (ctx.chatId) ids.add(ctx.chatId)
+    }
+    return ids
+  }
+
+  const syncThinkingForChat = useCallback(
+    (chat: ChatRecord | null | undefined) => {
+      setIsThinking(
+        chatHasInFlightThinkingWork({
+          chat,
+          runningChatIds,
+          runQueueJobs,
+          activeRunChatIds: collectActiveRunChatIds()
+        })
+      )
+    },
+    [runningChatIds, runQueueJobs]
+  )
+
   const getActiveRunContextForProvider = (provider: ProviderId): ActiveRunContext | null => {
     const contexts = getActiveRunContextsForProvider(provider)
     const currentChatId = currentChatIdRef.current
@@ -3023,7 +3052,7 @@ function App(): React.JSX.Element {
               deriveRunCompleteNotice(hydrated, runningChatIds.has(hydrated.appChatId))
             )
             setRawLogs(rawLogsByChatIdRef.current.get(hydrated.appChatId) || [])
-            setIsThinking(runningChatIds.has(hydrated.appChatId))
+            syncThinkingForChat(hydrated)
           })
         })
         .catch(() => {})
@@ -3536,7 +3565,7 @@ function App(): React.JSX.Element {
         setRawLogs(rawLogsByChatIdRef.current.get(popoutChat.appChatId) || [])
         hydrateThreadRawLogsFromEvents(popoutChat.appChatId)
         setShowFallbackUX(false)
-        setIsThinking(runningChatIds.has(popoutChat.appChatId))
+        syncThinkingForChat(popoutChat)
         if (popoutHandoff?.scrollState) {
           autoFollowRef.current = popoutHandoff.scrollState.atBottom
           restoreChatScrollStateWhenReady(() => transcriptScrollRef.current, popoutHandoff.scrollState)
@@ -4396,7 +4425,7 @@ function App(): React.JSX.Element {
         hydrateThreadRawLogsFromEvents(chatWithLedger.appChatId)
         setShowFallbackUX(false)
         setSessionTrust(false)
-        setIsThinking(runningChatIds.has(chatWithLedger.appChatId))
+        syncThinkingForChat(chatWithLedger)
         if (provider === 'codex' && typeof window.api.listAgentThreads === 'function') {
           window.api
             .listAgentThreads('codex', { cwd: ws.path })
@@ -4466,7 +4495,7 @@ function App(): React.JSX.Element {
     })
     setShowFallbackUX(false)
     setSessionTrust(false)
-    setIsThinking(runningChatIds.has(selectedChat.appChatId))
+    syncThinkingForChat(selectedChat)
     if (selectedProvider === 'codex' && typeof window.api.listAgentThreads === 'function') {
       window.api
         .listAgentThreads('codex', { cwd: ws.path })
@@ -4502,7 +4531,7 @@ function App(): React.JSX.Element {
     hydrateThreadRawLogsFromEvents(chatWithLedger.appChatId)
     setShowFallbackUX(false)
     setSessionTrust(false)
-    setIsThinking(runningChatIds.has(rebound.appChatId))
+    syncThinkingForChat(rebound)
     void refreshProviderMetadata(getChatProvider(chatWithLedger), ws.path)
     const tr = await window.api.checkTrust(ws.path)
     setTrustResult(tr)
@@ -5167,7 +5196,7 @@ function App(): React.JSX.Element {
       setRawLogs(rawLogsByChatIdRef.current.get(newChat.appChatId) || [])
       setShowFallbackUX(false)
       clearImagePermissions()
-      setIsThinking(runningChatIds.has(newChat.appChatId))
+      syncThinkingForChat(newChat)
     })
     scheduleAfterPaint(() => {
       if (workspace) {
@@ -5220,7 +5249,7 @@ function App(): React.JSX.Element {
       setShowFallbackUX(false)
       clearImagePermissions()
       setCodexThreads([])
-      setIsThinking(runningChatIds.has(normalizedChat.appChatId))
+      syncThinkingForChat(normalizedChat)
     })
     scheduleAfterPaint(() => {
       void refreshUsageSummary(GLOBAL_USAGE_WORKSPACE_ID, provider)
@@ -5856,7 +5885,7 @@ function App(): React.JSX.Element {
       )
       setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
       setShowFallbackUX(false)
-      setIsThinking(runningChatIds.has(selectedChat.appChatId))
+      syncThinkingForChat(selectedChat)
     })
     scheduleAfterPaint(() => {
       void refreshUsageSummary(getUsageWorkspaceIdForChat(selectedChat), provider)
@@ -7561,6 +7590,9 @@ function App(): React.JSX.Element {
         chatByIdRef.current.set(merged.appChatId, merged)
         if (currentChatIdRef.current === merged.appChatId) {
           setCurrentChat(merged)
+          if (merged.chatKind === 'ensemble' && merged.ensemble?.activeRound?.status === 'running') {
+            setIsThinking(true)
+          }
         }
       })
     }
@@ -8739,16 +8771,19 @@ function App(): React.JSX.Element {
           if (event.type === 'user_message') {
             // Handled manually before run
           } else if (event.type === 'assistant_message_delta') {
-            if (isVisibleRunChat()) setIsThinking(false)
             // Ensemble transcripts are materialised by EnsembleOrchestrator
             // (`flushRun` → chat-updated). Provider compat lines still reach
             // the renderer, but merging them here races the orchestrator and
             // can stamp Ollama `providerModel` metadata onto the wrong
             // assistant bubble (backward-scan finds another participant's
             // message). Skip transcript mutation; orchestrator is canonical.
+            // Also leave `isThinking` alone — compat deltas are noise for
+            // ensemble rounds and were clearing the indicator until the next
+            // user turn.
             if (updated.chatKind === 'ensemble') {
               return updated
             }
+            if (isVisibleRunChat()) setIsThinking(false)
             // Phase K-followup — H2 garbling fix. Codex interleaves
             // reasoning + tool-call events between content deltas. The
             // naive `last = messages[length-1]` would see the tool
@@ -8879,7 +8914,7 @@ function App(): React.JSX.Element {
               ]
             }
           } else if (event.type === 'assistant_message_complete') {
-            if (isVisibleRunChat()) setIsThinking(false)
+            if (isVisibleRunChat() && updated.chatKind !== 'ensemble') setIsThinking(false)
             const isPlanMode = updated.runs?.[updated.runs.length - 1]?.approvalMode === 'plan'
             const parsedChoice = parsePlanModeChoice(event.content)
             const last = updated.messages[updated.messages.length - 1]
@@ -12712,6 +12747,26 @@ function App(): React.JSX.Element {
   const currentEnsembleConcurrentMode = Boolean(currentChat?.ensemble?.concurrentModeEnabled)
   const activeEnsembleConcurrentMode =
     currentEnsembleRound?.concurrentMode ?? currentEnsembleConcurrentMode
+  const ensembleOllamaContextWarning = useMemo(() => {
+    if (!isCurrentEnsembleChat || !currentChat?.ensemble) return null
+    const ollamaParticipants = currentChat.ensemble.participants.filter(
+      (participant) => participant.enabled && participant.provider === 'ollama'
+    )
+    if (ollamaParticipants.length === 0) return null
+    const primaryOllama = ollamaParticipants[0]
+    const pressure = estimateOllamaEnsembleUiPressure({
+      configuredContextChars: currentChat.ensemble.ensembleContextChars,
+      participantCount: currentChat.ensemble.participants.filter((participant) => participant.enabled)
+        .length,
+      ollamaModelId: primaryOllama.model,
+      toolsEnabled: currentChat.scope !== 'global'
+    })
+    return {
+      severity: pressure.severity,
+      message: ollamaContextPressureMessage(pressure),
+      suggestedChars: pressure.effectiveTranscriptChars
+    }
+  }, [isCurrentEnsembleChat, currentChat?.ensemble, currentChat?.scope])
   const currentEnsembleContinuationHops = currentEnsembleRound?.continuationHops || 0
   // Prefer chat-level cap so the hops meter updates as soon as the user
   // saves — an in-flight round still carries its own snapshot, but the
@@ -18450,6 +18505,8 @@ function App(): React.JSX.Element {
                               onOpenWorkSession={() => setShowWorkSessionSheet(true)}
                               contextChars={currentChat?.ensemble?.ensembleContextChars}
                               onContextCharsChange={updateCurrentEnsembleContextChars}
+                              ollamaContextWarning={ensembleOllamaContextWarning}
+                              concurrentLanesAvailable={ensembleConcurrentLanesAvailable}
                             />
                             <button
                               type="button"
@@ -18459,7 +18516,11 @@ function App(): React.JSX.Element {
                               onClick={() =>
                                 updateCurrentEnsembleConcurrentMode(!currentEnsembleConcurrentMode)
                               }
-                              title="Fan out read-only participants in parallel before any writer-capable participants run. Locked writer lanes require their separate feature flag."
+                              title={
+                                ensembleConcurrentLanesAvailable
+                                  ? 'Fan out read-only participants in parallel before any writer-capable participants run. Locked writer lanes require TASKWRAITH_CONCURRENT_WRITE_LANES.'
+                                  : 'Fan-out requested, but parallel lanes are disabled (TASKWRAITH_CONCURRENT_LANES=0) — rounds run serially.'
+                              }
                             >
                               Fan-out
                             </button>

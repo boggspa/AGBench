@@ -60,7 +60,9 @@ export function EnsembleModePicker({
   onOpenWorkSession,
   disabled,
   contextChars,
-  onContextCharsChange
+  onContextCharsChange,
+  ollamaContextWarning,
+  concurrentLanesAvailable = true
 }: {
   mode: EnsembleOrchestrationMode
   workSessionActive: boolean
@@ -70,6 +72,12 @@ export function EnsembleModePicker({
   disabled?: boolean
   contextChars?: number
   onContextCharsChange: (chars: number) => void
+  ollamaContextWarning?: {
+    severity: 'ok' | 'warn' | 'critical'
+    message: string
+    suggestedChars?: number
+  } | null
+  concurrentLanesAvailable?: boolean
 }): React.JSX.Element {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -194,6 +202,33 @@ export function EnsembleModePicker({
               <div className="composer-ensemble-context-value">
                 {formatCharBudget(contextChars ?? CONTEXT_DEFAULT)} chars of recent panel history
               </div>
+              {ollamaContextWarning ? (
+                <div
+                  className={`composer-ensemble-context-hint severity-${ollamaContextWarning.severity}`}
+                  role="note"
+                >
+                  {ollamaContextWarning.message}
+                  {ollamaContextWarning.suggestedChars &&
+                  ollamaContextWarning.severity !== 'ok' &&
+                  (contextChars ?? CONTEXT_DEFAULT) > ollamaContextWarning.suggestedChars ? (
+                    <button
+                      type="button"
+                      className="composer-ensemble-context-suggest"
+                      onClick={() =>
+                        onContextCharsChange(ollamaContextWarning.suggestedChars ?? CONTEXT_DEFAULT)
+                      }
+                    >
+                      Use {formatCharBudget(ollamaContextWarning.suggestedChars)} for panel
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {!concurrentLanesAvailable ? (
+                <div className="composer-ensemble-context-hint severity-warn" role="note">
+                  Parallel fan-out lanes are disabled (TASKWRAITH_CONCURRENT_LANES=0). Fan-out
+                  rounds fall back to serial dispatch.
+                </div>
+              ) : null}
             </div>
           </div>,
           document.body

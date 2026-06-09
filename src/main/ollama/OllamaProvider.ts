@@ -10,6 +10,10 @@ import {
   type OllamaModelPreflightResult
 } from './OllamaModelPreflight'
 import {
+  compactOllamaEnsemblePromptText,
+  resolveOllamaEnsembleTranscriptCharsForBudget
+} from './OllamaEnsembleContext'
+import {
   ollamaLocalToolSystemPrompt,
   ollamaModelFamilyTemperature,
   ollamaStruggleHandoffMessage
@@ -622,7 +626,10 @@ export interface OllamaNativeToolDefinition {
 
 const STRING = { type: 'string' as const }
 
-function ollamaNativeToolParameters(toolName: OllamaToolName): {
+function ollamaNativeToolParameters(
+  toolName: OllamaToolName,
+  compact = false
+): {
   description: string
   properties: Record<string, unknown>
   required: string[]
@@ -630,77 +637,93 @@ function ollamaNativeToolParameters(toolName: OllamaToolName): {
   switch (toolName) {
     case 'read_file':
       return {
-        description: 'Read a UTF-8 text file inside the active workspace.',
-        properties: { path: { ...STRING, description: 'Workspace-relative file path.' } },
+        description: compact ? 'Read workspace file.' : 'Read a UTF-8 text file inside the active workspace.',
+        properties: { path: { ...STRING, description: compact ? 'Relative path.' : 'Workspace-relative file path.' } },
         required: ['path']
       }
     case 'list_directory':
       return {
-        description: 'List the entries of a directory inside the active workspace.',
-        properties: { path: { ...STRING, description: 'Workspace-relative directory path. Use "." for the root.' } },
+        description: compact ? 'List workspace directory.' : 'List the entries of a directory inside the active workspace.',
+        properties: {
+          path: {
+            ...STRING,
+            description: compact ? 'Relative path ("." for root).' : 'Workspace-relative directory path. Use "." for the root.'
+          }
+        },
         required: ['path']
       }
     case 'workspace_search':
-      return {
-        description: 'Search the workspace tree for text or a regular expression.',
-        properties: {
-          query: { ...STRING, description: 'Text or regex to search for.' },
-          path: { ...STRING, description: 'Optional subdirectory to scope the search.' },
-          maxResults: { type: 'number', description: 'Maximum matches to return.' },
-          contextLines: { type: 'number', description: 'Lines of context around each match.' }
-        },
-        required: ['query']
-      }
+      return compact
+        ? {
+            description: 'Search workspace text/regex.',
+            properties: {
+              query: { ...STRING, description: 'Search text or regex.' },
+              path: { ...STRING, description: 'Optional subdirectory.' }
+            },
+            required: ['query']
+          }
+        : {
+            description: 'Search the workspace tree for text or a regular expression.',
+            properties: {
+              query: { ...STRING, description: 'Text or regex to search for.' },
+              path: { ...STRING, description: 'Optional subdirectory to scope the search.' },
+              maxResults: { type: 'number', description: 'Maximum matches to return.' },
+              contextLines: { type: 'number', description: 'Lines of context around each match.' }
+            },
+            required: ['query']
+          }
     case 'web_search':
       return {
-        description:
-          'Search the live web. Returns a ranked list of result titles and URLs. Use this for current events, weather, prices, or anything not answerable from memory.',
-        properties: { query: { ...STRING, description: 'What to search the web for.' } },
+        description: compact
+          ? 'Search the live web.'
+          : 'Search the live web. Returns a ranked list of result titles and URLs. Use this for current events, weather, prices, or anything not answerable from memory.',
+        properties: { query: { ...STRING, description: compact ? 'Search query.' : 'What to search the web for.' } },
         required: ['query']
       }
     case 'web_fetch':
       return {
-        description:
-          'Download a web page and return its readable text (HTML stripped) so you can summarize it.',
-        properties: { url: { ...STRING, description: 'Absolute http(s) URL to fetch.' } },
+        description: compact
+          ? 'Fetch readable page text from a URL.'
+          : 'Download a web page and return its readable text (HTML stripped) so you can summarize it.',
+        properties: { url: { ...STRING, description: compact ? 'http(s) URL.' : 'Absolute http(s) URL to fetch.' } },
         required: ['url']
       }
     case 'write_file':
       return {
-        description: 'Create or overwrite a workspace file. Requires a short intent.',
+        description: compact ? 'Write workspace file (intent required).' : 'Create or overwrite a workspace file. Requires a short intent.',
         properties: {
-          path: { ...STRING, description: 'Workspace-relative file path.' },
-          content: { ...STRING, description: 'Full new file contents.' },
-          intent: { ...STRING, description: 'Short reason for the change (shown in the approval modal).' }
+          path: { ...STRING, description: compact ? 'Relative path.' : 'Workspace-relative file path.' },
+          content: { ...STRING, description: compact ? 'File contents.' : 'Full new file contents.' },
+          intent: { ...STRING, description: compact ? 'Short reason.' : 'Short reason for the change (shown in the approval modal).' }
         },
         required: ['path', 'content', 'intent']
       }
     case 'replace':
       return {
-        description: 'Replace an exact substring within a workspace file. Requires a short intent.',
+        description: compact ? 'Replace text in file (intent required).' : 'Replace an exact substring within a workspace file. Requires a short intent.',
         properties: {
-          path: { ...STRING, description: 'Workspace-relative file path.' },
-          old_string: { ...STRING, description: 'Exact text to replace.' },
-          new_string: { ...STRING, description: 'Replacement text.' },
-          intent: { ...STRING, description: 'Short reason for the change.' }
+          path: { ...STRING, description: compact ? 'Relative path.' : 'Workspace-relative file path.' },
+          old_string: { ...STRING, description: compact ? 'Text to replace.' : 'Exact text to replace.' },
+          new_string: { ...STRING, description: compact ? 'Replacement.' : 'Replacement text.' },
+          intent: { ...STRING, description: compact ? 'Short reason.' : 'Short reason for the change.' }
         },
         required: ['path', 'old_string', 'new_string', 'intent']
       }
     case 'apply_patch':
       return {
-        description: 'Apply a unified diff to the workspace. Requires a short intent.',
+        description: compact ? 'Apply unified diff (intent required).' : 'Apply a unified diff to the workspace. Requires a short intent.',
         properties: {
-          patch: { ...STRING, description: 'Unified diff text.' },
-          intent: { ...STRING, description: 'Short reason for the change.' }
+          patch: { ...STRING, description: compact ? 'Unified diff.' : 'Unified diff text.' },
+          intent: { ...STRING, description: compact ? 'Short reason.' : 'Short reason for the change.' }
         },
         required: ['patch', 'intent']
       }
     case 'run_shell_command':
       return {
-        description: 'Run a shell command in the workspace. Requires a short intent.',
+        description: compact ? 'Run shell command (intent required).' : 'Run a shell command in the workspace. Requires a short intent.',
         properties: {
-          command: { ...STRING, description: 'Exact command to run.' },
-          intent: { ...STRING, description: 'Short reason for running it.' }
+          command: { ...STRING, description: compact ? 'Command.' : 'Exact command to run.' },
+          intent: { ...STRING, description: compact ? 'Short reason.' : 'Short reason for running it.' }
         },
         required: ['command', 'intent']
       }
@@ -717,10 +740,12 @@ function ollamaNativeToolParameters(toolName: OllamaToolName): {
  * pass via Ollama's native `tools` request field. Models with native tool
  * support (gpt-oss, qwen, etc.) emit structured `tool_calls` against these. */
 export function ollamaNativeToolDefinitions(
-  tier: OllamaToolControlTier | string | undefined | null
+  tier: OllamaToolControlTier | string | undefined | null,
+  options?: { compact?: boolean }
 ): OllamaNativeToolDefinition[] {
+  const compact = Boolean(options?.compact)
   return ollamaToolNamesForTier(tier).map((toolName) => {
-    const { description, properties, required } = ollamaNativeToolParameters(toolName)
+    const { description, properties, required } = ollamaNativeToolParameters(toolName, compact)
     return {
       type: 'function',
       function: {
@@ -786,6 +811,41 @@ export function ollamaEmptyResponseRetryPrompt(): string {
     'Answer the original user request now in normal assistant prose.',
     'Put your final answer in your normal response, not only in hidden reasoning.'
   ].join(' ')
+}
+
+/** Max generated tokens that still counts as a degenerate ensemble/solo turn. */
+export const OLLAMA_DEGENERATE_OUTPUT_TOKEN_MAX = 1
+
+/** Max visible chars for a stub fragment ("The", "I", …) worth re-prompting. */
+export const OLLAMA_DEGENERATE_STUB_MAX_CHARS = 24
+
+export function ollamaDegenerateResponseNudgePrompt(): string {
+  return [
+    'Your previous reply was too short to count as a turn (often caused by running out of context window).',
+    'Answer the current request in full assistant prose now, or call a TaskWraith tool if you need workspace facts.',
+    'Do not stop after a single word or fragment.'
+  ].join(' ')
+}
+
+export function looksLikeDegenerateOllamaStub(visibleText: string): boolean {
+  const text = (visibleText || '').trim()
+  if (!text) return false
+  if (text.length > OLLAMA_DEGENERATE_STUB_MAX_CHARS) return false
+  const wordCount = text.split(/\s+/).filter(Boolean).length
+  return wordCount <= 2 && !/[.!?]/.test(text)
+}
+
+export function isDegenerateOllamaTurn(
+  turn: { content: string; thinking?: string },
+  visibleText: string,
+  toolRequestCount: number,
+  outputTokens: number | null
+): boolean {
+  if (toolRequestCount > 0) return false
+  if (outputTokens !== null && outputTokens <= OLLAMA_DEGENERATE_OUTPUT_TOKEN_MAX) return true
+  const thinking = (turn.thinking || '').trim()
+  if (looksLikeDegenerateOllamaStub(visibleText) && thinking.length < 80) return true
+  return false
 }
 
 /** Nudge for harmony-format models (gpt-oss) that emit a plan into their hidden
@@ -1024,17 +1084,30 @@ export async function runOllamaProvider(
     const toolProtocolEnabled =
       Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
       settings.agenticServices?.mcpTools !== 'deny'
+    const ensembleRun = Boolean(payload.ensembleRun)
     const toolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
     const nativeToolDefs = toolProtocolEnabled
-      ? ollamaNativeToolDefinitions(toolControlTier)
+      ? ollamaNativeToolDefinitions(toolControlTier, { compact: ensembleRun })
       : []
     const availableToolNames = nativeToolDefs.map((def) => def.function.name)
     const modelTemperature = ollamaModelFamilyTemperature(model)
+    let userPrompt = payload.prompt
+    if (ensembleRun) {
+      const shellChars = Math.max(0, userPrompt.indexOf('Recent tagged transcript:'))
+      const budget = resolveOllamaEnsembleTranscriptCharsForBudget({
+        promptWithoutTranscriptChars: shellChars > 0 ? shellChars : 5_800,
+        modelId: model,
+        contextLength: modelInfo?.contextLength,
+        toolsEnabled: toolProtocolEnabled
+      })
+      const maxPromptChars = shellChars + budget.contextChars + 2_400
+      userPrompt = compactOllamaEnsemblePromptText(userPrompt, maxPromptChars)
+    }
     const messages: OllamaChatMessage[] = [
       ...(toolProtocolEnabled
         ? [{ role: 'system' as const, content: ollamaLocalToolSystemPrompt(toolControlTier, model) }]
         : []),
-      { role: 'user', content: payload.prompt }
+      { role: 'user', content: userPrompt }
     ]
     let lastDone: OllamaChatChunk | null = null
     let toolCallCount = 0
@@ -1155,6 +1228,18 @@ export async function runOllamaProvider(
             role: 'user',
             content: ollamaToolIntentNudgePrompt(availableToolNames)
           })
+          continue
+        }
+        const outputTokens =
+          typeof lastDone?.eval_count === 'number' ? lastDone.eval_count : null
+        if (
+          turnIndex < OLLAMA_TOOL_LOOP_LIMIT &&
+          isDegenerateOllamaTurn(turn, visibleText, toolRequests.length, outputTokens)
+        ) {
+          if (turn.content.trim()) {
+            messages.push({ role: 'assistant', content: turn.content })
+          }
+          messages.push({ role: 'user', content: ollamaDegenerateResponseNudgePrompt() })
           continue
         }
         if (visibleText) {

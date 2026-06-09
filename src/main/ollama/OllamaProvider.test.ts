@@ -12,8 +12,11 @@ import {
   ollamaReasoningOnlyNudgePrompt,
   ollamaToolIntentNudgePrompt,
   ollamaToolResultFollowUpPrompt,
+  isDegenerateOllamaTurn,
+  looksLikeDegenerateOllamaStub,
   looksLikeLeakedOllamaToolProtocol,
   looksLikeOllamaToolIntent,
+  ollamaDegenerateResponseNudgePrompt,
   parseJsonObjectLoose,
   parseOllamaToolRequest,
   sanitizeLooseJsonEscapes,
@@ -314,6 +317,28 @@ describe('parseOllamaToolRequest', () => {
     expect(looksLikeLeakedOllamaToolProtocol('   ')).toBe(false)
   })
 
+  it('detects degenerate single-token stubs and nudges for a full answer', () => {
+    expect(looksLikeDegenerateOllamaStub('The')).toBe(true)
+    expect(looksLikeDegenerateOllamaStub('I agree.')).toBe(false)
+    expect(
+      isDegenerateOllamaTurn({ content: 'The', thinking: '' }, 'The', 0, 1)
+    ).toBe(true)
+    expect(
+      isDegenerateOllamaTurn(
+        { content: '', thinking: 'long reasoning ' + 'x'.repeat(120) },
+        'long reasoning ' + 'x'.repeat(120),
+        0,
+        5
+      )
+    ).toBe(false)
+    expect(isDegenerateOllamaTurn({ content: 'done', thinking: '' }, 'done', 1, 1)).toBe(
+      false
+    )
+    const prompt = ollamaDegenerateResponseNudgePrompt()
+    expect(prompt).toContain('too short to count as a turn')
+    expect(prompt).toContain('Do not stop after a single word')
+  })
+
   it('nudges malformed tool JSON to be re-issued as valid JSON', () => {
     const prompt = ollamaMalformedToolJsonNudgePrompt()
     expect(prompt).toContain('could not be parsed as valid JSON')
@@ -323,6 +348,12 @@ describe('parseOllamaToolRequest', () => {
 })
 
 describe('ollamaNativeToolDefinitions', () => {
+  it('emits a smaller schema in compact ensemble mode', () => {
+    const full = JSON.stringify(ollamaNativeToolDefinitions('approved_shell'))
+    const compact = JSON.stringify(ollamaNativeToolDefinitions('approved_shell', { compact: true }))
+    expect(compact.length).toBeLessThan(full.length)
+    expect(compact).not.toContain('maxResults')
+  })
   it('exposes read-only tools as OpenAI-style function schemas', () => {
     const defs = ollamaNativeToolDefinitions('read_only')
     const names = defs.map((def) => def.function.name)

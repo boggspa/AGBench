@@ -2000,8 +2000,15 @@ export class EnsembleOrchestrator {
       requestedConcurrentMode,
       enabledParticipantCount: ordered.length
     })
+    let effectiveConcurrentMode = requestedConcurrentMode
+    let concurrentFallbackReason: string | undefined
     if (!concurrentCheck.ok) {
-      throw new Error(concurrentCheck.reason || 'Concurrent Ensemble dispatch is not available.')
+      if (requestedConcurrentMode && concurrentCheck.reason?.includes('TASKWRAITH_CONCURRENT_LANES')) {
+        effectiveConcurrentMode = false
+        concurrentFallbackReason = concurrentCheck.reason
+      } else {
+        throw new Error(concurrentCheck.reason || 'Concurrent Ensemble dispatch is not available.')
+      }
     }
     const round: EnsembleRoundState = {
       roundId,
@@ -2011,7 +2018,7 @@ export class EnsembleOrchestrator {
       orchestrationMode,
       continuationHops: 0,
       maxContinuationHops,
-      ...(requestedConcurrentMode ? { concurrentMode: true } : {}),
+      ...(effectiveConcurrentMode ? { concurrentMode: true } : {}),
       participants: ordered.map((participant) => ({
         participantId: participant.id,
         provider: participant.provider,
@@ -2074,13 +2081,20 @@ export class EnsembleOrchestrator {
       cancelled: false,
       queuedPrompts: [...carryOverQueue],
       orchestrationMode,
-      ...(requestedConcurrentMode ? { concurrentMode: true } : {}),
+      ...(effectiveConcurrentMode ? { concurrentMode: true } : {}),
       continuationHops: 0,
       maxContinuationHops,
       ...(selfReflective ? { selfReflective: true } : {}),
       ...(externalPathGrants.length > 0 ? { externalPathGrants: [...externalPathGrants] } : {})
     }
     this.roundsByChatId.set(chatId, runtime)
+    if (concurrentFallbackReason) {
+      this.appendRoundStatus(
+        chatId,
+        roundId,
+        'Fan-out requested but parallel lanes are disabled (TASKWRAITH_CONCURRENT_LANES=0) — running participants serially.'
+      )
+    }
     void this.runRound(runtime, ordered)
     return roundId
   }
@@ -2824,12 +2838,17 @@ export class EnsembleOrchestrator {
       mode === 'locked_writers'
         ? 'Locked writer fan-out'
         : 'Parallel fan-out'
+    const ollamaLaneCount = participants.filter((p) => p.provider === 'ollama').length
+    const ollamaRamNote =
+      ollamaLaneCount >= 2
+        ? ` ${ollamaLaneCount} Ollama lane(s) — local models share RAM; expect slower loads when multiple quants are resident.`
+        : ''
     this.appendRoundStatus(
       runtime.chatId,
       runtime.roundId,
       writeCount > 0
-        ? `${label} · ${participants.length} participant(s) dispatched concurrently (${readOnlyCount} read / ${writeCount} write-intent).`
-        : `${label} · ${participants.length} read-only participants dispatched concurrently.`
+        ? `${label} · ${participants.length} participant(s) dispatched concurrently (${readOnlyCount} read / ${writeCount} write-intent).${ollamaRamNote}`
+        : `${label} · ${participants.length} read-only participants dispatched concurrently.${ollamaRamNote}`
     )
 
     // Seed each lane's run synchronously. UUIDs don't collide.
