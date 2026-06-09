@@ -98,44 +98,15 @@
   background: none;
 }
 
-.app-transcript.provider-gemini::after {
-  /* Gemini provider lacked its own ::after override, so the
-   * old base orange gradient was the visible default. Add a
-   * Gemini-tinted overlay matching the codex/claude/kimi
-   * pattern at lines 894-918. */
-  --agent-accent-rgb: 105 157 255;
-  background:
-    radial-gradient(ellipse at 0% 44%, rgba(36, 64, 138, 0.18), rgba(6, 12, 28, 0.08) 28%, transparent 54%),
-    radial-gradient(ellipse at 100% 52%, rgba(28, 56, 132, 0.18), rgba(4, 10, 24, 0.10) 30%, transparent 56%),
-    linear-gradient(to bottom, rgba(7, 10, 22, 0.34), rgba(28, 52, 124, 0.12) 16%, rgba(7, 10, 22, 0) 34%),
-    linear-gradient(to top, rgba(4, 8, 18, 0.42), rgba(30, 54, 132, 0.10) 17%, rgba(4, 8, 18, 0) 35%);
-}
-
-.app-transcript.provider-codex::after {
-  --agent-accent-rgb: 142 129 255;
-  background:
-    radial-gradient(ellipse at 0% 44%, rgba(40, 34, 118, 0.18), rgba(6, 7, 18, 0.08) 28%, transparent 54%),
-    radial-gradient(ellipse at 100% 52%, rgba(26, 21, 86, 0.18), rgba(3, 4, 12, 0.1) 30%, transparent 56%),
-    linear-gradient(to bottom, rgba(7, 7, 12, 0.34), rgba(28, 24, 84, 0.12) 16%, rgba(7, 7, 12, 0) 34%),
-    linear-gradient(to top, rgba(3, 3, 7, 0.42), rgba(30, 26, 92, 0.1) 17%, rgba(3, 3, 7, 0) 35%);
-}
-
-.app-transcript.provider-claude::after {
-  --agent-accent-rgb: 255 151 58;
-  background:
-    radial-gradient(ellipse at 0% 42%, rgba(143, 74, 20, 0.18), rgba(34, 18, 8, 0.08) 28%, transparent 54%),
-    radial-gradient(ellipse at 100% 54%, rgba(168, 92, 24, 0.16), rgba(38, 18, 6, 0.08) 30%, transparent 56%),
-    linear-gradient(to bottom, rgba(28, 14, 6, 0.28), rgba(145, 76, 22, 0.1) 18%, rgba(10, 7, 5, 0) 36%),
-    linear-gradient(to top, rgba(24, 11, 4, 0.32), rgba(151, 79, 22, 0.1) 18%, rgba(8, 6, 4, 0) 36%);
-}
-
+/* Provider accent tokens still flow to bubbles / chrome; the old ::after
+ * edge washes (ellipses at 0% / 100% + top/bottom bands) painted the
+ * persistent red/blue side glows independent of Agent Aura / Living
+ * Workspace — dropped so the pane stays flat. */
+.app-transcript.provider-gemini::after,
+.app-transcript.provider-codex::after,
+.app-transcript.provider-claude::after,
 .app-transcript.provider-kimi::after {
-  --agent-accent-rgb: 164 190 74;
-  background:
-    radial-gradient(ellipse at 0% 42%, rgba(89, 111, 31, 0.2), rgba(19, 24, 9, 0.08) 30%, transparent 56%),
-    radial-gradient(ellipse at 100% 52%, rgba(113, 135, 43, 0.16), rgba(25, 30, 10, 0.08) 31%, transparent 58%),
-    linear-gradient(to bottom, rgba(13, 17, 8, 0.3), rgba(92, 112, 32, 0.1) 18%, rgba(7, 9, 5, 0) 36%),
-    linear-gradient(to top, rgba(10, 12, 5, 0.34), rgba(93, 113, 33, 0.1) 18%, rgba(7, 8, 4, 0) 36%);
+  background: none;
 }
 
 /* Provider-tinted transcript backgrounds — each picks a base hue that
@@ -372,7 +343,8 @@
 
 .chat-corner-controls {
   z-index: 9;
-  gap: 3px;
+  gap: 0;
+  align-items: stretch;
   padding: 5px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 999px;
@@ -391,32 +363,86 @@
 
 .chat-corner-controls-right {
   justify-content: flex-end;
-  gap: 4px;
+  gap: 0;
 }
 
 .chat-corner-controls-center {
   display: none;
 }
 
+/* Full-height divider before every top-level segment (each icon / menu wrap / title). */
+.chat-corner-controls > * {
+  position: relative;
+}
+
+.chat-corner-controls > *:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+  z-index: 2;
+}
+
 .chat-corner-controls .chat-corner-btn {
   position: relative;
   flex: 0 0 auto;
+  align-self: stretch;
+  height: auto;
+  min-height: 38px;
   background: transparent;
-  border-color: transparent;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
+  overflow: visible;
+  z-index: 1;
 }
 
-.chat-corner-controls .chat-corner-btn:hover {
+/* Circular blob glow — avoids square hover bleeding past the pill rim. */
+.chat-corner-controls .chat-corner-btn::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.chat-corner-controls .chat-corner-btn:hover::after {
+  opacity: 1;
   background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
 }
 
 .chat-corner-controls .chat-corner-btn.active {
   color: rgba(236, 244, 255, 0.98);
-  background:
-    linear-gradient(135deg, rgba(103, 142, 255, 0.44), rgba(97, 215, 255, 0.2)),
-    rgba(255, 255, 255, 0.12);
-  border-color: rgba(170, 202, 255, 0.34);
+}
+
+.chat-corner-controls .chat-corner-btn.active::after {
+  opacity: 1;
+  background: radial-gradient(
+    circle,
+    rgba(103, 142, 255, 0.42) 0%,
+    rgba(97, 215, 255, 0.16) 58%,
+    transparent 72%
+  );
+  box-shadow: 0 0 20px rgba(103, 142, 255, 0.24);
+}
+
+.chat-corner-controls .side-chat-menu-trigger.chat-corner-btn::after {
+  width: 22px;
+  height: 22px;
 }
 
 /* Glass-pill transcript chrome — inner glyphs 15% smaller; pill padding/size unchanged. */
@@ -437,7 +463,11 @@
 }
 
 .chat-corner-controls .chat-corner-thread-title {
+  display: flex;
+  align-items: center;
   font-size: calc(var(--font-size-sm) * 0.85);
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 .chat-corner-controls .chat-corner-count {

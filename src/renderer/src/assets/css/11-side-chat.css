@@ -789,8 +789,8 @@
 .chat-popout-menu-wrap {
   position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 1px;
+  align-items: stretch;
+  gap: 0;
 }
 
 .side-chat-layout-menu.chat-popout-menu {
@@ -804,10 +804,26 @@
   margin-left: -7px;
 }
 
+.chat-corner-controls .side-chat-menu-wrap > .chat-corner-btn {
+  position: relative;
+}
+
+.chat-corner-controls .side-chat-menu-wrap > .chat-corner-btn + .chat-corner-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+  z-index: 2;
+}
+
 .chat-corner-controls .side-chat-menu-trigger.chat-corner-btn {
   width: 15px;
   min-width: 15px;
-  margin-left: -6px;
+  margin-left: 0;
 }
 
 .side-chat-menu-chevron {
