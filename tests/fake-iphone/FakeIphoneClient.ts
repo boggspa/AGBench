@@ -16,6 +16,7 @@
  *                      SAME session (app msgIds + replay state survive)
  */
 
+import { randomBytes } from 'crypto'
 import { WebSocket } from 'ws'
 import { E2eeSession } from '../../src/shared/e2ee/session'
 import {
@@ -31,6 +32,7 @@ import {
   type EncryptedFrame,
   type PairingBootstrapPayload
 } from '../../src/shared/e2ee/protocol'
+import { signResolveRequest } from '../../src/shared/e2ee/resolve'
 
 export interface ReceivedAppMessage {
   method: string
@@ -80,6 +82,40 @@ export class FakeIphoneClient {
       throw new Error(`unsupported bootstrap protocol "${bootstrap.protocol}"`)
     }
     if (Date.now() > bootstrap.expiresAt) throw new Error('bootstrap expired')
+    this.createSession(bootstrap)
+  }
+
+  /** Trusted reconnect (T5): ask the relay's resolve directory where the
+   * paired Mac is currently listening — the real phone does this from a
+   * silent push or app foreground, using identities persisted in Keychain.
+   * Throws on a 404 (not registered / not an allowed peer). */
+  async resolveAndScan(relayUrl: string, macIdentityPubKey: string): Promise<void> {
+    const request = signResolveRequest(this.identity, {
+      macIdentityPubKey,
+      nonce: b64.encode(randomBytes(16)),
+      issuedAt: Date.now()
+    })
+    const httpBase = relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/$/, '')
+    const response = await fetch(`${httpBase}/v1/resolve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+    if (!response.ok) throw new Error(`resolve failed (${response.status})`)
+    const body = (await response.json()) as { ok: boolean; sessionId?: string }
+    if (!body.ok || !body.sessionId) throw new Error('resolve returned no session')
+    this.createSession({
+      v: 1,
+      protocol: E2EE_PROTOCOL,
+      relayUrl,
+      sessionId: body.sessionId,
+      macIdentityPubKey,
+      macDisplayName: '',
+      expiresAt: Number.MAX_SAFE_INTEGER
+    })
+  }
+
+  private createSession(bootstrap: PairingBootstrapPayload): void {
     this.bootstrap = bootstrap
     this.session = new E2eeSession({
       role: 'iphone',

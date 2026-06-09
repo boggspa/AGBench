@@ -160,10 +160,18 @@ export class RemoteTransportClient {
     )
   }
 
-  /** Trust-on-reconnect (pinned key matches) → auto; otherwise surface the
-   * confirm code and hold for finalize. */
+  /** Trust decision:
+   *   - Pinned mode (resumed pairing): trust ONLY the pinned key; any other
+   *     identity is denied outright with NO user prompt. The whole point of a
+   *     trusted reconnect is "this device silently, everyone else rejected" —
+   *     surfacing a confirm code for a stranger who reached the resolved
+   *     session would be a confusing, abusable prompt.
+   *   - Fresh pairing (no pin): surface the confirm code and hold for the
+   *     user's finalize.
+   * Reconnect after a confirmed pairing pins the key (finalizePairing), so
+   * the pinned branch covers all post-pairing reconnects too. */
   private decideTrust(peerRaw: Buffer, code: string): boolean | Promise<boolean> {
-    if (this.trustedPeerRaw && this.trustedPeerRaw.equals(peerRaw)) return true
+    if (this.trustedPeerRaw) return this.trustedPeerRaw.equals(peerRaw)
     this.pendingPeerRaw = peerRaw
     this.opts.onConfirmCode?.(this.sessionId, code)
     return new Promise<boolean>((resolve) => {
