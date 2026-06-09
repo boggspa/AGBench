@@ -28,6 +28,8 @@
  */
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import QRCode from 'qrcode'
+import ghostMarkRaw from '../assets/taskwraith-ghost-mark.svg?raw'
+import { embedQrCenterLogo } from '../lib/qrGhostLogo'
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
 import { ApnsConfigPanel } from './ApnsConfigPanel'
@@ -75,16 +77,22 @@ export function PairingPage(): JSX.Element {
           ? wrapper.bootstrapPayload
           : result.bootstrap
       const json = JSON.stringify(innerPayload, null, 2)
-      const qrSvg = await QRCode.toString(json, {
+      const rawQrSvg = await QRCode.toString(json, {
         type: 'svg',
-        // Q-level error correction (~25% recoverable) is the sweet
-        // spot for camera scanning at iPad viewing distance — more
-        // tolerant of glare / screen reflection than M (~15%) without
-        // ballooning module count.
-        errorCorrectionLevel: 'Q',
+        // H-level error correction (~30% recoverable): the center ghost
+        // mark obscures ~4% of the modules (see qrGhostLogo.ts for the
+        // budget math), and H leaves MORE glare/reflection slack on top
+        // of that than the previous unbranded 'Q' (~25%) setup had. The
+        // extra module density is negligible at on-screen sizes — and
+        // the maximise overlay exists for hard cases.
+        errorCorrectionLevel: 'H',
         margin: 2,
         color: { dark: '#1f2328', light: '#ffffff00' }
       })
+      // Brand the QR with the ghost mark baked into the SVG string —
+      // both the inline pane and the maximise overlay render this one
+      // string, so they stay visually identical for the scanner.
+      const qrSvg = embedQrCenterLogo(rawQrSvg, ghostMarkRaw)
       setBootstrap({ json, qrSvg })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
