@@ -1906,7 +1906,9 @@
   /* Merged above-bar stack + input capsule — subtler than the old
    * ~26px pill; top segment reads darker than the body in dark mode. */
   --cursor-shell-stack-radius: 14px;
-  --cursor-shell-capsule-radius: 18px;
+  /* Main textarea capsule only — rounder than the merged above-row stack
+   * (14px) to match the official Cursor composer input pill. */
+  --cursor-shell-capsule-radius: 26px;
   --cursor-shell-stack-header: #101010;
 }
 /* Light themes flip to dark-gray-on-light-gray (still gray, not white). */
@@ -1964,14 +1966,15 @@
 }
 
 /* Above-row instrument — merged frosted-gray stack (native-console
- * parity). One segmented frame for Create-PR / Roster / Ensemble /
- * Steer-Queue rows; the textarea capsule stays a separate sibling
- * below. Frosted translucency keeps Cursor neutral-gray without
- * provider tint washes. */
+ * parity). Create-PR / git / files-changed row is a standalone sibling
+ * above the stack (`.composer-above-bar--cursor-lead`); the stack
+ * wraps Roster / Ensemble / Steer-Queue / external-path rows. The
+ * textarea capsule stays a separate sibling below. Frosted translucency
+ * keeps Cursor neutral-gray without provider tint washes. */
 [data-composer-style="cursor"]
   .app-transcript
   :is(
-    .composer-above-bar,
+    .composer-above-bar:not(.composer-above-bar--cursor-lead),
     .ensemble-above-row,
     .queued-messages-above-row,
     .composer-create-pr-row
@@ -1987,7 +1990,7 @@
   [data-composer-style="cursor"]
   .app-transcript
   :is(
-    .composer-above-bar,
+    .composer-above-bar:not(.composer-above-bar--cursor-lead),
     .ensemble-above-row,
     .queued-messages-above-row,
     .composer-create-pr-row
@@ -2053,6 +2056,31 @@
   > *:last-child {
   border-bottom-left-radius: var(--cursor-shell-stack-radius) !important;
   border-bottom-right-radius: var(--cursor-shell-stack-radius) !important;
+}
+/* Create-PR row — detached satellite pills above the merged stack.
+ * No outer frame; only `.composer-above-bar-pill` children carry chrome. */
+[data-composer-style="cursor"]
+  .app-transcript
+  .composer-area
+  > .composer-above-bar--cursor-lead {
+  margin-bottom: 6px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible !important;
+}
+[data-composer-style="cursor"]
+  .app-transcript
+  .composer-area:has(.composer-above-bar--cursor-lead)
+  .composer-above-bar-stack:empty {
+  display: none !important;
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 [data-composer-style="cursor"] .composer-above-bar::before,
 [data-composer-style="cursor"] .ensemble-above-row::before,
@@ -2386,32 +2414,92 @@
   font-weight: 600;
 }
 
-/* Above-bar contents (PR / ensemble strip) — gray pills + branch text. */
-[data-composer-style="cursor"] .composer-above-bar :is(.composer-above-bar-branch, .composer-above-bar-summary),
-[data-composer-style="cursor"] .composer-above-bar-secondary-branch {
-  color: var(--cursor-shell-muted) !important;
+/* Above-bar Create-PR row — three segmented pills (changes | git | action),
+ * matching the official Cursor composer header chips. */
+[data-composer-style="cursor"] .composer-above-bar:not(.composer-above-bar--cursor-lead) {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-start;
+  padding: 8px 12px !important;
 }
-[data-composer-style="cursor"] .composer-above-bar :is(.composer-above-bar-files, .composer-above-bar-stats) {
-  background: var(--cursor-shell-fill) !important;
-  border: 1px solid var(--cursor-shell-border) !important;
-  border-radius: 999px;
+[data-composer-style="cursor"] .composer-above-bar--cursor-lead {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   padding: 4px 10px;
-  color: var(--cursor-shell-fg) !important;
-}
-[data-composer-style="cursor"] .composer-above-bar-action {
+  border-radius: 999px;
   background: var(--cursor-shell-fill) !important;
   border: 1px solid var(--cursor-shell-border) !important;
   color: var(--cursor-shell-fg) !important;
   box-shadow: none !important;
 }
-[data-composer-style="cursor"] .composer-above-bar-action:hover:not(:disabled) {
-  background: var(--cursor-shell-hover) !important;
-  border-color: var(--cursor-shell-border-strong) !important;
+[data-composer-style="cursor"] .composer-above-bar-pill--git {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-[data-composer-style="cursor"] .composer-workspace-access-pill {
-  background: transparent !important;
-  border: 1px solid var(--cursor-shell-border) !important;
+[data-composer-style="cursor"] .composer-above-bar-pill--git .composer-above-bar-branch {
+  min-width: 0;
+  overflow: hidden;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill--git .composer-above-bar-branch > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill--action {
+  flex: 0 0 auto;
+}
+[data-composer-style="cursor"]
+  .composer-above-bar-pill
+  :is(.composer-above-bar-branch, .composer-above-bar-summary),
+[data-composer-style="cursor"] .composer-above-bar-secondary-branch {
   color: var(--cursor-shell-muted) !important;
+}
+[data-composer-style="cursor"]
+  .composer-above-bar-pill
+  :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: var(--cursor-shell-fg) !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill .composer-above-bar-action {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: var(--cursor-shell-fg) !important;
+  box-shadow: none !important;
+  font-weight: 500;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill .composer-above-bar-action:hover:not(:disabled) {
+  background: transparent !important;
+  color: var(--cursor-shell-fg) !important;
+  opacity: 0.82;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill .composer-workspace-access-pill,
+[data-composer-style="cursor"] .composer-above-bar-pill .git-status-push,
+[data-composer-style="cursor"] .composer-above-bar-pill .git-status-ci,
+[data-composer-style="cursor"] .composer-above-bar-pill .git-status-merge {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: var(--cursor-shell-muted) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-pill .composer-diff-action-menu-wrap {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Inline Review-changes / Create-PR menu (not portaled). */

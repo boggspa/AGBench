@@ -936,6 +936,39 @@
   align-items: center;
   gap: 6px;
 }
+/* Cursor shell groups the Create-PR row into three pills via wrappers in
+ * App.tsx. Other shells keep `display: contents` so children flatten into
+ * the row — flex `order` below restores the legacy branch-first sequence. */
+.composer-above-bar-pill {
+  display: contents;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-branch {
+  order: 10;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .git-status-merge {
+  order: 20;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-files {
+  order: 30;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-above-bar-stats {
+  order: 40;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .git-status-push {
+  order: 50;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .git-status-ci {
+  order: 60;
+}
+:not([data-composer-style="cursor"])
+  .composer-above-bar
+  :is(.composer-workspace-access-inline, .composer-workspace-access) {
+  order: 70;
+}
+:not([data-composer-style="cursor"]) .composer-above-bar .composer-diff-action-menu-wrap {
+  order: 80;
+}
+
 .composer-above-bar-files {
   /* New (Phase J1): file-count chip pulled out of the codex-only
    * summary span so the unified above-bar can show file/add/del/branch
@@ -2250,11 +2283,6 @@
   border: 0;
   color: #ffffff;
   transform: none;
-}
-[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon,
-[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon svg {
-  width: 28px;
-  height: 28px;
 }
 
 /* Permission picker (Plan / Default approval) — plain text */

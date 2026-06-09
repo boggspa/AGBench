@@ -17003,86 +17003,25 @@ function App(): React.JSX.Element {
             {((!isCurrentGlobalChat &&
               currentWorkspace &&
               (!isWelcomeChat || isCurrentEnsembleChat)) ||
-              (isCurrentGlobalChat && isCurrentEnsembleChat)) && (
-              <div className={`composer-above-bar-stack ${composerAboveBarStackAuraClass}`}>
-                {/* 1.0.4-AQ5 — file-changes / Create-PR / external-path
-                  rows are workspace-only by construction. Guard with
-                  `currentWorkspace` so the new global-ensemble-chat
-                  branch above doesn't drag them into render with
-                  null workspace data. */}
-                {!isWelcomeChat && currentWorkspace && (
-                  <>
-                    <div className="composer-above-bar style-unified">
-                      <span className="composer-above-bar-branch">
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
-                        >
-                          <circle cx="4" cy="3.5" r="1.6" />
-                          <circle cx="4" cy="12.5" r="1.6" />
-                          <circle cx="12" cy="7" r="1.6" />
-                          <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
-                        </svg>
-                        {/*
-                    `displayName · branch` mirrors the secondary rows
-                    (`basename · branch` in ExternalPathAboveRow) so
-                    the stack reads as one consistent label family
-                    when a chat is touching multiple repos. Workspace
-                    name is the primary identifier (plain weight);
-                    branch is secondary (italic-stripped <em> with
-                    `.composer-above-bar-secondary-branch` opacity so
-                    it reads as metadata). The "·" lives outside both
-                    spans so it copy-pastes cleanly.
-                  */}
-                        <span>
-                          {currentWorkspace.displayName}
-                          {' · '}
-                          {/* Phase Git-U1 — prefer the LIVE branch from
-                            gitSnapshot (populated once the diff-action menu
-                            has been opened); fall back to the workspace
-                            record's cached branch before the first read. A
-                            detached snapshot reads "detached HEAD". */}
-                          <em
-                            className={`composer-above-bar-secondary-branch git-tone-${branchTone(
-                              primaryGitSnapshot?.detached
-                                ? undefined
-                                : (primaryGitSnapshot?.branch ?? currentWorkspace?.branch),
-                              primaryGitSnapshot?.detached ?? false
-                            )}`}
-                          >
-                            {primaryGitSnapshot
-                              ? primaryGitSnapshot.detached
-                                ? 'detached HEAD'
-                                : primaryGitSnapshot.branch || 'detached'
-                              : currentWorkspace?.branch || 'detached'}
-                          </em>
-                        </span>
-                      </span>
-                      {primaryGitSnapshot && <GitMergeBadge snapshot={primaryGitSnapshot} />}
+              (isCurrentGlobalChat && isCurrentEnsembleChat)) &&
+              (() => {
+                /* Cursor shell — Create-PR / git / files-changed row sits
+                 * ABOVE the merged stack (roster / ensemble / queue), not
+                 * as its first segment. Other shells keep the row inside
+                 * the stack. */
+                const primaryWorkspaceAboveBar =
+                  !isWelcomeChat && currentWorkspace ? (
+                    <div
+                      className={`composer-above-bar style-unified${
+                        appearance.composerStyle === 'cursor' ? ' composer-above-bar--cursor-lead' : ''
+                      }`}
+                    >
                       {/*
-                  Phase K-followup — files-changed pill is now
-                  always rendered (with "0 files changed" when no
-                  diff yet). Fills the real-estate freed by removing
-                  the non-interactive "Worktree: managed by X" pill
-                  and gives the diff row a stable, predictable shape
-                  regardless of run state.
-
-                  Wrapped in `.composer-above-bar-files-cluster` so
-                  the Codex shell can place files+diff as ONE layout
-                  unit without splitting the status chips. Other shells get
-                  `display: contents` on the wrapper (declared in
-                  main.css) so files + stats still behave as direct
-                  flex children of `.composer-above-bar` — no
-                  layout regression in the TaskWraith / Claude /
-                  Gemini / Kimi shells.
+                  `.composer-above-bar-pill` wrappers group the Create-PR
+                  row into three Cursor-style pills (changes | git | action).
+                  Default `display: contents` keeps other shells unchanged.
                 */}
+                      <div className="composer-above-bar-pill composer-above-bar-pill--changes">
                       <span className="composer-above-bar-files-cluster">
                         {/*
                     Order: files-changed pill FIRST, then the diff
@@ -17114,22 +17053,47 @@ function App(): React.JSX.Element {
                           </span>
                         )}
                       </span>
-                      {/* Phase Git-U1 — live git-state pill driven by
-                        gitSnapshot (populated once the diff-action menu has
-                        been opened). Surfaces staged/unstaged state and
-                        push/PR readiness right in the header so the user can
-                        see what the Review/Commit/Create-PR menu will act on
-                        without opening it. Rendered only once a snapshot is
-                        in hand so the header stays stable pre-read. */}
+                      </div>
+                      <div className="composer-above-bar-pill composer-above-bar-pill--git">
+                      <span className="composer-above-bar-branch">
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <circle cx="4" cy="3.5" r="1.6" />
+                          <circle cx="4" cy="12.5" r="1.6" />
+                          <circle cx="12" cy="7" r="1.6" />
+                          <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
+                        </svg>
+                        <span>
+                          {currentWorkspace.displayName}
+                          {' · '}
+                          <em
+                            className={`composer-above-bar-secondary-branch git-tone-${branchTone(
+                              primaryGitSnapshot?.detached
+                                ? undefined
+                                : (primaryGitSnapshot?.branch ?? currentWorkspace?.branch),
+                              primaryGitSnapshot?.detached ?? false
+                            )}`}
+                          >
+                            {primaryGitSnapshot
+                              ? primaryGitSnapshot.detached
+                                ? 'detached HEAD'
+                                : primaryGitSnapshot.branch || 'detached'
+                              : currentWorkspace?.branch || 'detached'}
+                          </em>
+                        </span>
+                      </span>
+                      {primaryGitSnapshot && <GitMergeBadge snapshot={primaryGitSnapshot} />}
                       {primaryGitSnapshot && <GitSyncChip snapshot={primaryGitSnapshot} />}
                       <GitCiChip pr={primaryPr} />
-                      {/*
-                    Composer-unification (Phase J1): once the chat has
-                    activity, External Path + Worktree migrate from the
-                    welcome-state satellite slot into the above-bar so
-                    they sit alongside the workspace summary band the
-                    user is already looking at.
-                  */}
                       <WorkspaceAccessControls
                         variant="inline"
                         provider={currentProvider}
@@ -17142,6 +17106,8 @@ function App(): React.JSX.Element {
                         worktreeToggleLabel={worktreeToggleLabel}
                         worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
                       />
+                      </div>
+                      <div className="composer-above-bar-pill composer-above-bar-pill--action">
                       {(() => {
                         const hasReviewableDiff = workspaceDiffStats.filesChanged > 0
                         // 1.0.6-EW66-1d — primary workspace's PR state is now
@@ -17175,13 +17141,16 @@ function App(): React.JSX.Element {
                             (!primaryGitSnapshot.upstream ||
                               (primaryGitSnapshot.ahead ?? 0) > 0)
                         )
-                        const primaryLabel = hasReviewableDiff
-                          ? 'Review changes'
-                          : needsPush
-                            ? primaryGitSnapshot && !primaryGitSnapshot.upstream
-                              ? 'Publish branch'
-                              : 'Push'
-                            : createPrLabel
+                        const primaryLabel =
+                          appearance.composerStyle === 'cursor'
+                            ? createPrLabel
+                            : hasReviewableDiff
+                              ? 'Review changes'
+                              : needsPush
+                                ? primaryGitSnapshot && !primaryGitSnapshot.upstream
+                                  ? 'Publish branch'
+                                  : 'Push'
+                                : createPrLabel
                         const actionClassName = `composer-above-bar-action ${primaryPrState.status === 'pending' ? 'is-pending' : ''} ${primaryPrState.status === 'error' ? 'is-error' : ''} ${primaryPrState.status === 'success' ? 'is-success' : ''}`
                         return (
                           <span className="composer-diff-action-menu-wrap">
@@ -17218,48 +17187,56 @@ function App(): React.JSX.Element {
                           </span>
                         )
                       })()}
+                      </div>
                     </div>
-                    {/* Slice 3 of the external-path-redesign arc. One stacked
-                  row per external-path grant. Per-grant repo metadata
-                  decides whether the row shows branch+repo-name or a
-                  bare basename.
+                  ) : null
 
-                  1.0.6-EW66-1d — WRITE grants now also get a per-path
-                  Create-PR action (matching the primary workspace row).
-                  PR state is keyed by `grant.path`, so an ensemble's
-                  several same-path write grants share one repo's PR
-                  progress. READ grants keep the reference-only banner. */}
-                    {externalWorkspaceGroups.map((group) => (
-                      <ExternalPathAboveRow
-                        key={group.path}
-                        grant={group.representative}
-                        access={group.access}
-                        providers={group.providers}
-                        repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
-                        snapshot={externalGitSnapshots[group.path] ?? null}
-                        diffStats={(() => {
-                          const snap = externalGitSnapshots[group.path]
-                          return snap
-                            ? {
-                                filesChanged: snap.counts?.changed ?? 0,
-                                additions: snap.lineStats?.additions ?? 0,
-                                deletions: snap.lineStats?.deletions ?? 0
-                              }
-                            : undefined
-                        })()}
-                        onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
-                        createPrState={getCreatePrState(group.path)}
-                        onCreatePr={() => handleCreateGithubPr(group.path)}
-                        onReviewChanges={() =>
-                          void window.api.openWorkspacePopout({
-                            kind: 'diff-studio',
-                            workspacePath: group.path
-                          })
-                        }
-                      />
-                    ))}
-                  </>
-                )}
+                return (
+                  <>
+                    {appearance.composerStyle === 'cursor' && primaryWorkspaceAboveBar}
+                    <div className={`composer-above-bar-stack ${composerAboveBarStackAuraClass}`}>
+                      {appearance.composerStyle !== 'cursor' && primaryWorkspaceAboveBar}
+                      {/* Slice 3 of the external-path-redesign arc. One stacked
+                    row per external-path grant. Per-grant repo metadata
+                    decides whether the row shows branch+repo-name or a
+                    bare basename.
+
+                    1.0.6-EW66-1d — WRITE grants now also get a per-path
+                    Create-PR action (matching the primary workspace row).
+                    PR state is keyed by `grant.path`, so an ensemble's
+                    several same-path write grants share one repo's PR
+                    progress. READ grants keep the reference-only banner. */}
+                      {!isWelcomeChat &&
+                        currentWorkspace &&
+                        externalWorkspaceGroups.map((group) => (
+                          <ExternalPathAboveRow
+                            key={group.path}
+                            grant={group.representative}
+                            access={group.access}
+                            providers={group.providers}
+                            repoMetadata={externalPathRepoMetadata[group.representative.id] || null}
+                            snapshot={externalGitSnapshots[group.path] ?? null}
+                            diffStats={(() => {
+                              const snap = externalGitSnapshots[group.path]
+                              return snap
+                                ? {
+                                    filesChanged: snap.counts?.changed ?? 0,
+                                    additions: snap.lineStats?.additions ?? 0,
+                                    deletions: snap.lineStats?.deletions ?? 0
+                                  }
+                                : undefined
+                            })()}
+                            onRevoke={() => handleRemoveExternalPathGrantsByPath(group.path)}
+                            createPrState={getCreatePrState(group.path)}
+                            onCreatePr={() => handleCreateGithubPr(group.path)}
+                            onReviewChanges={() =>
+                              void window.api.openWorkspacePopout({
+                                kind: 'diff-studio',
+                                workspacePath: group.path
+                              })
+                            }
+                          />
+                        ))}
                 {/*
                   Slice F (1.0.3) — ensemble participants live in the
                   composer above-row stack now. Sits below the unified
@@ -17376,8 +17353,10 @@ function App(): React.JSX.Element {
                   onSteer={handleSteerToQueuedMessage}
                   onReorder={handleReorderQueuedMessages}
                 />
-              </div>
-            )}
+                    </div>
+                  </>
+                )
+              })()}
             <div
               className={`composer-surface ${isComposerDragOver ? 'is-drag-over' : ''} ${composerAgentAuraClass}`}
               onDragEnter={handleComposerDragEnter}
