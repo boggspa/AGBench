@@ -1,0 +1,148 @@
+import { describe, it, expect } from 'vitest'
+import { E2eeSession } from './session'
+import { generateIdentityKeyPair } from './keys'
+import type { E2eeFrame } from './protocol'
+
+/**
+ * Wire a mac + iphone session through an in-memory async "relay". `send` from
+ * one side enqueues delivery to the other; `pump()` drains until quiescent.
+ * `drop()` clears in-flight frames (simulates a socket close on reconnect).
+ * Every frame delivered to the iphone is also captured for replay tests.
+ */
+function wire(opts?: { trustPeer?: boolean }) {
+  const macIdentity = generateIdentityKeyPair()
+  const iphoneIdentity = generateIdentityKeyPair()
+  const macReceived: Array<{ method: string; params: unknown }> = []
+  const iphoneReceived: Array<{ method: string; params: unknown }> = []
+  const macCodes: string[] = []
+  const iphoneCodes: string[] = []
+  const framesToIphone: E2eeFrame[] = []
+  let queue: Array<() => Promise<void>> = []
+
+  let mac: E2eeSession
+  let iphone: E2eeSession
+
+  mac = new E2eeSession({
+    role: 'mac',
+    sessionId: 'sess-1',
+    identityKeyPair: macIdentity,
+    send: (f: E2eeFrame) => {
+      framesToIphone.push(f)
+      queue.push(() => iphone.handleFrame(f))
+    },
+    onAppMessage: (method, params) => macReceived.push({ method, params }),
+    onConfirmCode: (c) => macCodes.push(c),
+    trustPeer: opts?.trustPeer === false ? () => false : () => true
+  })
+  iphone = new E2eeSession({
+    role: 'iphone',
+    sessionId: 'sess-1',
+    identityKeyPair: iphoneIdentity,
+    peerIdentityPublicKey: macIdentity.publicKey, // learned from the QR bootstrap
+    send: (f: E2eeFrame) => queue.push(() => mac.handleFrame(f)),
+    onAppMessage: (method, params) => iphoneReceived.push({ method, params }),
+    onConfirmCode: (c) => iphoneCodes.push(c)
+  })
+
+  const pump = async (): Promise<void> => {
+    let guard = 0
+    while (queue.length && guard++ < 1000) {
+      await queue.shift()!()
+    }
+  }
+  const drop = (): void => {
+    queue = []
+  }
+  /** Both endpoints start (generate ephemerals); iphone then sends clientHello. */
+  const establish = async (): Promise<void> => {
+    mac.start()
+    iphone.start()
+    await pump()
+  }
+  return {
+    mac,
+    iphone,
+    macReceived,
+    iphoneReceived,
+    macCodes,
+    iphoneCodes,
+    framesToIphone,
+    pump,
+    drop,
+    establish
+  }
+}
+
+describe('E2eeSession handshake', () => {
+  it('establishes both sides and derives the same confirm code', async () => {
+    const w = wire()
+    await w.establish()
+    expect(w.mac.isEstablished).toBe(true)
+    expect(w.iphone.isEstablished).toBe(true)
+    expect(w.macCodes[0]).toMatch(/^\d{6}$/)
+    expect(w.macCodes[0]).toBe(w.iphoneCodes[0]) // transcript binding
+  })
+
+  it('refuses to establish when the Mac does not trust the peer', async () => {
+    const w = wire({ trustPeer: false })
+    await w.establish()
+    expect(w.mac.isEstablished).toBe(false)
+  })
+})
+
+describe('E2eeSession app channel', () => {
+  it('round-trips app messages both directions', async () => {
+    const w = wire()
+    await w.establish()
+    w.mac.sendApp('bridge.runEvent', { n: 1 })
+    w.iphone.sendApp('bridge.requestActionAck', { kind: 'cancelRun' })
+    await w.pump()
+    expect(w.iphoneReceived).toContainEqual({ method: 'bridge.runEvent', params: { n: 1 } })
+    expect(w.macReceived).toContainEqual({
+      method: 'bridge.requestActionAck',
+      params: { kind: 'cancelRun' }
+    })
+  })
+
+  it('drops a replayed encrypted frame (transport seq guard)', async () => {
+    const w = wire()
+    await w.establish()
+    w.mac.sendApp('bridge.runEvent', { n: 7 })
+    await w.pump()
+    expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(1)
+    // Re-deliver the last enc frame the mac sent — must be dropped by the seq guard.
+    const lastEnc = [...w.framesToIphone].reverse().find((f) => f.t === 'enc')!
+    await w.iphone.handleFrame(lastEnc)
+    expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(1)
+  })
+})
+
+describe('E2eeSession reconnect + replay', () => {
+  it('replays an app message that was buffered but never delivered', async () => {
+    const w = wire()
+    await w.establish()
+    w.mac.sendApp('bridge.runEvent', { n: 42 })
+    w.drop() // in-flight frame lost before delivery
+    expect(w.iphoneReceived).toHaveLength(0)
+    w.mac.reconnect()
+    w.iphone.reconnect()
+    await w.pump()
+    expect(w.mac.isEstablished).toBe(true)
+    expect(w.iphone.isEstablished).toBe(true)
+    expect(w.iphoneReceived).toEqual([{ method: 'bridge.runEvent', params: { n: 42 } }])
+  })
+
+  it('does not re-deliver an already-acked message after reconnect', async () => {
+    const w = wire()
+    await w.establish()
+    w.mac.sendApp('bridge.runEvent', { n: 1 })
+    await w.pump() // delivered
+    w.iphone.sendApp('bridge.requestActionAck', { ok: true }) // carries ack → trims mac buffer
+    await w.pump()
+    w.drop()
+    w.mac.reconnect()
+    w.iphone.reconnect()
+    await w.pump()
+    expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(1)
+  })
+})
