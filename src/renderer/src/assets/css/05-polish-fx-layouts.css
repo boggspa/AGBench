@@ -2883,17 +2883,17 @@
 /* ----------------------------------------------------------------
  * Detached-pill above-bar stacks — fan agent-aura to each row.
  *
- * On Gemini / Grok / Kimi / Modular / Satellite / Stub / Obsidian /
- * Alabaster / Terminal (and solo Codex without an ensemble strip),
- * `.composer-above-bar-stack` is only a gap wrapper: no fill, no
- * border-radius. Stack-level `.fx-agent-aura` therefore paints a
- * sharp teal rectangle behind every row. Merged stacks (native
- * default, Cursor, Codex+ensemble) keep the stack treatment above.
+ * On Gemini / Kimi / Modular / Satellite / Stub / Obsidian /
+ * Alabaster / Terminal (and solo Codex / solo Grok without a
+ * multi-row stack), `.composer-above-bar-stack` is only a gap
+ * wrapper: no fill, no border-radius. Stack-level `.fx-agent-aura`
+ * therefore paints a sharp teal rectangle behind every row. Merged
+ * stacks (native default, Cursor, Codex+ensemble, Grok 2+ rows)
+ * keep the stack treatment above.
  * ---------------------------------------------------------------- */
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -2904,6 +2904,9 @@
   )
   .app-transcript
   .composer-above-bar-stack.fx-agent-aura,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura {
@@ -2912,7 +2915,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -2923,6 +2925,9 @@
   )
   .app-transcript
   .composer-above-bar-stack.fx-agent-aura::after,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura::after {
@@ -2932,7 +2937,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -2950,6 +2954,9 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   ),
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura
@@ -2965,7 +2972,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -2983,6 +2989,9 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   )::after,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura
@@ -3006,7 +3015,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -3024,6 +3032,9 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   )::after,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-running
@@ -3043,7 +3054,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -3061,6 +3071,9 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   )::after,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-approval
@@ -3079,7 +3092,6 @@
 :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -3097,6 +3109,9 @@
     .composer-create-pr-row,
     .ensemble-roster-preset-picker.is-compact
   )::after,
+[data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
 [data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-failed
@@ -3116,7 +3131,6 @@
   :is(
     [data-composer-style="claude"],
     [data-composer-style="gemini"],
-    [data-composer-style="grok"],
     [data-composer-style="kimi"],
     [data-composer-style="modular"],
     [data-composer-style="satellite"],
@@ -3135,7 +3149,10 @@
     .ensemble-roster-preset-picker.is-compact
   )::after,
 :root[data-reduce-motion="true"]
-  [data-composer-style="codex"]
+  [data-composer-style="grok"]
+  .app-transcript
+  .composer-above-bar-stack:not(:has(> :nth-child(2))),
+[data-composer-style="codex"]
   .app-transcript
   .composer-above-bar-stack:not(:has(.ensemble-above-row)).fx-agent-aura.fx-status-running
   > :is(
