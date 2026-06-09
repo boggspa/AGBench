@@ -14830,8 +14830,13 @@ function App(): React.JSX.Element {
   // dashboard (and its range toggle) stay mounted even when the
   // currently-selected window happens to be empty. The empty-state
   // copy lives INSIDE the dashboard, gated on `hasActivity`.
+  // Also require `usageInitialized`: chat summaries and usage records
+  // hydrate on different beats at launch, so `lifetimeHasActivity`
+  // can briefly flip true/false before the first `getUsage()` resolves.
+  // Until then we show the reserved placeholder instead of mounting
+  // the real dashboard (prevents appear → hide → reappear flicker).
   const shouldShowWelcomeUsageDashboard =
-    isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
+    isWelcomeChat && usageInitialized && welcomeUsageDashboardData.lifetimeHasActivity
   const welcomeWorkspaceHeatmapEnabled =
     settings?.welcomeHeatmapPrefs?.workspaceActivityEnabled !== false
   const welcomeTaskWraithHeatmapEnabled =
@@ -16689,10 +16694,7 @@ function App(): React.JSX.Element {
               fetch resolves and only when the dashboard would plausibly
               render (welcome screen + card enabled). Collapses harmlessly for
               brand-new accounts that turn out to have no history. */}
-          {isWelcomeChat &&
-            welcomeDashboardCardEnabled &&
-            !usageInitialized &&
-            !shouldShowWelcomeUsageDashboard && (
+          {isWelcomeChat && welcomeDashboardCardEnabled && !usageInitialized && (
               <div
                 className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize} welcome-usage-region-reserved`}
                 aria-hidden

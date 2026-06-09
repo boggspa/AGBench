@@ -1,4 +1,5 @@
 import type {
+  ChatListItem,
   ChatRecord,
   ProviderId,
   UsageRecord,
@@ -947,7 +948,13 @@ export const buildWelcomeUsageDashboardData = (
   // lifetime activity exists when the visible stats are all zero.
   const lifetimeHasActivity =
     recordsAfterReset.some((record) => record.usageKind !== 'reset_hint') ||
-    chatsAfterReset.some((chat) => (chat.messages || []).length > 0)
+    chatsAfterReset.some((chat) => {
+      const summary = chat as ChatListItem
+      if (summary.summaryOnly === true) {
+        return (summary.messageCount ?? 0) > 0
+      }
+      return (chat.messages || []).length > 0
+    })
 
   // 1.0.5-EW51 — Materialise the workspace + daily-cost arrays
   // from the aggregates we built in the lifetime loop above.

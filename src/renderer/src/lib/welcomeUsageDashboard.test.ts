@@ -222,6 +222,26 @@ describe('buildWelcomeUsageDashboardData model breakdown — range scoping (Welc
     expect(dryData.hasActivity).toBe(false)
     expect(dryData.lifetimeHasActivity).toBe(false)
   })
+
+  it('uses messageCount on summary-only chat list items for lifetimeHasActivity', () => {
+    const summaryChat = {
+      appChatId: 'chat-summary',
+      title: 'Indexed Thread',
+      summaryOnly: true as const,
+      messageCount: 3,
+      runCount: 1,
+      messages: [],
+      runs: [],
+      createdAt: NOW,
+      updatedAt: NOW
+    }
+    const data = buildWelcomeUsageDashboardData([], [summaryChat as any], 'all', NOW)
+    expect(data.lifetimeHasActivity).toBe(true)
+
+    const emptySummary = { ...summaryChat, messageCount: 0, runCount: 0 }
+    const dryData = buildWelcomeUsageDashboardData([], [emptySummary as any], 'all', NOW)
+    expect(dryData.lifetimeHasActivity).toBe(false)
+  })
 })
 
 describe('buildWelcomeUsageDashboardData headline stats — range scoping (Welcome L5)', () => {
