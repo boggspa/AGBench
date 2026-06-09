@@ -1293,10 +1293,6 @@
   align-self: stretch;
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .ensemble-roster-preset-picker.is-compact {
-  border-top: 1px solid var(--grok-border) !important;
-}
-[data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
   > *:not(:first-child):not(.ensemble-roster-preset-picker.is-compact) {
   border-top: 1px solid var(--grok-border);
 }
