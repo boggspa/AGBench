@@ -173,10 +173,15 @@ export class RemoteTransportClient {
   private decideTrust(peerRaw: Buffer, code: string): boolean | Promise<boolean> {
     if (this.trustedPeerRaw) return this.trustedPeerRaw.equals(peerRaw)
     this.pendingPeerRaw = peerRaw
-    this.opts.onConfirmCode?.(this.sessionId, code)
-    return new Promise<boolean>((resolve) => {
+    // Create the promise (assigning trustResolver) BEFORE firing onConfirmCode.
+    // A caller that finalizes SYNCHRONOUSLY inside the prompt callback (e.g. an
+    // auto-accept harness) would otherwise resolve a not-yet-set trustResolver
+    // and the handshake would hang forever. Set first, then prompt.
+    const promise = new Promise<boolean>((resolve) => {
       this.trustResolver = resolve
     })
+    this.opts.onConfirmCode?.(this.sessionId, code)
+    return promise
   }
 
   private setConnected(value: boolean): void {
