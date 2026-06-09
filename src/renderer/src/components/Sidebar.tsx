@@ -1,12 +1,16 @@
 import {
+  useCallback,
   useMemo,
   useRef,
   useState,
   useEffect,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react'
+import { createPortal } from 'react-dom'
 import { MascotGhost } from './AppChromeSymbols'
 import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
 import { isUpdatePillVisible, UpdatePill } from './UpdatePill'
@@ -27,6 +31,14 @@ import { selectRecentChats } from '../lib/recentChatsList'
 import { IOS_REMOTE_ENABLED } from '../lib/featureFlags'
 import { ActiveRunsSection } from './ActiveRunsSection'
 import { LocalServersSection } from './LocalServersSection'
+import { useLocalServers } from '../hooks/useLocalServers'
+import { useSidebarHierarchyDrag } from '../hooks/useSidebarHierarchyDrag'
+import {
+  loadSidebarHierarchyOrder,
+  saveSidebarHierarchyOrder,
+  SIDEBAR_HIERARCHY_SECTION_LABELS,
+  type SidebarHierarchySectionId
+} from '../lib/sidebarSectionOrder'
 import { AppShellStatsToolbar } from './AppShellStatsToolbar'
 import { ModelUsageCard } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
@@ -1935,6 +1947,17 @@ export function Sidebar({
     })
   }
 
+  const { servers: localServers } = useLocalServers()
+  const [sidebarHierarchyOrder, setSidebarHierarchyOrder] = useState<SidebarHierarchySectionId[]>(
+    () => loadSidebarHierarchyOrder()
+  )
+  const persistSidebarHierarchyOrder = useCallback((next: SidebarHierarchySectionId[]) => {
+    setSidebarHierarchyOrder(next)
+    saveSidebarHierarchyOrder(next)
+  }, [])
+  const { dragGhost, handleSectionPointerDown, sectionDragClass, sectionOrderStyle } =
+    useSidebarHierarchyDrag(sidebarHierarchyOrder, persistSidebarHierarchyOrder)
+
   // Phase J2: auto-expand a workspace when a fresh sub-thread arrives
   // inside it. Pairs with the App.tsx onChatUpdated insert-when-not-
   // found fix so a brand-new sub-thread shows up in the sidebar
@@ -2259,6 +2282,29 @@ export function Sidebar({
   // own `ModelUsageCard` component. Sidebar no longer needs to
   // reference either directly.
 
+  const wrapHierarchySection = (
+    sectionId: SidebarHierarchySectionId,
+    content: ReactNode,
+    visible = true
+  ): ReactNode => {
+    if (!visible) return null
+    const label = SIDEBAR_HIERARCHY_SECTION_LABELS[sectionId]
+    const style: CSSProperties = sectionOrderStyle(sectionId)
+    return (
+      <div
+        key={sectionId}
+        data-sidebar-section-id={sectionId}
+        className={`sidebar-hierarchy-section ${sectionDragClass(sectionId)}`.trim()}
+        style={style}
+        onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) =>
+          handleSectionPointerDown(event, sectionId, label)
+        }
+      >
+        {content}
+      </div>
+    )
+  }
+
   return (
     <div className={`app-sidebar${animationClassName ? ` ${animationClassName}` : ''}`}>
       <div className="sidebar-content">
@@ -2399,18 +2445,26 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-hierarchy-scroll">
-          {/* Active runs — permanently pinned under Search, above Pinned. */}
-          <ActiveRunsSection
-            chats={chats}
-            currentChat={currentChat}
-            runningChatIds={runningChatIds}
-            onSelectChat={onSelectChat}
-            onInspectRun={onInspectRun}
-          />
+          {wrapHierarchySection(
+            'active-runs',
+            <ActiveRunsSection
+              chats={chats}
+              currentChat={currentChat}
+              runningChatIds={runningChatIds}
+              onSelectChat={onSelectChat}
+              onInspectRun={onInspectRun}
+            />
+          )}
 
-          <LocalServersSection />
+          {wrapHierarchySection(
+            'local-servers',
+            <LocalServersSection />,
+            localServers.length > 0
+          )}
 
-          <div className="sidebar-workflows-section">
+          {wrapHierarchySection(
+            'workflows',
+            <div className="sidebar-workflows-section">
             <div className="sidebar-section-header">
               <button
                 type="button"
@@ -2580,8 +2634,12 @@ export function Sidebar({
                 )}
               </div>
             )}
-          </div>
+            </div>
+          )}
 
+          {wrapHierarchySection(
+            'pinned',
+            <>
           {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
             <div className="sidebar-pinned-section" {...pinDropProps}>
               <div className="sidebar-section-header">
@@ -2682,8 +2740,15 @@ export function Sidebar({
               <span className="sidebar-pin-drop-placeholder-copy">Drop here to pin</span>
             </div>
           )}
+            </>,
+            visiblePinnedWorkspaces.length > 0 ||
+              visiblePinnedChats.length > 0 ||
+              showPinDropPlaceholder
+          )}
 
-          {visibleRecentChats.length > 0 && (
+          {wrapHierarchySection(
+            'recents',
+            visibleRecentChats.length > 0 ? (
             <div className="sidebar-recents-section">
               <div className="sidebar-section-header">
                 <button
@@ -2740,9 +2805,13 @@ export function Sidebar({
                 </div>
               )}
             </div>
+            ) : null,
+            visibleRecentChats.length > 0
           )}
 
-          {ensembleModeEnabled && (
+          {wrapHierarchySection(
+            'ensembles',
+            ensembleModeEnabled ? (
             <div className="sidebar-ensembles-section">
               {/* 1.0.3 — dropped the `sidebar-section-header-with-action`
                   modifier so the Ensembles `+` aligns to the trailing
@@ -2908,9 +2977,13 @@ export function Sidebar({
                   </div>
                 ))}
             </div>
+            ) : null,
+            ensembleModeEnabled
           )}
 
-          <div className="sidebar-workspace-scroll">
+          {wrapHierarchySection(
+            'workspaces',
+            <div className="sidebar-workspace-scroll">
             <div className="sidebar-section-header">
               <button
                 type="button"
@@ -3207,6 +3280,7 @@ export function Sidebar({
                     </div>
                   )
                 })}
+            </div>
               {isSidebarSearchActive &&
                 visibleWorkspaceEntries.length === 0 &&
                 visibleGlobalChats.length === 0 && (
@@ -3215,6 +3289,12 @@ export function Sidebar({
                     <span>Try a workspace name, provider, branch, or thread title.</span>
                   </div>
                 )}
+            </div>
+          )}
+
+          {wrapHierarchySection(
+            'chats',
+            <div className="sidebar-chats-section">
               <div className="sidebar-section-header sidebar-chats-header">
                 <button
                   type="button"
@@ -3303,7 +3383,24 @@ export function Sidebar({
                 </div>
               )}
             </div>
-          </div>
+          )}
+          {dragGhost
+            ? createPortal(
+                <div
+                  className="sidebar-section-drag-ghost"
+                  style={{
+                    position: 'fixed',
+                    left: `${dragGhost.x}px`,
+                    top: `${dragGhost.y}px`,
+                    zIndex: 10050
+                  }}
+                  aria-hidden
+                >
+                  <span className="sidebar-section-drag-ghost-title">{dragGhost.label}</span>
+                </div>,
+                document.body
+              )
+            : null}
         </div>
 
         {/* Phase L6 slice 1 — Model Usage card extracted to its own

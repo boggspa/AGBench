@@ -139,26 +139,30 @@
   font-variant-numeric: tabular-nums;
   margin-left: auto;
 }
-.sidebar-local-servers-stop-all {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
-  font: inherit;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+
+.sidebar-section-header .sidebar-overflow-menu {
+  flex: 0 0 auto;
 }
-.sidebar-local-servers-stop-all:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger, #d9534f) 14%, transparent);
-  color: var(--text-primary);
+
+.sidebar-section-header .sidebar-overflow-trigger {
+  opacity: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sidebar-text) 6%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 76%, transparent);
 }
-.sidebar-local-servers-stop-all:disabled {
-  opacity: 0.5;
-  cursor: default;
+
+.sidebar-section-header .sidebar-overflow-trigger:hover,
+.sidebar-section-header .sidebar-overflow-trigger:focus-visible,
+.sidebar-section-header .sidebar-overflow-menu.is-open .sidebar-overflow-trigger {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--sidebar-text);
 }
 .sidebar-local-servers-list {
   display: flex;
@@ -704,14 +708,65 @@
 }
 
 .sidebar-hierarchy-scroll > :is(
+  .sidebar-hierarchy-section,
   .sidebar-active-runs-section,
+  .sidebar-local-servers-section,
+  .sidebar-workflows-section,
   .sidebar-pinned-section,
   .sidebar-recents-section,
   .sidebar-ensembles-section,
   .sidebar-workspace-scroll,
+  .sidebar-chats-section,
   .sidebar-pin-drop-placeholder
 ) {
   margin-bottom: 0;
+}
+
+.sidebar-hierarchy-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-hierarchy-section.is-dragging {
+  opacity: 0.42;
+}
+
+.sidebar-hierarchy-section.is-dragging .sidebar-section-header-toggle {
+  cursor: grabbing;
+}
+
+.sidebar-hierarchy-section.is-drag-over {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 46%, transparent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-section-drag-ghost {
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--composer-bubble-radius, 18px);
+  background: color-mix(in srgb, var(--sidebar-text) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-section-drag-ghost-title {
+  font-size: calc(var(--font-size-xs) * 0.85);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sidebar-text);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.sidebar-chats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .sidebar-workspace-scroll {
@@ -865,7 +920,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  cursor: pointer;
+  cursor: grab;
   /* Reset default <button> baselines so the inner <h4> doesn't
    * inherit weird padding or text-transform mismatches. */
   text-align: left;
