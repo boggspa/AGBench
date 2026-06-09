@@ -4379,19 +4379,14 @@
 
 /* Transcript pane — the surface that was reading darkest. Use the
  * now-light-tokenised --content-bg so the macOS vibrancy shows through
- * a light frost. The provider tint (.app-transcript::after) still
- * paints its accent gradient on top, just over a light base. */
+ * a light frost. */
 [data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript {
   background: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-100), transparent);
 }
 
-/* Tone down the provider tint overlay in light glass so it reads as
- * a soft hue wash rather than a saturated dark gradient. The base
- * ::after gradient uses dark provider colors (purple/orange/etc.)
- * at ~16% alpha; in light glass mode we halve the opacity so the
- * frost stays bright. */
 [data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript::after {
-  opacity: 0.5;
+  background: none;
+  opacity: 0;
 }
 
 /* ============================================================

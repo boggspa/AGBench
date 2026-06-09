@@ -2614,8 +2614,8 @@ export function SettingsPanel({
                         <span>
                           Living Workspace
                           <small>
-                            Extends Sky/Weather with parallax depth, motes, weather particles, and
-                            room-light glow.
+                            Extends Sky/Weather with neutral parallax depth, floating motes, and
+                            weather particles.
                           </small>
                         </span>
                         <input
