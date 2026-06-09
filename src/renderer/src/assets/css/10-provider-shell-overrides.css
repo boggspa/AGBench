@@ -2512,15 +2512,8 @@
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-trailing-cluster {
   display: contents;
 }
-[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-access {
-  order: 70 !important;
-  margin-right: 0;
-}
-[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-revoke {
-  order: 75 !important;
-}
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-diff-action-menu-wrap {
-  order: 80 !important;
+  order: 70 !important;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2530,6 +2523,13 @@
   border: 1px solid var(--cursor-shell-border) !important;
   color: var(--cursor-shell-fg) !important;
   box-shadow: none !important;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-access {
+  order: 75 !important;
+  margin-right: 0;
+}
+[data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-secondary-revoke {
+  order: 80 !important;
 }
 
 /* Inline Review-changes / Create-PR menu (not portaled). */
