@@ -263,6 +263,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'check-trust': ['workspacePath'],
   'trust-workspace': ['workspacePath'],
   'shell:open-link': ['nonEmptyString'],
+  'shell:reveal-in-finder': ['nonEmptyString'],
   'favicon:getForUrl': ['nonEmptyString'],
   'start-pty': ['workspacePath', 'optionalString'],
   'stop-pty': ['optionalString'],
