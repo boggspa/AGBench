@@ -1275,6 +1275,7 @@
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
   > :is(
     .composer-above-bar,
+    .composer-above-bar-secondary,
     .ensemble-above-row,
     .composer-create-pr-row,
     .queued-messages-above-row,
@@ -1296,7 +1297,7 @@
   border-top: 1px solid var(--grok-border);
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .composer-above-bar {
+  > :is(.composer-above-bar, .composer-above-bar-secondary) {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -1305,7 +1306,7 @@
   min-width: 0;
 }
 [data-composer-style="grok"] .composer-above-bar-stack:has(> :nth-child(2))
-  > .composer-above-bar
+  > :is(.composer-above-bar, .composer-above-bar-secondary)
   > * {
   margin-left: 0;
 }
@@ -1949,7 +1950,7 @@
 [data-composer-style="cursor"]
   .app-transcript
   :is(
-    .composer-above-bar:not(.composer-above-bar--cursor-lead),
+    .composer-above-bar:not(.composer-above-bar--cursor-lead):not(.composer-above-bar-secondary),
     .ensemble-above-row,
     .queued-messages-above-row,
     .composer-create-pr-row
@@ -1965,7 +1966,7 @@
   [data-composer-style="cursor"]
   .app-transcript
   :is(
-    .composer-above-bar:not(.composer-above-bar--cursor-lead),
+    .composer-above-bar:not(.composer-above-bar--cursor-lead):not(.composer-above-bar-secondary),
     .ensemble-above-row,
     .queued-messages-above-row,
     .composer-create-pr-row
@@ -2391,7 +2392,8 @@
 
 /* Above-bar Create-PR row — three segmented pills (changes | git | action),
  * matching the official Cursor composer header chips. */
-[data-composer-style="cursor"] .composer-above-bar:not(.composer-above-bar--cursor-lead) {
+[data-composer-style="cursor"]
+  .composer-above-bar:not(.composer-above-bar--cursor-lead):not(.composer-above-bar-secondary) {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -2477,28 +2479,10 @@
   align-items: center;
 }
 
-/* Secondary workspace rows — detached satellite pills above the merged
- * stack (same slot as `.composer-above-bar--cursor-lead`). */
-[data-composer-style="cursor"] .composer-area > .composer-above-bar-secondary,
-[data-composer-style="cursor"] .composer-above-bar-stack > .composer-above-bar-secondary {
-  margin: 0 0 6px !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: none !important;
-  border-top: none !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-}
-[data-composer-style="cursor"]
-  .composer-above-bar-stack
-  > .composer-above-bar-secondary:first-child {
-  border-top-left-radius: 0 !important;
-  border-top-right-radius: 0 !important;
-  background: transparent !important;
+/* Secondary workspace rows — reuse `.composer-above-bar--cursor-lead`
+ * (set in JSX) for detached satellite pills above the merged stack. */
+[data-composer-style="cursor"] .composer-area > .composer-above-bar--cursor-lead.composer-above-bar-secondary {
+  margin-bottom: 6px !important;
 }
 [data-composer-style="cursor"] .composer-above-bar-secondary .composer-above-bar-pill--git {
   flex: 1 1 auto;
