@@ -45,6 +45,7 @@ import { isSubThreadDelegationMessage } from './SubThreadDelegationCardModel'
 import { SubThreadReturnCard } from './SubThreadReturnCard'
 import { isSubThreadReturnMessage } from './SubThreadReturnCardModel'
 import { ParticipantHealthCard } from './ParticipantHealthCard'
+import { ProviderRunFailureCard } from './ProviderRunFailureCard'
 import { MarkdownMessage } from './MarkdownMessage'
 import { MentionHighlightedText } from './MentionHighlightedText'
 import { MessageActionsChip } from './MessageActionsChip'
@@ -1022,6 +1023,13 @@ export const TranscriptPanel = memo(
                     older transcripts / exports.
                   */
                   <ParticipantHealthCard key={msg.id} message={msg} />
+                ) : msg.metadata?.kind === 'providerRunFailure' ? (
+                  <ProviderRunFailureCard
+                    key={msg.id}
+                    message={msg}
+                    onCopy={onCopyMessage}
+                    copied={copiedId === msg.id}
+                  />
                 ) : (
                   <div
                     key={msg.id}

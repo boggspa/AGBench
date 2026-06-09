@@ -4,6 +4,7 @@ import { redactLog } from './ErrorClassifier'
 export type RawLogEntry = {
   type: 'stdout' | 'stderr' | 'tool' | 'info'
   content: string
+  timestamp?: string
   sequence?: number
   hash?: string
   spanId?: string
@@ -27,6 +28,7 @@ export const rawLogFromRunEvent = (event: RunEventRecord): RawLogEntry | null =>
             : event.summary || ''
   if (!payloadText.trim()) return null
   const metadata = {
+    timestamp: event.timestamp,
     sequence: event.sequence,
     hash: event.hash,
     spanId: event.spanId,

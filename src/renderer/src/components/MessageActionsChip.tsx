@@ -24,7 +24,7 @@ function MessageActionsChip({
 }: {
   onCopy: () => void
   onTogglePin?: () => void
-  onDelete: () => void
+  onDelete?: () => void
   onOpenSideChat?: () => void
   pinned?: boolean
   /** 1.0.8 — when true the copy button shows a transient confirmation
@@ -127,31 +127,33 @@ function MessageActionsChip({
           </svg>
         </button>
       )}
-      <button
-        type="button"
-        className="message-actions-chip-button message-actions-chip-button--delete"
-        onClick={onDelete}
-        title="Delete message from transcript"
-        aria-label={`Delete ${label}`}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
+      {onDelete && (
+        <button
+          type="button"
+          className="message-actions-chip-button message-actions-chip-button--delete"
+          onClick={onDelete}
+          title="Delete message from transcript"
+          aria-label={`Delete ${label}`}
         >
-          <path d="M3 4h10" />
-          <path d="M5.5 4V2.5C5.5 2.22 5.72 2 6 2h4c.28 0 .5.22.5.5V4" />
-          <path d="M4.5 4l.5 9c.04.55.5 1 1 1h4c.5 0 .96-.45 1-1l.5-9" />
-          <path d="M7 7v5" />
-          <path d="M9 7v5" />
-        </svg>
-      </button>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M3 4h10" />
+            <path d="M5.5 4V2.5C5.5 2.22 5.72 2 6 2h4c.28 0 .5.22.5.5V4" />
+            <path d="M4.5 4l.5 9c.04.55.5 1 1 1h4c.5 0 .96-.45 1-1l.5-9" />
+            <path d="M7 7v5" />
+            <path d="M9 7v5" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

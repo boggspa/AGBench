@@ -3502,6 +3502,113 @@
 .participant-health-chip.provider-cursor {
   color: var(--provider-cursor-color, var(--text-primary));
 }
+.participant-health-chip.provider-ollama {
+  color: var(--provider-ollama-color, var(--text-primary));
+}
+
+/* Provider run failure — compact stderr rim bubble surfaced in the
+ * transcript when a solo or ensemble participant exits non-zero.
+ * Copy-friendly monospace body; danger rim so failures read at a
+ * glance without opening Raw Events. */
+.provider-run-failure-card {
+  --provider-run-failure-rim: color-mix(in srgb, var(--danger, #e54d4d) 58%, var(--panel-border));
+  width: min(100%, 900px);
+  margin: 8px 0;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--provider-run-failure-rim);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--danger, #e54d4d) 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--surface-elevated) 52%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--danger, #e54d4d) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--danger, #e54d4d) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.provider-run-failure-card.is-cancelled {
+  --provider-run-failure-rim: color-mix(in srgb, #f0a93f 52%, var(--panel-border));
+  background:
+    linear-gradient(160deg, color-mix(in srgb, #f0a93f 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--surface-elevated) 52%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #f0a93f 10%, transparent),
+    0 0 0 1px color-mix(in srgb, #f0a93f 8%, transparent);
+}
+.provider-run-failure-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.provider-run-failure-card-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--danger, #e54d4d) 88%, var(--text-primary));
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e54d4d) 34%, transparent);
+  background: color-mix(in srgb, var(--danger, #e54d4d) 10%, transparent);
+}
+.provider-run-failure-card.is-cancelled .provider-run-failure-card-kicker {
+  color: color-mix(in srgb, #f0a93f 92%, var(--text-primary));
+  border-color: color-mix(in srgb, #f0a93f 34%, transparent);
+  background: color-mix(in srgb, #f0a93f 10%, transparent);
+}
+.provider-run-failure-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-run-failure-card-time {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  white-space: nowrap;
+}
+.provider-run-failure-card-body {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 42%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 34%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text-primary) 92%, var(--danger, #e54d4d) 8%);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+}
+.provider-run-failure-card-line {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.provider-run-failure-card-line + .provider-run-failure-card-line {
+  margin-top: 6px;
+}
+.provider-run-failure-card-line-time {
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  white-space: nowrap;
+}
+.provider-run-failure-card-line-text {
+  min-width: 0;
+}
+.provider-run-failure-card .message-actions-chip {
+  align-self: flex-end;
+}
 
 .subthread-return-card {
   width: min(100%, 860px);

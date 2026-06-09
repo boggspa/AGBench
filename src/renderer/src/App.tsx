@@ -332,6 +332,7 @@ import {
 } from './lib/RunLanes'
 import { formatOpaqueMarkdownPromptSection } from './lib/HandoffPrompt'
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
+import { buildProviderRunFailureSnippet } from './lib/providerRunFailureSnippet'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex, isTerminalRunQueueStatus } from './lib/runQueueScheduling'
 import { applyRecoveryRecordsToChatRuns } from './lib/recoverChatRunTerminals'
@@ -7058,7 +7059,11 @@ function App(): React.JSX.Element {
         handlers.triggerFxBurst('warning')
       }
 
-      handlers.appendThreadRawLog(errorRunChatId, { type: 'stderr', content: redacted })
+      handlers.appendThreadRawLog(errorRunChatId, {
+        type: 'stderr',
+        content: redacted,
+        timestamp: new Date().toISOString()
+      })
     }
 
     const handleProviderExit = (fallbackProvider: ProviderId, payload: unknown) => {
@@ -7178,25 +7183,56 @@ function App(): React.JSX.Element {
               startedAt: targetRun?.startedAt || completedRunStartedAt || undefined
             })
           }
-          const lastErrorLine =
-            (payload && typeof payload === 'object'
+          const payloadError =
+            payload && typeof payload === 'object'
               ? (payload as RunRouteEventPayload).error
-              : undefined) ||
-            context.warnings[context.warnings.length - 1]?.message ||
-            ''
-          const exitMessage =
-            exitCode === 130
-              ? 'Run cancelled.'
-              : `Task ended before completing (exit code ${exitCode}).${
-                  lastErrorLine ? ` Last error: ${lastErrorLine}` : ''
-                } See Raw Events for the full log.`
+              : undefined
+          const stderrLogs = rawLogsByChatIdRef.current.get(completedRunChatId) || []
+          const roundParticipant = updated.ensemble?.activeRound?.participants?.find(
+            (entry) => entry.runId === completedRunId
+          )
+          const ensembleParticipant =
+            updated.chatKind === 'ensemble' && updated.ensemble
+              ? (roundParticipant
+                  ? updated.ensemble.participants.find(
+                      (participant) => participant.id === roundParticipant.participantId
+                    )
+                  : updated.ensemble.participants.find(
+                      (participant) => participant.provider === provider
+                    ))
+              : undefined
+          const failureSnippet = buildProviderRunFailureSnippet({
+            provider,
+            exitCode,
+            failureAt: completedAt,
+            payloadError,
+            warnings: targetRun?.warnings || context.warnings,
+            stderrLogs,
+            ensembleRole: ensembleParticipant?.role
+          })
           const msgs = [
             ...updated.messages,
             {
               id: createMessageId(),
-              role: 'system',
-              content: exitMessage,
-              timestamp: completedAt
+              role: 'error',
+              content: failureSnippet.copyText,
+              timestamp: completedAt,
+              runId: completedRunId,
+              metadata: {
+                kind: 'providerRunFailure',
+                provider,
+                exitCode,
+                failureAt: completedAt,
+                headline: failureSnippet.headline,
+                lines: failureSnippet.lines,
+                ...(ensembleParticipant
+                  ? {
+                      ensembleProvider: ensembleParticipant.provider,
+                      ensembleRole: ensembleParticipant.role,
+                      ensembleParticipantId: ensembleParticipant.id
+                    }
+                  : {})
+              }
             }
           ] as ChatMessage[]
           updated.messages = msgs
