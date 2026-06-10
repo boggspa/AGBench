@@ -1,0 +1,59 @@
+# XcodeGen spec for the TaskWraith iOS companion app.
+#   brew install xcodegen
+#   cd ios/TaskWraithApp && xcodegen generate && open TaskWraith.xcodeproj
+# Then pick your iPhone/iPad (or a simulator) and Run. See README.md for
+# device-testing prerequisites (Apple ID in Xcode, Developer Mode on device).
+name: TaskWraith
+options:
+  bundleIdPrefix: com.taskwraith
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  TaskWraithKit:
+    path: ../TaskWraithKit
+targets:
+  TaskWraith:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Assets.xcassets
+    dependencies:
+      - package: TaskWraithKit
+        product: TaskWraithUI
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: TaskWraith
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        # iPhone stays portrait-first; iPad rotates freely (split-view shell).
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: "TaskWraith uses the camera to scan the pairing QR code shown on your Mac."
+        NSLocalNetworkUsageDescription: "TaskWraith connects to the pairing relay on your local network to reach your Mac."
+        # Dev builds speak cleartext ws:// to a LAN / Tailscale relay; ATS
+        # would silently refuse those connections on a real device. Tighten
+        # this to a wss:// relay + remove before any TestFlight build.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.taskwraith.companion
+        # Pre-wired to the TaskWraith Apple Developer team (same team the Mac
+        # app's Developer ID signing uses) so device runs sign automatically —
+        # change in Signing & Capabilities if you use a different team.
+        DEVELOPMENT_TEAM: 8CZML8FK2D
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1.0"
+        SWIFT_VERSION: "6.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
