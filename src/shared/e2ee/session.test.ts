@@ -53,6 +53,21 @@ function wire(opts?: { trustPeer?: boolean }) {
   const drop = (): void => {
     queue = []
   }
+  /** Replace the iphone with a BRAND-NEW session object — fresh msgId
+   * counters, no session memory — modeling an app relaunch (vs
+   * `.reconnect()`, which models the same process redialing). */
+  const swapIphone = (): E2eeSession => {
+    iphone = new E2eeSession({
+      role: 'iphone',
+      sessionId: 'sess-1',
+      identityKeyPair: iphoneIdentity,
+      peerIdentityPublicKey: macIdentity.publicKey,
+      send: (f: E2eeFrame) => queue.push(() => mac.handleFrame(f)),
+      onAppMessage: (method, params) => iphoneReceived.push({ method, params }),
+      onConfirmCode: (c) => iphoneCodes.push(c)
+    })
+    return iphone
+  }
   /** Both endpoints start (generate ephemerals); iphone then sends clientHello. */
   const establish = async (): Promise<void> => {
     mac.start()
@@ -69,7 +84,8 @@ function wire(opts?: { trustPeer?: boolean }) {
     framesToIphone,
     pump,
     drop,
-    establish
+    establish,
+    swapIphone
   }
 }
 
@@ -171,5 +187,38 @@ describe('E2eeSession reconnect + replay', () => {
     await w.pump()
     expect(w.iphoneReceived.filter((m) => m.method === 'bridge.runEvent')).toHaveLength(2)
     expect(w.macReceived.filter((m) => m.method === 'bridge.requestActionAck')).toHaveLength(2)
+  })
+
+  it('accepts a FRESH peer session after an app relaunch (msgId epoch reset)', async () => {
+    // A relaunched phone restarts its app msgId counter at 1, but the Mac's
+    // long-lived listening session kept its inbound watermark across the
+    // re-handshake — so every post-relaunch action was silently dropped as
+    // "duplicate app msgId" (observed live). resume{lastAckedMsgId: 0}
+    // signals a memoryless peer: the receiver resets its watermark (fresh
+    // handshake keys already prevent cross-epoch ciphertext replay) and
+    // clears its outbound replay buffer (state arrives via the establish
+    // snapshot, not stale replays).
+    const w = wire()
+    await w.establish()
+    w.iphone.sendApp('bridge.requestActionAck', { n: 1 })
+    w.iphone.sendApp('bridge.requestActionAck', { n: 2 })
+    w.iphone.sendApp('bridge.requestActionAck', { n: 3 })
+    await w.pump()
+    expect(w.macReceived).toHaveLength(3)
+
+    // App relaunch: brand-new session object, counters back to 1.
+    w.drop()
+    const fresh = w.swapIphone()
+    fresh.start()
+    await w.pump()
+    expect(w.mac.isEstablished).toBe(true)
+    expect(fresh.isEstablished).toBe(true)
+
+    fresh.sendApp('bridge.requestActionAck', { n: 'relaunch-1' })
+    fresh.sendApp('bridge.requestActionAck', { n: 'relaunch-2' })
+    await w.pump()
+    // Without the epoch reset these two were dropped as duplicates 1 and 2.
+    expect(w.macReceived).toHaveLength(5)
+    expect(w.macReceived[3].params).toEqual({ n: 'relaunch-1' })
   })
 })

@@ -114,6 +114,13 @@ export class E2eeSession {
   // Cross-reconnect app-message state.
   private nextOutboundMsgId = 1
   private lastDeliveredInboundMsgId = 0
+  /** Random per-SESSION-OBJECT token sent with transport.resume. A peer
+   * whose epoch CHANGES between resumes is a fresh process (app relaunch)
+   * with restarted msgId counters — the receiver must reset its inbound
+   * dedup watermark or every new message drops as a "duplicate". A peer
+   * resuming with the SAME epoch keeps full replay semantics. */
+  private readonly localEpoch = randomBytes(8).toString('hex')
+  private peerEpoch: string | null = null
   private replayBuffer: BufferedAppMessage[] = []
   private replayBytes = 0
 
@@ -323,7 +330,10 @@ export class E2eeSession {
     }
     this.opts.onEstablished?.()
     // Tell the peer where we are so it can replay anything we missed.
-    this.sendControl(TRANSPORT_RESUME, { lastAckedMsgId: this.lastDeliveredInboundMsgId })
+    this.sendControl(TRANSPORT_RESUME, {
+      lastAckedMsgId: this.lastDeliveredInboundMsgId,
+      epoch: this.localEpoch
+    })
   }
 
   // ── Sending ────────────────────────────────────────────────────────────────
@@ -418,9 +428,29 @@ export class E2eeSession {
     if (msg.method === TRANSPORT_PING) {
       this.sendControl(TRANSPORT_PONG)
     } else if (msg.method === TRANSPORT_RESUME) {
-      const lastAcked = Number((msg.params as { lastAckedMsgId?: number })?.lastAckedMsgId ?? 0)
+      const params = msg.params as { lastAckedMsgId?: number; epoch?: string } | undefined
+      const lastAcked = Number(params?.lastAckedMsgId ?? 0)
+      const epoch = typeof params?.epoch === 'string' ? params.epoch : null
+      // FRESH PEER EPOCH: a relaunched app is a new session object — its
+      // msgId counter restarts at 1, so a long-lived listening session that
+      // kept its inbound watermark across the re-handshake silently dropped
+      // EVERY new message as a "duplicate app msgId" (observed live). The
+      // epoch token disambiguates that from a true resume: changed epoch →
+      // reset the watermark (fresh handshake keys already prevent
+      // cross-epoch ciphertext replay) and drop the outbound replay buffer
+      // (a memoryless peer gets state from the establish snapshot, not
+      // stale replays). Same/absent epoch → full resume semantics.
+      const freshPeer = epoch !== null && this.peerEpoch !== null && epoch !== this.peerEpoch
+      if (epoch !== null) this.peerEpoch = epoch
       this.peerResumeReceived = true
       this.peerResumeLastAcked = lastAcked
+      if (freshPeer) {
+        this.lastDeliveredInboundMsgId = 0
+        this.replayBuffer.length = 0
+        this.replayBytes = 0
+        this.awaitingPeerResume = false
+        return
+      }
       this.trimReplayBuffer(lastAcked)
       if (this.awaitingPeerResume) {
         this.awaitingPeerResume = false
