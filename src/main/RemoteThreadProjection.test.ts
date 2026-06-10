@@ -180,7 +180,15 @@ describe('RemoteThreadProjection', () => {
         ]
       })
       const snap = project({ kind: 'latestN', n: 1 }, [toolMsg])
-      expect(snap.rows[0].toolSummary).toEqual({ activityCount: 2, status: 'mixed' })
+      expect(snap.rows[0].toolSummary).toMatchObject({ activityCount: 2, status: 'mixed' })
+      // Per-tool entries (desktop activity-card parity).
+      expect(snap.rows[0].toolSummary?.tools).toHaveLength(2)
+      expect(snap.rows[0].toolSummary?.tools?.[0]).toMatchObject({
+        name: 'Shell',
+        category: 'shell',
+        status: 'success'
+      })
+      expect(snap.rows[0].toolSummary?.tools?.[1].status).toBe('error')
       expect(snap.rows[0].kind).toBe('tool')
     })
 
@@ -327,10 +335,14 @@ describe('RemoteThreadProjection', () => {
   })
 
   describe('sanitizePreview', () => {
-    it('collapses whitespace + strips control characters', () => {
+    it('collapses spaces/tabs + strips controls but PRESERVES line structure', () => {
+      // Newlines are load-bearing: remote clients render markdown blocks
+      // (headings/lists/fences) from them. Spaces/tabs collapse, control
+      // bytes strip, blank-line runs cap at one blank.
       const { preview, truncated } = sanitizePreview('a\n\n  b\tc\u0000d')
-      expect(preview).toBe('a b c d')
+      expect(preview).toBe('a\n\nb c d')
       expect(truncated).toBe(false)
+      expect(sanitizePreview('# H\n\n\n\n- one\n- two').preview).toBe('# H\n\n- one\n- two')
     })
 
     it('truncates with an ellipsis and flags truncation', () => {

@@ -125,6 +125,16 @@ export type RemoteThreadRowKind =
 
 export type RemoteAttentionKind = 'planChoice' | 'agentQuestion' | 'approval'
 
+export interface RemoteToolEntry {
+  name: string
+  category: 'task' | 'read' | 'write' | 'search' | 'shell' | 'unknown'
+  status: 'running' | 'success' | 'error'
+  file?: string
+  additions?: number
+  deletions?: number
+  detail?: string
+}
+
 export interface RemoteThreadRow {
   /** === desktop `message.id`, so remote deep-links resolve exactly. */
   id: string
@@ -149,6 +159,10 @@ export interface RemoteThreadRow {
   toolSummary?: {
     activityCount: number
     status: 'running' | 'success' | 'error' | 'mixed'
+    /** Per-tool detail (desktop activity-card parity): name, category,
+     * status, the touched file, +/− diff stats for edits, and a clipped
+     * result line. Capped at 12 entries; activityCount stays the truth. */
+    tools?: RemoteToolEntry[]
   }
   /** Present for rows that need the user — drives the remote action UI. */
   attention?: {
@@ -249,15 +263,26 @@ export function sanitizePreview(
   max: number = DEFAULT_PREVIEW_MAX
 ): { preview: string; truncated: boolean } {
   if (!raw) return { preview: '', truncated: false }
-  // Replace C0 controls (incl. NUL), DEL, and C1 controls with a
-  // space, then collapse remaining whitespace runs — no literal
-  // control bytes in source.
+  // Replace C0 controls (incl. NUL), DEL, and C1 controls with a space —
+  // EXCEPT newlines: line structure is what lets a remote client render
+  // markdown blocks (headings/lists/fences/tables). Flattening to one
+  // line shipped mashed paragraphs no renderer could recover.
   let cleaned = ''
   for (let i = 0; i < raw.length; i++) {
     const code = raw.charCodeAt(i)
-    cleaned += code <= 0x1f || (code >= 0x7f && code <= 0x9f) ? ' ' : raw[i]
+    if (raw[i] === '\n') {
+      cleaned += '\n'
+    } else if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      cleaned += ' '
+    } else {
+      cleaned += raw[i]
+    }
   }
-  const collapsed = cleaned.replace(/\s+/g, ' ').trim()
+  const collapsed = cleaned
+    .replace(/[^\S\n]+/g, ' ') // collapse runs of spaces/tabs, keep newlines
+    .replace(/ ?\n ?/g, '\n') // trim spaces hugging line breaks
+    .replace(/\n{3,}/g, '\n\n') // cap blank-line runs
+    .trim()
   const limit = Number.isFinite(max) && max > 0 ? Math.floor(max) : DEFAULT_PREVIEW_MAX
   if (collapsed.length <= limit) return { preview: collapsed, truncated: false }
   return { preview: `${collapsed.slice(0, Math.max(0, limit - 3)).trimEnd()}...`, truncated: true }
@@ -308,7 +333,33 @@ function buildToolSummary(message: ChatMessage): RemoteThreadRow['toolSummary'] 
   else if (error > 0 && success > 0) status = 'mixed'
   else if (error > 0) status = 'error'
   else status = 'success'
-  return { activityCount: activities.length, status }
+  const tools: RemoteToolEntry[] = activities.slice(0, 12).map((activity) => {
+    const entry: RemoteToolEntry = {
+      name: activity.displayName || activity.toolName,
+      category: activity.category ?? 'unknown',
+      status:
+        activity.status === 'running' || activity.status === 'pending'
+          ? 'running'
+          : activity.status === 'error'
+            ? 'error'
+            : 'success'
+    }
+    if (typeof activity.filePath === 'string' && activity.filePath) {
+      entry.file = activity.filePath
+    }
+    if (typeof activity.diffSummary?.additions === 'number') {
+      entry.additions = activity.diffSummary.additions
+    }
+    if (typeof activity.diffSummary?.deletions === 'number') {
+      entry.deletions = activity.diffSummary.deletions
+    }
+    const detail = activity.resultSummary?.trim()
+    if (detail) {
+      entry.detail = detail.length > 90 ? `${detail.slice(0, 87).trimEnd()}...` : detail
+    }
+    return entry
+  })
+  return { activityCount: activities.length, status, tools }
 }
 
 function buildRow(
