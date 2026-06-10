@@ -14697,9 +14697,15 @@ if (isGeminiMcpBridgeProcess) {
           const lastProviderRun = [...(chat.runs ?? [])]
             .reverse()
             .find((entry) => entry.runId !== runId && entry.provider === provider)
+          // Gemini sessions persist under their OWN chat field
+          // (linkedGeminiSessionId) — reading linkedProviderSessionId for
+          // gemini would silently skip native resume on desktop→phone
+          // chains. Every other provider uses linkedProviderSessionId.
+          const linkedSessionForProvider =
+            provider === 'gemini' ? chat.linkedGeminiSessionId : chat.linkedProviderSessionId
           const resumeSessionId =
             (lastProviderRun
-              ? chat.linkedProviderSessionId || lastProviderRun.providerThreadId
+              ? linkedSessionForProvider || lastProviderRun.providerThreadId
               : undefined) || undefined
           const priorMessages = chat.messages.filter(
             (message) => message.id !== promptMessageId
@@ -14714,7 +14720,18 @@ if (isGeminiMcpBridgeProcess) {
             codexHandoffsApplied: [],
             isGlobalRun: false,
             approvalMode: action.approvalMode || 'default',
-            providerLabel: providerLabel(provider)
+            providerLabel: providerLabel(provider),
+            // Ollama continuity is NOT a session id — it's the persisted
+            // tool-trajectory memory + tier the desktop composer injects.
+            ...(provider === 'ollama'
+              ? {
+                  ollamaToolControlTier: effectiveOllamaToolControlTier(
+                    AppStore.getSettings(),
+                    workspaceRecord.path
+                  ),
+                  ollamaSessionMemory: normalizeOllamaSessionMemory(chat.ollamaSessionMemory)
+                }
+              : {})
           })
           if (composed.contextTurnsApplied > 0) {
             console.log(
