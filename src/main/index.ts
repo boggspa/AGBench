@@ -13599,6 +13599,26 @@ if (isGeminiMcpBridgeProcess) {
       },
       checkTrust: (workspacePath) => TrustStatusService.checkTrust(workspacePath)
     })
+    // Sweep stale phone-attachment temp files (>24h) — they're only needed
+    // for the duration of their run; without this the tmpdir accretes one
+    // file per attached image forever.
+    try {
+      const attachmentsDir = join(os.tmpdir(), 'taskwraith-remote-attachments')
+      if (fsSync.existsSync(attachmentsDir)) {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000
+        for (const entry of fsSync.readdirSync(attachmentsDir)) {
+          const filePath = join(attachmentsDir, entry)
+          try {
+            if (fsSync.statSync(filePath).mtimeMs < cutoff) fsSync.unlinkSync(filePath)
+          } catch {
+            // Best-effort hygiene — never block startup on tmp cleanup.
+          }
+        }
+      }
+    } catch {
+      // Best-effort hygiene.
+    }
+
     // Repair allowlist entries whose ids were hand-typed before the picker
     // existed (display names / quoted paths) — they silently denied
     // everything because visibility matches on the store's workspace uuid.
@@ -14656,10 +14676,19 @@ if (isGeminiMcpBridgeProcess) {
         }
 
         if (taskCard.diffSummary) {
+          // Hunk previews are capped per-file but unbounded across files —
+          // a wide refactor could blow the relay frame, and remote clients
+          // render stats + per-file rows only. Ship the summary WITHOUT
+          // hunks; a hunk-viewer slice can fetch them on demand.
+          const { hunks: _hunks, ...diffSummaryLean } = taskCard.diffSummary
+          const diffPayload = {
+            ...diffSummaryLean,
+            files: taskCard.diffSummary.files?.map(({ hunks: _fileHunks, ...file }) => file)
+          }
           envelopes.push(
             buildRemoteProjectionEnvelope({
               kind: 'diffSummary',
-              payload: taskCard.diffSummary,
+              payload: diffPayload,
               generatedAt,
               workspaceId: chat.workspaceId ?? null,
               workspacePath: chat.workspacePath,
