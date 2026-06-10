@@ -124,6 +124,37 @@ describe('decodeBridgeActionPayload', () => {
       ).toBe('unknown')
     })
 
+    it('decodes createThread ensemble roster overrides + rejects oversized rosters', () => {
+      const withRoster = decodeBridgeActionPayload(
+        encode({
+          kind: 'createThread',
+          actionId: 'a-roster',
+          workspaceId: 'ws-1',
+          variant: 'ensemble',
+          participants: [
+            { provider: 'claude', model: 'claude-fable-5' },
+            { provider: 'gemini', role: 'Researcher' }
+          ]
+        })
+      ).payload
+      expect(withRoster.kind).toBe('createThread')
+      if (withRoster.kind === 'createThread') {
+        expect(withRoster.participants).toHaveLength(2)
+        expect(withRoster.participants?.[0].model).toBe('claude-fable-5')
+        expect(withRoster.participants?.[1].role).toBe('Researcher')
+      }
+      const oversized = decodeBridgeActionPayload(
+        encode({
+          kind: 'createThread',
+          actionId: 'a-big',
+          workspaceId: 'ws-1',
+          variant: 'ensemble',
+          participants: Array.from({ length: 13 }, () => ({ provider: 'claude' }))
+        })
+      ).payload
+      expect(oversized.kind).toBe('unknown')
+    })
+
     it('decodes a threadSnapshotRequest and classifies it read-only', () => {
       const wire = encode({
         kind: 'threadSnapshotRequest',

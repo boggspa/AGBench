@@ -128,6 +128,14 @@ export interface BridgeThreadRowExpandAction extends BridgeActionMetadata {
 /** Create an empty chat thread without starting a run. Used by the iOS
  * "New chat / New ensemble / New global" flows so the phone can land on
  * a welcome surface before the first prompt. */
+export interface BridgeCreateThreadParticipant {
+  provider: string
+  /** Provider-specific model id ('cli-default' when omitted). */
+  model?: string
+  /** Role label; defaults to the Mac's default role for that provider. */
+  role?: string
+}
+
 export interface BridgeCreateThreadAction extends BridgeActionMetadata {
   kind: 'createThread'
   workspaceId: string
@@ -139,6 +147,10 @@ export interface BridgeCreateThreadAction extends BridgeActionMetadata {
   provider?: string
   /** Optional display title seed. */
   title?: string
+  /** Ensemble roster override (variant 'ensemble'), in speaking order.
+   * Omitted → the Mac's default roster. Capped at 12 (the panel ceiling);
+   * role/instructions default per provider from the Mac's role seeds. */
+  participants?: BridgeCreateThreadParticipant[]
 }
 
 export interface BridgeRegisterApnsTokenAction extends BridgeActionMetadata {
@@ -626,7 +638,20 @@ function isCreateThread(v: Record<string, unknown>): boolean {
     (v.variant === 'workspace' || v.variant === 'ensemble' || v.variant === 'global') &&
     (v.threadId === undefined || typeof v.threadId === 'string') &&
     (v.provider === undefined || typeof v.provider === 'string') &&
-    (v.title === undefined || typeof v.title === 'string')
+    (v.title === undefined || typeof v.title === 'string') &&
+    (v.participants === undefined || isCreateThreadParticipants(v.participants))
+  )
+}
+
+function isCreateThreadParticipants(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 12) return false
+  return value.every(
+    (entry) =>
+      isRecord(entry) &&
+      typeof entry.provider === 'string' &&
+      entry.provider.trim().length > 0 &&
+      (entry.model === undefined || typeof entry.model === 'string') &&
+      (entry.role === undefined || typeof entry.role === 'string')
   )
 }
 

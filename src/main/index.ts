@@ -14171,10 +14171,51 @@ if (isGeminiMcpBridgeProcess) {
               return { ok: false, reason: 'Ensemble mode is disabled on your Mac.' }
             }
             const configuredProviders = await detectConfiguredProviders(AppStore.getSettings())
-            const chat = AppStore.createEnsembleChat(
+            let chat = AppStore.createEnsembleChat(
               { workspaceId: workspaceRecord.id, workspacePath: workspaceRecord.path },
               configuredProviders
             )
+            // Phone-edited roster: replace the default participants in the
+            // requested speaking order. Role/instructions default from the
+            // Mac's per-provider seeds (the default roster entry for that
+            // provider) so a custom panel keeps the curated prompts.
+            if (action.participants?.length && chat.ensemble) {
+              try {
+                const seedByProvider = new Map(
+                  chat.ensemble.participants.map((participant) => [
+                    participant.provider,
+                    participant
+                  ])
+                )
+                const custom = action.participants.map((entry, index) => {
+                  const provider = assertProviderId(entry.provider)
+                  const seed = seedByProvider.get(provider)
+                  return {
+                    id: `ios-p${index + 1}-${provider}`,
+                    provider,
+                    enabled: true,
+                    role: entry.role?.trim() || seed?.role || 'Participant',
+                    instructions: seed?.instructions || '',
+                    order: index + 1,
+                    model: entry.model?.trim() || 'cli-default',
+                    ...(seed?.permissionPresetId
+                      ? { permissionPresetId: seed.permissionPresetId }
+                      : {})
+                  }
+                })
+                chat = {
+                  ...chat,
+                  ensemble: { ...chat.ensemble, participants: custom },
+                  updatedAt: Date.now()
+                }
+                AppStore.saveChat(chat)
+              } catch (err) {
+                return {
+                  ok: false,
+                  reason: err instanceof Error ? err.message : String(err)
+                }
+              }
+            }
             finish(chat, action.workspaceId)
             return { ok: true, threadId: chat.appChatId, chatKind: chat.chatKind }
           }
