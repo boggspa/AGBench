@@ -3064,12 +3064,19 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
     (typeof input.file_path === 'string' && input.file_path) ||
     (typeof input.filePath === 'string' && input.filePath) ||
     undefined
-  const diffSummary = bridgeToolDiffStats(toolName, input)
+  // MCP wrapper tools (grok's use_tool, generic call_tool) carry the REAL
+  // tool in their input — "Git status" beats "Use tool {raw json}".
+  const innerName =
+    /^(use_tool|call_tool|mcp)$/i.test(toolName) && typeof input.tool_name === 'string'
+      ? input.tool_name
+      : undefined
+  const effectiveName = innerName || toolName
+  const diffSummary = bridgeToolDiffStats(effectiveName, input)
   const activity: ToolActivity = {
     id,
     toolName,
-    displayName: bridgeToolDisplayName(toolName),
-    category: bridgeToolCategory(toolName),
+    displayName: bridgeToolDisplayName(effectiveName),
+    category: bridgeToolCategory(effectiveName),
     status: 'running',
     startedAt: new Date().toISOString(),
     ...(filePath ? { filePath } : {}),
@@ -3105,13 +3112,38 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
   // Write tools with computed diff stats show +N −M chips — "The file ...
   // has been updated successfully" boilerplate adds nothing.
   if (!failed && activity.category === 'write' && activity.diffSummary) return
-  const summary =
+  const summary = unwrapBridgeToolResultText(
     (typeof payload.summary === 'string' && payload.summary) ||
-    (typeof payload.output === 'string' && payload.output) ||
-    (typeof payload.content === 'string' && payload.content) ||
-    ''
+      (typeof payload.output === 'string' && payload.output) ||
+      (typeof payload.content === 'string' && payload.content) ||
+      ''
+  )
   if (summary) {
     activity.resultSummary = summary.length > 200 ? `${summary.slice(0, 197)}...` : summary
+  }
+}
+
+/** Tool results frequently arrive as JSON envelopes ({"type":"MCP",
+ * "output":{...}}) — surface the innermost human-readable string instead
+ * of raw JSON in the transcript detail line. */
+function unwrapBridgeToolResultText(raw: string, depth = 0): string {
+  const trimmed = raw.trim()
+  if (depth > 3 || !trimmed.startsWith('{')) return trimmed
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    for (const key of ['content', 'output', 'text', 'result', 'message', 'Content', 'OkayOutput']) {
+      const value = parsed[key]
+      if (typeof value === 'string' && value.trim()) {
+        return unwrapBridgeToolResultText(value, depth + 1)
+      }
+      if (value && typeof value === 'object') {
+        const inner = unwrapBridgeToolResultText(JSON.stringify(value), depth + 1)
+        if (inner && !inner.startsWith('{')) return inner
+      }
+    }
+    return trimmed
+  } catch {
+    return trimmed
   }
 }
 
@@ -3149,6 +3181,13 @@ function materializeBridgeRunProviderOutput(
     return
   }
   if (payload?.type === 'content' || payload?.type === 'token') {
+    // `cumulative: true` marks the trailing full-turn restatement the CLI
+    // emits when its envelope diverged from the streamed deltas. The
+    // desktop renderer REPLACES its bubble with it; appending here doubled
+    // the whole turn in the transcript. The deltas are already accumulated
+    // (interleaved with tool parts) — skip the restatement unless nothing
+    // streamed at all (envelope-only runs).
+    if (payload.cumulative === true && state.content.trim().length > 0) return
     const text =
       (typeof payload.text === 'string' && payload.text) ||
       (typeof payload.content === 'string' && payload.content) ||
