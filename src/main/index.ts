@@ -3051,14 +3051,18 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
   const toolName = String(
     payload.tool_name || payload.toolName || payload.name || payload.function?.name || 'tool'
   )
+  // Canonical compat shape (shared by every provider's emitter): tool_id +
+  // parameters. The aliases cover raw provider events reaching this path
+  // un-normalized (gemini CLI JSONL).
   const id = String(
-    payload.id || payload.call_id || payload.tool_call_id || payload.toolCallId ||
-      `bridge-tool-${state.activities.length + 1}`
+    payload.tool_id || payload.id || payload.call_id || payload.tool_call_id ||
+      payload.toolCallId || `bridge-tool-${state.activities.length + 1}`
   )
-  const input = (payload.input ?? payload.arguments ?? payload.params ?? {}) as Record<
-    string,
-    unknown
-  >
+  const input = (payload.parameters ??
+    payload.input ??
+    payload.arguments ??
+    payload.params ??
+    {}) as Record<string, unknown>
   const filePath =
     (typeof input.path === 'string' && input.path) ||
     (typeof input.file_path === 'string' && input.file_path) ||
@@ -3097,7 +3101,10 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
 }
 
 function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any): void {
-  const id = String(payload.id || payload.call_id || payload.tool_call_id || payload.toolCallId || '')
+  const id = String(
+    payload.tool_id || payload.id || payload.call_id || payload.tool_call_id ||
+      payload.toolCallId || ''
+  )
   const failed =
     payload.is_error === true ||
     payload.status === 'failed' ||
