@@ -55,6 +55,8 @@ export interface RemoteTaskCard {
   /** Present for sub-threads / isolated side chats — remote clients nest
    * these under the parent thread like the desktop sidebar. */
   parentChatId?: string
+  /** Sidebar pin (drives remote Pinned sections). */
+  pinned?: boolean
   /** Sub-agent character identity (desktop parity): pool/platform name,
    * accent hex, and identicon catalog slug. */
   agentName?: string
@@ -529,6 +531,7 @@ export function buildRemoteTaskCard(
     id: chat.appChatId,
     threadId: chat.appChatId,
     ...(chat.parentChatId ? { parentChatId: chat.parentChatId } : {}),
+    ...(chat.pinned ? { pinned: true } : {}),
     ...(agentIdentity?.name ? { agentName: agentIdentity.name } : {}),
     ...(agentIdentity?.accent ? { agentAccent: agentIdentity.accent } : {}),
     ...(agentIdentity?.slug ? { agentSlug: agentIdentity.slug } : {}),

@@ -11,6 +11,8 @@ import type {
   BridgeEnsembleSkipActiveParticipantAction,
   BridgeEnsembleSteerAction,
   BridgeEnsembleRosterUpdateAction,
+  BridgeSetThreadNotesAction,
+  BridgeToggleMessagePinAction,
   BridgeEnsembleWakeNowAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
@@ -87,6 +89,10 @@ export interface BridgeActionExecutor {
   executeEnsembleSteer(action: BridgeEnsembleSteerAction): Promise<BridgeActionExecutionResult>
   executeEnsembleRosterUpdate(
     action: BridgeEnsembleRosterUpdateAction
+  ): Promise<BridgeActionExecutionResult>
+  executeSetThreadNotes(action: BridgeSetThreadNotesAction): Promise<BridgeActionExecutionResult>
+  executeToggleMessagePin(
+    action: BridgeToggleMessagePinAction
   ): Promise<BridgeActionExecutionResult>
   executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
@@ -178,6 +184,16 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeEnsembleRosterUpdateAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('ensembleRosterUpdate', action.threadId)
+  }
+  async executeSetThreadNotes(
+    action: BridgeSetThreadNotesAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('setThreadNotes', action.threadId)
+  }
+  async executeToggleMessagePin(
+    action: BridgeToggleMessagePinAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('toggleMessagePin', action.threadId)
   }
   async executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
@@ -300,6 +316,8 @@ export interface MainProcessActionExecutorDependencies {
   ensembleQueuePromptFn?: (action: BridgeEnsembleQueuePromptAction) => Promise<unknown>
   ensembleSteerFn?: (action: BridgeEnsembleSteerAction) => Promise<unknown>
   ensembleRosterUpdateFn?: (action: BridgeEnsembleRosterUpdateAction) => Promise<unknown>
+  setThreadNotesFn?: (action: BridgeSetThreadNotesAction) => Promise<unknown>
+  toggleMessagePinFn?: (action: BridgeToggleMessagePinAction) => Promise<unknown>
   log?: (line: string) => void
 }
 
@@ -636,6 +654,28 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       'ensembleRosterUpdate',
       action.threadId,
       this.deps.ensembleRosterUpdateFn,
+      action
+    )
+  }
+
+  async executeSetThreadNotes(
+    action: BridgeSetThreadNotesAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'setThreadNotes',
+      action.threadId,
+      this.deps.setThreadNotesFn,
+      action
+    )
+  }
+
+  async executeToggleMessagePin(
+    action: BridgeToggleMessagePinAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'toggleMessagePin',
+      action.threadId,
+      this.deps.toggleMessagePinFn,
       action
     )
   }

@@ -484,6 +484,10 @@ export class BridgeActionRouter {
         return this.executor.executeEnsembleSteer(payload)
       case 'ensembleRosterUpdate':
         return this.executor.executeEnsembleRosterUpdate(payload)
+      case 'setThreadNotes':
+        return this.executor.executeSetThreadNotes(payload)
+      case 'toggleMessagePin':
+        return this.executor.executeToggleMessagePin(payload)
       case 'registerApnsToken':
         return this.executor.executeRegisterApnsToken(payload)
       case 'setYoloMode':
@@ -874,6 +878,12 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
       return 'steer'
+    // Thread annotations (notes + message pins): write-class but far less
+    // powerful than starting runs — gated under startTurn so the default
+    // read-write entry covers them.
+    case 'setThreadNotes':
+    case 'toggleMessagePin':
+      return 'startTurn'
     // Admin-only capabilities: these are intentionally NOT included in the
     // read-write task-console default set. A workspace entry must list them
     // explicitly before a paired device can change sidebar pinning or toggle

@@ -228,10 +228,17 @@ export interface RemoteThreadSnapshot {
   hasMoreAbove: boolean
   hasMoreBelow: boolean
   runSummary?: RemoteRunSummary
+  /** Thread notes (chat.pinnedNotes), clipped. */
+  notes?: string
+  /** Pinned messages (metadata.pinnedAt), newest first, capped — these may
+   * fall OUTSIDE the latestN row window so they ship separately. */
+  pinnedRows?: RemoteThreadRow[]
   generatedAt: string
 }
 
 export interface RemoteProjectionOptions {
+  /** Thread notes (chat.pinnedNotes) — projected onto snapshot.notes. */
+  notes?: string
   threadId: string
   mode: RemoteProjectionMode
   /** Max chars for `preview` / `promptPreview` (default 280). */
@@ -603,6 +610,18 @@ export function projectRemoteThread(
   const previewMax = opts.previewMaxChars ?? DEFAULT_PREVIEW_MAX
   const generatedAt = opts.generatedAt ?? new Date().toISOString()
   const runSummary = buildRunSummary(runs)
+  const pinnedRows = all
+    .filter(
+      (message) =>
+        typeof (message.metadata as Record<string, unknown> | undefined)?.pinnedAt === 'number'
+    )
+    .sort(
+      (a, b) =>
+        Number((b.metadata as Record<string, unknown>).pinnedAt) -
+        Number((a.metadata as Record<string, unknown>).pinnedAt)
+    )
+    .slice(0, 12)
+    .map((message) => buildRow(message, previewMax, null))
 
   const attentionFor = (message: ChatMessage): RemoteAttentionKind | null => {
     const detected = detectMessageAttention(message)
@@ -624,7 +643,11 @@ export function projectRemoteThread(
     mode: opts.mode,
     totalRows,
     generatedAt,
-    ...(runSummary ? { runSummary } : {})
+    ...(runSummary ? { runSummary } : {}),
+    ...(typeof opts.notes === 'string' && opts.notes.trim()
+      ? { notes: sanitizePreview(opts.notes, 4000).preview }
+      : {}),
+    ...(pinnedRows.length > 0 ? { pinnedRows } : {})
   }
 
   if (opts.mode.kind === 'summaryOnly') {

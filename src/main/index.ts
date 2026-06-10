@@ -14209,6 +14209,7 @@ if (isGeminiMcpBridgeProcess) {
       const clamped = Math.max(1, Math.min(100, Math.floor(limit)))
       const generatedAt = new Date().toISOString()
       const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+        notes: chat.pinnedNotes,
         threadId: chat.appChatId,
         mode: { kind: 'latestN', n: clamped },
         previewMaxChars: REMOTE_IOS_PREVIEW_MAX,
@@ -14425,6 +14426,38 @@ if (isGeminiMcpBridgeProcess) {
           }
           return { ok }
         },
+        setThreadNotesFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat) return { ok: false, error: 'Thread not found' }
+          const updated: ChatRecord = {
+            ...chat,
+            pinnedNotes: action.notes,
+            updatedAt: Date.now()
+          }
+          AppStore.saveChat(updated)
+          broadcastChatUpdated(updated)
+          const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
+          if (canonical) pushRemoteThreadSnapshot(updated, canonical)
+          return { ok: true }
+        },
+        toggleMessagePinFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat) return { ok: false, error: 'Thread not found' }
+          const index = chat.messages.findIndex((message) => message.id === action.messageId)
+          if (index < 0) return { ok: false, error: 'Message not found' }
+          const message = chat.messages[index]
+          const metadata = { ...(message.metadata ?? {}) } as Record<string, unknown>
+          if (action.pinned) metadata.pinnedAt = Date.now()
+          else delete metadata.pinnedAt
+          const messages = [...chat.messages]
+          messages[index] = { ...message, metadata } as ChatMessage
+          const updated: ChatRecord = { ...chat, messages, updatedAt: Date.now() }
+          AppStore.saveChat(updated)
+          broadcastChatUpdated(updated)
+          const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
+          if (canonical) pushRemoteThreadSnapshot(updated, canonical)
+          return { ok: true }
+        },
         ensembleRosterUpdateFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
@@ -14625,6 +14658,7 @@ if (isGeminiMcpBridgeProcess) {
           )
           const generatedAt = new Date().toISOString()
           const snapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+        notes: chat.pinnedNotes,
             threadId: chat.appChatId,
             mode: { kind: 'aroundRow', rowId: action.rowId, radius: 0 },
             previewMaxChars: maxChars,
@@ -15099,6 +15133,7 @@ if (isGeminiMcpBridgeProcess) {
 
         if (chatIndex < REMOTE_THREAD_SNAPSHOT_CAP) {
           const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+        notes: chat.pinnedNotes,
             threadId: chat.appChatId,
             mode: { kind: 'latestN', n: 24 },
             previewMaxChars: REMOTE_IOS_PREVIEW_MAX,

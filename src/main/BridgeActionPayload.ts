@@ -249,6 +249,22 @@ export interface BridgeRosterParticipant {
   enabled?: boolean
 }
 
+export interface BridgeSetThreadNotesAction extends BridgeActionMetadata {
+  kind: 'setThreadNotes'
+  workspaceId: string
+  threadId: string
+  /** Markdown thread notes; empty string clears. */
+  notes: string
+}
+
+export interface BridgeToggleMessagePinAction extends BridgeActionMetadata {
+  kind: 'toggleMessagePin'
+  workspaceId: string
+  threadId: string
+  messageId: string
+  pinned: boolean
+}
+
 export interface BridgeEnsembleRosterUpdateAction extends BridgeActionMetadata {
   kind: 'ensembleRosterUpdate'
   workspaceId: string
@@ -313,6 +329,8 @@ export type BridgeActionPayload =
   | BridgeEnsembleQueuePromptAction
   | BridgeEnsembleSteerAction
   | BridgeEnsembleRosterUpdateAction
+  | BridgeSetThreadNotesAction
+  | BridgeToggleMessagePinAction
   | BridgeRegisterApnsTokenAction
   | BridgeSetYoloModeAction
   | BridgeTogglePinChatAction
@@ -413,6 +431,8 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'setThreadNotes':
+    case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -454,6 +474,8 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'setThreadNotes':
+    case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -507,6 +529,8 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'setThreadNotes':
+    case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -589,6 +613,14 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isEnsembleRosterUpdate(parsed)
         ? (parsed as unknown as BridgeEnsembleRosterUpdateAction)
         : { kind: 'unknown', rawKind: 'ensembleRosterUpdate', raw: parsed }
+    case 'setThreadNotes':
+      return isSetThreadNotes(parsed)
+        ? (parsed as unknown as BridgeSetThreadNotesAction)
+        : { kind: 'unknown', rawKind: 'setThreadNotes', raw: parsed }
+    case 'toggleMessagePin':
+      return isToggleMessagePin(parsed)
+        ? (parsed as unknown as BridgeToggleMessagePinAction)
+        : { kind: 'unknown', rawKind: 'toggleMessagePin', raw: parsed }
     case 'registerApnsToken':
       return isRegisterApnsToken(parsed)
         ? (parsed as unknown as BridgeRegisterApnsTokenAction)
@@ -795,6 +827,21 @@ function isEnsembleQueuePrompt(v: Record<string, unknown>): boolean {
     typeof v.text === 'string' &&
     v.text.trim().length > 0 &&
     (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isSetThreadNotes(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) && typeof v.notes === 'string' && v.notes.length <= 20_000
+  )
+}
+
+function isToggleMessagePin(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    typeof v.messageId === 'string' &&
+    v.messageId.trim().length > 0 &&
+    typeof v.pinned === 'boolean'
   )
 }
 

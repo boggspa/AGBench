@@ -79,6 +79,14 @@ function makeStubExecutor(
       executed: true,
       message: 'ensembleSteer done'
     }),
+    executeSetThreadNotes: make('executeSetThreadNotes', {
+      executed: true,
+      message: 'ensembleSteer done'
+    }),
+    executeToggleMessagePin: make('executeToggleMessagePin', {
+      executed: true,
+      message: 'ensembleSteer done'
+    }),
     executeRegisterApnsToken: make('executeRegisterApnsToken', {
       executed: true,
       message: 'registerApnsToken done'
