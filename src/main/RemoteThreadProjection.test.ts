@@ -378,6 +378,18 @@ describe('RemoteThreadProjection', () => {
     })
   })
 
+  describe('imageAttachmentCount', () => {
+    it('surfaces metadata.imagePaths as a count', () => {
+      const messages = [
+        msg(0, { metadata: { imagePaths: ['/tmp/a.jpg', '/tmp/b.png'] } }),
+        msg(1)
+      ]
+      const snapshot = project({ kind: 'latestN', n: 5 }, messages)
+      expect(snapshot.rows[0].imageAttachmentCount).toBe(2)
+      expect(snapshot.rows[1].imageAttachmentCount).toBeUndefined()
+    })
+  })
+
   describe('soloSpeakerForMessage', () => {
     it('labels solo assistant rows with provider and model', () => {
       const labeler = soloSpeakerForMessage('codex', [

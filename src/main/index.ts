@@ -1324,6 +1324,7 @@ function prepareIosComposerPromptChat(args: {
     model?: string
   }
   workspace: WorkspaceRecord
+  imagePaths?: string[]
 }): ChatRecord {
   const { action, workspace } = args
   const provider = assertProviderId(action.provider)
@@ -1358,7 +1359,10 @@ function prepareIosComposerPromptChat(args: {
     id: `ios-user-${randomUUID()}`,
     role: 'user',
     content: prompt,
-    timestamp
+    timestamp,
+    ...(args.imagePaths?.length
+      ? { metadata: { imagePaths: args.imagePaths } }
+      : {})
   }
   const updated: ChatRecord = {
     ...chat,
@@ -14321,9 +14325,32 @@ if (isGeminiMcpBridgeProcess) {
           // run path, so a duck-typed shim is sufficient.
           const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
           const provider = assertProviderId(action.provider)
+          // Phone-attached images → temp files → the SAME imagePaths lane the
+          // desktop composer uses (adapters forward per provider). Temp dir
+          // is per-run; files are small (phone downscales before sending).
+          let iosImagePaths: string[] = []
+          if (action.imageAttachments?.length) {
+            try {
+              const dir = join(os.tmpdir(), 'taskwraith-remote-attachments')
+              fsSync.mkdirSync(dir, { recursive: true })
+              iosImagePaths = action.imageAttachments.map((attachment, index) => {
+                const ext = attachment.mimeType === 'image/png' ? 'png' : 'jpg'
+                const file = join(
+                  dir,
+                  `${action.threadId.replace(/[^a-zA-Z0-9-]/g, '')}-${Date.now()}-${index}.${ext}`
+                )
+                fsSync.writeFileSync(file, Buffer.from(attachment.dataBase64, 'base64'))
+                return file
+              })
+            } catch (err) {
+              console.warn('[remote-bridge] failed to materialize image attachments:', err)
+              iosImagePaths = []
+            }
+          }
           let chat = prepareIosComposerPromptChat({
             action,
-            workspace: workspaceRecord
+            workspace: workspaceRecord,
+            imagePaths: iosImagePaths
           })
           const route = routeWithRunId(provider, {
             appChatId: chat.appChatId,
@@ -14372,7 +14399,8 @@ if (isGeminiMcpBridgeProcess) {
             appChatId: chat.appChatId,
             appRunId: runId,
             approvalMode: action.approvalMode,
-            model: action.model
+            model: action.model,
+            ...(iosImagePaths.length ? { imagePaths: iosImagePaths } : {})
           }
           // Ack at ACCEPTANCE, not completion. dispatchAgentRun includes
           // heavy provider preflight (Ollama model/RAM probes, Codex

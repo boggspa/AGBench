@@ -137,6 +137,10 @@ export interface RemoteThreadRow {
    * duplicate panels. Absent for solo chats and user rows, so remote
    * clients render "Agent"/"You" exactly like a solo desktop chat. */
   speaker?: string
+  /** Images attached to this message (desktop file-picker or phone
+   * uploads — both land in message.metadata.imagePaths). Count only;
+   * remote clients render an attachment chip. */
+  imageAttachmentCount?: number
   /** Bounded + sanitized one-screen preview of the row body. */
   preview: string
   /** True when `preview` was clipped from a longer body. */
@@ -322,6 +326,10 @@ function buildRow(
     timestamp: message.timestamp
   }
   if (typeof message.runId === 'string') row.runId = message.runId
+  const imagePaths = (message.metadata as Record<string, unknown> | undefined)?.imagePaths
+  if (Array.isArray(imagePaths) && imagePaths.length > 0) {
+    row.imageAttachmentCount = imagePaths.length
+  }
   const toolSummary = buildToolSummary(message)
   if (toolSummary) row.toolSummary = toolSummary
   if (attentionKind) {

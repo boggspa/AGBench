@@ -99,6 +99,18 @@ export interface BridgeComposerPromptAction extends BridgeActionMetadata {
   model?: string
   /** Optional context-turn count (0–20 per the plan's standard payload). */
   contextTurns?: number
+  /** Phone-attached images (downscaled JPEG/PNG, base64). The executor
+   * writes them to temp files and forwards as AgentRunPayload.imagePaths
+   * — the same attachment lane the desktop composer uses. Capped at 2
+   * images / ~900KB combined base64 to respect the relay frame budget. */
+  imageAttachments?: BridgeImageAttachment[]
+}
+
+export interface BridgeImageAttachment {
+  /** Display name, e.g. "IMG_0123.jpg". */
+  name?: string
+  mimeType: string
+  dataBase64: string
 }
 
 /** On-demand bounded transcript window for one thread. The phone sends
@@ -615,6 +627,24 @@ function isQuestionReject(v: Record<string, unknown>): boolean {
   )
 }
 
+const MAX_IMAGE_ATTACHMENTS = 2
+const MAX_IMAGE_ATTACHMENT_COMBINED_BASE64 = 900_000
+
+function isImageAttachments(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_IMAGE_ATTACHMENTS) {
+    return false
+  }
+  let combined = 0
+  for (const entry of value) {
+    if (!isRecord(entry)) return false
+    if (typeof entry.mimeType !== 'string' || !entry.mimeType.startsWith('image/')) return false
+    if (typeof entry.dataBase64 !== 'string' || entry.dataBase64.length === 0) return false
+    if (entry.name !== undefined && typeof entry.name !== 'string') return false
+    combined += entry.dataBase64.length
+  }
+  return combined <= MAX_IMAGE_ATTACHMENT_COMBINED_BASE64
+}
+
 function isComposerPrompt(v: Record<string, unknown>): boolean {
   return (
     hasValidActionMetadata(v) &&
@@ -624,6 +654,7 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
     typeof v.provider === 'string' &&
     (v.approvalMode === undefined || typeof v.approvalMode === 'string') &&
     (v.model === undefined || typeof v.model === 'string') &&
+    (v.imageAttachments === undefined || isImageAttachments(v.imageAttachments)) &&
     (v.contextTurns === undefined ||
       (typeof v.contextTurns === 'number' &&
         Number.isInteger(v.contextTurns) &&
