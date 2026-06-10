@@ -1083,6 +1083,14 @@ type BridgeRunTranscriptState = {
   toolMessageId: string
   startedAt: string
   content: string
+  /** Ordered text/tool segments — interleaved like the desktop transcript
+   * (text, tool burst, text, ...). Each part becomes its own message. */
+  parts: Array<{
+    id: string
+    kind: 'text' | 'tools'
+    content: string
+    activities: ToolActivity[]
+  }>
   streamBuffer?: string
   actualModel?: string
   providerSessionId?: string | null
@@ -2748,6 +2756,7 @@ function registerBridgeRunTranscript(args: {
     status: 'running',
     flushedOnce: false,
     activities: [],
+    parts: [],
     workspacePath: args.workspacePath
   })
   // Chain link 1/3 — if a phone send produces no response, these three
@@ -2770,47 +2779,47 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
   if (!current) return
   const timestamp = new Date().toISOString()
   let messages = [...current.messages]
-  // Tool-role sibling: the run's activity stack (desktop ActivityStack +
-  // phone tool cards both render from message.toolActivities).
-  if (state.activities.length > 0) {
-    const toolMessage: ChatMessage = {
-      id: state.toolMessageId,
-      role: 'tool',
-      content: '',
-      timestamp,
-      runId: state.runId,
-      toolActivities: state.activities.map((activity) => ({ ...activity }))
-    }
-    const toolIndex = messages.findIndex((message) => message.id === state.toolMessageId)
-    if (toolIndex >= 0) {
-      messages[toolIndex] = toolMessage
-    } else {
-      const anchorIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
-      if (anchorIndex >= 0) {
-        messages = [...messages.slice(0, anchorIndex), toolMessage, ...messages.slice(anchorIndex)]
-      } else {
-        messages = [...messages, toolMessage]
-      }
-    }
-  }
-  const assistantIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
-  if (state.content.length > 0) {
-    const assistantMessage: ChatMessage =
-      assistantIndex >= 0
-        ? { ...messages[assistantIndex], content: state.content, timestamp }
-        : {
-            id: state.assistantMessageId,
+  // Interleaved parts: each contiguous text stretch and each tool burst is
+  // its OWN message, in stream order — matching how the desktop renderer
+  // interleaves text around ActivityStacks instead of grouping all tool
+  // calls above the response.
+  let insertAfter = messages.findIndex((message) => message.id === state.promptMessageId)
+  for (const part of state.parts) {
+    if (part.kind === 'text' && part.content.trim().length === 0) continue
+    const partMessage: ChatMessage =
+      part.kind === 'text'
+        ? {
+            id: part.id,
             role: 'assistant',
-            content: state.content,
+            content: part.content,
             timestamp,
             runId: state.runId
           }
-    if (assistantIndex >= 0) {
-      messages[assistantIndex] = assistantMessage
+        : {
+            id: part.id,
+            role: 'tool',
+            content: '',
+            timestamp,
+            runId: state.runId,
+            toolActivities: part.activities.map((activity) => ({ ...activity }))
+          }
+    const existingIndex = messages.findIndex((message) => message.id === part.id)
+    if (existingIndex >= 0) {
+      messages[existingIndex] = { ...messages[existingIndex], ...partMessage }
+      insertAfter = existingIndex
+    } else if (insertAfter >= 0) {
+      messages = [
+        ...messages.slice(0, insertAfter + 1),
+        partMessage,
+        ...messages.slice(insertAfter + 1)
+      ]
+      insertAfter += 1
     } else {
-      messages = [...messages, assistantMessage]
+      messages = [...messages, partMessage]
+      insertAfter = messages.length - 1
     }
-  } else if (final && state.status === 'failed' && state.errorMessage) {
+  }
+  if (state.parts.length === 0 && final && state.status === 'failed' && state.errorMessage) {
     messages = [
       ...messages,
       {
@@ -2932,7 +2941,7 @@ function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string):
         (typeof parsed.content === 'string' && parsed.content) ||
         ''
       if (text) {
-        state.content += text
+        appendBridgeRunText(state, text)
         if (!state.flushedOnce) flushBridgeRunTranscript(state.runId)
         else scheduleBridgeRunFlush(state.runId)
       }
@@ -2974,18 +2983,71 @@ function bridgeToolDisplayName(name: string): string {
   return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
 }
 
-/** Tool boundaries are paragraph boundaries: without this every text
- * segment of a multi-tool run concatenated into one mashed paragraph
- * (desktop transcripts separate these segments around the activity
- * stack). */
-function bridgeRunParagraphBreak(state: BridgeRunTranscriptState): void {
-  if (state.content.length > 0 && !state.content.endsWith('\n\n')) {
-    state.content = `${state.content.replace(/[ \t]+$/, '')}\n\n`.replace(/\n{3,}$/, '\n\n')
+/** Append streamed text to the current text part (or open a new one after
+ * a tool burst) — this is what interleaves text and tool messages in the
+ * persisted transcript the way the desktop renderer does. */
+function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): void {
+  state.content += text
+  const last = state.parts[state.parts.length - 1]
+  if (last && last.kind === 'text') {
+    last.content += text
+  } else {
+    state.parts.push({
+      id: `${state.assistantMessageId}-p${state.parts.length}`,
+      kind: 'text',
+      content: text,
+      activities: []
+    })
   }
 }
 
+/** Per-edit diff stats derivable from the tool INPUT — what the desktop
+ * shows for write tools instead of truncated result text. */
+function bridgeToolDiffStats(
+  toolName: string,
+  input: Record<string, unknown>
+): ToolActivity['diffSummary'] | undefined {
+  const oldString = typeof input.old_string === 'string' ? input.old_string : undefined
+  const newString = typeof input.new_string === 'string' ? input.new_string : undefined
+  if (oldString !== undefined && newString !== undefined) {
+    return {
+      additions: newString.length ? newString.split('\n').length : 0,
+      deletions: oldString.length ? oldString.split('\n').length : 0,
+      source: 'string_replace',
+      confidence: 'exact'
+    }
+  }
+  const patch =
+    (typeof input.patch === 'string' && input.patch) ||
+    (typeof input.diff === 'string' && input.diff) ||
+    undefined
+  if (patch) {
+    let additions = 0
+    let deletions = 0
+    for (const line of patch.split('\n')) {
+      if (line.startsWith('+') && !line.startsWith('+++')) additions++
+      else if (line.startsWith('-') && !line.startsWith('---')) deletions++
+    }
+    return { additions, deletions, source: 'patch_preview', confidence: 'exact' }
+  }
+  if (/write|create/i.test(toolName)) {
+    const content =
+      (typeof input.content === 'string' && input.content) ||
+      (typeof input.file_text === 'string' && input.file_text) ||
+      undefined
+    if (content !== undefined) {
+      return {
+        additions: content.length ? content.split('\n').length : 0,
+        deletions: 0,
+        source: 'content',
+        confidence: 'estimated'
+      }
+    }
+  }
+  return undefined
+}
+
 function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): void {
-  bridgeRunParagraphBreak(state)
   const toolName = String(
     payload.tool_name || payload.toolName || payload.name || payload.function?.name || 'tool'
   )
@@ -3002,15 +3064,29 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
     (typeof input.file_path === 'string' && input.file_path) ||
     (typeof input.filePath === 'string' && input.filePath) ||
     undefined
-  state.activities.push({
+  const diffSummary = bridgeToolDiffStats(toolName, input)
+  const activity: ToolActivity = {
     id,
     toolName,
     displayName: bridgeToolDisplayName(toolName),
     category: bridgeToolCategory(toolName),
     status: 'running',
     startedAt: new Date().toISOString(),
-    ...(filePath ? { filePath } : {})
-  })
+    ...(filePath ? { filePath } : {}),
+    ...(diffSummary ? { diffSummary } : {})
+  }
+  state.activities.push(activity)
+  const last = state.parts[state.parts.length - 1]
+  if (last && last.kind === 'tools') {
+    last.activities.push(activity)
+  } else {
+    state.parts.push({
+      id: `${state.toolMessageId}-p${state.parts.length}`,
+      kind: 'tools',
+      content: '',
+      activities: [activity]
+    })
+  }
 }
 
 function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any): void {
@@ -3026,6 +3102,9 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
   if (!activity) return
   activity.status = failed ? 'error' : 'success'
   activity.endedAt = new Date().toISOString()
+  // Write tools with computed diff stats show +N −M chips — "The file ...
+  // has been updated successfully" boilerplate adds nothing.
+  if (!failed && activity.category === 'write' && activity.diffSummary) return
   const summary =
     (typeof payload.summary === 'string' && payload.summary) ||
     (typeof payload.output === 'string' && payload.output) ||
@@ -3079,7 +3158,7 @@ function materializeBridgeRunProviderOutput(
         // Chain link 2/3 (see registerBridgeRunTranscript).
         console.log(`[bridge-run] first delta run=${runId} (+${text.length} chars)`)
       }
-      state.content += text
+      appendBridgeRunText(state, text)
       if (!state.flushedOnce) flushBridgeRunTranscript(runId)
       else scheduleBridgeRunFlush(runId)
     }
@@ -3130,7 +3209,7 @@ function materializeBridgeRunFromPublish(
     const parsed = JSON.parse(trimmed) as Record<string, unknown>
     materializeBridgeRunProviderOutput(provider, record as AgentRunRoute, parsed)
   } catch {
-    state.content += data
+    appendBridgeRunText(state, data)
     scheduleBridgeRunFlush(runId)
   }
 }
@@ -14610,6 +14689,38 @@ if (isGeminiMcpBridgeProcess) {
           pushRemoteThreadSnapshot(chat, action.workspaceId)
           bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
 
+          // Conversation continuity — desktop runs compose prior turns + a
+          // provider session-resume handle in the RENDERER before invoking
+          // agent-run. Bridge runs skipped both, so every phone follow-up
+          // opened a FRESH provider session ("I don't have any prior
+          // context about what 'those ones' refers to").
+          const lastProviderRun = [...(chat.runs ?? [])]
+            .reverse()
+            .find((entry) => entry.runId !== runId && entry.provider === provider)
+          const resumeSessionId =
+            (lastProviderRun
+              ? chat.linkedProviderSessionId || lastProviderRun.providerThreadId
+              : undefined) || undefined
+          const priorMessages = chat.messages.filter(
+            (message) => message.id !== promptMessageId
+          )
+          const composed = composeRunPrompt({
+            provider,
+            finalPrompt: action.text,
+            messages: priorMessages,
+            chatContextTurns: AppStore.getSettings().chatContextTurns,
+            ...(resumeSessionId ? { resumeSessionId } : {}),
+            nextModel: action.model,
+            codexHandoffsApplied: [],
+            isGlobalRun: false,
+            approvalMode: action.approvalMode || 'default',
+            providerLabel: providerLabel(provider)
+          })
+          if (composed.contextTurnsApplied > 0) {
+            console.log(
+              `[bridge-run] composed ${composed.contextTurnsApplied} context turns for run=${runId}`
+            )
+          }
           const payload: AgentRunPayload = {
             // iOS-initiated runs are always scoped to a workspace (the
             // bridge router only forwards actions whose workspaceId is in
@@ -14619,7 +14730,8 @@ if (isGeminiMcpBridgeProcess) {
             provider,
             scope: 'workspace',
             workspace: workspaceRecord.path,
-            prompt: action.text,
+            prompt: composed.contextualPrompt,
+            ...(resumeSessionId ? { providerSessionId: resumeSessionId } : {}),
             appChatId: chat.appChatId,
             appRunId: runId,
             approvalMode: action.approvalMode,
