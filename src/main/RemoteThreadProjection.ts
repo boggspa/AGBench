@@ -183,6 +183,10 @@ export interface RemoteRunSummary {
   durationMs?: number
   /** Best-effort token tally pulled from `run.stats` when present. */
   totalTokens?: number
+  tokensIn?: number
+  tokensOut?: number
+  /** Pre-formatted cost line (e.g. "$0.45") when the run reported one. */
+  costText?: string
   /** File-change counts pulled from `run.runDiff` when present. */
   fileChanges?: RemoteRunFileChangeCounts
 }
@@ -416,16 +420,32 @@ export function buildRunSummary(runs: ChatRun[] | undefined): RemoteRunSummary |
   if (Number.isFinite(started) && Number.isFinite(ended) && ended >= started) {
     summary.durationMs = ended - started
   }
-  // `stats` is loosely typed; pull a token total if one is exposed.
+  // `stats` is loosely typed; pull token/cost telemetry where exposed
+  // (canonical keys per the desktop usage aggregator: inputTokens /
+  // outputTokens / totalTokens; cost via cost_usd / total_cost_usd).
   const stats = run.stats as Record<string, unknown> | undefined
   if (stats) {
-    const candidates = ['totalTokens', 'total_tokens', 'tokens']
-    for (const key of candidates) {
-      const v = stats[key]
-      if (typeof v === 'number' && Number.isFinite(v)) {
-        summary.totalTokens = v
-        break
+    const num = (...keys: string[]): number | undefined => {
+      for (const key of keys) {
+        const v = stats[key]
+        if (typeof v === 'number' && Number.isFinite(v)) return v
+        if (typeof v === 'string' && v.trim() && Number.isFinite(Number(v))) return Number(v)
       }
+      return undefined
+    }
+    const tokensIn = num('inputTokens', 'input_tokens', 'promptTokens', 'prompt_tokens')
+    const tokensOut = num('outputTokens', 'output_tokens', 'completionTokens', 'completion_tokens')
+    if (tokensIn !== undefined) summary.tokensIn = tokensIn
+    if (tokensOut !== undefined) summary.tokensOut = tokensOut
+    const total =
+      num('totalTokens', 'total_tokens', 'tokens') ??
+      (tokensIn !== undefined || tokensOut !== undefined
+        ? (tokensIn ?? 0) + (tokensOut ?? 0)
+        : undefined)
+    if (total !== undefined) summary.totalTokens = total
+    const cost = num('cost_usd', 'total_cost_usd', 'costUsd', 'totalCostUsd')
+    if (cost !== undefined && cost > 0) {
+      summary.costText = `$${cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)}`
     }
   }
   const fileChanges = summarizeRunFileChanges(run)
