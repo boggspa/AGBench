@@ -236,6 +236,7 @@ describe('RemoteTaskProjection', () => {
         }
       })
     )
+    expect(card.chatKind).toBe('ensemble')
     expect(card.ensembleState).toMatchObject({
       threadId: 'chat-1',
       roundId: 'round-1',

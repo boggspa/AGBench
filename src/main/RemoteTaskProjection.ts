@@ -55,6 +55,14 @@ export interface RemoteTaskCard {
   /** Present for sub-threads / isolated side chats — remote clients nest
    * these under the parent thread like the desktop sidebar. */
   parentChatId?: string
+  /** `subThread` vs `sideChat` — drives ↳ vs ⇄ nesting chrome on remote
+   * clients (mirrors the desktop sidebar relation glyphs). */
+  parentChatRelation?: 'subThread' | 'sideChat'
+  /** When `parentChatRelation === 'sideChat'`, the side-chat mode
+   * (`guestParticipant`, `ensembleClone`, `fanOut`, …). */
+  sideChatMode?: string
+  /** `ensemble` chats need `ensembleQueuePrompt` on remote send paths. */
+  chatKind?: 'single' | 'ensemble'
   workspaceId: string | null
   workspacePath?: string
   provider: ProviderId
@@ -495,6 +503,9 @@ export function buildRemoteTaskCard(
     id: chat.appChatId,
     threadId: chat.appChatId,
     ...(chat.parentChatId ? { parentChatId: chat.parentChatId } : {}),
+    ...(chat.parentChatRelation ? { parentChatRelation: chat.parentChatRelation } : {}),
+    ...(chat.sideChatContext?.mode ? { sideChatMode: chat.sideChatContext.mode } : {}),
+    ...(chat.chatKind ? { chatKind: chat.chatKind } : {}),
     workspaceId: chat.workspaceId && chat.workspaceId.length > 0 ? chat.workspaceId : null,
     provider: chat.provider ?? 'gemini',
     title: chat.title || 'Untitled chat',
