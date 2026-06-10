@@ -14691,12 +14691,24 @@ if (isGeminiMcpBridgeProcess) {
           const runId = route.appRunId!
           const promptMessageId =
             [...chat.messages].reverse().find((message) => message.role === 'user')?.id ?? ''
+          const lastProviderRun = [...(chat.runs ?? [])]
+            .reverse()
+            .find((entry) => entry.runId !== runId && entry.provider === provider)
+          // Model inheritance: a phone send without an explicit model means
+          // "whatever this chat was using" — falling to the provider
+          // default reset continuations (catastrophic for Ollama, where
+          // the default tag may not even be installed locally).
+          const inheritedModel =
+            action.model ||
+            lastProviderRun?.actualModel ||
+            lastProviderRun?.requestedModel ||
+            undefined
           const run: ChatRun = {
             runId,
             provider,
             startedAt: new Date().toISOString(),
             promptMessageId,
-            requestedModel: action.model,
+            requestedModel: inheritedModel,
             approvalMode: action.approvalMode,
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             ...(inheritedGeminiAuthProfileId !== undefined
@@ -14740,9 +14752,6 @@ if (isGeminiMcpBridgeProcess) {
           // agent-run. Bridge runs skipped both, so every phone follow-up
           // opened a FRESH provider session ("I don't have any prior
           // context about what 'those ones' refers to").
-          const lastProviderRun = [...(chat.runs ?? [])]
-            .reverse()
-            .find((entry) => entry.runId !== runId && entry.provider === provider)
           // Gemini sessions persist under their OWN chat field
           // (linkedGeminiSessionId) — reading linkedProviderSessionId for
           // gemini would silently skip native resume on desktop→phone
@@ -14798,7 +14807,7 @@ if (isGeminiMcpBridgeProcess) {
             appChatId: chat.appChatId,
             appRunId: runId,
             approvalMode: action.approvalMode,
-            model: action.model,
+            model: inheritedModel,
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             ...(inheritedGeminiAuthProfileId !== undefined
               ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
