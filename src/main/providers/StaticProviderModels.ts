@@ -157,6 +157,20 @@ const OLLAMA_STATIC_MODELS = [
   },
   { id: 'custom', label: 'Custom model ID' }
 ]
+const GEMINI_STATIC_MODELS = [
+  { id: 'cli-default', label: 'CLI Default', isDefault: true },
+  { id: 'auto', label: 'Auto' },
+  { id: 'pro', label: 'Pro' },
+  { id: 'flash', label: 'Flash' },
+  { id: 'flash-lite', label: 'Flash Lite' }
+]
+const GROK_STATIC_MODELS = [
+  { id: 'grok-build', label: 'Grok Build 0.1', isDefault: true }
+]
+const CURSOR_STATIC_MODELS = [
+  { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
+  { id: 'composer-2.5', label: 'Composer 2.5' }
+]
 const KIMI_DEFAULT_MODEL = 'kimi-k2.6'
 const KIMI_CLI_MODEL_IDS = new Set(KIMI_STATIC_MODELS.map((model) => model.id))
 const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
@@ -183,13 +197,10 @@ export function getStaticProviderModels(provider: ProviderId) {
   if (provider === 'claude') return CLAUDE_STATIC_MODELS
   if (provider === 'kimi') return KIMI_STATIC_MODELS
   if (provider === 'ollama') return OLLAMA_STATIC_MODELS
-  return [
-    { id: 'cli-default', label: 'CLI Default', isDefault: true },
-    { id: 'auto', label: 'Auto' },
-    { id: 'pro', label: 'Pro' },
-    { id: 'flash', label: 'Flash' },
-    { id: 'flash-lite', label: 'Flash Lite' }
-  ]
+  if (provider === 'gemini') return GEMINI_STATIC_MODELS
+  if (provider === 'grok') return GROK_STATIC_MODELS
+  if (provider === 'cursor') return CURSOR_STATIC_MODELS
+  return GEMINI_STATIC_MODELS
 }
 
 export function normalizeCliProviderModel(provider: ProviderId, model?: string | null): string {
@@ -206,6 +217,20 @@ export function normalizeCliProviderModel(provider: ProviderId, model?: string |
     if (!trimmed || trimmed === 'cli-default' || trimmed === 'auto' || trimmed === 'default') {
       return OLLAMA_STATIC_MODELS[0].id
     }
+    return trimmed
+  }
+  if (provider === 'grok') {
+    if (!trimmed || lowered === 'cli-default' || lowered === 'default') return 'grok-build'
+    if (lowered.startsWith('grok')) return trimmed
+    return 'grok-build'
+  }
+  if (provider === 'cursor') {
+    if (!trimmed || lowered === 'cli-default' || lowered === 'default') return 'composer-2.5-fast'
+    if (trimmed.startsWith('composer-')) return trimmed
+    return 'composer-2.5-fast'
+  }
+  if (provider === 'gemini') {
+    if (!trimmed || lowered === 'cli-default' || lowered === 'default') return 'cli-default'
     return trimmed
   }
   if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best')

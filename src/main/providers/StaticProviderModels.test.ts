@@ -31,6 +31,23 @@ interface StaticModelShape {
   supportedReasoningEfforts?: Array<{ reasoningEffort: string }>
 }
 
+describe('getStaticProviderModels (provider-specific catalogs)', () => {
+  it('returns distinct model lists for gemini, grok, and cursor', () => {
+    const gemini = getStaticProviderModels('gemini').map((m) => m.id)
+    const grok = getStaticProviderModels('grok').map((m) => m.id)
+    const cursor = getStaticProviderModels('cursor').map((m) => m.id)
+    expect(gemini).toContain('flash')
+    expect(grok).toEqual(['grok-build'])
+    expect(cursor).toEqual(['composer-2.5-fast', 'composer-2.5'])
+  })
+
+  it('normalizes invalid cross-provider model ids back to provider defaults', () => {
+    expect(normalizeCliProviderModel('grok', 'flash')).toBe('grok-build')
+    expect(normalizeCliProviderModel('cursor', 'pro')).toBe('composer-2.5-fast')
+    expect(normalizeCliProviderModel('gemini', 'flash')).toBe('flash')
+  })
+})
+
 describe('getStaticProviderModels (claude)', () => {
   const models = getStaticProviderModels('claude') as StaticModelShape[]
   const byId = new Map(models.map((m) => [m.id, m]))
