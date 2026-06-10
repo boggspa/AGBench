@@ -14369,6 +14369,16 @@ if (isGeminiMcpBridgeProcess) {
                 (profile) => profile.builtin && profile.scope === 'workspace'
               )?.id
           const resolvedProfileId = inheritedProfileId ?? defaultProfileId
+          // Gemini runs also carry an auth-profile selection on desktop; it
+          // IS persisted per-run, so continuations inherit it. (Claude fast
+          // mode / Kimi thinking are renderer-state only — not inheritable.)
+          const inheritedGeminiAuthProfileId =
+            provider === 'gemini'
+              ? [...(chat.runs ?? [])]
+                  .reverse()
+                  .find((run) => run.provider === 'gemini' && run.geminiAuthProfileId !== undefined)
+                  ?.geminiAuthProfileId
+              : undefined
           const route = routeWithRunId(provider, {
             appChatId: chat.appChatId,
             appRunId: undefined
@@ -14384,6 +14394,9 @@ if (isGeminiMcpBridgeProcess) {
             requestedModel: action.model,
             approvalMode: action.approvalMode,
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
+            ...(inheritedGeminiAuthProfileId !== undefined
+              ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
+              : {}),
             status: 'running',
             rawEventsFile: `run-events/${runId}.jsonl`
           }
@@ -14419,6 +14432,9 @@ if (isGeminiMcpBridgeProcess) {
             approvalMode: action.approvalMode,
             model: action.model,
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
+            ...(inheritedGeminiAuthProfileId !== undefined
+              ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
+              : {}),
             ...(iosImagePaths.length ? { imagePaths: iosImagePaths } : {})
           }
           // Ack at ACCEPTANCE, not completion. dispatchAgentRun includes
