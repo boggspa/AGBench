@@ -2731,6 +2731,13 @@ function registerBridgeRunTranscript(args: {
     status: 'running',
     flushedOnce: false
   })
+  // Chain link 1/3 — if a phone send produces no response, these three
+  // [bridge-run] lines bisect it: registered-but-no-delta = the provider
+  // adapter never routed events to this runId; delta-but-no-final = the
+  // run hung; all three present = look at transport/phone instead.
+  console.log(
+    `[bridge-run] registered run=${args.runId} chat=${args.chatId} provider=${args.provider}`
+  )
 }
 
 function flushBridgeRunTranscript(runId: string, final = false): void {
@@ -2835,6 +2842,10 @@ function finalizeBridgeRunTranscript(
   if (!state) return
   state.status = status
   if (errorMessage) state.errorMessage = errorMessage
+  // Chain link 3/3 (see registerBridgeRunTranscript).
+  console.log(
+    `[bridge-run] finalized run=${runId} status=${status} chars=${state.content.length}${errorMessage ? ` error="${errorMessage}"` : ''}`
+  )
   flushBridgeRunTranscript(runId, true)
 }
 
@@ -2900,6 +2911,10 @@ function materializeBridgeRunProviderOutput(
       (typeof payload.content === 'string' && payload.content) ||
       ''
     if (text) {
+      if (state.content.length === 0) {
+        // Chain link 2/3 (see registerBridgeRunTranscript).
+        console.log(`[bridge-run] first delta run=${runId} (+${text.length} chars)`)
+      }
       state.content += text
       if (!state.flushedOnce) flushBridgeRunTranscript(runId)
       else scheduleBridgeRunFlush(runId)
