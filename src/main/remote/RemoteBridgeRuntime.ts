@@ -133,6 +133,12 @@ export interface RemoteBridgeRuntimeOptions {
   /** Keeps index.ts's `bridgeBroadcaster`/`bridgeBroadcasterRef` (the mutation
    * hooks' nullable refs) in sync with the runtime-owned instance. */
   onBroadcasterChange?: (broadcaster: BridgeBroadcaster | null) => void
+  /** Fired on EVERY device establish (incl. re-establish after drops) —
+   * unlike onBroadcasterChange, which only fires when the broadcaster is
+   * first created. Establish-seeded payloads that aren't part of
+   * broadcastSnapshot (e.g. the async provider-model catalogs) hook here,
+   * or a phone that reconnects after an app relaunch never receives them. */
+  onDeviceEstablished?: () => void
   /** Pairing QR validity window; the un-paired socket is torn down after. */
   pairingWindowMs?: number
   /** Trusted reconnect (T5): persisted pairing + relay resolve registration.
@@ -467,6 +473,7 @@ export class RemoteBridgeRuntime {
       )
     }
     this.broadcaster.broadcastSnapshot()
+    this.opts.onDeviceEstablished?.()
   }
 
   private async handleInbound(

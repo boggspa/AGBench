@@ -14352,6 +14352,23 @@ if (isGeminiMcpBridgeProcess) {
             workspace: workspaceRecord,
             imagePaths: iosImagePaths
           })
+          // Desktop runs carry the composer's runtime-profile choice; with no
+          // profile at all, providers fall back to raw adapter defaults that
+          // can diverge hard from how this chat ran on the desktop (observed:
+          // Grok hitting an ACP path its CLI rejects with 'Method not found',
+          // Cursor dispatching without the TaskWraith MCP tool bridge).
+          // Inherit the most recent run's profile; for fresh iOS chats use
+          // the first builtin workspace-scoped profile for the provider —
+          // the same one the desktop picker shows by default.
+          const inheritedProfileId = [...(chat.runs ?? [])]
+            .reverse()
+            .find((run) => run.provider === provider && run.runtimeProfileId)?.runtimeProfileId
+          const defaultProfileId = inheritedProfileId
+            ? undefined
+            : AppStore.getRuntimeProfiles(provider).find(
+                (profile) => profile.builtin && profile.scope === 'workspace'
+              )?.id
+          const resolvedProfileId = inheritedProfileId ?? defaultProfileId
           const route = routeWithRunId(provider, {
             appChatId: chat.appChatId,
             appRunId: undefined
@@ -14366,6 +14383,7 @@ if (isGeminiMcpBridgeProcess) {
             promptMessageId,
             requestedModel: action.model,
             approvalMode: action.approvalMode,
+            ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             status: 'running',
             rawEventsFile: `run-events/${runId}.jsonl`
           }
@@ -14400,6 +14418,7 @@ if (isGeminiMcpBridgeProcess) {
             appRunId: runId,
             approvalMode: action.approvalMode,
             model: action.model,
+            ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             ...(iosImagePaths.length ? { imagePaths: iosImagePaths } : {})
           }
           // Ack at ACCEPTANCE, not completion. dispatchAgentRun includes
@@ -14737,9 +14756,11 @@ if (isGeminiMcpBridgeProcess) {
           onBroadcasterChange: (broadcaster) => {
             bridgeBroadcaster = broadcaster
             bridgeBroadcasterRef = broadcaster
-            // Establish → ship the provider→model catalogs (async build).
-            if (broadcaster) remoteProviderModelsTrigger?.()
           },
+          // EVERY establish (incl. phone relaunches) re-ships the async
+          // provider-model catalogs — a freshly-launched phone starts with
+          // empty pickers otherwise.
+          onDeviceEstablished: () => remoteProviderModelsTrigger?.(),
           pairingStore: new RemotePairingStore(
             join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
             (line) => console.log(line)

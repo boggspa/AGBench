@@ -43,18 +43,36 @@ function memoryPairingStore(): {
   store: RemotePairingPersistence
   current: () => PersistedRemotePairing | null
 } {
-  let record: PersistedRemotePairing | null = null
+  // Multi-device store shape (5b9ccf7e): list/upsert/remove keyed by the
+  // phone identity; load/save kept as the deprecated single-device shims.
+  let records: PersistedRemotePairing[] = []
   return {
     store: {
-      load: () => record,
+      list: () => [...records],
+      upsert: (pairing) => {
+        records = [
+          ...records.filter(
+            (entry) => entry.iphoneIdentityPubKey !== pairing.iphoneIdentityPubKey
+          ),
+          pairing
+        ]
+      },
+      remove: (iphoneIdentityPubKey) => {
+        const before = records.length
+        records = records.filter(
+          (entry) => entry.iphoneIdentityPubKey !== iphoneIdentityPubKey
+        )
+        return records.length !== before
+      },
+      load: () => records[0] ?? null,
       save: (pairing) => {
-        record = pairing
+        records = [pairing]
       },
       clear: () => {
-        record = null
+        records = []
       }
     },
-    current: () => record
+    current: () => records[0] ?? null
   }
 }
 

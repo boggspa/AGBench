@@ -94,7 +94,23 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
       }
     })
 
+    // WS-level heartbeat: a parked Mac listener waiting for a phone sends
+    // no app frames, so without pings the idle sweeper reaps the room and
+    // the phone's trusted reconnect finds nobody until the listener's
+    // backoff loop happens to rebind. Pings (auto-ponged by ws) keep a
+    // LIVE-but-quiet socket counted as activity; truly dead sockets stop
+    // ponging and still get swept.
+    const heartbeat = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.ping()
+    }, 30_000)
+    heartbeat.unref?.()
+    ws.on('pong', () => {
+      const r = rooms.get(sessionId)
+      if (r) r.lastActivity = Date.now()
+    })
+
     const cleanup = (): void => {
+      clearInterval(heartbeat)
       const r = rooms.get(sessionId)
       if (!r) return
       if (r[role] === ws) r[role] = undefined
