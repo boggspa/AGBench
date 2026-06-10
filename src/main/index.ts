@@ -298,6 +298,8 @@ import {
   ChatMessage,
   ChatRun,
   ChatScope,
+  ToolActivity,
+  WorkspaceSnapshot,
   AppearanceMode,
   WorkspaceFileEntry,
   WorkspaceFileReadResult,
@@ -1077,6 +1079,8 @@ type BridgeRunTranscriptState = {
   provider: ProviderId
   promptMessageId: string
   assistantMessageId: string
+  /** Tool-role sibling message carrying the run's ToolActivity stack. */
+  toolMessageId: string
   startedAt: string
   content: string
   streamBuffer?: string
@@ -1087,6 +1091,13 @@ type BridgeRunTranscriptState = {
   errorMessage?: string
   flushedOnce: boolean
   flushTimer?: NodeJS.Timeout
+  /** Activities parsed from tool_use/tool_result compat events. */
+  activities: ToolActivity[]
+  /** Captured before dispatch; diffed against a post-run snapshot at
+   * finalize so bridge runs get run.runDiff like desktop runs do. */
+  preSnapshot?: WorkspaceSnapshot
+  workspacePath?: string
+  runDiff?: ChatRun['runDiff']
 }
 
 const bridgeRunTranscripts = new Map<string, BridgeRunTranscriptState>()
@@ -2722,6 +2733,7 @@ function registerBridgeRunTranscript(args: {
   chatId: string
   provider: ProviderId
   promptMessageId: string
+  workspacePath?: string
 }): void {
   bridgeRunTranscripts.set(args.runId, {
     runId: args.runId,
@@ -2729,11 +2741,14 @@ function registerBridgeRunTranscript(args: {
     provider: args.provider,
     promptMessageId: args.promptMessageId,
     assistantMessageId: `bridge-assistant-${args.chatId}-${Date.now()}`,
+    toolMessageId: `bridge-tools-${args.chatId}-${Date.now()}`,
     startedAt: new Date().toISOString(),
     content: '',
     streamBuffer: '',
     status: 'running',
-    flushedOnce: false
+    flushedOnce: false,
+    activities: [],
+    workspacePath: args.workspacePath
   })
   // Chain link 1/3 — if a phone send produces no response, these three
   // [bridge-run] lines bisect it: registered-but-no-delta = the provider
@@ -2755,6 +2770,29 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
   if (!current) return
   const timestamp = new Date().toISOString()
   let messages = [...current.messages]
+  // Tool-role sibling: the run's activity stack (desktop ActivityStack +
+  // phone tool cards both render from message.toolActivities).
+  if (state.activities.length > 0) {
+    const toolMessage: ChatMessage = {
+      id: state.toolMessageId,
+      role: 'tool',
+      content: '',
+      timestamp,
+      runId: state.runId,
+      toolActivities: state.activities.map((activity) => ({ ...activity }))
+    }
+    const toolIndex = messages.findIndex((message) => message.id === state.toolMessageId)
+    if (toolIndex >= 0) {
+      messages[toolIndex] = toolMessage
+    } else {
+      const anchorIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
+      if (anchorIndex >= 0) {
+        messages = [...messages.slice(0, anchorIndex), toolMessage, ...messages.slice(anchorIndex)]
+      } else {
+        messages = [...messages, toolMessage]
+      }
+    }
+  }
   const assistantIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
   if (state.content.length > 0) {
     const assistantMessage: ChatMessage =
@@ -2798,6 +2836,7 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
     actualModel: state.actualModel || existingRun?.actualModel,
     providerThreadId: state.providerSessionId || existingRun?.providerThreadId,
     stats: state.stats || existingRun?.stats,
+    ...(state.runDiff ? { runDiff: state.runDiff } : {}),
     status: final ? state.status : 'running',
     endedAt: final ? timestamp : existingRun?.endedAt,
     exitCode: final && state.status === 'failed' ? 1 : existingRun?.exitCode
@@ -2852,13 +2891,27 @@ function finalizeBridgeRunTranscript(
 ): void {
   const state = bridgeRunTranscripts.get(runId)
   if (!state) return
+  if (state.status !== 'running') return // exit event often follows result
   state.status = status
   if (errorMessage) state.errorMessage = errorMessage
   // Chain link 3/3 (see registerBridgeRunTranscript).
   console.log(
     `[bridge-run] finalized run=${runId} status=${status} chars=${state.content.length}${errorMessage ? ` error="${errorMessage}"` : ''}`
   )
-  flushBridgeRunTranscript(runId, true)
+  // Run diff before the terminal flush: bridge runs skip the renderer's
+  // snapshot bookkeeping, so without this no File-changes card / diff row /
+  // Create PR prompt ever appears for phone-initiated work.
+  void (async () => {
+    try {
+      if (state.preSnapshot && state.workspacePath) {
+        const postSnapshot = await captureWorkspaceSnapshot(state.workspacePath)
+        state.runDiff = computeRunDiff(state.preSnapshot, postSnapshot, runId)
+      }
+    } catch (err) {
+      console.warn(`[bridge-run] run diff failed for ${runId}:`, err)
+    }
+    flushBridgeRunTranscript(runId, true)
+  })()
 }
 
 function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string): void {
@@ -2898,6 +2951,91 @@ function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string):
   }
 }
 
+const BRIDGE_TOOL_CATEGORY_RULES: Array<{
+  pattern: RegExp
+  category: ToolActivity['category']
+}> = [
+  { pattern: /write|replace|apply_patch|edit|patch|create_file/i, category: 'write' },
+  { pattern: /read|list|cat|view|open/i, category: 'read' },
+  { pattern: /search|grep|glob|find/i, category: 'search' },
+  { pattern: /shell|bash|terminal|command|exec/i, category: 'shell' },
+  { pattern: /task|agent|delegate/i, category: 'task' }
+]
+
+function bridgeToolCategory(name: string): ToolActivity['category'] {
+  for (const rule of BRIDGE_TOOL_CATEGORY_RULES) {
+    if (rule.pattern.test(name)) return rule.category
+  }
+  return 'unknown'
+}
+
+function bridgeToolDisplayName(name: string): string {
+  const cleaned = name.replace(/^mcp__\w+__/i, '').replace(/[_-]+/g, ' ').trim()
+  return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
+}
+
+/** Tool boundaries are paragraph boundaries: without this every text
+ * segment of a multi-tool run concatenated into one mashed paragraph
+ * (desktop transcripts separate these segments around the activity
+ * stack). */
+function bridgeRunParagraphBreak(state: BridgeRunTranscriptState): void {
+  if (state.content.length > 0 && !state.content.endsWith('\n\n')) {
+    state.content = `${state.content.replace(/[ \t]+$/, '')}\n\n`.replace(/\n{3,}$/, '\n\n')
+  }
+}
+
+function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): void {
+  bridgeRunParagraphBreak(state)
+  const toolName = String(
+    payload.tool_name || payload.toolName || payload.name || payload.function?.name || 'tool'
+  )
+  const id = String(
+    payload.id || payload.call_id || payload.tool_call_id || payload.toolCallId ||
+      `bridge-tool-${state.activities.length + 1}`
+  )
+  const input = (payload.input ?? payload.arguments ?? payload.params ?? {}) as Record<
+    string,
+    unknown
+  >
+  const filePath =
+    (typeof input.path === 'string' && input.path) ||
+    (typeof input.file_path === 'string' && input.file_path) ||
+    (typeof input.filePath === 'string' && input.filePath) ||
+    undefined
+  state.activities.push({
+    id,
+    toolName,
+    displayName: bridgeToolDisplayName(toolName),
+    category: bridgeToolCategory(toolName),
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    ...(filePath ? { filePath } : {})
+  })
+}
+
+function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any): void {
+  const id = String(payload.id || payload.call_id || payload.tool_call_id || payload.toolCallId || '')
+  const failed =
+    payload.is_error === true ||
+    payload.status === 'failed' ||
+    payload.status === 'error' ||
+    (typeof payload.error === 'string' && payload.error.length > 0)
+  const activity =
+    (id && [...state.activities].reverse().find((entry) => entry.id === id)) ||
+    [...state.activities].reverse().find((entry) => entry.status === 'running')
+  if (!activity) return
+  activity.status = failed ? 'error' : 'success'
+  activity.endedAt = new Date().toISOString()
+  const summary =
+    (typeof payload.summary === 'string' && payload.summary) ||
+    (typeof payload.output === 'string' && payload.output) ||
+    (typeof payload.content === 'string' && payload.content) ||
+    ''
+  if (summary) {
+    activity.resultSummary = summary.length > 200 ? `${summary.slice(0, 197)}...` : summary
+  }
+}
+
 function materializeBridgeRunProviderOutput(
   provider: ProviderId,
   routed: AgentRunRoute,
@@ -2915,6 +3053,20 @@ function materializeBridgeRunProviderOutput(
   if (payload?.type === 'init' && typeof payload.model === 'string' && payload.model.trim()) {
     state.actualModel = payload.model
     if (!state.flushedOnce) flushBridgeRunTranscript(runId)
+    return
+  }
+  if (payload?.type === 'tool_use' || payload?.type === 'tool_call') {
+    ingestBridgeRunToolUse(state, payload)
+    scheduleBridgeRunFlush(runId)
+    return
+  }
+  if (
+    payload?.type === 'tool_result' ||
+    payload?.type === 'tool_output' ||
+    payload?.type === 'tool_response'
+  ) {
+    ingestBridgeRunToolResult(state, payload)
+    scheduleBridgeRunFlush(runId)
     return
   }
   if (payload?.type === 'content' || payload?.type === 'token') {
@@ -14438,8 +14590,21 @@ if (isGeminiMcpBridgeProcess) {
             runId,
             chatId: chat.appChatId,
             provider,
-            promptMessageId
+            promptMessageId,
+            workspacePath: workspaceRecord.path
           })
+          // Pre-run workspace snapshot — diffed at finalize so the run gets
+          // run.runDiff (File-changes card, diff row, Create PR) exactly
+          // like a desktop run. Best-effort: capture failure only costs
+          // the diff, never the run.
+          void captureWorkspaceSnapshot(workspaceRecord.path)
+            .then((snapshot) => {
+              const transcript = bridgeRunTranscripts.get(runId)
+              if (transcript) transcript.preSnapshot = snapshot
+            })
+            .catch((err) => {
+              console.warn(`[bridge-run] pre-run snapshot failed for ${runId}:`, err)
+            })
           broadcastChatUpdated(chat)
           broadcastThreadUpdate(chat.appChatId)
           pushRemoteThreadSnapshot(chat, action.workspaceId)
