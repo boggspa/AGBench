@@ -14997,6 +14997,30 @@ if (isGeminiMcpBridgeProcess) {
     // display-name ids like "Test 3" — see WorkspaceIdentity.ts). Resolve to
     // the real id before any allowlist comparison or remote payload, or
     // allowlisted workspaces project EMPTY to a paired phone.
+    /** Sub-agent character identity for a child chat — read from the PARENT
+     * chat's persisted providerMetadata.agentIdentities registry (the
+     * renderer assigns + persists these; reading keeps phone names
+     * byte-identical to the desktop's instead of re-deriving). */
+    const remoteAgentIdentityForChat = (
+      chat: ChatRecord
+    ): { name: string; accent?: string; slug?: string } | undefined => {
+      if (!chat.parentChatId) return undefined
+      const parent = AppStore.getChat(chat.parentChatId)
+      const meta = parent?.providerMetadata as Record<string, unknown> | undefined
+      const map = meta?.agentIdentities as
+        | Record<string, { name?: string; color?: string; accent?: string; slug?: string }>
+        | undefined
+      const identity = map?.[chat.appChatId]
+      if (!identity || typeof identity.name !== 'string' || !identity.name) return undefined
+      return {
+        name: identity.name,
+        accent:
+          (typeof identity.accent === 'string' && identity.accent) ||
+          (typeof identity.color === 'string' && identity.color) ||
+          undefined,
+        slug: typeof identity.slug === 'string' ? identity.slug : undefined
+      }
+    }
     const canonicalRemoteWorkspaceId = (workspaceId: string | null | undefined): string | null =>
       resolveCanonicalWorkspaceId(workspaceId, AppStore.getWorkspaces(), canonicalPath)
 
@@ -15056,7 +15080,8 @@ if (isGeminiMcpBridgeProcess) {
           generatedAt,
           pendingQuestionCount: questionCounts.get(chat.appChatId) ?? 0,
           pendingApprovalCount: approvalCounts.get(chat.appChatId) ?? 0,
-          capabilities
+          capabilities,
+          agentIdentity: remoteAgentIdentityForChat(chat)
         })
         maybeNotifyRemoteTaskNeedsAttention(taskCard)
         envelopes.push(

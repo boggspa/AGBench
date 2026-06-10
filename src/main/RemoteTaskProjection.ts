@@ -55,6 +55,11 @@ export interface RemoteTaskCard {
   /** Present for sub-threads / isolated side chats — remote clients nest
    * these under the parent thread like the desktop sidebar. */
   parentChatId?: string
+  /** Sub-agent character identity (desktop parity): pool/platform name,
+   * accent hex, and identicon catalog slug. */
+  agentName?: string
+  agentAccent?: string
+  agentSlug?: string
   /** `subThread` vs `sideChat` — drives ↳ vs ⇄ nesting chrome on remote
    * clients (mirrors the desktop sidebar relation glyphs). */
   parentChatRelation?: 'subThread' | 'sideChat'
@@ -306,6 +311,10 @@ export interface BuildRemoteTaskCardOptions {
   pendingApprovalCount?: number
   pendingQuestionCount?: number
   capabilities?: RemoteTaskCapabilities
+  /** Sub-agent character identity (read from the PARENT chat's persisted
+   * providerMetadata.agentIdentities registry — the same names/accents
+   * the desktop renders, never re-derived). */
+  agentIdentity?: { name: string; accent?: string; slug?: string }
 }
 
 export interface BuildRemoteTaskFeedSnapshotInput {
@@ -512,6 +521,7 @@ export function buildRemoteTaskCard(
   options: BuildRemoteTaskCardOptions = {}
 ): RemoteTaskCard {
   const latestRun = latestChatRun(chat)
+  const agentIdentity = options.agentIdentity
   const pendingQuestionCount = Math.max(0, Math.floor(options.pendingQuestionCount ?? 0))
   const pendingApprovalCount = Math.max(0, Math.floor(options.pendingApprovalCount ?? 0))
   const preview = previewForChat(chat, options.previewMaxChars ?? DEFAULT_PREVIEW_MAX)
@@ -519,6 +529,9 @@ export function buildRemoteTaskCard(
     id: chat.appChatId,
     threadId: chat.appChatId,
     ...(chat.parentChatId ? { parentChatId: chat.parentChatId } : {}),
+    ...(agentIdentity?.name ? { agentName: agentIdentity.name } : {}),
+    ...(agentIdentity?.accent ? { agentAccent: agentIdentity.accent } : {}),
+    ...(agentIdentity?.slug ? { agentSlug: agentIdentity.slug } : {}),
     ...(chat.parentChatRelation ? { parentChatRelation: chat.parentChatRelation } : {}),
     ...(chat.sideChatContext?.mode ? { sideChatMode: chat.sideChatContext.mode } : {}),
     ...(chat.chatKind ? { chatKind: chat.chatKind } : {}),
