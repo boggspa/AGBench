@@ -2,6 +2,8 @@ import type {
   BridgeApprovalReplyAction,
   BridgeCancelRunAction,
   BridgeComposerPromptAction,
+  BridgeCreateThreadAction,
+  BridgeThreadRowExpandAction,
   BridgeThreadSnapshotRequestAction,
   BridgeEnsembleCancelRoundAction,
   BridgeEnsembleCancelWakeupAction,
@@ -60,6 +62,10 @@ export interface BridgeActionExecutor {
   executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult>
   executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult>
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
+  executeCreateThread(action: BridgeCreateThreadAction): Promise<BridgeActionExecutionResult>
+  executeThreadRowExpand(
+    action: BridgeThreadRowExpandAction
+  ): Promise<BridgeActionExecutionResult>
   executeThreadSnapshotRequest(
     action: BridgeThreadSnapshotRequestAction
   ): Promise<BridgeActionExecutionResult>
@@ -115,6 +121,16 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeComposerPromptAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('composerPrompt', action.threadId)
+  }
+  async executeCreateThread(
+    action: BridgeCreateThreadAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('createThread', action.threadId ?? action.workspaceId)
+  }
+  async executeThreadRowExpand(
+    action: BridgeThreadRowExpandAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('threadRowExpand', action.rowId)
   }
   async executeThreadSnapshotRequest(
     action: BridgeThreadSnapshotRequestAction
@@ -229,6 +245,17 @@ export interface MainProcessActionExecutorDependencies {
   composerPromptFn?: (action: BridgeComposerPromptAction) => Promise<{
     dispatched: boolean
     appRunId: string | null
+    reason?: string
+  }>
+  createThreadFn?: (action: BridgeCreateThreadAction) => Promise<{
+    ok: boolean
+    threadId?: string
+    chatKind?: string
+    reason?: string
+  }>
+  threadRowExpandFn?: (action: BridgeThreadRowExpandAction) => Promise<{
+    ok: boolean
+    row?: Record<string, unknown>
     reason?: string
   }>
   /** Callback the executor uses to register an iOS device's APNs token.
@@ -401,6 +428,64 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
+  async executeThreadRowExpand(
+    action: BridgeThreadRowExpandAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.threadRowExpandFn) {
+      return notWired('threadRowExpand', action.rowId)
+    }
+    try {
+      const result = await this.deps.threadRowExpandFn(action)
+      if (result.ok && result.row) {
+        return {
+          executed: true,
+          message: 'Expanded row.',
+          data: { row: result.row, rowId: action.rowId, threadId: action.threadId }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not expand row.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { executed: false, message: `Row expand failed: ${message}` }
+    }
+  }
+
+  async executeCreateThread(
+    action: BridgeCreateThreadAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.createThreadFn) {
+      return notWired('createThread', action.threadId ?? action.workspaceId)
+    }
+    this.log(
+      `[BridgeActionExecutor] createThread variant=${action.variant} ws=${action.workspaceId}`
+    )
+    try {
+      const result = await this.deps.createThreadFn(action)
+      if (result.ok && result.threadId) {
+        return {
+          executed: true,
+          message: 'Chat created on your Mac.',
+          data: {
+            threadId: result.threadId,
+            workspaceId: action.workspaceId,
+            chatKind: result.chatKind
+          }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not create chat on your Mac.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] createThread failed: ${message}`)
+      return { executed: false, message: `Create thread failed: ${message}` }
+    }
+  }
+
   async executeComposerPrompt(
     action: BridgeComposerPromptAction
   ): Promise<BridgeActionExecutionResult> {
@@ -422,7 +507,7 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
         // via the projection snapshot that follows dispatch.
         return {
           executed: true,
-          message: `Run accepted for workspace "${action.workspaceId}" (provider="${action.provider}")${result.appRunId ? `; appRunId=${result.appRunId}` : ''}`,
+          message: 'Dispatching on your Mac.',
           data: {
             ...(result.appRunId ? { appRunId: result.appRunId } : {}),
             workspaceId: action.workspaceId,

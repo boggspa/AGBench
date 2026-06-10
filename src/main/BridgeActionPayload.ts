@@ -113,6 +113,34 @@ export interface BridgeThreadSnapshotRequestAction extends BridgeActionMetadata 
   limit?: number
 }
 
+/** Expand one clipped transcript row to (near) full text. Read-only —
+ * the ack returns the re-projected row; nothing is broadcast. */
+export interface BridgeThreadRowExpandAction extends BridgeActionMetadata {
+  kind: 'threadRowExpand'
+  workspaceId: string
+  threadId: string
+  /** Desktop `message.id` for the row to expand. */
+  rowId: string
+  /** Preview char ceiling (executor clamps 400–32000, default 32000). */
+  maxChars?: number
+}
+
+/** Create an empty chat thread without starting a run. Used by the iOS
+ * "New chat / New ensemble / New global" flows so the phone can land on
+ * a welcome surface before the first prompt. */
+export interface BridgeCreateThreadAction extends BridgeActionMetadata {
+  kind: 'createThread'
+  workspaceId: string
+  variant: 'workspace' | 'ensemble' | 'global'
+  /** Optional client-minted id (e.g. `ios-<uuid>`). When omitted the Mac
+   * generates one. */
+  threadId?: string
+  /** Solo-chat provider when `variant` is `workspace`. */
+  provider?: string
+  /** Optional display title seed. */
+  title?: string
+}
+
 export interface BridgeRegisterApnsTokenAction extends BridgeActionMetadata {
   kind: 'registerApnsToken'
   /** Pair identifier this device token belongs to. iOS knows it from the
@@ -229,6 +257,8 @@ export type BridgeActionPayload =
   | BridgeQuestionReplyAction
   | BridgeQuestionRejectAction
   | BridgeComposerPromptAction
+  | BridgeCreateThreadAction
+  | BridgeThreadRowExpandAction
   | BridgeThreadSnapshotRequestAction
   | BridgeCancelRunAction
   | BridgeEnsembleCancelRoundAction
@@ -326,6 +356,8 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'questionReply':
     case 'questionReject':
     case 'composerPrompt':
+    case 'createThread':
+    case 'threadRowExpand':
     case 'threadSnapshotRequest':
     case 'cancelRun':
     case 'ensembleCancelRound':
@@ -364,6 +396,8 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'questionReply':
     case 'questionReject':
     case 'composerPrompt':
+    case 'createThread':
+    case 'threadRowExpand':
     case 'threadSnapshotRequest':
     case 'cancelRun':
     case 'ensembleCancelRound':
@@ -415,6 +449,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
 export function payloadIsMutating(payload: BridgeActionPayload): boolean {
   switch (payload.kind) {
     case 'composerPrompt':
+    case 'createThread':
     case 'cancelRun':
     case 'questionReply':
     case 'ensembleCancelRound':
@@ -431,6 +466,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'questionReject':
     case 'registerApnsToken':
     case 'threadSnapshotRequest':
+    case 'threadRowExpand':
       return false
     case 'unknown':
       return true
@@ -460,6 +496,14 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isComposerPrompt(parsed)
         ? (parsed as unknown as BridgeComposerPromptAction)
         : { kind: 'unknown', rawKind: 'composerPrompt', raw: parsed }
+    case 'createThread':
+      return isCreateThread(parsed)
+        ? (parsed as unknown as BridgeCreateThreadAction)
+        : { kind: 'unknown', rawKind: 'createThread', raw: parsed }
+    case 'threadRowExpand':
+      return isThreadRowExpand(parsed)
+        ? (parsed as unknown as BridgeThreadRowExpandAction)
+        : { kind: 'unknown', rawKind: 'threadRowExpand', raw: parsed }
     case 'threadSnapshotRequest':
       return isThreadSnapshotRequest(parsed)
         ? (parsed as unknown as BridgeThreadSnapshotRequestAction)
@@ -572,6 +616,28 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
       (typeof v.contextTurns === 'number' &&
         Number.isInteger(v.contextTurns) &&
         v.contextTurns >= 0))
+  )
+}
+
+function isCreateThread(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    (v.variant === 'workspace' || v.variant === 'ensemble' || v.variant === 'global') &&
+    (v.threadId === undefined || typeof v.threadId === 'string') &&
+    (v.provider === undefined || typeof v.provider === 'string') &&
+    (v.title === undefined || typeof v.title === 'string')
+  )
+}
+
+function isThreadRowExpand(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    typeof v.threadId === 'string' &&
+    typeof v.rowId === 'string' &&
+    (v.maxChars === undefined ||
+      (typeof v.maxChars === 'number' && Number.isInteger(v.maxChars) && v.maxChars > 0))
   )
 }
 

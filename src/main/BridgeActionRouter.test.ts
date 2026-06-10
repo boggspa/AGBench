@@ -38,6 +38,14 @@ function makeStubExecutor(
       executed: true,
       message: 'composerPrompt done'
     }),
+    executeCreateThread: make('executeCreateThread', {
+      executed: true,
+      message: 'createThread done'
+    }),
+    executeThreadRowExpand: make('executeThreadRowExpand', {
+      executed: true,
+      message: 'threadRowExpand done'
+    }),
     executeThreadSnapshotRequest: make('executeThreadSnapshotRequest', {
       executed: true,
       message: 'threadSnapshotRequest done'

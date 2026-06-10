@@ -85,6 +85,45 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.kind).toBe('questionReject')
     })
 
+    it('decodes createThread (mutating) and threadRowExpand (read-only)', () => {
+      const create = decodeBridgeActionPayload(
+        encode({
+          kind: 'createThread',
+          actionId: 'a-create-1',
+          workspaceId: 'ws-1',
+          variant: 'ensemble',
+          title: 'Panel'
+        })
+      ).payload
+      expect(create.kind).toBe('createThread')
+      if (create.kind === 'createThread') {
+        expect(create.variant).toBe('ensemble')
+        expect(create.threadId).toBeUndefined()
+      }
+      expect(payloadRequiresWorkspaceGating(create)).toBe(true)
+      expect(payloadIsMutating(create)).toBe(true)
+
+      const expand = decodeBridgeActionPayload(
+        encode({
+          kind: 'threadRowExpand',
+          actionId: 'a-expand-1',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          rowId: 'm7',
+          maxChars: 32000
+        })
+      ).payload
+      expect(expand.kind).toBe('threadRowExpand')
+      if (expand.kind === 'threadRowExpand') expect(expand.rowId).toBe('m7')
+      expect(payloadIsMutating(expand)).toBe(false)
+      // Bad variant → unknown (defensive decode).
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'createThread', actionId: 'x', workspaceId: 'w', variant: 'nope' })
+        ).payload.kind
+      ).toBe('unknown')
+    })
+
     it('decodes a threadSnapshotRequest and classifies it read-only', () => {
       const wire = encode({
         kind: 'threadSnapshotRequest',

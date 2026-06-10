@@ -409,8 +409,7 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
     expect(composerPromptFn).toHaveBeenCalledTimes(1)
     expect(composerPromptFn).toHaveBeenCalledWith(sample.composerPrompt)
     expect(result.executed).toBe(true)
-    expect(result.message).toMatch(/run accepted/i)
-    expect(result.message).toMatch(/run-xyz/)
+    expect(result.message).toMatch(/dispatching on your mac/i)
     expect(result.data).toMatchObject({
       appRunId: 'run-xyz',
       workspaceId: 'ws-1',
@@ -452,7 +451,7 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
     const executor = new MainProcessActionExecutor({ cancelRunFn, composerPromptFn })
     const result = await executor.executeComposerPrompt(sample.composerPrompt)
     expect(result.executed).toBe(true)
-    expect(result.message).toMatch(/run accepted/i)
+    expect(result.message).toMatch(/dispatching on your mac/i)
     expect(result.data?.appRunId).toBeUndefined()
   })
 })
