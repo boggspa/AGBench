@@ -29,7 +29,83 @@
  * a row's identity is consistent across desktop and remote.
  */
 
-import type { ChatMessage, ChatRun, DiffFileSummary } from './store/types'
+import type { ChatMessage, ChatRun, DiffFileSummary, ProviderId } from './store/types'
+
+/** Bounded preview size for routine iOS snapshot pushes — large enough
+ * for most turns on a phone screen without blowing the relay frame budget. */
+export const REMOTE_IOS_PREVIEW_MAX = 2400
+/** Upper bound when the phone explicitly expands a clipped row. */
+export const REMOTE_IOS_ROW_EXPAND_MAX = 32000
+
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  gemini: 'Gemini',
+  codex: 'Codex',
+  claude: 'Claude',
+  kimi: 'Kimi',
+  grok: 'Grok',
+  cursor: 'Cursor',
+  ollama: 'Ollama'
+}
+
+function shortModelLabel(model: string): string {
+  const trimmed = model.trim()
+  if (!trimmed) return ''
+  if (trimmed.length <= 28) return trimmed
+  const slash = trimmed.lastIndexOf('/')
+  if (slash >= 0 && slash < trimmed.length - 1) {
+    const tail = trimmed.slice(slash + 1).trim()
+    if (tail.length > 0 && tail.length <= 28) return tail
+  }
+  return `${trimmed.slice(0, 25).trimEnd()}…`
+}
+
+/** Solo-chat speaker label — mirrors the desktop assistant header:
+ * `Provider` or `Provider · Model` when the run/message carries one. */
+export function soloSpeakerForMessage(
+  chatProvider: ProviderId | undefined,
+  runs: ChatRun[] | undefined
+): (message: ChatMessage) => string | undefined {
+  const runById = new Map(
+    (Array.isArray(runs) ? runs : [])
+      .filter((run) => run && typeof run.runId === 'string')
+      .map((run) => [run.runId, run] as const)
+  )
+  return (message) => {
+    if (message.role !== 'assistant' && message.role !== 'tool') return undefined
+    if (message.metadata?.ensembleProvider) return undefined
+    const provider =
+      (message.metadata?.ensembleProvider as ProviderId | undefined) ?? chatProvider
+    if (!provider) return undefined
+    const label = PROVIDER_LABELS[provider] ?? provider
+    const run = typeof message.runId === 'string' ? runById.get(message.runId) : undefined
+    const model =
+      (typeof message.metadata?.providerModel === 'string'
+        ? message.metadata.providerModel
+        : undefined) ||
+      (typeof message.metadata?.ensembleModel === 'string'
+        ? message.metadata.ensembleModel
+        : undefined) ||
+      run?.actualModel ||
+      run?.requestedModel
+    if (model) {
+      const short = shortModelLabel(model)
+      return short ? `${label} · ${short}` : label
+    }
+    return label
+  }
+}
+
+export function remoteSpeakerForMessage(
+  chat: {
+    provider?: ProviderId
+    ensemble?: { enabled?: boolean; participants?: unknown }
+    runs?: ChatRun[]
+  },
+  ensembleSpeaker?: (message: ChatMessage) => string | undefined
+): (message: ChatMessage) => string | undefined {
+  if (chat.ensemble?.enabled && ensembleSpeaker) return ensembleSpeaker
+  return soloSpeakerForMessage(chat.provider, chat.runs)
+}
 
 export type RemoteProjectionMode =
   | { kind: 'latestN'; n: number }

@@ -113,7 +113,7 @@ export function makeBridgeRunEventSink(options: BridgeRunEventSinkOptions): RunE
  * errors without route context, or older event shapes). The daemon
  * falls back to broadcast-all when threadId is absent, so a null
  * return preserves current behavior. */
-function extractThreadId(payload: unknown): string | null {
+export function extractThreadId(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
   const record = payload as Record<string, unknown>
   // Direct field — most agent-output / agent-error / agent-exit events

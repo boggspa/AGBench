@@ -161,8 +161,14 @@ import {
   type RemoteTaskCard,
   type RemoteTaskCapabilities
 } from './RemoteTaskProjection'
-import { projectRemoteThread } from './RemoteThreadProjection'
+import {
+  projectRemoteThread,
+  REMOTE_IOS_PREVIEW_MAX,
+  REMOTE_IOS_ROW_EXPAND_MAX,
+  remoteSpeakerForMessage
+} from './RemoteThreadProjection'
 import { ensembleSpeakerForMessage } from './EnsemblePrompt'
+import { extractThreadId } from './BridgeRunEventSink'
 import { resolveCanonicalWorkspaceId } from './WorkspaceIdentity'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
@@ -1060,6 +1066,32 @@ async function writeJsonFile(filePath: string, value: any): Promise<void> {
 
 const backgroundSubThreadTranscripts = new Map<string, BackgroundSubThreadTranscriptState>()
 
+/** iOS / bridge-initiated runs skip the renderer's `activeRunsRef`
+ * registration, so provider compat lines would otherwise stream to
+ * raw logs without persisting assistant text. Mirror the background
+ * sub-thread transcript path: accumulate in main and flush to
+ * `AppStore` so both Mac and phone snapshots stay live. */
+type BridgeRunTranscriptState = {
+  runId: string
+  chatId: string
+  provider: ProviderId
+  promptMessageId: string
+  assistantMessageId: string
+  startedAt: string
+  content: string
+  streamBuffer?: string
+  actualModel?: string
+  providerSessionId?: string | null
+  stats?: Record<string, unknown>
+  status: 'running' | 'success' | 'failed'
+  errorMessage?: string
+  flushedOnce: boolean
+  flushTimer?: NodeJS.Timeout
+}
+
+const bridgeRunTranscripts = new Map<string, BridgeRunTranscriptState>()
+let pushBridgeRunSnapshot: ((chat: ChatRecord) => void) | null = null
+
 /**
  * Phase B3 — thin proxy. Delegates to `approvalService.scheduleTimeout`
  * once the service is initialized. Kept at module scope so the
@@ -1276,6 +1308,67 @@ function requireGlobalChat(chatId: unknown, label = 'Global chat'): ChatRecord {
     throw new Error(`${label} must be a saved global chat.`)
   }
   return chat
+}
+
+/** Persist the user turn the iOS composer sends BEFORE dispatching the
+ * provider adapter. The desktop renderer normally appends the user
+ * message + run record in App.tsx prior to `run-agent`; the remote
+ * bridge skipped that step, so snapshots stayed stale even when the
+ * Mac run completed successfully. */
+function prepareIosComposerPromptChat(args: {
+  action: {
+    threadId: string
+    text: string
+    provider: string
+    approvalMode?: string
+    model?: string
+  }
+  workspace: WorkspaceRecord
+}): ChatRecord {
+  const { action, workspace } = args
+  const provider = assertProviderId(action.provider)
+  const now = Date.now()
+  const timestamp = new Date(now).toISOString()
+  const prompt = action.text.trim()
+  let chat = AppStore.getChat(action.threadId)
+  if (!chat) {
+    const title =
+      prompt.length > 0
+        ? prompt.length > 72
+          ? `${prompt.slice(0, 69).trimEnd()}...`
+          : prompt
+        : 'New Chat'
+    chat = {
+      appChatId: action.threadId,
+      scope: 'workspace',
+      chatKind: 'single',
+      provider,
+      title,
+      workspaceId: workspace.id,
+      workspacePath: workspace.path,
+      createdAt: now,
+      updatedAt: now,
+      archived: false,
+      messages: [],
+      runs: [],
+      ...(action.model ? { requestedModel: action.model } : {})
+    }
+  }
+  const userMessage: ChatMessage = {
+    id: `ios-user-${randomUUID()}`,
+    role: 'user',
+    content: prompt,
+    timestamp
+  }
+  const updated: ChatRecord = {
+    ...chat,
+    provider,
+    ...(action.model ? { requestedModel: action.model } : {}),
+    messages: [...(chat.messages || []), userMessage],
+    updatedAt: now
+  }
+  AppStore.saveChat(updated)
+  return updated
 }
 
 function validateChatWorkspaceIdentity(
@@ -2618,6 +2711,249 @@ function finalizeBackgroundSubThreadTranscript(
   state.status = status
   state.errorMessage = errorMessage
   flushBackgroundSubThreadTranscript(runId, true)
+}
+
+function registerBridgeRunTranscript(args: {
+  runId: string
+  chatId: string
+  provider: ProviderId
+  promptMessageId: string
+}): void {
+  bridgeRunTranscripts.set(args.runId, {
+    runId: args.runId,
+    chatId: args.chatId,
+    provider: args.provider,
+    promptMessageId: args.promptMessageId,
+    assistantMessageId: `bridge-assistant-${args.chatId}-${Date.now()}`,
+    startedAt: new Date().toISOString(),
+    content: '',
+    streamBuffer: '',
+    status: 'running',
+    flushedOnce: false
+  })
+}
+
+function flushBridgeRunTranscript(runId: string, final = false): void {
+  const state = bridgeRunTranscripts.get(runId)
+  if (!state) return
+  if (state.flushTimer) {
+    clearTimeout(state.flushTimer)
+    state.flushTimer = undefined
+  }
+  const current = AppStore.getChat(state.chatId)
+  if (!current) return
+  const timestamp = new Date().toISOString()
+  let messages = [...current.messages]
+  const assistantIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
+  if (state.content.length > 0) {
+    const assistantMessage: ChatMessage =
+      assistantIndex >= 0
+        ? { ...messages[assistantIndex], content: state.content, timestamp }
+        : {
+            id: state.assistantMessageId,
+            role: 'assistant',
+            content: state.content,
+            timestamp,
+            runId: state.runId
+          }
+    if (assistantIndex >= 0) {
+      messages[assistantIndex] = assistantMessage
+    } else {
+      messages = [...messages, assistantMessage]
+    }
+  } else if (final && state.status === 'failed' && state.errorMessage) {
+    messages = [
+      ...messages,
+      {
+        id: `bridge-error-${state.chatId}-${Date.now()}`,
+        role: 'error' as const,
+        content: state.errorMessage,
+        timestamp,
+        runId: state.runId
+      }
+    ]
+  }
+
+  const runs = [...(current.runs || [])]
+  const runIndex = runs.findIndex((run) => run.runId === state.runId)
+  const existingRun = runIndex >= 0 ? runs[runIndex] : undefined
+  const updatedRun: ChatRun = {
+    ...(existingRun || {
+      runId: state.runId,
+      provider: state.provider,
+      startedAt: state.startedAt,
+      promptMessageId: state.promptMessageId
+    }),
+    actualModel: state.actualModel || existingRun?.actualModel,
+    providerThreadId: state.providerSessionId || existingRun?.providerThreadId,
+    stats: state.stats || existingRun?.stats,
+    status: final ? state.status : 'running',
+    endedAt: final ? timestamp : existingRun?.endedAt,
+    exitCode: final && state.status === 'failed' ? 1 : existingRun?.exitCode
+  }
+  if (runIndex >= 0) {
+    runs[runIndex] = updatedRun
+  } else {
+    runs.push(updatedRun)
+  }
+
+  const updated: ChatRecord = {
+    ...current,
+    ...(state.provider !== 'gemini' && state.providerSessionId
+      ? { linkedProviderSessionId: state.providerSessionId }
+      : {}),
+    ...(state.provider === 'gemini' && state.providerSessionId
+      ? { linkedGeminiSessionId: state.providerSessionId }
+      : {}),
+    messages,
+    runs,
+    updatedAt: Date.now()
+  }
+  saveAndBroadcastChat(updated)
+  pushBridgeRunSnapshot?.(updated)
+  state.flushedOnce = true
+  if (final) {
+    bridgeRunTranscripts.delete(runId)
+  }
+}
+
+function scheduleBridgeRunFlush(runId: string): void {
+  const state = bridgeRunTranscripts.get(runId)
+  if (!state) return
+  if (state.flushTimer) clearTimeout(state.flushTimer)
+  state.flushTimer = setTimeout(() => {
+    flushBridgeRunTranscript(runId)
+  }, 250)
+}
+
+function finalizeBridgeRunTranscript(
+  runId: string,
+  status: 'success' | 'failed',
+  errorMessage?: string
+): void {
+  const state = bridgeRunTranscripts.get(runId)
+  if (!state) return
+  state.status = status
+  if (errorMessage) state.errorMessage = errorMessage
+  flushBridgeRunTranscript(runId, true)
+}
+
+function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string): void {
+  const trimmed = line.trim()
+  if (!trimmed) return
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    const providerSessionId = extractProviderSessionId(parsed)
+    if (providerSessionId) state.providerSessionId = providerSessionId
+    if (parsed.type === 'init' && typeof parsed.model === 'string' && parsed.model.trim()) {
+      state.actualModel = parsed.model
+      if (!state.flushedOnce) flushBridgeRunTranscript(state.runId)
+      return
+    }
+    if (parsed.type === 'content' || parsed.type === 'token') {
+      const text =
+        (typeof parsed.text === 'string' && parsed.text) ||
+        (typeof parsed.content === 'string' && parsed.content) ||
+        ''
+      if (text) {
+        state.content += text
+        if (!state.flushedOnce) flushBridgeRunTranscript(state.runId)
+        else scheduleBridgeRunFlush(state.runId)
+      }
+      return
+    }
+    if (parsed.type === 'result') {
+      if (parsed.stats && typeof parsed.stats === 'object') {
+        state.stats = parsed.stats as Record<string, unknown>
+      }
+      const status =
+        parsed.status === 'failed' || parsed.subtype === 'error' ? 'failed' : 'success'
+      finalizeBridgeRunTranscript(state.runId, status)
+    }
+  } catch {
+    // Ignore non-JSON provider stdout noise.
+  }
+}
+
+function materializeBridgeRunProviderOutput(
+  provider: ProviderId,
+  routed: AgentRunRoute,
+  payload: any
+): void {
+  const runId = routed.appRunId
+  if (!runId) return
+  const state = bridgeRunTranscripts.get(runId)
+  if (!state || state.provider !== provider) return
+  if (routed.appChatId && routed.appChatId !== state.chatId) return
+
+  const providerSessionId = extractProviderSessionId(payload)
+  if (providerSessionId) state.providerSessionId = providerSessionId
+
+  if (payload?.type === 'init' && typeof payload.model === 'string' && payload.model.trim()) {
+    state.actualModel = payload.model
+    if (!state.flushedOnce) flushBridgeRunTranscript(runId)
+    return
+  }
+  if (payload?.type === 'content' || payload?.type === 'token') {
+    const text =
+      (typeof payload.text === 'string' && payload.text) ||
+      (typeof payload.content === 'string' && payload.content) ||
+      ''
+    if (text) {
+      state.content += text
+      if (!state.flushedOnce) flushBridgeRunTranscript(runId)
+      else scheduleBridgeRunFlush(runId)
+    }
+    return
+  }
+  if (payload?.type === 'result') {
+    if (payload.stats) state.stats = payload.stats
+    const status = payload.status === 'failed' || payload.subtype === 'error' ? 'failed' : 'success'
+    finalizeBridgeRunTranscript(runId, status)
+  }
+}
+
+function materializeBridgeRunFromPublish(
+  channel: RunEventChannel,
+  provider: ProviderId,
+  payload: unknown
+): void {
+  if (!payload || typeof payload !== 'object') return
+  const record = payload as Record<string, unknown>
+  const runId = typeof record.appRunId === 'string' ? record.appRunId : null
+  if (!runId) return
+  const state = bridgeRunTranscripts.get(runId)
+  if (!state) return
+
+  if (channel === 'agent-exit' || channel === 'gemini-exit') {
+    const code = typeof record.code === 'number' ? record.code : -1
+    finalizeBridgeRunTranscript(runId, code === 0 ? 'success' : 'failed')
+    return
+  }
+  if (channel !== 'agent-output' && channel !== 'gemini-output') return
+  // sendAgentCompatLine materializes its payload directly AND publishes it
+  // on agent-output (mirrored to gemini-output for gemini). Only RAW
+  // publishes — the legacy Gemini CLI stdout pipe — may be ingested here;
+  // re-processing a compat line would double-append every token.
+  if (record.compatLine === true) return
+  const data = record.data
+  if (typeof data !== 'string' || !data) return
+  if (channel === 'gemini-output') {
+    state.streamBuffer = `${state.streamBuffer || ''}${data}`
+    const lines = state.streamBuffer.split('\n')
+    state.streamBuffer = lines.pop() || ''
+    for (const line of lines) appendBridgeRunJsonLine(state, line)
+    return
+  }
+  const trimmed = data.trim()
+  if (!trimmed) return
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    materializeBridgeRunProviderOutput(provider, record as AgentRunRoute, parsed)
+  } catch {
+    state.content += data
+    scheduleBridgeRunFlush(runId)
+  }
 }
 
 function materializeBackgroundSubThreadProviderOutput(
@@ -7331,6 +7667,7 @@ function publishRunEvent(
   payload: unknown,
   sender?: Electron.WebContents
 ): void {
+  materializeBridgeRunFromPublish(channel, provider, payload)
   runEventBus.publish({ channel, provider, payload, sender })
 }
 
@@ -7351,13 +7688,18 @@ function sendAgentCompatLine(
     'provider'
   )
   materializeBackgroundSubThreadProviderOutput(provider, routed, payload)
+  materializeBridgeRunProviderOutput(provider, routed, payload)
   ensembleOrchestratorRef?.handleProviderOutput(provider, routed, payload)
   const line = `${JSON.stringify(routed)}\n`
   const outputPayload = {
     provider,
     data: line,
     appRunId: routed.appRunId,
-    appChatId: routed.appChatId
+    appChatId: routed.appChatId,
+    // Compat lines were already materialized into bridge-run transcripts
+    // by the direct call above — the publish hook must skip them or every
+    // streamed token lands twice (three times for the gemini mirror).
+    compatLine: true
   }
   publishRunEvent('agent-output', provider, outputPayload, sender)
   if (provider === 'gemini') {
@@ -7381,6 +7723,9 @@ function sendAgentCompatError(
     { error },
     'provider'
   )
+  if (routed.appRunId) {
+    finalizeBridgeRunTranscript(routed.appRunId, 'failed', error)
+  }
   publishRunEvent('agent-error', provider, routed, sender)
   if (provider === 'gemini') {
     publishRunEvent('gemini-error', provider, routed, sender)
@@ -7410,6 +7755,12 @@ function sendAgentCompatExit(
     'provider'
   )
   ensembleOrchestratorRef?.markRunExited(routed.appRunId, typeof code === 'number' ? code : -1)
+  if (routed.appRunId) {
+    finalizeBridgeRunTranscript(
+      routed.appRunId,
+      (code ?? -1) === 0 ? 'success' : 'failed'
+    )
+  }
   publishRunEvent('agent-exit', provider, routed, sender)
   if (provider === 'gemini') {
     publishRunEvent('gemini-exit', provider, routed, sender)
@@ -13522,10 +13873,60 @@ if (isGeminiMcpBridgeProcess) {
       }
     }
 
+    const pushRemoteThreadSnapshot = (
+      chat: ChatRecord,
+      workspaceId: string,
+      limit = 40
+    ): boolean => {
+      const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+      if (!canonical || canonical !== workspaceId) return false
+      const broadcaster = bridgeBroadcasterRef
+      if (!broadcaster) return false
+      const clamped = Math.max(1, Math.min(100, Math.floor(limit)))
+      const generatedAt = new Date().toISOString()
+      const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+        threadId: chat.appChatId,
+        mode: { kind: 'latestN', n: clamped },
+        previewMaxChars: REMOTE_IOS_PREVIEW_MAX,
+        generatedAt,
+        speakerForMessage: remoteSpeakerForMessage(
+          chat,
+          chat.ensemble?.enabled
+            ? ensembleSpeakerForMessage(chat.ensemble.participants)
+            : undefined
+        )
+      })
+      broadcaster.broadcastRemoteProjection(
+        buildRemoteProjectionEnvelope({
+          kind: 'threadSnapshot',
+          payload: {
+            ...threadSnapshot,
+            taskId: chat.appChatId,
+            workspaceId: canonical,
+            provider: chat.provider
+          },
+          generatedAt,
+          workspaceId: canonical,
+          workspacePath: chat.workspacePath,
+          threadId: chat.appChatId,
+          runId: threadSnapshot.runSummary?.runId,
+          envelopeId: `remote-thread:${chat.appChatId}:push:${generatedAt}`
+        })
+      )
+      return true
+    }
+
+    pushBridgeRunSnapshot = (chat) => {
+      const workspaceId = canonicalRemoteWorkspaceId(chat.workspaceId)
+      if (!workspaceId) return
+      pushRemoteThreadSnapshot(chat, workspaceId)
+      bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+    }
+
     const createBridgeActionExecutor = (): MainProcessActionExecutor => {
       // Phase C-late: action executor wires policy-cleared actions to real
       // main-process services. Wired today: `cancelRun`, `approvalReply`,
-      // `questionReply`, `questionReject`, and `composerPrompt`.
+      // `questionReply`, `questionReject`, `createThread`, and `composerPrompt`.
       //
       // composerPrompt builds an AgentRunPayload from the iOS-side action
       // and dispatches via `dispatchAgentRun` with `mainWindow.webContents`
@@ -13730,6 +14131,95 @@ if (isGeminiMcpBridgeProcess) {
           }
           return { ok, ...result }
         },
+        createThreadFn: async (action) => {
+          const finish = (chat: ChatRecord, workspaceId: string) => {
+            broadcastChatUpdated(chat)
+            broadcastThreadUpdate(chat.appChatId)
+            pushRemoteThreadSnapshot(chat, workspaceId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }
+          if (action.variant === 'global') {
+            const chat = AppStore.createGlobalChat()
+            if (action.title?.trim()) {
+              AppStore.saveChat({ ...chat, title: action.title.trim(), updatedAt: Date.now() })
+            }
+            const saved = AppStore.getChat(chat.appChatId) ?? chat
+            finish(saved, action.workspaceId)
+            return { ok: true, threadId: saved.appChatId, chatKind: saved.chatKind }
+          }
+          const workspaceRecord = AppStore.getWorkspaces().find((w) => w.id === action.workspaceId)
+          if (!workspaceRecord) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          if (action.variant === 'ensemble') {
+            if (AppStore.getSettings().ensembleModeEnabled === false) {
+              return { ok: false, reason: 'Ensemble mode is disabled on your Mac.' }
+            }
+            const configuredProviders = await detectConfiguredProviders(AppStore.getSettings())
+            const chat = AppStore.createEnsembleChat(
+              { workspaceId: workspaceRecord.id, workspacePath: workspaceRecord.path },
+              configuredProviders
+            )
+            finish(chat, action.workspaceId)
+            return { ok: true, threadId: chat.appChatId, chatKind: chat.chatKind }
+          }
+          const provider = assertProviderId(
+            action.provider ?? AppStore.getSettings().activeProvider ?? 'claude'
+          )
+          const now = Date.now()
+          const chat: ChatRecord = {
+            appChatId: action.threadId ?? `ios-${randomUUID()}`,
+            scope: 'workspace',
+            chatKind: 'single',
+            provider,
+            title: action.title?.trim() || 'New Chat',
+            workspaceId: workspaceRecord.id,
+            workspacePath: workspaceRecord.path,
+            createdAt: now,
+            updatedAt: now,
+            archived: false,
+            messages: [],
+            runs: []
+          }
+          AppStore.saveChat(chat)
+          finish(chat, action.workspaceId)
+          return { ok: true, threadId: chat.appChatId, chatKind: chat.chatKind }
+        },
+        threadRowExpandFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat) {
+            return { ok: false, reason: `Thread "${action.threadId}" not found` }
+          }
+          const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+          if (!canonical || canonical !== action.workspaceId) {
+            return { ok: false, reason: 'Thread does not belong to the requested workspace' }
+          }
+          const maxChars = Math.max(
+            400,
+            Math.min(
+              REMOTE_IOS_ROW_EXPAND_MAX,
+              Math.floor(action.maxChars ?? REMOTE_IOS_ROW_EXPAND_MAX)
+            )
+          )
+          const generatedAt = new Date().toISOString()
+          const snapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+            threadId: chat.appChatId,
+            mode: { kind: 'aroundRow', rowId: action.rowId, radius: 0 },
+            previewMaxChars: maxChars,
+            generatedAt,
+            speakerForMessage: remoteSpeakerForMessage(
+              chat,
+              chat.ensemble?.enabled
+                ? ensembleSpeakerForMessage(chat.ensemble.participants)
+                : undefined
+            )
+          })
+          const row = snapshot.rows.find((entry) => entry.id === action.rowId)
+          if (!row) {
+            return { ok: false, reason: `Row "${action.rowId}" not found in thread` }
+          }
+          return { ok: true, row: row as unknown as Record<string, unknown> }
+        },
         threadSnapshotRequestFn: async (action) => {
           // On-demand bounded transcript window — the periodic snapshot only
           // ships threadSnapshots for the most-recent few chats (relay frame
@@ -13743,38 +14233,9 @@ if (isGeminiMcpBridgeProcess) {
           if (!canonical || canonical !== action.workspaceId) {
             return { ok: false, reason: 'Thread does not belong to the requested workspace' }
           }
-          const limit = Math.max(1, Math.min(100, Math.floor(action.limit ?? 40)))
-          const generatedAt = new Date().toISOString()
-          const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
-            threadId: chat.appChatId,
-            mode: { kind: 'latestN', n: limit },
-            previewMaxChars: 320,
-            generatedAt,
-            speakerForMessage: chat.ensemble?.enabled
-              ? ensembleSpeakerForMessage(chat.ensemble.participants)
-              : undefined
-          })
-          const broadcaster = bridgeBroadcasterRef
-          if (!broadcaster) {
+          if (!pushRemoteThreadSnapshot(chat, action.workspaceId, action.limit ?? 40)) {
             return { ok: false, reason: 'No connected device to push the snapshot to' }
           }
-          broadcaster.broadcastRemoteProjection(
-            buildRemoteProjectionEnvelope({
-              kind: 'threadSnapshot',
-              payload: {
-                ...threadSnapshot,
-                taskId: chat.appChatId,
-                workspaceId: canonical,
-                provider: chat.provider
-              },
-              generatedAt,
-              workspaceId: canonical,
-              workspacePath: chat.workspacePath,
-              threadId: chat.appChatId,
-              runId: threadSnapshot.runSummary?.runId,
-              envelopeId: `remote-thread:${chat.appChatId}:on-demand:${generatedAt}`
-            })
-          )
           return { ok: true }
         },
         composerPromptFn: async (action) => {
@@ -13803,17 +14264,57 @@ if (isGeminiMcpBridgeProcess) {
           // `event.sender` for streaming; other fields are unused in the
           // run path, so a duck-typed shim is sufficient.
           const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
+          const provider = assertProviderId(action.provider)
+          let chat = prepareIosComposerPromptChat({
+            action,
+            workspace: workspaceRecord
+          })
+          const route = routeWithRunId(provider, {
+            appChatId: chat.appChatId,
+            appRunId: undefined
+          } as AgentRunRoute)
+          const runId = route.appRunId!
+          const promptMessageId =
+            [...chat.messages].reverse().find((message) => message.role === 'user')?.id ?? ''
+          const run: ChatRun = {
+            runId,
+            provider,
+            startedAt: new Date().toISOString(),
+            promptMessageId,
+            requestedModel: action.model,
+            approvalMode: action.approvalMode,
+            status: 'running',
+            rawEventsFile: `run-events/${runId}.jsonl`
+          }
+          chat = {
+            ...chat,
+            runs: [...(chat.runs || []).filter((entry) => entry.runId !== runId), run],
+            updatedAt: Date.now()
+          }
+          AppStore.saveChat(chat)
+          registerBridgeRunTranscript({
+            runId,
+            chatId: chat.appChatId,
+            provider,
+            promptMessageId
+          })
+          broadcastChatUpdated(chat)
+          broadcastThreadUpdate(chat.appChatId)
+          pushRemoteThreadSnapshot(chat, action.workspaceId)
+          bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+
           const payload: AgentRunPayload = {
             // iOS-initiated runs are always scoped to a workspace (the
             // bridge router only forwards actions whose workspaceId is in
             // the RemoteWorkspaceAllowlist, and that list rejects global
             // scope). The earlier 'chat' literal was a pre-existing typo
             // that the typechecker now catches.
-            provider: assertProviderId(action.provider),
+            provider,
             scope: 'workspace',
             workspace: workspaceRecord.path,
             prompt: action.text,
-            appChatId: action.threadId,
+            appChatId: chat.appChatId,
+            appRunId: runId,
             approvalMode: action.approvalMode,
             model: action.model
           }
@@ -13828,9 +14329,18 @@ if (isGeminiMcpBridgeProcess) {
           void dispatchAgentRun(payload, fakeEvent)
             .then((result) => {
               if (!result.dispatched) {
+                finalizeBridgeRunTranscript(
+                  runId,
+                  'failed',
+                  'Run did not dispatch — check provider profile on your Mac.'
+                )
                 console.warn(
                   `[remote-bridge] composerPrompt run did not dispatch (thread=${action.threadId}): preflight/profile`
                 )
+              }
+              const refreshed = AppStore.getChat(chat.appChatId)
+              if (refreshed) {
+                pushRemoteThreadSnapshot(refreshed, action.workspaceId)
               }
               bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
             })
@@ -13840,13 +14350,32 @@ if (isGeminiMcpBridgeProcess) {
                 err
               )
             })
-          return { dispatched: true, appRunId: null }
+          return { dispatched: true, appRunId: runId }
         },
         log: (line) => {
           console.log(line)
         }
       })
     }
+
+    const remoteLiveSnapshotLastPush = new Map<string, number>()
+    runEventBus.subscribe({
+      id: 'remote-ios-live-snapshots',
+      handle(event) {
+        if (event.channel !== 'agent-output' && event.channel !== 'agent-exit') return
+        const threadId = extractThreadId(event.payload)
+        if (!threadId || !bridgeBroadcasterRef) return
+        const now = Date.now()
+        const last = remoteLiveSnapshotLastPush.get(threadId) ?? 0
+        if (now - last < 350) return
+        remoteLiveSnapshotLastPush.set(threadId, now)
+        const chat = AppStore.getChat(threadId)
+        if (!chat) return
+        const workspaceId = canonicalRemoteWorkspaceId(chat.workspaceId)
+        if (!workspaceId) return
+        pushRemoteThreadSnapshot(chat, workspaceId)
+      }
+    })
 
     // ── Remote iOS transport (taskwraith-e2ee-v1 rebuild) ─────────────────────
     // Projection-source helpers resurrected from the pre-removal wiring
@@ -13979,13 +14508,14 @@ if (isGeminiMcpBridgeProcess) {
           const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
             threadId: chat.appChatId,
             mode: { kind: 'latestN', n: 24 },
-            previewMaxChars: 320,
+            previewMaxChars: REMOTE_IOS_PREVIEW_MAX,
             generatedAt,
-            // Ensemble parity on remote clients: rows carry the same
-            // participant identity the desktop transcript tag shows.
-            speakerForMessage: chat.ensemble?.enabled
-              ? ensembleSpeakerForMessage(chat.ensemble.participants)
-              : undefined
+            speakerForMessage: remoteSpeakerForMessage(
+              chat,
+              chat.ensemble?.enabled
+                ? ensembleSpeakerForMessage(chat.ensemble.participants)
+                : undefined
+            )
           })
           envelopes.push(
             buildRemoteProjectionEnvelope({

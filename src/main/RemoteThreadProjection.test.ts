@@ -5,6 +5,7 @@ import {
   sanitizePreview,
   classifyRemoteKind,
   buildRunSummary,
+  soloSpeakerForMessage,
   type RemoteThreadSnapshot
 } from './RemoteThreadProjection'
 
@@ -374,6 +375,21 @@ describe('RemoteThreadProjection', () => {
       expect(empty.totalRows).toBe(0)
       expect(empty.rows).toHaveLength(0)
       expect(empty.hasMoreAbove).toBe(false)
+    })
+  })
+
+  describe('soloSpeakerForMessage', () => {
+    it('labels solo assistant rows with provider and model', () => {
+      const labeler = soloSpeakerForMessage('codex', [
+        {
+          runId: 'run-1',
+          provider: 'codex',
+          actualModel: 'gpt-5.4-medium',
+          status: 'completed'
+        } as import('./store/types').ChatRun
+      ])
+      const message = msg(1, { runId: 'run-1' })
+      expect(labeler(message)).toBe('Codex · gpt-5.4-medium')
     })
   })
 
