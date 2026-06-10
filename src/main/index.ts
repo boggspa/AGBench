@@ -14425,6 +14425,63 @@ if (isGeminiMcpBridgeProcess) {
           }
           return { ok }
         },
+        ensembleRosterUpdateFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          const existingById = new Map(
+            chat.ensemble.participants.map((participant) => [participant.id, participant])
+          )
+          const seedByProvider = new Map(
+            chat.ensemble.participants.map((participant) => [participant.provider, participant])
+          )
+          let next: EnsembleParticipant[]
+          try {
+            next = action.participants.map((entry, index) => {
+              const provider = assertProviderId(entry.provider)
+              const existing = entry.id ? existingById.get(entry.id) : undefined
+              const seed = existing ?? seedByProvider.get(provider)
+              const base: EnsembleParticipant = existing
+                ? { ...existing }
+                : {
+                    id: `ios-r${index + 1}-${provider}-${Math.random().toString(36).slice(2, 7)}`,
+                    provider,
+                    enabled: true,
+                    role: seed?.role || 'Participant',
+                    instructions: seed?.instructions || '',
+                    order: index + 1,
+                    model: 'cli-default',
+                    ...(seed?.permissionPresetId
+                      ? { permissionPresetId: seed.permissionPresetId }
+                      : {})
+                  }
+              return {
+                ...base,
+                provider,
+                enabled: entry.enabled ?? base.enabled,
+                role: entry.role?.trim() || base.role,
+                instructions: entry.brief !== undefined ? entry.brief : base.instructions,
+                model: entry.model?.trim() || base.model,
+                order: index + 1
+              }
+            })
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) }
+          }
+          if (next.filter((participant) => participant.enabled).length === 0) {
+            return { ok: false, error: 'At least one participant must stay enabled' }
+          }
+          const updated: ChatRecord = {
+            ...chat,
+            ensemble: { ...chat.ensemble, participants: next },
+            updatedAt: Date.now()
+          }
+          AppStore.saveChat(updated)
+          broadcastChatUpdated(updated)
+          const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
+          if (canonical) pushRemoteThreadSnapshot(updated, canonical)
+          bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          return { ok: true }
+        },
         ensembleSteerFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }

@@ -235,6 +235,27 @@ export interface BridgeEnsembleQueuePromptAction extends BridgeActionMetadata {
   message?: string
 }
 
+/** One desired roster entry for ensembleRosterUpdate. Array order IS the
+ * speaking order. `id` matches an existing participant (preserving its
+ * runtime profile / permission / session fields); absent or unknown ids
+ * mint a new participant seeded from the Mac's same-provider defaults. */
+export interface BridgeRosterParticipant {
+  id?: string
+  provider: string
+  model?: string
+  role?: string
+  /** Goal/brief — maps to the participant's instructions. */
+  brief?: string
+  enabled?: boolean
+}
+
+export interface BridgeEnsembleRosterUpdateAction extends BridgeActionMetadata {
+  kind: 'ensembleRosterUpdate'
+  workspaceId: string
+  threadId: string
+  participants: BridgeRosterParticipant[]
+}
+
 export interface BridgeEnsembleSteerAction extends BridgeActionMetadata {
   kind: 'ensembleSteer'
   workspaceId: string
@@ -291,6 +312,7 @@ export type BridgeActionPayload =
   | BridgeEnsembleCancelWakeupAction
   | BridgeEnsembleQueuePromptAction
   | BridgeEnsembleSteerAction
+  | BridgeEnsembleRosterUpdateAction
   | BridgeRegisterApnsTokenAction
   | BridgeSetYoloModeAction
   | BridgeTogglePinChatAction
@@ -390,6 +412,7 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'ensembleCancelWakeup':
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
+    case 'ensembleRosterUpdate':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -430,6 +453,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'ensembleCancelWakeup':
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
+    case 'ensembleRosterUpdate':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -482,6 +506,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'ensembleCancelWakeup':
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
+    case 'ensembleRosterUpdate':
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
@@ -560,6 +585,10 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isEnsembleSteer(parsed)
         ? (parsed as unknown as BridgeEnsembleSteerAction)
         : { kind: 'unknown', rawKind: 'ensembleSteer', raw: parsed }
+    case 'ensembleRosterUpdate':
+      return isEnsembleRosterUpdate(parsed)
+        ? (parsed as unknown as BridgeEnsembleRosterUpdateAction)
+        : { kind: 'unknown', rawKind: 'ensembleRosterUpdate', raw: parsed }
     case 'registerApnsToken':
       return isRegisterApnsToken(parsed)
         ? (parsed as unknown as BridgeRegisterApnsTokenAction)
@@ -767,6 +796,25 @@ function isEnsembleQueuePrompt(v: Record<string, unknown>): boolean {
     v.text.trim().length > 0 &&
     (v.message === undefined || typeof v.message === 'string')
   )
+}
+
+function isEnsembleRosterUpdate(v: Record<string, unknown>): boolean {
+  if (!isWorkspaceThreadAction(v)) return false
+  if (!Array.isArray(v.participants)) return false
+  if (v.participants.length < 1 || v.participants.length > 12) return false
+  return v.participants.every((entry) => {
+    if (!entry || typeof entry !== 'object') return false
+    const e = entry as Record<string, unknown>
+    if (typeof e.provider !== 'string' || e.provider.trim().length === 0) return false
+    if (e.id !== undefined && typeof e.id !== 'string') return false
+    if (e.model !== undefined && typeof e.model !== 'string') return false
+    if (e.role !== undefined && (typeof e.role !== 'string' || e.role.length > 120)) return false
+    if (e.brief !== undefined && (typeof e.brief !== 'string' || e.brief.length > 2000)) {
+      return false
+    }
+    if (e.enabled !== undefined && typeof e.enabled !== 'boolean') return false
+    return true
+  })
 }
 
 function isEnsembleSteer(v: Record<string, unknown>): boolean {

@@ -10,6 +10,7 @@ import type {
   BridgeEnsembleQueuePromptAction,
   BridgeEnsembleSkipActiveParticipantAction,
   BridgeEnsembleSteerAction,
+  BridgeEnsembleRosterUpdateAction,
   BridgeEnsembleWakeNowAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
@@ -84,6 +85,9 @@ export interface BridgeActionExecutor {
     action: BridgeEnsembleQueuePromptAction
   ): Promise<BridgeActionExecutionResult>
   executeEnsembleSteer(action: BridgeEnsembleSteerAction): Promise<BridgeActionExecutionResult>
+  executeEnsembleRosterUpdate(
+    action: BridgeEnsembleRosterUpdateAction
+  ): Promise<BridgeActionExecutionResult>
   executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
   ): Promise<BridgeActionExecutionResult>
@@ -169,6 +173,11 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeEnsembleSteerAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('ensembleSteer', action.threadId)
+  }
+  async executeEnsembleRosterUpdate(
+    action: BridgeEnsembleRosterUpdateAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleRosterUpdate', action.threadId)
   }
   async executeRegisterApnsToken(
     action: BridgeRegisterApnsTokenAction
@@ -290,6 +299,7 @@ export interface MainProcessActionExecutorDependencies {
   ensembleCancelWakeupFn?: (action: BridgeEnsembleCancelWakeupAction) => Promise<unknown>
   ensembleQueuePromptFn?: (action: BridgeEnsembleQueuePromptAction) => Promise<unknown>
   ensembleSteerFn?: (action: BridgeEnsembleSteerAction) => Promise<unknown>
+  ensembleRosterUpdateFn?: (action: BridgeEnsembleRosterUpdateAction) => Promise<unknown>
   log?: (line: string) => void
 }
 
@@ -615,6 +625,17 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       'ensembleSteer',
       action.threadId,
       this.deps.ensembleSteerFn,
+      action
+    )
+  }
+
+  async executeEnsembleRosterUpdate(
+    action: BridgeEnsembleRosterUpdateAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleRosterUpdate',
+      action.threadId,
+      this.deps.ensembleRosterUpdateFn,
       action
     )
   }

@@ -482,6 +482,8 @@ export class BridgeActionRouter {
         return this.executor.executeEnsembleQueuePrompt(payload)
       case 'ensembleSteer':
         return this.executor.executeEnsembleSteer(payload)
+      case 'ensembleRosterUpdate':
+        return this.executor.executeEnsembleRosterUpdate(payload)
       case 'registerApnsToken':
         return this.executor.executeRegisterApnsToken(payload)
       case 'setYoloMode':
@@ -870,6 +872,7 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'ensembleWakeNow':
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
+    case 'ensembleRosterUpdate':
       return 'steer'
     // Admin-only capabilities: these are intentionally NOT included in the
     // read-write task-console default set. A workspace entry must list them

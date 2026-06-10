@@ -214,6 +214,20 @@ export interface RemoteEnsembleParticipantState {
   endedAt?: string
 }
 
+/** One CONFIGURED participant (chat.ensemble.participants) — the editable
+ * roster, present even when no round is active (round state lives in
+ * `participants`). */
+export interface RemoteEnsembleRosterEntry {
+  id: string
+  provider: ProviderId
+  role: string
+  enabled: boolean
+  order: number
+  model?: string
+  /** Goal/brief (instructions), clipped for the wire. */
+  brief?: string
+}
+
 export interface RemoteEnsembleState {
   threadId: string
   roundId?: string
@@ -225,6 +239,8 @@ export interface RemoteEnsembleState {
   queuedPromptCount: number
   participantCount: number
   participants: RemoteEnsembleParticipantState[]
+  /** The configured (editable) roster — independent of round state. */
+  roster?: RemoteEnsembleRosterEntry[]
   workSessionStatus?: string
 }
 
@@ -693,6 +709,19 @@ export function buildRemoteEnsembleState(chat: ChatRecord): RemoteEnsembleState 
     queuedPromptCount: queuedPromptCount(activeRound),
     participantCount: participants.length || ensemble.participants.length,
     participants: participants.map(projectEnsembleParticipant),
+    roster: [...ensemble.participants]
+      .sort((a, b) => a.order - b.order)
+      .map((participant) => ({
+        id: participant.id,
+        provider: participant.provider,
+        role: participant.role,
+        enabled: participant.enabled,
+        order: participant.order,
+        ...(participant.model ? { model: participant.model } : {}),
+        ...(participant.instructions
+          ? { brief: sanitizeText(participant.instructions, 500).preview }
+          : {})
+      })),
     workSessionStatus: ensemble.workSession?.status
   }
 }

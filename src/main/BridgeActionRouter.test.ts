@@ -75,6 +75,10 @@ function makeStubExecutor(
       executed: true,
       message: 'ensembleSteer done'
     }),
+        executeEnsembleRosterUpdate: make('executeEnsembleRosterUpdate', {
+      executed: true,
+      message: 'ensembleSteer done'
+    }),
     executeRegisterApnsToken: make('executeRegisterApnsToken', {
       executed: true,
       message: 'registerApnsToken done'
