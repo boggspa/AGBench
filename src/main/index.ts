@@ -2821,6 +2821,14 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
     updatedAt: Date.now()
   }
   saveAndBroadcastChat(updated)
+  if (final) {
+    // The 1s broadcast throttle has NO trailing retry — during a busy run
+    // the FINAL snapshot (the one flipping status running→terminal) often
+    // landed inside the window and was dropped, leaving every remote card
+    // stuck on 'running' / 'thinking' after completion. Terminal flushes
+    // bypass the throttle.
+    bridgeBroadcasterRef?.resetThrottle()
+  }
   pushBridgeRunSnapshot?.(updated)
   state.flushedOnce = true
   if (final) {
@@ -14504,6 +14512,21 @@ if (isGeminiMcpBridgeProcess) {
         if (event.channel !== 'agent-output' && event.channel !== 'agent-exit') return
         const threadId = extractThreadId(event.payload)
         if (!threadId || !bridgeBroadcasterRef) return
+        if (event.channel === 'agent-exit') {
+          // Terminal status for DESKTOP-initiated runs persists via the
+          // renderer's save shortly after exit — re-push once the record
+          // settles, with the throttle cleared so the running→terminal
+          // card flip is never the broadcast that gets dropped.
+          setTimeout(() => {
+            const chat = AppStore.getChat(threadId)
+            const workspaceId = canonicalRemoteWorkspaceId(chat?.workspaceId)
+            if (!chat || !workspaceId) return
+            bridgeBroadcasterRef?.resetThrottle()
+            pushRemoteThreadSnapshot(chat, workspaceId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          }, 900).unref?.()
+          return
+        }
         const now = Date.now()
         const last = remoteLiveSnapshotLastPush.get(threadId) ?? 0
         if (now - last < 350) return
