@@ -66,14 +66,23 @@ export interface FinalizePairingResult {
   error?: string
 }
 
+export interface PairedDeviceSummary {
+  iphoneIdentityPubKey: string
+  pairId: string
+  controllerDisplayName: string
+  pairedAt: string
+  connected: boolean
+}
+
 /** Inbound methods the runtime forwards to the action router. Everything
  * else is rejected (audited surface stays exactly the router's). */
 const ROUTABLE_METHODS = new Set(['bridge.requestActionAck', 'bridge.requestPrepareStartTurnAck'])
 
 /** The slice of RemotePairingStore the runtime needs (injectable for tests). */
 export interface RemotePairingPersistence {
-  load(): PersistedRemotePairing | null
-  save(pairing: PersistedRemotePairing): void
+  list(): PersistedRemotePairing[]
+  upsert(pairing: PersistedRemotePairing): void
+  remove(iphoneIdentityPubKey: string): boolean
   clear(): void
 }
 
@@ -96,6 +105,11 @@ const defaultPostRegistration: PostRegistration = async (registerUrl, body) => {
 /** ws://host → http://host (the resolve directory rides the same listener). */
 export function relayHttpBase(relayUrl: string): string {
   return relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/$/, '')
+}
+
+export function pairIdFromIdentityPubKey(iphoneIdentityPubKey: string): string {
+  const raw = b64.decode(iphoneIdentityPubKey)
+  return `iphone-${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`
 }
 
 export interface RemoteBridgeRuntimeOptions {
@@ -132,97 +146,114 @@ export interface RemoteBridgeRuntimeOptions {
 
 const DEFAULT_PAIRING_WINDOW_MS = 5 * 60 * 1000
 
+interface EstablishedDevice {
+  client: RemoteTransportClient
+  controllerDisplayName: string
+  iphoneIdentityPubKey: string
+  registrationTimer: ReturnType<typeof setInterval> | null
+}
+
+interface PendingPairing {
+  sessionId: string
+  client: RemoteTransportClient
+  controllerDisplayName: string
+  pairingExpiryTimer: ReturnType<typeof setTimeout> | null
+}
+
 export class RemoteBridgeRuntime {
   private readonly opts: RemoteBridgeRuntimeOptions
-  private client: RemoteTransportClient | null = null
+  private readonly established = new Map<string, EstablishedDevice>()
+  private pending: PendingPairing | null = null
   private broadcaster: BridgeBroadcaster | null = null
   private runSinkUnsub: (() => void) | null = null
-  private controllerDisplayName = 'iOS device'
-  private pairingExpiryTimer: ReturnType<typeof setTimeout> | null = null
-  private registrationTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(options: RemoteBridgeRuntimeOptions) {
     this.opts = options
   }
 
-  /** Resume the persisted pairing (trusted reconnect): mint a fresh session,
-   * pre-pin the phone's identity (no prompt), open the relay socket, and
-   * register with the resolve directory so the phone can find us. No-op
-   * without a persisted pairing. */
+  /** Resume all persisted pairings (trusted reconnect): mint a fresh session
+   * per device, pre-pin each phone's identity (no prompt), and register with
+   * the resolve directory so each phone can find its own relay room. */
   startListening(): boolean {
-    const pairing = this.opts.pairingStore?.load()
-    if (!pairing) return false
-    this.teardownClient()
-    this.controllerDisplayName = pairing.controllerDisplayName
-    const sessionId = randomUUID()
-    const client = new RemoteTransportClient({
-      identityKeyPair: this.opts.identity,
-      socketFactory: this.opts.socketFactory,
-      pinnedPeerIdentityRaw: b64.decode(pairing.iphoneIdentityPubKey),
-      onConfirmCode: (sessionID, code) =>
-        this.opts.onPairingPrompt({
-          sessionID,
-          controllerDisplayName: this.controllerDisplayName,
-          code
-        }),
-      onMessage: (method, params) => void this.handleInbound(method, params),
-      onEstablished: () => this.onEstablished(),
-      onConnectionChange: (connected) =>
-        this.opts.log?.(`[remote-bridge] transport ${connected ? 'established' : 'down'}`),
-      log: this.opts.log
-    })
-    this.client = client
-    client.beginSession(this.opts.relayUrl, sessionId)
-    this.startRegistrationRefresh(pairing.iphoneIdentityPubKey)
+    const devices = this.opts.pairingStore?.list() ?? []
+    if (devices.length === 0) return false
+    for (const device of devices) {
+      this.ensurePersistedDeviceListening(device)
+    }
     return true
   }
 
   get hasPersistedPairing(): boolean {
-    return Boolean(this.opts.pairingStore?.load())
+    return (this.opts.pairingStore?.list().length ?? 0) > 0
   }
 
-  /** Forget the paired device entirely: clear persistence + drop the session. */
-  unpair(): void {
-    this.opts.pairingStore?.clear()
-    this.teardownClient()
+  listPairedDevices(): PairedDeviceSummary[] {
+    const persisted = this.opts.pairingStore?.list() ?? []
+    const summaries = new Map<string, PairedDeviceSummary>()
+    for (const device of persisted) {
+      const established = this.established.get(device.iphoneIdentityPubKey)
+      summaries.set(device.iphoneIdentityPubKey, {
+        iphoneIdentityPubKey: device.iphoneIdentityPubKey,
+        pairId: pairIdFromIdentityPubKey(device.iphoneIdentityPubKey),
+        controllerDisplayName: device.controllerDisplayName,
+        pairedAt: device.pairedAt,
+        connected: established?.client.isConnected ?? false
+      })
+    }
+    return Array.from(summaries.values()).sort((a, b) => a.pairedAt.localeCompare(b.pairedAt))
   }
 
-  /** Mint a fresh pairing session + QR bootstrap. Replaces any previous
-   * session (PairingPage's Refresh = explicit re-pair). */
+  /** Forget one paired device (or all when omitted): clear persistence + drop sessions. */
+  unpair(iphoneIdentityPubKey?: string): void {
+    if (!iphoneIdentityPubKey) {
+      this.opts.pairingStore?.clear()
+      this.teardownAllEstablished()
+      return
+    }
+    this.opts.pairingStore?.remove(iphoneIdentityPubKey)
+    this.teardownEstablished(iphoneIdentityPubKey)
+    if (this.established.size === 0 && !this.pending) {
+      this.teardownBroadcaster()
+    }
+  }
+
+  /** Mint a fresh pairing session + QR bootstrap. Does not disconnect
+   * already-established devices — only replaces an in-flight QR session. */
   beginPairing(controllerDisplayName?: string): BeginPairingResult {
-    this.teardownClient()
-    this.controllerDisplayName = controllerDisplayName?.trim() || 'iOS device'
+    this.teardownPending()
+    const controllerDisplayNameTrimmed = controllerDisplayName?.trim() || 'iOS device'
     const sessionId = randomUUID()
     const windowMs = this.opts.pairingWindowMs ?? DEFAULT_PAIRING_WINDOW_MS
 
-    const client = new RemoteTransportClient({
-      identityKeyPair: this.opts.identity,
-      socketFactory: this.opts.socketFactory,
+    const client = this.createClient({
       onConfirmCode: (sessionID, code) =>
         this.opts.onPairingPrompt({
           sessionID,
-          controllerDisplayName: this.controllerDisplayName,
+          controllerDisplayName: controllerDisplayNameTrimmed,
           code
         }),
-      onMessage: (method, params) => void this.handleInbound(method, params),
-      onEstablished: () => this.onEstablished(),
-      onConnectionChange: (connected) =>
-        this.opts.log?.(`[remote-bridge] transport ${connected ? 'established' : 'down'}`),
-      log: this.opts.log
+      onEstablished: () => this.onDeviceEstablished()
     })
-    this.client = client
     client.beginSession(this.opts.relayUrl, sessionId)
 
-    // A QR that was never scanned shouldn't leave a socket parked on the
-    // relay forever. Established sessions are exempt (the client owns
-    // reconnect from there).
-    this.pairingExpiryTimer = setTimeout(() => {
-      if (this.client === client && !client.isConnected && !client.trustedPeerIdentityRaw()) {
+    const pairingExpiryTimer = setTimeout(() => {
+      if (
+        this.pending?.sessionId === sessionId &&
+        !client.isConnected &&
+        !client.trustedPeerIdentityRaw()
+      ) {
         this.opts.log?.('[remote-bridge] pairing window expired — closing session')
-        this.teardownClient()
+        this.teardownPending()
       }
     }, windowMs)
-    this.pairingExpiryTimer.unref?.()
+    pairingExpiryTimer.unref?.()
+
+    this.pending = {
+      sessionId,
+      client,
+      controllerDisplayName: controllerDisplayNameTrimmed,
+      pairingExpiryTimer
+    }
 
     return {
       ok: true,
@@ -243,51 +274,140 @@ export class RemoteBridgeRuntime {
 
   /** Resolve the held trust decision for the prompt the user just answered. */
   finalizePairing(sessionID: string, userConfirmed: boolean): FinalizePairingResult {
-    if (!this.client || this.client.currentSessionId !== sessionID) {
+    if (!this.pending || this.pending.sessionId !== sessionID) {
       return { ok: false, error: 'Pairing session is no longer active.' }
     }
-    this.client.finalizePairing(userConfirmed)
+    const pending = this.pending
+    pending.client.finalizePairing(userConfirmed)
     if (!userConfirmed) {
-      // Declined → the handshake fails on the phone; drop our side too. If an
-      // EARLIER pairing is still persisted, resume listening for it.
-      this.teardownClient()
+      this.teardownPending()
       this.startListening()
       return { ok: true, paired: false }
     }
-    // Confirmed: persist the pinned identity for trusted reconnect + tell the
-    // relay's resolve directory where this Mac is listening.
-    const peerRaw = this.client.trustedPeerIdentityRaw()
-    if (peerRaw && this.opts.pairingStore) {
-      const iphoneIdentityPubKey = b64.encode(peerRaw)
-      this.opts.pairingStore.save({
-        v: 1,
-        iphoneIdentityPubKey,
-        controllerDisplayName: this.controllerDisplayName,
-        pairedAt: new Date().toISOString()
-      })
-      this.startRegistrationRefresh(iphoneIdentityPubKey)
+    const peerRaw = pending.client.trustedPeerIdentityRaw()
+    if (!peerRaw) {
+      this.teardownPending()
+      return { ok: false, error: 'Pairing did not produce a trusted device identity.' }
     }
+    const iphoneIdentityPubKey = b64.encode(peerRaw)
+    if (pending.pairingExpiryTimer) {
+      clearTimeout(pending.pairingExpiryTimer)
+      pending.pairingExpiryTimer = null
+    }
+    this.pending = null
+    this.promoteToEstablished({
+      iphoneIdentityPubKey,
+      controllerDisplayName: pending.controllerDisplayName,
+      client: pending.client
+    })
+    this.opts.pairingStore?.upsert({
+      v: 1,
+      iphoneIdentityPubKey,
+      controllerDisplayName: pending.controllerDisplayName,
+      pairedAt: new Date().toISOString()
+    })
+    this.startRegistrationRefresh(iphoneIdentityPubKey)
     return { ok: true, paired: true }
   }
 
   get isEstablished(): boolean {
-    return this.client?.isConnected ?? false
+    for (const device of this.established.values()) {
+      if (device.client.isConnected) return true
+    }
+    return false
   }
 
   dispose(): void {
-    this.teardownClient()
+    this.teardownPending()
+    this.teardownAllEstablished()
+    this.teardownBroadcaster()
   }
 
   // ── internals ───────────────────────────────────────────────────────────────
+
+  private createClient(overrides: {
+    iphoneIdentityPubKey?: string
+    pinnedPeerIdentityRaw?: Buffer
+    onConfirmCode?: (sessionId: string, code: string) => void
+    onEstablished?: () => void
+  }): RemoteTransportClient {
+    const knownPubKey = overrides.iphoneIdentityPubKey
+    let client!: RemoteTransportClient
+    client = new RemoteTransportClient({
+      identityKeyPair: this.opts.identity,
+      socketFactory: this.opts.socketFactory,
+      pinnedPeerIdentityRaw: overrides.pinnedPeerIdentityRaw,
+      onConfirmCode: overrides.onConfirmCode,
+      onMessage: (method, params) => {
+        const pubKey =
+          knownPubKey ??
+          (() => {
+            const raw = client.trustedPeerIdentityRaw()
+            return raw ? b64.encode(raw) : null
+          })()
+        void this.handleInbound(pubKey, method, params)
+      },
+      onEstablished: () => {
+        overrides.onEstablished?.()
+      },
+      onConnectionChange: (connected) =>
+        this.opts.log?.(
+          `[remote-bridge] transport ${connected ? 'established' : 'down'} (${knownPubKey ?? 'pending'})`
+        ),
+      log: this.opts.log
+    })
+    return client
+  }
+
+  private promoteToEstablished(args: {
+    iphoneIdentityPubKey: string
+    controllerDisplayName: string
+    client: RemoteTransportClient
+  }): void {
+    const existing = this.established.get(args.iphoneIdentityPubKey)
+    if (existing && existing.client !== args.client) {
+      this.stopRegistrationRefresh(existing)
+      existing.client.dispose()
+    }
+    this.established.set(args.iphoneIdentityPubKey, {
+      client: args.client,
+      controllerDisplayName: args.controllerDisplayName,
+      iphoneIdentityPubKey: args.iphoneIdentityPubKey,
+      registrationTimer: existing?.registrationTimer ?? null
+    })
+    if (args.client.isConnected) {
+      this.onDeviceEstablished()
+    }
+  }
+
+  private ensurePersistedDeviceListening(device: PersistedRemotePairing): void {
+    if (this.established.has(device.iphoneIdentityPubKey)) return
+    const client = this.createClient({
+      iphoneIdentityPubKey: device.iphoneIdentityPubKey,
+      pinnedPeerIdentityRaw: b64.decode(device.iphoneIdentityPubKey),
+      onEstablished: () => this.onDeviceEstablished()
+    })
+    const sessionId = randomUUID()
+    client.beginSession(this.opts.relayUrl, sessionId)
+    this.established.set(device.iphoneIdentityPubKey, {
+      client,
+      controllerDisplayName: device.controllerDisplayName,
+      iphoneIdentityPubKey: device.iphoneIdentityPubKey,
+      registrationTimer: null
+    })
+    this.startRegistrationRefresh(device.iphoneIdentityPubKey)
+  }
 
   /** Register (and keep registering at half-life) the current session with
    * the relay's resolve directory. Fire-and-forget: a failed registration
    * only degrades cold reconnect, never the live channel. */
   private startRegistrationRefresh(iphoneIdentityPubKey: string): void {
-    this.stopRegistrationRefresh()
+    const device = this.established.get(iphoneIdentityPubKey)
+    if (!device) return
+    this.stopRegistrationRefresh(device)
     const ttlMs = this.opts.registrationTtlMs ?? 60 * 60 * 1000
     const post = (): void => {
-      const sessionId = this.client?.currentSessionId
+      const sessionId = device.client.currentSessionId
       if (!sessionId) return
       const request = signRegisterRequest(this.opts.identity, {
         sessionId,
@@ -309,27 +429,27 @@ export class RemoteBridgeRuntime {
         })
     }
     post()
-    this.registrationTimer = setInterval(post, Math.max(10_000, Math.floor(ttlMs / 2)))
-    this.registrationTimer.unref?.()
+    device.registrationTimer = setInterval(post, Math.max(10_000, Math.floor(ttlMs / 2)))
+    device.registrationTimer.unref?.()
   }
 
-  private stopRegistrationRefresh(): void {
-    if (this.registrationTimer) {
-      clearInterval(this.registrationTimer)
-      this.registrationTimer = null
+  private stopRegistrationRefresh(device: EstablishedDevice): void {
+    if (device.registrationTimer) {
+      clearInterval(device.registrationTimer)
+      device.registrationTimer = null
     }
   }
 
-  private send(method: string, params?: unknown): void {
-    this.client?.send(method, params)
+  private broadcast(method: string, params?: unknown): void {
+    for (const device of this.established.values()) {
+      device.client.send(method, params)
+    }
   }
 
-  private onEstablished(): void {
+  private onDeviceEstablished(): void {
     if (!this.broadcaster) {
-      // Built once (throttle state survives reconnects); `notify` closes over
-      // `this.send` so it tracks client re-creation transparently.
       this.broadcaster = new BridgeBroadcaster({
-        daemon: { notify: (method, params) => this.send(method, params) },
+        daemon: { notify: (method, params) => this.broadcast(method, params) },
         appStore: this.opts.appStore,
         allowlist: this.opts.allowlist,
         projectionSource: this.opts.projectionSource,
@@ -341,30 +461,25 @@ export class RemoteBridgeRuntime {
     if (!this.runSinkUnsub) {
       this.runSinkUnsub = this.opts.subscribeRunEvents(
         makeBridgeRunEventSink({
-          notifier: { notify: (method, params) => this.send(method, params) },
+          notifier: { notify: (method, params) => this.broadcast(method, params) },
           log: this.opts.log
         })
       )
     }
-    // Re-seed on every (re)establish: covers both first pairing and a
-    // replay-buffer gap after a long drop. Envelopes are idempotent.
     this.broadcaster.broadcastSnapshot()
   }
 
-  /** Stable per-pairing audit id derived from the pinned iPhone key. */
-  private trustedPairId(): string | null {
-    const raw = this.client?.trustedPeerIdentityRaw()
-    if (!raw) return null
-    return `iphone-${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`
-  }
-
-  private async handleInbound(method: string, params: unknown): Promise<void> {
+  private async handleInbound(
+    iphoneIdentityPubKey: string | null,
+    method: string,
+    params: unknown
+  ): Promise<void> {
     const dict = params && typeof params === 'object' ? (params as Record<string, unknown>) : {}
     const requestId = typeof dict.requestId === 'string' ? dict.requestId : null
     if (!ROUTABLE_METHODS.has(method)) {
       this.opts.log?.(`[remote-bridge] dropped unsupported inbound method "${method}"`)
       if (requestId) {
-        this.send('bridge.ack', {
+        this.sendToDevice(iphoneIdentityPubKey, 'bridge.ack', {
           requestId,
           method,
           ok: false,
@@ -373,20 +488,16 @@ export class RemoteBridgeRuntime {
       }
       return
     }
-    const pairID = this.trustedPairId()
+    const pairID = iphoneIdentityPubKey ? pairIdFromIdentityPubKey(iphoneIdentityPubKey) : null
     if (!pairID) {
-      // Unreachable in practice (app messages only flow post-establish), but
-      // never route an action without a bound identity.
       this.opts.log?.(`[remote-bridge] dropped "${method}" — no trusted pairing`)
       return
     }
     try {
-      // Identity binding: overwrite any client-supplied pairID with the one
-      // derived from the pinned key.
       const result = await this.opts.routeAction(method, { ...dict, pairID })
-      this.send('bridge.ack', { requestId, method, ok: true, result })
+      this.sendToDevice(iphoneIdentityPubKey, 'bridge.ack', { requestId, method, ok: true, result })
     } catch (err) {
-      this.send('bridge.ack', {
+      this.sendToDevice(iphoneIdentityPubKey, 'bridge.ack', {
         requestId,
         method,
         ok: false,
@@ -395,19 +506,44 @@ export class RemoteBridgeRuntime {
     }
   }
 
-  private teardownClient(): void {
-    if (this.pairingExpiryTimer) {
-      clearTimeout(this.pairingExpiryTimer)
-      this.pairingExpiryTimer = null
+  private sendToDevice(
+    iphoneIdentityPubKey: string | null,
+    method: string,
+    params?: unknown
+  ): void {
+    if (!iphoneIdentityPubKey) return
+    this.established.get(iphoneIdentityPubKey)?.client.send(method, params)
+  }
+
+  private teardownPending(): void {
+    if (!this.pending) return
+    if (this.pending.pairingExpiryTimer) {
+      clearTimeout(this.pending.pairingExpiryTimer)
     }
-    this.stopRegistrationRefresh()
+    this.pending.client.dispose()
+    this.pending = null
+  }
+
+  private teardownEstablished(iphoneIdentityPubKey: string): void {
+    const device = this.established.get(iphoneIdentityPubKey)
+    if (!device) return
+    this.stopRegistrationRefresh(device)
+    device.client.dispose()
+    this.established.delete(iphoneIdentityPubKey)
+  }
+
+  private teardownAllEstablished(): void {
+    for (const key of [...this.established.keys()]) {
+      this.teardownEstablished(key)
+    }
+  }
+
+  private teardownBroadcaster(): void {
     this.runSinkUnsub?.()
     this.runSinkUnsub = null
     if (this.broadcaster) {
       this.broadcaster = null
       this.opts.onBroadcasterChange?.(null)
     }
-    this.client?.dispose()
-    this.client = null
   }
 }

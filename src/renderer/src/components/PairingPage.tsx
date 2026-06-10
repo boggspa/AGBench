@@ -30,6 +30,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import QRCode from 'qrcode'
 import ghostMarkRaw from '../assets/taskwraith-ghost-mark.svg?raw'
 import { embedQrCenterLogo } from '../lib/qrGhostLogo'
+import { PairedDevicesPanel } from './PairedDevicesPanel'
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
 import { ApnsConfigPanel } from './ApnsConfigPanel'
@@ -249,12 +250,22 @@ export function PairingPage(): JSX.Element {
         </span>
       </footer>
 
+      <section className="pairing-page__section pairing-page__devices">
+        <header className="pairing-page__section-header">
+          <h3 className="pairing-page__section-title">Paired devices</h3>
+          <p className="pairing-page__section-subtitle">
+            iPhones and iPads that have completed pairing with this Mac. You can pair multiple
+            devices; each keeps its own encrypted session. Remove a device to revoke access until it
+            pairs again.
+          </p>
+        </header>
+        <PairedDevicesPanel />
+      </section>
+
       {/*
-        Second section: paired-device workspace allowlist. Lives in the
-        same tab as pairing because granting a paired iPad access to a
-        specific workspace is the natural follow-up to scanning the QR.
-        Used to be its own "Remote Workspaces" tab; consolidated here
-        for density and intentionality.
+        Workspace allowlist. Lives in the same tab as pairing because granting
+        a paired device access to a specific workspace is the natural follow-up
+        to scanning the QR.
       */}
       <section className="pairing-page__section pairing-page__allowlist">
         <header className="pairing-page__section-header">

@@ -17,50 +17,88 @@ afterEach(() => {
 })
 
 describe('RemotePairingStore', () => {
-  it('round-trips a pairing record', () => {
+  it('round-trips multiple pairing records in v2 format', () => {
     const path = tempPath()
-    const key = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
-    new RemotePairingStore(path).save({
+    const keyA = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
+    const keyB = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
+    const store = new RemotePairingStore(path)
+    store.upsert({
       v: 1,
-      iphoneIdentityPubKey: key,
+      iphoneIdentityPubKey: keyA,
       controllerDisplayName: 'My iPad',
       pairedAt: '2026-06-09T12:00:00.000Z'
     })
-    const loaded = new RemotePairingStore(path).load()
-    expect(loaded).toEqual({
+    store.upsert({
       v: 1,
-      iphoneIdentityPubKey: key,
-      controllerDisplayName: 'My iPad',
-      pairedAt: '2026-06-09T12:00:00.000Z'
+      iphoneIdentityPubKey: keyB,
+      controllerDisplayName: 'Chris iPhone',
+      pairedAt: '2026-06-10T12:00:00.000Z'
     })
+    const loaded = new RemotePairingStore(path).list()
+    expect(loaded).toHaveLength(2)
+    expect(loaded.map((entry) => entry.controllerDisplayName).sort()).toEqual([
+      'Chris iPhone',
+      'My iPad'
+    ])
   })
 
-  it('returns null for a missing, corrupt, or wrong-shape file', () => {
+  it('migrates legacy v1 single-device files into a one-entry list', () => {
+    const path = tempPath()
+    const key = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
+    writeFileSync(
+      path,
+      JSON.stringify({
+        v: 1,
+        iphoneIdentityPubKey: key,
+        controllerDisplayName: 'Legacy iPad',
+        pairedAt: '2026-06-09T12:00:00.000Z'
+      })
+    )
+    const loaded = new RemotePairingStore(path).list()
+    expect(loaded).toEqual([
+      {
+        v: 1,
+        iphoneIdentityPubKey: key,
+        controllerDisplayName: 'Legacy iPad',
+        pairedAt: '2026-06-09T12:00:00.000Z'
+      }
+    ])
+  })
+
+  it('returns an empty list for a missing, corrupt, or wrong-shape file', () => {
     const missing = new RemotePairingStore(tempPath())
-    expect(missing.load()).toBeNull()
+    expect(missing.list()).toEqual([])
 
     const corruptPath = tempPath()
     writeFileSync(corruptPath, 'not json')
-    expect(new RemotePairingStore(corruptPath).load()).toBeNull()
+    expect(new RemotePairingStore(corruptPath).list()).toEqual([])
 
     const wrongShapePath = tempPath()
     writeFileSync(wrongShapePath, JSON.stringify({ v: 1, iphoneIdentityPubKey: 'too-short' }))
-    expect(new RemotePairingStore(wrongShapePath).load()).toBeNull()
+    expect(new RemotePairingStore(wrongShapePath).list()).toEqual([])
   })
 
-  it('clear() forgets the pairing', () => {
+  it('remove() forgets one device and clear() forgets all', () => {
     const path = tempPath()
     const store = new RemotePairingStore(path)
-    store.save({
+    const keyA = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
+    const keyB = b64.encode(exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey))
+    store.upsert({
       v: 1,
-      iphoneIdentityPubKey: b64.encode(
-        exportRawEd25519PublicKey(generateIdentityKeyPair().publicKey)
-      ),
+      iphoneIdentityPubKey: keyA,
       controllerDisplayName: 'iPad',
       pairedAt: '2026-06-09T12:00:00.000Z'
     })
+    store.upsert({
+      v: 1,
+      iphoneIdentityPubKey: keyB,
+      controllerDisplayName: 'iPhone',
+      pairedAt: '2026-06-09T13:00:00.000Z'
+    })
+    expect(store.remove(keyA)).toBe(true)
+    expect(store.list()).toHaveLength(1)
     store.clear()
-    expect(store.load()).toBeNull()
-    expect(() => store.clear()).not.toThrow() // idempotent
+    expect(store.list()).toEqual([])
+    expect(() => store.clear()).not.toThrow()
   })
 })

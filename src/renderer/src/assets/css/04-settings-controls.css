@@ -1189,6 +1189,50 @@
   line-height: 1.45;
 }
 
+.paired-devices-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paired-devices-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-bg) 50%, transparent);
+}
+
+.paired-devices-panel__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.paired-devices-panel__name {
+  font-weight: 620;
+  color: var(--text-primary);
+}
+
+.paired-devices-panel__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-secondary);
+}
+
+.paired-devices-panel__status--connected {
+  color: color-mix(in srgb, var(--status-success, #3ecf8e) 88%, var(--text-primary) 12%);
+}
+
 .messages-bridge-panel {
   display: flex;
   flex-direction: column;

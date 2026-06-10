@@ -29,11 +29,14 @@ import {
   verifyResolveRequest
 } from '../../src/shared/e2ee/resolve'
 
-interface Registration {
+interface PeerRegistration {
   sessionId: string
-  allowedPeers: Set<string>
   issuedAt: number
   expiresAt: number
+}
+
+interface MacRegistration {
+  peers: Map<string, PeerRegistration>
 }
 
 export interface ResolveDirectoryOptions {
@@ -89,7 +92,7 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
   const now = options.now ?? Date.now
   const log = options.log ?? (() => {})
 
-  const registrations = new Map<string, Registration>()
+  const registrations = new Map<string, MacRegistration>()
   /** nonce → expiry. Swept lazily + on an interval. */
   const seenNonces = new Map<string, number>()
 
@@ -99,7 +102,10 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
       if (expiry <= t) seenNonces.delete(nonce)
     }
     for (const [key, registration] of registrations) {
-      if (registration.expiresAt <= t) registrations.delete(key)
+      for (const [peerKey, peerRegistration] of registration.peers) {
+        if (peerRegistration.expiresAt <= t) registration.peers.delete(peerKey)
+      }
+      if (registration.peers.size === 0) registrations.delete(key)
     }
   }
   const sweeper = setInterval(sweep, Math.max(5_000, Math.floor(freshnessMs / 2)))
@@ -124,21 +130,27 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
       log('[resolve] register rejected: stale issuedAt')
       return
     }
-    const existing = registrations.get(body.macIdentityPubKey)
-    if (existing && body.issuedAt < existing.issuedAt) {
-      // Replayed old registration — never roll back to a dead sessionId.
-      respond(res, 409, { ok: false, error: 'stale registration' })
-      log('[resolve] register rejected: older than current registration')
-      return
-    }
     const ttlMs = Math.min(body.ttlMs, maxTtlMs)
     const expiresAt = now() + ttlMs
-    registrations.set(body.macIdentityPubKey, {
-      sessionId: body.sessionId,
-      allowedPeers: new Set(canonicalAllowedPeers(body.allowedPeers)),
-      issuedAt: body.issuedAt,
-      expiresAt
-    })
+    let registration = registrations.get(body.macIdentityPubKey)
+    if (!registration) {
+      registration = { peers: new Map() }
+      registrations.set(body.macIdentityPubKey, registration)
+    }
+    for (const peerKey of canonicalAllowedPeers(body.allowedPeers)) {
+      const existingPeer = registration.peers.get(peerKey)
+      if (existingPeer && body.issuedAt < existingPeer.issuedAt) {
+        // Replayed old registration for this peer — never roll back to a dead sessionId.
+        respond(res, 409, { ok: false, error: 'stale registration' })
+        log('[resolve] register rejected: older than current peer registration')
+        return
+      }
+      registration.peers.set(peerKey, {
+        sessionId: body.sessionId,
+        issuedAt: body.issuedAt,
+        expiresAt
+      })
+    }
     respond(res, 200, { ok: true, expiresAt })
   }
 
@@ -170,17 +182,15 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
     seenNonces.set(body.nonce, now() + 2 * freshnessMs)
 
     const registration = registrations.get(body.macIdentityPubKey)
-    const allowed =
-      registration &&
-      registration.expiresAt > now() &&
-      registration.allowedPeers.has(body.iphoneIdentityPubKey)
+    const peerRegistration = registration?.peers.get(body.iphoneIdentityPubKey)
+    const allowed = peerRegistration && peerRegistration.expiresAt > now()
     if (!allowed) {
       // Uniform: unknown Mac, expired registration, and unauthorized peer are
       // indistinguishable — no online-status oracle.
       respond(res, 404, { ok: false, error: 'not found' })
       return
     }
-    respond(res, 200, { ok: true, sessionId: registration.sessionId })
+    respond(res, 200, { ok: true, sessionId: peerRegistration!.sessionId })
   }
 
   return {

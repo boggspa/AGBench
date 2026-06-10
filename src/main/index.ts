@@ -15282,6 +15282,30 @@ if (isGeminiMcpBridgeProcess) {
       )
     })
 
+    ipcMain.handle('bridge-list-paired-devices', async () => {
+      if (!iosRemoteRuntime) return []
+      return iosRemoteRuntime.listPairedDevices()
+    })
+
+    ipcMain.handle('bridge-unpair-device', async (_, iphoneIdentityPubKey: string) => {
+      const key = requireNonEmptyString(iphoneIdentityPubKey, 'Device identity')
+      if (!iosRemoteRuntime) {
+        return {
+          ok: false,
+          error: 'Remote iOS pairing is not available in this build.'
+        }
+      }
+      const target = iosRemoteRuntime
+        .listPairedDevices()
+        .find((device) => device.iphoneIdentityPubKey === key)
+      if (!target) {
+        return { ok: false, error: 'Paired device not found.' }
+      }
+      iosRemoteRuntime.unpair(key)
+      bridgeApnsTokenStoreRef?.remove(target.pairId)
+      return { ok: true }
+    })
+
     // Attached-window picker (Appshots-equivalent). The renderer invokes
     // `attach-window:pick` when the user clicks the Attach button; main
     // forwards to the bridge daemon's `attachedWindow.requestPick`, which

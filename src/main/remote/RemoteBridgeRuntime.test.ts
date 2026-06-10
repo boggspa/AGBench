@@ -27,22 +27,31 @@ const emptyAppStore = {
   getChat: () => null
 }
 
-function memoryPairingStore(initial: PersistedRemotePairing | null = null): {
+function memoryPairingStore(initial: PersistedRemotePairing[] = []): {
   store: RemotePairingPersistence
-  current: () => PersistedRemotePairing | null
+  list: () => PersistedRemotePairing[]
 } {
-  let record = initial
+  let devices = [...initial]
   return {
     store: {
-      load: () => record,
-      save: (pairing) => {
-        record = pairing
+      list: () => [...devices],
+      upsert: (pairing) => {
+        const index = devices.findIndex(
+          (device) => device.iphoneIdentityPubKey === pairing.iphoneIdentityPubKey
+        )
+        if (index >= 0) devices[index] = pairing
+        else devices.push(pairing)
+      },
+      remove: (iphoneIdentityPubKey) => {
+        const before = devices.length
+        devices = devices.filter((device) => device.iphoneIdentityPubKey !== iphoneIdentityPubKey)
+        return devices.length < before
       },
       clear: () => {
-        record = null
+        devices = []
       }
     },
-    current: () => record
+    list: () => [...devices]
   }
 }
 
@@ -310,11 +319,13 @@ describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
     await settle()
 
     const phoneKeyB64 = b64.encode(exportRawEd25519PublicKey(h.iphoneId.publicKey))
-    expect(memory.current()).toMatchObject({
-      v: 1,
-      iphoneIdentityPubKey: phoneKeyB64,
-      controllerDisplayName: 'My iPad'
-    })
+    expect(memory.list()).toEqual([
+      expect.objectContaining({
+        v: 1,
+        iphoneIdentityPubKey: phoneKeyB64,
+        controllerDisplayName: 'My iPad'
+      })
+    ])
 
     expect(h.registrations.length).toBeGreaterThanOrEqual(1)
     const { url, body } = h.registrations[0]
@@ -333,7 +344,7 @@ describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
     const memory = memoryPairingStore()
     const h = harness({ pairingStore: memory.store })
     // Seed as if a previous app run had paired this phone.
-    memory.store.save({
+    memory.store.upsert({
       v: 1,
       iphoneIdentityPubKey: b64.encode(exportRawEd25519PublicKey(h.iphoneId.publicKey)),
       controllerDisplayName: 'Resumed iPad',
@@ -371,12 +382,14 @@ describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
   it('a declined re-pairing falls back to listening for the persisted pairing', async () => {
     const previousPhone = generateIdentityKeyPair()
     const previousKeyB64 = b64.encode(exportRawEd25519PublicKey(previousPhone.publicKey))
-    const memory = memoryPairingStore({
-      v: 1,
-      iphoneIdentityPubKey: previousKeyB64,
-      controllerDisplayName: 'Old iPad',
-      pairedAt: '2026-06-09T12:00:00.000Z'
-    })
+    const memory = memoryPairingStore([
+      {
+        v: 1,
+        iphoneIdentityPubKey: previousKeyB64,
+        controllerDisplayName: 'Old iPad',
+        pairedAt: '2026-06-09T12:00:00.000Z'
+      }
+    ])
     const h = harness({ pairingStore: memory.store })
 
     const { bootstrap } = h.runtime.beginPairing('New iPad')
@@ -389,7 +402,7 @@ describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
     await settle()
 
     // The old pairing survives and a fresh registration for it was posted.
-    expect(memory.current()?.iphoneIdentityPubKey).toBe(previousKeyB64)
+    expect(memory.list()[0]?.iphoneIdentityPubKey).toBe(previousKeyB64)
     const fallback = h.registrations.at(-1)
     expect(fallback?.body.allowedPeers).toEqual([previousKeyB64])
     expect(fallback?.body.sessionId).not.toBe(bootstrap.pairingSessionID)
@@ -404,12 +417,31 @@ describe('RemoteBridgeRuntime trusted reconnect (T5)', () => {
     await settle()
     h.runtime.finalizePairing(bootstrap.pairingSessionID, true)
     await settle()
-    expect(memory.current()).not.toBeNull()
+    expect(memory.list()).toHaveLength(1)
 
     h.runtime.unpair()
-    expect(memory.current()).toBeNull()
+    expect(memory.list()).toEqual([])
     expect(h.runtime.isEstablished).toBe(false)
     expect(h.runtime.hasPersistedPairing).toBe(false)
+  })
+
+  it('listPairedDevices reports persisted metadata and live connection state', async () => {
+    const memory = memoryPairingStore()
+    const h = harness({ pairingStore: memory.store })
+    const { bootstrap } = h.runtime.beginPairing('My iPad')
+    await settle()
+    h.scanAndConnect(bootstrap.bootstrapPayload)
+    await settle()
+    h.runtime.finalizePairing(bootstrap.pairingSessionID, true)
+    await settle()
+
+    const devices = h.runtime.listPairedDevices()
+    expect(devices).toHaveLength(1)
+    expect(devices[0]).toMatchObject({
+      controllerDisplayName: 'My iPad',
+      connected: true
+    })
+    expect(devices[0].pairId).toMatch(/^iphone-[0-9a-f]{16}$/)
   })
 })
 

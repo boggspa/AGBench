@@ -773,6 +773,16 @@ declare global {
         bootstrap?: unknown // PairingBootstrapPayload shape; consumer passes through to QR/JSON
         error?: string
       }>
+      bridgeListPairedDevices: () => Promise<
+        Array<{
+          iphoneIdentityPubKey: string
+          pairId: string
+          controllerDisplayName: string
+          pairedAt: string
+          connected: boolean
+        }>
+      >
+      bridgeUnpairDevice: (iphoneIdentityPubKey: string) => Promise<{ ok: boolean; error?: string }>
 
       // Phase E1: APNs config surface for the Settings panel. The
       // `getApnsConfig` response NEVER includes decrypted key material

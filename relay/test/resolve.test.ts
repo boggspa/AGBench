@@ -216,6 +216,47 @@ describe('relay resolve directory', () => {
     expect(resolved.status).toBe(404)
   })
 
+  it('registers independent sessionIds for multiple allowed peers', async () => {
+    const mac = generateIdentityKeyPair()
+    const phoneA = generateIdentityKeyPair()
+    const phoneB = generateIdentityKeyPair()
+    const t = Date.now()
+
+    await register(
+      signRegisterRequest(mac, {
+        sessionId: 'sess-phone-a',
+        allowedPeers: [rawKeyB64(phoneA)],
+        issuedAt: t,
+        ttlMs: 60_000
+      })
+    )
+    await register(
+      signRegisterRequest(mac, {
+        sessionId: 'sess-phone-b',
+        allowedPeers: [rawKeyB64(phoneB)],
+        issuedAt: t + 1,
+        ttlMs: 60_000
+      })
+    )
+
+    const resolvedA = await resolve(
+      signResolveRequest(phoneA, {
+        macIdentityPubKey: rawKeyB64(mac),
+        nonce: freshNonce(),
+        issuedAt: Date.now()
+      })
+    )
+    const resolvedB = await resolve(
+      signResolveRequest(phoneB, {
+        macIdentityPubKey: rawKeyB64(mac),
+        nonce: freshNonce(),
+        issuedAt: Date.now()
+      })
+    )
+    expect(resolvedA.json.sessionId).toBe('sess-phone-a')
+    expect(resolvedB.json.sessionId).toBe('sess-phone-b')
+  })
+
   it('rejects non-POST and unknown resolve paths', async () => {
     const get = await fetch(`${baseUrl}/v1/resolve`)
     expect(get.status).toBe(405)

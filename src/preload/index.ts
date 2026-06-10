@@ -494,6 +494,9 @@ const api = {
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
   bridgeBeginPairing: (displayName?: string) =>
     ipcRenderer.invoke('bridge-begin-pairing', displayName),
+  bridgeListPairedDevices: () => ipcRenderer.invoke('bridge-list-paired-devices'),
+  bridgeUnpairDevice: (iphoneIdentityPubKey: string) =>
+    ipcRenderer.invoke('bridge-unpair-device', iphoneIdentityPubKey),
 
   // Attached-window picker. `pick` opens the macOS system picker via the
   // Swift bridge daemon and stores the resulting handle on the main side.

@@ -301,6 +301,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'messages-bridge:list-conversations': ['optionalObject'],
   'bridge-finalize-pairing': ['nonEmptyString', 'boolean'],
   'bridge-begin-pairing': ['optionalString'],
+  'bridge-list-paired-devices': [],
+  'bridge-unpair-device': ['nonEmptyString'],
   // Attached-window picker — all three handlers are no-arg; pick reads
   // the daemon's response, detach/status read main-side state. The
   // daemon-side validation (handleID format etc.) lives in the Swift
