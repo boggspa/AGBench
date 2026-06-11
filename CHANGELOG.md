@@ -4,6 +4,55 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.4.8 — 2026-06-11
+
+### Added
+- **Remote companion preview groundwork.** Paired iPhone/iPad sessions now carry
+  richer thread snapshots, run telemetry, tool transcript segments, model usage
+  quota windows, thread notes, pinned messages, side-chat creation, guest
+  participants, queued prompt controls, and ensemble roster/steering updates over
+  the encrypted bridge.
+- **Multi-device remote pairing.** The Devices panel can list multiple paired iOS
+  devices and the workspace sidebar remote button now glows when a paired device
+  is actively connected.
+- **iOS shell parity polish.** The companion app picked up desktop-aligned
+  thinking indicators, 90-day heatmap variants, manual swipe control for heatmap
+  cycling, iPad rotation support, and a frosted composer shell pass.
+- **Usage dashboard bridge data.** Usage rollups and model-quota windows now flow
+  into the remote bridge feed, with refreshed heatmap labels.
+
+### Changed
+- **Remote run continuity.** Phone-initiated continuations now inherit the chat's
+  model/session context, preserve interleaved tool transcripts, keep readable MCP
+  tool details, and use the canonical compatibility vocabulary.
+- **Remote reliability.** Bridge resume/reconnect paths were hardened against
+  stale replay epochs, empty post-restart snapshots, heartbeat gaps, terminal run
+  status races, and attachment-temp cleanup issues.
+- **Weather FX fog polish.** Fog/mist weather effects now use warped, blurred
+  bands for a softer naturalistic atmosphere.
+
+### Fixed
+- **Remote provider inheritance.** Gemini auth/session state, Ollama memory, and
+  ensemble steering now preserve the expected provider context across phone runs.
+- **Remote payload size.** Diff envelopes and thread projections were tightened
+  so large workspaces stay within relay frame limits.
+
+## 1.4.7 — 2026-06-10
+
+### Added
+- **Flag-gated iOS remote transport foundation.** End-to-end encrypted pairing,
+  trusted reconnect, in-process relay hosting, ghost-branded QR pairing, remote
+  workspace allowlists, live transcript streaming, model catalogs, ensemble roster
+  editing, and image attachment transport landed behind the iOS remote build flag.
+- **Ensemble identity polish.** Same-provider participants now carry
+  model-labelled identities and can be addressed by role or model name.
+
+### Changed
+- **Ollama harness routing.** Small-talk prompts skip the heavier agentic scaffold,
+  while `todo_write` routes to its real MCP handler.
+- **Composer and sky polish.** Schedule/runtime rows, composer accessory rails, sky
+  clouds, and the sun/moon orb received visual refinement.
+
 ## 1.4.6 — 2026-06-09
 
 ### Added

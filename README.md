@@ -61,7 +61,7 @@ workspace state on the user's machine.
 - **Release Tooling**: Security, dependency, packaging, and signing hooks for
   reproducible local release work.
 
-Current release: **v1.4.6** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release: **v1.4.8** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Public Source Boundary
 
