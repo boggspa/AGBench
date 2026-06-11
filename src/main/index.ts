@@ -3170,6 +3170,13 @@ function bridgeToolDisplayName(name: string): string {
   return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
 }
 
+/** Lenient non-negative integer reader for provider change entries. */
+function bridgeNumberish(value: unknown): number | undefined {
+  const numeric =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : undefined
+}
+
 /** Append streamed text to the current text part (or open a new one after
  * a tool burst) — this is what interleaves text and tool messages in the
  * persisted transcript the way the desktop renderer does. */
@@ -3188,6 +3195,29 @@ function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): voi
   }
 }
 
+/** Count ±lines in text that is structurally a unified diff (hunk header,
+ * `diff --git`, or a `+++`/`---` pair). The structure gate keeps prose with
+ * leading +/- (markdown bullets in reasoning traces) from minting phantom
+ * stats — same rule as the renderer's parseUnifiedDiffSummary. */
+function bridgeUnifiedDiffStats(
+  text: string
+): { additions: number; deletions: number } | undefined {
+  if (!text.trim()) return undefined
+  const hasDiffStructure =
+    /^@@ .*@@/m.test(text) ||
+    /^diff --git /m.test(text) ||
+    (/^\+\+\+ /m.test(text) && /^--- /m.test(text))
+  if (!hasDiffStructure) return undefined
+  let additions = 0
+  let deletions = 0
+  for (const line of text.split('\n')) {
+    if (line.startsWith('+') && !line.startsWith('+++')) additions++
+    else if (line.startsWith('-') && !line.startsWith('---')) deletions++
+  }
+  if (additions === 0 && deletions === 0) return undefined
+  return { additions, deletions }
+}
+
 /** Per-edit diff stats derivable from the tool INPUT — what the desktop
  * shows for write tools instead of truncated result text. */
 function bridgeToolDiffStats(
@@ -3204,9 +3234,38 @@ function bridgeToolDiffStats(
       confidence: 'exact'
     }
   }
+  // Codex app-server fileChange items carry a `changes` array; when entries
+  // expose explicit line counts, trust them (renderer parseChanges parity).
+  if (Array.isArray(input.changes)) {
+    let additions = 0
+    let deletions = 0
+    let hasStats = false
+    for (const change of input.changes) {
+      if (!change || typeof change !== 'object' || Array.isArray(change)) continue
+      const entry = change as Record<string, unknown>
+      const add = bridgeNumberish(
+        entry.additions ?? entry.added ?? entry.linesAdded ?? entry.insertions
+      )
+      const del = bridgeNumberish(
+        entry.deletions ?? entry.deleted ?? entry.linesDeleted ?? entry.removals
+      )
+      if (add !== undefined || del !== undefined) hasStats = true
+      additions += add ?? 0
+      deletions += del ?? 0
+    }
+    if (hasStats && (additions > 0 || deletions > 0)) {
+      return { additions, deletions, source: 'codex_changes', confidence: 'exact' }
+    }
+  }
+  // `patchPreview` is what emitCodexPatchUpdate stamps on edit_file tool
+  // uses — without it Codex edits showed no ±odometer on remote clients.
   const patch =
     (typeof input.patch === 'string' && input.patch) ||
     (typeof input.diff === 'string' && input.diff) ||
+    (typeof input.patchPreview === 'string' && input.patchPreview) ||
+    (typeof input.patch_preview === 'string' && input.patch_preview) ||
+    (typeof input.unifiedDiff === 'string' && input.unifiedDiff) ||
+    (typeof input.unified_diff === 'string' && input.unified_diff) ||
     undefined
   if (patch) {
     let additions = 0
@@ -3312,6 +3371,20 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
       (typeof payload.content === 'string' && payload.content) ||
       ''
   )
+  // Last lane for ±stats: some providers only surface the patch in the
+  // RESULT (Codex shell-driven edits, apply_patch over exec). Structure-
+  // gated so reasoning/plan prose never mints phantom counts.
+  if (
+    !failed &&
+    !activity.diffSummary &&
+    summary &&
+    !/reasoning|thinking|plan/i.test(activity.toolName)
+  ) {
+    const stats = bridgeUnifiedDiffStats(summary)
+    if (stats) {
+      activity.diffSummary = { ...stats, source: 'result_diff', confidence: 'estimated' }
+    }
+  }
   if (summary) {
     activity.resultSummary = summary.length > 200 ? `${summary.slice(0, 197)}...` : summary
   }
