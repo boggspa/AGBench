@@ -50,6 +50,7 @@ export interface ResolveDirectoryOptions {
 
 export interface ResolveDirectory {
   handle: (req: IncomingMessage, res: ServerResponse) => void
+  resolveJson: (body: unknown) => { status: number; body: unknown }
   registrationCount: () => number
   close: () => void
 }
@@ -163,21 +164,23 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
       log(`[resolve] resolve rejected: ${err instanceof Error ? err.message : String(err)}`)
       return
     }
+    const result = resolveJson(body)
+    respond(res, result.status, result.body)
+  }
+
+  const resolveJson = (body: unknown): { status: number; body: unknown } => {
     if (!isResolveRequest(body) || !verifyResolveRequest(body)) {
-      respond(res, 400, { ok: false, error: 'invalid request' })
       log('[resolve] resolve rejected: shape or signature')
-      return
+      return { status: 400, body: { ok: false, error: 'invalid request' } }
     }
     if (Math.abs(now() - body.issuedAt) > freshnessMs) {
-      respond(res, 400, { ok: false, error: 'invalid request' })
       log('[resolve] resolve rejected: stale issuedAt')
-      return
+      return { status: 400, body: { ok: false, error: 'invalid request' } }
     }
     const nonceExpiry = seenNonces.get(body.nonce)
     if (nonceExpiry && nonceExpiry > now()) {
-      respond(res, 400, { ok: false, error: 'invalid request' })
       log('[resolve] resolve rejected: replayed nonce')
-      return
+      return { status: 400, body: { ok: false, error: 'invalid request' } }
     }
     seenNonces.set(body.nonce, now() + 2 * freshnessMs)
 
@@ -187,10 +190,9 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
     if (!allowed) {
       // Uniform: unknown Mac, expired registration, and unauthorized peer are
       // indistinguishable — no online-status oracle.
-      respond(res, 404, { ok: false, error: 'not found' })
-      return
+      return { status: 404, body: { ok: false, error: 'not found' } }
     }
-    respond(res, 200, { ok: true, sessionId: peerRegistration!.sessionId })
+    return { status: 200, body: { ok: true, sessionId: peerRegistration!.sessionId } }
   }
 
   return {
@@ -210,6 +212,7 @@ export function createResolveDirectory(options: ResolveDirectoryOptions = {}): R
       }
       respond(res, 404, { ok: false, error: 'not found' })
     },
+    resolveJson,
     registrationCount: () => {
       sweep()
       return registrations.size

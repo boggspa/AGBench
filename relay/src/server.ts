@@ -73,6 +73,31 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const path = (req.url || '').split('?')[0]
+    if (path === '/v1/resolve') {
+      let handled = false
+      const timer = setTimeout(() => {
+        if (!handled && ws.readyState === WebSocket.OPEN) ws.close(4005, 'resolve timeout')
+      }, 10_000)
+      timer.unref?.()
+      ws.once('message', (data: RawData) => {
+        handled = true
+        clearTimeout(timer)
+        let body: unknown
+        try {
+          body = JSON.parse(data.toString())
+        } catch {
+          body = null
+        }
+        const result = resolveDirectory.resolveJson(body)
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ ...(result.body as Record<string, unknown>), status: result.status }))
+          ws.close(result.status === 200 ? 1000 : 4000, 'resolve complete')
+        }
+      })
+      ws.on('close', () => clearTimeout(timer))
+      ws.on('error', () => clearTimeout(timer))
+      return
+    }
     const match = SESSION_PATH.exec(path)
     const role = String(req.headers[ROLE_HEADER] || '') as Role
     if (!match || (role !== 'mac' && role !== 'iphone')) {

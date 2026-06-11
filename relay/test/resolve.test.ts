@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { randomBytes } from 'crypto'
+import { WebSocket } from 'ws'
 import { createRelayServer, type RelayServerHandle } from '../src/server'
 import {
   b64,
@@ -41,6 +42,32 @@ async function post(path: string, body: unknown): Promise<{ status: number; json
 const register = (body: RegisterRequest) => post('/v1/resolve/register', body)
 const resolve = (body: ResolveRequest) => post('/v1/resolve', body)
 
+function resolveWs(body: ResolveRequest): Promise<{ ok: boolean; sessionId?: string; status?: number }> {
+  const wsUrl = baseUrl.replace(/^http:/, 'ws:')
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${wsUrl}/v1/resolve`)
+    const timer = setTimeout(() => {
+      ws.terminate()
+      reject(new Error('ws resolve timed out'))
+    }, 5_000)
+    ws.on('open', () => ws.send(JSON.stringify(body)))
+    ws.on('message', (data) => {
+      clearTimeout(timer)
+      try {
+        resolve(JSON.parse(data.toString()) as { ok: boolean; sessionId?: string; status?: number })
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)))
+      } finally {
+        ws.close()
+      }
+    })
+    ws.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err instanceof Error ? err : new Error(String(err)))
+    })
+  })
+}
+
 describe('relay resolve directory', () => {
   it('register → resolve round-trips the current sessionId', async () => {
     const mac = generateIdentityKeyPair()
@@ -67,6 +94,28 @@ describe('relay resolve directory', () => {
     )
     expect(resolved.status).toBe(200)
     expect(resolved.json).toEqual({ ok: true, sessionId: 'sess-roundtrip' })
+  })
+
+  it('also resolves over WebSocket for ATS-safe iOS reconnects', async () => {
+    const mac = generateIdentityKeyPair()
+    const phone = generateIdentityKeyPair()
+    await register(
+      signRegisterRequest(mac, {
+        sessionId: 'sess-ws-roundtrip',
+        allowedPeers: [rawKeyB64(phone)],
+        issuedAt: Date.now(),
+        ttlMs: 60_000
+      })
+    )
+
+    const resolved = await resolveWs(
+      signResolveRequest(phone, {
+        macIdentityPubKey: rawKeyB64(mac),
+        nonce: freshNonce(),
+        issuedAt: Date.now()
+      })
+    )
+    expect(resolved).toEqual({ ok: true, sessionId: 'sess-ws-roundtrip', status: 200 })
   })
 
   it('re-registration with a newer issuedAt replaces the sessionId', async () => {
