@@ -406,33 +406,27 @@ struct ComposeTaskView: View {
         }
     }
 
-    /// Desktop welcome parity: rotating activity heatmaps (workspace /
-    /// all workspaces / weekly rhythm) cycling every 90s with a crossfade,
-    /// Data = synced chat timestamps.
+    /// Desktop welcome parity: rotating activity heatmaps cycling every 90s.
     private var activityFooter: some View {
         let workspaceCards = model.taskCards.filter {
             mode == .global || $0.workspaceId == workspaceId
         }
-        let allCards = model.taskCards
-        let workspaceDates = workspaceCards
-            .flatMap { [twParseISODate($0.createdAt), twParseISODate($0.updatedAt)] }
-            .compactMap { $0 }
-        let allDates = allCards
-            .flatMap { [twParseISODate($0.createdAt), twParseISODate($0.updatedAt)] }
-            .compactMap { $0 }
+        let workspaceEvents = twActivityHeatmapEvents(from: workspaceCards)
+        let taskWraithEvents = twActivityHeatmapEvents(from: model.taskCards)
+        let externalEvents: [ActivityHeatmapEvent] = []
         return RotatingActivityHeatmap(flavors: [
             .init(
-                id: "workspace", title: "WORKSPACE ACTIVITY",
-                caption: "from synced chats", accent: TWTheme.chroma1,
-                dates: workspaceDates),
+                id: "workspace", title: "Workspace Activity",
+                caption: "current workspace", accent: TWTheme.chroma1,
+                events: workspaceEvents),
             .init(
-                id: "everywhere", title: "ALL WORKSPACES",
-                caption: "from synced chats", accent: TWTheme.chroma3,
-                dates: allDates),
+                id: "taskwraith", title: "TaskWraith Activity",
+                caption: "all TaskWraith runs", accent: TWTheme.chroma3,
+                events: taskWraithEvents),
             .init(
-                id: "rhythm", title: "WEEKLY RHYTHM",
-                caption: "hour × weekday", accent: TWTheme.chroma2,
-                dates: allDates, weekly: true),
+                id: "external", title: "External Activity",
+                caption: "external usage", accent: TWTheme.providerAccent("cursor"),
+                events: externalEvents),
         ])
         .padding(.top, 18)
     }

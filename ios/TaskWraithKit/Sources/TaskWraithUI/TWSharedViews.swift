@@ -264,48 +264,86 @@ public struct FlowChips<Item: Hashable, ChipView: View>: View {
     }
 }
 
-/// Compact workspace-activity heatmap — the phone rendition of the desktop
-/// welcome screen's hour×day grid. Cells bucket the supplied timestamps
-/// into 4-hour rows × recent-day columns; intensity follows count.
+public struct ActivityHeatmapEvent: Hashable {
+    public let date: Date
+    public let provider: String?
+
+    public init(date: Date, provider: String? = nil) {
+        self.date = date
+        self.provider = provider
+    }
+}
+
+public func twActivityHeatmapEvents(from cards: [RemoteTaskCard]) -> [ActivityHeatmapEvent] {
+    cards.flatMap { card in
+        [twParseISODate(card.createdAt), twParseISODate(card.updatedAt)]
+            .compactMap { $0 }
+            .map { ActivityHeatmapEvent(date: $0, provider: card.provider) }
+    }
+}
+
+/// Compact activity heatmap — the phone rendition of the desktop welcome
+/// screen's provider-themed hour×day grid.
 public struct ActivityHeatmap: View {
-    let dates: [Date]
+    private struct Bucket {
+        var count = 0
+        var providerCounts: [String: Int] = [:]
+
+        var dominantProvider: String? {
+            providerCounts.max {
+                if $0.value == $1.value { return $0.key > $1.key }
+                return $0.value < $1.value
+            }?.key
+        }
+    }
+
+    let events: [ActivityHeatmapEvent]
     let accent: Color
     let days: Int
 
-    public init(dates: [Date], accent: Color, days: Int = 21) {
-        self.dates = dates
+    public init(events: [ActivityHeatmapEvent], accent: Color, days: Int = 90) {
+        self.events = events
         self.accent = accent
         self.days = days
     }
 
-    private var counts: [[Int]] {
-        // rows: 6 × 4-hour buckets, columns: `days` ending today.
-        var grid = Array(repeating: Array(repeating: 0, count: days), count: 6)
+    public init(dates: [Date], accent: Color, days: Int = 90) {
+        self.init(events: dates.map { ActivityHeatmapEvent(date: $0) }, accent: accent, days: days)
+    }
+
+    private var buckets: [[Bucket]] {
+        var grid = Array(repeating: Array(repeating: Bucket(), count: days), count: 12)
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        for date in dates {
-            let day = calendar.startOfDay(for: date)
+        for event in events {
+            let day = calendar.startOfDay(for: event.date)
             guard
                 let offset = calendar.dateComponents([.day], from: day, to: today).day,
                 offset >= 0, offset < days
             else { continue }
-            let hour = calendar.component(.hour, from: date)
-            grid[min(5, hour / 4)][days - 1 - offset] += 1
+            let hour = calendar.component(.hour, from: event.date)
+            let row = min(11, hour / 2)
+            let column = days - 1 - offset
+            grid[row][column].count += 1
+            if let provider = event.provider?.lowercased(), !provider.isEmpty {
+                grid[row][column].providerCounts[provider, default: 0] += 1
+            }
         }
         return grid
     }
 
     public var body: some View {
-        let grid = counts
-        // 1:1 cells (the stretched look came from maxWidth: .infinity):
-        // size cells square off the available width, shrink rather than
-        // stretch, and center the grid.
+        let grid = buckets
+        let rows = 12
+        let spacing: CGFloat = days >= 60 ? 1 : 2
         GeometryReader { geo in
-            let cell = min(9, max(4, (geo.size.width - CGFloat(days - 1) * 2) / CGFloat(days)))
-            let gridWidth = cell * CGFloat(days) + CGFloat(days - 1) * 2
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(0..<6, id: \.self) { row in
-                    HStack(spacing: 2) {
+            let cell = min(
+                days >= 60 ? 4 : 9,
+                max(2, (geo.size.width - CGFloat(days - 1) * spacing) / CGFloat(days)))
+            let gridWidth = cell * CGFloat(days) + CGFloat(days - 1) * spacing
+            VStack(alignment: .leading, spacing: spacing) {
+                ForEach(0..<rows, id: \.self) { row in
+                    HStack(spacing: spacing) {
                         ForEach(0..<days, id: \.self) { col in
                             RoundedRectangle(cornerRadius: 1.5)
                                 .fill(cellColor(grid[row][col]))
@@ -317,15 +355,16 @@ public struct ActivityHeatmap: View {
             .frame(width: gridWidth)
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(height: 6 * 9 + 5 * 2)
+        .frame(height: days >= 60 ? 48 : 12 * 9 + 11 * 2)
     }
 
-    private func cellColor(_ count: Int) -> Color {
-        switch count {
+    private func cellColor(_ bucket: Bucket) -> Color {
+        let base = bucket.dominantProvider.map { TWTheme.providerAccent($0) } ?? accent
+        switch bucket.count {
         case 0: return TWTheme.surface2
-        case 1: return accent.opacity(0.35)
-        case 2...3: return accent.opacity(0.6)
-        default: return accent.opacity(0.95)
+        case 1: return base.opacity(0.35)
+        case 2...3: return base.opacity(0.6)
+        default: return base.opacity(0.95)
         }
     }
 }
@@ -495,18 +534,27 @@ public struct TokenRevealText: View {
     }
 #endif
 
-/// Rotating welcome heatmap — cycles three flavors every 90s with a
-/// crossfade, mirroring the desktop welcome screen's rotating activity
-/// panels. Flavors are different lenses over the synced-chat timestamps:
-/// this workspace / all workspaces / weekly rhythm (weekday columns).
+/// Rotating welcome heatmap — cycles the desktop welcome variants every 90s.
 public struct RotatingActivityHeatmap: View {
     public struct Flavor: Identifiable {
         public let id: String
         public let title: String
         public let caption: String
         public let accent: Color
-        public let dates: [Date]
+        public let events: [ActivityHeatmapEvent]
         public let weekly: Bool
+
+        public init(
+            id: String, title: String, caption: String, accent: Color,
+            events: [ActivityHeatmapEvent], weekly: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.caption = caption
+            self.accent = accent
+            self.events = events
+            self.weekly = weekly
+        }
 
         public init(
             id: String, title: String, caption: String, accent: Color,
@@ -516,7 +564,7 @@ public struct RotatingActivityHeatmap: View {
             self.title = title
             self.caption = caption
             self.accent = accent
-            self.dates = dates
+            self.events = dates.map { ActivityHeatmapEvent(date: $0) }
             self.weekly = weekly
         }
     }
@@ -549,9 +597,9 @@ public struct RotatingActivityHeatmap: View {
                     .foregroundStyle(TWTheme.textMuted)
             }
             if flavor.weekly {
-                WeeklyRhythmHeatmap(dates: flavor.dates, accent: flavor.accent)
+                WeeklyRhythmHeatmap(dates: flavor.events.map(\.date), accent: flavor.accent)
             } else {
-                ActivityHeatmap(dates: flavor.dates, accent: flavor.accent)
+                ActivityHeatmap(events: flavor.events, accent: flavor.accent)
             }
         }
         .id(flavor.id)
