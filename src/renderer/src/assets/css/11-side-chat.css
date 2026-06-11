@@ -20,15 +20,14 @@
   display: flex;
 }
 
-/* Narrow windows: the transcript's 680px floor + a rigid dock + the fixed
- * sidebar exceed the window and the dock clips off the right edge. Relax
- * the floors so all three panes share the squeeze instead. */
+/* Narrow windows: relax the transcript's 680px floor so the panes share
+ * the squeeze. (The dock width itself stays user-controlled — the inline
+ * --right-dock-width from the resize handle + the 58%-viewport JS clamp
+ * govern it; an earlier stylesheet override here silently discarded
+ * dragged widths.) */
 @media (max-width: 1360px) {
   .chat-split-main {
     min-width: min(430px, 100%);
-  }
-  .chat-split-region {
-    --right-dock-width: clamp(280px, 30vw, 420px);
   }
 }
 
@@ -44,11 +43,13 @@
 
 .right-dock {
   /* flex-shrink enabled: in narrow windows the dock compresses (to its
-   * min-width) instead of being pushed past the clipped right edge. */
+   * min-width) instead of being pushed past the clipped right edge.
+   * max-width reserves the transcript's floor (430px) out of the split
+   * region — the dock can grow with the window without ever re-clipping. */
   flex: 0 1 var(--right-dock-width);
   width: var(--right-dock-width);
   min-width: 280px;
-  max-width: 720px;
+  max-width: calc(100% - 430px);
   height: 100%;
   min-height: 0;
   display: flex;

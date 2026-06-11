@@ -1,9 +1,13 @@
 const DEFAULT_FILE_EDITOR_WIDTH = 390
 const MIN_RIGHT_PANEL_WIDTH = 300
-const MAX_RIGHT_PANEL_WIDTH = 720
+// Wide-window ceiling. The effective width is additionally clamped to 58%
+// of the viewport (rightPanelWindowMax), so narrow windows are protected by
+// proportion, not by this constant — it only needs to stop the dock from
+// swallowing ultrawide layouts entirely.
+const MAX_RIGHT_PANEL_WIDTH = 1120
 const DEFAULT_SIDE_CHAT_WIDTH = 460
 const MIN_SIDE_CHAT_WIDTH = 340
-const MAX_SIDE_CHAT_WIDTH = 720
+const MAX_SIDE_CHAT_WIDTH = 1120
 // 340 is the comfortable floor (the workspace/model-usage rows read cleanly at
 // this width). It's also the default, so a fresh launch — or one where the
 // stored width was lost (e.g. the rebrand moved userData/localStorage) — never
