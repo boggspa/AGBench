@@ -2972,17 +2972,27 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
       insertAfter = messages.length - 1
     }
   }
-  if (state.parts.length === 0 && final && state.status === 'failed' && state.errorMessage) {
-    messages = [
-      ...messages,
-      {
-        id: `bridge-error-${state.chatId}-${Date.now()}`,
-        role: 'error' as const,
-        content: state.errorMessage,
-        timestamp,
-        runId: state.runId
-      }
-    ]
+  if (final && state.status === 'failed' && state.errorMessage) {
+    const errorMessageId = `bridge-error-${state.chatId}-${state.runId}`
+    const errorMessage: ChatMessage = {
+      id: errorMessageId,
+      role: 'error',
+      content: state.errorMessage,
+      timestamp,
+      runId: state.runId
+    }
+    const existingErrorIndex = messages.findIndex((message) => message.id === errorMessageId)
+    if (existingErrorIndex >= 0) {
+      messages[existingErrorIndex] = { ...messages[existingErrorIndex], ...errorMessage }
+    } else if (insertAfter >= 0) {
+      messages = [
+        ...messages.slice(0, insertAfter + 1),
+        errorMessage,
+        ...messages.slice(insertAfter + 1)
+      ]
+    } else {
+      messages = [...messages, errorMessage]
+    }
   }
 
   const runs = [...(current.runs || [])]
@@ -3056,7 +3066,8 @@ function finalizeBridgeRunTranscript(
   if (!state) return
   if (state.status !== 'running') return // exit event often follows result
   state.status = status
-  if (errorMessage) state.errorMessage = errorMessage
+  if (status === 'success') state.errorMessage = undefined
+  else if (errorMessage) state.errorMessage = errorMessage
   // Chain link 3/3 (see registerBridgeRunTranscript).
   console.log(
     `[bridge-run] finalized run=${runId} status=${status} chars=${state.content.length}${errorMessage ? ` error="${errorMessage}"` : ''}`
@@ -8299,7 +8310,12 @@ function sendAgentCompatError(
     'provider'
   )
   if (routed.appRunId) {
-    finalizeBridgeRunTranscript(routed.appRunId, 'failed', error)
+    // Stderr can be advisory while the provider keeps running (Codex version
+    // warnings are the common case). Let result/exit decide terminal status.
+    const bridgeState = bridgeRunTranscripts.get(routed.appRunId)
+    if (bridgeState && bridgeState.status === 'running') {
+      bridgeState.errorMessage = error
+    }
   }
   publishRunEvent('agent-error', provider, routed, sender)
   if (provider === 'gemini') {
@@ -9913,12 +9929,20 @@ async function maybeWarnNewerCodexBinary(
 
     if (!newest) return
     codexNewerBinaryWarned = true
-    sendAgentCompatError(
+    sendAgentCompatLine(
       sender,
       'codex',
-      `A newer codex CLI (${newest.version.trim()}) is installed at ${newest.path} than the one TaskWraith uses ` +
-        `(${usedVersion.trim()} at ${resolved.binaryPath}). The newer CLI can write ~/.codex/config.toml values the ` +
-        'older one rejects (causing run failures). Consider `brew upgrade codex` to match versions.',
+      {
+        type: 'provider_warning',
+        provider: 'codex',
+        severity: 'warning',
+        title: 'Newer Codex CLI detected',
+        message:
+          `A newer codex CLI (${newest.version.trim()}) is installed at ${newest.path} than the one TaskWraith uses ` +
+          `(${usedVersion.trim()} at ${resolved.binaryPath}). The newer CLI can write ~/.codex/config.toml values the ` +
+          'older one rejects (causing run failures). Either upgrade the CLI TaskWraith resolves, or create a Codex ' +
+          `runtime profile that uses ${newest.path}.`
+      },
       route
     )
   } catch {
