@@ -187,6 +187,10 @@ interface SidebarProps {
   onShowPairingSheet?: () => void
 }
 
+interface PairedRemoteDeviceSummary {
+  connected: boolean
+}
+
 const isSideChatRecord = (chat: ChatRecord): boolean => chat.parentChatRelation === 'sideChat'
 const isLinkedChildChat = (chat: ChatRecord): boolean => isSubThreadChat(chat) || isSideChatRecord(chat)
 
@@ -1383,6 +1387,7 @@ export function Sidebar({
   // App.tsx owns no part of this binding.
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [sidebarSearch, setSidebarSearch] = useState('')
+  const [remoteDeviceConnected, setRemoteDeviceConnected] = useState(false)
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(EXPANDED_WORKSPACES_STORAGE_KEY)
@@ -1799,6 +1804,32 @@ export function Sidebar({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [settingsMenuOpen])
+
+  useEffect(() => {
+    if (!IOS_REMOTE_ENABLED) {
+      setRemoteDeviceConnected(false)
+      return
+    }
+    let cancelled = false
+    const refreshRemoteDevices = async (): Promise<void> => {
+      try {
+        const devices = (await window.api.bridgeListPairedDevices()) as PairedRemoteDeviceSummary[]
+        if (!cancelled) {
+          setRemoteDeviceConnected((devices ?? []).some((device) => device.connected))
+        }
+      } catch {
+        if (!cancelled) setRemoteDeviceConnected(false)
+      }
+    }
+    void refreshRemoteDevices()
+    const interval = window.setInterval(() => {
+      void refreshRemoteDevices()
+    }, 5000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
 
   // Cmd/Ctrl+F focuses the sidebar search input — wires up the "⌘F"
   // hint shown inside the field. Sidebar-local so App.tsx stays
@@ -3449,11 +3480,21 @@ export function Sidebar({
           {IOS_REMOTE_ENABLED && (
             <button
               type="button"
-              className="sidebar-footer-remote"
+              className={`sidebar-footer-remote${remoteDeviceConnected ? ' is-connected' : ''}`}
               onClick={onShowPairingSheet ?? onOpenSettings}
-              title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
+              title={
+                remoteDeviceConnected
+                  ? 'Remote device connected'
+                  : onShowPairingSheet
+                    ? 'Pair iPhone / iPad'
+                    : 'Remote connection (Settings)'
+              }
               aria-label={
-                onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'
+                remoteDeviceConnected
+                  ? 'Open remote connection settings, device connected'
+                  : onShowPairingSheet
+                    ? 'Pair iPhone or iPad'
+                    : 'Open remote connection settings'
               }
             >
               <RemoteConnectionSymbolIcon />

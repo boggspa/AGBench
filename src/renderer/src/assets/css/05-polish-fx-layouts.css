@@ -2387,7 +2387,7 @@
   color: color-mix(in srgb, var(--sidebar-text-secondary) 88%, transparent);
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: color 0.14s, background 0.14s, border-color 0.14s;
+  transition: color 0.14s, background 0.14s, border-color 0.14s, box-shadow 0.14s;
 }
 
 .sidebar-footer-remote:hover,
@@ -2398,12 +2398,49 @@
 }
 
 .sidebar-footer-remote .sf-symbol-icon {
+  width: 21px;
+  height: 21px;
   opacity: 0.78;
+}
+
+.sidebar-footer-remote .sf-symbol-icon svg {
+  width: 21px;
+  height: 21px;
 }
 
 .sidebar-footer-remote:hover .sf-symbol-icon,
 .sidebar-footer-remote:focus-visible .sf-symbol-icon {
   opacity: 1;
+}
+
+.sidebar-footer-remote.is-connected {
+  color: color-mix(in srgb, var(--success, #34d399) 88%, var(--sidebar-text));
+  border-color: color-mix(in srgb, var(--success, #34d399) 56%, transparent);
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      color-mix(in srgb, var(--success, #34d399) 22%, transparent),
+      transparent 68%
+    ),
+    color-mix(in srgb, var(--success, #34d399) 10%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--success, #34d399) 16%, transparent),
+    0 0 16px color-mix(in srgb, var(--success, #34d399) 34%, transparent);
+}
+
+.sidebar-footer-remote.is-connected .sf-symbol-icon {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--success, #34d399) 60%, transparent));
+}
+
+.sidebar-footer-remote.is-connected:hover,
+.sidebar-footer-remote.is-connected:focus-visible {
+  color: color-mix(in srgb, var(--success, #34d399) 96%, white);
+  border-color: color-mix(in srgb, var(--success, #34d399) 72%, transparent);
+  background: color-mix(in srgb, var(--success, #34d399) 16%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--success, #34d399) 24%, transparent),
+    0 0 22px color-mix(in srgb, var(--success, #34d399) 44%, transparent);
 }
 
 .app-shell-stats-toolbar {
