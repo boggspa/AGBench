@@ -1,0 +1,1340 @@
+// RemoteSessionModel — the observable bridge between the SwiftUI views and the
+// proven RelayTransportClient. Owns the phone's persisted identity, drives
+// pairing (QR/paste → connect → established), decodes the projection snapshot
+// into renderable cards, and sends actions. All UI-facing state is @Published on
+// the main actor; the transport runs on its own actor and feeds this via its
+// AsyncStream of events.
+
+import Foundation
+import CryptoKit
+import TaskWraithKit
+#if canImport(UIKit)
+    import UIKit
+    import UserNotifications
+#endif
+
+/// Where the phone persists its long-lived Ed25519 identity seed. The iOS app
+/// supplies a Keychain-backed implementation; a file-backed default keeps the
+/// model usable on macOS for previews + compile-checking.
+public protocol IdentitySeedStore: Sendable {
+    func loadOrCreateSeed() -> Data
+}
+
+public struct FileIdentitySeedStore: IdentitySeedStore {
+    let url: URL
+    public init(url: URL) { self.url = url }
+    public func loadOrCreateSeed() -> Data {
+        if let data = try? Data(contentsOf: url), data.count == 32 { return data }
+        let seed = Curve25519.Signing.PrivateKey().rawRepresentation
+        try? seed.write(to: url, options: [.atomic])
+        return seed
+    }
+}
+
+public enum SessionPhase: Equatable, Sendable {
+    case idle
+    case connecting
+    /// Handshake reached the confirm code; the user compares it with the Mac and
+    /// taps "Pair" ON THE MAC (the phone just waits to become established).
+    case awaitingMacConfirm(code: String)
+    case connected
+    case error(String)
+}
+
+// ── Paired-Mac persistence ──────────────────────────────────────────────────
+// After the first QR pairing the phone remembers WHO it paired with so app
+// relaunches and Mac restarts reconnect silently via the relay's resolve
+// directory (the Mac pins this phone's identity and accepts without a
+// prompt). This is PUBLIC material only — the Mac's identity public key,
+// relay URL, display name; the phone's private identity seed stays in the
+// Keychain via IdentitySeedStore.
+
+public struct PairedMacRecord: Codable, Sendable, Equatable {
+    public let relayUrl: String
+    public let macIdentityPubKey: String
+    public let macDisplayName: String
+
+    public init(relayUrl: String, macIdentityPubKey: String, macDisplayName: String) {
+        self.relayUrl = relayUrl
+        self.macIdentityPubKey = macIdentityPubKey
+        self.macDisplayName = macDisplayName
+    }
+}
+
+public protocol PairedMacStore: Sendable {
+    func load() -> PairedMacRecord?
+    func save(_ record: PairedMacRecord)
+    func clear()
+}
+
+public struct UserDefaultsPairedMacStore: PairedMacStore {
+    private let key = "taskwraith.pairedMac.v1"
+    public init() {}
+    public func load() -> PairedMacRecord? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(PairedMacRecord.self, from: data)
+    }
+    public func save(_ record: PairedMacRecord) {
+        if let data = try? JSONEncoder().encode(record) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+    public func clear() { UserDefaults.standard.removeObject(forKey: key) }
+}
+
+@MainActor
+public final class RemoteSessionModel: ObservableObject {
+    @Published public private(set) var phase: SessionPhase = .idle
+    @Published public private(set) var macDisplayName: String = ""
+    @Published public private(set) var taskCards: [RemoteTaskCard] = []
+    @Published public private(set) var approvals: [MobileApprovalCard] = []
+    @Published public private(set) var questions: [MobileQuestionCard] = []
+    /// Allowlist-visible workspaces (the compose surface). Empty until the Mac
+    /// has at least one entry in Settings → Devices → workspace access.
+    @Published public private(set) var workspaces: [WorkspaceSummary] = []
+    /// Latest thread snapshot per taskId/threadId (drives the detail view).
+    @Published public private(set) var threadSnapshots: [String: RemoteThreadSnapshot] = [:]
+    /// Per-provider model catalogs (same source as the desktop picker) —
+    /// arrives shortly after establish; empty until then.
+    @Published public private(set) var providerModels: [String: [ModelOption]] = [:]
+    /// Token totals for the heatmap chips (24h/7d/90d, per provider).
+    @Published public private(set) var usageRollup: UsageRollupMessage.Rollup? = nil
+    /// Per-provider quota windows (Usage tab; desktop sidebar parity).
+    @Published public private(set) var modelUsage: ModelUsageMessage.Usage? = nil
+    /// Token-level live text per thread, accumulated from bridge.runEvent
+    /// content deltas — renders as the growing assistant bubble between
+    /// snapshot pushes. Cleared when the run exits (the final snapshot row
+    /// supersedes it).
+    @Published public private(set) var streamingTexts: [String: String] = [:]
+    /// Live run id per streaming thread — lets the view hide the in-flight
+    /// snapshot row the bubble supersedes.
+    @Published public private(set) var streamingRunIds: [String: String] = [:]
+    /// Last Codex item id appended to each thread's live bubble — an item
+    /// transition gets a paragraph break so bursts don't jam ("…ops.The
+    /// first shell…"). Not published: render state derives from the text.
+    private var streamingItemIds: [String: String] = [:]
+    /// Live ensemble round state per thread (desktop roster-chip parity).
+    @Published public private(set) var ensembleStates: [String: RemoteEnsembleState] = [:]
+    /// Latest run diff summary per thread (inspector diff tab + changes row).
+    @Published public private(set) var diffSummaries: [String: MobileDiffSummary] = [:]
+    @Published public private(set) var lastActionMessage: String?
+    /// Set after createThread succeeds — HomeView navigates to the new chat.
+    @Published public var navigationTarget: String?
+    /// Expanded row bodies keyed by threadId → rowId.
+    @Published public private(set) var rowExpansions: [String: [String: RemoteThreadSnapshot.Row]] =
+        [:]
+    @Published public private(set) var expandingRows: Set<String> = []
+
+    /// True when a previous pairing is on disk — drives the "Reconnect to
+    /// your Mac" affordance and launch-time auto-resume.
+    @Published public private(set) var hasStoredPairing: Bool
+    /// True once a session has established this app launch — drives the
+    /// keep-the-shell-during-reconnect behavior (transient drops must NOT
+    /// eject the user to the pairing screen).
+    @Published public private(set) var wasEverConnected = false
+    /// The thread currently open in a detail view (nil on home). Used to
+    /// re-request its snapshot after a reconnect — it may be outside the
+    /// establish broadcast's recent-N window.
+    public var visibleThreadId: String? = nil
+    /// Inspector presentation — hoisted here so the SHELL can attach the
+    /// `.inspector` at NavigationStack level (true side-by-side column on
+    /// iPad instead of an overlay; sheet on iPhone).
+    @Published public var inspectorPresented = false
+    /// APNs token waiting for an established session (tokens can arrive
+    /// before the transport connects on cold launch).
+    private var pendingApnsToken: (hex: String, env: String)? = nil
+    private var apnsTokenSent = false
+
+    /// Called by the app delegate when iOS delivers the device token.
+    public func handleApnsToken(_ hex: String, env: String) {
+        pendingApnsToken = (hex, env)
+        apnsTokenSent = false
+        if case .connected = phase {
+            sendApnsToken(hex, env: env)
+        }
+    }
+
+    private func sendApnsToken(_ hex: String, env: String) {
+        guard !apnsTokenSent else { return }
+        apnsTokenSent = true
+        send(
+            BridgeAction.registerApnsToken(deviceToken: hex, env: env),
+            successLabel: "Notifications ready.")
+    }
+
+    /// One-time (per authorization state) UNUserNotificationCenter ask —
+    /// AFTER pairing, so the permission prompt has context. Registration
+    /// re-runs every launch (tokens rotate).
+    private func requestPushAuthorizationIfNeeded() {
+        #if canImport(UIKit)
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    UNUserNotificationCenter.current().requestAuthorization(options: [
+                        .alert, .badge, .sound,
+                    ]) { granted, _ in
+                        guard granted else { return }
+                        DispatchQueue.main.async {
+                            UIApplication.shared.registerForRemoteNotifications()
+                        }
+                    }
+                case .authorized, .provisional, .ephemeral:
+                    DispatchQueue.main.async {
+                        UIApplication.shared.registerForRemoteNotifications()
+                    }
+                default:
+                    break
+                }
+            }
+        #endif
+    }
+    /// Side-chat child that should open inside the inspector instead of
+    /// replacing the split-view detail pane.
+    @Published public var inspectorSideChatTarget: String?
+    @Published public var fileModeRequest: FileModeRequest?
+    @Published public var diffModeRequest: DiffModeRequest?
+
+    private let identitySeed: Data
+    private let pairingStore: PairedMacStore
+    private var client: RelayTransportClient?
+    private var eventTask: Task<Void, Never>?
+    private var pinnedMacIdentityB64: String?
+    private var relayUrl: String?
+
+    public init(
+        identityStore: IdentitySeedStore,
+        pairingStore: PairedMacStore = UserDefaultsPairedMacStore()
+    ) {
+        self.identitySeed = identityStore.loadOrCreateSeed()
+        self.pairingStore = pairingStore
+        let stored = pairingStore.load()
+        self.hasStoredPairing = stored != nil
+        if let stored { self.macDisplayName = stored.macDisplayName }
+    }
+
+    /// This phone's identity public key (base64 raw 32B) — shown in pairing UI
+    /// so the user can confirm it matches what the Mac pinned.
+    public var identityPublicKeyBase64: String {
+        (try? Curve25519.Signing.PrivateKey(rawRepresentation: identitySeed))
+            .map { Base64.encode($0.publicKey.rawRepresentation) } ?? ""
+    }
+
+    public struct FileModeRequest: Identifiable, Sendable {
+        public let id = UUID()
+        public let workspaceId: String?
+    }
+
+    public struct DiffModeRequest: Identifiable, Sendable {
+        public let id = UUID()
+        public let workspaceId: String?
+    }
+
+    // ── Pairing ────────────────────────────────────────────────────────────────
+
+    /// Pair from a scanned/pasted bootstrap JSON string.
+    public func pair(fromBootstrapJSON json: String) {
+        guard let data = json.data(using: .utf8),
+            let bootstrap = try? JSONDecoder().decode(PairingBootstrapPayload.self, from: data)
+        else {
+            phase = .error("That doesn't look like a valid pairing code.")
+            return
+        }
+        connect(bootstrap: bootstrap)
+    }
+
+    private func connect(bootstrap: PairingBootstrapPayload) {
+        teardown()
+        macDisplayName = bootstrap.macDisplayName
+        pinnedMacIdentityB64 = bootstrap.macIdentityPubKey
+        relayUrl = bootstrap.relayUrl
+        phase = .connecting
+        do {
+            let client = try RelayTransportClient(identitySeed: identitySeed)
+            self.client = client
+            consumeEvents(of: client)
+            Task {
+                do {
+                    try await client.scan(bootstrap)
+                    try await client.connect()
+                } catch {
+                    await MainActor.run { self.phase = .error(String(describing: error)) }
+                }
+            }
+        } catch {
+            phase = .error(String(describing: error))
+        }
+    }
+
+    /// Trusted reconnect to the persisted Mac — resolves the live session id
+    /// from the relay directory, no QR. The Mac pinned this phone's identity
+    /// at first pairing, so it accepts silently (and denies anyone else).
+    public func reconnectTrusted() {
+        guard let record = pairingStore.load() else { return }
+        teardown()
+        macDisplayName = record.macDisplayName
+        pinnedMacIdentityB64 = record.macIdentityPubKey
+        relayUrl = record.relayUrl
+        phase = .connecting
+        do {
+            let client = try RelayTransportClient(identitySeed: identitySeed)
+            self.client = client
+            consumeEvents(of: client)
+            Task {
+                // Retry the resolve+join a few times: the Mac's parked
+                // listener cycles its relay socket (idle reap → backoff
+                // rebind), so a single-shot attempt can race a brief gap.
+                var lastError: Error? = nil
+                for attempt in 0..<3 {
+                    do {
+                        if attempt > 0 {
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        }
+                        try await client.resolveAndScan(
+                            relayUrl: record.relayUrl,
+                            macIdentityPubKey: record.macIdentityPubKey)
+                        try await client.connectAndWaitEstablished(timeoutMs: 8_000)
+                        return
+                    } catch {
+                        lastError = error
+                        await client.dropConnection()
+                    }
+                }
+                _ = lastError
+                await MainActor.run {
+                    self.phase = .error(
+                        "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
+                    )
+                }
+            }
+        } catch {
+            phase = .error(String(describing: error))
+        }
+    }
+
+    /// Launch-time resume: silently try the stored pairing once.
+    public func resumeIfIdle() {
+        guard case .idle = phase, hasStoredPairing else { return }
+        reconnectTrusted()
+    }
+
+    /// Foreground resume: iOS kills sockets in the background, so returning
+    /// to the app with a stored pairing retries unless already connected or
+    /// mid-handshake.
+    public func reconnectIfStale() {
+        guard hasStoredPairing else { return }
+        switch phase {
+        case .connected, .connecting, .awaitingMacConfirm:
+            return
+        case .idle, .error:
+            reconnectTrusted()
+        }
+    }
+
+    public func disconnect() {
+        teardown()
+        phase = .idle
+        taskCards = []
+        approvals = []
+        questions = []
+    }
+
+    /// Drop the stored pairing entirely (the Mac keeps its pin until the user
+    /// revokes it there; re-pairing with the same identity reuses it).
+    public func forgetPairing() {
+        pairingStore.clear()
+        hasStoredPairing = false
+        pinnedMacIdentityB64 = nil
+        relayUrl = nil
+        macDisplayName = ""
+        disconnect()
+        // Security review: "Forget this Mac" must leave NOTHING readable —
+        // disconnect() clears the live lists, but cached snapshots,
+        // streaming buffers, and usage panels survived it.
+        threadSnapshots = [:]
+        streamingTexts = [:]
+        streamingItemIds = [:]
+        providerModels = [:]
+        usageRollup = nil
+        modelUsage = nil
+        navigationTarget = nil
+        visibleThreadId = nil
+        pendingApnsToken = nil
+        apnsTokenSent = false
+        lastActionMessage = nil
+    }
+
+    /// The transport socket died underneath us (background kill, relay
+    /// reap, network change). Without this the phase stayed .connected
+    /// forever — a zombie state where every send times out and
+    /// reconnectIfStale refuses to act because it looks healthy.
+    private func handleSocketClosed() {
+        // Intentional teardown nils the client BEFORE closing — ignore.
+        guard client != nil else { return }
+        guard case .connected = phase else { return }
+        if hasStoredPairing {
+            phase = .error("Connection lost — reconnecting…")
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                await MainActor.run { self?.reconnectIfStale() }
+            }
+        } else {
+            phase = .error("Connection lost.")
+        }
+    }
+
+    private func teardown() {
+        eventTask?.cancel()
+        eventTask = nil
+        let client = self.client
+        self.client = nil
+        Task { await client?.close() }
+    }
+
+    private func persistCurrentPairing() {
+        guard let relayUrl, let macId = pinnedMacIdentityB64 else { return }
+        pairingStore.save(
+            PairedMacRecord(
+                relayUrl: relayUrl, macIdentityPubKey: macId, macDisplayName: macDisplayName))
+        hasStoredPairing = true
+    }
+
+    private func consumeEvents(of client: RelayTransportClient) {
+        eventTask = Task { [weak self] in
+            for await event in client.events {
+                guard let self else { return }
+                switch event {
+                case .confirmCode(let code):
+                    await MainActor.run { self.phase = .awaitingMacConfirm(code: code) }
+                case .established:
+                    await MainActor.run {
+                        self.phase = .connected
+                        self.wasEverConnected = true
+                        self.persistCurrentPairing()
+                        // The establish snapshot covers recent-N threads; the
+                        // one the user is LOOKING AT may be older — refresh it
+                        // explicitly so the transcript catches up after a
+                        // backgrounded run finished.
+                        if let visible = self.visibleThreadId {
+                            self.requestThreadSnapshot(visible)
+                        }
+                        // APNs: ask AFTER a successful session (never at cold
+                        // launch), then register; the token callback ships it
+                        // up via handleApnsToken.
+                        self.requestPushAuthorizationIfNeeded()
+                        if let token = self.pendingApnsToken {
+                            self.sendApnsToken(token.hex, env: token.env)
+                        }
+                    }
+                case .message(let method, let params):
+                    await self.handle(method: method, params: params)
+                case .error(let message):
+                    await MainActor.run {
+                        if case .connected = self.phase { self.lastActionMessage = message }
+                        else { self.phase = .error(message) }
+                    }
+                case .closed:
+                    await MainActor.run { self.handleSocketClosed() }
+                }
+            }
+        }
+    }
+
+    // ── Inbound projections ───────────────────────────────────────────────────
+
+    private func handle(method: String, params: Data?) async {
+        guard let params else { return }
+        switch method {
+        case "bridge.broadcastRemoteProjectionSnapshot":
+            guard
+                let snapshot = try? JSONDecoder().decode(
+                    RemoteProjectionSnapshot.self, from: params)
+            else {
+                print("[tw] DECODE FAILED: projection snapshot — state not rehydrated")
+                return
+            }
+            applySnapshot(snapshot)
+        case "bridge.broadcastWorkspaceList":
+            guard let message = try? JSONDecoder().decode(WorkspaceListMessage.self, from: params)
+            else {
+                print("[tw] DECODE FAILED: workspace list")
+                return
+            }
+            // Non-destructive: an empty list while we HOLD workspaces is
+            // far more likely a settling-Mac snapshot than a real
+            // revocation — keep state, the rehydrate re-seed corrects it.
+            if message.workspaces.isEmpty, !workspaces.isEmpty {
+                print("[tw] ignoring empty workspace list (have \(workspaces.count))")
+            } else {
+                workspaces = message.workspaces
+            }
+        case "bridge.broadcastModelUsage":
+            guard let message = try? JSONDecoder().decode(ModelUsageMessage.self, from: params)
+            else {
+                print("[tw] DECODE FAILED: model usage")
+                return
+            }
+            modelUsage = message.usage
+        case "bridge.broadcastUsageRollup":
+            guard let message = try? JSONDecoder().decode(UsageRollupMessage.self, from: params)
+            else {
+                print("[tw] DECODE FAILED: usage rollup")
+                return
+            }
+            usageRollup = message.rollup
+        case "bridge.broadcastProviderModels":
+            guard let message = try? JSONDecoder().decode(ProviderModelsMessage.self, from: params)
+            else { return }
+            providerModels = Dictionary(
+                uniqueKeysWithValues: message.providers.map { ($0.provider, $0.models) })
+        case "bridge.broadcastRemoteProjection":
+            // Single-envelope push — on-demand thread snapshots + low-latency
+            // approval/question card changes.
+            struct One: Codable { let envelope: RemoteProjectionEnvelope }
+            guard let one = try? JSONDecoder().decode(One.self, from: params) else { return }
+            merge(envelope: one.envelope)
+        case "bridge.runEvent":
+            struct WirePayload: Codable {
+                let data: String?
+                let appRunId: String?
+            }
+            struct Wire: Codable {
+                let threadId: String?
+                let channel: String?
+                let payload: WirePayload?
+            }
+            guard let wire = try? JSONDecoder().decode(Wire.self, from: params),
+                let threadId = wire.threadId
+            else { return }
+            // Token-level progressive streaming: agent-output lines carry the
+            // routed provider events; append content deltas as they arrive so
+            // text grows per-token instead of per-snapshot hunk.
+            if wire.channel == "agent-output", let data = wire.payload?.data {
+                appendStreamingDeltas(threadId: threadId, runId: wire.payload?.appRunId, data: data)
+            }
+            if wire.channel == "agent-exit" || wire.channel == "gemini-exit" {
+                // Final snapshot supersedes the live bubble; clear shortly
+                // after the refresh lands so the handoff doesn't flash empty.
+                let captured = streamingTexts[threadId]
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    await MainActor.run {
+                        guard let self, self.streamingTexts[threadId] == captured else { return }
+                        self.streamingTexts[threadId] = nil
+                        self.streamingRunIds[threadId] = nil
+                        self.streamingItemIds[threadId] = nil
+                    }
+                }
+            }
+            // Snapshot re-pull stays as the consistency backstop.
+            let fast = wire.channel == "agent-output" || wire.channel == "agent-exit"
+            scheduleThreadRefresh(threadId, debounceMs: fast ? 200_000_000 : 450_000_000)
+        default:
+            break
+        }
+    }
+
+    /// Parse routed provider JSONL line(s) and append content deltas. The
+    /// line is `JSON.stringify(routed)` — provider events flat-merged with
+    /// routing fields; raw Gemini CLI chunks arrive as multi-line fragments,
+    /// so split + tolerate partial lines.
+    private func appendStreamingDeltas(threadId: String, runId: String?, data: String) {
+        // A new run on the same thread starts a fresh bubble — without this
+        // a follow-up turn would append to the previous answer's text.
+        if let runId, let current = streamingRunIds[threadId], current != runId {
+            streamingTexts[threadId] = ""
+            streamingRunIds[threadId] = runId
+            streamingItemIds[threadId] = nil
+        }
+        var appended = false
+        for line in data.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let lineData = line.data(using: .utf8),
+                let parsed = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+            else { continue }
+            let kind = parsed["type"] as? String
+            if kind == "tool_use" || kind == "tool_call" {
+                // Tool boundary = paragraph boundary in the live bubble too;
+                // without this, text segments around tool calls jam together
+                // mid-stream ("…either way.Round two done:").
+                let buffer = streamingTexts[threadId] ?? ""
+                if !buffer.isEmpty, !buffer.hasSuffix("\n\n") {
+                    streamingTexts[threadId] = buffer + "\n\n"
+                }
+                continue
+            }
+            guard kind == "content" || kind == "token" else { continue }
+            // Cumulative restatements REPLACE on the desktop; the live
+            // bubble already holds the streamed deltas — skip them.
+            if (parsed["cumulative"] as? Bool) == true,
+                !(streamingTexts[threadId] ?? "").isEmpty
+            {
+                continue
+            }
+            let text =
+                (parsed["text"] as? String) ?? (parsed["content"] as? String) ?? ""
+            guard !text.isEmpty else { continue }
+            // Desktop merge-with-separator parity: a NEW Codex agentMessage
+            // item (itemId transition) is a paragraph boundary. Within an
+            // item, token deltas append seamlessly as before.
+            let itemId = parsed["itemId"] as? String
+            if let itemId, !itemId.isEmpty {
+                let buffer = streamingTexts[threadId] ?? ""
+                if let last = streamingItemIds[threadId], last != itemId,
+                    !buffer.isEmpty, !buffer.hasSuffix("\n\n")
+                {
+                    streamingTexts[threadId] = buffer + "\n\n"
+                }
+                streamingItemIds[threadId] = itemId
+            }
+            streamingTexts[threadId, default: ""] += text
+            appended = true
+        }
+        if appended, let runId, streamingRunIds[threadId] != runId {
+            streamingRunIds[threadId] = runId
+        }
+    }
+
+    /// Merge one pushed envelope into the published state.
+    private func merge(envelope: RemoteProjectionEnvelope) {
+        switch envelope.kind {
+        case "threadSnapshot":
+            if let thread = envelope.decodePayload(RemoteThreadSnapshot.self),
+                let key = thread.taskId ?? thread.threadId
+            {
+                threadSnapshots[key] = thread
+            }
+        case "ensembleState":
+            if let state = envelope.decodePayload(RemoteEnsembleState.self),
+                let key = state.taskId ?? state.threadId ?? envelope.threadId
+            {
+                ensembleStates[key] = state
+            }
+        case "diffSummary":
+            if let diff = envelope.decodePayload(MobileDiffSummary.self),
+                let key = diff.taskId ?? diff.threadId ?? envelope.threadId
+            {
+                diffSummaries[key] = diff
+            }
+        case "questionCard":
+            if let card = envelope.decodePayload(MobileQuestionCard.self) {
+                mergeQuestionCard(card)
+            }
+        case "taskCard":
+            if let card = envelope.decodePayload(RemoteTaskCard.self) {
+                if let index = taskCards.firstIndex(where: { $0.id == card.id }) {
+                    taskCards[index] = card
+                } else {
+                    taskCards.insert(card, at: 0)
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    private func mergeQuestionCard(_ card: MobileQuestionCard) {
+        guard let id = card.resolvedId else { return }
+        if let status = card.status, status != "pending" {
+            questions.removeAll { $0.resolvedId == id }
+            return
+        }
+        if let index = questions.firstIndex(where: { $0.resolvedId == id }) {
+            questions[index] = card
+        } else {
+            questions.insert(card, at: 0)
+        }
+    }
+
+    private var pendingThreadRefresh: [String: Task<Void, Never>] = [:]
+
+    private func scheduleThreadRefresh(_ threadId: String, debounceMs: UInt64 = 450_000_000) {
+        pendingThreadRefresh[threadId]?.cancel()
+        pendingThreadRefresh[threadId] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: debounceMs)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.requestThreadSnapshot(threadId) }
+        }
+    }
+
+    /// Pull the full body for a clipped row from the Mac.
+    public func expandRow(threadId: String, rowId: String) {
+        guard let client else { return }
+        guard let workspaceId = taskCards.first(where: { $0.id == threadId })?.workspaceId
+        else { return }
+        expandingRows.insert(rowId)
+        let params = BridgeAction.threadRowExpand(
+            workspaceId: workspaceId, threadId: threadId, rowId: rowId)
+        Task {
+            do {
+                let ack = try await client.request(
+                    "bridge.requestActionAck", params: params, timeoutMs: 12_000)
+                guard ack.ok, let data = ack.result else {
+                    await MainActor.run { _ = self.expandingRows.remove(rowId) }
+                    return
+                }
+                guard let actionAck = try? JSONDecoder().decode(BridgeActionAck.self, from: data),
+                    let row = actionAck.data?.row
+                else {
+                    await MainActor.run { _ = self.expandingRows.remove(rowId) }
+                    return
+                }
+                await MainActor.run {
+                    var perThread = self.rowExpansions[threadId] ?? [:]
+                    perThread[rowId] = row
+                    self.rowExpansions[threadId] = perThread
+                    self.expandingRows.remove(rowId)
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastActionMessage = String(describing: error)
+                    self.expandingRows.remove(rowId)
+                }
+            }
+        }
+    }
+
+    public func resolvedRow(_ row: RemoteThreadSnapshot.Row, threadId: String)
+        -> RemoteThreadSnapshot.Row
+    {
+        rowExpansions[threadId]?[row.id] ?? row
+    }
+
+    /// Display name for a workspace id (telemetry rail / headers).
+    public func workspaceName(for workspaceId: String?) -> String? {
+        guard let workspaceId else { return nil }
+        return workspaces.first(where: { $0.id == workspaceId })?.displayName
+    }
+
+    public var fileEditableWorkspaces: [WorkspaceSummary] {
+        workspaces.filter { workspaceCanEditFiles($0.id) }
+    }
+
+    public func workspaceCanEditFiles(_ workspaceId: String?) -> Bool {
+        guard let workspaceId,
+            let capabilities = workspaces.first(where: { $0.id == workspaceId })?.capabilities
+        else { return false }
+        return capabilities.fileBrowse == true
+            && capabilities.fileRead == true
+            && capabilities.fileWrite == true
+    }
+
+    public func requestFilesMode(workspaceId: String? = nil) {
+        fileModeRequest = FileModeRequest(workspaceId: workspaceId)
+    }
+
+    public var diffReviewableWorkspaces: [WorkspaceSummary] {
+        workspaces.filter { workspaceCanReviewDiffs($0.id) }
+    }
+
+    public func workspaceCanReviewDiffs(_ workspaceId: String?) -> Bool {
+        guard let workspaceId,
+            let capabilities = workspaces.first(where: { $0.id == workspaceId })?.capabilities
+        else { return false }
+        return capabilities.diffReview == true
+    }
+
+    public func requestDiffMode(workspaceId: String? = nil) {
+        diffModeRequest = DiffModeRequest(workspaceId: workspaceId)
+    }
+
+    public enum RemoteFileActionError: LocalizedError {
+        case notConnected
+        case denied(String)
+        case malformedAck
+
+        public var errorDescription: String? {
+            switch self {
+            case .notConnected:
+                return "Not connected to your Mac."
+            case .denied(let message):
+                return message
+            case .malformedAck:
+                return "The Mac returned an unreadable file response."
+            }
+        }
+    }
+
+    public func listWorkspaceFiles(workspaceId: String) async throws -> (
+        entries: [WorkspaceFileEntry], truncated: Bool
+    ) {
+        let ack = try await requestFileAction(
+            BridgeAction.workspaceFileList(workspaceId: workspaceId))
+        return (ack.data?.entries ?? [], ack.data?.truncated ?? false)
+    }
+
+    public func readWorkspaceFile(
+        workspaceId: String, path: String
+    ) async throws -> WorkspaceFileReadResult {
+        let ack = try await requestFileAction(
+            BridgeAction.workspaceFileRead(workspaceId: workspaceId, path: path))
+        guard let file = ack.data?.file else { throw RemoteFileActionError.malformedAck }
+        return file
+    }
+
+    public func writeWorkspaceFile(
+        workspaceId: String, path: String, content: String, baseEtag: String
+    ) async throws -> WorkspaceFileReadResult {
+        let ack = try await requestFileAction(
+            BridgeAction.workspaceFileWrite(
+                workspaceId: workspaceId, path: path, content: content, baseEtag: baseEtag),
+            timeoutMs: 16_000)
+        guard let file = ack.data?.file else { throw RemoteFileActionError.malformedAck }
+        return file
+    }
+
+    /// Bounded workspace diff for the Diff Studio — the Mac runs the same
+    /// git surface the desktop Diff Studio uses and returns it in the ack.
+    public func fetchWorkspaceDiff(workspaceId: String) async throws -> WorkspaceDiffResult {
+        let ack = try await requestFileAction(
+            BridgeAction.workspaceDiff(workspaceId: workspaceId), timeoutMs: 16_000)
+        guard let diff = ack.data?.diff else { throw RemoteFileActionError.malformedAck }
+        return diff
+    }
+
+    private func requestFileAction(
+        _ params: [String: Any], timeoutMs: Int = 12_000
+    ) async throws -> BridgeActionAck {
+        guard let client else { throw RemoteFileActionError.notConnected }
+        let paramsData = try JSONSerialization.data(withJSONObject: params)
+        let ack = try await client.requestSerialized(
+            "bridge.requestActionAck", paramsData: paramsData, timeoutMs: timeoutMs)
+        guard ack.ok else {
+            throw RemoteFileActionError.denied(ack.error ?? "Action denied.")
+        }
+        guard let data = ack.result,
+            let actionAck = try? JSONDecoder().decode(BridgeActionAck.self, from: data)
+        else { throw RemoteFileActionError.malformedAck }
+        if actionAck.accepted == false {
+            throw RemoteFileActionError.denied(actionAck.message ?? "Denied by Mac policy.")
+        }
+        if actionAck.executed == false {
+            throw RemoteFileActionError.denied(
+                actionAck.message ?? "Accepted, but the Mac did not run the file action.")
+        }
+        return actionAck
+    }
+
+    /// One staged roster entry from the in-thread editor.
+    public struct RosterDraftEntry: Identifiable, Equatable, Sendable {
+        public var id: String
+        public var provider: String
+        public var model: String?
+        public var role: String
+        public var brief: String
+        public var enabled: Bool
+        public init(
+            id: String, provider: String, model: String?, role: String,
+            brief: String, enabled: Bool
+        ) {
+            self.id = id
+            self.provider = provider
+            self.model = model
+            self.role = role
+            self.brief = brief
+            self.enabled = enabled
+        }
+    }
+
+    /// Apply an edited roster to an existing ensemble (order = array order).
+    public func updateEnsembleRoster(
+        workspaceId: String, threadId: String, entries: [RosterDraftEntry]
+    ) {
+        let participants: [[String: Any]] = entries.map { entry in
+            var dict: [String: Any] = ["provider": entry.provider, "enabled": entry.enabled]
+            if !entry.id.hasPrefix("draft-") { dict["id"] = entry.id }
+            if let model = entry.model, !model.isEmpty { dict["model"] = model }
+            if !entry.role.isEmpty { dict["role"] = entry.role }
+            dict["brief"] = entry.brief
+            return dict
+        }
+        send(
+            BridgeAction.ensembleRosterUpdate(
+                workspaceId: workspaceId, threadId: threadId, participants: participants),
+            successLabel: "Roster updated.")
+        scheduleThreadRefresh(threadId)
+    }
+
+    /// The current guest participant child of a thread, if any.
+    public func guestParticipant(of threadId: String) -> RemoteTaskCard? {
+        taskCards.first { $0.parentChatId == threadId && $0.isGuestSideChat }
+    }
+
+    /// Invite / change the guest participant on a solo thread.
+    public func setGuestParticipant(
+        _ card: RemoteTaskCard, provider: String, model: String?,
+        reasoningEffort: String? = nil
+    ) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.setGuestParticipant(
+                workspaceId: ws, threadId: thread, provider: provider, model: model,
+                reasoningEffort: reasoningEffort),
+            successLabel: "Guest invited.")
+        scheduleThreadRefresh(thread)
+    }
+
+    public func removeGuestParticipant(_ card: RemoteTaskCard) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.removeGuestParticipant(workspaceId: ws, threadId: thread),
+            successLabel: "Guest removed.")
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Create an isolated side chat off a parent thread. Inspector callers keep
+    /// the child inline; compact callers can still navigate on ack.
+    public func createSideChat(
+        _ card: RemoteTaskCard, provider: String?, model: String? = nil,
+        reasoningEffort: String? = nil, navigateOnAck: Bool = true,
+        onCreated: ((String?) -> Void)? = nil
+    ) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.createSideChat(
+                workspaceId: ws, threadId: thread, provider: provider, model: model,
+                reasoningEffort: reasoningEffort),
+            successLabel: "Side chat created.",
+            navigateToThreadId: nil,
+            navigateOnAck: navigateOnAck,
+            onThreadCreated: onCreated)
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Steer-now or remove one queued ensemble prompt.
+    public func ensembleQueueItem(
+        _ card: RemoteTaskCard, index: Int, text: String, op: String
+    ) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.ensembleQueueItem(
+                workspaceId: ws, threadId: thread, index: index,
+                textPrefix: String(text.prefix(60)), op: op),
+            successLabel: op == "steerNow" ? "Steering…" : "Removed from queue.")
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Save thread notes (markdown; empty clears).
+    public func setThreadNotes(_ card: RemoteTaskCard, notes: String) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.setThreadNotes(workspaceId: ws, threadId: thread, notes: notes),
+            successLabel: "Notes saved.")
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Pin or unpin a transcript message.
+    public func toggleMessagePin(_ card: RemoteTaskCard, messageId: String, pinned: Bool) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        send(
+            BridgeAction.toggleMessagePin(
+                workspaceId: ws, threadId: thread, messageId: messageId, pinned: pinned),
+            successLabel: pinned ? "Pinned." : "Unpinned.")
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Manual refresh: tear down whatever half-state exists and redial the
+    /// trusted reconnect. Covers "phone launched before the Mac app" —
+    /// resolve initially failed, and waiting on backoff feels broken.
+    public func refreshConnection() {
+        disconnect()
+        reconnectTrusted()
+    }
+
+    /// Clear the transient ack banner — called when switching threads so a
+    /// denial from thread A doesn't render above thread B's composer.
+    public func clearActionMessage() {
+        lastActionMessage = nil
+    }
+
+    /// Ask the Mac for a fresh bounded transcript window for one thread.
+    /// Fire-and-forget — the snapshot arrives on the broadcast channel.
+    /// Workspace hints for threads we initiated before their taskCard
+    /// arrives — without this, opening a just-created thread raced the
+    /// projection broadcast and the snapshot request silently no-opped.
+    private var threadWorkspaceHints: [String: String] = [:]
+
+    public func rememberThreadWorkspace(_ threadId: String, workspaceId: String) {
+        threadWorkspaceHints[threadId] = workspaceId
+    }
+
+    public func requestThreadSnapshot(_ threadId: String) {
+        guard let client else { return }
+        guard
+            let workspaceId = taskCards.first(where: { $0.id == threadId })?.workspaceId
+                ?? threadWorkspaceHints[threadId]
+        else { return }
+        let params = BridgeAction.threadSnapshotRequest(
+            workspaceId: workspaceId, threadId: threadId)
+        Task { _ = try? await client.request("bridge.requestActionAck", params: params) }
+    }
+
+    private func applySnapshot(_ snapshot: RemoteProjectionSnapshot) {
+        var tasks: [RemoteTaskCard] = []
+        var approvalCards: [MobileApprovalCard] = []
+        var questionCards: [MobileQuestionCard] = []
+        var snapshots: [String: RemoteThreadSnapshot] = [:]
+        var ensembleSnapshots: [String: RemoteEnsembleState] = [:]
+        var diffSnapshots: [String: MobileDiffSummary] = [:]
+        for envelope in snapshot.projections {
+            switch envelope.kind {
+            case "taskCard":
+                if let card = envelope.decodePayload(RemoteTaskCard.self) { tasks.append(card) }
+            case "approvalCard":
+                if let card = envelope.decodePayload(MobileApprovalCard.self) {
+                    approvalCards.append(card)
+                }
+            case "questionCard":
+                if let card = envelope.decodePayload(MobileQuestionCard.self) {
+                    questionCards.append(card)
+                }
+            case "threadSnapshot":
+                if let thread = envelope.decodePayload(RemoteThreadSnapshot.self),
+                    let key = thread.taskId ?? thread.threadId
+                {
+                    snapshots[key] = thread
+                }
+            case "ensembleState":
+                if let state = envelope.decodePayload(RemoteEnsembleState.self),
+                    let key = state.taskId ?? state.threadId ?? envelope.threadId
+                {
+                    ensembleSnapshots[key] = state
+                }
+            case "diffSummary":
+                if let diff = envelope.decodePayload(MobileDiffSummary.self),
+                    let key = diff.taskId ?? diff.threadId ?? envelope.threadId
+                {
+                    diffSnapshots[key] = diff
+                }
+            default:
+                break
+            }
+        }
+        // Non-destructive empty-snapshot guard (Codex-diagnosed): a Mac
+        // mid-restart can emit an establish snapshot BEFORE its state has
+        // settled. Accepting empty-over-populated as authoritative produced
+        // 'connected, no chats' — keep what we have; the delayed rehydrate
+        // snapshot (Mac-side) supplies the real state moments later.
+        if tasks.isEmpty, !taskCards.isEmpty {
+            print("[tw] ignoring empty snapshot (have \(taskCards.count) cards)")
+        } else {
+            taskCards = tasks
+        }
+        approvals = approvalCards
+        questions = questionCards
+        // Merge — don't wipe on-demand snapshots for threads outside the
+        // recent-N window when a full periodic snapshot lands.
+        for (key, snapshot) in snapshots {
+            threadSnapshots[key] = snapshot
+        }
+        for (key, state) in ensembleSnapshots {
+            ensembleStates[key] = state
+        }
+        for (key, diff) in diffSnapshots {
+            diffSummaries[key] = diff
+        }
+    }
+
+    // ── Actions ────────────────────────────────────────────────────────────────
+
+    /// Reply to an approval. `decision` MUST be one of the Mac validator's
+    /// union: accept | acceptForSession | acceptForWorkspace | decline |
+    /// cancel ("approve"/"deny" were silently rejected as malformed).
+    /// Cards can OMIT workspaceId (kimi approvals carry no workspace path)
+    /// and threadId is conditional — but the reply validators require both
+    /// as strings. The router only uses workspaceId for the allowlist gate
+    /// and the executor never reads threadId, so best-effort fallbacks keep
+    /// the buttons live instead of silently dead.
+    private func replyContext(workspaceId: String?, threadId: String?, runId: String?)
+        -> (workspaceId: String, threadId: String, runId: String?)?
+    {
+        let ws =
+            workspaceId
+            ?? threadId.flatMap { thread in
+                taskCards.first(where: { $0.id == thread })?.workspaceId
+            }
+            ?? workspaces.first?.id
+        guard let ws else { return nil }
+        return (ws, threadId ?? runId ?? "", runId)
+    }
+
+    public func approve(_ card: MobileApprovalCard, decision: String) {
+        guard let toolCallId = card.toolCallId,
+            let context = replyContext(
+                workspaceId: card.workspaceId, threadId: card.threadId, runId: card.runId)
+        else { return }
+        let ws = context.workspaceId
+        let thread = context.threadId
+        let label: String
+        switch decision {
+        case "accept": label = "Allowed once."
+        case "acceptForSession": label = "Allowed for this session."
+        case "acceptForWorkspace": label = "Allowed in this workspace."
+        case "cancel": label = "Run cancelled."
+        default: label = "Denied."
+        }
+        send(
+            BridgeAction.approvalReply(
+                toolCallId: toolCallId, decision: decision, workspaceId: ws, threadId: thread),
+            successLabel: label)
+        scheduleThreadRefresh(thread)
+    }
+
+    public func answer(_ card: MobileQuestionCard, _ text: String) {
+        guard let promptId = card.resolvedId,
+            let context = replyContext(
+                workspaceId: card.workspaceId, threadId: card.threadId, runId: card.runId)
+        else { return }
+        let ws = context.workspaceId
+        let thread = context.threadId
+        send(
+            BridgeAction.questionReply(
+                questionId: promptId, answer: text, workspaceId: ws, threadId: thread,
+                runId: context.runId),
+            successLabel: "Answer sent.")
+        scheduleThreadRefresh(thread)
+    }
+
+    /// Dismiss a question — the Mac resolves the parked tool as cancelled.
+    public func rejectQuestion(_ card: MobileQuestionCard) {
+        guard let promptId = card.resolvedId,
+            let context = replyContext(
+                workspaceId: card.workspaceId, threadId: card.threadId, runId: card.runId)
+        else { return }
+        let ws = context.workspaceId
+        let thread = context.threadId
+        send(
+            BridgeAction.questionReject(
+                promptId: promptId, workspaceId: ws, threadId: thread, runId: context.runId),
+            successLabel: "Question dismissed.")
+        scheduleThreadRefresh(thread)
+    }
+
+    public func cancelRun(_ card: RemoteTaskCard) {
+        guard let provider = card.provider, let runId = card.runId, let ws = card.workspaceId,
+            let thread = card.threadId
+        else { return }
+        send(
+            BridgeAction.cancelRun(
+                provider: provider, runId: runId, workspaceId: ws, threadId: thread))
+    }
+
+    /// Start a NEW task: create the Mac chat first, then send the initial
+    /// prompt into the returned thread. The ownership validator rejects prompts
+    /// for unknown thread ids, so the old direct `composerPrompt(ios-*)` path
+    /// now fails correctly.
+    public func startTask(
+        workspaceId: String, provider: String, prompt: String, model: String? = nil,
+        reasoningEffort: String? = nil,
+        imageAttachments: [[String: Any]]? = nil
+    ) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasAttachments = imageAttachments?.isEmpty == false
+        guard !trimmed.isEmpty || hasAttachments else { return }
+        let title = String(trimmed.prefix(72))
+        send(
+            BridgeAction.createThread(
+                workspaceId: workspaceId, variant: "workspace", provider: provider,
+                title: title.isEmpty ? "New Chat" : title),
+            timeoutMs: 12_000,
+            successLabel: "Chat created.",
+            navigateOnAck: false
+        ) { [weak self] threadId in
+            guard let self, let threadId else { return }
+            self.navigationTarget = threadId
+            self.rememberThreadWorkspace(threadId, workspaceId: workspaceId)
+            self.send(
+                BridgeAction.composerPrompt(
+                    workspaceId: workspaceId, threadId: threadId, provider: provider,
+                    text: trimmed, model: model, reasoningEffort: reasoningEffort,
+                    imageAttachments: imageAttachments),
+                timeoutMs: 12_000,
+                successLabel: "Sent.",
+                navigateToThreadId: threadId)
+            self.scheduleThreadRefresh(threadId)
+        }
+    }
+
+    /// Create an empty ensemble chat, optionally queue the first prompt.
+    /// One draft roster entry from the phone's ensemble editor.
+    public struct EnsembleDraftParticipant: Sendable {
+        public let provider: String
+        public let model: String?
+        public init(provider: String, model: String?) {
+            self.provider = provider
+            self.model = model
+        }
+    }
+
+    public func startEnsemble(
+        workspaceId: String, prompt: String,
+        participants: [EnsembleDraftParticipant]? = nil
+    ) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let roster: [[String: Any]]? = participants?.map { entry in
+            var record: [String: Any] = ["provider": entry.provider]
+            if let model = entry.model, !model.isEmpty, model != "cli-default" {
+                record["model"] = model
+            }
+            return record
+        }
+        send(
+            BridgeAction.createThread(
+                workspaceId: workspaceId, variant: "ensemble", participants: roster),
+            timeoutMs: 12_000,
+            successLabel: "Ensemble created."
+        ) { [weak self] threadId in
+            guard let self, let threadId else { return }
+            self.navigationTarget = threadId
+            self.rememberThreadWorkspace(threadId, workspaceId: workspaceId)
+            self.send(
+                BridgeAction.ensembleSteer(
+                    workspaceId: workspaceId, threadId: threadId, text: trimmed),
+                successLabel: "Round started.")
+            self.scheduleThreadRefresh(threadId)
+        }
+    }
+
+    /// Create an empty global chat (uses an allowlisted workspace id for gating).
+    public func startGlobalChat(workspaceId: String) {
+        send(
+            BridgeAction.createThread(workspaceId: workspaceId, variant: "global"),
+            timeoutMs: 12_000,
+            successLabel: "Global chat created.")
+    }
+
+    /// Send a follow-up prompt into an existing thread.
+    /// `navigateOnAck: false` keeps the shell's selection where it is —
+    /// the side-chat mini pane sends must NOT steal the main transcript
+    /// (the ack carries the side chat's threadId, which would otherwise
+    /// claim navigationTarget and reload the detail pane).
+    public func continueTask(
+        _ card: RemoteTaskCard, prompt: String, approvalMode: String? = nil,
+        model: String? = nil, reasoningEffort: String? = nil,
+        imageAttachments: [[String: Any]]? = nil,
+        extraWorkspaceIds: [String]? = nil,
+        navigateOnAck: Bool = true
+    ) {
+        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        if card.isEnsemble {
+            send(
+                BridgeAction.ensembleSteer(
+                    workspaceId: ws, threadId: thread, text: prompt,
+                    imageAttachments: imageAttachments),
+                successLabel: "Sent to ensemble.",
+                navigateOnAck: navigateOnAck)
+        } else {
+            guard let provider = card.provider else { return }
+            send(
+                BridgeAction.composerPrompt(
+                    workspaceId: ws, threadId: thread, provider: provider, text: prompt,
+                    approvalMode: approvalMode, model: model,
+                    extraWorkspaceIds: extraWorkspaceIds,
+                    reasoningEffort: reasoningEffort,
+                    imageAttachments: imageAttachments),
+                timeoutMs: 12_000,
+                successLabel: "Sent.",
+                navigateOnAck: navigateOnAck)
+        }
+        scheduleThreadRefresh(thread)
+    }
+
+    private func send(
+        _ params: [String: Any], timeoutMs: Int = 12_000, successLabel: String = "Sent.",
+        navigateToThreadId: String? = nil,
+        navigateOnAck: Bool = true,
+        onThreadCreated: ((String?) -> Void)? = nil
+    ) {
+        guard let client else { return }
+        Task {
+            do {
+                let ack = try await client.request(
+                    "bridge.requestActionAck", params: params, timeoutMs: timeoutMs)
+                await MainActor.run {
+                    let accepted = Self.actionAckSucceeded(ack)
+                    let threadId = accepted ? (Self.threadId(from: ack) ?? navigateToThreadId) : nil
+                    if accepted, navigateOnAck, let threadId {
+                        self.navigationTarget = threadId
+                    }
+                    if accepted {
+                        onThreadCreated?(threadId)
+                    }
+                    self.lastActionMessage = Self.interpretAck(
+                        ack, successLabel: successLabel)
+                }
+            } catch {
+                await MainActor.run { self.lastActionMessage = String(describing: error) }
+            }
+        }
+    }
+
+    private static func actionAckSucceeded(_ ack: AckResult) -> Bool {
+        guard ack.ok else { return false }
+        guard let data = ack.result,
+            let actionAck = try? JSONDecoder().decode(BridgeActionAck.self, from: data)
+        else { return true }
+        if actionAck.accepted == false { return false }
+        if actionAck.executed == false { return false }
+        return true
+    }
+
+    private static func threadId(from ack: AckResult) -> String? {
+        guard let data = ack.result else { return nil }
+        if let threadId = nestedThreadId(from: data) { return threadId }
+        if let actionAck = try? JSONDecoder().decode(BridgeActionAck.self, from: data) {
+            if let threadId = actionAck.data?.threadId { return threadId }
+            if let threadId = actionAck.threadId { return threadId }
+        }
+        struct Loose: Codable { let threadId: String? }
+        if let loose = try? JSONDecoder().decode(Loose.self, from: data) {
+            return loose.threadId
+        }
+        return nil
+    }
+
+    private static func nestedThreadId(from data: Data) -> String? {
+        guard
+            let object = try? JSONSerialization.jsonObject(
+                with: data, options: [.fragmentsAllowed]) as? [String: Any],
+            let dataObject = object["data"] as? [String: Any]
+        else { return nil }
+        if dataObject["actionKind"] as? String == "createSideChat",
+            let result = dataObject["result"] as? [String: Any],
+            let threadId = result["threadId"] as? String,
+            !threadId.isEmpty
+        {
+            return threadId
+        }
+        if let threadId = dataObject["threadId"] as? String, !threadId.isEmpty {
+            return threadId
+        }
+        return nil
+    }
+
+    private static func interpretAck(_ ack: AckResult, successLabel: String) -> String {
+        if !ack.ok {
+            if ack.error == "timeout" {
+                return
+                    "Timed out waiting for your Mac — is TaskWraith running and paired?"
+            }
+            return ack.error ?? "Action denied."
+        }
+        if let data = ack.result,
+            let actionAck = try? JSONDecoder().decode(BridgeActionAck.self, from: data)
+        {
+            if actionAck.accepted == false {
+                return actionAck.message ?? "Denied by Mac policy."
+            }
+            if actionAck.executed == false {
+                return actionAck.message ?? "Accepted — wiring not complete on Mac."
+            }
+            if let message = actionAck.message,
+                !message.isEmpty,
+                message != "Dispatching on your Mac.",
+                message != "Chat created on your Mac."
+            {
+                return message
+            }
+        }
+        return successLabel
+    }
+}

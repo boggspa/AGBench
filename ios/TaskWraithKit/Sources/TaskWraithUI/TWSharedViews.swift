@@ -86,6 +86,36 @@ public struct GhostMonolineMarkView: View {
     }
 }
 
+public struct TaskWraithMonolineBrandView: View {
+    public var markSize: CGFloat = 64
+    public var titleSize: CGFloat = 24
+
+    public init(markSize: CGFloat = 64, titleSize: CGFloat = 24) {
+        self.markSize = markSize
+        self.titleSize = titleSize
+    }
+
+    public var body: some View {
+        VStack(spacing: 14) {
+            GhostMonolineMarkView(size: markSize)
+            Text("TaskWraith")
+                .font(titleFont)
+                .foregroundStyle(TWTheme.textSecondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("TaskWraith"))
+    }
+
+    private var titleFont: Font {
+        #if canImport(UIKit)
+            if UIFont(name: "AvenirNext-Bold", size: titleSize) != nil {
+                return .custom("AvenirNext-Bold", size: titleSize, relativeTo: .title3)
+            }
+        #endif
+        return .system(size: titleSize, weight: .bold, design: .default)
+    }
+}
+
 /// Desktop sidebar section header — all-caps label in a subtle pill.
 struct PillSectionHeader: View {
     let title: String
@@ -245,43 +275,26 @@ struct ProviderModelPicker: View {
     let catalogs: [ProviderModelCatalog]
     @Binding var provider: String
     @Binding var modelId: String?
-    @State private var pickerPresented = false
+    @Binding var reasoningEffort: String?
+    var allowsProviderChange: Bool = true
 
     private var currentCatalog: ProviderModelCatalog? {
         catalogs.first { $0.provider.lowercased() == provider.lowercased() }
     }
+    private var reasoningLabel: String? {
+        guard let effort = reasoningEffort,
+            !twReasoningOptions(in: currentCatalog, modelId: modelId).isEmpty
+        else { return nil }
+        return twReasoningDisplayLabel(effort)
+    }
 
     var body: some View {
-        Button {
-            pickerPresented = true
+        Menu {
+            pickerMenuContent
         } label: {
-            // Flat text labels (desktop composer parity) — the whole run of
-            // text is the tap target; no pill chrome.
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(TWTheme.providerAccent(provider))
-                    .frame(width: 7, height: 7)
-                Text(TWTheme.providerLabel(provider))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(TWTheme.providerAccent(provider))
-                Text(modelId.map(shortModelLabel) ?? "Default")
-                    .font(.caption)
-                    .foregroundStyle(TWTheme.textPrimary)
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(TWTheme.textMuted)
-            }
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
+            pickerLabel
         }
         .buttonStyle(.plain)
-        .sheet(isPresented: $pickerPresented) {
-            ProviderModelPickerSheet(
-                catalogs: catalogs,
-                provider: $provider,
-                modelId: $modelId)
-        }
         .onChange(of: provider) { _, newProvider in
             // Switching provider invalidates a model from the OLD catalog —
             // reset to nil (= inherit on existing chats / provider default
@@ -295,7 +308,137 @@ struct ProviderModelPicker: View {
             if catalog == nil || !(catalog!.models.contains { $0.id == modelId }) {
                 modelId = nil
             }
+            twNormalizeReasoningSelection(
+                catalog: catalog, modelId: modelId, reasoningEffort: &reasoningEffort)
         }
+        .onChange(of: modelId) { _, _ in
+            twNormalizeReasoningSelection(
+                catalog: currentCatalog, modelId: modelId, reasoningEffort: &reasoningEffort)
+        }
+        .onAppear {
+            twNormalizeReasoningSelection(
+                catalog: currentCatalog, modelId: modelId, reasoningEffort: &reasoningEffort)
+        }
+    }
+
+    private var pickerLabel: some View {
+        // Flat text labels (desktop composer parity) — the whole run of
+        // text is the tap target; no pill chrome.
+        HStack(spacing: 6) {
+            Circle()
+                .fill(TWTheme.providerAccent(provider))
+                .frame(width: 7, height: 7)
+            Text(TWTheme.providerLabel(provider))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(TWTheme.providerAccent(provider))
+            Text(modelId.map(shortModelLabel) ?? "Default")
+                .font(.caption)
+                .foregroundStyle(TWTheme.textPrimary)
+                .lineLimit(1)
+            if let reasoningLabel {
+                Text("· \(reasoningLabel)")
+                    .font(.caption)
+                    .foregroundStyle(TWTheme.textSecondary)
+                    .lineLimit(1)
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(TWTheme.textMuted)
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var pickerMenuContent: some View {
+        if allowsProviderChange {
+            ForEach(catalogs) { catalog in
+                Menu {
+                    modelMenuEntries(for: catalog)
+                } label: {
+                    providerMenuLabel(catalog)
+                }
+            }
+        } else {
+            modelMenuEntries(for: currentCatalog)
+        }
+    }
+
+    @ViewBuilder
+    private func modelMenuEntries(for catalog: ProviderModelCatalog?) -> some View {
+        if let catalog {
+            Button {
+                selectDefault(in: catalog)
+            } label: {
+                checkedMenuLabel(
+                    "Default",
+                    selected: catalog.provider.lowercased() == provider.lowercased()
+                        && modelId == nil)
+            }
+            ForEach(catalog.models) { option in
+                Button {
+                    selectModel(option, in: catalog)
+                } label: {
+                    checkedMenuLabel(
+                        option.label ?? option.id,
+                        selected: catalog.provider.lowercased() == provider.lowercased()
+                            && modelId == option.id)
+                }
+            }
+            if catalog.provider.lowercased() == provider.lowercased() {
+                let options = twReasoningOptions(in: catalog, modelId: modelId)
+                if !options.isEmpty {
+                    Menu("Reasoning") {
+                        ForEach(options) { option in
+                            Button {
+                                reasoningEffort = option.reasoningEffort
+                            } label: {
+                                checkedMenuLabel(
+                                    twReasoningDisplayLabel(option.reasoningEffort),
+                                    selected: reasoningEffort == option.reasoningEffort)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerMenuLabel(_ catalog: ProviderModelCatalog) -> some View {
+        let selected = catalog.provider.lowercased() == provider.lowercased()
+        if selected {
+            Label(TWTheme.providerLabel(catalog.provider), systemImage: "checkmark")
+        } else {
+            Text(TWTheme.providerLabel(catalog.provider))
+        }
+    }
+
+    @ViewBuilder
+    private func checkedMenuLabel(_ title: String, selected: Bool) -> some View {
+        if selected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
+    }
+
+    private func selectDefault(in catalog: ProviderModelCatalog) {
+        if allowsProviderChange {
+            provider = catalog.provider
+        }
+        modelId = nil
+        twNormalizeReasoningSelection(
+            catalog: catalog, modelId: nil, reasoningEffort: &reasoningEffort)
+    }
+
+    private func selectModel(_ option: ModelOption, in catalog: ProviderModelCatalog) {
+        if allowsProviderChange {
+            provider = catalog.provider
+        }
+        modelId = option.id
+        twNormalizeReasoningSelection(
+            catalog: catalog, modelId: option.id, reasoningEffort: &reasoningEffort)
     }
 
     private func shortModelLabel(_ id: String) -> String {
@@ -309,57 +452,155 @@ struct ProviderModelPicker: View {
     }
 }
 
+private func twReasoningModelOption(
+    in catalog: ProviderModelCatalog?, modelId: String?
+) -> ModelOption? {
+    guard let catalog else { return nil }
+    if let modelId,
+        let selected = catalog.models.first(where: { $0.id == modelId })
+    {
+        return selected
+    }
+    return catalog.models.first(where: { $0.isDefault == true }) ?? catalog.models.first
+}
+
+private func twReasoningOptions(
+    in catalog: ProviderModelCatalog?, modelId: String?
+) -> [ReasoningEffortOption] {
+    twReasoningModelOption(in: catalog, modelId: modelId)?.supportedReasoningEfforts ?? []
+}
+
+private func twDefaultReasoningEffort(for option: ModelOption?) -> String? {
+    guard let option else { return nil }
+    let efforts = option.supportedReasoningEfforts?.map(\.reasoningEffort) ?? []
+    if let defaultEffort = option.defaultReasoningEffort,
+        efforts.contains(defaultEffort)
+    {
+        return defaultEffort
+    }
+    if efforts.contains("medium") { return "medium" }
+    if efforts.contains("off") { return "off" }
+    return efforts.first
+}
+
+private func twNormalizeReasoningSelection(
+    catalog: ProviderModelCatalog?, modelId: String?, reasoningEffort: inout String?
+) {
+    let option = twReasoningModelOption(in: catalog, modelId: modelId)
+    let efforts = option?.supportedReasoningEfforts?.map(\.reasoningEffort) ?? []
+    guard !efforts.isEmpty else {
+        reasoningEffort = nil
+        return
+    }
+    if let current = reasoningEffort, efforts.contains(current) { return }
+    reasoningEffort = twDefaultReasoningEffort(for: option)
+}
+
+private func twReasoningDisplayLabel(_ effort: String) -> String {
+    switch effort.lowercased() {
+    case "off": return "Off"
+    case "low": return "Low"
+    case "medium": return "Medium"
+    case "high": return "High"
+    case "xhigh": return "Extra High"
+    case "max": return "Max"
+    default:
+        return effort.prefix(1).uppercased() + String(effort.dropFirst())
+    }
+}
+
 private struct ProviderModelPickerSheet: View {
     let catalogs: [ProviderModelCatalog]
     @Binding var provider: String
     @Binding var modelId: String?
+    @Binding var reasoningEffort: String?
+    var title: String = "Provider & Model"
+    var confirmationTitle: String = "Done"
+    var dismissesOnSelection: Bool = true
+    var allowsProviderChange: Bool = true
+    var onConfirm: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var expandedProvider: String?
 
     private var currentCatalog: ProviderModelCatalog? {
         catalogs.first { $0.provider.lowercased() == provider.lowercased() }
+    }
+    private var reasoningOptions: [ReasoningEffortOption] {
+        twReasoningOptions(in: currentCatalog, modelId: modelId)
     }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Provider") {
-                    ForEach(catalogs) { catalog in
-                        providerRow(catalog)
+                if allowsProviderChange {
+                    Section("Provider") {
+                        ForEach(catalogs) { catalog in
+                            providerTree(catalog)
+                        }
                     }
-                }
-                Section("Model") {
-                    defaultModelRow
-                    ForEach(currentCatalog?.models ?? []) { option in
-                        modelRow(option)
+                } else {
+                    Section(TWTheme.providerLabel(provider)) {
+                        defaultModelRow(for: currentCatalog)
+                        ForEach(currentCatalog?.models ?? []) { option in
+                            modelRow(option, catalog: currentCatalog)
+                        }
+                        ForEach(reasoningOptions) { option in
+                            reasoningRow(option)
+                        }
                     }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(TWTheme.appBg)
-            .navigationTitle("Provider & Model")
+            .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(confirmationTitle) {
+                        onConfirm?()
+                        dismiss()
+                    }
                 }
             }
+            .onAppear {
+                expandedProvider = provider.lowercased()
+                normalizeReasoningSelection()
+            }
+            .onChange(of: provider) { _, newProvider in
+                expandedProvider = newProvider.lowercased()
+                normalizeReasoningSelection()
+            }
+            .onChange(of: modelId) { _, _ in normalizeReasoningSelection() }
         }
+        #if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        #endif
     }
 
-    private func providerRow(_ catalog: ProviderModelCatalog) -> some View {
+    private func providerTree(_ catalog: ProviderModelCatalog) -> some View {
         let selected = catalog.provider.lowercased() == provider.lowercased()
         let accent = TWTheme.providerAccent(catalog.provider)
-        return Button {
-            if !selected {
-                provider = catalog.provider
-                modelId = nil
+        return DisclosureGroup(
+            isExpanded: Binding(
+                get: { expandedProvider == catalog.provider.lowercased() },
+                set: { expandedProvider = $0 ? catalog.provider.lowercased() : nil }
+            )
+        ) {
+            defaultModelRow(for: catalog, indented: true)
+            ForEach(catalog.models) { option in
+                modelRow(option, catalog: catalog, indented: true)
+            }
+            if selected, !reasoningOptions.isEmpty {
+                ForEach(reasoningOptions) { option in
+                    reasoningRow(option, indented: true)
+                }
             }
         } label: {
             HStack(spacing: 10) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 8, height: 8)
+                Circle().fill(accent).frame(width: 8, height: 8)
                 Text(TWTheme.providerLabel(catalog.provider))
-                    .foregroundStyle(TWTheme.textPrimary)
+                    .foregroundStyle(selected ? accent : TWTheme.textPrimary)
+                    .fontWeight(selected ? .semibold : .regular)
                 Spacer()
                 if selected {
                     Image(systemName: "checkmark")
@@ -367,14 +608,24 @@ private struct ProviderModelPickerSheet: View {
                         .foregroundStyle(accent)
                 }
             }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .tint(accent)
     }
 
-    private var defaultModelRow: some View {
-        Button {
+    private func defaultModelRow(
+        for catalog: ProviderModelCatalog?, indented: Bool = false
+    ) -> some View {
+        let selected =
+            catalog?.provider.lowercased() == provider.lowercased() && modelId == nil
+        return Button {
+            if let catalog, allowsProviderChange {
+                provider = catalog.provider
+            }
             modelId = nil
-            dismiss()
+            normalizeReasoningSelection(catalog: catalog, selectedModelId: nil)
+            let hasReasoning = !twReasoningOptions(in: catalog, modelId: nil).isEmpty
+            if dismissesOnSelection && !hasReasoning { dismiss() }
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -385,21 +636,30 @@ private struct ProviderModelPickerSheet: View {
                         .foregroundStyle(TWTheme.textSecondary)
                 }
                 Spacer()
-                if modelId == nil {
+                if selected {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TWTheme.providerAccent(provider))
+                        .foregroundStyle(TWTheme.providerAccent(catalog?.provider ?? provider))
                 }
             }
+            .padding(.leading, indented ? 18 : 0)
         }
         .buttonStyle(.plain)
     }
 
-    private func modelRow(_ option: ModelOption) -> some View {
-        let selected = modelId == option.id
+    private func modelRow(
+        _ option: ModelOption, catalog: ProviderModelCatalog?, indented: Bool = false
+    ) -> some View {
+        let selected =
+            catalog?.provider.lowercased() == provider.lowercased() && modelId == option.id
         return Button {
+            if let catalog, allowsProviderChange {
+                provider = catalog.provider
+            }
             modelId = option.id
-            dismiss()
+            normalizeReasoningSelection(catalog: catalog, selectedModelId: option.id)
+            let hasReasoning = !(option.supportedReasoningEfforts ?? []).isEmpty
+            if dismissesOnSelection && !hasReasoning { dismiss() }
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -415,11 +675,57 @@ private struct ProviderModelPickerSheet: View {
                 if selected {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold))
+                        .foregroundStyle(TWTheme.providerAccent(catalog?.provider ?? provider))
+                }
+            }
+            .padding(.leading, indented ? 18 : 0)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reasoningRow(
+        _ option: ReasoningEffortOption, indented: Bool = false
+    ) -> some View {
+        let selected = reasoningEffort == option.reasoningEffort
+        return Button {
+            reasoningEffort = option.reasoningEffort
+            if dismissesOnSelection { dismiss() }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(twReasoningDisplayLabel(option.reasoningEffort))
+                        .foregroundStyle(TWTheme.textPrimary)
+                    if let description = option.description, !description.isEmpty {
+                        Text(description)
+                            .font(.caption)
+                            .foregroundStyle(TWTheme.textSecondary)
+                    }
+                }
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(TWTheme.providerAccent(provider))
                 }
             }
+            .padding(.leading, indented ? 18 : 0)
         }
         .buttonStyle(.plain)
+    }
+
+    private func normalizeReasoningSelection() {
+        normalizeReasoningSelection(catalog: currentCatalog, selectedModelId: modelId)
+    }
+
+    private func normalizeReasoningSelection(
+        catalog: ProviderModelCatalog?, selectedModelId: String?
+    ) {
+        var next = reasoningEffort
+        twNormalizeReasoningSelection(
+            catalog: catalog,
+            modelId: selectedModelId,
+            reasoningEffort: &next)
+        reasoningEffort = next
     }
 }
 
@@ -1136,6 +1442,7 @@ public struct MarkdownLite: View {
         case table(rows: [String])
         case quote(text: String)
         case paragraph(text: String)
+        case divider
     }
 
     private var blocks: [Block] {
@@ -1196,6 +1503,12 @@ public struct MarkdownLite: View {
                 out.append(.heading(level: heading.level, text: heading.text))
                 continue
             }
+            if isThematicBreak(trimmed) {
+                flushParagraph()
+                flushLists()
+                out.append(.divider)
+                continue
+            }
             if trimmed.hasPrefix("|") {
                 flushParagraph()
                 // Skip pure separator rows (|---|---|).
@@ -1249,6 +1562,16 @@ public struct MarkdownLite: View {
             line[line.startIndex..<dot].allSatisfy({ $0.isNumber })
         else { return nil }
         return String(line[line.index(dot, offsetBy: 2)...])
+    }
+
+    /// `---` / `***` / `___` (3+ of one marker) — the separator the Mac
+    /// inserts between Codex agent-message items; renders as a hairline
+    /// instead of literal dashes.
+    private func isThematicBreak(_ line: String) -> Bool {
+        guard line.count >= 3, let first = line.first,
+            first == "-" || first == "*" || first == "_"
+        else { return false }
+        return line.allSatisfy { $0 == first }
     }
 
     public var body: some View {
@@ -1322,6 +1645,12 @@ public struct MarkdownLite: View {
             }
         case .paragraph(let text):
             inlineText(text).font(TWFont.transcript())
+        case .divider:
+            Rectangle()
+                .fill(TWTheme.border)
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
         }
     }
 
@@ -1436,7 +1765,12 @@ public struct ToolActivityCards: View {
     private struct CollapsedEntry: Identifiable {
         let entry: RemoteThreadSnapshot.Row.ToolEntry
         let count: Int
-        var id: String { entry.id + "×\(count)" }
+        /// Position-stable identity: groups only grow at the tail while a
+        /// run streams, so ordinal+name keeps the row's view identity fixed
+        /// as counts and ± stats tick — required for .numericText to roll
+        /// the digits instead of replacing the whole row.
+        let ordinal: Int
+        var id: String { "\(ordinal)·\(entry.name)" }
     }
 
     private var collapsed: [CollapsedEntry] {
@@ -1461,9 +1795,10 @@ public struct ToolActivityCards: View {
                         ? (last.entry.deletions ?? 0) + (entry.deletions ?? 0) : nil,
                     detail: entry.detail ?? last.entry.detail
                 )
-                out[out.count - 1] = CollapsedEntry(entry: merged, count: last.count + 1)
+                out[out.count - 1] = CollapsedEntry(
+                    entry: merged, count: last.count + 1, ordinal: last.ordinal)
             } else {
-                out.append(CollapsedEntry(entry: entry, count: 1))
+                out.append(CollapsedEntry(entry: entry, count: 1, ordinal: out.count))
             }
         }
         return out
@@ -1486,8 +1821,16 @@ public struct ToolActivityCards: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Edit-class card — a write tool that touched a file and carries ± diff
+    /// stats. Renders as "Edited <file> +N −M" with the filename in accent.
+    private func isEditCard(_ entry: RemoteThreadSnapshot.Row.ToolEntry) -> Bool {
+        entry.category == "write" && entry.file != nil
+            && ((entry.additions ?? 0) > 0 || (entry.deletions ?? 0) > 0)
+    }
+
     @ViewBuilder
     private func row(_ entry: RemoteThreadSnapshot.Row.ToolEntry, count: Int = 1) -> some View {
+        let isEdit = isEditCard(entry)
         HStack(alignment: .top, spacing: 7) {
             Image(systemName: icon(entry.category))
                 .font(.caption)
@@ -1496,7 +1839,7 @@ public struct ToolActivityCards: View {
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(entry.name)
+                    Text(isEdit ? "Edited" : entry.name)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(TWTheme.textPrimary)
                     if count > 1 {
@@ -1506,23 +1849,31 @@ public struct ToolActivityCards: View {
                             .padding(.vertical, 1)
                             .background(TWTheme.surface3, in: Capsule())
                             .foregroundStyle(TWTheme.textSecondary)
+                            .contentTransition(.numericText(value: Double(count)))
+                            .animation(.snappy(duration: 0.25), value: count)
                     }
                     if let file = entry.file {
                         Text(fileTail(file))
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(TWTheme.textSecondary)
+                            .foregroundStyle(isEdit ? TWTheme.chroma1 : TWTheme.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.head)
                     }
+                    // Live edits tick like an odometer — numericText rolls
+                    // the digits as the Mac re-projects growing ± totals.
                     if let additions = entry.additions, additions > 0 {
                         Text("+\(additions)")
                             .font(.caption2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(TWTheme.statusSuccess)
+                            .contentTransition(.numericText(value: Double(additions)))
+                            .animation(.snappy(duration: 0.25), value: additions)
                     }
                     if let deletions = entry.deletions, deletions > 0 {
                         Text("−\(deletions)")
                             .font(.caption2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(TWTheme.statusFailed)
+                            .contentTransition(.numericText(value: Double(deletions)))
+                            .animation(.snappy(duration: 0.25), value: deletions)
                     }
                     Spacer(minLength: 0)
                     Circle()
@@ -1628,6 +1979,20 @@ public struct ThreadInspector: View {
         }
         .background(TWTheme.appBg)
         .twColorScheme()
+        .onAppear { adoptInspectorSideChatTarget() }
+        .onChange(of: model.inspectorSideChatTarget) { _, _ in
+            adoptInspectorSideChatTarget()
+        }
+    }
+
+    private func adoptInspectorSideChatTarget() {
+        guard let target = model.inspectorSideChatTarget,
+            model.taskCards.contains(where: {
+                $0.id == target && $0.parentChatId == threadId
+                    && $0.parentChatRelation == "sideChat"
+            })
+        else { return }
+        tab = 3
     }
 }
 
@@ -2575,6 +2940,9 @@ public struct AgentIdentityBadge: View {
             {
                 return Image(uiImage: ui)
             }
+            if let ui = UIImage(named: "identicon-\(slug)") {
+                return Image(uiImage: ui)
+            }
         #endif
         return nil
     }
@@ -3171,8 +3539,8 @@ public struct QueuedPromptsStack: View {
     }
 }
 
-/// Guest participant control for solo composers: a + menu invites a guest
-/// (provider → model tree); an active guest renders as a green-accent chip
+/// Guest participant control for solo composers: + opens the full provider /
+/// model picker; an active guest renders as a green-accent chip
 /// — tap to change provider/model, × to remove. One guest per thread
 /// (desktop set/remove semantics).
 public struct GuestParticipantControl: View {
@@ -3197,65 +3565,114 @@ public struct GuestParticipantControl: View {
     private let guestAccent = Color(hex: 0x35C284)
 
     public var body: some View {
-        if let guest {
-            HStack(spacing: 4) {
-                Menu {
-                    pickerEntries
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 10))
-                        Text(guestLabel(guest))
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
+        Group {
+            if let guest {
+                HStack(spacing: 4) {
+                    Menu {
+                        guestPickerEntries
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.system(size: 10))
+                            Text(guestLabel(guest))
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(guestAccent)
                     }
-                    .foregroundStyle(guestAccent)
+                    .buttonStyle(.plain)
+                    Button {
+                        model.removeGuestParticipant(card)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(TWTheme.textMuted)
+                    }
+                    .buttonStyle(.plain)
                 }
-                Button {
-                    model.removeGuestParticipant(card)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(guestAccent.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(guestAccent.opacity(0.4)))
+            } else {
+                Menu {
+                    guestPickerEntries
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(TWTheme.textMuted)
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .frame(width: 20, height: 20)
+                        .background(TWTheme.surface3, in: Circle())
                 }
                 .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(guestAccent.opacity(0.12), in: Capsule())
-            .overlay(Capsule().strokeBorder(guestAccent.opacity(0.4)))
-        } else {
-            Menu {
-                pickerEntries
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(TWTheme.textTertiary)
-                    .frame(width: 20, height: 20)
-                    .background(TWTheme.surface3, in: Circle())
             }
         }
     }
 
     @ViewBuilder
-    private var pickerEntries: some View {
+    private var guestPickerEntries: some View {
         ForEach(catalogs) { catalog in
-            if catalog.models.isEmpty {
-                Button(TWTheme.providerLabel(catalog.provider)) {
-                    model.setGuestParticipant(
-                        card, provider: catalog.provider, model: nil)
+            Menu {
+                guestDefaultEntry(for: catalog)
+                ForEach(catalog.models) { option in
+                    guestModelEntry(option, catalog: catalog)
                 }
-            } else {
-                Menu(TWTheme.providerLabel(catalog.provider)) {
-                    Button("Default") {
+            } label: {
+                if guest?.provider?.lowercased() == catalog.provider.lowercased() {
+                    Label(TWTheme.providerLabel(catalog.provider), systemImage: "checkmark")
+                } else {
+                    Text(TWTheme.providerLabel(catalog.provider))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func guestDefaultEntry(for catalog: ProviderModelCatalog) -> some View {
+        let option = twReasoningModelOption(in: catalog, modelId: nil)
+        let reasoning = option?.supportedReasoningEfforts ?? []
+        if reasoning.isEmpty {
+            Button("Default") {
+                model.setGuestParticipant(
+                    card, provider: catalog.provider, model: nil, reasoningEffort: nil)
+            }
+        } else {
+            Menu("Default") {
+                Button("Default reasoning") {
+                    model.setGuestParticipant(
+                        card, provider: catalog.provider, model: nil, reasoningEffort: nil)
+                }
+                ForEach(reasoning) { effort in
+                    Button(twReasoningDisplayLabel(effort.reasoningEffort)) {
                         model.setGuestParticipant(
-                            card, provider: catalog.provider, model: nil)
+                            card, provider: catalog.provider, model: nil,
+                            reasoningEffort: effort.reasoningEffort)
                     }
-                    ForEach(catalog.models) { option in
-                        Button(option.label ?? option.id) {
-                            model.setGuestParticipant(
-                                card, provider: catalog.provider, model: option.id)
-                        }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func guestModelEntry(_ option: ModelOption, catalog: ProviderModelCatalog) -> some View {
+        let reasoning = option.supportedReasoningEfforts ?? []
+        if reasoning.isEmpty {
+            Button(option.label ?? option.id) {
+                model.setGuestParticipant(
+                    card, provider: catalog.provider, model: option.id, reasoningEffort: nil)
+            }
+        } else {
+            Menu(option.label ?? option.id) {
+                Button("Default reasoning") {
+                    model.setGuestParticipant(
+                        card, provider: catalog.provider, model: option.id,
+                        reasoningEffort: nil)
+                }
+                ForEach(reasoning) { effort in
+                    Button(twReasoningDisplayLabel(effort.reasoningEffort)) {
+                        model.setGuestParticipant(
+                            card, provider: catalog.provider, model: option.id,
+                            reasoningEffort: effort.reasoningEffort)
                     }
                 }
             }
@@ -3273,6 +3690,13 @@ struct SideChatsPanel: View {
     @ObservedObject var model: RemoteSessionModel
     let threadId: String
     var onOpenThread: ((String) -> Void)? = nil
+    /// Inline-selected side chat — renders the mini chat window (the
+    /// desktop's right-hand side-chat pane, phone-idiom).
+    @State private var selectedSideChatId: String? = nil
+    @State private var createSheetPresented = false
+    @State private var createProvider = "codex"
+    @State private var createModelId: String?
+    @State private var createReasoningEffort: String?
 
     private var card: RemoteTaskCard? { model.taskCards.first { $0.id == threadId } }
 
@@ -3287,15 +3711,41 @@ struct SideChatsPanel: View {
             .map { ProviderModelCatalog(provider: $0.key, models: $0.value) }
             .sorted { TWTheme.providerLabel($0.provider) < TWTheme.providerLabel($1.provider) }
     }
+    private var createCatalog: ProviderModelCatalog? {
+        catalogs.first { $0.provider.lowercased() == createProvider.lowercased() }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Menu {
-                ForEach(catalogs.map(\.provider), id: \.self) { provider in
-                    Button(TWTheme.providerLabel(provider)) {
-                        card.map { model.createSideChat($0, provider: provider) }
+        Group {
+            if let selected = selectedSideChatId {
+                if let sideCard = selectedSideChatCard(selected) {
+                    MiniThreadView(
+                        model: model, card: sideCard,
+                        onBack: { selectedSideChatId = nil },
+                        onExpand: { onOpenThread?(selected) })
+                } else {
+                    SideChatOpeningView {
+                        selectedSideChatId = nil
+                    }
+                    .task(id: selected) {
+                        model.requestThreadSnapshot(selected)
                     }
                 }
+            } else {
+                listBody
+            }
+        }
+        .onAppear { adoptRequestedSideChat() }
+        .onChange(of: model.inspectorSideChatTarget) { _, _ in
+            adoptRequestedSideChat()
+        }
+    }
+
+    private var listBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                seedCreateSelection()
+                createSheetPresented = true
             } label: {
                 Label("New side chat", systemImage: "plus.bubble")
                     .font(.caption.weight(.semibold))
@@ -3303,6 +3753,35 @@ struct SideChatsPanel: View {
                     .padding(.vertical, 8)
                     .background(TWTheme.chroma1.opacity(0.14), in: Capsule())
                     .foregroundStyle(TWTheme.chroma1)
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $createSheetPresented) {
+                ProviderModelPickerSheet(
+                    catalogs: catalogs,
+                    provider: $createProvider,
+                    modelId: $createModelId,
+                    reasoningEffort: $createReasoningEffort,
+                    title: "New Side Chat",
+                    confirmationTitle: "Create",
+                    dismissesOnSelection: false
+                ) {
+                    guard let card else { return }
+                    model.createSideChat(
+                        card,
+                        provider: createProvider,
+                        model: createModelId ?? "default",
+                        reasoningEffort: createReasoningEffort,
+                        navigateOnAck: false
+                    ) { threadId in
+                        if let threadId, threadId != card.threadId {
+                            selectedSideChatId = threadId
+                            if let workspaceId = card.workspaceId {
+                                model.rememberThreadWorkspace(threadId, workspaceId: workspaceId)
+                            }
+                            model.requestThreadSnapshot(threadId)
+                        }
+                    }
+                }
             }
 
             if sideChats.isEmpty {
@@ -3320,7 +3799,7 @@ struct SideChatsPanel: View {
             } else {
                 ForEach(sideChats, id: \.id) { sideChat in
                     Button {
-                        onOpenThread?(sideChat.id)
+                        selectedSideChatId = sideChat.id
                     } label: {
                         HStack(alignment: .top, spacing: 8) {
                             if let agentName = sideChat.agentName {
@@ -3372,6 +3851,154 @@ struct SideChatsPanel: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+        .onAppear { seedCreateSelection() }
+        .onChange(of: card?.provider ?? "") { _, _ in seedCreateSelection() }
+    }
+
+    private func seedCreateSelection() {
+        let preferred = card?.provider ?? createProvider
+        let known = catalogs.first { $0.provider.lowercased() == preferred.lowercased() }
+        createProvider = known?.provider ?? catalogs.first?.provider ?? preferred
+        createModelId = nil
+        twNormalizeReasoningSelection(
+            catalog: createCatalog, modelId: createModelId,
+            reasoningEffort: &createReasoningEffort)
+    }
+
+    private func selectedSideChatCard(_ id: String) -> RemoteTaskCard? {
+        guard id != threadId else { return nil }
+        return model.taskCards.first {
+            $0.id == id && $0.parentChatId == threadId && $0.parentChatRelation == "sideChat"
+        }
+    }
+
+    private func adoptRequestedSideChat() {
+        guard let target = model.inspectorSideChatTarget,
+            selectedSideChatCard(target) != nil
+        else { return }
+        selectedSideChatId = target
+        model.inspectorSideChatTarget = nil
+        model.requestThreadSnapshot(target)
+    }
+}
+
+private struct SideChatOpeningView: View {
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Button(action: onCancel) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TWTheme.textSecondary)
+                        .frame(width: 24, height: 24)
+                        .background(TWTheme.surface3, in: Circle())
+                }
+                .buttonStyle(.plain)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(TWTheme.chroma1)
+                Text("Opening side chat…")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TWTheme.textPrimary)
+                Spacer(minLength: 0)
+            }
+            Text("Waiting for the Mac to project the new isolated thread.")
+                .font(.caption)
+                .foregroundStyle(TWTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.top, 8)
+    }
+}
+
+/// Mini chat window for a side chat inside the inspector column — the
+/// SAME transcript rows + composer shell conventions/tokens as the main
+/// pane, slimmed naturally by the column width (≈2× the iPhone composer).
+struct MiniThreadView: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: RemoteTaskCard
+    var onBack: () -> Void
+    var onExpand: () -> Void
+    @State private var draft = ""
+
+    private var threadId: String { card.id }
+    private var snapshot: RemoteThreadSnapshot? { model.threadSnapshots[threadId] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: back to list · identity/title · expand to main pane
+            HStack(spacing: 8) {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TWTheme.textSecondary)
+                        .frame(width: 24, height: 24)
+                        .background(TWTheme.surface3, in: Circle())
+                }
+                .buttonStyle(.plain)
+                if let agentName = card.agentName {
+                    AgentIdentityBadge(
+                        name: agentName, accentHex: card.agentAccent,
+                        slug: card.agentSlug, size: 18)
+                }
+                Text(card.title ?? "Side chat")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TWTheme.textPrimary)
+                    .lineLimit(1)
+                Spacer()
+                Button(action: onExpand) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .frame(width: 24, height: 24)
+                        .background(TWTheme.surface3, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Transcript (recent window; full history lives in the main pane)
+            let rows = Array((snapshot?.rows ?? []).suffix(30))
+            if rows.isEmpty {
+                Text("No messages yet — say hi below.")
+                    .font(.caption)
+                    .foregroundStyle(TWTheme.textMuted)
+                    .padding(.vertical, 10)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(rows, id: \.id) { row in
+                        ThreadRowView(
+                            model: model, threadId: threadId,
+                            row: model.resolvedRow(row, threadId: threadId),
+                            threadProvider: card.provider)
+                    }
+                }
+            }
+            if let live = model.streamingTexts[threadId], !live.isEmpty {
+                StreamingRowView(
+                    text: live, provider: card.provider,
+                    model: snapshot?.runSummary?.model)
+            }
+
+            // The REAL composer shell — identical conventions/tokens.
+            VStack(spacing: 0) {
+                Composer(
+                    model: model, card: card,
+                    runModel: snapshot?.runSummary?.model,
+                    attachedTop: false, attachedBottom: true,
+                    navigateOnSend: false,
+                    text: $draft)
+                Rectangle().fill(TWTheme.border).frame(height: 1)
+                TelemetryFooterRail(
+                    run: snapshot?.runSummary,
+                    workspaceName: model.workspaceName(for: card.workspaceId))
+            }
+            .composerShellGlass()
+        }
+        .task(id: threadId) {
+            model.requestThreadSnapshot(threadId)
         }
     }
 }
