@@ -1,0 +1,347 @@
+import SwiftUI
+import TaskWraithKit
+
+/// Approval card row — Electron approval-card parity within phone idiom:
+/// provider accent, title + body (the command/params detail the Mac
+/// sanitizes to 400 chars), requested-at caption, and the FULL decision
+/// set the executor implements: Allow once (primary), Allow for
+/// session / Allow in workspace (menu), Deny, Cancel run (overflow).
+/// Tap the content for a detail sheet with the untruncated layout.
+struct ApprovalRow: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: MobileApprovalCard
+    @State private var showDetail = false
+
+    private var accent: Color { TWTheme.providerAccent(card.provider) }
+
+    private var bodyLooksTechnical: Bool {
+        let text = card.body ?? ""
+        return text.contains("{") || text.contains("/") || text.contains("$")
+    }
+
+    private var requestedCaption: String? {
+        guard let requestedAt = card.requestedAt,
+            let date = twParseISODate(requestedAt)
+        else { return nil }
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 { return "just now" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        return "\(seconds / 3600)h ago"
+    }
+
+    /// Live auto-deny countdown — `expiresAt` is the Mac's ARMED timer
+    /// deadline (per-provider Settings → Providers timeout), so what this
+    /// counts down is exactly when the desktop will force a decline.
+    private func expiresCaption(now: Date) -> (text: String, urgent: Bool)? {
+        guard let expiresAt = card.expiresAt, let date = twParseISODate(expiresAt)
+        else { return nil }
+        let seconds = Int(date.timeIntervalSince(now))
+        guard seconds > 0 else { return ("auto-denied", true) }
+        if seconds < 60 { return ("auto-denies in \(seconds)s", seconds <= 15) }
+        return ("auto-denies in \(seconds / 60)m", false)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Button {
+                showDetail = true
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Circle().fill(accent).frame(width: 7, height: 7)
+                        Text(card.title ?? "Approval requested")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TWTheme.textPrimary)
+                            .lineLimit(2)
+                        Spacer(minLength: 4)
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            if let expiry = expiresCaption(now: context.date) {
+                                Text(expiry.text)
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(
+                                        expiry.urgent
+                                            ? TWTheme.statusFailed : TWTheme.statusAttention)
+                            } else if let requestedCaption {
+                                Text(requestedCaption)
+                                    .font(.caption2)
+                                    .foregroundStyle(TWTheme.textMuted)
+                            }
+                        }
+                    }
+                    if let body = card.body, !body.isEmpty {
+                        Text(body)
+                            .font(
+                                bodyLooksTechnical
+                                    ? .system(size: 12, design: .monospaced) : .footnote
+                            )
+                            .foregroundStyle(TWTheme.textSecondary)
+                            .lineLimit(3)
+                    } else if let summary = card.summary {
+                        Text(summary)
+                            .font(.footnote)
+                            .foregroundStyle(TWTheme.textSecondary)
+                            .lineLimit(3)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 7) {
+                Button("Allow once") { model.approve(card, decision: "accept") }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(accent)
+                Menu {
+                    Button {
+                        model.approve(card, decision: "acceptForSession")
+                    } label: {
+                        Label("Allow for session", systemImage: "clock.badge.checkmark")
+                    }
+                    Button {
+                        model.approve(card, decision: "acceptForWorkspace")
+                    } label: {
+                        Label("Allow in workspace", systemImage: "folder.badge.plus")
+                    }
+                } label: {
+                    HStack(spacing: 2) {
+                        Text("Allow…")
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(accent.opacity(0.14), in: Capsule())
+                    .foregroundStyle(accent)
+                }
+                Button("Deny", role: .destructive) {
+                    model.approve(card, decision: "decline")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer(minLength: 0)
+                Menu {
+                    Button(role: .destructive) {
+                        model.approve(card, decision: "cancel")
+                    } label: {
+                        Label("Cancel run", systemImage: "stop.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption)
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .sheet(isPresented: $showDetail) {
+            ApprovalDetailSheet(model: model, card: card)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+/// Full-screen detail for an approval — the Electron modal's content
+/// (untruncated body, provider, timestamps) with the same decision set.
+struct ApprovalDetailSheet: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: MobileApprovalCard
+    @Environment(\.dismiss) private var dismiss
+
+    private var accent: Color { TWTheme.providerAccent(card.provider) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Circle().fill(accent).frame(width: 8, height: 8)
+                        Text(TWTheme.providerLabel(card.provider))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(accent)
+                        Spacer()
+                        if let requestedAt = card.requestedAt,
+                            let date = twParseISODate(requestedAt)
+                        {
+                            Text(date, style: .time)
+                                .font(.caption2)
+                                .foregroundStyle(TWTheme.textMuted)
+                        }
+                    }
+                    Text(card.title ?? "Approval requested")
+                        .font(.headline)
+                        .foregroundStyle(TWTheme.textPrimary)
+                    if let body = card.body, !body.isEmpty {
+                        Text(body)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(TWTheme.textSecondary)
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                TWTheme.surface2, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    VStack(spacing: 8) {
+                        decisionButton(
+                            "Allow once", icon: "checkmark.circle.fill",
+                            decision: "accept", prominent: true)
+                        decisionButton(
+                            "Allow for session", icon: "clock.badge.checkmark",
+                            decision: "acceptForSession")
+                        decisionButton(
+                            "Allow in workspace", icon: "folder.badge.plus",
+                            decision: "acceptForWorkspace")
+                        decisionButton(
+                            "Deny", icon: "xmark.circle", decision: "decline",
+                            destructive: true)
+                        decisionButton(
+                            "Cancel run", icon: "stop.circle", decision: "cancel",
+                            destructive: true)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(16)
+            }
+            .background(TWTheme.appBg)
+            .navigationTitle("Approval")
+            #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+        .twColorScheme()
+    }
+
+    @ViewBuilder
+    private func decisionButton(
+        _ label: String, icon: String, decision: String,
+        prominent: Bool = false, destructive: Bool = false
+    ) -> some View {
+        Button {
+            model.approve(card, decision: decision)
+            dismiss()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                Text(label).font(.body.weight(.semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                prominent
+                    ? AnyShapeStyle(accent)
+                    : destructive
+                        ? AnyShapeStyle(TWTheme.statusFailed.opacity(0.14))
+                        : AnyShapeStyle(TWTheme.surface2),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .foregroundStyle(
+                prominent
+                    ? Color.black.opacity(0.85)
+                    : destructive ? TWTheme.statusFailed : TWTheme.textPrimary)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Question card row — canonical promptId/question fields, option chips,
+/// always-available free-text answer (Mac answers are free-text), expiry
+/// countdown, and Dismiss (questionReject → parked tool cancelled).
+struct QuestionRow: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: MobileQuestionCard
+    @State private var freeText = ""
+
+    private var expiresCaption: String? {
+        guard let expiresAt = card.expiresAt, let date = twParseISODate(expiresAt)
+        else { return nil }
+        let seconds = Int(date.timeIntervalSince(Date()))
+        guard seconds > 0 else { return "expired" }
+        if seconds < 60 { return "expires in \(seconds)s" }
+        return "expires in \(seconds / 60)m"
+    }
+
+    private var canAnswer: Bool {
+        guard let threadId = card.threadId else { return true }
+        let task = model.taskCards.first { $0.id == threadId || $0.threadId == threadId }
+        return task?.capabilities?.answer ?? true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(card.resolvedQuestion ?? "Question")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(TWTheme.textPrimary)
+                Spacer(minLength: 4)
+                if let expiresCaption {
+                    Text(expiresCaption)
+                        .font(.caption2)
+                        .foregroundStyle(
+                            expiresCaption == "expired"
+                                ? TWTheme.statusFailed : TWTheme.textMuted)
+                }
+            }
+            if let context = card.context, !context.isEmpty {
+                Text(context)
+                    .font(.caption)
+                    .foregroundStyle(TWTheme.textTertiary)
+                    .lineLimit(3)
+            }
+            if let options = card.options, !options.isEmpty {
+                TWFlowLayout(spacing: 6) {
+                    ForEach(options, id: \.self) { option in
+                        Button(option) { model.answer(card, option) }
+                            .font(.caption.weight(.medium))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!canAnswer)
+                    }
+                }
+            }
+            HStack(spacing: 7) {
+                TextField("Your answer…", text: $freeText)
+                    .font(.footnote)
+                    .foregroundStyle(TWTheme.textPrimary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(TWTheme.surface2, in: Capsule())
+                    .disabled(!canAnswer)
+                Button {
+                    model.answer(card, freeText)
+                    freeText = ""
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(
+                            freeText.isEmpty ? TWTheme.textMuted : TWTheme.chroma1)
+                }
+                .buttonStyle(.plain)
+                .disabled(freeText.isEmpty || !canAnswer)
+                Button {
+                    model.rejectQuestion(card)
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.title3)
+                        .foregroundStyle(TWTheme.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            if !canAnswer {
+                Text("Viewing only on this device.")
+                    .font(.caption2)
+                    .foregroundStyle(TWTheme.textTertiary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}

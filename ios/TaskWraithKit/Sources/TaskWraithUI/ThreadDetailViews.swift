@@ -20,10 +20,10 @@ struct ThreadDetailView: View {
     @ObservedObject var model: RemoteSessionModel
     let taskId: String
     @State private var followUp = ""
-    @State private var showInspector = false
     /// Follow the transcript tail as content streams in — disabled the
     /// moment the user drags, re-enabled by the jump-to-latest pill.
     @State private var autoFollow = true
+    @State private var keyboardVisible = false
     /// Secondary workspace granted to subsequent runs (rail picker).
     @State private var secondaryWorkspaceId: String? = nil
 
@@ -114,32 +114,68 @@ struct ThreadDetailView: View {
         // type-checker's budget once lifecycle modifiers joined it.
         toolbarChrome(
             AnyView(
-                followChrome(
-                    AnyView(navigationChrome(AnyView(listCore(proxy: proxy)), proxy: proxy)),
-                    proxy: proxy)))
+                keyboardChrome(
+                    AnyView(
+                        followChrome(
+                            AnyView(navigationChrome(AnyView(listCore(proxy: proxy)), proxy: proxy)),
+                            proxy: proxy)))))
+    }
+
+    private var threadApprovals: [MobileApprovalCard] {
+        model.approvals.filter { $0.threadId == taskId }
+    }
+    private var threadQuestions: [MobileQuestionCard] {
+        model.questions.filter { $0.threadId == taskId }
+    }
+
+    /// Pending approvals/questions pinned to the TOP OF THE SCREEN (safe-area
+    /// inset above the transcript scroll). They used to be a List section that
+    /// scrolled away with history — users had no idea an approval was waiting
+    /// until they happened to scroll up. Hugs content height; past ~340pt the
+    /// banner itself scrolls so a pile-up can't bury the transcript.
+    @ViewBuilder
+    private var attentionBanner: some View {
+        if !threadApprovals.isEmpty || !threadQuestions.isEmpty {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if !threadApprovals.isEmpty {
+                        Label("Needs your approval", systemImage: "exclamationmark.shield")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TWTheme.statusAttention)
+                        ForEach(threadApprovals, id: \.toolCallId) { approval in
+                            ApprovalRow(model: model, card: approval)
+                        }
+                    }
+                    if !threadQuestions.isEmpty {
+                        Label("Questions", systemImage: "questionmark.bubble")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TWTheme.chroma1)
+                        ForEach(threadQuestions, id: \.stableId) { question in
+                            QuestionRow(model: model, card: question)
+                        }
+                    }
+                }
+                .padding(12)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxHeight: 340)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(TWTheme.surface2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(TWTheme.statusAttention.opacity(0.35))
+                    )
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+            .background(TWTheme.appBg.opacity(0.94))
+        }
     }
 
     private func listCore(proxy: ScrollViewProxy) -> some View {
         List {
-            let threadApprovals = model.approvals.filter { $0.threadId == taskId }
-            if !threadApprovals.isEmpty {
-                Section("Needs your approval") {
-                    ForEach(threadApprovals, id: \.toolCallId) { approval in
-                        ApprovalRow(model: model, card: approval)
-                            .listRowBackground(TWTheme.surface2)
-                    }
-                }
-            }
-            let threadQuestions = model.questions.filter { $0.threadId == taskId }
-            if !threadQuestions.isEmpty {
-                Section("Questions") {
-                    ForEach(threadQuestions, id: \.questionId) { question in
-                        QuestionRow(model: model, card: question)
-                            .listRowBackground(TWTheme.surface2)
-                    }
-                }
-            }
-
             Section {
                 if earlierCount > 0 {
                     Label("\(earlierCount) previous messages on your Mac", systemImage: "chevron.up")
@@ -158,9 +194,13 @@ struct ThreadDetailView: View {
                     // Desktop parity: each run's Task-complete card follows
                     // its final transcript row, persisting in the thread.
                     if let runCard = runCardSummary(after: row) {
+                        // Legacy diff lane keyed to ITS OWN run — a stale
+                        // envelope from an older run must not decorate a
+                        // newer no-edit card. run.fileChanges (per-run, in
+                        // the snapshot) is the primary source either way.
                         TaskCompleteCard(
                             run: runCard,
-                            diff: runCard.runId == snapshot?.runSummary?.runId
+                            diff: model.diffSummaries[taskId]?.runId == runCard.runId
                                 ? model.diffSummaries[taskId] : nil
                         )
                         .listRowInsets(
@@ -211,9 +251,13 @@ struct ThreadDetailView: View {
                 if let run = snapshot?.runSummary, !isRunning,
                     runLastRowIds[run.runId ?? ""] == nil
                 {
-                    TaskCompleteCard(run: run, diff: model.diffSummaries[taskId])
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    TaskCompleteCard(
+                        run: run,
+                        diff: model.diffSummaries[taskId]?.runId == run.runId
+                            ? model.diffSummaries[taskId] : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
                 Color.clear
                     .frame(height: 1)
@@ -225,29 +269,37 @@ struct ThreadDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(TWTheme.appBg)
-.overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .top, spacing: 0) { attentionBanner }
+        .overlay(alignment: .bottom) {
             // Jump-to-latest: centered just above the composer shell (the
             // trailing spot sat on top of the roster's + button). Black
             // circle, white arrow, white rim.
-            if !autoFollow {
-                Button {
-                    autoFollow = true
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo("transcript-bottom", anchor: .bottom)
+            HStack(spacing: 10) {
+                if !autoFollow {
+                    Button {
+                        autoFollow = true
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("transcript-bottom", anchor: .bottom)
+                        }
+                    } label: {
+                        floatingTranscriptPill(systemName: "arrow.down")
                     }
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(Color.black.opacity(0.85)))
-                        .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.45), radius: 7, y: 2)
+                    .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity))
                 }
-                .buttonStyle(.plain)
-                .padding(.bottom, 14)
-                .transition(.scale.combined(with: .opacity))
+                #if canImport(UIKit)
+                    if keyboardVisible {
+                        Button {
+                            dismissKeyboard()
+                        } label: {
+                            floatingTranscriptPill(systemName: "keyboard.chevron.compact.down")
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                #endif
             }
+            .padding(.bottom, 14)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // AnyView stage-break: the shell stack (banner + changes rows +
@@ -255,6 +307,16 @@ struct ThreadDetailView: View {
             // type-check budget when inlined into the List chain.
             AnyView(composerShellStack)
         }
+    }
+
+    private func floatingTranscriptPill(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 34, height: 34)
+            .background(Circle().fill(Color.black.opacity(0.85)))
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+            .shadow(color: .black.opacity(0.45), radius: 7, y: 2)
     }
 
     @ViewBuilder
@@ -280,11 +342,11 @@ struct ThreadDetailView: View {
                                     WorkspaceChangesAttachedRow(
                                         breakdown: workspace,
                                         isFirst: workspace.id == breakdown.first?.id
-                                    ) { showInspector = true }
+                                    ) { model.inspectorPresented = true }
                                     Rectangle().fill(TWTheme.border).frame(height: 1)
                                 }
                             } else {
-                                ChangesAttachedRow(diff: diff) { showInspector = true }
+                                ChangesAttachedRow(diff: diff) { model.inspectorPresented = true }
                                 Rectangle().fill(TWTheme.border).frame(height: 1)
                             }
                         }
@@ -375,12 +437,51 @@ struct ThreadDetailView: View {
         
     }
 
+    private func keyboardChrome(_ base: AnyView) -> some View {
+        #if canImport(UIKit)
+            base
+                .onReceive(NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardWillShowNotification
+                )) { _ in keyboardVisible = true }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardWillHideNotification
+                )) { _ in keyboardVisible = false }
+        #else
+            base
+        #endif
+    }
+
+    #if canImport(UIKit)
+        private func dismissKeyboard() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+    #endif
+
     private func toolbarChrome(_ base: AnyView) -> some View {
         base
         .toolbar {
+            if let workspaceId = card?.workspaceId, model.workspaceCanEditFiles(workspaceId) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        model.requestFilesMode(workspaceId: workspaceId)
+                    } label: {
+                        Label("Files", systemImage: "folder")
+                    }
+                }
+            }
+            if let workspaceId = card?.workspaceId, model.workspaceCanReviewDiffs(workspaceId) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        model.requestDiffMode(workspaceId: workspaceId)
+                    } label: {
+                        Label("Diffs", systemImage: "plus.forwardslash.minus")
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showInspector.toggle()
+                    model.inspectorPresented.toggle()
                 } label: {
                     Label("Inspector", systemImage: "sidebar.right")
                 }
@@ -395,18 +496,6 @@ struct ThreadDetailView: View {
                     }
                 }
             }
-        }
-        .inspector(isPresented: $showInspector) {
-            // iPad: right-hand panel; iPhone: presents as a sheet.
-            ThreadInspector(model: model, threadId: taskId) { childId in
-                showInspector = false
-                // Drives the split-view selection on iPad; on iPhone the
-                // sheet closes and the child is reachable from Home (a
-                // path-based push from a nested detail is a later slice).
-                model.navigationTarget = childId
-            }
-            .iPadSidebarInnerRim(edge: .leading)
-            .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
         }
 
     }
@@ -485,11 +574,22 @@ struct ThreadRowView: View {
                     )
                     .textSelection(.enabled)
                     .contextMenu {
-                        if let card = model.taskCards.first(where: { $0.id == threadId }) {
+                        // Read-only delivery moment rides as the section
+                        // header; the actions sit beneath it.
+                        Section(deliveredCaption ?? "") {
                             Button {
-                                model.toggleMessagePin(card, messageId: row.id, pinned: true)
+                                #if canImport(UIKit)
+                                    UIPasteboard.general.string = preview
+                                #endif
                             } label: {
-                                Label("Pin message", systemImage: "pin")
+                                Label("Copy message", systemImage: "doc.on.doc")
+                            }
+                            if let card = model.taskCards.first(where: { $0.id == threadId }) {
+                                Button {
+                                    model.toggleMessagePin(card, messageId: row.id, pinned: true)
+                                } label: {
+                                    Label("Pin message", systemImage: "pin")
+                                }
                             }
                         }
                     }
@@ -520,6 +620,16 @@ struct ThreadRowView: View {
             return "\(noun) · \(status)"
         }
         return noun
+    }
+
+    /// "Delivered 22:43" (today) / "Delivered 9 Jun, 22:43" — context-menu
+    /// section header so the user can see when the message landed.
+    private var deliveredCaption: String? {
+        guard let timestamp = row.timestamp, let date = twParseISODate(timestamp)
+        else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "d MMM, HH:mm"
+        return "Delivered \(formatter.string(from: date))"
     }
 
     private var label: String {
