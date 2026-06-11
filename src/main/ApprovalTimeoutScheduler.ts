@@ -111,6 +111,10 @@ export type ApprovalTimeoutReason = {
 
 export class ApprovalTimeoutScheduler {
   private timers = new Map<string, NodeJS.Timeout>()
+  /** Epoch-ms deadline per armed timer — lets remote projections stamp
+   * the REAL auto-deny moment (`expiresAt`) instead of re-deriving it
+   * from settings that may have changed since arming. */
+  private deadlines = new Map<string, number>()
   private policy: ApprovalTimeoutPolicy
   private setTimeoutFn: (cb: () => void, ms: number) => NodeJS.Timeout
   private clearTimeoutFn: (handle: NodeJS.Timeout) => void
@@ -152,6 +156,7 @@ export class ApprovalTimeoutScheduler {
     const { ms, source } = this.resolveTimeout(args)
     const handle = this.setTimeoutFn(async () => {
       this.timers.delete(args.approvalId)
+      this.deadlines.delete(args.approvalId)
       try {
         await this.onTimeout({ approvalId: args.approvalId, appliedMs: ms, source })
       } catch (err) {
@@ -161,6 +166,7 @@ export class ApprovalTimeoutScheduler {
       }
     }, ms)
     this.timers.set(args.approvalId, handle)
+    this.deadlines.set(args.approvalId, Date.now() + ms)
     this.log(
       `[ApprovalTimeoutScheduler] scheduled approvalId=${args.approvalId} provider=${args.provider} ms=${ms} source=${source}`
     )
@@ -172,8 +178,15 @@ export class ApprovalTimeoutScheduler {
     if (!handle) return false
     this.clearTimeoutFn(handle)
     this.timers.delete(approvalId)
+    this.deadlines.delete(approvalId)
     this.log(`[ApprovalTimeoutScheduler] cancelled approvalId=${approvalId}`)
     return true
+  }
+
+  /** Epoch-ms moment the armed timer will auto-deny, or undefined when
+   * no timer is armed for the id (timeouts disabled / already fired). */
+  deadlineFor(approvalId: string): number | undefined {
+    return this.deadlines.get(approvalId)
   }
 
   /** Replace the policy used for FUTURE schedule() calls. Existing
@@ -200,6 +213,7 @@ export class ApprovalTimeoutScheduler {
       this.clearTimeoutFn(handle)
     }
     this.timers.clear()
+    this.deadlines.clear()
   }
 
   get pendingCount(): number {

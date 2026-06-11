@@ -470,6 +470,11 @@ export class ApprovalService {
     }
   ): MobileApprovalCard {
     const session = input.runId ? this.deps.runManager.get(input.runId) : undefined
+    // Stamp the REAL armed auto-deny deadline (per-provider user setting,
+    // per-kind overrides included) so remote clients can show a countdown
+    // that matches what the desktop will actually do. Absent when timeouts
+    // are disabled — the phone then shows no expiry.
+    const deadline = this.scheduler?.deadlineFor(approvalId)
     return buildMobileApprovalCard({
       toolCallId: approvalId,
       threadId: input.threadId || session?.appChatId || input.runId,
@@ -481,7 +486,8 @@ export class ApprovalService {
       provider,
       title: input.title,
       body: input.body,
-      actions: ['accept', 'decline']
+      actions: ['accept', 'decline'],
+      expiresAt: deadline ? new Date(deadline).toISOString() : undefined
     })
   }
 

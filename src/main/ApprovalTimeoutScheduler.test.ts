@@ -271,6 +271,30 @@ describe('ApprovalTimeoutScheduler', () => {
     expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.mainTimeoutMs).toBe(60_000)
   })
 
+  it('deadlineFor() exposes the armed auto-deny moment and clears on cancel/fire', async () => {
+    const clock = makeFakeClock()
+    const scheduler = new ApprovalTimeoutScheduler(DEFAULT_APPROVAL_TIMEOUT_POLICY, () => {}, {
+      setTimeoutFn: clock.setTimeoutFn,
+      clearTimeoutFn: clock.clearTimeoutFn
+    })
+    expect(scheduler.deadlineFor('a1')).toBeUndefined()
+    const before = Date.now()
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    const deadline = scheduler.deadlineFor('a1')
+    expect(deadline).toBeGreaterThanOrEqual(before + 30_000)
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 30_000)
+    scheduler.cancel('a1')
+    expect(scheduler.deadlineFor('a1')).toBeUndefined()
+
+    scheduler.schedule({ approvalId: 'a2', provider: 'codex' })
+    await clock.advance(30_000)
+    expect(scheduler.deadlineFor('a2')).toBeUndefined()
+
+    scheduler.schedule({ approvalId: 'a3', provider: 'codex' })
+    scheduler.cancelAll()
+    expect(scheduler.deadlineFor('a3')).toBeUndefined()
+  })
+
   it('reason includes the source for caller logging', async () => {
     const clock = makeFakeClock()
     let captured: ApprovalTimeoutReason | undefined
