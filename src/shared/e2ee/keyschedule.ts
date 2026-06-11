@@ -12,6 +12,12 @@ export interface TranscriptInputs {
   serverEphemeralPubKeyB64: string
   clientNonceB64: string
   serverNonceB64: string
+  /** Raw Ed25519 (b64) — binding BOTH long-lived identities into the
+   * signed transcript + confirm code defeats identity-splicing: a relay
+   * that swaps either identity changes the code the user compares AND
+   * breaks the serverAuth signature the phone verifies. */
+  macIdentityPubKeyB64: string
+  iphoneIdentityPubKeyB64: string
 }
 
 /**
@@ -27,7 +33,9 @@ export function computeTranscriptHash(inputs: TranscriptInputs): Buffer {
     inputs.clientEphemeralPubKeyB64,
     inputs.serverEphemeralPubKeyB64,
     inputs.clientNonceB64,
-    inputs.serverNonceB64
+    inputs.serverNonceB64,
+    inputs.macIdentityPubKeyB64,
+    inputs.iphoneIdentityPubKeyB64
   ].join('|')
   return createHash('sha256').update(transcript, 'utf8').digest()
 }

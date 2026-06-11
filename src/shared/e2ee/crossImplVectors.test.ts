@@ -74,14 +74,19 @@ describe('cross-impl golden vectors (must match ios/TaskWraithKit)', () => {
     clientEphemeralPubKeyB64: b64.encode(exportRawX25519PublicKey(iphoneEphPub)),
     serverEphemeralPubKeyB64: b64.encode(exportRawX25519PublicKey(macEphPub)),
     clientNonceB64: b64.encode(clientNonce),
-    serverNonceB64: b64.encode(serverNonce)
+    serverNonceB64: b64.encode(serverNonce),
+    // v2 transcript: both long-lived identities are bound (identity-splice
+    // defense). Golden values regenerated 2026-06-11; the Swift
+    // InteropVectorsTests carry the SAME values.
+    macIdentityPubKeyB64: b64.encode(exportRawEd25519PublicKey(macIdPub)),
+    iphoneIdentityPubKeyB64: b64.encode(exportRawEd25519PublicKey(iphoneIdPub))
   })
 
   it('transcript hash + confirm code', () => {
     expect(transcript.toString('hex')).toBe(
-      'abdee33a0398913e5b179bfef5d9da081294b8b5c84316095eec85c4a1f57ca7'
+      '9b9764575b8a73a88377d24588d88331e84bc7969972b2a50019fe1c0fdb264f'
     )
-    expect(confirmCodeFromTranscript(transcript)).toBe('511098')
+    expect(confirmCodeFromTranscript(transcript)).toBe('390103')
   })
 
   it('X25519 shared secret agrees both directions', () => {
@@ -130,7 +135,7 @@ describe('cross-impl golden vectors (must match ios/TaskWraithKit)', () => {
   it('Ed25519 signature over the transcript is deterministic + verifies', () => {
     const sig = signEd25519(macIdPriv, transcript)
     expect(sig.toString('hex')).toBe(
-      '1776f19081f6f97063c1d0e7abfa3823dafab4a0ba6b2e9ef2a82db93716788a5426ce43552bdb09539c5370bbbfb466b242c6fe19e9bbc5c87a78b8e6acf004'
+      '7e293c15123713d7392c0e4902313b51aca0d7fb5bb37cee64ac7e76d1e556cf5e6067f5c380ddd7600a5e7bc44a40ebc5db72d0a5fe838d9997d3f2e5635708'
     )
     expect(verifyEd25519(macIdPub, transcript, sig)).toBe(true)
   })

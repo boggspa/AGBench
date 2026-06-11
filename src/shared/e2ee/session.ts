@@ -202,7 +202,7 @@ export class E2eeSession {
     }
   }
 
-  private deriveKeysAndTranscript(): void {
+  private deriveKeys(): void {
     this.keys = deriveSessionKeys({
       myEphemeralPrivate: this.ephemeral!.privateKey,
       peerEphemeralPublic: importRawX25519PublicKey(
@@ -211,12 +211,20 @@ export class E2eeSession {
       clientNonce: b64.decode(this.clientNonceB64),
       serverNonce: b64.decode(this.serverNonceB64)
     })
+  }
+
+  /** Transcript binds BOTH long-lived identities (identity-splice defense):
+   * computable only once the peer's identity is known — the phone after
+   * serverHello, the Mac upon clientAuth. */
+  private computeTranscript(macIdentityB64: string, iphoneIdentityB64: string): void {
     this.transcriptHash = computeTranscriptHash({
       sessionId: this.opts.sessionId,
       clientEphemeralPubKeyB64: this.clientEphB64,
       serverEphemeralPubKeyB64: this.serverEphB64,
       clientNonceB64: this.clientNonceB64,
-      serverNonceB64: this.serverNonceB64
+      serverNonceB64: this.serverNonceB64,
+      macIdentityPubKeyB64: macIdentityB64,
+      iphoneIdentityPubKeyB64: iphoneIdentityB64
     })
   }
 
@@ -238,10 +246,9 @@ export class E2eeSession {
     this.clientNonceB64 = clientNonceB64
     this.serverEphB64 = b64.encode(exportRawX25519PublicKey(this.ephemeral!.publicKey))
     this.serverNonceB64 = b64.encode(this.myNonce!)
-    // Derive keys + transcript BEFORE announcing serverHello: with a synchronous
-    // transport, sending immediately drives the peer's reply (clientAuth), which
-    // hits onClientAuth and needs this.transcriptHash already populated.
-    this.deriveKeysAndTranscript()
+    // Keys derive at hello; the TRANSCRIPT now waits for clientAuth (it
+    // binds the iPhone identity, which arrives there).
+    this.deriveKeys()
     this.opts.send({
       t: 'serverHello',
       protocol: E2EE_PROTOCOL,
@@ -265,7 +272,11 @@ export class E2eeSession {
     } else {
       this.peerIdentityPublicKey = macIdentity
     }
-    this.deriveKeysAndTranscript()
+    this.deriveKeys()
+    this.computeTranscript(
+      macIdentityB64,
+      b64.encode(exportRawEd25519PublicKey(this.opts.identityKeyPair.publicKey))
+    )
     const confirmCode = confirmCodeFromTranscript(this.transcriptHash!)
     this.opts.onConfirmCode?.(confirmCode)
     const sig = signEd25519(this.opts.identityKeyPair.privateKey, this.transcriptHash!)
@@ -285,7 +296,14 @@ export class E2eeSession {
     confirmCode: string,
     transcriptSigB64: string
   ): Promise<void> {
-    if (!this.transcriptHash) throw new Error('clientAuth before key derivation')
+    if (!this.keys) throw new Error('clientAuth before key derivation')
+    // Bind the CLAIMED iPhone identity into the transcript before verifying:
+    // a spliced identity yields a different code on the Mac's screen (user-
+    // visible) and a serverAuth signature the phone rejects (automatic).
+    this.computeTranscript(
+      b64.encode(exportRawEd25519PublicKey(this.opts.identityKeyPair.publicKey)),
+      iphoneIdentityB64
+    )
     const iphoneIdentity = importRawEd25519PublicKey(b64.decode(iphoneIdentityB64))
     if (!verifyEd25519(iphoneIdentity, this.transcriptHash, b64.decode(transcriptSigB64))) {
       throw new Error('clientAuth signature invalid')
