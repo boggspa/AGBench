@@ -209,12 +209,12 @@ struct ThreadDetailView: View {
                             primaryWorkspaceId: card.workspaceId,
                             secondaryWorkspaceId: $secondaryWorkspaceId)
                     }
+                    .composerShellGlass()
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(TWTheme.border)
                     )
                     .padding(.horizontal, 10).padding(.bottom, 6)
-                    .composerShellGlass()
                 }
             }
         }

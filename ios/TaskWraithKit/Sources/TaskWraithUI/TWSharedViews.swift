@@ -112,9 +112,9 @@ private struct ComposerShellGlassModifier: ViewModifier {
     var cornerRadius: CGFloat = 16
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .background {
-                let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 if TWTheme.composerGlassEnabled {
                     ZStack {
                         shape.fill(.ultraThinMaterial)
@@ -124,18 +124,19 @@ private struct ComposerShellGlassModifier: ViewModifier {
                     shape.fill(TWTheme.surface2)
                 }
             }
+            .clipShape(shape)
             .overlay(alignment: .top) {
                 if TWTheme.composerGlassEnabled {
                     LinearGradient(
                         colors: [
                             TWTheme.appBg.opacity(0),
-                            TWTheme.appBg.opacity(0.42),
+                            TWTheme.appBg.opacity(0.37),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: 18)
-                    .offset(y: -18)
+                    .frame(height: 14)
+                    .offset(y: -14)
                     .allowsHitTesting(false)
                 }
             }

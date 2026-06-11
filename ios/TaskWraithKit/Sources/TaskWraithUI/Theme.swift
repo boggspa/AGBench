@@ -30,7 +30,7 @@ public enum TWTheme {
     }
 
     /// Dark tint washed over `.ultraThinMaterial` so the dock stays TaskWraith-dark.
-    public static let composerGlassTintOpacity: Double = 0.30
+    public static let composerGlassTintOpacity: Double = 0.25
 
     // ── Text ramp (--text-primary/secondary/tertiary/muted) ──────────────────
     public static let textPrimary = Color.white.opacity(0.92)
