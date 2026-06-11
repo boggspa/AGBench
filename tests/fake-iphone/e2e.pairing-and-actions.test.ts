@@ -88,7 +88,14 @@ function encodeAction(payload: Record<string, unknown>): {
   payloadBase64: string
   payloadBytes: number
 } {
-  const wire = Buffer.from(JSON.stringify(payload), 'utf8')
+  // Mirrors the Swift encode() helper: mutating actions REQUIRE
+  // actionId + expiresAt (router enforcement); explicit values win.
+  const stamped = {
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    ...payload
+  }
+  const wire = Buffer.from(JSON.stringify(stamped), 'utf8')
   return { payloadBase64: wire.toString('base64'), payloadBytes: wire.length }
 }
 

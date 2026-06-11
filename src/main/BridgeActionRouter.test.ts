@@ -162,6 +162,18 @@ function makeAuditLedger(): {
   return { ledger, records }
 }
 
+// Mutating actions now REQUIRE actionId + expiresAt (security review:
+// optional replay/expiry controls were a no-ship finding). Wire fixtures
+// spread these defaults; tests exercising specific metadata override them
+// (their explicit values win — defaults are spread FIRST).
+let replayMetaCounter = 0
+const withReplayMeta = (payload: Record<string, unknown>): Record<string, unknown> => ({
+  actionId: `test-action-${++replayMetaCounter}`,
+  issuedAt: 1_700_000_000_000,
+  expiresAt: Date.now() + 60_000,
+  ...payload
+})
+
 describe('BridgeActionRouter', () => {
   describe('default deny-by-default policy', () => {
     it('denies bridge.requestActionAck with stable shape (unknown payload)', async () => {
@@ -183,13 +195,13 @@ describe('BridgeActionRouter', () => {
       // explicitly cites the missing allowlist.
       const router = new BridgeActionRouter()
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-1',
           threadId: 't-1',
           provider: 'gemini',
           text: 'hi'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -418,13 +430,13 @@ describe('BridgeActionRouter', () => {
     it('actionAck with no allowlist denies even a well-formed payload', async () => {
       const router = new BridgeActionRouter()
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-anything',
           threadId: 't-1',
           provider: 'gemini',
           text: 'hi'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -440,14 +452,14 @@ describe('BridgeActionRouter', () => {
       const allowlist = seedAllowlist()
       const router = new BridgeActionRouter({ allowlist })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           text: 'hello',
           provider: 'gemini',
           approvalMode: 'default'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -479,7 +491,7 @@ describe('BridgeActionRouter', () => {
       const { ledger, records } = makeAuditLedger()
       const router = new BridgeActionRouter({ allowlist, auditLedger: ledger })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
@@ -487,7 +499,7 @@ describe('BridgeActionRouter', () => {
           provider: 'gemini',
           approvalMode: 'default',
           actionId: 'compose-1'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 
@@ -513,13 +525,13 @@ describe('BridgeActionRouter', () => {
       const allowlist = seedAllowlist()
       const router = new BridgeActionRouter({ allowlist })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-not-listed',
           threadId: 't-1',
           provider: 'gemini',
           text: 'hello'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -535,12 +547,12 @@ describe('BridgeActionRouter', () => {
       const { ledger, records } = makeAuditLedger()
       const router = new BridgeActionRouter({ allowlist, auditLedger: ledger })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'setYoloMode',
           workspaceId: 'ws-allowed',
           enabled: true,
           actionId: 'yolo-1'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 
@@ -567,13 +579,13 @@ describe('BridgeActionRouter', () => {
       const allowlist = seedAllowlist()
       const router = new BridgeActionRouter({ allowlist })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           text: 'hi',
           provider: 'claude' // not in allowed list (gemini, codex)
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -605,11 +617,11 @@ describe('BridgeActionRouter', () => {
     it('actionAck denies an unknown action kind with a clear message', async () => {
       const router = new BridgeActionRouter({ allowlist: seedAllowlist() })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'futureKind',
           workspaceId: 'ws-allowed',
           stuff: true
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -623,13 +635,13 @@ describe('BridgeActionRouter', () => {
       const allowlist = seedAllowlist()
       const router = new BridgeActionRouter({ allowlist })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'approvalReply',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           toolCallId: 'tc-1',
           decision: 'acceptForSession'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -667,14 +679,14 @@ describe('BridgeActionRouter', () => {
 
     const encodeAction = (overrides: Record<string, unknown> = {}) =>
       Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           provider: 'gemini',
           text: 'hi',
           ...overrides
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 
@@ -776,14 +788,14 @@ describe('BridgeActionRouter', () => {
 
     const composerPromptWire = (overrides: Record<string, unknown> = {}) =>
       Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'composerPrompt',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           provider: 'gemini',
           text: 'hi',
           ...overrides
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 
@@ -833,13 +845,13 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'cancelRun',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           provider: 'gemini',
           runId: 'run-1'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -855,13 +867,13 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'approvalReply',
           workspaceId: 'ws-allowed',
           threadId: 't-1',
           toolCallId: 'tc-1',
           decision: 'acceptForSession'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -903,7 +915,7 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({ kind: 'futureKind', workspaceId: 'ws-allowed' }),
+        JSON.stringify(withReplayMeta({ kind: 'futureKind', workspaceId: 'ws-allowed' })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -936,12 +948,12 @@ describe('BridgeActionRouter', () => {
       })
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'createSideChat',
           workspaceId: 'ws-allowed',
           threadId: 'parent-1',
           provider: 'codex'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -963,12 +975,12 @@ describe('BridgeActionRouter', () => {
       // but registerApnsToken is a system action and accepts.
       const router = new BridgeActionRouter({ executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'registerApnsToken',
           pairID: 'pair-1',
           deviceToken: 'tok-abc',
           env: 'production'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -985,12 +997,12 @@ describe('BridgeActionRouter', () => {
       const { executor } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'registerApnsToken',
           pairID: 'unaffiliated-pair',
           deviceToken: 'tok',
           env: 'sandbox'
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -1003,11 +1015,11 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'setYoloMode',
           workspaceId: 'ws-allowed',
           enabled: true
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -1024,11 +1036,11 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'setYoloMode',
           workspaceId: 'ws-not-listed',
           enabled: true
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -1043,12 +1055,12 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'togglePinChat',
           workspaceId: 'ws-allowed',
           appChatId: 'chat-1',
           pinned: true
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -1063,11 +1075,11 @@ describe('BridgeActionRouter', () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           kind: 'togglePinWorkspace',
           workspaceId: 'ws-allowed',
           pinned: false
-        }),
+        })),
         'utf-8'
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
@@ -1095,11 +1107,11 @@ describe('BridgeActionRouter', () => {
 
     const encodeAction = (action: Record<string, unknown>) =>
       Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           workspaceId: 'ws-ensemble',
           threadId: 'ensemble-thread',
           ...action
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 
@@ -1278,7 +1290,7 @@ describe('BridgeActionRouter', () => {
     }
 
     const encodeAction = (action: Record<string, unknown>) =>
-      Buffer.from(JSON.stringify(action), 'utf-8').toString('base64')
+      Buffer.from(JSON.stringify(withReplayMeta(action)), 'utf-8').toString('base64')
 
     it('denies prepareStartTurn against read-only workspace via startTurn capability', async () => {
       const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
@@ -1546,7 +1558,7 @@ describe('BridgeActionRouter', () => {
     }
 
     const encodeAction = (action: Record<string, unknown>) =>
-      Buffer.from(JSON.stringify(action), 'utf-8').toString('base64')
+      Buffer.from(JSON.stringify(withReplayMeta(action)), 'utf-8').toString('base64')
 
     it('denies action execution when ownership validator rejects target ids', async () => {
       const { executor, calls } = makeStubExecutor()
@@ -1626,10 +1638,10 @@ describe('BridgeActionRouter', () => {
   describe('workspace file action policy', () => {
     const encodeFileAction = (action: Record<string, unknown>) =>
       Buffer.from(
-        JSON.stringify({
+        JSON.stringify(withReplayMeta({
           workspaceId: 'ws-files',
           ...action
-        }),
+        })),
         'utf-8'
       ).toString('base64')
 

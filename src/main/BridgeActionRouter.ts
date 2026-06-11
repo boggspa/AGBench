@@ -7,6 +7,7 @@ import {
   actionIdFromPayload,
   decodeBridgeActionPayload,
   expiresAtFromPayload,
+  payloadIsMutating,
   payloadRequiresWorkspaceGating,
   workspaceIdFromPayload,
   type BridgeActionPayload
@@ -283,6 +284,14 @@ export class BridgeActionRouter {
     let payload: BridgeActionPayload
     try {
       payload = decodeBridgeActionPayload(payloadBase64).payload
+      // Security review: the pairID INSIDE the encrypted payload is
+      // client-controlled. The runtime injects the AUTHENTICATED pairID
+      // into the outer params — stamp it over the decoded action so every
+      // executor (registerApnsToken's token store especially) binds to the
+      // transport identity, never a claimed one.
+      if (pairID && pairID !== '?') {
+        ;(payload as { pairID?: string }).pairID = pairID
+      }
     } catch (err) {
       if (err instanceof BridgeActionPayloadDecodeError) {
         this.log(
@@ -320,6 +329,31 @@ export class BridgeActionRouter {
         scope: 'once',
         message: `Unrecognized action kind "${payload.rawKind}" — Electron may be older than the iOS client`
       })
+    }
+
+    // Security review: replay/expiry controls were OPTIONAL — a mutating
+    // action without an actionId skipped replay tracking entirely, and one
+    // without expiresAt lived forever. Mutating actions now REQUIRE both
+    // (the phone stamps them in its shared encode helper; reads stay
+    // lenient for older clients).
+    if (payloadIsMutating(payload)) {
+      const actionId = actionIdFromPayload(payload)
+      const expiresAt = expiresAtFromPayload(payload)
+      if (!actionId || expiresAt === null) {
+        const message =
+          'Mutating actions require actionId + expiresAt (update the companion app)'
+        this.log(
+          `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} reason="${message}"`
+        )
+        return this.buildActionAck({
+          pairID,
+          accepted: false,
+          reasonCode: 'actionExpired',
+          payload,
+          scope: 'once',
+          message
+        })
+      }
     }
 
     const replayGuard = this.reserveActionId(pairID, payload)

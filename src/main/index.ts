@@ -185,6 +185,11 @@ import { extractThreadId } from './BridgeRunEventSink'
 import { resolveCanonicalWorkspaceId } from './WorkspaceIdentity'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
+import type {
+  BridgeActionOwnershipCheck,
+  BridgeActionOwnershipValidator,
+  BridgeOwnershipValidationResult
+} from './BridgeActionRouter'
 import {
   RemoteWorkspaceAllowlist,
   capabilitiesForRemoteWorkspaceEntry,
@@ -15741,6 +15746,40 @@ if (isGeminiMcpBridgeProcess) {
     // bridge for exactly the headless scenario it exists for. Env keeps
     // override semantics (force-on/off) via the same resolver the Swift
     // daemon toggle uses.
+    // BD3 (security review): production routers get a REAL ownership
+    // validator — the seam's missing-validator fallback is allow, which let
+    // a paired device present an allowlisted workspaceId while targeting an
+    // unrelated thread/run/question. Threads must belong to the presented
+    // workspace; runs must belong to the thread; questions resolve their
+    // own thread which must agree.
+    const bridgeOwnershipValidator: BridgeActionOwnershipValidator = {
+      validateActionOwnership: (
+        check: BridgeActionOwnershipCheck
+      ): BridgeOwnershipValidationResult => {
+        const canonicalWs = canonicalRemoteWorkspaceId(check.workspaceId) ?? check.workspaceId
+        if (check.threadId) {
+          const chat = AppStore.getChat(check.threadId)
+          if (!chat) return { allowed: false, reason: 'Unknown thread for this workspace' }
+          const chatWs = canonicalRemoteWorkspaceId(chat.workspaceId) ?? chat.workspaceId
+          if (chat.scope !== 'global' && chatWs && chatWs !== canonicalWs) {
+            return { allowed: false, reason: 'Thread does not belong to the presented workspace' }
+          }
+          if (check.runId) {
+            const runs = chat.runs ?? []
+            if (!runs.some((run) => run.runId === check.runId)) {
+              return { allowed: false, reason: 'Run does not belong to the presented thread' }
+            }
+          }
+        }
+        if (check.questionId) {
+          const question = remoteQuestionRegistry.get?.(check.questionId)
+          if (question?.threadId && check.threadId && question.threadId !== check.threadId) {
+            return { allowed: false, reason: 'Question does not belong to the presented thread' }
+          }
+        }
+        return { allowed: true }
+      }
+    }
     const iosRemoteResolution = resolveDaemonShouldRun(
       AppStore.getSettings().iosRemoteEnabled === true,
       process.env.IOS_REMOTE_TRUE
@@ -15802,7 +15841,8 @@ if (isGeminiMcpBridgeProcess) {
         const transportActionRouter = BridgeActionRouter.fromEnvironment(
           (line) => console.log(line),
           bridgeAllowlist,
-          createBridgeActionExecutor()
+          createBridgeActionExecutor(),
+          bridgeOwnershipValidator
         )
         const runtime = new RemoteBridgeRuntime({
           relayUrl,
@@ -15937,7 +15977,8 @@ if (isGeminiMcpBridgeProcess) {
           console.log(line)
         },
         bridgeAllowlist,
-        createBridgeActionExecutor()
+        createBridgeActionExecutor(),
+        bridgeOwnershipValidator
       )
       const daemon = new BridgeDaemonClient({
         onHello: (hello) => {
