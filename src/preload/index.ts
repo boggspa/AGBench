@@ -463,6 +463,9 @@ const api = {
   bridgeNetworkingStatus: () => ipcRenderer.invoke('bridge-networking-status'),
   setBridgeDaemonEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('set-bridge-daemon-enabled', enabled),
+  getIosRemoteConfig: () => ipcRenderer.invoke('get-ios-remote-config'),
+  setIosRemoteConfig: (config: { enabled?: boolean; relayUrl?: string; openAtLogin?: boolean }) =>
+    ipcRenderer.invoke('set-ios-remote-config', config),
 
   // Phase G2: auto-update controls.
   updateSnapshot: () => ipcRenderer.invoke('update-snapshot'),

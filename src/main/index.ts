@@ -15560,7 +15560,11 @@ if (isGeminiMcpBridgeProcess) {
         }
       }
 
-      const configuredRelayUrl = (process.env.TASKWRAITH_RELAY_URL || '').trim()
+      const configuredRelayUrl = (
+        process.env.TASKWRAITH_RELAY_URL ||
+        AppStore.getSettings().iosRemoteRelayUrl ||
+        ''
+      ).trim()
       if (configuredRelayUrl) {
         // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
         console.log(
@@ -16053,6 +16057,51 @@ if (isGeminiMcpBridgeProcess) {
       }, 3000)
     }
 
+    ipcMain.handle('get-ios-remote-config', () => {
+      const settings = AppStore.getSettings()
+      const resolution = resolveDaemonShouldRun(
+        settings.iosRemoteEnabled === true,
+        process.env.IOS_REMOTE_TRUE
+      )
+      return {
+        enabled: settings.iosRemoteEnabled === true,
+        relayUrl: settings.iosRemoteRelayUrl || '',
+        effectiveEnabled: resolution.shouldRun,
+        envOverride: resolution.envOverride,
+        runtimeActive: iosRemoteRuntime !== null,
+        openAtLogin: app.getLoginItemSettings().openAtLogin
+      }
+    })
+    ipcMain.handle(
+      'set-ios-remote-config',
+      (_, config: { enabled?: boolean; relayUrl?: string; openAtLogin?: boolean }) => {
+        if (typeof config?.openAtLogin === 'boolean') {
+          app.setLoginItemSettings({ openAtLogin: config.openAtLogin })
+        }
+        AppStore.updateSettings({
+          ...(typeof config?.enabled === 'boolean' ? { iosRemoteEnabled: config.enabled } : {}),
+          ...(typeof config?.relayUrl === 'string'
+            ? { iosRemoteRelayUrl: config.relayUrl.trim() }
+            : {})
+        })
+        const next = AppStore.getSettings()
+        const resolution = resolveDaemonShouldRun(
+          next.iosRemoteEnabled === true,
+          process.env.IOS_REMOTE_TRUE
+        )
+        return {
+          enabled: next.iosRemoteEnabled === true,
+          relayUrl: next.iosRemoteRelayUrl || '',
+          effectiveEnabled: resolution.shouldRun,
+          envOverride: resolution.envOverride,
+          // The runtime is constructed at startup; a toggle takes effect
+          // on the next launch (restart prompt in the panel).
+          runtimeActive: iosRemoteRuntime !== null,
+          openAtLogin: app.getLoginItemSettings().openAtLogin
+        }
+      }
+    )
+
     ipcMain.handle(
       'bridge-finalize-pairing',
       async (_, sessionID: string, userConfirmed: boolean) => {
@@ -16060,7 +16109,7 @@ if (isGeminiMcpBridgeProcess) {
         if (!iosRemoteRuntime) {
           return {
             ok: false,
-            error: 'Remote iOS pairing is not available in this build.'
+            error: 'Remote iOS pairing is off — enable it in Settings → Devices (or set IOS_REMOTE_TRUE=1), then restart.'
           }
         }
         return iosRemoteRuntime.finalizePairing(pairingSessionID, Boolean(userConfirmed))
@@ -16078,7 +16127,7 @@ if (isGeminiMcpBridgeProcess) {
           ok: false,
           error:
             'Remote iOS pairing is not available in this build. ' +
-            'Set IOS_REMOTE_TRUE=1 and TASKWRAITH_RELAY_URL to enable the preview transport.'
+            'Enable the iOS remote bridge in Settings → Devices, then restart TaskWraith.'
         }
       }
       return iosRemoteRuntime.beginPairing(
@@ -16096,7 +16145,7 @@ if (isGeminiMcpBridgeProcess) {
       if (!iosRemoteRuntime) {
         return {
           ok: false,
-          error: 'Remote iOS pairing is not available in this build.'
+          error: 'Remote iOS pairing is off — enable it in Settings → Devices (or set IOS_REMOTE_TRUE=1), then restart.'
         }
       }
       const target = iosRemoteRuntime

@@ -176,6 +176,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'install-gemini-mcp-bridge': [],
   'set-gemini-mcp-bridge-enabled': ['boolean'],
   'set-bridge-daemon-enabled': ['boolean'],
+  'get-ios-remote-config': [],
+  'set-ios-remote-config': ['object'],
   'run-approved-host-command': ['nonEmptyString'],
   'list-gemini-sessions': [],
   'select-workspace': [],

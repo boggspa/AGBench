@@ -631,6 +631,26 @@ declare global {
           reason?: string
         }
       }>
+      getIosRemoteConfig: () => Promise<{
+        enabled: boolean
+        relayUrl: string
+        effectiveEnabled: boolean
+        envOverride: 'force-on' | 'force-off' | null
+        runtimeActive: boolean
+        openAtLogin?: boolean
+      }>
+      setIosRemoteConfig: (config: {
+        enabled?: boolean
+        relayUrl?: string
+        openAtLogin?: boolean
+      }) => Promise<{
+        enabled: boolean
+        relayUrl: string
+        effectiveEnabled: boolean
+        envOverride: 'force-on' | 'force-off' | null
+        runtimeActive: boolean
+        openAtLogin?: boolean
+      }>
       setBridgeDaemonEnabled: (enabled: boolean) => Promise<{
         lan: {
           enabled: boolean

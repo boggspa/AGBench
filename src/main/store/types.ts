@@ -1558,6 +1558,13 @@ export interface AppSettings {
    */
   approvalModeElevationAcknowledgements?: Record<string, boolean>
   bridgeDaemonEnabled?: boolean
+  /** iOS remote bridge (relay + E2EE transport). Settings-first so
+   * login-item/GUI launches work without shell env; IOS_REMOTE_TRUE
+   * keeps env-override semantics (1/true force-on, 0/false force-off)
+   * via resolveDaemonShouldRun. */
+  iosRemoteEnabled?: boolean
+  /** External relay URL (ws:// or wss://). Empty = embedded relay. */
+  iosRemoteRelayUrl?: string
   /** Local Servers — run agent shell commands in their own process group so the
    * Local Servers panel can group-kill the whole tree on Stop. Off by default. */
   localServersDetachSpawns?: boolean

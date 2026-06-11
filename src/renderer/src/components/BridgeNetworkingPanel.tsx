@@ -148,6 +148,8 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
         )}
       </section>
 
+      <IosRemoteBridgeSection />
+
       <section className="bridge-networking-section">
         <header className="bridge-networking-section-header">
           <span className="bridge-networking-section-title">Local bridge</span>
@@ -247,6 +249,133 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
         </button>
       </div>
     </div>
+  )
+}
+
+interface IosRemoteConfig {
+  enabled: boolean
+  relayUrl: string
+  effectiveEnabled: boolean
+  envOverride: string | null
+  runtimeActive: boolean
+  openAtLogin?: boolean
+}
+
+/** iOS remote bridge (relay + E2EE) — settings-first gating so login-item
+ * launches keep the bridge alive without shell env. Runtime constructs at
+ * startup, so changes prompt a restart. */
+function IosRemoteBridgeSection(): React.JSX.Element {
+  const [config, setConfig] = useState<IosRemoteConfig | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [needsRestart, setNeedsRestart] = useState(false)
+  const [sectionError, setSectionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = (await window.api.getIosRemoteConfig?.()) as IosRemoteConfig | undefined
+        if (!cancelled && result) setConfig(result)
+      } catch (err) {
+        if (!cancelled) setSectionError(err instanceof Error ? err.message : String(err))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const save = async (patch: {
+    enabled?: boolean
+    relayUrl?: string
+    openAtLogin?: boolean
+  }): Promise<void> => {
+    try {
+      setSaving(true)
+      setSectionError(null)
+      const result = (await window.api.setIosRemoteConfig?.(patch)) as IosRemoteConfig | undefined
+      if (result) {
+        setConfig(result)
+        setNeedsRestart(result.effectiveEnabled !== result.runtimeActive)
+      }
+    } catch (err) {
+      setSectionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const pillKind = config?.runtimeActive ? 'ok' : config?.effectiveEnabled ? 'warn' : 'idle'
+  const pillLabel = config?.runtimeActive
+    ? 'Running'
+    : config?.effectiveEnabled
+      ? 'On after restart'
+      : 'Off'
+
+  return (
+    <section className="bridge-networking-section">
+      <header className="bridge-networking-section-header">
+        <span className="bridge-networking-section-title">iOS remote bridge</span>
+        <StatusPill kind={pillKind} label={pillLabel} />
+      </header>
+      {sectionError && <div className="settings-error">{sectionError}</div>}
+      <label className="settings-service-row settings-fx-toggle">
+        <span>
+          Enable iOS remote bridge
+          <small>
+            Pair an iPhone/iPad over the encrypted relay. Settings-based, so login-item
+            launches keep it alive — no shell environment needed.
+            {config?.envOverride
+              ? ` Currently forced ${config.envOverride === 'force-on' ? 'ON' : 'OFF'} by IOS_REMOTE_TRUE.`
+              : ''}
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={config?.enabled ?? false}
+          disabled={saving || config === null || config.envOverride !== null}
+          onChange={(event) => void save({ enabled: event.target.checked })}
+        />
+      </label>
+      <label className="settings-service-row">
+        <span>
+          External relay URL
+          <small>Optional. Empty runs the embedded relay. Use wss:// for remote access.</small>
+        </span>
+        <input
+          type="text"
+          className="settings-text-input"
+          placeholder="wss://relay.example.com"
+          defaultValue={config?.relayUrl ?? ''}
+          disabled={saving || config === null}
+          onBlur={(event) => {
+            if ((config?.relayUrl ?? '') !== event.target.value.trim()) {
+              void save({ relayUrl: event.target.value })
+            }
+          }}
+        />
+      </label>
+      <label className="settings-service-row settings-fx-toggle">
+        <span>
+          Start TaskWraith at login
+          <small>
+            With the bridge enabled, the app keeps running after the window closes —
+            together these make your Mac reachable from the phone without babysitting.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={config?.openAtLogin ?? false}
+          disabled={saving || config === null}
+          onChange={(event) => void save({ openAtLogin: event.target.checked })}
+        />
+      </label>
+      {needsRestart && (
+        <div className="settings-hint bridge-networking-reason">
+          Restart TaskWraith to apply the new bridge configuration.
+        </div>
+      )}
+    </section>
   )
 }
 
