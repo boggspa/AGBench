@@ -1925,10 +1925,11 @@
 }
 
 .usage-heatmap-title {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: 'Avenir Next', var(--font-ui, -apple-system, sans-serif);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--text-tertiary);
   margin-right: auto;
 }

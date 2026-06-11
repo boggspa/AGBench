@@ -45,6 +45,51 @@ const MAX_CODEX_SQLITE_MARKERS_PER_BUCKET = 8
 
 const EXTERNAL_USAGE_CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000
 
+export interface ExternalUsageRollup {
+  providers: Array<{ provider: string; h24: number; d7: number; d90: number }>
+  totals: { h24: number; d7: number; d90: number }
+}
+
+/** Token totals per provider for the 24h/7d/90d chips — computed off the
+ * cached usage records so paired devices get the same numbers the desktop
+ * External Activity header shows. */
+export function buildExternalUsageRollup(
+  records: UsageRecord[],
+  now: number = Date.now()
+): ExternalUsageRollup {
+  const h24 = now - 24 * 60 * 60 * 1000
+  const d7 = now - 7 * 24 * 60 * 60 * 1000
+  const d90 = now - 90 * 24 * 60 * 60 * 1000
+  const byProvider = new Map<string, { h24: number; d7: number; d90: number }>()
+  const totals = { h24: 0, d7: 0, d90: 0 }
+  for (const record of records) {
+    if (record.usageKind === 'reset_hint') continue
+    const tokens = record.totalTokens || record.inputTokens + record.outputTokens || 0
+    if (!tokens || !Number.isFinite(record.timestamp)) continue
+    const key = record.provider ?? 'unknown'
+    const bucket = byProvider.get(key) ?? { h24: 0, d7: 0, d90: 0 }
+    if (record.timestamp >= d90) {
+      bucket.d90 += tokens
+      totals.d90 += tokens
+      if (record.timestamp >= d7) {
+        bucket.d7 += tokens
+        totals.d7 += tokens
+        if (record.timestamp >= h24) {
+          bucket.h24 += tokens
+          totals.h24 += tokens
+        }
+      }
+    }
+    byProvider.set(key, bucket)
+  }
+  return {
+    providers: [...byProvider.entries()]
+      .map(([provider, buckets]) => ({ provider, ...buckets }))
+      .sort((a, b) => b.d90 - a.d90),
+    totals
+  }
+}
+
 let externalUsageCache: { records: UsageRecord[]; scannedAt: number } | null = null
 let externalUsageInFlight: Promise<UsageRecord[]> | null = null
 

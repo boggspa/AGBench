@@ -267,7 +267,7 @@ import {
   extractProviderUsage,
   mergeProviderUsage
 } from './ProviderRunStats'
-import { getExternalUsageCached } from './ExternalProviderActivity'
+import { getExternalUsageCached, buildExternalUsageRollup } from './ExternalProviderActivity'
 import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
@@ -638,6 +638,10 @@ let bridgeBroadcasterRef: BridgeBroadcaster | null = null
 // app-ready scope (it reuses the get-agent-models extraction); the
 // establish-time callback fires through this indirection.
 let remoteProviderModelsTrigger: (() => void) | null = null
+let remoteUsageRollupTrigger: (() => void) | null = null
+const registerRemoteUsageRollupTrigger = (trigger: () => void): void => {
+  remoteUsageRollupTrigger = trigger
+}
 const registerRemoteProviderModelsTrigger = (fn: () => void): void => {
   remoteProviderModelsTrigger = fn
 }
@@ -15515,6 +15519,7 @@ if (isGeminiMcpBridgeProcess) {
           // empty pickers otherwise.
           onDeviceEstablished: () => {
             remoteProviderModelsTrigger?.()
+            remoteUsageRollupTrigger?.()
             // Rehydrate guard (Codex-diagnosed): the establish-time
             // broadcastSnapshot can fire while the store/allowlist state is
             // still settling after a Mac restart — the phone then accepts an
@@ -16566,11 +16571,26 @@ if (isGeminiMcpBridgeProcess) {
       AppStore.getUsage(workspaceId, chatId)
     )
     ipcMain.handle('get-external-usage', () => getExternalUsageCached())
+    const broadcastUsageRollupToRemote = (): void => {
+      void getExternalUsageCached()
+        .then((records) => {
+          bridgeBroadcasterRef?.broadcastUsageRollup({
+            rollup: buildExternalUsageRollup(records)
+          })
+        })
+        .catch(() => {})
+    }
+    registerRemoteUsageRollupTrigger(broadcastUsageRollupToRemote)
     // Prewarm: the external-activity scan is multi-second on busy machines;
     // warm it shortly after launch (off the critical path) + keep it fresh
     // on the heatmap's natural cadence so opens always render hydrated.
-    setTimeout(() => void getExternalUsageCached(), 4000).unref?.()
-    setInterval(() => void getExternalUsageCached({ maxAgeMs: 0 }), 2 * 60 * 60 * 1000).unref?.()
+    // Each refresh also re-ships the rollup chips to paired devices.
+    setTimeout(() => {
+      void getExternalUsageCached().then(() => broadcastUsageRollupToRemote())
+    }, 4000).unref?.()
+    setInterval(() => {
+      void getExternalUsageCached({ maxAgeMs: 0 }).then(() => broadcastUsageRollupToRemote())
+    }, 2 * 60 * 60 * 1000).unref?.()
     ipcMain.handle('get-workspace-activity', (_, workspacePath: string, dayCount?: number) =>
       getWorkspaceActivitySnapshot(requireRegisteredWorkspace(workspacePath), dayCount)
     )
