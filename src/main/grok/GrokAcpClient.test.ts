@@ -284,4 +284,22 @@ describe('runGrokAcpTurn', () => {
     )
     expect(closes).toEqual([1])
   })
+
+  it('explains ENOENT spawn errors as missing Grok CLI setup', () => {
+    const child = new FakeAcpChild()
+    const { events, closes } = run(child)
+    const err = Object.assign(new Error('spawn /Users/dev/.grok/bin/grok ENOENT'), {
+      code: 'ENOENT',
+      path: '/Users/dev/.grok/bin/grok'
+    })
+
+    child.fail(err)
+
+    const warning = events.find((e) => e.type === 'provider_warning')?.text || ''
+    expect(warning).toContain('Grok CLI could not be started')
+    expect(warning).toContain('/Users/dev/.grok/bin/grok')
+    expect(warning).toContain('ENOENT')
+    expect(warning).toContain('Settings -> Providers -> Grok')
+    expect(closes).toEqual([1])
+  })
 })

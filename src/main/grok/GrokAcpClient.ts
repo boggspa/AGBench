@@ -85,6 +85,25 @@ export interface GrokAcpRunHandle {
 
 const ACP_ID = { initialize: 1, sessionNew: 2, prompt: 3 } as const
 
+const grokBinaryFromSpawnMessage = (message: string): string | null => {
+  const match = message.match(/^spawn\s+(.+?)\s+ENOENT\b/)
+  return match?.[1] ?? null
+}
+
+const formatGrokProcessError = (err: Error): string => {
+  const error = err as Error & { code?: unknown; path?: unknown }
+  const message = err.message || String(err)
+  const isMissingBinary = error.code === 'ENOENT' || /\bENOENT\b/.test(message)
+  if (!isMissingBinary) return message
+
+  const attemptedPath =
+    typeof error.path === 'string'
+      ? error.path
+      : grokBinaryFromSpawnMessage(message) || '~/.grok/bin/grok'
+
+  return `Grok CLI could not be started. TaskWraith tried ${attemptedPath}, but macOS reported ENOENT (no such file or directory). Open Settings -> Providers -> Grok and reinstall or sign in, or run Grok once in Terminal so it can repair ~/.grok/bin/grok, then retry.`
+}
+
 /**
  * Run a single read-only ACP turn. Returns a handle whose `cancel()` interrupts
  * an in-progress turn. The caller wires `onEvent` to its run-event sink and
@@ -254,7 +273,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
   })
 
   child.on('error', (err) => {
-    options.onEvent({ type: 'provider_warning', text: err.message })
+    options.onEvent({ type: 'provider_warning', text: formatGrokProcessError(err) })
     options.onClose?.(1, turnComplete)
   })
   child.on('close', (code) => options.onClose?.(code, turnComplete))
