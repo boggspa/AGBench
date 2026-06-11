@@ -70,7 +70,7 @@ export function SkyWeatherVisual({ weather }: { weather: HostWeatherVisualState 
             yChannelSelector="G"
             result="warpedFog"
           />
-          <feGaussianBlur in="warpedFog" stdDeviation="3.2" />
+          <feGaussianBlur in="warpedFog" stdDeviation="4.8" />
         </filter>
       </svg>
       <div className="sky-glow" />
