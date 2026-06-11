@@ -233,6 +233,9 @@ export interface RemoteThreadSnapshot {
   /** Pinned messages (metadata.pinnedAt), newest first, capped — these may
    * fall OUTSIDE the latestN row window so they ship separately. */
   pinnedRows?: RemoteThreadRow[]
+  /** Per-run summaries (oldest→newest, capped) — remote clients interleave
+   * Task-complete cards after each run's last transcript row. */
+  runSummaries?: RemoteRunSummary[]
   generatedAt: string
 }
 
@@ -412,7 +415,11 @@ function parseTime(value?: string): number {
 /** Best-effort run summary from the most recent run. */
 export function buildRunSummary(runs: ChatRun[] | undefined): RemoteRunSummary | undefined {
   if (!Array.isArray(runs) || runs.length === 0) return undefined
-  const run = runs[runs.length - 1]
+  return summarizeRun(runs[runs.length - 1])
+}
+
+/** Per-run projection — powers the per-run Task-complete cards. */
+export function summarizeRun(run: ChatRun | undefined): RemoteRunSummary | undefined {
   if (!run || typeof run.runId !== 'string') return undefined
   const summary: RemoteRunSummary = { runId: run.runId }
   if (run.provider) summary.provider = run.provider
@@ -610,6 +617,10 @@ export function projectRemoteThread(
   const previewMax = opts.previewMaxChars ?? DEFAULT_PREVIEW_MAX
   const generatedAt = opts.generatedAt ?? new Date().toISOString()
   const runSummary = buildRunSummary(runs)
+  const runSummaries = (runs ?? [])
+    .slice(-12)
+    .map((run) => summarizeRun(run))
+    .filter((entry): entry is RemoteRunSummary => Boolean(entry))
   const pinnedRows = all
     .filter(
       (message) =>
@@ -647,7 +658,8 @@ export function projectRemoteThread(
     ...(typeof opts.notes === 'string' && opts.notes.trim()
       ? { notes: sanitizePreview(opts.notes, 4000).preview }
       : {}),
-    ...(pinnedRows.length > 0 ? { pinnedRows } : {})
+    ...(pinnedRows.length > 0 ? { pinnedRows } : {}),
+    ...(runSummaries.length > 0 ? { runSummaries } : {})
   }
 
   if (opts.mode.kind === 'summaryOnly') {
