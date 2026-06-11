@@ -75,6 +75,29 @@ struct ThreadDetailView: View {
         else { return rows }
         return rows.filter { !($0.role == "assistant" && $0.runId == liveRunId) }
     }
+    /// runId → id of that run's LAST visible row (cards anchor there).
+    private var runLastRowIds: [String: String] {
+        var out: [String: String] = [:]
+        for row in visibleRows {
+            if let runId = row.runId { out[runId] = row.id }
+        }
+        return out
+    }
+
+    /// The terminal summary to show after this row, if it's a run's last row.
+    private func runCardSummary(after row: RemoteThreadSnapshot.Row)
+        -> RemoteThreadSnapshot.RunSummary?
+    {
+        guard let runId = row.runId, runLastRowIds[runId] == row.id else { return nil }
+        guard
+            let summary = (snapshot?.runSummaries ?? [snapshot?.runSummary].compactMap { $0 })
+                .first(where: { $0.runId == runId })
+        else { return nil }
+        let status = summary.status ?? ""
+        guard status != "running", !status.isEmpty else { return nil }
+        return summary
+    }
+
     private var earlierCount: Int {
         guard let snapshot, snapshot.hasMoreAbove == true else { return 0 }
         return max(0, (snapshot.totalRows ?? 0) - (snapshot.rows?.count ?? 0))
@@ -89,7 +112,11 @@ struct ThreadDetailView: View {
     private func transcriptList(proxy: ScrollViewProxy) -> some View {
         // AnyView stage-breaks: the full modifier chain exceeded the
         // type-checker's budget once lifecycle modifiers joined it.
-        toolbarChrome(AnyView(navigationChrome(AnyView(listCore(proxy: proxy)), proxy: proxy)))
+        toolbarChrome(
+            AnyView(
+                followChrome(
+                    AnyView(navigationChrome(AnyView(listCore(proxy: proxy)), proxy: proxy)),
+                    proxy: proxy)))
     }
 
     private func listCore(proxy: ScrollViewProxy) -> some View {
@@ -128,6 +155,19 @@ struct ThreadDetailView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                    // Desktop parity: each run's Task-complete card follows
+                    // its final transcript row, persisting in the thread.
+                    if let runCard = runCardSummary(after: row) {
+                        TaskCompleteCard(
+                            run: runCard,
+                            diff: runCard.runId == snapshot?.runSummary?.runId
+                                ? model.diffSummaries[taskId] : nil
+                        )
+                        .listRowInsets(
+                            EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
                 }
                 if let live = model.streamingTexts[taskId], !live.isEmpty {
                     StreamingRowView(
@@ -168,8 +208,10 @@ struct ThreadDetailView: View {
                     Text("No transcript yet.").foregroundStyle(TWTheme.textSecondary)
                         .listRowBackground(Color.clear)
                 }
-                if let run = snapshot?.runSummary, !isRunning {
-                    RunSummaryChip(run: run)
+                if let run = snapshot?.runSummary, !isRunning,
+                    runLastRowIds[run.runId ?? ""] == nil
+                {
+                    TaskCompleteCard(run: run, diff: model.diffSummaries[taskId])
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -183,16 +225,41 @@ struct ThreadDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(TWTheme.appBg)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 4) {
-                if let card, card.isEnsemble, let workspaceId = card.workspaceId {
-                    // Editable roster strip (desktop above-row parity):
-                    // tap a chip to edit role/brief/enable/provider/model,
-                    // long-press-drag to reorder, + to add. Falls back to
-                    // round-state chips via the same component.
-                    EditableRosterStrip(
-                        model: model, threadId: taskId, workspaceId: workspaceId)
+.overlay(alignment: .bottom) {
+            // Jump-to-latest: centered just above the composer shell (the
+            // trailing spot sat on top of the roster's + button). Black
+            // circle, white arrow, white rim.
+            if !autoFollow {
+                Button {
+                    autoFollow = true
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo("transcript-bottom", anchor: .bottom)
+                    }
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.black.opacity(0.85)))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.45), radius: 7, y: 2)
                 }
+                .buttonStyle(.plain)
+                .padding(.bottom, 14)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // AnyView stage-break: the shell stack (banner + changes rows +
+            // roster row + composer + rail) exceeds xcodebuild's stricter
+            // type-check budget when inlined into the List chain.
+            AnyView(composerShellStack)
+        }
+    }
+
+    @ViewBuilder
+    private var composerShellStack: some View {
+            VStack(spacing: 4) {
                 if let message = model.lastActionMessage, message != "Sent." {
                     StatusBanner(message: message) {
                         model.clearActionMessage()
@@ -221,9 +288,31 @@ struct ThreadDetailView: View {
                                 Rectangle().fill(TWTheme.border).frame(height: 1)
                             }
                         }
+                        if card.isEnsemble,
+                            let queued = model.ensembleStates[taskId]?.queuedPrompts,
+                            !queued.isEmpty
+                        {
+                            // Stacked queued prompts (desktop parity) — one
+                            // shared Mac-side queue, any-device origin.
+                            QueuedPromptsStack(
+                                model: model, card: card, prompts: queued,
+                                isShellTop: !hasDiff)
+                            Rectangle().fill(TWTheme.border).frame(height: 1)
+                        }
+                        if card.isEnsemble, let wsId = card.workspaceId {
+                            // Roster row lives IN the shell, always under the
+                            // changes row(s) — desktop composer parity.
+                            EditableRosterStrip(
+                                model: model, threadId: taskId, workspaceId: wsId,
+                                attached: true,
+                                isShellTop: !hasDiff
+                                    && (model.ensembleStates[taskId]?.queuedPrompts ?? [])
+                                        .isEmpty)
+                            Rectangle().fill(TWTheme.border).frame(height: 1)
+                        }
                         Composer(
                             model: model, card: card, runModel: snapshot?.runSummary?.model,
-                            attachedTop: hasDiff, attachedBottom: true,
+                            attachedTop: hasDiff || card.isEnsemble, attachedBottom: true,
                             extraWorkspaceIds: secondaryWorkspaceId.map { [$0] },
                             text: $followUp)
                         Rectangle().fill(TWTheme.border).frame(height: 1)
@@ -241,7 +330,6 @@ struct ThreadDetailView: View {
                 }
             }
             .background(Color.clear)
-        }
     }
 
     private func navigationChrome(_ base: AnyView, proxy: ScrollViewProxy) -> some View {
@@ -264,6 +352,10 @@ struct ThreadDetailView: View {
         .onDisappear {
             if model.visibleThreadId == taskId { model.visibleThreadId = nil }
         }
+    }
+
+    private func followChrome(_ base: AnyView, proxy: ScrollViewProxy) -> some View {
+        base
         .onChange(of: snapshot?.rows?.count ?? 0) { _, _ in
             guard autoFollow else { return }
             withAnimation(.easeOut(duration: 0.2)) {
@@ -280,25 +372,7 @@ struct ThreadDetailView: View {
                 if value.translation.height > 0 { autoFollow = false }
             }
         )
-        .overlay(alignment: .bottomTrailing) {
-            if !autoFollow {
-                Button {
-                    autoFollow = true
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo("transcript-bottom", anchor: .bottom)
-                    }
-                } label: {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(TWTheme.chroma1)
-                        .background(Circle().fill(TWTheme.surface1))
-                        .shadow(color: .black.opacity(0.4), radius: 6)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 16)
-                .padding(.bottom, 110)
-            }
-        }
+        
     }
 
     private func toolbarChrome(_ base: AnyView) -> some View {
@@ -331,6 +405,7 @@ struct ThreadDetailView: View {
                 // path-based push from a nested detail is a later slice).
                 model.navigationTarget = childId
             }
+            .iPadSidebarInnerRim(edge: .leading)
             .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
         }
 

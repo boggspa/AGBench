@@ -47,6 +47,45 @@ public struct GhostMarkView: View {
     }
 }
 
+public struct GhostMonolineMarkView: View {
+    public var size: CGFloat = 58
+
+    public init(size: CGFloat = 58) { self.size = size }
+
+    public var body: some View {
+        Group {
+            if let image = Self.loadImage() {
+                image
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(TWTheme.textTertiary)
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.system(size: size * 0.55, weight: .semibold))
+                    .foregroundStyle(TWTheme.textTertiary)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private static func loadImage() -> Image? {
+        #if canImport(UIKit)
+        if let url = Bundle.module.url(forResource: "ghost-mark-monoline", withExtension: "png"),
+            let data = try? Data(contentsOf: url),
+            let ui = UIImage(data: data)
+        {
+            return Image(uiImage: ui.withRenderingMode(.alwaysTemplate))
+        }
+        if let ui = UIImage(named: "ghost-mark-monoline") {
+            return Image(uiImage: ui.withRenderingMode(.alwaysTemplate))
+        }
+        #endif
+        return nil
+    }
+}
+
 /// Desktop sidebar section header — all-caps label in a subtle pill.
 struct PillSectionHeader: View {
     let title: String
@@ -102,6 +141,50 @@ extension View {
     }
 }
 
+private struct SidebarInnerRimModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    let edge: HorizontalEdge
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: edge == .leading ? .leading : .trailing) {
+                if sizeClass == .regular {
+                    SidebarInnerRim(edge: edge)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+private struct SidebarInnerRim: View {
+    let edge: HorizontalEdge
+
+    var body: some View {
+        let isLight = TWThemeStore.shared.systemTheme.isLight
+        let line = isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.14)
+        let glow = isLight ? Color.black.opacity(0.055) : Color.white.opacity(0.12)
+        ZStack(alignment: edge == .leading ? .leading : .trailing) {
+            LinearGradient(
+                colors: edge == .leading ? [glow, .clear] : [.clear, glow],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 14)
+            Rectangle()
+                .fill(line)
+                .frame(width: 0.5)
+        }
+        .frame(width: 14)
+        .frame(maxHeight: .infinity)
+    }
+}
+
+extension View {
+    func iPadSidebarInnerRim(edge: HorizontalEdge) -> some View {
+        modifier(SidebarInnerRimModifier(edge: edge))
+    }
+}
+
 // ── Composer shell glass (thread dock) ─────────────────────────────────────
 // Frost is constrained to the 16pt shell — material is filled *in* the shape,
 // composited, then clipped so nothing bleeds into safeAreaInset margins.
@@ -113,6 +196,14 @@ private struct ComposerShellGlassModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        // Rim: top-lit gradient stroke (desktop composer parity) — light
+        // themes invert to a subtle dark rim.
+        let rimTop: Color =
+            TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.10) : Color.white.opacity(0.18)
+        let rimBottom: Color =
+            TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.02) : Color.white.opacity(0.02)
         content
             .background {
                 Group {
@@ -121,15 +212,24 @@ private struct ComposerShellGlassModifier: ViewModifier {
                             .fill(.ultraThinMaterial)
                             .overlay(
                                 shape.fill(
-                                    TWTheme.surface1.opacity(TWTheme.composerGlassTintOpacity)))
+                                    TWTheme.composerBg.opacity(
+                                        TWTheme.composerGlassTintOpacity)))
                     } else {
-                        shape.fill(TWTheme.surface2)
+                        shape.fill(TWTheme.composerBg)
                     }
                 }
             }
             .compositingGroup()
             .mask(shape)
             .overlay(shape.strokeBorder(TWTheme.border, lineWidth: 1))
+            .overlay(
+                shape.inset(by: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [rimTop, rimBottom],
+                            startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1)
+            )
     }
 }
 
@@ -145,54 +245,15 @@ struct ProviderModelPicker: View {
     let catalogs: [ProviderModelCatalog]
     @Binding var provider: String
     @Binding var modelId: String?
+    @State private var pickerPresented = false
 
     private var currentCatalog: ProviderModelCatalog? {
         catalogs.first { $0.provider.lowercased() == provider.lowercased() }
     }
 
     var body: some View {
-        Menu {
-            ForEach(catalogs) { catalog in
-                if catalog.models.isEmpty {
-                    // No catalog yet (e.g. picker opened before the Mac's
-                    // async model broadcast lands) — provider is still
-                    // directly selectable; model rides the CLI default.
-                    Button {
-                        provider = catalog.provider
-                        modelId = nil
-                    } label: {
-                        Label(
-                            TWTheme.providerLabel(catalog.provider),
-                            systemImage: "cpu")
-                    }
-                } else {
-                    Menu {
-                        Button {
-                            provider = catalog.provider
-                            modelId = nil
-                        } label: {
-                            Text("CLI Default")
-                        }
-                        ForEach(catalog.models) { model in
-                            Button {
-                                provider = catalog.provider
-                                modelId = model.id
-                            } label: {
-                                HStack {
-                                    Text(model.label ?? model.id)
-                                    if model.isDefault == true {
-                                        Text("default").font(.caption2)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(
-                            TWTheme.providerLabel(catalog.provider),
-                            systemImage: "cpu")
-                    }
-                }
-            }
+        Button {
+            pickerPresented = true
         } label: {
             // Flat text labels (desktop composer parity) — the whole run of
             // text is the tap target; no pill chrome.
@@ -213,6 +274,13 @@ struct ProviderModelPicker: View {
             }
             .padding(.vertical, 3)
             .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $pickerPresented) {
+            ProviderModelPickerSheet(
+                catalogs: catalogs,
+                provider: $provider,
+                modelId: $modelId)
         }
         .onChange(of: provider) { _, newProvider in
             // Switching provider invalidates a model from the OLD catalog —
@@ -241,6 +309,120 @@ struct ProviderModelPicker: View {
     }
 }
 
+private struct ProviderModelPickerSheet: View {
+    let catalogs: [ProviderModelCatalog]
+    @Binding var provider: String
+    @Binding var modelId: String?
+    @Environment(\.dismiss) private var dismiss
+
+    private var currentCatalog: ProviderModelCatalog? {
+        catalogs.first { $0.provider.lowercased() == provider.lowercased() }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Provider") {
+                    ForEach(catalogs) { catalog in
+                        providerRow(catalog)
+                    }
+                }
+                Section("Model") {
+                    defaultModelRow
+                    ForEach(currentCatalog?.models ?? []) { option in
+                        modelRow(option)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(TWTheme.appBg)
+            .navigationTitle("Provider & Model")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func providerRow(_ catalog: ProviderModelCatalog) -> some View {
+        let selected = catalog.provider.lowercased() == provider.lowercased()
+        let accent = TWTheme.providerAccent(catalog.provider)
+        return Button {
+            if !selected {
+                provider = catalog.provider
+                modelId = nil
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 8, height: 8)
+                Text(TWTheme.providerLabel(catalog.provider))
+                    .foregroundStyle(TWTheme.textPrimary)
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var defaultModelRow: some View {
+        Button {
+            modelId = nil
+            dismiss()
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Default")
+                        .foregroundStyle(TWTheme.textPrimary)
+                    Text("Use the selected provider's default model")
+                        .font(.caption)
+                        .foregroundStyle(TWTheme.textSecondary)
+                }
+                Spacer()
+                if modelId == nil {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TWTheme.providerAccent(provider))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func modelRow(_ option: ModelOption) -> some View {
+        let selected = modelId == option.id
+        return Button {
+            modelId = option.id
+            dismiss()
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.label ?? option.id)
+                        .foregroundStyle(TWTheme.textPrimary)
+                    if option.isDefault == true {
+                        Text("Provider default")
+                            .font(.caption)
+                            .foregroundStyle(TWTheme.textSecondary)
+                    }
+                }
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TWTheme.providerAccent(provider))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Wrapping chip row — adaptive grid so provider/participant chips flow to
 /// the next line instead of clipping on narrow screens.
 public struct FlowChips<Item: Hashable, ChipView: View>: View {
@@ -253,13 +435,77 @@ public struct FlowChips<Item: Hashable, ChipView: View>: View {
     }
 
     public var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 86), spacing: 6, alignment: .leading)],
-            alignment: .leading, spacing: 6
-        ) {
+        // True flow: chips keep their INTRINSIC width with fixed spacing
+        // (the adaptive LazyVGrid stretched columns evenly across the row,
+        // putting weird gaps between pills).
+        TWFlowLayout(spacing: 6) {
             ForEach(items, id: \.self) { item in
                 chip(item)
             }
+        }
+    }
+}
+
+/// Minimal wrapping flow layout — intrinsic item sizes, fixed spacing,
+/// rows centered within the proposed width.
+public struct TWFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    public init(spacing: CGFloat = 6) { self.spacing = spacing }
+
+    public func sizeThatFits(
+        proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                usedWidth = max(usedWidth, x - spacing)
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        usedWidth = max(usedWidth, x - spacing)
+        return CGSize(width: min(usedWidth, maxWidth), height: y + rowHeight)
+    }
+
+    public func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        let maxWidth = bounds.width
+        // First pass: break into rows.
+        var rows: [[(LayoutSubviews.Element, CGSize)]] = [[]]
+        var x: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                rows.append([])
+                x = 0
+            }
+            rows[rows.count - 1].append((subview, size))
+            x += size.width + spacing
+        }
+        // Second pass: place each row CENTERED.
+        var y = bounds.minY
+        for row in rows {
+            let rowWidth =
+                row.reduce(0) { $0 + $1.1.width } + spacing * CGFloat(max(0, row.count - 1))
+            let rowHeight = row.map(\.1.height).max() ?? 0
+            var rowX = bounds.minX + max(0, (maxWidth - rowWidth) / 2)
+            for (subview, size) in row {
+                subview.place(
+                    at: CGPoint(x: rowX, y: y + (rowHeight - size.height) / 2),
+                    proposal: ProposedViewSize(size))
+                rowX += size.width + spacing
+            }
+            y += rowHeight + spacing
         }
     }
 }
@@ -570,11 +816,101 @@ public struct RotatingActivityHeatmap: View {
     }
 
     let flavors: [Flavor]
+    /// Token totals for the chips row; nil hides chips (older Macs).
+    var rollup: UsageRollupMessage.Rollup? = nil
     @State private var index = 0
     @State private var cycleResetToken = 0
+    /// nil = All providers.
+    @State private var providerFilter: String? = nil
 
-    public init(flavors: [Flavor]) {
+    public init(flavors: [Flavor], rollup: UsageRollupMessage.Rollup? = nil) {
         self.flavors = flavors
+        self.rollup = rollup
+    }
+
+    private func filteredEvents(_ flavor: Flavor) -> [ActivityHeatmapEvent] {
+        guard let providerFilter else { return flavor.events }
+        return flavor.events.filter { $0.provider?.lowercased() == providerFilter }
+    }
+
+    private var filterProviders: [String] {
+        let fromEvents = Set(
+            flavors.flatMap(\.events).compactMap { $0.provider?.lowercased() })
+        let fromRollup = Set((rollup?.providers ?? []).map { $0.provider.lowercased() })
+        return fromEvents.union(fromRollup)
+            .sorted { TWTheme.providerLabel($0) < TWTheme.providerLabel($1) }
+    }
+
+    private var chipBuckets: UsageRollupMessage.Buckets? {
+        guard let rollup else { return nil }
+        guard let providerFilter else { return rollup.totals }
+        guard
+            let entry = rollup.providers.first(where: {
+                $0.provider.lowercased() == providerFilter
+            })
+        else { return UsageRollupMessage.Buckets(h24: 0, d7: 0, d90: 0) }
+        return UsageRollupMessage.Buckets(h24: entry.h24, d7: entry.d7, d90: entry.d90)
+    }
+
+    private func compactTokens(_ value: Int) -> String {
+        if value >= 1_000_000_000 {
+            return String(format: "%.2fB", Double(value) / 1_000_000_000)
+        }
+        if value >= 1_000_000 {
+            return String(format: "%.0fM", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 { return String(format: "%.0fk", Double(value) / 1_000) }
+        return "\(value)"
+    }
+
+    @ViewBuilder
+    private var filterAndChipsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                filterPill(label: "All", value: nil)
+                ForEach(filterProviders, id: \.self) { provider in
+                    filterPill(label: TWTheme.providerLabel(provider), value: provider)
+                }
+                if let buckets = chipBuckets {
+                    Spacer(minLength: 10)
+                    tokenChip("24h", buckets.h24)
+                    tokenChip("7D", buckets.d7)
+                    tokenChip("90D", buckets.d90)
+                }
+            }
+        }
+    }
+
+    private func filterPill(label: String, value: String?) -> some View {
+        Button {
+            providerFilter = value
+        } label: {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    providerFilter == value ? TWTheme.surface3 : Color.clear,
+                    in: Capsule()
+                )
+                .foregroundStyle(
+                    providerFilter == value ? TWTheme.textPrimary : TWTheme.textTertiary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tokenChip(_ label: String, _ value: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(TWTheme.textMuted)
+            Text(compactTokens(value))
+                .foregroundStyle(TWTheme.textPrimary)
+                .fontWeight(.semibold)
+        }
+        .font(.caption2.monospacedDigit())
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(TWTheme.surface3.opacity(0.7), in: Capsule())
     }
 
     public var body: some View {
@@ -598,10 +934,14 @@ public struct RotatingActivityHeatmap: View {
                     .font(.caption2)
                     .foregroundStyle(TWTheme.textMuted)
             }
+            if !filterProviders.isEmpty || rollup != nil {
+                filterAndChipsRow
+            }
             if flavor.weekly {
-                WeeklyRhythmHeatmap(dates: flavor.events.map(\.date), accent: flavor.accent)
+                WeeklyRhythmHeatmap(
+                    dates: filteredEvents(flavor).map(\.date), accent: flavor.accent)
             } else {
-                ActivityHeatmap(events: flavor.events, accent: flavor.accent)
+                ActivityHeatmap(events: filteredEvents(flavor), accent: flavor.accent)
             }
         }
         .id(flavor.id)
@@ -1260,7 +1600,9 @@ public struct ThreadInspector: View {
             Picker("Inspector", selection: $tab) {
                 Text("Changes").tag(0)
                 Text("Agents").tag(1)
+                Text("Side chats").tag(3)
                 Text("Notes").tag(2)
+                Text("Usage").tag(4)
             }
             .pickerStyle(.segmented)
             .padding(12)
@@ -1270,6 +1612,12 @@ public struct ThreadInspector: View {
                         DiffSummaryPanel(diff: diff)
                     } else if tab == 1 {
                         SubAgentsPanel(children: children, onOpenThread: onOpenThread)
+                    } else if tab == 3 {
+                        SideChatsPanel(
+                            model: model, threadId: threadId,
+                            onOpenThread: onOpenThread)
+                    } else if tab == 4 {
+                        UsagePanel(model: model)
                     } else {
                         NotesPanel(model: model, threadId: threadId)
                     }
@@ -1279,7 +1627,7 @@ public struct ThreadInspector: View {
             }
         }
         .background(TWTheme.appBg)
-        .preferredColorScheme(.dark)
+        .twColorScheme()
     }
 }
 
@@ -1779,10 +2127,15 @@ public struct EditableRosterStrip: View {
     @State private var editingId: String? = nil
     @State private var draggingId: String? = nil
 
-    public init(model: RemoteSessionModel, threadId: String, workspaceId: String) {
+    public init(
+        model: RemoteSessionModel, threadId: String, workspaceId: String,
+        attached: Bool = false, isShellTop: Bool = false
+    ) {
         self.model = model
         self.threadId = threadId
         self.workspaceId = workspaceId
+        self.attached = attached
+        self.isShellTop = isShellTop
     }
 
     private var state: RemoteEnsembleState? { model.ensembleStates[threadId] }
@@ -1813,31 +2166,59 @@ public struct EditableRosterStrip: View {
         state?.participants?.first { $0.participantId == id }?.status
     }
 
-    public var body: some View {
+    /// Attached-row mode: rendered INSIDE the composer shell (flat corners,
+    /// surface fill, hairline neighbors) instead of floating satellite-style.
+    public var attached: Bool = false
+    /// Rounds the top corners when this is the shell's FIRST row (no
+    /// changes row above).
+    public var isShellTop: Bool = false
+
+    @ViewBuilder
+    private var chipRun: some View {
+        // The + sits at the END of the chip run (not pinned to the
+        // screen edge), and the whole run centers when it fits.
         HStack(spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(draft) { entry in
-                        chip(entry)
-                            .onDrag {
-                                draggingId = entry.id
-                                return NSItemProvider(object: entry.id as NSString)
-                            }
-                            .onDrop(
-                                of: [.text],
-                                delegate: RosterReorderDelegate(
-                                    item: entry, draft: $draft, draggingId: $draggingId
-                                ) {
-                                    commit()
-                                }
-                            )
+            if let queued = state?.queuedPromptCount, queued > 0 {
+                QueuedPromptsChip(count: queued)
+            }
+            ForEach(draft) { entry in
+                chip(entry)
+                    .onDrag {
+                        draggingId = entry.id
+                        return NSItemProvider(object: entry.id as NSString)
                     }
-                }
-                .padding(.vertical, 2)
+                    .onDrop(
+                        of: [.text],
+                        delegate: RosterReorderDelegate(
+                            item: entry, draft: $draft, draggingId: $draggingId
+                        ) {
+                            commit()
+                        }
+                    )
             }
             addMenu
         }
-        .padding(.horizontal, 12)
+        .padding(.vertical, attached ? 6 : 2)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    public var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            AnyView(chipRun)
+        }
+        .background(
+            attached
+                ? AnyShapeStyle(TWTheme.surface1)
+                : AnyShapeStyle(Color.clear),
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: attached && isShellTop ? 16 : 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: attached && isShellTop ? 16 : 0,
+                style: .continuous
+            )
+        )
+        .padding(.horizontal, attached ? 0 : 12)
         .onAppear { if draft.isEmpty { draft = remoteRoster } }
         .onChange(of: remoteRoster) { _, fresh in
             // Reconcile from the Mac unless mid-edit (popover open / drag).
@@ -2090,7 +2471,7 @@ struct RosterChipEditor: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .twColorScheme()
     }
 }
 
@@ -2313,7 +2694,7 @@ public struct AppSettingsSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .twColorScheme()
     }
 }
 
@@ -2636,5 +3017,494 @@ public struct WorkspaceChangesAttachedRow: View {
             .padding(.vertical, 7)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Steered/queued prompts waiting for the next injection point — the
+/// desktop shows this on the round HUD.
+struct QueuedPromptsChip: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "tray.full")
+                .font(.system(size: 9))
+            Text("\(count) queued")
+                .font(.caption2.weight(.semibold))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(TWTheme.statusAttention.opacity(0.14), in: Capsule())
+        .overlay(Capsule().strokeBorder(TWTheme.statusAttention.opacity(0.4)))
+        .foregroundStyle(TWTheme.statusAttention)
+    }
+}
+
+/// Stacked queued-prompt rows (desktop parity): ↪ icon, 2-line text, Steer,
+/// trash, overflow — rendered as a shell deck section under the changes
+/// row(s). One shared Mac-side queue: items show here whichever device
+/// queued them.
+public struct QueuedPromptsStack: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: RemoteTaskCard
+    let prompts: [RemoteEnsembleState.QueuedPrompt]
+    let isShellTop: Bool
+
+    public init(
+        model: RemoteSessionModel, card: RemoteTaskCard,
+        prompts: [RemoteEnsembleState.QueuedPrompt], isShellTop: Bool
+    ) {
+        self.model = model
+        self.card = card
+        self.prompts = prompts
+        self.isShellTop = isShellTop
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            ForEach(prompts) { prompt in
+                row(prompt)
+                if prompt.index != prompts.last?.index {
+                    Rectangle().fill(TWTheme.border).frame(height: 0.5)
+                        .padding(.leading, 34)
+                }
+            }
+        }
+        .background(
+            TWTheme.surface1,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: isShellTop ? 16 : 0, bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0, topTrailingRadius: isShellTop ? 16 : 0,
+                style: .continuous
+            )
+        )
+    }
+
+    private func row(_ prompt: RemoteEnsembleState.QueuedPrompt) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                .font(.caption2)
+                .foregroundStyle(TWTheme.textTertiary)
+            Text(prompt.text)
+                .font(.caption)
+                .foregroundStyle(TWTheme.textSecondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                model.ensembleQueueItem(
+                    card, index: prompt.index, text: prompt.text, op: "steerNow")
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.uturn.right")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("Steer")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(TWTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            Button {
+                model.ensembleQueueItem(
+                    card, index: prompt.index, text: prompt.text, op: "remove")
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption2)
+                    .foregroundStyle(TWTheme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            Menu {
+                Button {
+                    model.ensembleQueueItem(
+                        card, index: prompt.index, text: prompt.text, op: "steerNow")
+                } label: {
+                    Label("Steer now", systemImage: "arrow.uturn.right")
+                }
+                Button(role: .destructive) {
+                    model.ensembleQueueItem(
+                        card, index: prompt.index, text: prompt.text, op: "remove")
+                } label: {
+                    Label("Remove from queue", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption2)
+                    .foregroundStyle(TWTheme.textTertiary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+/// Guest participant control for solo composers: a + menu invites a guest
+/// (provider → model tree); an active guest renders as a green-accent chip
+/// — tap to change provider/model, × to remove. One guest per thread
+/// (desktop set/remove semantics).
+public struct GuestParticipantControl: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: RemoteTaskCard
+
+    public init(model: RemoteSessionModel, card: RemoteTaskCard) {
+        self.model = model
+        self.card = card
+    }
+
+    private var guest: RemoteTaskCard? {
+        card.threadId.flatMap { model.guestParticipant(of: $0) }
+    }
+
+    private var catalogs: [ProviderModelCatalog] {
+        model.providerModels
+            .map { ProviderModelCatalog(provider: $0.key, models: $0.value) }
+            .sorted { TWTheme.providerLabel($0.provider) < TWTheme.providerLabel($1.provider) }
+    }
+
+    private let guestAccent = Color(hex: 0x35C284)
+
+    public var body: some View {
+        if let guest {
+            HStack(spacing: 4) {
+                Menu {
+                    pickerEntries
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 10))
+                        Text(guestLabel(guest))
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(guestAccent)
+                }
+                Button {
+                    model.removeGuestParticipant(card)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(TWTheme.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(guestAccent.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(guestAccent.opacity(0.4)))
+        } else {
+            Menu {
+                pickerEntries
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(TWTheme.textTertiary)
+                    .frame(width: 20, height: 20)
+                    .background(TWTheme.surface3, in: Circle())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pickerEntries: some View {
+        ForEach(catalogs) { catalog in
+            if catalog.models.isEmpty {
+                Button(TWTheme.providerLabel(catalog.provider)) {
+                    model.setGuestParticipant(
+                        card, provider: catalog.provider, model: nil)
+                }
+            } else {
+                Menu(TWTheme.providerLabel(catalog.provider)) {
+                    Button("Default") {
+                        model.setGuestParticipant(
+                            card, provider: catalog.provider, model: nil)
+                    }
+                    ForEach(catalog.models) { option in
+                        Button(option.label ?? option.id) {
+                            model.setGuestParticipant(
+                                card, provider: catalog.provider, model: option.id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func guestLabel(_ guest: RemoteTaskCard) -> String {
+        if let name = guest.agentName { return name }
+        return TWTheme.providerLabel(guest.provider)
+    }
+}
+
+/// Side chats tab — the thread's isolated/guest side chats, plus creation.
+struct SideChatsPanel: View {
+    @ObservedObject var model: RemoteSessionModel
+    let threadId: String
+    var onOpenThread: ((String) -> Void)? = nil
+
+    private var card: RemoteTaskCard? { model.taskCards.first { $0.id == threadId } }
+
+    private var sideChats: [RemoteTaskCard] {
+        model.taskCards.filter {
+            $0.parentChatId == threadId && $0.parentChatRelation == "sideChat"
+        }
+    }
+
+    private var catalogs: [ProviderModelCatalog] {
+        model.providerModels
+            .map { ProviderModelCatalog(provider: $0.key, models: $0.value) }
+            .sorted { TWTheme.providerLabel($0.provider) < TWTheme.providerLabel($1.provider) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Menu {
+                ForEach(catalogs.map(\.provider), id: \.self) { provider in
+                    Button(TWTheme.providerLabel(provider)) {
+                        card.map { model.createSideChat($0, provider: provider) }
+                    }
+                }
+            } label: {
+                Label("New side chat", systemImage: "plus.bubble")
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(TWTheme.chroma1.opacity(0.14), in: Capsule())
+                    .foregroundStyle(TWTheme.chroma1)
+            }
+
+            if sideChats.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.left.arrow.right.circle")
+                        .font(.title2)
+                        .foregroundStyle(TWTheme.textTertiary)
+                    Text("No side chats yet — isolated conversations that hang off this thread.")
+                        .font(.footnote)
+                        .foregroundStyle(TWTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
+            } else {
+                ForEach(sideChats, id: \.id) { sideChat in
+                    Button {
+                        onOpenThread?(sideChat.id)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            if let agentName = sideChat.agentName {
+                                AgentIdentityBadge(
+                                    name: agentName,
+                                    accentHex: sideChat.agentAccent,
+                                    slug: sideChat.agentSlug)
+                            } else {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        TWTheme.providerAccent(sideChat.provider))
+                                    .frame(width: 16)
+                                    .padding(.top, 2)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sideChat.title ?? sideChat.id)
+                                    .font(.subheadline)
+                                    .foregroundStyle(TWTheme.textPrimary)
+                                    .lineLimit(2)
+                                HStack(spacing: 6) {
+                                    Text(TWTheme.providerLabel(sideChat.provider))
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(
+                                            TWTheme.providerAccent(sideChat.provider))
+                                    Text(sideChat.isGuestSideChat ? "Guest" : "Isolated")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1)
+                                        .background(TWTheme.surface3, in: Capsule())
+                                        .foregroundStyle(TWTheme.textTertiary)
+                                    if let status = sideChat.status {
+                                        Circle()
+                                            .fill(TWTheme.statusColor(status))
+                                            .frame(width: 5, height: 5)
+                                    }
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(TWTheme.textMuted)
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            TWTheme.surface1, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+/// Usage tab — MODEL USAGE sidebar parity: per-provider quota sections with
+/// gradient limit bars, plus the activity heatmap below. Data refreshes
+/// over the bridge every ~7.5 minutes (cheap: the Mac serves its own
+/// TTL-cached snapshots).
+struct UsagePanel: View {
+    @ObservedObject var model: RemoteSessionModel
+
+    private static let providerOrder = ["gemini", "codex", "claude", "kimi", "cursor", "grok"]
+
+    private var providers: [ModelUsageMessage.ProviderUsage] {
+        let entries = model.modelUsage?.providers ?? []
+        return entries.sorted {
+            (Self.providerOrder.firstIndex(of: $0.provider) ?? 99)
+                < (Self.providerOrder.firstIndex(of: $1.provider) ?? 99)
+        }
+    }
+
+    private var asOfText: String? {
+        guard let generated = model.modelUsage?.generatedAt,
+            let date = twParseISODate(generated)
+        else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return "as of \(formatter.string(from: date))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Model usage")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TWTheme.textTertiary)
+                Spacer()
+                if let asOfText {
+                    Text(asOfText)
+                        .font(.caption2)
+                        .foregroundStyle(TWTheme.textMuted)
+                }
+            }
+            if providers.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "gauge.with.dots.needle.50percent")
+                        .font(.title2)
+                        .foregroundStyle(TWTheme.textTertiary)
+                    Text("Usage data arrives from your Mac within a few minutes of connecting.")
+                        .font(.footnote)
+                        .foregroundStyle(TWTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
+            } else {
+                ForEach(providers) { entry in
+                    providerSection(entry)
+                }
+            }
+
+            // Activity footer (desktop panel parity)
+            VStack(alignment: .leading, spacing: 6) {
+                RotatingActivityHeatmap(
+                    flavors: [
+                        .init(
+                            id: "all", title: "Activity",
+                            caption: "from synced chats", accent: TWTheme.chroma1,
+                            events: twActivityHeatmapEvents(from: model.taskCards)),
+                        .init(
+                            id: "rhythm", title: "Weekly Rhythm",
+                            caption: "hour × weekday", accent: TWTheme.chroma2,
+                            dates: twActivityHeatmapEvents(from: model.taskCards).map(\.date),
+                            weekly: true),
+                    ],
+                    rollup: model.usageRollup
+                )
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    @ViewBuilder
+    private func providerSection(_ entry: ModelUsageMessage.ProviderUsage) -> some View {
+        let accent = TWTheme.providerAccent(entry.provider)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(accent.opacity(0.18))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Image(systemName: "cpu")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(accent)
+                    )
+                Text(TWTheme.providerLabel(entry.provider))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(TWTheme.textPrimary)
+                Spacer()
+            }
+            ForEach(entry.windows) { window in
+                limitRow(window, accent: accent)
+            }
+        }
+        .padding(10)
+        .background(TWTheme.surface1, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TWTheme.border))
+    }
+
+    @ViewBuilder
+    private func limitRow(_ window: ModelUsageMessage.Window, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(window.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TWTheme.textPrimary)
+                if let resets = resetsText(window.resetAt) {
+                    Text(resets)
+                        .font(.caption2)
+                        .foregroundStyle(TWTheme.textTertiary)
+                }
+                Spacer()
+                Text("\(window.usedPercent)%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(TWTheme.textPrimary)
+            }
+            // Desktop bar anatomy: 6pt track, gradient defined in TRACK
+            // coordinates (accent → amber@90% → red@100%) and masked to the
+            // used fraction — so a 40% bar shows pure accent and the amber/
+            // red only appear as usage approaches the limit.
+            GeometryReader { geo in
+                let fraction = CGFloat(window.usedPercent) / 100
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(TWTheme.textPrimary.opacity(0.08))
+                    LinearGradient(
+                        stops: [
+                            .init(color: accent, location: 0),
+                            .init(color: accent, location: 0.6),
+                            .init(color: Color(hex: 0xF59E0B), location: 0.9),
+                            .init(color: Color(hex: 0xDC2626), location: 1.0),
+                        ],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width)
+                    .mask(
+                        HStack {
+                            Capsule()
+                                .frame(width: max(2, geo.size.width * fraction))
+                            Spacer(minLength: 0)
+                        }
+                    )
+                }
+            }
+            .frame(height: 6)
+            Text(window.limitLabel)
+                .font(.caption2)
+                .foregroundStyle(TWTheme.textTertiary)
+        }
+    }
+
+    private func resetsText(_ resetAt: String?) -> String? {
+        guard let resetAt, let date = twParseISODate(resetAt) else { return nil }
+        let formatter = DateFormatter()
+        let sameDay = Calendar.current.isDateInToday(date)
+        formatter.dateFormat = sameDay ? "'resets' HH:mm" : "'resets' d MMM"
+        return formatter.string(from: date)
     }
 }

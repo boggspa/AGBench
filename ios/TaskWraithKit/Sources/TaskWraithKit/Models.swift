@@ -27,6 +27,59 @@ public struct WorkspaceListMessage: Codable, Sendable {
 /// `bridge.broadcastProviderModels` params — per-provider model catalogs
 /// (same source as the desktop picker: live CLI/daemon lists + static
 /// fallbacks). Drives the hierarchical provider -> model pickers.
+/// Per-provider quota windows (desktop MODEL USAGE sidebar parity).
+public struct ModelUsageMessage: Codable, Sendable {
+    public let usage: Usage
+
+    public struct Usage: Codable, Sendable {
+        public let providers: [ProviderUsage]
+        public let generatedAt: String?
+    }
+
+    public struct ProviderUsage: Codable, Sendable, Identifiable {
+        public let provider: String
+        public let windows: [Window]
+        public var id: String { provider }
+    }
+
+    public struct Window: Codable, Sendable, Identifiable {
+        public let id: String
+        public let label: String
+        public let usedPercent: Int
+        public let limitLabel: String
+        public let resetAt: String?
+    }
+}
+
+/// Token totals for the heatmap chips (desktop External Activity parity).
+public struct UsageRollupMessage: Codable, Sendable {
+    public let rollup: Rollup
+
+    public struct Rollup: Codable, Sendable {
+        public let providers: [ProviderBuckets]
+        public let totals: Buckets
+    }
+
+    public struct ProviderBuckets: Codable, Sendable, Identifiable {
+        public let provider: String
+        public let h24: Int
+        public let d7: Int
+        public let d90: Int
+        public var id: String { provider }
+    }
+
+    public struct Buckets: Codable, Sendable {
+        public let h24: Int
+        public let d7: Int
+        public let d90: Int
+        public init(h24: Int, d7: Int, d90: Int) {
+            self.h24 = h24
+            self.d7 = d7
+            self.d90 = d90
+        }
+    }
+}
+
 public struct ProviderModelsMessage: Codable, Sendable {
     public let providers: [ProviderModelCatalog]
 }
@@ -158,20 +211,44 @@ public struct BridgeActionAckData: Codable, Sendable {
 public struct MobileApprovalCard: Codable, Sendable {
     public let toolCallId: String?
     public let title: String?
+    /// Legacy field — the Mac never sent it (title+body are the text
+    /// fields); kept so old snapshots decode.
     public let summary: String?
+    /// The approval detail (command text / JSON params, sanitized ≤400).
+    public let body: String?
+    public let provider: String?
+    public let requestedAt: String?
+    public let expiresAt: String?
+    /// Advertised actions (today always ["accept","decline"]; the reply
+    /// validator additionally accepts acceptForSession/acceptForWorkspace/
+    /// cancel — the executor implements all five).
+    public let actions: [String]?
     public let workspaceId: String?
+    public let workspacePath: String?
     public let threadId: String?
     public let runId: String?
 }
 
 public struct MobileQuestionCard: Codable, Sendable {
+    /// Canonical id (the Mac projects promptId; questionId is a legacy
+    /// alias kept for old snapshots).
+    public let promptId: String?
     public let questionId: String?
+    /// Canonical text field (prompt = legacy alias).
+    public let question: String?
     public let prompt: String?
     public let options: [String]?
+    public let context: String?
+    public let createdAt: String?
+    public let expiresAt: String?
+    public let provider: String?
     public let workspaceId: String?
     public let threadId: String?
     public let runId: String?
     public let status: String?
+
+    public var resolvedId: String? { promptId ?? questionId }
+    public var resolvedQuestion: String? { question ?? prompt }
 }
 
 /// `ensembleState` projection payload — the live round/participant state
@@ -192,6 +269,16 @@ public struct RemoteEnsembleState: Codable, Sendable {
     public let participants: [Participant]?
     /// The CONFIGURED (editable) roster — present even when idle.
     public let roster: [RosterEntry]?
+    /// Prompts queued for injection between participant turns.
+    public let queuedPromptCount: Int?
+    /// Queued prompt texts in injection order (index addresses actions).
+    public let queuedPrompts: [QueuedPrompt]?
+
+    public struct QueuedPrompt: Codable, Sendable, Identifiable {
+        public let index: Int
+        public let text: String
+        public var id: Int { index }
+    }
 
     public struct RosterEntry: Codable, Sendable, Identifiable {
         public let id: String
@@ -321,6 +408,8 @@ public struct RemoteThreadSnapshot: Codable, Sendable {
     public let notes: String?
     /// Pinned messages — may fall outside the latestN row window.
     public let pinnedRows: [Row]?
+    /// Per-run summaries (oldest→newest) — Task-complete card data.
+    public let runSummaries: [RunSummary]?
     public let hasMoreAbove: Bool?
 }
 
@@ -348,8 +437,23 @@ public enum BridgeAction {
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
         encode([
-            "kind": "questionReply", "actionId": actionId, "questionId": questionId,
+            // The Mac validator requires `promptId` (questionId was never
+            // accepted — replies were silently rejected). Send both keys;
+            // extra keys are ignored by the validator.
+            "kind": "questionReply", "actionId": actionId, "promptId": questionId,
+            "questionId": questionId,
             "answer": answer, "workspaceId": workspaceId, "threadId": threadId,
+        ])
+    }
+
+    /// Dismiss an agent question (resolves the parked tool as cancelled).
+    public static func questionReject(
+        promptId: String, workspaceId: String, threadId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "questionReject", "actionId": actionId, "promptId": promptId,
+            "workspaceId": workspaceId, "threadId": threadId,
         ])
     }
 
@@ -421,6 +525,56 @@ public enum BridgeAction {
         ])
     }
 
+    public static func setGuestParticipant(
+        workspaceId: String, threadId: String, provider: String, model: String?,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": "setGuestParticipant", "actionId": actionId,
+            "workspaceId": workspaceId, "threadId": threadId, "provider": provider,
+        ]
+        if let model, !model.isEmpty { payload["model"] = model }
+        return encode(payload)
+    }
+
+    public static func removeGuestParticipant(
+        workspaceId: String, threadId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "removeGuestParticipant", "actionId": actionId,
+            "workspaceId": workspaceId, "threadId": threadId,
+        ])
+    }
+
+    public static func createSideChat(
+        workspaceId: String, threadId: String, provider: String?,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": "createSideChat", "actionId": actionId,
+            "workspaceId": workspaceId, "threadId": threadId,
+        ]
+        if let provider, !provider.isEmpty { payload["provider"] = provider }
+        return encode(payload)
+    }
+
+    /// Steer-now or remove one queued prompt (combined-order index).
+    public static func ensembleQueueItem(
+        workspaceId: String, threadId: String, index: Int, textPrefix: String?,
+        op: String, actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": "ensembleQueueItem", "actionId": actionId,
+            "workspaceId": workspaceId, "threadId": threadId,
+            "index": index, "op": op,
+        ]
+        if let textPrefix, !textPrefix.isEmpty {
+            payload["textPrefix"] = String(textPrefix.prefix(120))
+        }
+        return encode(payload)
+    }
+
     public static func ensembleRosterUpdate(
         workspaceId: String, threadId: String, participants: [[String: Any]],
         actionId: String = UUID().uuidString
@@ -434,12 +588,17 @@ public enum BridgeAction {
 
     public static func ensembleSteer(
         workspaceId: String, threadId: String, text: String,
+        imageAttachments: [[String: Any]]? = nil,
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
-        encode([
+        var payload: [String: Any] = [
             "kind": "ensembleSteer", "actionId": actionId,
             "workspaceId": workspaceId, "threadId": threadId, "text": text,
-        ])
+        ]
+        if let imageAttachments, !imageAttachments.isEmpty {
+            payload["imageAttachments"] = imageAttachments
+        }
+        return encode(payload)
     }
 
     public static func ensembleQueuePrompt(

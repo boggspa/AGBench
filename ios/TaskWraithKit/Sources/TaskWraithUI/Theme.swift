@@ -14,11 +14,21 @@ import SwiftUI
 public enum TWTheme {
     // ── Backgrounds (--app-bg, --surface-1/2/3) ───────────────────────────────
     @MainActor public static var appBg: Color { TWThemeStore.shared.systemTheme.appBg }
+    /// Workspace sidebar / home list — ~4% lighter than appBg so the list
+    /// plane reads distinct from the transcript plane.
+    @MainActor public static var sidebarBg: Color { TWThemeStore.shared.systemTheme.sidebarBg }
+    /// Composer deck — a touch lighter than surface2 on dark themes (the
+    /// desktop shell's lifted deck), a touch darker on light themes; the
+    /// inner textarea container stays surface2 either way.
+    @MainActor public static var composerBg: Color { TWThemeStore.shared.systemTheme.composerBg }
     @MainActor public static var surface1: Color { TWThemeStore.shared.systemTheme.surface1 }
     @MainActor public static var surface2: Color { TWThemeStore.shared.systemTheme.surface2 }
     @MainActor public static var surface3: Color { TWThemeStore.shared.systemTheme.surface3 }
     /** --surface-border: white @ 6%. */
-    public static let border = Color.white.opacity(0.06)
+    @MainActor public static var border: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.10) : Color.white.opacity(0.06)
+    }
 
     /// Frosted composer shell — disabled when the user has Reduce Transparency on.
     public static var composerGlassEnabled: Bool {
@@ -33,10 +43,22 @@ public enum TWTheme {
     public static let composerGlassTintOpacity: Double = 0.25
 
     // ── Text ramp (--text-primary/secondary/tertiary/muted) ──────────────────
-    public static let textPrimary = Color.white.opacity(0.92)
-    public static let textSecondary = Color.white.opacity(0.55)
-    public static let textTertiary = Color.white.opacity(0.35)
-    public static let textMuted = Color.white.opacity(0.25)
+    @MainActor public static var textPrimary: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.88) : Color.white.opacity(0.92)
+    }
+    @MainActor public static var textSecondary: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.55) : Color.white.opacity(0.55)
+    }
+    @MainActor public static var textTertiary: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.38) : Color.white.opacity(0.35)
+    }
+    @MainActor public static var textMuted: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.26) : Color.white.opacity(0.25)
+    }
 
     // ── Chroma accents (--theme-chroma-1/2/3) ─────────────────────────────────
     /** Primary accent (links, active states, send button). */
@@ -117,6 +139,14 @@ extension Color {
 
 public enum TWSystemTheme: String, CaseIterable, Identifiable {
     case dark, midnight, blue, purple, ocean, forest, sunset, obsidian
+    case light, alabaster, mist
+
+    public var isLight: Bool {
+        switch self {
+        case .light, .alabaster, .mist: return true
+        default: return false
+        }
+    }
 
     public var id: String { rawValue }
 
@@ -130,6 +160,28 @@ public enum TWSystemTheme: String, CaseIterable, Identifiable {
         case .forest: return "Forest"
         case .sunset: return "Sunset"
         case .obsidian: return "Obsidian"
+        case .light: return "Light"
+        case .alabaster: return "Alabaster"
+        case .mist: return "Mist"
+        }
+    }
+
+    var sidebarBg: Color {
+        // appBg + ~4% white lift.
+        switch self {
+        case .dark: return Color(hex: 0x1E1E1E)
+        case .midnight: return Color(hex: 0x161A24)
+        case .blue: return Color(hex: 0x18202E)
+        case .purple: return Color(hex: 0x1E1A2C)
+        case .ocean: return Color(hex: 0x162224)
+        case .forest: return Color(hex: 0x18221C)
+        case .sunset: return Color(hex: 0x261E1C)
+        case .obsidian: return Color(hex: 0x1A1A1E)
+        // Light themes: sidebar sits ~4% DARKER than appBg for the same
+        // plane separation.
+        case .light: return Color(hex: 0xEDEDEF)
+        case .alabaster: return Color(hex: 0xEFEDE8)
+        case .mist: return Color(hex: 0xE9EEF0)
         }
     }
 
@@ -143,6 +195,9 @@ public enum TWSystemTheme: String, CaseIterable, Identifiable {
         case .forest: return Color(hex: 0x0E1610)
         case .sunset: return Color(hex: 0x1A1210)
         case .obsidian: return Color(hex: 0x101012)
+        case .light: return Color(hex: 0xF7F7F9)
+        case .alabaster: return Color(hex: 0xFAF8F3)
+        case .mist: return Color(hex: 0xF2F7F9)
         }
     }
 
@@ -156,6 +211,9 @@ public enum TWSystemTheme: String, CaseIterable, Identifiable {
         case .forest: return Color(hex: 0x16221A)
         case .sunset: return Color(hex: 0x261C18)
         case .obsidian: return Color(hex: 0x18181C)
+        case .light: return Color(hex: 0xFFFFFF)
+        case .alabaster: return Color(hex: 0xFFFFFE)
+        case .mist: return Color(hex: 0xFBFDFE)
         }
     }
 
@@ -169,6 +227,25 @@ public enum TWSystemTheme: String, CaseIterable, Identifiable {
         case .forest: return Color(hex: 0x1E2E24)
         case .sunset: return Color(hex: 0x322620)
         case .obsidian: return Color(hex: 0x202026)
+        case .light: return Color(hex: 0xEFEFF2)
+        case .alabaster: return Color(hex: 0xF1EEE7)
+        case .mist: return Color(hex: 0xE8F0F3)
+        }
+    }
+
+    var composerBg: Color {
+        switch self {
+        case .dark: return Color(hex: 0x2A2A30)
+        case .midnight: return Color(hex: 0x20263C)
+        case .blue: return Color(hex: 0x243244)
+        case .purple: return Color(hex: 0x2E2648)
+        case .ocean: return Color(hex: 0x22343A)
+        case .forest: return Color(hex: 0x24342A)
+        case .sunset: return Color(hex: 0x3A2C26)
+        case .obsidian: return Color(hex: 0x26262C)
+        case .light: return Color(hex: 0xF4F4F6)
+        case .alabaster: return Color(hex: 0xF6F3EC)
+        case .mist: return Color(hex: 0xEFF5F7)
         }
     }
 
@@ -182,6 +259,9 @@ public enum TWSystemTheme: String, CaseIterable, Identifiable {
         case .forest: return Color(hex: 0x283C30)
         case .sunset: return Color(hex: 0x40322A)
         case .obsidian: return Color(hex: 0x2A2A32)
+        case .light: return Color(hex: 0xE4E4E8)
+        case .alabaster: return Color(hex: 0xE9E5DC)
+        case .mist: return Color(hex: 0xDCE8EC)
         }
     }
 }
@@ -281,4 +361,13 @@ public final class TWThemeStore: ObservableObject {
 
     /// Tool-call icon/accent color (ToolActivityCards categories).
     @MainActor public static var toolAccent: Color { shared.toolTheme.color }
+}
+
+
+extension View {
+    /// Theme-driven color scheme — light system themes get .light.
+    @MainActor public func twColorScheme() -> some View {
+        preferredColorScheme(
+            TWThemeStore.shared.systemTheme.isLight ? .light : .dark)
+    }
 }

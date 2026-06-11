@@ -29,11 +29,15 @@ struct Composer: View {
     var extraWorkspaceIds: [String]? = nil
     /// When set, send starts a new Mac thread instead of continuing `card`.
     var newTaskWorkspaceId: String? = nil
+    /// Mirrors the internal provider selection out to hosts that theme
+    /// surrounding chrome by provider (the new-chat canvas hero/chips).
+    var providerEcho: Binding<String>? = nil
     @Binding var text: String
 
     @State private var approvalMode = "default"
     @State private var selectedProvider: String = "claude"
     @State private var selectedModelId: String?
+    @State private var didSeedProviderSelection = false
     #if canImport(UIKit)
         @State private var pickedItems: [PhotosPickerItem] = []
         @State private var attachments: [(name: String, image: UIImage)] = []
@@ -68,9 +72,28 @@ struct Composer: View {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     private var catalogs: [ProviderModelCatalog] {
-        model.providerModels.map { ProviderModelCatalog(provider: $0.key, models: $0.value) }
+        let live = model.providerModels.map {
+            ProviderModelCatalog(provider: $0.key, models: $0.value)
+        }
+        let liveByProvider = live.reduce(
+            into: [String: ProviderModelCatalog]()
+        ) { partial, catalog in
+            partial[catalog.provider.lowercased()] = catalog
+        }
+        let keys = Set(
+            Self.fallbackProviderIds
+                + live.map { $0.provider.lowercased() }
+                + [card.provider, selectedProvider]
+                    .compactMap { $0?.lowercased() }
+                    .filter { !$0.isEmpty })
+        return keys
+            .map { liveByProvider[$0] ?? ProviderModelCatalog(provider: $0, models: []) }
             .sorted { TWTheme.providerLabel($0.provider) < TWTheme.providerLabel($1.provider) }
     }
+
+    private static let fallbackProviderIds = [
+        "codex", "claude", "gemini", "kimi", "grok", "cursor", "ollama",
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -87,6 +110,13 @@ struct Composer: View {
                         catalogs: catalogs,
                         provider: $selectedProvider,
                         modelId: $selectedModelId)
+                    if !card.isEnsemble, card.parentChatId == nil,
+                        newTaskWorkspaceId == nil
+                    {
+                        // Guest participant: + invites, chip shows/changes,
+                        // × removes (desktop guest-picker parity).
+                        GuestParticipantControl(model: model, card: card)
+                    }
                 } else {
                     Text(providerName)
                         .font(.caption2.weight(.semibold))
@@ -174,11 +204,13 @@ struct Composer: View {
                     }
                 }
             #endif
+            // Inner input cluster — media button + field + send share one
+            // dark-gray, half-translucent container (the attached rows above
+            // and the telemetry rail below keep their own surfaces).
             HStack(spacing: 8) {
                 #if canImport(UIKit)
-                    if !card.isEnsemble {
-                        photosButton
-                    }
+                    // Ensembles included: steer now carries attachments.
+                    photosButton
                 #endif
                 TextField(placeholder, text: $text, axis: .vertical)
                     .lineLimit(1...4)
@@ -192,11 +224,23 @@ struct Composer: View {
                 }
                 .disabled(sendDisabled)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                TWTheme.surface2.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(TWTheme.border)
+            )
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .onAppear {
-            selectedProvider = card.provider ?? "claude"
-            selectedModelId = runModel
+            seedProviderSelectionIfNeeded()
+        }
+        .onChange(of: selectedProvider) { _, newValue in
+            providerEcho?.wrappedValue = newValue
         }
         .onChange(of: runModel) { _, newValue in
             // The on-demand snapshot usually lands AFTER the composer
@@ -225,6 +269,14 @@ struct Composer: View {
     private func insertMention(_ candidate: MentionCandidate) {
         guard let at = text.lastIndex(of: "@") else { return }
         text = String(text[..<at]) + candidate.insertText + " "
+    }
+
+    private func seedProviderSelectionIfNeeded() {
+        guard !didSeedProviderSelection else { return }
+        selectedProvider = card.provider ?? selectedProvider
+        selectedModelId = runModel
+        providerEcho?.wrappedValue = selectedProvider
+        didSeedProviderSelection = true
     }
 
     #if canImport(UIKit)
