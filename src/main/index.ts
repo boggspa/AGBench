@@ -670,8 +670,26 @@ function maybeNotifyRemoteTaskNeedsAttention(taskCard: RemoteTaskCard): void {
   ].join(':')
   const previousKey = remoteTaskAttentionKeys.get(taskCard.id)
   if (previousKey === attentionKey) return
+  const previousStatus = previousKey?.split(':')[0]
   remoteTaskAttentionKeys.set(taskCard.id, attentionKey)
-  if (!needsAttention) return
+  if (!needsAttention) {
+    // Run-finish transitions (BD2): running → success/failed pushes too,
+    // so a headless Mac can tell the phone the work is done. Same idle
+    // gate + coalescing as attention pushes (the fanout applies both).
+    const finished = taskCard.status === 'success' || taskCard.status === 'failed'
+    if (finished && previousStatus === 'running') {
+      remoteAttentionApnsFanoutRef?.notify({
+        reason: taskCard.status === 'failed' ? 'runFailed' : 'runComplete',
+        workspaceId: taskCard.workspaceId,
+        threadId: taskCard.threadId,
+        runId: taskCard.runId || taskCard.latestRunId,
+        taskId: taskCard.id,
+        projectionKind: 'RemoteTaskCard',
+        generatedAt: new Date().toISOString()
+      })
+    }
+    return
+  }
 
   remoteAttentionApnsFanoutRef?.notify({
     reason: 'taskNeedsAttention',

@@ -795,7 +795,9 @@ export function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<s
   }
 }
 
-export const DEFAULT_APNS_BUNDLE_ID = 'com.example.TaskWraith.ios'
+// Matches ios/TaskWraithApp/project.yml PRODUCT_BUNDLE_IDENTIFIER — APNs
+// rejects pushes whose topic doesn't match the app's real bundle id.
+export const DEFAULT_APNS_BUNDLE_ID = 'com.taskwraith.companion'
 
 export function decryptApnsAuthKey(): string | null {
   const config = AppStore.getSettings().apnsConfig

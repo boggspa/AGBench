@@ -67,6 +67,8 @@ export type BridgeRemoteAttentionReason =
   | 'ensemble'
   | 'wakeup'
   | 'resume'
+  | 'runComplete'
+  | 'runFailed'
 
 export interface BridgeRemoteAttentionPushPayload {
   pairID: string
