@@ -274,6 +274,24 @@ describe('RemoteThreadProjection', () => {
       })
     })
 
+    it('formats run cost with the remote display currency options', () => {
+      const summary = buildRunSummary(
+        [
+          {
+            runId: 'run-cost',
+            stats: { inputTokens: 977, outputTokens: 0, cost_usd: 0.005 }
+          } as unknown as ChatRun
+        ],
+        {
+          currency: 'GBP',
+          fxRatesPerUsd: { GBP: 0.79 }
+        }
+      )
+
+      expect(summary?.tokensIn).toBe(977)
+      expect(summary?.costText).toBe('<£0.01')
+    })
+
     it('includes runDiffByPath workspace changes when available', () => {
       const summary = buildRunSummary([
         {

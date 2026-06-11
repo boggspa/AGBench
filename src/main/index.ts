@@ -178,7 +178,8 @@ import {
   projectRemoteThread,
   REMOTE_IOS_PREVIEW_MAX,
   REMOTE_IOS_ROW_EXPAND_MAX,
-  remoteSpeakerForMessage
+  remoteSpeakerForMessage,
+  type RemoteCostDisplayOptions
 } from './RemoteThreadProjection'
 import { ensembleSpeakerForMessage } from './EnsemblePrompt'
 import { extractThreadId } from './BridgeRunEventSink'
@@ -14355,6 +14356,15 @@ if (isGeminiMcpBridgeProcess) {
       }
     }
 
+    const remoteCostDisplayOptions = (): RemoteCostDisplayOptions => {
+      const settings = AppStore.getSettings()
+      return {
+        currency: settings.currency ?? 'USD',
+        overestimatePercent: Number(settings.currencyOverestimatePercent ?? 0) || 0,
+        fxRatesPerUsd: getCurrentFxRates().rates
+      }
+    }
+
     const pushRemoteThreadSnapshot = (
       chat: ChatRecord,
       workspaceId: string,
@@ -14366,12 +14376,14 @@ if (isGeminiMcpBridgeProcess) {
       if (!broadcaster) return false
       const clamped = Math.max(1, Math.min(100, Math.floor(limit)))
       const generatedAt = new Date().toISOString()
+      const costDisplay = remoteCostDisplayOptions()
       const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
         notes: chat.pinnedNotes,
         threadId: chat.appChatId,
         mode: { kind: 'latestN', n: clamped },
         previewMaxChars: REMOTE_IOS_PREVIEW_MAX,
         generatedAt,
+        costDisplay,
         speakerForMessage: remoteSpeakerForMessage(
           chat,
           chat.ensemble?.enabled
@@ -14981,12 +14993,14 @@ if (isGeminiMcpBridgeProcess) {
             )
           )
           const generatedAt = new Date().toISOString()
+          const costDisplay = remoteCostDisplayOptions()
           const snapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
-        notes: chat.pinnedNotes,
+            notes: chat.pinnedNotes,
             threadId: chat.appChatId,
             mode: { kind: 'aroundRow', rowId: action.rowId, radius: 0 },
             previewMaxChars: maxChars,
             generatedAt,
+            costDisplay,
             speakerForMessage: remoteSpeakerForMessage(
               chat,
               chat.ensemble?.enabled
@@ -15565,6 +15579,7 @@ if (isGeminiMcpBridgeProcess) {
         .map(canonicalizeChat)
         .filter((question) => remoteWorkspaceIsVisible(question.workspaceId))
       const generatedAt = new Date().toISOString()
+      const costDisplay = remoteCostDisplayOptions()
       const questionCounts = new Map<string, number>()
       for (const question of questionCards) {
         if (!question.threadId) continue
@@ -15610,11 +15625,12 @@ if (isGeminiMcpBridgeProcess) {
 
         if (chatIndex < REMOTE_THREAD_SNAPSHOT_CAP) {
           const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
-        notes: chat.pinnedNotes,
+            notes: chat.pinnedNotes,
             threadId: chat.appChatId,
             mode: { kind: 'latestN', n: 24 },
             previewMaxChars: REMOTE_IOS_PREVIEW_MAX,
             generatedAt,
+            costDisplay,
             speakerForMessage: remoteSpeakerForMessage(
               chat,
               chat.ensemble?.enabled

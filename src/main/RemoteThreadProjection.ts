@@ -31,6 +31,14 @@
 
 import type { ChatMessage, ChatRun, DiffFileSummary, ProviderId } from './store/types'
 
+export type RemoteDisplayCurrency = 'USD' | 'GBP' | 'EUR'
+
+export interface RemoteCostDisplayOptions {
+  currency?: RemoteDisplayCurrency
+  overestimatePercent?: number
+  fxRatesPerUsd?: Partial<Record<RemoteDisplayCurrency, number>>
+}
+
 /** Bounded preview size for routine iOS snapshot pushes — large enough
  * for most turns on a phone screen without blowing the relay frame budget. */
 export const REMOTE_IOS_PREVIEW_MAX = 2400
@@ -45,6 +53,53 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   grok: 'Grok',
   cursor: 'Cursor',
   ollama: 'Ollama'
+}
+
+const FALLBACK_FX_RATES_PER_USD: Record<RemoteDisplayCurrency, number> = {
+  USD: 1,
+  GBP: 0.79,
+  EUR: 0.92
+}
+
+const COST_FLOORS: Record<RemoteDisplayCurrency, { threshold: number; label: string }> = {
+  USD: { threshold: 0.01, label: '<$0.01' },
+  GBP: { threshold: 0.01, label: '<£0.01' },
+  EUR: { threshold: 0.01, label: '<€0.01' }
+}
+
+function clampOverestimate(percent: number | undefined): number {
+  if (!Number.isFinite(percent ?? 0)) return 0
+  return Math.max(0, Math.min(25, percent ?? 0))
+}
+
+function normaliseCurrency(currency: RemoteCostDisplayOptions['currency']): RemoteDisplayCurrency {
+  return currency === 'GBP' || currency === 'EUR' ? currency : 'USD'
+}
+
+function formatRemoteCost(usd: number, display?: RemoteCostDisplayOptions): string {
+  if (!Number.isFinite(usd) || usd <= 0) return ''
+  const currency = normaliseCurrency(display?.currency)
+  const bias = clampOverestimate(display?.overestimatePercent)
+  const biasedUsd = bias > 0 ? usd * (1 + bias / 100) : usd
+  const configuredRate = display?.fxRatesPerUsd?.[currency]
+  const rate =
+    typeof configuredRate === 'number' && Number.isFinite(configuredRate) && configuredRate > 0
+      ? configuredRate
+      : FALLBACK_FX_RATES_PER_USD[currency]
+  const converted = biasedUsd * rate
+  const floor = COST_FLOORS[currency]
+  if (converted < floor.threshold) return floor.label
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(converted)
+  } catch {
+    const symbol = currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '€'
+    return `${symbol}${converted.toFixed(2)}`
+  }
 }
 
 function shortModelLabel(model: string): string {
@@ -258,6 +313,8 @@ export interface RemoteProjectionOptions {
   attentionRowIds?: ReadonlySet<string>
   /** Stable timestamp for `generatedAt` (tests pass a fixed value). */
   generatedAt?: string
+  /** Currency-aware display options for run cost telemetry. */
+  costDisplay?: RemoteCostDisplayOptions
   /** Ensemble speaker labeler — the bridge passes
    * `ensembleSpeakerForMessage(chat.ensemble.participants)` for ensemble
    * chats so each assistant row carries its participant identity. Solo
@@ -413,13 +470,19 @@ function parseTime(value?: string): number {
 }
 
 /** Best-effort run summary from the most recent run. */
-export function buildRunSummary(runs: ChatRun[] | undefined): RemoteRunSummary | undefined {
+export function buildRunSummary(
+  runs: ChatRun[] | undefined,
+  costDisplay?: RemoteCostDisplayOptions
+): RemoteRunSummary | undefined {
   if (!Array.isArray(runs) || runs.length === 0) return undefined
-  return summarizeRun(runs[runs.length - 1])
+  return summarizeRun(runs[runs.length - 1], costDisplay)
 }
 
 /** Per-run projection — powers the per-run Task-complete cards. */
-export function summarizeRun(run: ChatRun | undefined): RemoteRunSummary | undefined {
+export function summarizeRun(
+  run: ChatRun | undefined,
+  costDisplay?: RemoteCostDisplayOptions
+): RemoteRunSummary | undefined {
   if (!run || typeof run.runId !== 'string') return undefined
   const summary: RemoteRunSummary = { runId: run.runId }
   if (run.provider) summary.provider = run.provider
@@ -459,7 +522,8 @@ export function summarizeRun(run: ChatRun | undefined): RemoteRunSummary | undef
     if (total !== undefined) summary.totalTokens = total
     const cost = num('cost_usd', 'total_cost_usd', 'costUsd', 'totalCostUsd')
     if (cost !== undefined && cost > 0) {
-      summary.costText = `$${cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)}`
+      const formatted = formatRemoteCost(cost, costDisplay)
+      if (formatted) summary.costText = formatted
     }
   }
   const fileChanges = summarizeRunFileChanges(run)
@@ -616,10 +680,10 @@ export function projectRemoteThread(
   const totalRows = all.length
   const previewMax = opts.previewMaxChars ?? DEFAULT_PREVIEW_MAX
   const generatedAt = opts.generatedAt ?? new Date().toISOString()
-  const runSummary = buildRunSummary(runs)
+  const runSummary = buildRunSummary(runs, opts.costDisplay)
   const runSummaries = (runs ?? [])
     .slice(-12)
-    .map((run) => summarizeRun(run))
+    .map((run) => summarizeRun(run, opts.costDisplay))
     .filter((entry): entry is RemoteRunSummary => Boolean(entry))
   const pinnedRows = all
     .filter(

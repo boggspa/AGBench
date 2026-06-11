@@ -1959,6 +1959,7 @@ public struct TelemetryFooterRail: View {
     var workspaceOptions: [(id: String, name: String)] = []
     var primaryWorkspaceId: String? = nil
     var secondaryWorkspaceId: Binding<String?>? = nil
+    @State private var compactTelemetryShowsCost = false
 
     public init(
         run: RemoteThreadSnapshot.RunSummary?, workspaceName: String?,
@@ -2004,7 +2005,7 @@ public struct TelemetryFooterRail: View {
             format: "%02d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
     }
 
-    private var tokensText: String? {
+    private var tokenTelemetryText: String? {
         guard let run else { return nil }
         var parts: [String] = []
         if let tokensIn = run.tokensIn, tokensIn > 0 {
@@ -2016,11 +2017,45 @@ public struct TelemetryFooterRail: View {
         if parts.isEmpty, let total = run.totalTokens, total > 0 {
             parts.append("\(compact(total)) tokens")
         }
-        var text = parts.joined(separator: " / ")
-        if let cost = run.costText, !cost.isEmpty {
-            text = text.isEmpty ? cost : "\(text) · \(cost)"
-        }
+        let text = parts.joined(separator: " / ")
         return text.isEmpty ? nil : text
+    }
+
+    private var costTelemetryText: String? {
+        guard let cost = run?.costText?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !cost.isEmpty
+        else { return nil }
+        return cost
+    }
+
+    private func telemetryLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(TWTheme.textSecondary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private var telemetryView: some View {
+        if let tokens = tokenTelemetryText, let cost = costTelemetryText {
+            ViewThatFits(in: .horizontal) {
+                telemetryLabel("\(tokens) · \(cost)")
+                Button {
+                    compactTelemetryShowsCost.toggle()
+                } label: {
+                    telemetryLabel(compactTelemetryShowsCost ? cost : tokens)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    compactTelemetryShowsCost
+                        ? "Estimated cost \(cost). Tap to show tokens."
+                        : "Token estimate \(tokens). Tap to show cost.")
+            }
+        } else if let tokens = tokenTelemetryText {
+            telemetryLabel(tokens)
+        } else if let cost = costTelemetryText {
+            telemetryLabel(cost)
+        }
     }
 
     private func compact(_ value: Int) -> String {
@@ -2099,10 +2134,8 @@ public struct TelemetryFooterRail: View {
                         Spacer()
                     }
                 }
-                if let tokensText {
-                    Text(tokensText)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(TWTheme.textSecondary)
+                if tokenTelemetryText != nil || costTelemetryText != nil {
+                    telemetryView
                 }
             }
             .padding(.horizontal, 12)
