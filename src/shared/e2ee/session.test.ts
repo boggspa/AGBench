@@ -11,7 +11,7 @@ import type { E2eeFrame } from './protocol'
  * `drop()` clears in-flight frames (simulates a socket close on reconnect).
  * Every frame delivered to the iphone is also captured for replay tests.
  */
-function wire(opts?: { trustPeer?: boolean }) {
+function wire(opts?: { trustPeer?: boolean; macPinsIphone?: boolean }) {
   const macIdentity = generateIdentityKeyPair()
   const iphoneIdentity = generateIdentityKeyPair()
   const macReceived: Array<{ method: string; params: unknown }> = []
@@ -30,6 +30,7 @@ function wire(opts?: { trustPeer?: boolean }) {
     role: 'mac',
     sessionId: 'sess-1',
     identityKeyPair: macIdentity,
+    peerIdentityPublicKey: opts?.macPinsIphone ? iphoneIdentity.publicKey : undefined,
     send: (f: E2eeFrame) => {
       framesToIphone.push(f)
       framesFromMac.push(f)
@@ -297,5 +298,25 @@ describe('E2eeSession security gates (crypto review BD4)', () => {
     await w.mac.handleFrame(hello(0x01))
     await w.mac.handleFrame(hello(0x02))
     expect(w.macErrors.some((e) => /grind|second clientHello/i.test(e.message))).toBe(true)
+  })
+
+  it('allows a second clientHello for a pinned peer after an interrupted reconnect', async () => {
+    const w = wire({ macPinsIphone: true })
+    const hello = (seed: number): E2eeFrame => {
+      const eph = generateEphemeralKeyPair()
+      return {
+        t: 'clientHello',
+        protocol: 'taskwraith-e2ee-v1',
+        sessionId: 'sess-1',
+        role: 'iphone',
+        ephemeralPubKey: exportRawX25519PublicKey(eph.publicKey).toString('base64'),
+        nonce: Buffer.alloc(16, seed).toString('base64')
+      } as E2eeFrame
+    }
+    w.mac.start()
+    await w.mac.handleFrame(hello(0x01))
+    await w.mac.handleFrame(hello(0x02))
+    expect(w.macErrors).toHaveLength(0)
+    expect(w.framesFromMac.filter((frame) => frame.t === 'serverHello')).toHaveLength(2)
   })
 })

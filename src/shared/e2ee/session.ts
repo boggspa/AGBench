@@ -113,6 +113,7 @@ export class E2eeSession {
   private awaitingClientAuth = false
   private peerResumeReceived = false
   private peerResumeLastAcked = 0
+  private currentConnectionFirstOutboundMsgId = 1
 
   // Cross-reconnect app-message state.
   private nextOutboundMsgId = 1
@@ -178,6 +179,7 @@ export class E2eeSession {
     this.awaitingClientAuth = false
     this.peerResumeReceived = false
     this.peerResumeLastAcked = 0
+    this.currentConnectionFirstOutboundMsgId = this.nextOutboundMsgId
   }
 
   async handleFrame(frame: E2eeFrame): Promise<void> {
@@ -236,14 +238,11 @@ export class E2eeSession {
     // SAS-grind defense: a relay can sample the Mac's confirm code by looping
     // clientHello->serverHello and computing the code locally, WITHOUT sending
     // clientAuth — so the user prompt (fires only on clientAuth) never sees
-    // the guesses. Refuse a clientHello arriving while a prior handshake is
-    // IN-FLIGHT (serverHello sent, no terminal clientAuth yet): the sampling
-    // loop never completes clientAuth, so the flag stays set and the next
-    // clientHello is rejected. A legitimate retry (a stranger's clientAuth
-    // FAILED, or a real reconnect) arrives after a terminal outcome that
-    // cleared the flag. (The Mac pins via trustPeer, not peerIdentity, so
-    // that field can't distinguish first-pairing from reconnect.)
-    if (this.role === 'mac' && this.awaitingClientAuth) {
+    // the guesses. Keep that guard for first pairing only. A trusted reconnect
+    // has a pinned peer identity and no user-visible code to grind; rejecting
+    // repeated clientHello there can brick reconnect after an iOS kill/drop
+    // between serverHello and clientAuth.
+    if (this.role === 'mac' && this.awaitingClientAuth && !this.peerIdentityPublicKey) {
       throw new Error('clientHello while a handshake is in flight — refusing SAS grind')
     }
     // A clientHello ALWAYS begins a fresh handshake. When the relay keeps the
@@ -362,6 +361,7 @@ export class E2eeSession {
 
   private markEstablished(): void {
     this.established = true
+    this.currentConnectionFirstOutboundMsgId = this.nextOutboundMsgId
     if (this.peerResumeReceived) {
       // Synchronous transport: the peer's resume already landed mid-handshake.
       this.awaitingPeerResume = false
@@ -492,18 +492,20 @@ export class E2eeSession {
       // EVERY new message as a "duplicate app msgId" (observed live). The
       // epoch token disambiguates that from a true resume: changed epoch →
       // reset the watermark (fresh handshake keys already prevent
-      // cross-epoch ciphertext replay) and drop the outbound replay buffer
-      // (a memoryless peer gets state from the establish snapshot, not
-      // stale replays). Same/absent epoch → full resume semantics.
+      // cross-epoch ciphertext replay), drop only pre-handshake replay entries,
+      // then flush messages queued during the current establish pass. The
+      // establish snapshot is buffered while awaiting this resume; dropping the
+      // whole buffer bricks app relaunch reconnects. Same/absent epoch → full
+      // resume semantics.
       const freshPeer = epoch !== null && this.peerEpoch !== null && epoch !== this.peerEpoch
       if (epoch !== null) this.peerEpoch = epoch
       this.peerResumeReceived = true
       this.peerResumeLastAcked = lastAcked
       if (freshPeer) {
         this.lastDeliveredInboundMsgId = 0
-        this.replayBuffer.length = 0
-        this.replayBytes = 0
+        this.dropReplayBefore(this.currentConnectionFirstOutboundMsgId)
         this.awaitingPeerResume = false
+        this.replayUnacked(0)
         return
       }
       this.trimReplayBuffer(lastAcked)
@@ -520,6 +522,13 @@ export class E2eeSession {
 
   private trimReplayBuffer(ackMsgId: number): void {
     while (this.replayBuffer.length > 0 && this.replayBuffer[0].msgId <= ackMsgId) {
+      const dropped = this.replayBuffer.shift()!
+      this.replayBytes -= dropped.plaintext.length
+    }
+  }
+
+  private dropReplayBefore(firstMsgIdToKeep: number): void {
+    while (this.replayBuffer.length > 0 && this.replayBuffer[0].msgId < firstMsgIdToKeep) {
       const dropped = this.replayBuffer.shift()!
       this.replayBytes -= dropped.plaintext.length
     }

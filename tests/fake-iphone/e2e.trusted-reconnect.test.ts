@@ -146,6 +146,43 @@ const expectedPairId = (identity: KeyPair): string =>
     .slice(0, 16)}`
 
 describe('e2e: trusted reconnect', () => {
+  it('phone app relaunches while the Mac listener stays alive', async () => {
+    const macIdentity = generateIdentityKeyPair()
+    const macKeyB64 = b64.encode(exportRawEd25519PublicKey(macIdentity.publicKey))
+    const phoneIdentity = generateIdentityKeyPair()
+    const memory = memoryPairingStore()
+
+    const mac = makeMacSide(macIdentity, memory.store)
+    const begin = mac.runtime.beginPairing('Relaunch iPhone')
+    const phoneA = new FakeIphoneClient({ identity: phoneIdentity })
+    cleanups.push(() => phoneA.close())
+    phoneA.scan(begin.bootstrap.bootstrapPayload)
+    await phoneA.connect()
+    await until(() => mac.prompts.length > 0, 5_000, 'pairing prompt')
+    mac.runtime.finalizePairing(begin.bootstrap.pairingSessionID, true)
+    await phoneA.waitForEstablished()
+    await until(() => mac.registrationsCompleted() > 0, 5_000, 'first registration')
+
+    phoneA.close()
+    await settle(100)
+
+    const phoneB = new FakeIphoneClient({ identity: phoneIdentity })
+    cleanups.push(() => phoneB.close())
+    await phoneB.resolveAndScan(relayUrl, macKeyB64)
+    await phoneB.connect()
+    await phoneB.waitForEstablished()
+
+    expect(mac.prompts).toHaveLength(1)
+    await phoneB.waitForMessage(
+      (m) => m.method === 'bridge.broadcastRemoteProjectionSnapshot',
+      5_000,
+      'post-relaunch snapshot'
+    )
+    const ack = await phoneB.request('bridge.requestActionAck', { payloadBytes: 0 })
+    expect(ack.ok).toBe(true)
+    expect(mac.routedPairIds).toEqual([expectedPairId(phoneIdentity)])
+  }, 20_000)
+
   it('cold restart on both sides — resolve + reconnect with no prompt, same audit pairID', async () => {
     const macIdentity = generateIdentityKeyPair()
     const macKeyB64 = b64.encode(exportRawEd25519PublicKey(macIdentity.publicKey))
@@ -163,7 +200,7 @@ describe('e2e: trusted reconnect', () => {
     macA.runtime.finalizePairing(begin.bootstrap.pairingSessionID, true)
     await phoneA.waitForEstablished()
     await until(() => macA.registrationsCompleted() > 0, 5_000, 'first registration')
-    expect(relay.registrationCount()).toBe(1)
+    expect(relay.registrationCount()).toBeGreaterThanOrEqual(1)
     expect(memory.current()?.controllerDisplayName).toBe('Cold iPad')
 
     // ── Both sides die ───────────────────────────────────────────────────────

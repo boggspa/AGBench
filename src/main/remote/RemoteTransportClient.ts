@@ -12,7 +12,11 @@
  */
 
 import { E2eeSession } from '../../shared/e2ee/session'
-import { exportRawEd25519PublicKey, type KeyPair } from '../../shared/e2ee/keys'
+import {
+  exportRawEd25519PublicKey,
+  importRawEd25519PublicKey,
+  type KeyPair
+} from '../../shared/e2ee/keys'
 import { E2EE_PROTOCOL, parseFrame, type E2eeFrame } from '../../shared/e2ee/protocol'
 
 export interface TransportSocketHandlers {
@@ -129,7 +133,9 @@ export class RemoteTransportClient {
       role: 'mac',
       sessionId: this.sessionId,
       identityKeyPair: this.opts.identityKeyPair,
-      peerIdentityPublicKey: undefined,
+      peerIdentityPublicKey: this.trustedPeerRaw
+        ? importRawEd25519PublicKey(this.trustedPeerRaw)
+        : undefined,
       send: (frame: E2eeFrame) => this.socket?.send(JSON.stringify(frame)),
       onAppMessage: (method, params) => this.opts.onMessage?.(method, params),
       // The confirm code surfaces from decideTrust (unpinned path only) so a

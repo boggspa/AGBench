@@ -95,14 +95,32 @@ export class FakeIphoneClient {
       nonce: b64.encode(randomBytes(16)),
       issuedAt: Date.now()
     })
-    const httpBase = relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/$/, '')
-    const response = await fetch(`${httpBase}/v1/resolve`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(request)
-    })
-    if (!response.ok) throw new Error(`resolve failed (${response.status})`)
-    const body = (await response.json()) as { ok: boolean; sessionId?: string }
+    const wsBase = relayUrl.replace(/\/$/, '')
+    const body = await new Promise<{ ok: boolean; sessionId?: string; status?: number }>(
+      (resolve, reject) => {
+        const ws = new WebSocket(`${wsBase}/v1/resolve`)
+        const timer = setTimeout(() => {
+          ws.terminate()
+          reject(new Error('resolve timed out'))
+        }, 5_000)
+        ws.on('open', () => ws.send(JSON.stringify(request)))
+        ws.on('message', (data) => {
+          clearTimeout(timer)
+          try {
+            resolve(JSON.parse(data.toString()) as { ok: boolean; sessionId?: string; status?: number })
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)))
+          } finally {
+            ws.close()
+          }
+        })
+        ws.on('error', (err) => {
+          clearTimeout(timer)
+          reject(err instanceof Error ? err : new Error(String(err)))
+        })
+      }
+    )
+    if (!body.ok) throw new Error(`resolve failed (${body.status ?? 0})`)
     if (!body.ok || !body.sessionId) throw new Error('resolve returned no session')
     this.createSession({
       v: 1,
