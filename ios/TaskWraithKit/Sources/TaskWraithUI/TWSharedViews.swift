@@ -571,13 +571,15 @@ public struct RotatingActivityHeatmap: View {
 
     let flavors: [Flavor]
     @State private var index = 0
+    @State private var cycleResetToken = 0
 
     public init(flavors: [Flavor]) {
         self.flavors = flavors
     }
 
     public var body: some View {
-        let flavor = flavors[min(index, flavors.count - 1)]
+        let activeIndex = flavors.isEmpty ? 0 : min(index, flavors.count - 1)
+        let flavor = flavors[activeIndex]
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(flavor.title)
@@ -588,7 +590,7 @@ public struct RotatingActivityHeatmap: View {
                 HStack(spacing: 4) {
                     ForEach(0..<flavors.count, id: \.self) { pip in
                         Circle()
-                            .fill(pip == index ? flavor.accent : TWTheme.surface3)
+                            .fill(pip == activeIndex ? flavor.accent : TWTheme.surface3)
                             .frame(width: 4, height: 4)
                     }
                 }
@@ -605,15 +607,34 @@ public struct RotatingActivityHeatmap: View {
         .id(flavor.id)
         .transition(.opacity)
         .animation(.easeInOut(duration: 0.8), value: index)
-        .task {
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard flavors.count > 1 else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) >= 44, abs(dx) > abs(dy) * 1.25 else { return }
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        index = nextIndex(from: activeIndex, offset: dx < 0 ? 1 : -1)
+                    }
+                    cycleResetToken += 1
+                }
+        )
+        .task(id: cycleResetToken) {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 90_000_000_000)
                 guard !Task.isCancelled, flavors.count > 1 else { continue }
                 withAnimation(.easeInOut(duration: 0.8)) {
-                    index = (index + 1) % flavors.count
+                    index = nextIndex(from: min(index, flavors.count - 1), offset: 1)
                 }
             }
         }
+    }
+
+    private func nextIndex(from current: Int, offset: Int) -> Int {
+        guard !flavors.isEmpty else { return 0 }
+        return (current + offset + flavors.count) % flavors.count
     }
 }
 
