@@ -283,6 +283,8 @@ export interface BridgeEnsembleSteerAction extends BridgeActionMetadata {
   roundId?: string
   text: string
   message?: string
+  /** Phone-attached images — same shape/caps as composerPrompt's. */
+  imageAttachments?: BridgeImageAttachment[]
 }
 
 export interface BridgeSetYoloModeAction extends BridgeActionMetadata {
@@ -880,7 +882,8 @@ function isEnsembleSteer(v: Record<string, unknown>): boolean {
     (v.roundId === undefined || typeof v.roundId === 'string') &&
     typeof v.text === 'string' &&
     v.text.trim().length > 0 &&
-    (v.message === undefined || typeof v.message === 'string')
+    (v.message === undefined || typeof v.message === 'string') &&
+    (v.imageAttachments === undefined || isImageAttachments(v.imageAttachments))
   )
 }
 

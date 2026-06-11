@@ -14554,11 +14554,40 @@ if (isGeminiMcpBridgeProcess) {
             return { ok: false, error: 'No main window available for Ensemble steering' }
           }
           const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
+          // Phone-attached images ride the same lane the desktop ensemble
+          // composer uses (startRound imageAttachments {path, name}).
+          let steerImagePaths: string[] = []
+          if (action.imageAttachments?.length) {
+            try {
+              const dir = join(os.tmpdir(), 'taskwraith-remote-attachments')
+              fsSync.mkdirSync(dir, { recursive: true })
+              steerImagePaths = action.imageAttachments.map((attachment, index) => {
+                const ext = attachment.mimeType === 'image/png' ? 'png' : 'jpg'
+                const file = join(
+                  dir,
+                  `${action.threadId.replace(/[^a-zA-Z0-9-]/g, '')}-steer-${Date.now()}-${index}.${ext}`
+                )
+                fsSync.writeFileSync(file, Buffer.from(attachment.dataBase64, 'base64'))
+                return file
+              })
+            } catch (err) {
+              console.warn('[remote-bridge] failed to materialize steer attachments:', err)
+              steerImagePaths = []
+            }
+          }
           const result = ensembleOrchestratorRef?.startRound({
             chatId: action.threadId,
             prompt: text,
             event: fakeEvent,
-            mode: 'steer'
+            mode: 'steer',
+            ...(steerImagePaths.length
+              ? {
+                  imageAttachments: steerImagePaths.map((imagePath) => ({
+                    path: imagePath,
+                    name: basename(imagePath)
+                  }))
+                }
+              : {})
           })
           const ok = result?.status === 'started' || result?.status === 'steered'
           if (ok) {
