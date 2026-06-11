@@ -46,6 +46,33 @@ export function SkyWeatherVisual({ weather }: { weather: HostWeatherVisualState 
       className={`sky-visual-fx sky-${skyKind} ${isNightBase ? 'sky-night' : 'sky-day'} sky-phase-${timePhase}`}
       aria-hidden
     >
+      <svg className="sky-fog-filter" width="0" height="0" aria-hidden focusable="false">
+        <filter
+          id="sky-fog-mist-warp"
+          x="-12%"
+          y="-24%"
+          width="124%"
+          height="148%"
+          colorInterpolationFilters="sRGB"
+        >
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.012 0.056"
+            numOctaves="2"
+            seed="19"
+            result="fogNoise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="fogNoise"
+            scale="16"
+            xChannelSelector="R"
+            yChannelSelector="G"
+            result="warpedFog"
+          />
+          <feGaussianBlur in="warpedFog" stdDeviation="3.2" />
+        </filter>
+      </svg>
       <div className="sky-glow" />
       <div className="sky-orb" />
       {isNightBase && (

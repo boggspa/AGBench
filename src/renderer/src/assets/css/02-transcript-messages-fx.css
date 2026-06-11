@@ -504,6 +504,14 @@
   -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.96), rgba(0, 0, 0, 0.74) 54%, rgba(0, 0, 0, 0.32) 82%, transparent 100%);
 }
 
+.sky-fog-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .sky-glow {
   position: absolute;
   inset: -18% -8% 0;
@@ -562,8 +570,9 @@
 .sky-day.sky-fog .sky-glow {
   background:
     linear-gradient(180deg, rgba(204, 215, 218, 0.34), rgba(175, 189, 195, 0.24) 54%, transparent 84%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 22px);
-  filter: blur(0.4px);
+    repeating-linear-gradient(178deg, rgba(255, 255, 255, 0.065) 0 2px, transparent 2px 23px),
+    repeating-linear-gradient(184deg, transparent 0 13px, rgba(255, 255, 255, 0.035) 13px 15px, transparent 15px 48px);
+  filter: url(#sky-fog-mist-warp);
 }
 
 .sky-day.sky-snow .sky-glow {
@@ -960,12 +969,16 @@
 .sky-day.sky-fog::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: -24px 0 -18px;
   pointer-events: none;
   background:
-    repeating-linear-gradient(180deg, rgba(235, 244, 246, 0.1) 0 16px, transparent 16px 44px),
+    radial-gradient(ellipse at 24% 32%, rgba(245, 251, 252, 0.12), transparent 30%),
+    radial-gradient(ellipse at 72% 18%, rgba(206, 221, 224, 0.1), transparent 34%),
+    repeating-linear-gradient(178deg, rgba(235, 244, 246, 0.1) 0 15px, transparent 15px 43px),
+    repeating-linear-gradient(185deg, transparent 0 20px, rgba(246, 252, 253, 0.045) 20px 23px, transparent 23px 58px),
     linear-gradient(180deg, rgba(225, 234, 235, 0.18), transparent 78%);
-  filter: blur(2px);
+  filter: url(#sky-fog-mist-warp);
+  transform: scale(1.03);
 }
 
 .sky-storm .sky-glow {
