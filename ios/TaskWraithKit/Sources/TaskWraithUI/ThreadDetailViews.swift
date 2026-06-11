@@ -29,6 +29,33 @@ struct ThreadDetailView: View {
 
     private var card: RemoteTaskCard? { model.taskCards.first { $0.id == taskId } }
     private var snapshot: RemoteThreadSnapshot? { model.threadSnapshots[taskId] }
+    private var thinkingProvider: String? {
+        if let state = model.ensembleStates[taskId],
+            let activeId = state.activeParticipantId
+        {
+            if let provider = state.participants?.first(where: { $0.participantId == activeId })?.provider,
+                !provider.isEmpty
+            {
+                return provider
+            }
+            if let provider = state.roster?.first(where: { $0.id == activeId })?.provider,
+                !provider.isEmpty
+            {
+                return provider
+            }
+        }
+        return snapshot?.runSummary?.provider ?? card?.provider
+    }
+    private var thinkingModel: String? {
+        guard let state = model.ensembleStates[taskId],
+            let activeId = state.activeParticipantId,
+            let model = state.roster?.first(where: { $0.id == activeId })?.model,
+            !model.isEmpty
+        else {
+            return snapshot?.runSummary?.model
+        }
+        return model
+    }
     private var isRunning: Bool {
         // The thread snapshot's runSummary refreshes un-throttled on every
         // flush — trust it over the (snapshot-throttled) task card when
@@ -111,7 +138,7 @@ struct ThreadDetailView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 } else if isRunning {
-                    ThinkingRow(provider: card?.provider)
+                    ThinkingRow(provider: thinkingProvider, model: thinkingModel)
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -506,19 +533,73 @@ struct StreamingRowView: View {
 
 struct ThinkingRow: View {
     let provider: String?
+    var model: String? = nil
 
     private var accent: Color { TWTheme.providerAccent(provider) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Circle().fill(accent).frame(width: 6, height: 6)
-            Text("\(TWTheme.providerLabel(provider)) is thinking")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(TWTheme.textSecondary)
-            StreamingDots(color: accent)
-            Spacer()
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(TWTheme.providerLabel(provider))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(accent)
+                if let model, !model.isEmpty {
+                    Text(model)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(TWTheme.surface3, in: Capsule())
+                }
+            }
+            HStack(alignment: .center, spacing: 8) {
+                ShimmerThinkingText()
+                StreamingDots(color: TWTheme.textSecondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
         }
-        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 5)
+    }
+}
+
+/// Desktop-style shimmer sweep for the transcript's in-flight "Thinking" label.
+struct ShimmerThinkingText: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1.2
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                Text("Thinking")
+                    .font(TWFont.transcript(16, weight: .medium))
+                    .foregroundStyle(TWTheme.textPrimary)
+            } else {
+                Text("Thinking")
+                    .font(TWFont.transcript(16, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            stops: [
+                                .init(color: TWTheme.textSecondary.opacity(0.7), location: 0.0),
+                                .init(color: TWTheme.textSecondary.opacity(0.7), location: 0.35),
+                                .init(color: TWTheme.textPrimary, location: 0.5),
+                                .init(color: TWTheme.textSecondary.opacity(0.7), location: 0.65),
+                                .init(color: TWTheme.textSecondary.opacity(0.7), location: 1.0)
+                            ],
+                            startPoint: UnitPoint(x: phase, y: 0.5),
+                            endPoint: UnitPoint(x: phase + 1.0, y: 0.5)
+                        )
+                    )
+                    .onAppear {
+                        phase = -1.2
+                        withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) {
+                            phase = 1.2
+                        }
+                    }
+            }
+        }
     }
 }
 
