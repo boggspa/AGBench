@@ -5,6 +5,10 @@ import type {
   BridgeCreateThreadAction,
   BridgeThreadRowExpandAction,
   BridgeThreadSnapshotRequestAction,
+  BridgeWorkspaceFileListAction,
+  BridgeWorkspaceFileReadAction,
+  BridgeWorkspaceFileWriteAction,
+  BridgeWorkspaceDiffAction,
   BridgeEnsembleCancelRoundAction,
   BridgeEnsembleCancelWakeupAction,
   BridgeEnsembleQueuePromptAction,
@@ -76,6 +80,16 @@ export interface BridgeActionExecutor {
   executeThreadSnapshotRequest(
     action: BridgeThreadSnapshotRequestAction
   ): Promise<BridgeActionExecutionResult>
+  executeWorkspaceFileList(
+    action: BridgeWorkspaceFileListAction
+  ): Promise<BridgeActionExecutionResult>
+  executeWorkspaceFileRead(
+    action: BridgeWorkspaceFileReadAction
+  ): Promise<BridgeActionExecutionResult>
+  executeWorkspaceFileWrite(
+    action: BridgeWorkspaceFileWriteAction
+  ): Promise<BridgeActionExecutionResult>
+  executeWorkspaceDiff(action: BridgeWorkspaceDiffAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
   executeEnsembleCancelRound(
     action: BridgeEnsembleCancelRoundAction
@@ -162,6 +176,26 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeThreadSnapshotRequestAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('threadSnapshotRequest', action.threadId)
+  }
+  async executeWorkspaceFileList(
+    action: BridgeWorkspaceFileListAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('workspaceFileList', action.workspaceId)
+  }
+  async executeWorkspaceFileRead(
+    action: BridgeWorkspaceFileReadAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('workspaceFileRead', action.path)
+  }
+  async executeWorkspaceFileWrite(
+    action: BridgeWorkspaceFileWriteAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('workspaceFileWrite', action.path)
+  }
+  async executeWorkspaceDiff(
+    action: BridgeWorkspaceDiffAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('workspaceDiff', action.workspaceId)
   }
   async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
     return notWired('cancelRun', action.runId)
@@ -296,6 +330,10 @@ export interface MainProcessActionExecutorDependencies {
     action: AgentApprovalAction,
     options?: { userInput?: string }
   ) => Promise<boolean>
+  respondQuestionFn?: (
+    action: BridgeQuestionReplyAction | BridgeQuestionRejectAction,
+    response: { kind: 'answer'; answer: string } | { kind: 'reject'; reason?: string }
+  ) => Promise<boolean>
   /** Callback the executor uses to dispatch an iOS-initiated agent run.
    * The caller in main/index.ts looks up the workspace path by id,
    * builds an `AgentRunPayload`, and calls `dispatchAgentRun` with
@@ -328,6 +366,33 @@ export interface MainProcessActionExecutorDependencies {
    * ok/reason — the snapshot itself travels on the broadcast channel. */
   threadSnapshotRequestFn?: (action: BridgeThreadSnapshotRequestAction) => Promise<{
     ok: boolean
+    reason?: string
+  }>
+  workspaceFileListFn?: (action: BridgeWorkspaceFileListAction) => Promise<{
+    ok: boolean
+    entries?: Record<string, unknown>[]
+    truncated?: boolean
+    reason?: string
+  }>
+  workspaceFileReadFn?: (action: BridgeWorkspaceFileReadAction) => Promise<{
+    ok: boolean
+    file?: Record<string, unknown>
+    reason?: string
+  }>
+  workspaceFileWriteFn?: (action: BridgeWorkspaceFileWriteAction) => Promise<{
+    ok: boolean
+    file?: Record<string, unknown>
+    changeSet?: Record<string, unknown>
+    reason?: string
+  }>
+  /** Callback the executor uses to compute the bounded workspace diff
+   * for the iOS Diff Studio. The caller in main/index.ts resolves the
+   * workspace path by id, runs the SAME git diff the desktop Diff Studio
+   * renders, and projects it through `buildBoundedWorkspaceDiff` so the
+   * ack stays inside the relay frame budget. Read-only. */
+  workspaceDiffFn?: (action: BridgeWorkspaceDiffAction) => Promise<{
+    ok: boolean
+    diff?: Record<string, unknown>
     reason?: string
   }>
   registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
@@ -408,9 +473,9 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
   async executeQuestionReply(
     action: BridgeQuestionReplyAction
   ): Promise<BridgeActionExecutionResult> {
-    if (!this.deps.respondApprovalFn) {
+    if (!this.deps.respondQuestionFn && !this.deps.respondApprovalFn) {
       this.log(
-        `[BridgeActionExecutor] questionReply has no respondApprovalFn — promptId=${action.promptId}`
+        `[BridgeActionExecutor] questionReply has no responder — promptId=${action.promptId}`
       )
       return notWired('questionReply', action.promptId)
     }
@@ -418,9 +483,11 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       `[BridgeActionExecutor] questionReply promptId=${action.promptId} answerLen=${action.answer.length}`
     )
     try {
-      const resolved = await this.deps.respondApprovalFn(action.promptId, 'accept', {
-        userInput: action.answer
-      })
+      const resolved = this.deps.respondQuestionFn
+        ? await this.deps.respondQuestionFn(action, { kind: 'answer', answer: action.answer })
+        : await this.deps.respondApprovalFn!(action.promptId, 'accept', {
+            userInput: action.answer
+          })
       if (resolved) {
         return {
           executed: true,
@@ -445,15 +512,20 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
   async executeQuestionReject(
     action: BridgeQuestionRejectAction
   ): Promise<BridgeActionExecutionResult> {
-    if (!this.deps.respondApprovalFn) {
+    if (!this.deps.respondQuestionFn && !this.deps.respondApprovalFn) {
       this.log(
-        `[BridgeActionExecutor] questionReject has no respondApprovalFn — promptId=${action.promptId}`
+        `[BridgeActionExecutor] questionReject has no responder — promptId=${action.promptId}`
       )
       return notWired('questionReject', action.promptId)
     }
     this.log(`[BridgeActionExecutor] questionReject promptId=${action.promptId}`)
     try {
-      const resolved = await this.deps.respondApprovalFn(action.promptId, 'decline')
+      const resolved = this.deps.respondQuestionFn
+        ? await this.deps.respondQuestionFn(action, {
+            kind: 'reject',
+            reason: action.message || 'user-dismissed'
+          })
+        : await this.deps.respondApprovalFn!(action.promptId, 'decline')
       if (resolved) {
         return {
           executed: true,
@@ -518,6 +590,116 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { executed: false, message: `Row expand failed: ${message}` }
+    }
+  }
+
+  async executeWorkspaceFileList(
+    action: BridgeWorkspaceFileListAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.workspaceFileListFn) {
+      return notWired('workspaceFileList', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.workspaceFileListFn(action)
+      if (result.ok && result.entries) {
+        return {
+          executed: true,
+          message: `Loaded ${result.entries.length} workspace file entries.`,
+          data: {
+            entries: result.entries,
+            truncated: Boolean(result.truncated)
+          }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not list workspace files.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] workspaceFileList failed: ${message}`)
+      return { executed: false, message: `Workspace file list failed: ${message}` }
+    }
+  }
+
+  async executeWorkspaceFileRead(
+    action: BridgeWorkspaceFileReadAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.workspaceFileReadFn) {
+      return notWired('workspaceFileRead', action.path)
+    }
+    try {
+      const result = await this.deps.workspaceFileReadFn(action)
+      if (result.ok && result.file) {
+        return {
+          executed: true,
+          message: `Opened ${action.path}.`,
+          data: { file: result.file }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not open workspace file.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] workspaceFileRead failed: ${message}`)
+      return { executed: false, message: `Workspace file read failed: ${message}` }
+    }
+  }
+
+  async executeWorkspaceFileWrite(
+    action: BridgeWorkspaceFileWriteAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.workspaceFileWriteFn) {
+      return notWired('workspaceFileWrite', action.path)
+    }
+    try {
+      const result = await this.deps.workspaceFileWriteFn(action)
+      if (result.ok && result.file) {
+        return {
+          executed: true,
+          message: `Saved ${action.path}.`,
+          data: {
+            file: result.file,
+            ...(result.changeSet ? { changeSet: result.changeSet } : {})
+          }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not save workspace file.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] workspaceFileWrite failed: ${message}`)
+      return { executed: false, message: `Workspace file write failed: ${message}` }
+    }
+  }
+
+  async executeWorkspaceDiff(
+    action: BridgeWorkspaceDiffAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.workspaceDiffFn) {
+      return notWired('workspaceDiff', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.workspaceDiffFn(action)
+      if (result.ok && result.diff) {
+        return {
+          executed: true,
+          message: 'Workspace diff computed.',
+          data: { diff: result.diff }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not compute the workspace diff.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] workspaceDiff failed: ${message}`)
+      return { executed: false, message: `Workspace diff failed: ${message}` }
     }
   }
 

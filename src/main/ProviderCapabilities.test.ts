@@ -232,17 +232,20 @@ describe('ProviderCapabilities', () => {
 
     expect(contract.mcp.state).toBe('available')
     expect(contract.mcp.serverName).toBe('TaskWraith-local')
-    expect(contract.mcp.tools).toEqual([
-      'read_file',
-      'list_directory',
-      'workspace_search',
-      'web_search',
-      'web_fetch'
-    ])
-    expect(contract.tools.mcpTools.state).toBe('gated')
-    expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
-    expect(contract.tools.shellCommands.state).toBe('unavailable')
-    expect(contract.tools.fileChanges.state).toBe('unavailable')
+	    expect(contract.mcp.tools).toEqual([
+	      'read_file',
+	      'list_directory',
+	      'workspace_search',
+	      'web_search',
+	      'web_fetch',
+	      'ask_user_question'
+	    ])
+	    expect(contract.tools.mcpTools.state).toBe('gated')
+	    expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
+	    expect(contract.tools.elicit.state).toBe('available')
+	    expect(contract.tools.elicit.requiresApproval).toBe(false)
+	    expect(contract.tools.shellCommands.state).toBe('unavailable')
+	    expect(contract.tools.fileChanges.state).toBe('unavailable')
   })
 
   it('advertises Ollama approved edit and shell tiers through TaskWraith gates', () => {
@@ -297,13 +300,14 @@ describe('ProviderCapabilities', () => {
       status: { provider: 'ollama', available: true }
     })
 
-    expect(contract.mcp.tools).toEqual([
-      'read_file',
-      'list_directory',
-      'workspace_search',
-      'web_search',
-      'web_fetch'
-    ])
+	    expect(contract.mcp.tools).toEqual([
+	      'read_file',
+	      'list_directory',
+	      'workspace_search',
+	      'web_search',
+	      'web_fetch',
+	      'ask_user_question'
+	    ])
     expect(contract.tools.fileChanges.state).toBe('unavailable')
     expect(contract.tools.shellCommands.state).toBe('unavailable')
   })

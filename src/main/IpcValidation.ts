@@ -197,7 +197,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'read-workspace-file': ['workspacePath', 'filePath'],
   'discover-gemini-commands': ['workspacePath'],
   'discover-gemini-memory': ['workspacePath'],
-  'write-workspace-file': ['workspacePath', 'filePath', 'string'],
+  'write-workspace-file': ['workspacePath', 'filePath', 'string', 'optionalString'],
   'get-agent-status': ['provider'],
   'get-agent-rate-limits': ['provider'],
   'import-codex-usage-credential': ['optionalString'],

@@ -36,6 +36,7 @@ export const KIMI_TASKWRAITH_TOOL_NAMES = TASKWRAITH_MCP_TOOLS
  * in its tool list as the namespace prefix (`TaskWraith__<tool>`).
  */
 export const KIMI_TASKWRAITH_SERVER_NAME = 'TaskWraith'
+export const KIMI_LEGACY_TASKWRAITH_SERVER_NAMES = ['agentbench', 'AGBench'] as const
 
 export interface KimiMcpBridgeAddArgsInput {
   /** Absolute path of the TaskWraith binary that hosts the MCP bridge. */
@@ -81,6 +82,10 @@ export function buildKimiMcpBridgeAddArgs(input: KimiMcpBridgeAddArgsInput): str
     input.bridgeBinaryPath,
     ...input.bridgeArgs
   ]
+}
+
+export function buildKimiMcpBridgeRemoveArgs(serverName: string): string[] {
+  return ['mcp', 'remove', serverName]
 }
 
 /**

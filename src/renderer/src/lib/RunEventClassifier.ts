@@ -270,9 +270,13 @@ export function classifyForInspector(event: RunEventRecord): InspectorRow {
       }
     case 'approval_timer_armed':
       return { kind: 'approval_timer', phase: 'armed', raw: event }
-    case 'approval_timer_timeout':
-      return { kind: 'approval_timer', phase: 'timeout', raw: event }
-    case 'tool': {
+	    case 'approval_timer_timeout':
+	      return { kind: 'approval_timer', phase: 'timeout', raw: event }
+	    case 'question_requested':
+	    case 'question_answered':
+	    case 'question_cancelled':
+	      return { kind: 'tool_call', toolName: 'ask_user_question', raw: event }
+	    case 'tool': {
       const toolName = isRecord(event.payload) ? asString(event.payload.toolName) : undefined
       return { kind: 'tool_call', toolName, raw: event }
     }

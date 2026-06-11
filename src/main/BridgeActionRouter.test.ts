@@ -50,6 +50,22 @@ function makeStubExecutor(
       executed: true,
       message: 'threadSnapshotRequest done'
     }),
+    executeWorkspaceFileList: make('executeWorkspaceFileList', {
+      executed: true,
+      message: 'workspaceFileList done'
+    }),
+    executeWorkspaceFileRead: make('executeWorkspaceFileRead', {
+      executed: true,
+      message: 'workspaceFileRead done'
+    }),
+    executeWorkspaceFileWrite: make('executeWorkspaceFileWrite', {
+      executed: true,
+      message: 'workspaceFileWrite done'
+    }),
+    executeWorkspaceDiff: make('executeWorkspaceDiff', {
+      executed: true,
+      message: 'workspaceDiff done'
+    }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
     executeEnsembleCancelRound: make('executeEnsembleCancelRound', {
       executed: true,
@@ -907,6 +923,40 @@ describe('BridgeActionRouter', () => {
       expect(result.message).toMatch(/not yet wired/i)
     })
 
+    it('returns the created side-chat id instead of the parent id', async () => {
+      const { executor } = makeStubExecutor({
+        executeCreateSideChat: async () => ({
+          executed: true,
+          message: 'Side chat created.',
+          data: {
+            actionKind: 'createSideChat',
+            result: { ok: true, threadId: 'side-1' }
+          }
+        })
+      })
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'createSideChat',
+          workspaceId: 'ws-allowed',
+          threadId: 'parent-1',
+          provider: 'codex'
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-1',
+        payloadBase64: wire
+      })) as {
+        accepted: boolean
+        threadId?: string
+        data?: { result?: { threadId?: string } }
+      }
+      expect(result.accepted).toBe(true)
+      expect(result.threadId).toBe('side-1')
+      expect(result.data?.result?.threadId).toBe('side-1')
+    })
+
     it('registerApnsToken bypasses workspace allowlist (system action)', async () => {
       const { executor, calls } = makeStubExecutor()
       // No allowlist provided at all — workspace-gated actions would deny,
@@ -1570,6 +1620,107 @@ describe('BridgeActionRouter', () => {
           approvalMode: 'default'
         })
       )
+    })
+  })
+
+  describe('workspace file action policy', () => {
+    const encodeFileAction = (action: Record<string, unknown>) =>
+      Buffer.from(
+        JSON.stringify({
+          workspaceId: 'ws-files',
+          ...action
+        }),
+        'utf-8'
+      ).toString('base64')
+
+    it('allows file list/read/write and workspace diff for default read-write workspaces', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-files',
+        path: '/files',
+        mode: 'read-write',
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const actions = [
+        { kind: 'workspaceFileList', method: 'executeWorkspaceFileList' },
+        { kind: 'workspaceFileRead', path: 'README.md', method: 'executeWorkspaceFileRead' },
+        {
+          kind: 'workspaceFileWrite',
+          path: 'README.md',
+          content: 'hello',
+          baseEtag: 'sha256:abc',
+          method: 'executeWorkspaceFileWrite'
+        },
+        { kind: 'workspaceDiff', method: 'executeWorkspaceDiff' }
+      ]
+
+      for (const action of actions) {
+        const { method, ...payload } = action
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: `pair-${method}`,
+          payloadBase64: encodeFileAction(payload)
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(true)
+        expect(result.reasonCode).toBe('accepted')
+        expect(calls[calls.length - 1]?.method).toBe(method)
+      }
+    })
+
+    it('denies file writes when the fileWrite capability is absent', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-files',
+        path: '/files',
+        mode: 'read-write',
+        capabilities: ['monitor', 'fileBrowse', 'fileRead'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-files-deny',
+        payloadBase64: encodeFileAction({
+          kind: 'workspaceFileWrite',
+          path: 'README.md',
+          content: 'hello',
+          baseEtag: 'sha256:abc'
+        })
+      })) as { accepted: boolean; reasonCode?: string; message?: string }
+
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(result.message).toMatch(/capability "fileWrite"/i)
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies workspace diffs when the diffReview capability is absent', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-files',
+        path: '/files',
+        mode: 'read-write',
+        capabilities: ['monitor', 'fileBrowse', 'fileRead'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-diff-deny',
+        payloadBase64: encodeFileAction({ kind: 'workspaceDiff' })
+      })) as { accepted: boolean; reasonCode?: string; message?: string }
+
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(result.message).toMatch(/capability "diffReview"/i)
+      expect(calls).toHaveLength(0)
     })
   })
 

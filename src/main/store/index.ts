@@ -1362,6 +1362,9 @@ export class AppStore {
     originMessageId?: string
     originRunId?: string
     sideChatMode?: SideChatMode
+    selectedModelType?: string
+    codexReasoningEffort?: string | null
+    claudeReasoningEffort?: string | null
   }): ChatRecord {
     const parent = this.getChat(args.parentChatId)
     if (!parent) {
@@ -1389,6 +1392,20 @@ export class AppStore {
         parent.title && parent.title !== 'New Chat' ? ` from ${parent.title}` : ''
       }`
 
+    const inheritedProviderMetadata = parent.providerMetadata
+      ? canonicalizeExternalPathGrantMetadata({ ...parent.providerMetadata })
+      : undefined
+    const providerMetadata = {
+      ...(inheritedProviderMetadata || {}),
+      ...(args.selectedModelType ? { selectedModelType: args.selectedModelType } : {}),
+      ...(args.codexReasoningEffort !== undefined
+        ? { codexReasoningEffort: args.codexReasoningEffort }
+        : {}),
+      ...(args.claudeReasoningEffort !== undefined
+        ? { claudeReasoningEffort: args.claudeReasoningEffort }
+        : {})
+    }
+
     const base: ChatRecord = {
       appChatId: randomUUID(),
       scope,
@@ -1414,9 +1431,7 @@ export class AppStore {
         ...(args.originRunId ? { originRunId: args.originRunId } : {}),
         transcriptVisibility: 'none'
       },
-      providerMetadata: parent.providerMetadata
-        ? canonicalizeExternalPathGrantMetadata({ ...parent.providerMetadata })
-        : undefined
+      providerMetadata: Object.keys(providerMetadata).length > 0 ? providerMetadata : undefined
     }
 
     const chat: ChatRecord =

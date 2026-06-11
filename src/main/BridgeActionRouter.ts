@@ -468,6 +468,14 @@ export class BridgeActionRouter {
         return this.executor.executeThreadRowExpand(payload)
       case 'threadSnapshotRequest':
         return this.executor.executeThreadSnapshotRequest(payload)
+      case 'workspaceFileList':
+        return this.executor.executeWorkspaceFileList(payload)
+      case 'workspaceFileRead':
+        return this.executor.executeWorkspaceFileRead(payload)
+      case 'workspaceFileWrite':
+        return this.executor.executeWorkspaceFileWrite(payload)
+      case 'workspaceDiff':
+        return this.executor.executeWorkspaceDiff(payload)
       case 'cancelRun':
         return this.executor.executeCancelRun(payload)
       case 'ensembleCancelRound':
@@ -876,6 +884,14 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'threadSnapshotRequest':
     case 'threadRowExpand':
       return 'monitor'
+    case 'workspaceFileList':
+      return 'fileBrowse'
+    case 'workspaceFileRead':
+      return 'fileRead'
+    case 'workspaceFileWrite':
+      return 'fileWrite'
+    case 'workspaceDiff':
+      return 'diffReview'
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleCancelWakeup':
@@ -961,6 +977,12 @@ function actionAckDescriptorFromPayload(
 
   if ('threadId' in payload && typeof payload.threadId === 'string') {
     descriptor.threadId = payload.threadId
+  }
+  if (payload.kind === 'createSideChat') {
+    const result = isRecord(data?.result) ? data.result : null
+    if (typeof result?.threadId === 'string') {
+      descriptor.threadId = result.threadId
+    }
   }
   if (payload.kind === 'approvalReply') {
     descriptor.approvalId = payload.toolCallId

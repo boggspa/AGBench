@@ -98,6 +98,9 @@ export interface RemoteTaskCapabilities {
   startTurn: boolean
   diffReview: boolean
   steer: boolean
+  fileBrowse?: boolean
+  fileRead?: boolean
+  fileWrite?: boolean
   pin?: boolean
   yolo?: boolean
   cancelRound?: boolean

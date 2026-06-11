@@ -78,7 +78,7 @@ type TranscriptPanelProps = {
   isThinking: boolean
   showFallbackUX: boolean
   pendingPlanChoice: PlanChoiceState | null
-  pendingAgentQuestion: AgentQuestionState | null
+  pendingAgentQuestions: readonly AgentQuestionState[]
   onAgentQuestionSubmit: (questionId: string, answer: string, isCustom: boolean) => void
   onAgentQuestionDismiss: (questionId: string) => void
   runCompleteNotice: RunCompleteNotice | null
@@ -664,7 +664,7 @@ export const TranscriptPanel = memo(
     isThinking,
     showFallbackUX,
     pendingPlanChoice,
-    pendingAgentQuestion,
+    pendingAgentQuestions,
     onAgentQuestionSubmit,
     onAgentQuestionDismiss,
     runCompleteNotice,
@@ -1284,16 +1284,18 @@ export const TranscriptPanel = memo(
                         </div>
                       </div>
                     )}
-                    {pendingAgentQuestion && pendingAgentQuestion.messageId === msg.id && (
-                      <AgentQuestionCard
-                        key={pendingAgentQuestion.questionId}
-                        state={pendingAgentQuestion}
-                        onAnswer={(answer, isCustom) =>
-                          onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
-                        }
-                        onDismiss={() => onAgentQuestionDismiss(pendingAgentQuestion.questionId)}
-                      />
-                    )}
+                    {pendingAgentQuestions
+                      .filter((question) => question.messageId === msg.id)
+                      .map((question) => (
+                        <AgentQuestionCard
+                          key={question.questionId}
+                          state={question}
+                          onAnswer={(answer, isCustom) =>
+                            onAgentQuestionSubmit(question.questionId, answer, isCustom)
+                          }
+                          onDismiss={() => onAgentQuestionDismiss(question.questionId)}
+                        />
+                      ))}
                   </div>
                 )}
               </div>
@@ -1322,22 +1324,23 @@ export const TranscriptPanel = memo(
             the agent times out after 10 minutes with no
             user-recoverable surface.
           */}
-          {pendingAgentQuestion &&
-            !visibleMessages.some((m) => m.id === pendingAgentQuestion.messageId) && (
+          {pendingAgentQuestions
+            .filter((question) => !visibleMessages.some((m) => m.id === question.messageId))
+            .map((question) => (
               <div
-                key={`pending-agent-question-fallback-${pendingAgentQuestion.questionId}`}
+                key={`pending-agent-question-fallback-${question.questionId}`}
                 className="message-group agent-question-fallback"
               >
                 <AgentQuestionCard
-                  key={pendingAgentQuestion.questionId}
-                  state={pendingAgentQuestion}
+                  key={question.questionId}
+                  state={question}
                   onAnswer={(answer, isCustom) =>
-                    onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
+                    onAgentQuestionSubmit(question.questionId, answer, isCustom)
                   }
-                  onDismiss={() => onAgentQuestionDismiss(pendingAgentQuestion.questionId)}
+                  onDismiss={() => onAgentQuestionDismiss(question.questionId)}
                 />
               </div>
-            )}
+            ))}
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
               <div
@@ -1554,7 +1557,7 @@ export const TranscriptPanel = memo(
     previous.isThinking === next.isThinking &&
     previous.showFallbackUX === next.showFallbackUX &&
     previous.pendingPlanChoice === next.pendingPlanChoice &&
-    previous.pendingAgentQuestion === next.pendingAgentQuestion &&
+    previous.pendingAgentQuestions === next.pendingAgentQuestions &&
     previous.onAgentQuestionSubmit === next.onAgentQuestionSubmit &&
     previous.onAgentQuestionDismiss === next.onAgentQuestionDismiss &&
     previous.runCompleteNotice === next.runCompleteNotice &&

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   KIMI_TASKWRAITH_SERVER_NAME,
   KIMI_TASKWRAITH_TOOL_NAMES,
+  KIMI_LEGACY_TASKWRAITH_SERVER_NAMES,
   buildKimiWirePromptRequest,
   buildKimiMcpBridgeAddArgs,
+  buildKimiMcpBridgeRemoveArgs,
   redactKimiMcpBridgeAddArgs
 } from './KimiMcpBridge'
 
@@ -147,6 +149,16 @@ describe('redactKimiMcpBridgeAddArgs', () => {
     expect(redacted).toContain('--socket')
     expect(redacted).toContain('/run/taskwraith.sock')
     expect(redacted).toContain('TASKWRAITH_PARENT_PROVIDER=kimi')
+  })
+})
+
+describe('buildKimiMcpBridgeRemoveArgs', () => {
+  it('builds the canonical remove argv for TaskWraith-owned bridge entries', () => {
+    expect(buildKimiMcpBridgeRemoveArgs('TaskWraith')).toEqual(['mcp', 'remove', 'TaskWraith'])
+  })
+
+  it('lists legacy AGBench bridge entries that TaskWraith should prune', () => {
+    expect(KIMI_LEGACY_TASKWRAITH_SERVER_NAMES).toEqual(['agentbench', 'AGBench'])
   })
 })
 

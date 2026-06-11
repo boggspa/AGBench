@@ -2205,6 +2205,9 @@ export type RunEventKind =
   | 'approval_response'
   | 'approval_timer_armed'
   | 'approval_timer_timeout'
+  | 'question_requested'
+  | 'question_answered'
+  | 'question_cancelled'
   | 'subthread_spawned'
   | 'subthread_returned'
   | 'subthread_dispatch_failed'
@@ -3043,6 +3046,8 @@ export interface WorkspaceFileReadResult {
   path: string
   content: string
   sizeBytes: number
+  mtimeMs?: number
+  etag?: string
   changeSet?: WorkspaceChangeSet
 }
 

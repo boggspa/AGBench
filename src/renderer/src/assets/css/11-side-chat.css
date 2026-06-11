@@ -1223,7 +1223,28 @@ body.is-resizing-side-chat * {
   width: auto;
   max-width: none;
   min-height: 0;
+  gap: 6px;
   overflow: visible;
+}
+
+.side-chat-above-bar-stack.composer-above-bar-stack {
+  width: 100%;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.side-chat-above-bar-stack .queued-messages-above-row {
+  padding: 7px 10px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.side-chat-above-bar-stack .queued-messages-above-row-list {
+  max-height: 132px;
 }
 
 .side-chat-inner-module.composer-inner-module {
@@ -1310,8 +1331,8 @@ body.is-resizing-side-chat * {
 
 .side-chat-telemetry-row.composer-telemetry-row {
   gap: 8px;
-  margin: 0;
-  padding: 5px 0 0;
+  margin: -1px 4px 0;
+  padding: 1px 2px 0;
   min-height: 16px;
 }
 

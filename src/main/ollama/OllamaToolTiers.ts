@@ -8,7 +8,8 @@ export const OLLAMA_READ_TOOL_NAMES = [
   'list_directory',
   'workspace_search',
   'web_search',
-  'web_fetch'
+  'web_fetch',
+  'ask_user_question'
 ] as const satisfies readonly OllamaToolName[]
 
 export const OLLAMA_FILE_EDIT_TOOL_NAMES = [

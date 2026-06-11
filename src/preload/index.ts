@@ -251,8 +251,8 @@ const api = {
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
   readWorkspaceFile: (workspace: string, path: string) =>
     ipcRenderer.invoke('read-workspace-file', workspace, path),
-  writeWorkspaceFile: (workspace: string, path: string, content: string) =>
-    ipcRenderer.invoke('write-workspace-file', workspace, path, content),
+  writeWorkspaceFile: (workspace: string, path: string, content: string, baseEtag?: string | null) =>
+    ipcRenderer.invoke('write-workspace-file', workspace, path, content, baseEtag),
   captureSnapshot: (workspace: string) => ipcRenderer.invoke('capture-snapshot', workspace),
   computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any, changeContext: any = null) =>
     ipcRenderer.invoke('compute-run-diff', runId, preSnapshot, postSnapshot, changeContext),
@@ -342,12 +342,25 @@ const api = {
     ipcRenderer.on('agent-question-cancelled', wrapped)
     return () => ipcRenderer.removeListener('agent-question-cancelled', wrapped)
   },
-  answerAgentQuestion: (payload: { questionId: string; answer: string; isCustom?: boolean }) =>
+  answerAgentQuestion: (payload: {
+    questionId: string
+    answer: string
+    isCustom?: boolean
+    appChatId?: string
+    appRunId?: string
+    workspaceId?: string | null
+  }) =>
     ipcRenderer.invoke('answer-agent-question', payload) as Promise<{
       ok: boolean
       error?: string
     }>,
-  cancelAgentQuestion: (payload: { questionId: string; reason?: string }) =>
+  cancelAgentQuestion: (payload: {
+    questionId: string
+    reason?: string
+    appChatId?: string
+    appRunId?: string
+    workspaceId?: string | null
+  }) =>
     ipcRenderer.invoke('cancel-agent-question', payload) as Promise<{
       ok: boolean
       error?: string

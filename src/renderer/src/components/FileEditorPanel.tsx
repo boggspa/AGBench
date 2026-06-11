@@ -136,9 +136,10 @@ const editorApi = {
   writeFile: (
     workspacePath: string,
     filePath: string,
-    content: string
+    content: string,
+    baseEtag?: string | null
   ): Promise<WorkspaceFileReadResult> => {
-    return window.api.writeWorkspaceFile(workspacePath, filePath, content)
+    return window.api.writeWorkspaceFile(workspacePath, filePath, content, baseEtag)
   }
 }
 
@@ -148,6 +149,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
   const [selectedPath, setSelectedPath] = useState('')
   const [content, setContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
+  const [savedEtag, setSavedEtag] = useState<string | null>(null)
   const [status, setStatus] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [pendingOpenEntry, setPendingOpenEntry] = useState<WorkspaceFileEntry | null>(null)
@@ -197,6 +199,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
       setSelectedPath('')
       setContent('')
       setSavedContent('')
+      setSavedEtag(null)
       setPendingOpenEntry(null)
       void refreshFiles()
     })
@@ -220,6 +223,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
       setSelectedPath(result.path)
       setContent(result.content)
       setSavedContent(result.content)
+      setSavedEtag(result.etag ?? null)
       setStatus(`${result.path} · ${formatBytes(result.sizeBytes)}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not open file')
@@ -235,9 +239,10 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
     setStatus(`Saving ${selectedPath}`)
     try {
       const nextPendingEntry = pendingOpenEntry
-      const result = await editorApi.writeFile(workspacePath, selectedPath, content)
+      const result = await editorApi.writeFile(workspacePath, selectedPath, content, savedEtag)
       setContent(result.content)
       setSavedContent(result.content)
+      setSavedEtag(result.etag ?? savedEtag)
       setPendingOpenEntry(null)
       if (nextPendingEntry) {
         setStatus(`Opening ${nextPendingEntry.path}`)
@@ -245,6 +250,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
         setSelectedPath(nextResult.path)
         setContent(nextResult.content)
         setSavedContent(nextResult.content)
+        setSavedEtag(nextResult.etag ?? null)
         setStatus(`${nextResult.path} · ${formatBytes(nextResult.sizeBytes)}`)
       } else {
         setStatus(`Saved ${result.path} · ${formatBytes(result.sizeBytes)}`)
@@ -272,6 +278,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
       setSelectedPath(result.path)
       setContent(result.content)
       setSavedContent(result.content)
+      setSavedEtag(result.etag ?? null)
       setStatus(`${result.path} · ${formatBytes(result.sizeBytes)}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not open file')

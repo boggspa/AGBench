@@ -63,12 +63,14 @@ describe('decodeBridgeActionPayload', () => {
         kind: 'questionReply',
         workspaceId: 'ws-1',
         threadId: 't-1',
+        runId: 'run-1',
         promptId: 'q-99',
         answer: 'yes, proceed with src/main'
       })
       const { payload } = decodeBridgeActionPayload(wire)
       expect(payload.kind).toBe('questionReply')
       if (payload.kind === 'questionReply') {
+        expect(payload.runId).toBe('run-1')
         expect(payload.answer).toBe('yes, proceed with src/main')
       }
     })
@@ -78,14 +80,61 @@ describe('decodeBridgeActionPayload', () => {
         kind: 'questionReject',
         workspaceId: 'ws-1',
         threadId: 't-1',
+        runId: 'run-1',
         promptId: 'q-1',
         message: 'cancel this'
       })
       const { payload } = decodeBridgeActionPayload(wire)
       expect(payload.kind).toBe('questionReject')
+      if (payload.kind === 'questionReject') expect(payload.runId).toBe('run-1')
     })
 
-    it('decodes createThread (mutating) and threadRowExpand (read-only)', () => {
+    it('rejects oversized questionReply answers', () => {
+      const { payload } = decodeBridgeActionPayload(
+        encode({
+          kind: 'questionReply',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          promptId: 'q-99',
+          answer: 'x'.repeat(8001)
+        })
+      )
+      expect(payload.kind).toBe('unknown')
+      if (payload.kind === 'unknown') expect(payload.rawKind).toBe('questionReply')
+    })
+
+    it('rejects oversized questionReject messages', () => {
+      const { payload } = decodeBridgeActionPayload(
+        encode({
+          kind: 'questionReject',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          promptId: 'q-99',
+          message: 'x'.repeat(1001)
+        })
+      )
+      expect(payload.kind).toBe('unknown')
+      if (payload.kind === 'unknown') expect(payload.rawKind).toBe('questionReject')
+    })
+
+    it('rejects blank question run ids when present', () => {
+      for (const kind of ['questionReply', 'questionReject'] as const) {
+        const { payload } = decodeBridgeActionPayload(
+          encode({
+            kind,
+            workspaceId: 'ws-1',
+            threadId: 't-1',
+            runId: '   ',
+            promptId: 'q-99',
+            ...(kind === 'questionReply' ? { answer: 'yes' } : {})
+          })
+        )
+        expect(payload.kind).toBe('unknown')
+        if (payload.kind === 'unknown') expect(payload.rawKind).toBe(kind)
+      }
+    })
+
+	  it('decodes createThread (mutating) and threadRowExpand (read-only)', () => {
       const create = decodeBridgeActionPayload(
         encode({
           kind: 'createThread',
@@ -177,6 +226,77 @@ describe('decodeBridgeActionPayload', () => {
         encode({ kind: 'threadSnapshotRequest', actionId: 'x', workspaceId: 'w', threadId: 't', limit: -2 })
       )
       expect(bad.payload.kind).toBe('unknown')
+    })
+
+    it('decodes workspace file actions with correct mutability', () => {
+      const list = decodeBridgeActionPayload(
+        encode({ kind: 'workspaceFileList', actionId: 'files-list', workspaceId: 'ws-1' })
+      ).payload
+      expect(list.kind).toBe('workspaceFileList')
+      expect(workspaceIdFromPayload(list)).toBe('ws-1')
+      expect(payloadRequiresWorkspaceGating(list)).toBe(true)
+      expect(payloadIsMutating(list)).toBe(false)
+
+      const read = decodeBridgeActionPayload(
+        encode({
+          kind: 'workspaceFileRead',
+          actionId: 'files-read',
+          workspaceId: 'ws-1',
+          path: 'Sources/App.swift'
+        })
+      ).payload
+      expect(read.kind).toBe('workspaceFileRead')
+      expect(payloadIsMutating(read)).toBe(false)
+
+      const write = decodeBridgeActionPayload(
+        encode({
+          kind: 'workspaceFileWrite',
+          actionId: 'files-write',
+          workspaceId: 'ws-1',
+          path: 'Sources/App.swift',
+          content: 'print("hi")\n',
+          baseEtag: 'sha256:abc'
+        })
+      ).payload
+      expect(write.kind).toBe('workspaceFileWrite')
+      expect(payloadIsMutating(write)).toBe(true)
+    })
+
+    it('decodes workspaceDiff as a read-only workspace-gated action', () => {
+      const diff = decodeBridgeActionPayload(
+        encode({ kind: 'workspaceDiff', actionId: 'diff-1', workspaceId: 'ws-1' })
+      ).payload
+      expect(diff.kind).toBe('workspaceDiff')
+      expect(workspaceIdFromPayload(diff)).toBe('ws-1')
+      expect(payloadRequiresWorkspaceGating(diff)).toBe(true)
+      expect(payloadIsMutating(diff)).toBe(false)
+
+      // Missing workspaceId → unknown (defensive decode).
+      expect(
+        decodeBridgeActionPayload(encode({ kind: 'workspaceDiff', actionId: 'diff-2' })).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'workspaceDiff' })
+    })
+
+    it('rejects malformed workspace file writes', () => {
+      expect(
+        decodeBridgeActionPayload(
+          encode({
+            kind: 'workspaceFileWrite',
+            workspaceId: 'ws-1',
+            path: 'Sources/App.swift',
+            content: 'print("hi")\n'
+          })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'workspaceFileWrite' })
+      expect(
+        decodeBridgeActionPayload(
+          encode({
+            kind: 'workspaceFileRead',
+            workspaceId: 'ws-1',
+            path: 'bad\u0000path'
+          })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'workspaceFileRead' })
     })
 
     it('decodes a composerPrompt with optional fields', () => {

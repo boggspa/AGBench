@@ -789,10 +789,11 @@ export function buildProviderCapabilityContract({
           'taskwraith',
           mcp.message || 'Ollama read-only tools are not available.'
         )
-    elicit = unavailableCapability(
-      'elicit',
+    elicit = elicitCapability(
       'taskwraith',
-      'Ollama does not yet expose TaskWraith user-question tools.'
+      mcp.available && mcp.tools.includes('ask_user_question'),
+      'Ollama can ask the user clarifying questions through TaskWraith local tools without write or shell access.',
+      'Ollama user-question tools require a workspace thread with TaskWraith local tools enabled.'
     )
     delegate = unavailableCapability(
       'delegate',

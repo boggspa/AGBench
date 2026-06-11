@@ -47,12 +47,18 @@ describe('ollamaLocalToolSystemPrompt', () => {
     expect(prompt).not.toContain('Worked trajectories')
   })
 
-  it('keeps the workspace scaffold by default', () => {
-    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest')
-    expect(prompt).toContain('harness checklist')
-    expect(prompt).not.toContain('The current user message is conversational')
-  })
-})
+	  it('keeps the workspace scaffold by default', () => {
+	    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest')
+	    expect(prompt).toContain('harness checklist')
+	    expect(prompt).not.toContain('The current user message is conversational')
+	  })
+
+	  it('includes ask_user_question in the safe read-only local tool tier', () => {
+	    const prompt = ollamaLocalToolSystemPrompt('read_only', 'qwen3.5:9b')
+	    expect(prompt).toContain('ask_user_question')
+	    expect(prompt).toContain('pause and ask the user for clarification')
+	  })
+	})
 
 describe('workflow hints', () => {
   it('documents scout-then-delegate workflow', () => {

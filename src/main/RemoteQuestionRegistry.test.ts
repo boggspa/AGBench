@@ -142,4 +142,75 @@ describe('RemoteQuestionRegistry', () => {
     expect(registry.cancelForRun('run-1', 'run-cancelled').map((r) => r.questionId)).toEqual(['q1'])
     expect(registry.listPending().map((r) => r.questionId)).toEqual(['q2'])
   })
+
+  it('keeps multiple pending questions queued for the same chat', () => {
+    const registry = new RemoteQuestionRegistry({
+      now: () => Date.UTC(2026, 4, 30, 12, 0, 0),
+      setTimer: () => 'timer',
+      clearTimer: vi.fn()
+    })
+    registry.register({ questionId: 'q1', question: 'One?', threadId: 'chat-1', resolve: vi.fn() })
+    registry.register({ questionId: 'q2', question: 'Two?', threadId: 'chat-1', resolve: vi.fn() })
+
+    expect(registry.listPending({ threadId: 'chat-1' }).map((r) => r.questionId)).toEqual([
+      'q1',
+      'q2'
+    ])
+  })
+
+  it('rejects scoped answers from the wrong thread without resolving the question', () => {
+    const resolve = vi.fn()
+    const registry = new RemoteQuestionRegistry({
+      now: () => Date.UTC(2026, 4, 30, 12, 0, 0),
+      setTimer: () => 'timer',
+      clearTimer: vi.fn()
+    })
+    registry.register({
+      questionId: 'q1',
+      question: 'Continue?',
+      workspaceId: 'ws-1',
+      threadId: 'chat-1',
+      runId: 'run-1',
+      resolve
+    })
+
+    expect(
+      registry.answerScoped('q1', { workspaceId: 'ws-1', threadId: 'chat-2' }, 'Yes')
+    ).toMatchObject({ ok: false, reason: 'scope-mismatch' })
+    expect(resolve).not.toHaveBeenCalled()
+    expect(registry.has('q1')).toBe(true)
+
+    expect(
+      registry.answerScoped(
+        'q1',
+        { workspaceId: 'ws-1', threadId: 'chat-1', runId: 'run-1' },
+        'Yes'
+      )
+    ).toMatchObject({ ok: true })
+    expect(resolve).toHaveBeenCalledWith({ answer: 'Yes', is_custom: false })
+  })
+
+  it('caps question, context, options and answers', () => {
+    let resolved: RemoteQuestionResolution | null = null
+    const registry = new RemoteQuestionRegistry({
+      now: () => Date.UTC(2026, 4, 30, 12, 0, 0),
+      setTimer: () => 'timer',
+      clearTimer: vi.fn()
+    })
+    const record = registry.register({
+      questionId: 'q1',
+      question: 'q'.repeat(700),
+      context: 'c'.repeat(400),
+      options: ['a'.repeat(120), 'B', 'B', 'C', 'D', 'E'],
+      resolve: (result) => {
+        resolved = result
+      }
+    })
+
+    expect(record.question).toHaveLength(600)
+    expect(record.context).toHaveLength(240)
+    expect(record.options).toEqual(['a'.repeat(96), 'B', 'C', 'D'])
+    registry.answer('q1', 'x'.repeat(9000))
+    expect(resolved).toEqual({ answer: 'x'.repeat(8000), is_custom: false })
+  })
 })

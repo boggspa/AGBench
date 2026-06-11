@@ -369,6 +369,148 @@ export async function captureWorkspaceSnapshot(workspace: string): Promise<Works
   }
 }
 
+// ── Bounded workspace diff (iOS Diff Studio) ─────────────────────────────────
+// The `workspaceDiff` bridge action returns the SAME git diff the desktop
+// Diff Studio renders ('get-diff' IPC → getWorkspaceDiff), projected through
+// hard caps so the ack stays inside the relay frame budget: ≤40 files, ≤200
+// hunk lines per file, line text clipped to 400 chars. Anything dropped is
+// flagged with `truncated` (per file and on the total).
+
+export const BOUNDED_DIFF_MAX_FILES = 40
+export const BOUNDED_DIFF_MAX_LINES_PER_FILE = 200
+export const BOUNDED_DIFF_MAX_LINE_CHARS = 400
+
+export interface BoundedDiffLine {
+  type: 'ctx' | 'add' | 'del'
+  text: string
+  oldLine?: number
+  newLine?: number
+}
+
+export interface BoundedDiffHunk {
+  header: string
+  lines: BoundedDiffLine[]
+}
+
+export interface BoundedDiffFile {
+  path: string
+  kind: 'created' | 'modified' | 'deleted'
+  additions: number
+  deletions: number
+  hunks: BoundedDiffHunk[]
+  truncated?: boolean
+}
+
+export interface BoundedWorkspaceDiff {
+  files: BoundedDiffFile[]
+  /** Non-noise changed files BEFORE the file cap — lets the phone render
+   * "showing 40 of N". */
+  totalFiles: number
+  truncated: boolean
+}
+
+function boundedDiffKind(status: DiffFileStatus): BoundedDiffFile['kind'] {
+  if (status === 'created' || status === 'untracked') return 'created'
+  if (status === 'deleted') return 'deleted'
+  return 'modified'
+}
+
+function isUnifiedDiffMetadataLine(line: string): boolean {
+  return (
+    line.startsWith('diff --git') ||
+    line.startsWith('index ') ||
+    line.startsWith('+++ ') ||
+    line.startsWith('--- ') ||
+    line.startsWith('rename from ') ||
+    line.startsWith('rename to ') ||
+    line.startsWith('similarity index') ||
+    line.startsWith('old mode') ||
+    line.startsWith('new mode') ||
+    line.startsWith('new file mode') ||
+    line.startsWith('deleted file mode') ||
+    line.startsWith('Binary files') ||
+    line.startsWith('\\ No newline')
+  )
+}
+
+function boundDiffFile(summary: DiffFileSummary): BoundedDiffFile {
+  const file: BoundedDiffFile = {
+    path: summary.path,
+    kind: boundedDiffKind(summary.status),
+    additions: summary.additions ?? 0,
+    deletions: summary.deletions ?? 0,
+    hunks: []
+  }
+  // Sensitive previews stay hidden on the phone exactly as on the desktop;
+  // binary files have no renderable hunks either way.
+  if (!summary.diffText || summary.isBinary || summary.isSensitive) return file
+
+  let usedLines = 0
+  let oldCounter: number | undefined
+  let newCounter: number | undefined
+  let current: BoundedDiffHunk | null = null
+  for (const rawLine of summary.diffText.split(/\r?\n/)) {
+    if (rawLine.startsWith('@@')) {
+      if (usedLines >= BOUNDED_DIFF_MAX_LINES_PER_FILE) {
+        file.truncated = true
+        break
+      }
+      const header =
+        rawLine.length > BOUNDED_DIFF_MAX_LINE_CHARS
+          ? rawLine.slice(0, BOUNDED_DIFF_MAX_LINE_CHARS)
+          : rawLine
+      current = { header, lines: [] }
+      file.hunks.push(current)
+      const parsed = rawLine.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/)
+      oldCounter = parsed ? Number(parsed[1]) : undefined
+      newCounter = parsed ? Number(parsed[2]) : undefined
+      continue
+    }
+    if (!current || isUnifiedDiffMetadataLine(rawLine)) continue
+    if (usedLines >= BOUNDED_DIFF_MAX_LINES_PER_FILE) {
+      file.truncated = true
+      break
+    }
+    const marker = rawLine[0]
+    const body = rawLine.length > 0 ? rawLine.slice(1) : ''
+    const text =
+      body.length > BOUNDED_DIFF_MAX_LINE_CHARS ? body.slice(0, BOUNDED_DIFF_MAX_LINE_CHARS) : body
+    if (body.length > BOUNDED_DIFF_MAX_LINE_CHARS) file.truncated = true
+    const line: BoundedDiffLine = {
+      type: marker === '+' ? 'add' : marker === '-' ? 'del' : 'ctx',
+      text
+    }
+    if (line.type === 'add') {
+      if (newCounter !== undefined && newCounter > 0) line.newLine = newCounter
+      if (newCounter !== undefined) newCounter += 1
+    } else if (line.type === 'del') {
+      if (oldCounter !== undefined && oldCounter > 0) line.oldLine = oldCounter
+      if (oldCounter !== undefined) oldCounter += 1
+    } else {
+      if (oldCounter !== undefined && oldCounter > 0) line.oldLine = oldCounter
+      if (newCounter !== undefined && newCounter > 0) line.newLine = newCounter
+      if (oldCounter !== undefined) oldCounter += 1
+      if (newCounter !== undefined) newCounter += 1
+    }
+    current.lines.push(line)
+    usedLines += 1
+  }
+  return file
+}
+
+/** Project `getWorkspaceDiff` summaries into the bounded shape the phone's
+ * Diff Studio renders. Noise files are dropped (the desktop's "Hide noise"
+ * default); sensitive and binary files keep their row but ship no hunks. */
+export function buildBoundedWorkspaceDiff(summaries: DiffFileSummary[]): BoundedWorkspaceDiff {
+  const eligible = summaries.filter((summary) => !summary.isNoise)
+  const files = eligible.slice(0, BOUNDED_DIFF_MAX_FILES).map(boundDiffFile)
+  return {
+    files,
+    totalFiles: eligible.length,
+    truncated: eligible.length > BOUNDED_DIFF_MAX_FILES || files.some((file) => file.truncated)
+  }
+}
+
 export function computeRunDiff(
   pre: WorkspaceSnapshot,
   post: WorkspaceSnapshot,

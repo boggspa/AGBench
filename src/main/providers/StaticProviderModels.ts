@@ -38,13 +38,45 @@ export const CODEX_RETIRED_MODEL_IDS: ReadonlySet<string> = new Set([
 // from here. Retirement metadata is sourced from CODEX_MODEL_RETIREMENTS so
 // the fallback and live paths can never drift.
 export const CODEX_STATIC_MODELS = [
-  { id: 'gpt-5.5', label: 'GPT-5.5', description: 'Default Codex model', isDefault: true },
-  { id: 'gpt-5.4', label: 'GPT-5.4' },
-  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  {
+    id: 'gpt-5.5',
+    label: 'GPT-5.5',
+    description: 'Default Codex model',
+    isDefault: true,
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+  },
+  {
+    id: 'gpt-5.4',
+    label: 'GPT-5.4',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+  },
+  {
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4 Mini',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low' },
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+  },
   {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
-    description: 'Research preview where available'
+    description: 'Research preview where available',
+    supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
+    defaultReasoningEffort: 'low'
   }
   // gpt-5.2 and gpt-5.3-codex are HARD-retired (see CODEX_RETIRED_MODEL_IDS)
   // and intentionally omitted here.

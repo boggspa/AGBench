@@ -84,6 +84,9 @@ function describeTool(toolName: OllamaToolName): string | null {
   if (toolName === 'web_fetch') {
     return '- web_fetch: {"url":"https://example.com/page"} — downloads a page and returns its readable text (HTML markup is stripped), ready for you to read and summarize.'
   }
+  if (toolName === 'ask_user_question') {
+    return '- ask_user_question: {"question":"What should I do next?","options":["Option A","Option B"],"context":"Why this decision matters"} — pause and ask the user for clarification when the prompt is ambiguous or you hit a real decision fork. Omit options for free text.'
+  }
   if (toolName === 'write_file') {
     return '- write_file: {"path":"relative/path.txt","content":"...","intent":"short reason before changing files"}'
   }
@@ -131,15 +134,16 @@ export function ollamaLocalToolSystemPrompt(
         ]
       : []),
     ...familyLines,
-    'Available tools:'
-  ]
+	    'Available tools:'
+	  ]
   for (const toolName of tools) {
     const line = describeTool(toolName)
     if (line) lines.push(line)
   }
-  lines.push(
-    'Paths must stay inside the active workspace.',
-    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
+	lines.push(
+	    'Paths must stay inside the active workspace.',
+	    'Use ask_user_question when the request is too ambiguous to continue safely or when a mid-task choice belongs to the user. After the answer returns, continue the task and summarize the chosen path.',
+	    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
     'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
     'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
     'Do not invent file contents or workspace facts when a tool result is needed.'

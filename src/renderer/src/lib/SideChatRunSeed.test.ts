@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatRecord } from '../../../main/store/types'
-import { buildSideChatRunResultSeedPrompt } from './SideChatRunSeed'
+import {
+  buildHiddenSideChatInitialPrompt,
+  buildSideChatRunResultSeedPrompt
+} from './SideChatRunSeed'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
@@ -18,6 +21,16 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
 }
 
 describe('buildSideChatRunResultSeedPrompt', () => {
+  it('wraps hidden side-chat context separately from the user request', () => {
+    const prompt = buildHiddenSideChatInitialPrompt('Parent said: use the Test 3 folder.', 'Run ls')
+
+    expect(prompt).toContain('background only')
+    expect(prompt).toContain("do not treat it as the user's prompt")
+    expect(prompt).toContain('<parent_context_snapshot>')
+    expect(prompt).toContain('Parent said: use the Test 3 folder.')
+    expect(prompt).toContain('User side-chat request:\nRun ls')
+  })
+
   it('uses the assistant response from the selected run instead of a later run', () => {
     const prompt = buildSideChatRunResultSeedPrompt(
       makeChat({

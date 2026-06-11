@@ -479,7 +479,8 @@ declare global {
       writeWorkspaceFile: (
         workspace: string,
         path: string,
-        content: string
+        content: string,
+        baseEtag?: string | null
       ) => Promise<WorkspaceFileReadResult>
       captureSnapshot: (workspace: string) => Promise<any>
       computeRunDiff: (
@@ -525,15 +526,21 @@ declare global {
       onAgentQuestionCancelled: (
         handler: (info: { questionId: string; appChatId: string; reason: string }) => void
       ) => () => void
-      answerAgentQuestion: (payload: {
-        questionId: string
-        answer: string
-        isCustom?: boolean
-      }) => Promise<{ ok: boolean; error?: string }>
-      cancelAgentQuestion: (payload: {
-        questionId: string
-        reason?: string
-      }) => Promise<{ ok: boolean; error?: string }>
+	      answerAgentQuestion: (payload: {
+	        questionId: string
+	        answer: string
+	        isCustom?: boolean
+	        appChatId?: string
+	        appRunId?: string
+	        workspaceId?: string | null
+	      }) => Promise<{ ok: boolean; error?: string }>
+	      cancelAgentQuestion: (payload: {
+	        questionId: string
+	        reason?: string
+	        appChatId?: string
+	        appRunId?: string
+	        workspaceId?: string | null
+	      }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       revealPathInFinder: (path: string) => Promise<{ ok: boolean; error?: string }>
       getFaviconForUrl: (url: string) => Promise<

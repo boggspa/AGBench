@@ -83,7 +83,10 @@ import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeForm
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
 import { parseSideSlashCommand, type SideSlashCommand } from './lib/SideSlashCommand'
-import { buildSideChatRunResultSeedPrompt } from './lib/SideChatRunSeed'
+import {
+  buildHiddenSideChatInitialPrompt,
+  buildSideChatRunResultSeedPrompt
+} from './lib/SideChatRunSeed'
 import type { SettingsPanelUpdate } from './lib/settingsPanelUpdate'
 import { IOS_REMOTE_ENABLED } from './lib/featureFlags'
 import {
@@ -490,6 +493,46 @@ const WORKSPACE_ADD_POINTER_DURATION_MS = 6000
 // clampContextTurns moved to `src/main/PromptComposition.ts` and re-exported below.
 
 const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
+const EMPTY_AGENT_QUESTION_QUEUE: readonly AgentQuestionState[] = Object.freeze([])
+
+function enqueueAgentQuestion(
+  queue: readonly AgentQuestionState[] = EMPTY_AGENT_QUESTION_QUEUE,
+  next: AgentQuestionState
+): readonly AgentQuestionState[] {
+  const existingIndex = queue.findIndex((question) => question.questionId === next.questionId)
+  if (existingIndex >= 0) {
+    const updated = [...queue]
+    updated[existingIndex] = next
+    return updated
+  }
+  return [...queue, next]
+}
+
+function removeAgentQuestionFromQueue(
+  queue: readonly AgentQuestionState[] = EMPTY_AGENT_QUESTION_QUEUE,
+  questionId: string
+): readonly AgentQuestionState[] {
+  const next = queue.filter((question) => question.questionId !== questionId)
+  return next.length > 0 ? next : EMPTY_AGENT_QUESTION_QUEUE
+}
+
+function findQueuedAgentQuestion(
+  queuesByChatId: Record<string, readonly AgentQuestionState[]>,
+  questionId: string
+): { chatId: string; question: AgentQuestionState } | null {
+  for (const [chatId, queue] of Object.entries(queuesByChatId)) {
+    const question = queue.find((entry) => entry.questionId === questionId)
+    if (question) return { chatId, question }
+  }
+  return null
+}
+
+function agentQuestionQueueHasMessage(
+  queue: readonly AgentQuestionState[] | undefined,
+  messageId: string
+): boolean {
+  return Boolean(queue?.some((question) => question.messageId === messageId))
+}
 
 // Prompt-composition helpers moved to `src/main/PromptComposition.ts` (Phase B3 step 1).
 // Re-exported below from the canonical module so existing call sites keep working
@@ -568,6 +611,8 @@ type ChatPopoutHandoffState = {
 const CHAT_POPOUT_HANDOFF_PREFIX = 'taskwraith.chatPopoutHandoff.'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ID_METADATA_KEY = 'sideChatSelectedParticipantId'
 const SIDE_CHAT_SELECTED_PARTICIPANT_ROLE_METADATA_KEY = 'sideChatSelectedParticipantRole'
+const SIDE_CHAT_HIDDEN_CONTEXT_PROMPT_METADATA_KEY = 'sideChatHiddenContextPrompt'
+const SIDE_CHAT_HIDDEN_CONTEXT_CONSUMED_AT_METADATA_KEY = 'sideChatHiddenContextConsumedAt'
 const GUEST_PARTICIPANT_STEERING_PREAMBLE =
   'You are a guest participant attached to a standard TaskWraith chat. The main parent agent has priority. Respond to the user request in parallel as a second opinion or disjoint helper. Write or edit files only when useful and keep any changes disjoint from the main agent. If your intended edits overlap or conflict with the main agent, stop and explain the conflict instead of fighting the main agent.'
 const GUEST_PARENT_CONTEXT_TURN_LIMIT = 20
@@ -679,7 +724,14 @@ function buildIsolatedSideChatContextSeed(parentChat: ChatRecord): string {
     remaining -= next.length + 2
   }
   if (lines.length === 0) return ''
-  return [heading, '', 'Parent context snapshot:', ...lines, '', 'Side-chat request:'].join('\n')
+  return [heading, '', 'Parent context snapshot:', ...lines].join('\n')
+}
+
+function getPendingSideChatHiddenContextPrompt(chat: ChatRecord | null | undefined): string {
+  if (!chat || chat.parentChatRelation !== 'sideChat') return ''
+  if (chat.providerMetadata?.[SIDE_CHAT_HIDDEN_CONTEXT_CONSUMED_AT_METADATA_KEY]) return ''
+  const value = chat.providerMetadata?.[SIDE_CHAT_HIDDEN_CONTEXT_PROMPT_METADATA_KEY]
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function getSideChatMode(chat: ChatRecord): SideChatCreateMode {
@@ -1804,11 +1856,14 @@ function App(): React.JSX.Element {
   const [isAttachingWindow, setIsAttachingWindow] = useState(false)
   const [pendingPlanChoiceByChatId, setPendingPlanChoiceForChat] =
     usePerChatState<PlanChoiceState | null>(null)
-  // QMOD (1.0.3) — per-chat pending agent question state. Driven by the
-  // `agent-question-requested` IPC event from main. Cleared on submit /
-  // dismiss / cancellation. See AgentQuestionState type for shape.
-  const [pendingAgentQuestionByChatId, setPendingAgentQuestionForChat] =
-    usePerChatState<AgentQuestionState | null>(null)
+  // QMOD (1.0.3) — per-chat pending agent question queue. Driven by the
+  // `agent-question-requested` IPC event from main. Cleared per question
+  // on submit / dismiss / cancellation. Multiple agents in one chat can
+  // now ask overlapping clarification questions without overwriting each
+  // other.
+  const [pendingAgentQuestionsByChatId, setPendingAgentQuestionsForChat] = usePerChatState<
+    readonly AgentQuestionState[]
+  >(EMPTY_AGENT_QUESTION_QUEUE)
   const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
   const [commandPaletteQueryByChatId, setCommandPaletteQueryForChat] = usePerChatState('')
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
@@ -2287,9 +2342,9 @@ function App(): React.JSX.Element {
   const pendingPlanChoice = currentComposerChatId
     ? pendingPlanChoiceByChatId[currentComposerChatId] || null
     : null
-  const pendingAgentQuestion = currentComposerChatId
-    ? pendingAgentQuestionByChatId[currentComposerChatId] || null
-    : null
+  const pendingAgentQuestions = currentComposerChatId
+    ? pendingAgentQuestionsByChatId[currentComposerChatId] || EMPTY_AGENT_QUESTION_QUEUE
+    : EMPTY_AGENT_QUESTION_QUEUE
   const isCommandPaletteOpen = currentComposerChatId
     ? Boolean(commandPaletteOpenByChatId[currentComposerChatId])
     : false
@@ -7559,7 +7614,7 @@ function App(): React.JSX.Element {
            *
            *  1. Renderer creates a synthetic `role: 'system'` marker
            *     in `chat.messages` with `metadata.kind: 'agentQuestion'`
-           *     and sets `pendingAgentQuestionByChatId[chatId]`.
+           *     and enqueues it in `pendingAgentQuestionsByChatId[chatId]`.
            *  2. Main broadcasts `chat-updated` (e.g. because the tool-
            *     call event from the participant was just flushed, or
            *     because another participant in the same ensemble round
@@ -7570,7 +7625,7 @@ function App(): React.JSX.Element {
            *     vanished from `chat.messages`.
            *  4. The transcript-side `AgentQuestionCard` renders inline
            *     next to the marker via
-           *     `pendingAgentQuestion.messageId === msg.id`. With the
+           *     `pendingAgentQuestions[].messageId === msg.id`. With the
            *     marker gone, the card never appears — the modal never
            *     pops, the user has no way to answer, the question
            *     times out after 10 minutes, and the agent reports
@@ -7674,16 +7729,18 @@ function App(): React.JSX.Element {
           }
           return { ...prev, messages: [...(prev.messages || []), next] }
         })
-        setPendingAgentQuestionForChat(request.appChatId, {
-          questionId: request.questionId,
-          appRunId: request.appRunId,
-          messageId,
-          provider: (request.provider as ProviderId | undefined) ?? null,
-          question: request.question,
-          options: request.options,
-          context: request.context,
-          askedAt: Date.now()
-        })
+        setPendingAgentQuestionsForChat(request.appChatId, (prev) =>
+          enqueueAgentQuestion(prev, {
+            questionId: request.questionId,
+            appRunId: request.appRunId,
+            messageId,
+            provider: (request.provider as ProviderId | undefined) ?? null,
+            question: request.question,
+            options: request.options,
+            context: request.context,
+            askedAt: Date.now()
+          })
+        )
       })
     }
     if (typeof window.api.onAgentQuestionCancelled === 'function') {
@@ -7692,8 +7749,8 @@ function App(): React.JSX.Element {
         // question. appChatId comes back on the cancellation payload so
         // we don't have to maintain our own questionId → chatId map.
         if (info.appChatId) {
-          setPendingAgentQuestionForChat(info.appChatId, (prev) =>
-            prev?.questionId === info.questionId ? null : prev
+          setPendingAgentQuestionsForChat(info.appChatId, (prev) =>
+            removeAgentQuestionFromQueue(prev, info.questionId)
           )
         }
       })
@@ -9686,6 +9743,10 @@ function App(): React.JSX.Element {
       const effectiveSeedPrompt = shouldSeedIsolatedContextSnapshot
         ? buildIsolatedSideChatContextSeed(parentChat)
         : seedPrompt
+      const hiddenInitialContextPrompt =
+        shouldSeedIsolatedContextSnapshot && effectiveSeedPrompt.trim()
+          ? effectiveSeedPrompt.trim()
+          : ''
       const createdSideChat = await window.api.createSideChat({
         parentChatId: parentChat.appChatId,
         chatKind:
@@ -9774,6 +9835,17 @@ function App(): React.JSX.Element {
         }
         void window.api.saveChat(nextSideChat).catch(() => {})
       }
+      if (hiddenInitialContextPrompt) {
+        nextSideChat = {
+          ...nextSideChat,
+          providerMetadata: {
+            ...(nextSideChat.providerMetadata || {}),
+            [SIDE_CHAT_HIDDEN_CONTEXT_PROMPT_METADATA_KEY]: hiddenInitialContextPrompt
+          },
+          updatedAt: Date.now()
+        }
+        void window.api.saveChat(nextSideChat).catch(() => {})
+      }
       chatByIdRef.current.set(nextSideChat.appChatId, nextSideChat)
       setChats((prev) => [
         nextSideChat,
@@ -9788,7 +9860,7 @@ function App(): React.JSX.Element {
         setIsSideChatDockPanelOpen(true)
         setRightDockTab('chat')
       }
-      setChatPromptDraft(nextSideChat.appChatId, effectiveSeedPrompt)
+      setChatPromptDraft(nextSideChat.appChatId, hiddenInitialContextPrompt ? '' : effectiveSeedPrompt)
       if (clearParentDraft) {
         setChatPromptDraft(parentChat.appChatId, '')
       }
@@ -10182,11 +10254,37 @@ function App(): React.JSX.Element {
 
   const handleSideRun = () => {
     if (!sideChat || !sidePrompt.trim()) return
+    const hiddenContextPrompt = getPendingSideChatHiddenContextPrompt(sideChat)
+    const requestPrompt = hiddenContextPrompt
+      ? buildHiddenSideChatInitialPrompt(hiddenContextPrompt, sidePrompt)
+      : sidePrompt
+    const hiddenContextConsumedAt = hiddenContextPrompt ? new Date().toISOString() : ''
+    const sideChatForRequest = hiddenContextConsumedAt
+      ? {
+          ...sideChat,
+          providerMetadata: {
+            ...(sideChat.providerMetadata || {}),
+            [SIDE_CHAT_HIDDEN_CONTEXT_CONSUMED_AT_METADATA_KEY]: hiddenContextConsumedAt
+          },
+          updatedAt: Date.now()
+        }
+      : sideChat
     const request = buildRunRequest(undefined, undefined, {
-      chat: sideChat,
-      prompt: sidePrompt,
+      chat: sideChatForRequest,
+      prompt: requestPrompt,
       imageAttachments: []
     })
+    if (hiddenContextPrompt) {
+      request.displayPrompt = sidePrompt
+      updateChatById(sideChat.appChatId, (source) => ({
+        ...source,
+        providerMetadata: {
+          ...(source.providerMetadata || {}),
+          [SIDE_CHAT_HIDDEN_CONTEXT_CONSUMED_AT_METADATA_KEY]: hiddenContextConsumedAt
+        },
+        updatedAt: Date.now()
+      }))
+    }
     if (isChatBusy(sideChat.appChatId)) {
       queueRunRequest(request)
       setChatPromptDraft(sideChat.appChatId, '')
@@ -11742,11 +11840,8 @@ function App(): React.JSX.Element {
       if (!target) return
       const chatId = chat.appChatId
       if (
-        messageAnchorsActivePrompt(
-          messageId,
-          pendingAgentQuestionByChatId[chatId]?.messageId,
-          pendingPlanChoiceByChatId[chatId]?.messageId
-        )
+        agentQuestionQueueHasMessage(pendingAgentQuestionsByChatId[chatId], messageId) ||
+        messageAnchorsActivePrompt(messageId, null, pendingPlanChoiceByChatId[chatId]?.messageId)
       ) {
         if (typeof window !== 'undefined' && typeof window.alert === 'function') {
           window.alert(
@@ -11769,7 +11864,7 @@ function App(): React.JSX.Element {
         messages: source.messages.filter((m) => m.id !== messageId)
       }))
     },
-    [updateChatById, pendingAgentQuestionByChatId, pendingPlanChoiceByChatId]
+    [updateChatById, pendingAgentQuestionsByChatId, pendingPlanChoiceByChatId]
   )
 
   // 1.0.4-AQ4 — Delete a single message from the current chat's
@@ -11777,7 +11872,7 @@ function App(): React.JSX.Element {
   // destructive and the user can't undo from the UI (no
   // tombstone). The orphan-pending guard below blocks deleting a
   // message that's currently the anchor of an in-flight
-  // `pendingAgentQuestion` / `pendingPlanChoice` — deleting it
+  // `pendingAgentQuestions` / `pendingPlanChoice` — deleting it
   // would strand the modal (its messageId would point at a row
   // that no longer exists in the transcript).
   const handleDeleteMessage = useCallback(
@@ -11920,47 +12015,48 @@ function App(): React.JSX.Element {
   // message into the chat for transcript continuity so the trail of
   // "agent asked, user said X" stays visible after the modal closes.
   const handleAgentQuestionSubmit = useCallback(
-    (questionId: string, answer: string, isCustom: boolean) => {
+    async (questionId: string, answer: string, isCustom: boolean) => {
       const trimmed = answer.trim()
       if (!trimmed) return
-      const targetChatId = currentChat?.appChatId
-      const pending = targetChatId ? pendingAgentQuestionByChatId[targetChatId] || null : null
-      if (pending && targetChatId) {
-        updateChatById(targetChatId, (prev) => {
-          const replyMsg: ChatMessage = {
-            id: `agent-question-reply-${questionId}`,
-            role: 'user',
-            content: trimmed,
-            timestamp: new Date().toISOString(),
-            metadata: {
-              kind: 'agentQuestionReply',
-              questionId,
-              respondedToMessageId: pending.messageId,
-              isCustomAnswer: isCustom
-            }
-          }
-          // Idempotent: don't append a duplicate if the user double-
-          // clicked the button before state updates settle.
-          if (prev.messages?.some((m) => m.id === replyMsg.id)) return prev
-          return { ...prev, messages: [...(prev.messages || []), replyMsg] }
-        })
-      }
-      if (targetChatId) {
-        setPendingAgentQuestionForChat(targetChatId, (prev) =>
-          prev?.questionId === questionId ? null : prev
+      const located = findQueuedAgentQuestion(pendingAgentQuestionsByChatId, questionId)
+      if (!located) return
+      const { chatId: targetChatId, question: pending } = located
+      const response = await window.api.answerAgentQuestion({
+        questionId,
+        answer: trimmed,
+        isCustom,
+        appChatId: targetChatId,
+        appRunId: pending.appRunId
+      })
+      if (!response.ok) {
+        setPendingAgentQuestionsForChat(targetChatId, (prev) =>
+          removeAgentQuestionFromQueue(prev, questionId)
         )
+        return
       }
-      // Fire-and-forget — the parked Promise on main resolves and the
-      // tool call returns to the agent. Errors here are benign (e.g.
-      // the question already timed out) so we don't surface them.
-      void window.api.answerAgentQuestion({ questionId, answer: trimmed, isCustom })
+      updateChatById(targetChatId, (prev) => {
+        const replyMsg: ChatMessage = {
+          id: `agent-question-reply-${questionId}`,
+          role: 'user',
+          content: trimmed,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            kind: 'agentQuestionReply',
+            questionId,
+            respondedToMessageId: pending.messageId,
+            isCustomAnswer: isCustom
+          }
+        }
+        // Idempotent: don't append a duplicate if the user double-
+        // clicked the button before state updates settle.
+        if (prev.messages?.some((m) => m.id === replyMsg.id)) return prev
+        return { ...prev, messages: [...(prev.messages || []), replyMsg] }
+      })
+      setPendingAgentQuestionsForChat(targetChatId, (prev) =>
+        removeAgentQuestionFromQueue(prev, questionId)
+      )
     },
-    [
-      currentChat?.appChatId,
-      pendingAgentQuestionByChatId,
-      updateChatById,
-      setPendingAgentQuestionForChat
-    ]
+    [pendingAgentQuestionsByChatId, updateChatById, setPendingAgentQuestionsForChat]
   )
 
   // QMOD (1.0.3) — user dismissed the modal without answering. The
@@ -11968,16 +12064,21 @@ function App(): React.JSX.Element {
   // treat that as "skip / continue without answer" so the run isn't
   // pinned waiting forever (the 10-min timeout is the safety net).
   const handleAgentQuestionDismiss = useCallback(
-    (questionId: string) => {
-      const targetChatId = currentChat?.appChatId
-      if (targetChatId) {
-        setPendingAgentQuestionForChat(targetChatId, (prev) =>
-          prev?.questionId === questionId ? null : prev
-        )
-      }
-      void window.api.cancelAgentQuestion({ questionId, reason: 'user-dismissed' })
+    async (questionId: string) => {
+      const located = findQueuedAgentQuestion(pendingAgentQuestionsByChatId, questionId)
+      if (!located) return
+      const { chatId: targetChatId, question } = located
+      await window.api.cancelAgentQuestion({
+        questionId,
+        reason: 'user-dismissed',
+        appChatId: targetChatId,
+        appRunId: question.appRunId
+      })
+      setPendingAgentQuestionsForChat(targetChatId, (prev) =>
+        removeAgentQuestionFromQueue(prev, questionId)
+      )
     },
-    [currentChat?.appChatId, setPendingAgentQuestionForChat]
+    [pendingAgentQuestionsByChatId, setPendingAgentQuestionsForChat]
   )
 
   const handleRunFallback = async (fallbackModel: string) => {
@@ -14248,51 +14349,60 @@ function App(): React.JSX.Element {
   // round + 'ensemble-pending' so the row stays stable across
   // re-renders. The Skip / Steer / Edit actions for ensemble entries
   // delegate to the right ensemble-aware paths.
-  const queuedMessagesAboveRowEntries: QueuedMessageRowEntry[] = useMemo(() => {
-    if (!currentChat) return []
-    const chatId = currentChat.appChatId
-    const entries: QueuedMessageRowEntry[] = queuedRuns
-      .filter((request) => request.chatRecord?.appChatId === chatId)
-      .map((request) => ({
-        id: request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`,
-        provider: request.provider,
-        prompt: request.displayPrompt || request.prompt,
-        dmTargetParticipantId: request.dmTargetParticipantId
-      }))
-    // Append every ensemble-round queued prompt. The orchestrator
-    // now supports a FIFO queue (`activeRound.queuedPrompts`); the
-    // legacy `queuedPrompt` field stays in sync with the head for
-    // back-compat readers. Iterate the array so the stack shows
-    // every pending entry with its own Edit / Delete / Steer.
-    const ensembleRound = currentChat.ensemble?.activeRound
-    if (ensembleRound?.status === 'running') {
-      const prompts =
-        Array.isArray(ensembleRound.queuedPrompts) && ensembleRound.queuedPrompts.length > 0
-          ? ensembleRound.queuedPrompts
-          : ensembleRound.queuedPrompt
-            ? [ensembleRound.queuedPrompt]
-            : []
-      const ensembleProvider: ProviderId =
-        currentChat.provider ||
-        currentChat.ensemble?.participants.find((p) => p.enabled)?.provider ||
-        'codex'
-      for (let idx = 0; idx < prompts.length; idx += 1) {
-        entries.push({
-          id: `ensemble-queued-${ensembleRound.roundId}-${idx}`,
-          provider: ensembleProvider,
-          prompt: prompts[idx]
-        })
+  const buildQueuedMessagesAboveRowEntriesForChat = useCallback(
+    (chat: ChatRecord | null | undefined): QueuedMessageRowEntry[] => {
+      if (!chat) return []
+      const chatId = chat.appChatId
+      const entries: QueuedMessageRowEntry[] = queuedRuns
+        .filter((request) => request.chatRecord?.appChatId === chatId)
+        .map((request) => ({
+          id: request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`,
+          provider: request.provider,
+          prompt: request.displayPrompt || request.prompt,
+          dmTargetParticipantId: request.dmTargetParticipantId
+        }))
+      // Append every ensemble-round queued prompt. The orchestrator
+      // now supports a FIFO queue (`activeRound.queuedPrompts`); the
+      // legacy `queuedPrompt` field stays in sync with the head for
+      // back-compat readers. Iterate the array so the stack shows
+      // every pending entry with its own Edit / Delete / Steer.
+      const ensembleRound = chat.ensemble?.activeRound
+      if (ensembleRound?.status === 'running') {
+        const prompts =
+          Array.isArray(ensembleRound.queuedPrompts) && ensembleRound.queuedPrompts.length > 0
+            ? ensembleRound.queuedPrompts
+            : ensembleRound.queuedPrompt
+              ? [ensembleRound.queuedPrompt]
+              : []
+        const ensembleProvider: ProviderId =
+          chat.provider || chat.ensemble?.participants.find((p) => p.enabled)?.provider || 'codex'
+        for (let idx = 0; idx < prompts.length; idx += 1) {
+          entries.push({
+            id: `ensemble-queued-${ensembleRound.roundId}-${idx}`,
+            provider: ensembleProvider,
+            prompt: prompts[idx]
+          })
+        }
       }
-    }
-    return entries
-  }, [currentChat, queuedRuns])
+      return entries
+    },
+    [queuedRuns]
+  )
+  const queuedMessagesAboveRowEntries: QueuedMessageRowEntry[] = useMemo(
+    () => buildQueuedMessagesAboveRowEntriesForChat(currentChat),
+    [buildQueuedMessagesAboveRowEntriesForChat, currentChat]
+  )
+  const sideQueuedMessagesAboveRowEntries: QueuedMessageRowEntry[] = useMemo(
+    () => buildQueuedMessagesAboveRowEntriesForChat(sideChat),
+    [buildQueuedMessagesAboveRowEntriesForChat, sideChat]
+  )
   // Edit: hoist the queued prompt into the composer textarea and
   // remove the queue entry. Most chat apps do this when the user
   // clicks "Edit" on a queued message — the result is a fresh
   // draft the user can revise + resend, not a magical in-place
   // mutator.
   const handleEditQueuedMessage = useCallback(
-    (entryId: string) => {
+    (entryId: string, targetChat?: ChatRecord | null) => {
       // Ensemble-queued entry: synthetic id
       // `ensemble-queued-<roundId>-<idx>`. The trailing `<idx>` is the
       // FIFO position in `activeRound.queuedPrompts`. Edit hoists THAT
@@ -14301,7 +14411,7 @@ function App(): React.JSX.Element {
       const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
       if (ensembleMatch) {
         const idx = Number(ensembleMatch[2])
-        const chat = currentChat
+        const chat = targetChat || currentChat
         const round = chat?.ensemble?.activeRound
         if (!chat || !round) return
         const currentQueue =
@@ -14361,14 +14471,14 @@ function App(): React.JSX.Element {
   // to 'cancelled' so the store-backed listing doesn't resurrect it
   // on the next sync.
   const handleDeleteQueuedMessage = useCallback(
-    (entryId: string) => {
+    (entryId: string, targetChat?: ChatRecord | null) => {
       // Ensemble-queued: splice the targeted index out of the queue
       // and persist. The orchestrator's next round-end dispatch
       // reads from the front, so future entries remain in order.
       const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
       if (ensembleMatch) {
         const idx = Number(ensembleMatch[2])
-        const chat = currentChat
+        const chat = targetChat || currentChat
         const round = chat?.ensemble?.activeRound
         if (!chat || !round) return
         const currentQueue =
@@ -14422,7 +14532,7 @@ function App(): React.JSX.Element {
   // dispatch this queued request immediately. Same gentle handoff
   // as the composer's Steer button — no restart of unrelated state.
   const handleSteerToQueuedMessage = useCallback(
-    (entryId: string) => {
+    (entryId: string, targetChat?: ChatRecord | null) => {
       // Ensemble-queued: cancel the current round and dispatch the
       // targeted queued prompt as a fresh round (mode='steer'). The
       // orchestrator's cancelRound clears `runtime.queuedPrompts`,
@@ -14435,7 +14545,7 @@ function App(): React.JSX.Element {
       const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
       if (ensembleMatch) {
         const idx = Number(ensembleMatch[2])
-        const chat = currentChat
+        const chat = targetChat || currentChat
         const round = chat?.ensemble?.activeRound
         if (!chat || !round) return
         const currentQueue =
@@ -14498,7 +14608,13 @@ function App(): React.JSX.Element {
         void executeRunRef.current({ ...match })
       }
       if (targetChatId && isChatBusy(targetChatId)) {
-        void handleCancel().then(dispatchSteered)
+        const targetRecord =
+          targetChat || match.chatRecord || chatByIdRef.current.get(targetChatId) || null
+        if (targetRecord && targetRecord.appChatId !== currentChat?.appChatId) {
+          void cancelLinkedChatRun(targetRecord).then(dispatchSteered)
+        } else {
+          void handleCancel().then(dispatchSteered)
+        }
       } else {
         dispatchSteered()
       }
@@ -16574,7 +16690,7 @@ function App(): React.JSX.Element {
                 isThinking={effectiveIsThinking}
                 showFallbackUX={showFallbackUX}
                 pendingPlanChoice={pendingPlanChoice}
-                pendingAgentQuestion={pendingAgentQuestion}
+                pendingAgentQuestions={pendingAgentQuestions}
                 onAgentQuestionSubmit={handleAgentQuestionSubmit}
                 onAgentQuestionDismiss={handleAgentQuestionDismiss}
                 runCompleteNotice={visibleRunCompleteNotice}
@@ -19885,7 +20001,9 @@ function App(): React.JSX.Element {
               isThinking={isSideChatRunning}
               showFallbackUX={false}
               pendingPlanChoice={null}
-              pendingAgentQuestion={null}
+              pendingAgentQuestions={
+                pendingAgentQuestionsByChatId[sideChat.appChatId] || EMPTY_AGENT_QUESTION_QUEUE
+              }
               onAgentQuestionSubmit={() => {}}
               onAgentQuestionDismiss={() => {}}
               runCompleteNotice={sideRunCompleteNotice}
@@ -19941,6 +20059,18 @@ function App(): React.JSX.Element {
                 handleSideRun()
               }}
             >
+              {sideQueuedMessagesAboveRowEntries.length > 0 && (
+                <div className="composer-above-bar-stack side-chat-above-bar-stack">
+                  <QueuedMessagesAboveRow
+                    chat={sideChat}
+                    entries={sideQueuedMessagesAboveRowEntries}
+                    onEdit={(entryId) => handleEditQueuedMessage(entryId, sideChat)}
+                    onDelete={(entryId) => handleDeleteQueuedMessage(entryId, sideChat)}
+                    onSteer={(entryId) => handleSteerToQueuedMessage(entryId, sideChat)}
+                    onReorder={handleReorderQueuedMessages}
+                  />
+                </div>
+              )}
               <div className="composer-inner-module side-chat-inner-module">
                 <div className="composer-textarea-wrap side-chat-textarea-wrap">
                   {sideComposerHasMention && (
@@ -20144,22 +20274,22 @@ function App(): React.JSX.Element {
                         </span>
                       </div>
                     </div>
-                    <div
-                      className="composer-telemetry-row side-chat-telemetry-row"
-                      data-has-token-tally="false"
-                    >
-                      <ComposerRunTimecode
-                        running={isSideChatRunning}
-                        startedAt={sideComposerRunTimecodeStartedAt}
-                      />
-                      <ComposerCumulativeTimecode
-                        running={isSideChatRunning}
-                        startedAt={sideComposerRunTimecodeStartedAt}
-                        cumulativeBaseMs={sideCumulativeRunBaseMs}
-                      />
-                    </div>
                   </div>
                 </div>
+              </div>
+              <div
+                className="composer-telemetry-row side-chat-telemetry-row"
+                data-has-token-tally="false"
+              >
+                <ComposerRunTimecode
+                  running={isSideChatRunning}
+                  startedAt={sideComposerRunTimecodeStartedAt}
+                />
+                <ComposerCumulativeTimecode
+                  running={isSideChatRunning}
+                  startedAt={sideComposerRunTimecodeStartedAt}
+                  cumulativeBaseMs={sideCumulativeRunBaseMs}
+                />
               </div>
             </form>
               </aside>

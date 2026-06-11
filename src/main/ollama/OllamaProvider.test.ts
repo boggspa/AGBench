@@ -397,10 +397,11 @@ describe('ollamaNativeToolDefinitions', () => {
     expect(names).toEqual([
       'read_file',
       'list_directory',
-      'workspace_search',
-      'web_search',
-      'web_fetch'
-    ])
+	      'workspace_search',
+	      'web_search',
+	      'web_fetch',
+	      'ask_user_question'
+	    ])
     const webSearch = defs.find((def) => def.function.name === 'web_search')
     expect(webSearch?.type).toBe('function')
     expect(webSearch?.function.parameters.required).toEqual(['query'])
@@ -445,11 +446,13 @@ describe('Ollama tool tiers', () => {
     expect(ollamaToolNamesForTier('read_only')).toEqual([
       'read_file',
       'list_directory',
-      'workspace_search',
-      'web_search',
-      'web_fetch'
-    ])
-    expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
+	      'workspace_search',
+	      'web_search',
+	      'web_fetch',
+	      'ask_user_question'
+	    ])
+	    expect(ollamaToolAllowedInTier('ask_user_question', 'read_only')).toBe(true)
+	    expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
   })
 
   it('adds file edits and shell incrementally', () => {

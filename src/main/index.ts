@@ -9,7 +9,8 @@ import {
   screen,
   powerMonitor,
   nativeImage,
-  clipboard
+  clipboard,
+  Tray
 } from 'electron'
 import type {
   BrowserWindowConstructorOptions,
@@ -18,6 +19,11 @@ import type {
 } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
 import { FaviconService } from './services/FaviconService'
+import {
+  listWorkspaceFiles as listWorkspaceFilesForEditor,
+  readWorkspaceFile as readWorkspaceFileForEditor,
+  writeWorkspaceFile as writeWorkspaceFileForEditor
+} from './services/WorkspaceFileEditorService'
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess, execFile } from 'child_process'
@@ -49,7 +55,6 @@ import {
   resolveHostDirectory,
   resolveScopedDirectory,
   resolveGeminiMcpPath,
-  resolveWorkspaceChild,
   toWorkspaceRelativePath
 } from './PathScope'
 import {
@@ -110,9 +115,6 @@ import {
 } from './geminiMcpConstants'
 import {
   MAX_EDITOR_FILE_BYTES,
-  MAX_EDITOR_FILES,
-  MAX_EDITOR_DEPTH,
-  SKIP_EDITOR_DIRS,
   MAX_SCHEDULE_TIMER_DELAY_MS,
   GROK_USAGE_FRESH_TTL_MS,
   GROK_SCOPED_MCP_SERVER_NAME,
@@ -151,7 +153,17 @@ import {
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
-import { RemoteQuestionRegistry, type RemoteQuestionResolution } from './RemoteQuestionRegistry'
+import {
+  REMOTE_QUESTION_MAX_ANSWER_CHARS,
+  REMOTE_QUESTION_MAX_CONTEXT_CHARS,
+  REMOTE_QUESTION_MAX_OPTION_CHARS,
+  REMOTE_QUESTION_MAX_OPTIONS,
+  REMOTE_QUESTION_MAX_QUESTION_CHARS,
+  RemoteQuestionRegistry,
+  type RemoteQuestionRecord,
+  type RemoteQuestionResolution,
+  type RemoteQuestionResolutionScope
+} from './RemoteQuestionRegistry'
 import {
   buildMobileQuestionCard,
   buildRemoteEnsembleState,
@@ -451,7 +463,12 @@ import {
   type GeminiMemoryDiscoveryRecord
 } from './gemini/GeminiDiscovery'
 import { TrustStatusService } from './TrustStatusService'
-import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
+import {
+  getWorkspaceDiff,
+  captureWorkspaceSnapshot,
+  computeRunDiff,
+  buildBoundedWorkspaceDiff
+} from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
 import { isPathInsideWorkspace } from './AgenticPolicy'
 import { RunManager } from './RunManager'
@@ -713,8 +730,60 @@ function cancelPendingAgentQuestionsForRun(appRunId: string, reason: string): vo
   remoteQuestionRegistry.cancelForRun(appRunId, reason)
 }
 
+function trimQuestionEventText(value: string | undefined, maxChars = 240): string | undefined {
+  const normalized = optionalString(value)
+  if (!normalized) return undefined
+  return normalized.length <= maxChars ? normalized : `${normalized.slice(0, maxChars)}...`
+}
+
+function appendAgentQuestionRunEvent(
+  record: RemoteQuestionRecord,
+  eventType: 'registered' | 'answered' | 'rejected' | 'expired' | 'cancelled',
+  detail: { reason?: string; answerLength?: number } = {}
+): void {
+  if (!record.runId) return
+  const provider = record.provider || 'gemini'
+  const kind =
+    eventType === 'registered'
+      ? 'question_requested'
+      : eventType === 'answered'
+        ? 'question_answered'
+        : 'question_cancelled'
+  const summary =
+    eventType === 'registered'
+      ? 'Agent asked the user a question.'
+      : eventType === 'answered'
+        ? 'User answered an agent question.'
+        : `Agent question ${eventType}.`
+  appendDurableRunEvent({
+    runId: record.runId,
+    chatId: record.threadId,
+    workspaceId: record.workspaceId || undefined,
+    workspacePath: record.workspacePath,
+    provider,
+    kind,
+    phase: 'control',
+    source: 'main',
+    summary,
+    payload: {
+      questionId: record.questionId,
+      promptId: record.promptId,
+      status: record.status,
+      question: trimQuestionEventText(record.question, 320),
+      context: trimQuestionEventText(record.context, 160),
+      optionCount: record.options?.length || 0,
+      reason: detail.reason || record.cancellationReason,
+      answerLength: detail.answerLength
+    }
+  })
+}
+
 remoteQuestionRegistry.subscribe((event) => {
   const record = event.record
+  appendAgentQuestionRunEvent(record, event.type, {
+    reason: 'reason' in event ? event.reason : record.cancellationReason,
+    answerLength: event.type === 'answered' ? event.answer.length : undefined
+  })
   const questionCard = buildMobileQuestionCard(record)
   const envelope = buildRemoteProjectionEnvelope({
     kind: 'questionCard',
@@ -866,6 +935,26 @@ const isGeminiMcpBridgeProcess =
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 
+function taskwraithMcpBridgeCommandStatus(): { command: string; available: boolean; error?: string } {
+  const command = process.execPath
+  try {
+    fsSync.accessSync(command, fsSync.constants.X_OK)
+    return { command, available: true }
+  } catch (error) {
+    return {
+      command,
+      available: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+function taskwraithMcpBridgeUnavailableMessage(
+  status: { command: string; available: boolean; error?: string } = taskwraithMcpBridgeCommandStatus()
+): string {
+  return `TaskWraith MCP bridge executable is not available at ${status.command}: ${status.error || 'not executable'}`
+}
+
 const mcpBridgeRuntime = createMcpBridgeRuntime({
   getSettings: () => AppStore.getSettings(),
   updateSettings: (patch) => AppStore.updateSettings(patch),
@@ -876,7 +965,7 @@ const mcpBridgeRuntime = createMcpBridgeRuntime({
   getAppVersion: () => app.getVersion(),
   isDev: () => is.dev,
   isPackaged: () => app.isPackaged,
-  getProcessExecPath: () => process.execPath,
+  getProcessExecPath: () => taskwraithMcpBridgeCommandStatus().command,
   resolveCliProviderBinary,
   captureProcessOutput,
   readGeminiCapabilitySection,
@@ -1893,6 +1982,7 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
 
 runManager.onChange((event) => {
   if (event.type === 'removed') {
+    cancelPendingAgentQuestionsForRun(event.session.runId, 'run-removed')
     void appShellStatsService.refresh().catch((err) => {
       console.warn(
         '[AppShellStats] refresh after run removal failed:',
@@ -1904,6 +1994,14 @@ runManager.onChange((event) => {
   persistRunSessionQueueState(event.session)
   expireRunScopedApprovalLedger(event.session)
   getRunRepository().appendLifecycleEvent(event.type, event.session)
+  if (
+    event.type === 'updated' &&
+    (event.session.status === 'completed' ||
+      event.session.status === 'failed' ||
+      event.session.status === 'cancelled')
+  ) {
+    cancelPendingAgentQuestionsForRun(event.session.runId, `run-${event.session.status}`)
+  }
   void appShellStatsService.refresh().catch((err) => {
     console.warn(
       '[AppShellStats] refresh after run state change failed:',
@@ -4883,14 +4981,15 @@ async function ensureGeminiAuthProfileMaterialized(
   profileId?: string | null,
   options: { includeMcp?: boolean } = {}
 ): Promise<void> {
+  const bridgeCommandStatus = options.includeMcp ? taskwraithMcpBridgeCommandStatus() : null
   await ensureGeminiAuthProfileMaterializedViaProviderAuth(
     profileId,
-    options.includeMcp
+    options.includeMcp && bridgeCommandStatus?.available
       ? {
           includeMcp: true,
           mcp: {
             serverName: GEMINI_MCP_SERVER_NAME,
-            command: process.execPath,
+            command: bridgeCommandStatus.command,
             args: taskwraithMcpBridgeArgs(geminiMcpSocketPath()),
             includeTools: [...TASKWRAITH_MCP_TOOLS]
           }
@@ -5782,10 +5881,11 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
  * token are all module-scoped already).
  */
 function claudeTaskWraithMcpInput(route?: AgentRunRoute | null): ClaudeTaskWraithMcpInput {
-  const enabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
+  const bridgeCommandStatus = taskwraithMcpBridgeCommandStatus()
+  const enabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled && bridgeCommandStatus.available)
   return {
     enabled,
-    bridgeBinaryPath: process.execPath,
+    bridgeBinaryPath: bridgeCommandStatus.command,
     bridgeArgs: taskwraithMcpBridgeArgs(),
     ...(route?.appRunId ? { appRunId: route.appRunId } : {}),
     ...(route?.appChatId ? { appChatId: route.appChatId } : {})
@@ -6551,12 +6651,16 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       const cursorDir = join(payload.workspace, '.cursor')
       const cliPath = join(cursorDir, 'cli.json')
       const mcpPath = join(cursorDir, 'mcp.json')
+      const bridgeCommandStatus = taskwraithMcpBridgeCommandStatus()
+      if (!bridgeCommandStatus.available) {
+        throw new Error(taskwraithMcpBridgeUnavailableMessage(bridgeCommandStatus))
+      }
       await mcpBridgeRuntime.startGeminiMcpBroker()
       restoreCursorConfig = applyCursorWriteModeConfig(fsSync, cliPath, cursorDir, {
         allowRules: CURSOR_MCP_ALLOW_RULES,
         mcpConfigPath: mcpPath,
         serverEntry: buildCursorMcpServerEntry({
-          command: process.execPath,
+          command: bridgeCommandStatus.command,
           args: taskwraithMcpBridgeArgs(geminiMcpSocketPath()),
           env: {
             [GEMINI_MCP_BRIDGE_ENV]: '1',
@@ -6713,6 +6817,10 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
   }
   if (grokAdvertiseTaskWraithMcp) {
     try {
+      const bridgeCommandStatus = taskwraithMcpBridgeCommandStatus()
+      if (!bridgeCommandStatus.available) {
+        throw new Error(taskwraithMcpBridgeUnavailableMessage(bridgeCommandStatus))
+      }
       await mcpBridgeRuntime.startGeminiMcpBroker()
       const safeSubset = grokReadOnlySeat
       grokMcpServers = [
@@ -6724,7 +6832,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           // in the ACP EnvVariable shape ({name,value}) so broker calls map to
           // THIS run.
           name: safeSubset ? GROK_SCOPED_MCP_SERVER_NAME : GEMINI_MCP_SERVER_NAME,
-          command: process.execPath,
+          command: bridgeCommandStatus.command,
           args: taskwraithMcpBridgeArgs(geminiMcpSocketPath(), safeSubset),
           env: [
             { name: GEMINI_MCP_BRIDGE_ENV, value: '1' },
@@ -7743,10 +7851,11 @@ function getCodexClient(runtimeProfile?: RuntimeProfile | null): CodexAppServerC
   // setting. The Codex MCP integration mirrors the existing Gemini
   // gate (geminiMcpBridgeEnabled) — one user toggle, both providers.
   const settings = AppStore.getSettings()
-  if (settings.geminiMcpBridgeEnabled) {
+  const bridgeCommandStatus = taskwraithMcpBridgeCommandStatus()
+  if (settings.geminiMcpBridgeEnabled && bridgeCommandStatus.available) {
     codexClient.setMcpConfig({
       enabled: true,
-      bridgeBinaryPath: process.execPath,
+      bridgeBinaryPath: bridgeCommandStatus.command,
       bridgeArgs: taskwraithMcpBridgeArgs(),
       parentProvider: 'codex'
     })
@@ -8914,8 +9023,21 @@ function handleCodexServerRequest(message: any) {
                   'string'
                 ? ((formatted.preview as Record<string, unknown>).toolName as string)
                 : ''
-  const codexCanonicalToolName = canonicalTaskWraithToolName(probedToolName)
-  let externalPathDetection: PendingExternalPathDetection | undefined
+	  const codexCanonicalToolName = canonicalTaskWraithToolName(probedToolName)
+	  if (
+	    codexCanonicalToolName &&
+	    MCP_AUTO_ALLOWED_TOOLS.has(codexCanonicalToolName as TaskWraithMcpToolName)
+	  ) {
+	    if (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request') {
+	      codexClient.respond(message.id, { action: 'accept', content: null, _meta: null })
+	    } else if (method === 'tool/requestUserInput') {
+	      codexClient.respond(message.id, { answers: {} })
+	    } else {
+	      codexClient.respond(message.id, { decision: 'accept' })
+	    }
+	    return
+	  }
+	  let externalPathDetection: PendingExternalPathDetection | undefined
   try {
     const detection = detectExternalPathForProviderApproval({
       provider: 'codex',
@@ -12347,22 +12469,32 @@ async function executeGeminiMcpTool(
       // owns the desktop surface; main bridges via RemoteQuestionRegistry
       // and the `agent-question-requested` / `answer-agent-question`
       // IPC pair while also projecting the card to paired iOS devices.
-      const question = String(args.question || '').trim()
+      const question = String(args.question || '')
+        .trim()
+        .slice(0, REMOTE_QUESTION_MAX_QUESTION_CHARS)
       if (!question) {
+        toolIsError = true
         text = mcpJson({
           ok: false,
+          tool: 'ask_user_question',
           error: 'ask_user_question requires a non-empty `question` string.'
         })
       } else {
-        const rawOptions = Array.isArray(args.options) ? args.options : []
+        const rawOptions = Array.isArray(args.options) ? args.options : undefined
         const options = rawOptions
-          .map((opt: unknown) => (typeof opt === 'string' ? opt.trim() : ''))
+          ?.map((opt: unknown) =>
+            typeof opt === 'string' ? opt.trim().slice(0, REMOTE_QUESTION_MAX_OPTION_CHARS) : ''
+          )
           .filter((opt: string) => opt.length > 0)
-          .slice(0, 8)
-        const contextNote = optionalString(args.context)
+          .slice(0, REMOTE_QUESTION_MAX_OPTIONS)
+        const contextNote = (optionalString(args.context) || '').slice(
+          0,
+          REMOTE_QUESTION_MAX_CONTEXT_CHARS
+        )
         const questionId = `q-${context.appRunId || 'no-run'}-${Date.now()}-${Math.random()
           .toString(36)
           .slice(2, 8)}`
+        let registeredQuestionId = questionId
         const result = await new Promise<AgentQuestionResult>((resolve) => {
           const workspaceId =
             context.scope === 'workspace' ? workspaceIdForApprovalPush(context.workspacePath) : null
@@ -12379,18 +12511,19 @@ async function executeGeminiMcpTool(
             ttlMs: AGENT_QUESTION_TIMEOUT_MS,
             resolve
           })
+          registeredQuestionId = record.questionId
 
           // Emit the request to the renderer. The renderer modal
           // listens on `agent-question-requested` and shows the card.
           if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('agent-question-requested', {
-              questionId,
+              questionId: record.questionId,
               appRunId: context.appRunId || '',
               appChatId: context.appChatId || '',
               provider: parentProvider,
-              question,
-              options: options.length > 0 ? options : undefined,
-              context: contextNote
+              question: record.question,
+              options: record.options,
+              context: record.context
             })
           } else if (!bridgeBroadcasterRef) {
             // No renderer and no remote projection broadcaster means
@@ -12403,7 +12536,7 @@ async function executeGeminiMcpTool(
         text = mcpJson({
           ok: !result.cancelled,
           tool: 'ask_user_question',
-          questionId,
+          questionId: registeredQuestionId,
           answer: result.answer,
           is_custom: result.is_custom,
           ...(result.cancelled
@@ -13037,66 +13170,6 @@ function resolvePopoutBackgroundColor(useGlassWindow: boolean): string {
   const theme = AppStore.getSettings().themeAppearance
   return LIGHT_THEME_POPOUT_BACKDROPS[theme] ?? '#1e1e1e'
 }
-
-
-
-
-async function listWorkspaceFileEntries(workspace: string): Promise<WorkspaceFileEntry[]> {
-  const workspaceRoot = resolve(workspace)
-  const entries: WorkspaceFileEntry[] = []
-
-  async function walk(dirPath: string, depth: number): Promise<void> {
-    if (entries.length >= MAX_EDITOR_FILES || depth > MAX_EDITOR_DEPTH) {
-      return
-    }
-
-    let dirEntries
-    try {
-      dirEntries = await fs.readdir(dirPath, { withFileTypes: true })
-    } catch {
-      return
-    }
-
-    dirEntries.sort((a, b) => {
-      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-
-    for (const dirent of dirEntries) {
-      if (entries.length >= MAX_EDITOR_FILES) break
-      if (dirent.name.startsWith('.') && dirent.name !== '.env') continue
-      if (dirent.isDirectory() && SKIP_EDITOR_DIRS.has(dirent.name)) continue
-
-      const fullPath = join(dirPath, dirent.name)
-      const relPath = toWorkspaceRelativePath(workspaceRoot, fullPath)
-      let sizeBytes: number | undefined
-
-      if (!dirent.isDirectory()) {
-        try {
-          sizeBytes = (await fs.stat(fullPath)).size
-        } catch {
-          sizeBytes = undefined
-        }
-      }
-
-      entries.push({
-        path: relPath,
-        name: dirent.name,
-        isDirectory: dirent.isDirectory(),
-        sizeBytes,
-        depth
-      })
-
-      if (dirent.isDirectory()) {
-        await walk(fullPath, depth + 1)
-      }
-    }
-  }
-
-  await walk(workspaceRoot, 0)
-  return entries
-}
-
 function appendGeminiCliSessionArgs(
   args: string[],
   model: string = 'cli-default',
@@ -14343,16 +14416,30 @@ if (isGeminiMcpBridgeProcess) {
         cancelRunFn: async (provider, runId) => {
           return providerAdapters.require(assertProviderId(provider)).cancel(runId)
         },
-        respondApprovalFn: async (requestId, action, options) => {
-          if (remoteQuestionRegistry.has(requestId)) {
-            if (action === 'accept') {
-              return remoteQuestionRegistry.answer(requestId, options?.userInput ?? '', true).ok
-            }
-            return remoteQuestionRegistry.reject(requestId, action).ok
-          }
-          return approvalService?.resolve(requestId, action, options) ?? false
-        },
-        registerApnsTokenFn: async (action) => {
+	        respondApprovalFn: async (requestId, action, options) => {
+	          return approvalService?.resolve(requestId, action, options) ?? false
+	        },
+	        respondQuestionFn: async (action, response) => {
+	          const scope: RemoteQuestionResolutionScope = {
+	            workspaceId: action.workspaceId,
+	            threadId: action.threadId,
+	            runId: optionalString(action.runId)
+	          }
+	          if (response.kind === 'answer') {
+	            return remoteQuestionRegistry.answerScoped(
+	              action.promptId,
+	              scope,
+	              response.answer,
+	              true
+	            ).ok
+	          }
+	          return remoteQuestionRegistry.rejectScoped(
+	            action.promptId,
+	            scope,
+	            response.reason || 'user-dismissed'
+	          ).ok
+	        },
+	        registerApnsTokenFn: async (action) => {
           // Light validation beyond what the decoder did — same shape the
           // store's upsert enforces. Thrown errors become the executor's
           // "registration failed" message.
@@ -14580,6 +14667,13 @@ if (isGeminiMcpBridgeProcess) {
             const chat = chatService.createSideChat({
               parentChatId: action.threadId,
               ...(action.provider ? { provider: assertProviderId(action.provider) } : {}),
+              ...(action.model ? { selectedModelType: action.model } : {}),
+              ...(action.codexReasoningEffort !== undefined
+                ? { codexReasoningEffort: action.codexReasoningEffort }
+                : {}),
+              ...(action.claudeReasoningEffort !== undefined
+                ? { claudeReasoningEffort: action.claudeReasoningEffort }
+                : {}),
               sideChatMode: action.mode ?? 'singleProvider'
             })
             broadcastChatUpdated(chat)
@@ -14919,6 +15013,81 @@ if (isGeminiMcpBridgeProcess) {
           }
           return { ok: true }
         },
+        workspaceFileListFn: async (action) => {
+          const workspace = AppStore.getWorkspaces().find((entry) => entry.id === action.workspaceId)
+          if (!workspace) {
+            return {
+              ok: false,
+              reason: `Workspace id "${action.workspaceId}" is not registered`
+            }
+          }
+          const result = await listWorkspaceFilesForEditor(workspace.path)
+          return {
+            ok: true,
+            entries: result.entries as unknown as Record<string, unknown>[],
+            truncated: result.truncated
+          }
+        },
+        workspaceFileReadFn: async (action) => {
+          const workspace = AppStore.getWorkspaces().find((entry) => entry.id === action.workspaceId)
+          if (!workspace) {
+            return {
+              ok: false,
+              reason: `Workspace id "${action.workspaceId}" is not registered`
+            }
+          }
+          const file = await readWorkspaceFileForEditor(workspace.path, action.path)
+          return {
+            ok: true,
+            file: file as unknown as Record<string, unknown>
+          }
+        },
+        workspaceFileWriteFn: async (action) => {
+          const workspace = AppStore.getWorkspaces().find((entry) => entry.id === action.workspaceId)
+          if (!workspace) {
+            return {
+              ok: false,
+              reason: `Workspace id "${action.workspaceId}" is not registered`
+            }
+          }
+          const file = await writeWorkspaceFileForEditor({
+            workspaceId: workspace.id,
+            workspacePath: workspace.path,
+            filePath: action.path,
+            content: action.content,
+            baseEtag: action.baseEtag,
+            origin: 'ios-file-editor',
+            recordChange: (input) => AppStore.recordWorkspaceEditorChange(input)
+          })
+          return {
+            ok: true,
+            file: file as unknown as Record<string, unknown>,
+            ...(file.changeSet
+              ? { changeSet: file.changeSet as unknown as Record<string, unknown> }
+              : {})
+          }
+        },
+        workspaceDiffFn: async (action) => {
+          const workspace = AppStore.getWorkspaces().find((entry) => entry.id === action.workspaceId)
+          if (!workspace) {
+            return {
+              ok: false,
+              reason: `Workspace id "${action.workspaceId}" is not registered`
+            }
+          }
+          // Same underlying git surface the desktop Diff Studio renders
+          // ('get-diff' IPC -> getWorkspaceDiff), projected through hard
+          // caps so the ack stays inside the relay frame budget.
+          const result = await getWorkspaceDiff(workspace.path)
+          if (result.type === 'not_repo') {
+            return {
+              ok: false,
+              reason: result.text ?? 'This folder is not a git repository.'
+            }
+          }
+          const bounded = buildBoundedWorkspaceDiff(result.summaries ?? [])
+          return { ok: true, diff: bounded as unknown as Record<string, unknown> }
+        },
         composerPromptFn: async (action) => {
           // Resolve workspace path from the iOS-supplied workspaceId.
           const workspaceRecord = AppStore.getWorkspaces().find((w) => w.id === action.workspaceId)
@@ -15026,15 +15195,34 @@ if (isGeminiMcpBridgeProcess) {
           const lastProviderRun = [...(chat.runs ?? [])]
             .reverse()
             .find((entry) => entry.runId !== runId && entry.provider === provider)
+          const providerMetadata = (chat.providerMetadata || {}) as Record<string, unknown>
+          const metadataModel =
+            typeof providerMetadata.selectedModelType === 'string' &&
+            providerMetadata.selectedModelType !== 'default'
+              ? providerMetadata.selectedModelType
+              : undefined
+          const metadataReasoningEffort =
+            typeof providerMetadata.codexReasoningEffort === 'string'
+              ? providerMetadata.codexReasoningEffort
+              : undefined
+          const metadataClaudeReasoningEffort =
+            typeof providerMetadata.claudeReasoningEffort === 'string'
+              ? providerMetadata.claudeReasoningEffort
+              : undefined
           // Model inheritance: a phone send without an explicit model means
           // "whatever this chat was using" — falling to the provider
           // default reset continuations (catastrophic for Ollama, where
           // the default tag may not even be installed locally).
           const inheritedModel =
             action.model ||
+            metadataModel ||
             lastProviderRun?.actualModel ||
             lastProviderRun?.requestedModel ||
             undefined
+          const inheritedReasoningEffort =
+            action.reasoningEffort || metadataReasoningEffort || undefined
+          const inheritedClaudeReasoningEffort =
+            action.claudeReasoningEffort || metadataClaudeReasoningEffort || undefined
           const run: ChatRun = {
             runId,
             provider,
@@ -15156,6 +15344,10 @@ if (isGeminiMcpBridgeProcess) {
             appRunId: runId,
             approvalMode: action.approvalMode,
             model: inheritedModel,
+            ...(inheritedReasoningEffort ? { reasoningEffort: inheritedReasoningEffort } : {}),
+            ...(inheritedClaudeReasoningEffort
+              ? { claudeReasoningEffort: inheritedClaudeReasoningEffort }
+              : {}),
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             ...(inheritedGeminiAuthProfileId !== undefined
               ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
@@ -15269,6 +15461,9 @@ if (isGeminiMcpBridgeProcess) {
         startTurn: false,
         diffReview: false,
         steer: false,
+        fileBrowse: false,
+        fileRead: false,
+        fileWrite: false,
         pin: false,
         yolo: false,
         cancelRound: false,
@@ -15291,6 +15486,9 @@ if (isGeminiMcpBridgeProcess) {
         startTurn: capabilities.has('startTurn'),
         diffReview: capabilities.has('diffReview'),
         steer: capabilities.has('steer'),
+        fileBrowse: capabilities.has('fileBrowse'),
+        fileRead: capabilities.has('fileRead'),
+        fileWrite: capabilities.has('fileWrite'),
         pin: capabilities.has('pin'),
         yolo: capabilities.has('yolo'),
         cancelRound: capabilities.has('cancel'),
@@ -16381,33 +16579,77 @@ if (isGeminiMcpBridgeProcess) {
     // return the answer to the agent. Validates that the questionId
     // is still pending — stale answers from a previously-cancelled
     // question quietly no-op.
-    ipcMain.handle(
-      'answer-agent-question',
-      (_event, payload: { questionId: string; answer: string; isCustom?: boolean }) => {
-        const result = remoteQuestionRegistry.answer(
-          payload.questionId,
-          String(payload.answer || ''),
-          Boolean(payload.isCustom)
-        )
-        if (!result.ok) return { ok: false, error: 'no-such-question' }
-        return { ok: true }
-      }
-    )
+	    ipcMain.handle(
+	      'answer-agent-question',
+	      (
+	        _event,
+	        payload: {
+	          questionId: string
+	          answer: string
+	          isCustom?: boolean
+	          appChatId?: string
+	          appRunId?: string
+	          workspaceId?: string | null
+	        }
+	      ) => {
+	        const scope: RemoteQuestionResolutionScope = {
+	          workspaceId: payload.workspaceId,
+	          threadId: optionalString(payload.appChatId),
+	          runId: optionalString(payload.appRunId)
+	        }
+	        const result =
+	          scope.threadId || scope.runId || scope.workspaceId
+	            ? remoteQuestionRegistry.answerScoped(
+	                payload.questionId,
+	                scope,
+	                String(payload.answer || '').slice(0, REMOTE_QUESTION_MAX_ANSWER_CHARS),
+	                Boolean(payload.isCustom)
+	              )
+	            : remoteQuestionRegistry.answer(
+	                payload.questionId,
+	                String(payload.answer || '').slice(0, REMOTE_QUESTION_MAX_ANSWER_CHARS),
+	                Boolean(payload.isCustom)
+	              )
+	        if (!result.ok) return { ok: false, error: result.reason || 'no-such-question' }
+	        return { ok: true }
+	      }
+	    )
 
     // QMOD (1.0.3) — user dismissed the question modal. Resolves with
     // `cancelled: true` so the agent can treat it as "skip this step"
     // and continue gracefully instead of timing out at 10 min.
-    ipcMain.handle(
-      'cancel-agent-question',
-      (_event, payload: { questionId: string; reason?: string }) => {
-        const result = remoteQuestionRegistry.reject(
-          payload.questionId,
-          payload.reason || 'user-dismissed'
-        )
-        if (!result.ok) return { ok: false, error: 'no-such-question' }
-        return { ok: true }
-      }
-    )
+	    ipcMain.handle(
+	      'cancel-agent-question',
+	      (
+	        _event,
+	        payload: {
+	          questionId: string
+	          reason?: string
+	          appChatId?: string
+	          appRunId?: string
+	          workspaceId?: string | null
+	        }
+	      ) => {
+	        const scope: RemoteQuestionResolutionScope = {
+	          workspaceId: payload.workspaceId,
+	          threadId: optionalString(payload.appChatId),
+	          runId: optionalString(payload.appRunId)
+	        }
+	        const result =
+	          scope.threadId || scope.runId || scope.workspaceId
+	            ? remoteQuestionRegistry.rejectScoped(
+	                payload.questionId,
+	                scope,
+	                optionalString(payload.reason) || 'user-dismissed'
+	              )
+	            : remoteQuestionRegistry.reject(
+	                payload.questionId,
+	                optionalString(payload.reason) || 'user-dismissed'
+	              )
+	        if (!result.ok) return { ok: false, error: result.reason || 'no-such-question' }
+	        return { ok: true }
+	      }
+	    )
 
     // Settings
     ipcMain.handle('get-settings', () => settingsService.getSettings())
@@ -17409,7 +17651,7 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'list-workspace-files',
       async (_, workspace: string): Promise<WorkspaceFileEntry[]> => {
-        return listWorkspaceFileEntries(requireRegisteredWorkspace(workspace))
+        return (await listWorkspaceFilesForEditor(requireRegisteredWorkspace(workspace))).entries
       }
     )
 
@@ -17429,23 +17671,7 @@ if (isGeminiMcpBridgeProcess) {
       'read-workspace-file',
       async (_, workspace: string, filePath: string): Promise<WorkspaceFileReadResult> => {
         const registeredWorkspace = requireRegisteredWorkspace(workspace)
-        const targetPath = resolveWorkspaceChild(registeredWorkspace, filePath)
-        const fileStat = await fs.stat(targetPath)
-        if (!fileStat.isFile()) {
-          throw new Error('Selected item is not a file.')
-        }
-        if (fileStat.size > MAX_EDITOR_FILE_BYTES) {
-          throw new Error('File is too large for the basic editor.')
-        }
-
-        const buffer = await fs.readFile(targetPath)
-        assertTextBuffer(buffer)
-
-        return {
-          path: toWorkspaceRelativePath(registeredWorkspace, targetPath),
-          content: buffer.toString('utf8'),
-          sizeBytes: fileStat.size
-        }
+        return readWorkspaceFileForEditor(registeredWorkspace, filePath)
       }
     )
 
@@ -17469,45 +17695,18 @@ if (isGeminiMcpBridgeProcess) {
         _,
         workspace: string,
         filePath: string,
-        content: string
+        content: string,
+        baseEtag?: string | null
       ): Promise<WorkspaceFileReadResult> => {
         const registeredWorkspace = requireRegisteredWorkspace(workspace)
-        const targetPath = resolveWorkspaceChild(registeredWorkspace, filePath)
-        let previousContent: string | undefined
-        let existedBefore = false
-        try {
-          const previousStat = await fs.stat(targetPath)
-          existedBefore = previousStat.isFile()
-          if (existedBefore && previousStat.size <= MAX_EDITOR_FILE_BYTES) {
-            const previousBuffer = await fs.readFile(targetPath)
-            assertTextBuffer(previousBuffer)
-            previousContent = previousBuffer.toString('utf8')
-          }
-        } catch {
-          existedBefore = false
-        }
-        await fs.mkdir(dirname(targetPath), { recursive: true })
-        await fs.writeFile(targetPath, content, 'utf8')
-        const fileStat = await fs.stat(targetPath)
-        const relativePath = toWorkspaceRelativePath(registeredWorkspace, targetPath)
-        const changeSet = AppStore.recordWorkspaceEditorChange({
+        return writeWorkspaceFileForEditor({
           workspacePath: registeredWorkspace,
-          filePath: relativePath,
-          existedBefore,
-          previousContent,
-          nextContent: content,
-          sizeBytes: fileStat.size,
-          metadata: {
-            origin: 'file-editor'
-          }
-        })
-
-        return {
-          path: relativePath,
+          filePath,
           content,
-          sizeBytes: fileStat.size,
-          changeSet
-        }
+          baseEtag,
+          origin: 'file-editor',
+          recordChange: (input) => AppStore.recordWorkspaceEditorChange(input)
+        })
       }
     )
 
@@ -18443,6 +18642,8 @@ if (isGeminiMcpBridgeProcess) {
               id?: unknown
               label?: unknown
               isDefault?: unknown
+              supportedReasoningEfforts?: unknown
+              defaultReasoningEffort?: unknown
             }>
             return {
               provider,
@@ -18452,7 +18653,27 @@ if (isGeminiMcpBridgeProcess) {
                 .map((model) => ({
                   id: model.id as string,
                   label: typeof model.label === 'string' ? model.label : (model.id as string),
-                  isDefault: Boolean(model.isDefault)
+                  isDefault: Boolean(model.isDefault),
+                  supportedReasoningEfforts: Array.isArray(model.supportedReasoningEfforts)
+                    ? model.supportedReasoningEfforts
+                        .filter(
+                          (option): option is { reasoningEffort: string; description?: string } =>
+                            Boolean(option) &&
+                            typeof option === 'object' &&
+                            typeof (option as { reasoningEffort?: unknown }).reasoningEffort ===
+                              'string'
+                        )
+                        .map((option) => ({
+                          reasoningEffort: option.reasoningEffort,
+                          ...(typeof option.description === 'string'
+                            ? { description: option.description }
+                            : {})
+                        }))
+                    : [],
+                  defaultReasoningEffort:
+                    typeof model.defaultReasoningEffort === 'string'
+                      ? model.defaultReasoningEffort
+                      : null
                 }))
             }
           })
@@ -18719,7 +18940,7 @@ if (isGeminiMcpBridgeProcess) {
       // together.
       recoverPersistedSoloChatWakeups()
     }
-    const dispatchAgentRun = (
+    const dispatchAgentRun = async (
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent
     ): Promise<{ dispatched: boolean; appRunId: string }> => {

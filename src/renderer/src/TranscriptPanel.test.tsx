@@ -39,7 +39,7 @@ function makeProps(overrides: Record<string, any> = {}): any {
     isThinking: false,
     showFallbackUX: false,
     pendingPlanChoice: null,
-    pendingAgentQuestion: null,
+    pendingAgentQuestions: [],
     onAgentQuestionSubmit: () => {},
     onAgentQuestionDismiss: () => {},
     runCompleteNotice: null,
@@ -241,7 +241,7 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('Qwen 3.5 (9B Param)')
   })
 
-  it('renders Ollama run cards with the local model label instead of Gemini fallback', () => {
+	  it('renders Ollama run cards with the local model label instead of Gemini fallback', () => {
     const html = renderToStaticMarkup(
       <TranscriptPanel
         {...makeProps({
@@ -280,7 +280,55 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('run-card-provider provider-openai')
     expect(html).toContain('GPT OSS (20B Param)')
     expect(html).not.toContain('run-card-provider provider-ollama">Gemini')
-  })
+	  })
+
+	  it('renders multiple pending agent questions in one transcript', () => {
+	    const html = renderToStaticMarkup(
+	      <TranscriptPanel
+	        {...makeProps({
+	          virtualize: false,
+	          messages: [
+	            {
+	              id: 'agent-question-q1',
+	              role: 'system',
+	              content: 'Codex asked a question:',
+	              timestamp: '2026-01-01T00:00:00.000Z',
+	              metadata: { kind: 'agentQuestion', questionId: 'q1' }
+	            },
+	            {
+	              id: 'agent-question-q2',
+	              role: 'system',
+	              content: 'Claude asked a question:',
+	              timestamp: '2026-01-01T00:00:01.000Z',
+	              metadata: { kind: 'agentQuestion', questionId: 'q2' }
+	            }
+	          ],
+	          pendingAgentQuestions: [
+	            {
+	              questionId: 'q1',
+	              appRunId: 'run-1',
+	              messageId: 'agent-question-q1',
+	              provider: 'codex',
+	              question: 'Which path should Codex take?',
+	              options: ['A', 'B'],
+	              askedAt: 1
+	            },
+	            {
+	              questionId: 'q2',
+	              appRunId: 'run-2',
+	              messageId: 'agent-question-q2',
+	              provider: 'claude',
+	              question: 'Should Claude continue?',
+	              askedAt: 2
+	            }
+	          ]
+	        })}
+	      />
+	    )
+
+	    expect(html).toContain('Which path should Codex take?')
+	    expect(html).toContain('Should Claude continue?')
+	  })
 
   it('renders a run-result side chat action on historical run boundary cards', () => {
     const html = renderToStaticMarkup(

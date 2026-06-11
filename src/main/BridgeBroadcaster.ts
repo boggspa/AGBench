@@ -1,6 +1,7 @@
 import type { ChatRecord, ProviderId, WorkspaceRecord } from './store/types'
 import type { AllowlistDecision, PrepareStartTurnEvaluation } from './RemoteWorkspaceAllowlist'
-import type { RemoteProjectionEnvelope } from './RemoteTaskProjection'
+import { capabilitiesForRemoteWorkspaceEntry } from './RemoteWorkspaceAllowlist'
+import type { RemoteProjectionEnvelope, RemoteTaskCapabilities } from './RemoteTaskProjection'
 
 /**
  * BridgeBroadcaster — pushes workspace + thread summaries from the
@@ -51,6 +52,7 @@ export interface WorkspaceSummary {
   /** ISO8601. Omitted when AppStore has no timestamp for the row. */
   lastActivityAt?: string
   pinned?: boolean
+  capabilities?: RemoteTaskCapabilities
 }
 
 export type ThreadSummaryStatus = 'idle' | 'running' | 'failed' | 'success'
@@ -118,6 +120,8 @@ export interface ProviderModelOption {
   id: string
   label: string
   isDefault?: boolean
+  supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>
+  defaultReasoningEffort?: string | null
 }
 
 /** Per-provider model catalogs — drives the remote client's hierarchical
@@ -144,7 +148,8 @@ export const BRIDGE_BROADCAST_METHODS = {
  * need to instantiate the broadcaster to verify the projection. */
 export function workspaceRecordToSummary(
   workspace: WorkspaceRecord,
-  chats: ChatRecord[]
+  chats: ChatRecord[],
+  capabilities?: RemoteTaskCapabilities
 ): WorkspaceSummary {
   const scopedChats = chats.filter((chat) => chat.workspaceId === workspace.id)
   const runningChatCount = scopedChats.filter(isChatRunning).length
@@ -159,6 +164,9 @@ export function workspaceRecordToSummary(
     chatCount: scopedChats.length,
     runningChatCount,
     pinned: Boolean(workspace.pinned)
+  }
+  if (capabilities !== undefined) {
+    summary.capabilities = capabilities
   }
   if (lastActivityAt !== undefined) {
     summary.lastActivityAt = lastActivityAt
@@ -344,7 +352,7 @@ export class BridgeBroadcaster {
     const visibleWorkspaces = this.visibleWorkspaces(workspaces)
     const visibleWorkspaceIds = new Set(visibleWorkspaces.map((ws) => ws.id))
     const visibleChats = this.visibleChats(chats, visibleWorkspaceIds)
-    const summaries = visibleWorkspaces.map((ws) => workspaceRecordToSummary(ws, visibleChats))
+    const summaries = visibleWorkspaces.map((ws) => this.workspaceRecordToSummary(ws, visibleChats))
     this.sendNotify(method, { workspaces: summaries })
   }
 
@@ -390,7 +398,7 @@ export class BridgeBroadcaster {
       this.log?.(`[BridgeBroadcaster] ${method} skipped — workspace ${workspaceId} not allowed`)
       return
     }
-    const summary = workspaceRecordToSummary(workspace, chats)
+    const summary = this.workspaceRecordToSummary(workspace, chats)
     this.sendNotify(method, { workspace: summary })
   }
 
@@ -508,6 +516,31 @@ export class BridgeBroadcaster {
 
   private isWorkspaceVisible(workspaceId: string): boolean {
     return this.allowlist?.evaluate({ workspaceId }).allowed ?? true
+  }
+
+  private workspaceRecordToSummary(workspace: WorkspaceRecord, chats: ChatRecord[]): WorkspaceSummary {
+    return workspaceRecordToSummary(workspace, chats, this.remoteCapabilitiesForWorkspace(workspace.id))
+  }
+
+  private remoteCapabilitiesForWorkspace(workspaceId: string): RemoteTaskCapabilities | undefined {
+    if (!this.allowlist) return undefined
+    const decision = this.allowlist.evaluate({ workspaceId, capability: 'monitor' })
+    if (!decision.allowed) return undefined
+    const capabilities = new Set(capabilitiesForRemoteWorkspaceEntry(decision.entry))
+    return {
+      monitor: capabilities.has('monitor'),
+      approve: capabilities.has('approve'),
+      answer: capabilities.has('answer'),
+      cancel: capabilities.has('cancel'),
+      startTurn: capabilities.has('startTurn'),
+      diffReview: capabilities.has('diffReview'),
+      steer: capabilities.has('steer'),
+      fileBrowse: capabilities.has('fileBrowse'),
+      fileRead: capabilities.has('fileRead'),
+      fileWrite: capabilities.has('fileWrite'),
+      pin: capabilities.has('pin'),
+      yolo: capabilities.has('yolo')
+    }
   }
 
   private sendNotify(method: string, params: unknown): void {

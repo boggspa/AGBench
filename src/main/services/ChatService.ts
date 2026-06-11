@@ -31,6 +31,9 @@ export interface CreateSideChatInput {
   originMessageId?: string
   originRunId?: string
   sideChatMode?: SideChatMode
+  selectedModelType?: string
+  codexReasoningEffort?: string | null
+  claudeReasoningEffort?: string | null
 }
 
 export interface SetGuestParticipantInput {
@@ -184,6 +187,9 @@ export class ChatService {
       chatKind: args?.chatKind === 'ensemble' ? 'ensemble' : args?.chatKind === 'single' ? 'single' : undefined,
       provider,
       title: typeof args?.title === 'string' ? args.title : undefined,
+      selectedModelType: optionalString(args?.selectedModelType),
+      codexReasoningEffort: optionalString(args?.codexReasoningEffort),
+      claudeReasoningEffort: optionalString(args?.claudeReasoningEffort),
       originMessageId:
         typeof args?.originMessageId === 'string' && args.originMessageId.trim()
           ? args.originMessageId

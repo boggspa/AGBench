@@ -59,7 +59,13 @@ export interface RemoteQuestionRegistryOptions {
 export interface RemoteQuestionResolveResult {
   ok: boolean
   record?: RemoteQuestionRecord
-  reason?: 'not-found' | 'not-pending'
+  reason?: 'not-found' | 'not-pending' | 'scope-mismatch'
+}
+
+export interface RemoteQuestionResolutionScope {
+  workspaceId?: string | null
+  threadId?: string
+  runId?: string
 }
 
 interface PendingRemoteQuestion {
@@ -69,6 +75,11 @@ interface PendingRemoteQuestion {
 }
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
+export const REMOTE_QUESTION_MAX_QUESTION_CHARS = 600
+export const REMOTE_QUESTION_MAX_CONTEXT_CHARS = 240
+export const REMOTE_QUESTION_MAX_OPTION_CHARS = 96
+export const REMOTE_QUESTION_MAX_OPTIONS = 4
+export const REMOTE_QUESTION_MAX_ANSWER_CHARS = 8000
 
 export class RemoteQuestionRegistry {
   private readonly now: () => number
@@ -109,7 +120,7 @@ export class RemoteQuestionRegistry {
     }
     const options = sanitizeOptions(input.options)
     if (options.length > 0) record.options = options
-    const context = sanitizeInput(input.context)
+    const context = sanitizeInput(input.context, REMOTE_QUESTION_MAX_CONTEXT_CHARS)
     if (context) record.context = context
     if (input.provider) record.provider = input.provider
     if (input.workspaceId !== undefined) record.workspaceId = input.workspaceId
@@ -137,25 +148,66 @@ export class RemoteQuestionRegistry {
     if (!pending) return { ok: false, reason: 'not-found' }
     const record = this.resolvePending(questionId, 'answered')
     if (!record) return { ok: false, reason: 'not-found' }
+    const sanitizedAnswer = sanitizeInput(answer, REMOTE_QUESTION_MAX_ANSWER_CHARS)
     pending.resolve({
-      answer: String(answer || ''),
+      answer: sanitizedAnswer,
       is_custom: Boolean(isCustom)
     })
     this.emit({
       type: 'answered',
       record,
-      answer: String(answer || ''),
+      answer: sanitizedAnswer,
       isCustom: Boolean(isCustom)
     })
     return { ok: true, record }
+  }
+
+  answerScoped(
+    questionId: string,
+    scope: RemoteQuestionResolutionScope,
+    answer: string,
+    isCustom = false
+  ): RemoteQuestionResolveResult {
+    const pending = this.pending.get(questionId)
+    if (!pending) return { ok: false, reason: 'not-found' }
+    if (!recordMatchesScope(pending.record, scope)) {
+      return { ok: false, reason: 'scope-mismatch', record: { ...pending.record } }
+    }
+    return this.answer(questionId, answer, isCustom)
   }
 
   reject(questionId: string, reason = 'user-dismissed'): RemoteQuestionResolveResult {
     return this.cancelLike(questionId, 'rejected', reason)
   }
 
+  rejectScoped(
+    questionId: string,
+    scope: RemoteQuestionResolutionScope,
+    reason = 'user-dismissed'
+  ): RemoteQuestionResolveResult {
+    const pending = this.pending.get(questionId)
+    if (!pending) return { ok: false, reason: 'not-found' }
+    if (!recordMatchesScope(pending.record, scope)) {
+      return { ok: false, reason: 'scope-mismatch', record: { ...pending.record } }
+    }
+    return this.reject(questionId, reason)
+  }
+
   cancel(questionId: string, reason = 'cancelled'): RemoteQuestionResolveResult {
     return this.cancelLike(questionId, 'cancelled', reason)
+  }
+
+  cancelScoped(
+    questionId: string,
+    scope: RemoteQuestionResolutionScope,
+    reason = 'cancelled'
+  ): RemoteQuestionResolveResult {
+    const pending = this.pending.get(questionId)
+    if (!pending) return { ok: false, reason: 'not-found' }
+    if (!recordMatchesScope(pending.record, scope)) {
+      return { ok: false, reason: 'scope-mismatch', record: { ...pending.record } }
+    }
+    return this.cancel(questionId, reason)
   }
 
   expire(questionId: string, reason = 'timeout'): RemoteQuestionResolveResult {
@@ -280,16 +332,52 @@ export class RemoteQuestionRegistry {
   }
 }
 
-function sanitizeInput(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+function sanitizeInput(value: unknown, maxChars = REMOTE_QUESTION_MAX_QUESTION_CHARS): string {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return normalized.length <= maxChars ? normalized : normalized.slice(0, maxChars)
 }
 
 function sanitizeOptions(options: unknown): string[] {
   if (!Array.isArray(options)) return []
-  return options
-    .map((option) => sanitizeInput(option))
-    .filter((option) => option.length > 0)
-    .slice(0, 8)
+  const seen = new Set<string>()
+  const sanitized: string[] = []
+  for (const option of options) {
+    const value = sanitizeInput(option, REMOTE_QUESTION_MAX_OPTION_CHARS)
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    sanitized.push(value)
+    if (sanitized.length >= REMOTE_QUESTION_MAX_OPTIONS) break
+  }
+  return sanitized
+}
+
+function normalizedScopeValue(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function recordMatchesScope(
+  record: RemoteQuestionRecord,
+  scope: RemoteQuestionResolutionScope = {}
+): boolean {
+  const expectedWorkspaceId = normalizedScopeValue(record.workspaceId)
+  const providedWorkspaceId = normalizedScopeValue(scope.workspaceId)
+  if (expectedWorkspaceId && providedWorkspaceId && expectedWorkspaceId !== providedWorkspaceId) {
+    return false
+  }
+
+  const expectedThreadId = normalizedScopeValue(record.threadId)
+  const providedThreadId = normalizedScopeValue(scope.threadId)
+  if (expectedThreadId && providedThreadId && expectedThreadId !== providedThreadId) {
+    return false
+  }
+
+  const expectedRunId = normalizedScopeValue(record.runId)
+  const providedRunId = normalizedScopeValue(scope.runId)
+  if (expectedRunId && providedRunId && expectedRunId !== providedRunId) {
+    return false
+  }
+
+  return true
 }
 
 function normalizeTtl(value: unknown): number {

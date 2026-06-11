@@ -9,7 +9,13 @@ import { dirname, join, resolve } from 'path'
 import type { WebContents } from 'electron'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 import { isReadOnlyAdvertisedTool } from './McpAutoAllowedTools'
-import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from '../KimiMcpBridge'
+import {
+  KIMI_LEGACY_TASKWRAITH_SERVER_NAMES,
+  KIMI_TASKWRAITH_SERVER_NAME,
+  buildKimiMcpBridgeAddArgs,
+  buildKimiMcpBridgeRemoveArgs,
+  redactKimiMcpBridgeAddArgs
+} from '../KimiMcpBridge'
 import type {
   AppSettings,
   ChatScope,
@@ -707,6 +713,33 @@ export class McpBridgeRuntime {
     return this.deps.getProcessExecPath?.() || process.execPath
   }
 
+  taskwraithMcpBridgeCommandStatus(): { command: string; available: boolean; error?: string } {
+    const command = this.processExecPath()
+    try {
+      fsSync.accessSync(command, fsSync.constants.X_OK)
+      return { command, available: true }
+    } catch (error) {
+      return {
+        command,
+        available: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  private taskwraithMcpBridgeCommandUnavailableMessage(
+    status: { command: string; available: boolean; error?: string } = this.taskwraithMcpBridgeCommandStatus()
+  ): string {
+    return `TaskWraith MCP bridge executable is not available at ${status.command}: ${status.error || 'not executable'}`
+  }
+
+  private assertTaskWraithMcpBridgeCommandAvailable(): void {
+    const status = this.taskwraithMcpBridgeCommandStatus()
+    if (!status.available) {
+      throw new Error(this.taskwraithMcpBridgeCommandUnavailableMessage(status))
+    }
+  }
+
   taskwraithMcpBridgeArgs(
     socketPath: string = this.deps.getGeminiMcpSocketPath(),
     safeSubset = false
@@ -860,6 +893,10 @@ export class McpBridgeRuntime {
   private async runSelfTestGeminiMcpBridgeProcess(
     socketPath: string
   ): Promise<{ ok: boolean; error?: string }> {
+    const bridgeCommandStatus = this.taskwraithMcpBridgeCommandStatus()
+    if (!bridgeCommandStatus.available) {
+      return { ok: false, error: this.taskwraithMcpBridgeCommandUnavailableMessage(bridgeCommandStatus) }
+    }
     return new Promise((resolveSelfTest) => {
       let stdout = ''
       let stderr = ''
@@ -1164,6 +1201,7 @@ export class McpBridgeRuntime {
     socketPath: string,
     cwd?: string
   ): Promise<void> {
+    this.assertTaskWraithMcpBridgeCommandAvailable()
     // Remove orphaned pre-rebrand registrations (old --*-gemini-mcp-bridge flag)
     // before adding ours, so `gemini mcp list` probes don't keep spawning a stale
     // binary on every status check. Best-effort; never blocks registration.
@@ -1463,11 +1501,45 @@ export class McpBridgeRuntime {
     }
   }
 
+  async removeKimiMcpBridgeRegistration(
+    kimiBinaryPath: string,
+    serverName: string
+  ): Promise<boolean> {
+    const removeResult = await this.deps.captureProcessOutput(
+      kimiBinaryPath,
+      buildKimiMcpBridgeRemoveArgs(serverName),
+      undefined,
+      8_000
+    )
+    return removeResult.code === 0
+  }
+
+  async pruneLegacyKimiMcpBridgeRegistrations(kimiBinaryPath: string): Promise<string[]> {
+    const removed: string[] = []
+    for (const serverName of KIMI_LEGACY_TASKWRAITH_SERVER_NAMES) {
+      try {
+        if (await this.removeKimiMcpBridgeRegistration(kimiBinaryPath, serverName)) {
+          removed.push(serverName)
+        }
+      } catch {
+        // Best effort: stale legacy registrations should not block current TaskWraith setup.
+      }
+    }
+    return removed
+  }
+
   async installKimiMcpBridge(): Promise<void> {
     await this.startGeminiMcpBroker()
     const resolved = await this.deps.resolveCliProviderBinary('kimi')
     if (!resolved.binaryPath) {
       return
+    }
+    await this.pruneLegacyKimiMcpBridgeRegistrations(resolved.binaryPath)
+    const bridgeCommandStatus = this.taskwraithMcpBridgeCommandStatus()
+    if (!bridgeCommandStatus.available) {
+      await this.removeKimiMcpBridgeRegistration(resolved.binaryPath, KIMI_TASKWRAITH_SERVER_NAME)
+      this.kimiMcpBridgeInstalledForCurrentToken = false
+      throw new Error(this.taskwraithMcpBridgeCommandUnavailableMessage(bridgeCommandStatus))
     }
     const socketPath = this.deps.getGeminiMcpSocketPath()
     await this.addKimiMcpBridgeRegistration(resolved.binaryPath, socketPath)

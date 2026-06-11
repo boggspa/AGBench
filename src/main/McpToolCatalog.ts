@@ -1386,19 +1386,23 @@ export function createTaskWraithMcpToolDefinitions(): TaskWraithMcpToolDefinitio
       inputSchema: {
         type: 'object',
         properties: {
-          question: {
-            type: 'string',
-            description: 'The question to ask the user. One sentence; ends with a question mark.'
-          },
-          options: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Optional 2-4 pre-set answer choices. The renderer renders each as a button. Omit for free-text questions.'
-          },
-          context: {
-            type: 'string',
-            description:
+	          question: {
+	            type: 'string',
+	            maxLength: 600,
+	            description: 'The question to ask the user. One sentence; ends with a question mark.'
+	          },
+	          options: {
+	            type: 'array',
+	            minItems: 2,
+	            maxItems: 4,
+	            items: { type: 'string', maxLength: 96 },
+	            description:
+	              'Optional 2-4 pre-set answer choices. The renderer renders each as a button. Omit for free-text questions.'
+	          },
+	          context: {
+	            type: 'string',
+	            maxLength: 240,
+	            description:
               'Optional sub-paragraph (≤ 240 chars) of additional context shown beneath the question. Use for "why I\'m asking" framing.'
           }
         },

@@ -57,6 +57,11 @@ export interface BridgeActionMetadata {
   expiresAt?: number
 }
 
+const BRIDGE_QUESTION_ANSWER_MAX_CHARS = 8000
+const BRIDGE_QUESTION_REJECT_MESSAGE_MAX_CHARS = 1000
+const BRIDGE_WORKSPACE_FILE_PATH_MAX_CHARS = 4096
+const BRIDGE_WORKSPACE_FILE_WRITE_MAX_CHARS = 1_600_000
+
 export interface BridgeApprovalReplyAction extends BridgeActionMetadata {
   kind: 'approvalReply'
   workspaceId: string
@@ -71,6 +76,7 @@ export interface BridgeQuestionReplyAction extends BridgeActionMetadata {
   kind: 'questionReply'
   workspaceId: string
   threadId: string
+  runId?: string
   promptId: string
   answer: string
 }
@@ -79,6 +85,7 @@ export interface BridgeQuestionRejectAction extends BridgeActionMetadata {
   kind: 'questionReject'
   workspaceId: string
   threadId: string
+  runId?: string
   promptId: string
   /** Optional rejection reason surfaced back into the chat as a system note. */
   message?: string
@@ -97,6 +104,10 @@ export interface BridgeComposerPromptAction extends BridgeActionMetadata {
   approvalMode?: string
   /** Optional model override (provider-specific). */
   model?: string
+  /** Codex/Grok-style reasoning effort override. */
+  reasoningEffort?: string | null
+  /** Claude-specific reasoning effort override. */
+  claudeReasoningEffort?: string | null
   /** Optional context-turn count (0–20 per the plan's standard payload). */
   contextTurns?: number
   /** Phone-attached images (downscaled JPEG/PNG, base64). The executor
@@ -139,6 +150,33 @@ export interface BridgeThreadRowExpandAction extends BridgeActionMetadata {
   rowId: string
   /** Preview char ceiling (executor clamps 400–32000, default 32000). */
   maxChars?: number
+}
+
+export interface BridgeWorkspaceFileListAction extends BridgeActionMetadata {
+  kind: 'workspaceFileList'
+  workspaceId: string
+}
+
+export interface BridgeWorkspaceFileReadAction extends BridgeActionMetadata {
+  kind: 'workspaceFileRead'
+  workspaceId: string
+  path: string
+}
+
+export interface BridgeWorkspaceFileWriteAction extends BridgeActionMetadata {
+  kind: 'workspaceFileWrite'
+  workspaceId: string
+  path: string
+  content: string
+  baseEtag: string
+}
+
+/** On-demand bounded workspace diff (the iOS Diff Studio). Read-only —
+ * the executor returns the bounded diff (files + hunks, hard-capped) in
+ * the ack's data; nothing is broadcast. Gated by `diffReview`. */
+export interface BridgeWorkspaceDiffAction extends BridgeActionMetadata {
+  kind: 'workspaceDiff'
+  workspaceId: string
 }
 
 /** Create an empty chat thread without starting a run. Used by the iOS
@@ -289,6 +327,9 @@ export interface BridgeCreateSideChatAction extends BridgeActionMetadata {
   /** Parent thread the side chat hangs off. */
   threadId: string
   provider?: string
+  model?: string
+  codexReasoningEffort?: string | null
+  claudeReasoningEffort?: string | null
   mode?: 'singleProvider' | 'ensembleClone' | 'fanOut'
 }
 
@@ -362,6 +403,10 @@ export type BridgeActionPayload =
   | BridgeCreateThreadAction
   | BridgeThreadRowExpandAction
   | BridgeThreadSnapshotRequestAction
+  | BridgeWorkspaceFileListAction
+  | BridgeWorkspaceFileReadAction
+  | BridgeWorkspaceFileWriteAction
+  | BridgeWorkspaceDiffAction
   | BridgeCancelRunAction
   | BridgeEnsembleCancelRoundAction
   | BridgeEnsembleSkipActiveParticipantAction
@@ -468,6 +513,10 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'createThread':
     case 'threadRowExpand':
     case 'threadSnapshotRequest':
+    case 'workspaceFileList':
+    case 'workspaceFileRead':
+    case 'workspaceFileWrite':
+    case 'workspaceDiff':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -515,6 +564,10 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'createThread':
     case 'threadRowExpand':
     case 'threadSnapshotRequest':
+    case 'workspaceFileList':
+    case 'workspaceFileRead':
+    case 'workspaceFileWrite':
+    case 'workspaceDiff':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -591,12 +644,16 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
+    case 'workspaceFileWrite':
       return true
     case 'approvalReply':
     case 'questionReject':
     case 'registerApnsToken':
     case 'threadSnapshotRequest':
     case 'threadRowExpand':
+    case 'workspaceFileList':
+    case 'workspaceFileRead':
+    case 'workspaceDiff':
       return false
     case 'unknown':
       return true
@@ -638,6 +695,22 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isThreadSnapshotRequest(parsed)
         ? (parsed as unknown as BridgeThreadSnapshotRequestAction)
         : { kind: 'unknown', rawKind: 'threadSnapshotRequest', raw: parsed }
+    case 'workspaceFileList':
+      return isWorkspaceFileList(parsed)
+        ? (parsed as unknown as BridgeWorkspaceFileListAction)
+        : { kind: 'unknown', rawKind: 'workspaceFileList', raw: parsed }
+    case 'workspaceFileRead':
+      return isWorkspaceFileRead(parsed)
+        ? (parsed as unknown as BridgeWorkspaceFileReadAction)
+        : { kind: 'unknown', rawKind: 'workspaceFileRead', raw: parsed }
+    case 'workspaceFileWrite':
+      return isWorkspaceFileWrite(parsed)
+        ? (parsed as unknown as BridgeWorkspaceFileWriteAction)
+        : { kind: 'unknown', rawKind: 'workspaceFileWrite', raw: parsed }
+    case 'workspaceDiff':
+      return isWorkspaceDiff(parsed)
+        ? (parsed as unknown as BridgeWorkspaceDiffAction)
+        : { kind: 'unknown', rawKind: 'workspaceDiff', raw: parsed }
     case 'cancelRun':
       return isCancelRun(parsed)
         ? (parsed as unknown as BridgeCancelRunAction)
@@ -745,9 +818,14 @@ function isQuestionReply(v: Record<string, unknown>): boolean {
   return (
     hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
+    v.workspaceId.trim().length > 0 &&
     typeof v.threadId === 'string' &&
+    v.threadId.trim().length > 0 &&
+    (v.runId === undefined || (typeof v.runId === 'string' && v.runId.trim().length > 0)) &&
     typeof v.promptId === 'string' &&
-    typeof v.answer === 'string'
+    v.promptId.trim().length > 0 &&
+    typeof v.answer === 'string' &&
+    v.answer.length <= BRIDGE_QUESTION_ANSWER_MAX_CHARS
   )
 }
 
@@ -755,9 +833,15 @@ function isQuestionReject(v: Record<string, unknown>): boolean {
   return (
     hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
+    v.workspaceId.trim().length > 0 &&
     typeof v.threadId === 'string' &&
+    v.threadId.trim().length > 0 &&
+    (v.runId === undefined || (typeof v.runId === 'string' && v.runId.trim().length > 0)) &&
     typeof v.promptId === 'string' &&
-    (v.message === undefined || typeof v.message === 'string')
+    v.promptId.trim().length > 0 &&
+    (v.message === undefined ||
+      (typeof v.message === 'string' &&
+        v.message.length <= BRIDGE_QUESTION_REJECT_MESSAGE_MAX_CHARS))
   )
 }
 
@@ -788,6 +872,12 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
     typeof v.provider === 'string' &&
     (v.approvalMode === undefined || typeof v.approvalMode === 'string') &&
     (v.model === undefined || typeof v.model === 'string') &&
+    (v.reasoningEffort === undefined ||
+      v.reasoningEffort === null ||
+      typeof v.reasoningEffort === 'string') &&
+    (v.claudeReasoningEffort === undefined ||
+      v.claudeReasoningEffort === null ||
+      typeof v.claudeReasoningEffort === 'string') &&
     (v.imageAttachments === undefined || isImageAttachments(v.imageAttachments)) &&
     (v.contextTurns === undefined ||
       (typeof v.contextTurns === 'number' &&
@@ -844,6 +934,43 @@ function isThreadSnapshotRequest(v: Record<string, unknown>): boolean {
     typeof v.threadId === 'string' &&
     (v.limit === undefined ||
       (typeof v.limit === 'number' && Number.isInteger(v.limit) && v.limit > 0))
+  )
+}
+
+function isWorkspaceFileList(v: Record<string, unknown>): boolean {
+  return hasValidActionMetadata(v) && typeof v.workspaceId === 'string'
+}
+
+function isWorkspaceDiff(v: Record<string, unknown>): boolean {
+  return hasValidActionMetadata(v) && typeof v.workspaceId === 'string'
+}
+
+function isWorkspaceFileRead(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    isWorkspaceRelativeFilePath(v.path)
+  )
+}
+
+function isWorkspaceFileWrite(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    isWorkspaceRelativeFilePath(v.path) &&
+    typeof v.content === 'string' &&
+    v.content.length <= BRIDGE_WORKSPACE_FILE_WRITE_MAX_CHARS &&
+    typeof v.baseEtag === 'string' &&
+    v.baseEtag.trim().length > 0
+  )
+}
+
+function isWorkspaceRelativeFilePath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.length <= BRIDGE_WORKSPACE_FILE_PATH_MAX_CHARS &&
+    !value.includes('\u0000')
   )
 }
 
@@ -937,6 +1064,13 @@ function isCreateSideChat(v: Record<string, unknown>): boolean {
   return (
     isWorkspaceThreadAction(v) &&
     (v.provider === undefined || typeof v.provider === 'string') &&
+    (v.model === undefined || typeof v.model === 'string') &&
+    (v.codexReasoningEffort === undefined ||
+      v.codexReasoningEffort === null ||
+      typeof v.codexReasoningEffort === 'string') &&
+    (v.claudeReasoningEffort === undefined ||
+      v.claudeReasoningEffort === null ||
+      typeof v.claudeReasoningEffort === 'string') &&
     (v.mode === undefined ||
       v.mode === 'singleProvider' ||
       v.mode === 'ensembleClone' ||

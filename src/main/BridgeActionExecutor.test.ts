@@ -14,6 +14,10 @@ import type {
   BridgeQuestionReplyAction,
   BridgeRegisterApnsTokenAction,
   BridgeSetYoloModeAction,
+  BridgeWorkspaceFileListAction,
+  BridgeWorkspaceFileReadAction,
+  BridgeWorkspaceFileWriteAction,
+  BridgeWorkspaceDiffAction,
   BridgeTogglePinChatAction,
   BridgeTogglePinWorkspaceAction
 } from './BridgeActionPayload'
@@ -30,6 +34,7 @@ const sample = {
     kind: 'questionReply',
     workspaceId: 'ws-1',
     threadId: 't-1',
+    runId: 'run-1',
     promptId: 'q-1',
     answer: 'yes'
   } satisfies BridgeQuestionReplyAction,
@@ -37,6 +42,7 @@ const sample = {
     kind: 'questionReject',
     workspaceId: 'ws-1',
     threadId: 't-1',
+    runId: 'run-1',
     promptId: 'q-1'
   } satisfies BridgeQuestionRejectAction,
   composerPrompt: {
@@ -111,7 +117,27 @@ const sample = {
     kind: 'togglePinWorkspace',
     workspaceId: 'ws-1',
     pinned: true
-  } satisfies BridgeTogglePinWorkspaceAction
+  } satisfies BridgeTogglePinWorkspaceAction,
+  workspaceFileList: {
+    kind: 'workspaceFileList',
+    workspaceId: 'ws-1'
+  } satisfies BridgeWorkspaceFileListAction,
+  workspaceFileRead: {
+    kind: 'workspaceFileRead',
+    workspaceId: 'ws-1',
+    path: 'README.md'
+  } satisfies BridgeWorkspaceFileReadAction,
+  workspaceFileWrite: {
+    kind: 'workspaceFileWrite',
+    workspaceId: 'ws-1',
+    path: 'README.md',
+    content: 'hello',
+    baseEtag: 'sha256:abc'
+  } satisfies BridgeWorkspaceFileWriteAction,
+  workspaceDiff: {
+    kind: 'workspaceDiff',
+    workspaceId: 'ws-1'
+  } satisfies BridgeWorkspaceDiffAction
 }
 
 describe('NoopActionExecutor', () => {
@@ -132,7 +158,11 @@ describe('NoopActionExecutor', () => {
       executor.executeRegisterApnsToken(sample.registerApnsToken),
       executor.executeSetYoloMode(sample.setYoloMode),
       executor.executeTogglePinChat(sample.togglePinChat),
-      executor.executeTogglePinWorkspace(sample.togglePinWorkspace)
+      executor.executeTogglePinWorkspace(sample.togglePinWorkspace),
+      executor.executeWorkspaceFileList(sample.workspaceFileList),
+      executor.executeWorkspaceFileRead(sample.workspaceFileRead),
+      executor.executeWorkspaceFileWrite(sample.workspaceFileWrite),
+      executor.executeWorkspaceDiff(sample.workspaceDiff)
     ])
     for (const r of results) {
       expect(r.executed).toBe(false)
@@ -154,6 +184,79 @@ describe('NoopActionExecutor', () => {
     expect(results[12].message).toContain('true')
     expect(results[13].message).toContain('chat-1')
     expect(results[14].message).toContain('ws-1')
+    expect(results[15].message).toContain('ws-1')
+    expect(results[16].message).toContain('README.md')
+    expect(results[17].message).toContain('README.md')
+    expect(results[18].message).toContain('ws-1')
+  })
+})
+
+describe('MainProcessActionExecutor workspace file actions', () => {
+  it('returns list/read/write data from wired callbacks', async () => {
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      workspaceFileListFn: vi.fn().mockResolvedValue({
+        ok: true,
+        entries: [{ path: 'README.md', name: 'README.md', isDirectory: false, depth: 0 }],
+        truncated: false
+      }),
+      workspaceFileReadFn: vi.fn().mockResolvedValue({
+        ok: true,
+        file: { path: 'README.md', content: 'hello', sizeBytes: 5, etag: 'sha256:abc' }
+      }),
+      workspaceFileWriteFn: vi.fn().mockResolvedValue({
+        ok: true,
+        file: { path: 'README.md', content: 'hi', sizeBytes: 2, etag: 'sha256:def' },
+        changeSet: { id: 'change-1' }
+      })
+    })
+
+    await expect(executor.executeWorkspaceFileList(sample.workspaceFileList)).resolves.toMatchObject(
+      {
+        executed: true,
+        data: { entries: [{ path: 'README.md' }], truncated: false }
+      }
+    )
+    await expect(executor.executeWorkspaceFileRead(sample.workspaceFileRead)).resolves.toMatchObject(
+      {
+        executed: true,
+        data: { file: { path: 'README.md', etag: 'sha256:abc' } }
+      }
+    )
+    await expect(
+      executor.executeWorkspaceFileWrite(sample.workspaceFileWrite)
+    ).resolves.toMatchObject({
+      executed: true,
+      data: { file: { path: 'README.md', etag: 'sha256:def' }, changeSet: { id: 'change-1' } }
+    })
+  })
+
+  it('returns the bounded diff from a wired workspaceDiffFn', async () => {
+    const workspaceDiffFn = vi.fn().mockResolvedValue({
+      ok: true,
+      diff: {
+        files: [{ path: 'README.md', kind: 'modified', additions: 2, deletions: 1, hunks: [] }],
+        totalFiles: 1,
+        truncated: false
+      }
+    })
+    const executor = new MainProcessActionExecutor({ cancelRunFn: vi.fn(), workspaceDiffFn })
+    await expect(executor.executeWorkspaceDiff(sample.workspaceDiff)).resolves.toMatchObject({
+      executed: true,
+      data: { diff: { files: [{ path: 'README.md' }], totalFiles: 1, truncated: false } }
+    })
+    expect(workspaceDiffFn).toHaveBeenCalledWith(sample.workspaceDiff)
+  })
+
+  it('surfaces workspaceDiffFn failures as executed=false', async () => {
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      workspaceDiffFn: vi.fn().mockResolvedValue({ ok: false, reason: 'not a git repository' })
+    })
+    await expect(executor.executeWorkspaceDiff(sample.workspaceDiff)).resolves.toMatchObject({
+      executed: false,
+      message: 'not a git repository'
+    })
   })
 })
 
@@ -531,6 +634,23 @@ describe('MainProcessActionExecutor.executeQuestionReply', () => {
     expect(result.data).toMatchObject({ promptId: 'q-1', answerLength: 3 })
   })
 
+  it('prefers respondQuestionFn when configured', async () => {
+    const respondApprovalFn = vi.fn().mockResolvedValue(true)
+    const respondQuestionFn = vi.fn().mockResolvedValue(true)
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn,
+      respondApprovalFn,
+      respondQuestionFn
+    })
+    const result = await executor.executeQuestionReply(sample.questionReply)
+    expect(respondQuestionFn).toHaveBeenCalledWith(sample.questionReply, {
+      kind: 'answer',
+      answer: 'yes'
+    })
+    expect(respondApprovalFn).not.toHaveBeenCalled()
+    expect(result.executed).toBe(true)
+  })
+
   it('reports executed=false when respondApprovalFn returns false', async () => {
     const respondApprovalFn = vi.fn().mockResolvedValue(false)
     const executor = new MainProcessActionExecutor({ cancelRunFn, respondApprovalFn })
@@ -578,6 +698,26 @@ describe('MainProcessActionExecutor.executeQuestionReject', () => {
     expect(result.executed).toBe(true)
     expect(result.message).toMatch(/rejected/i)
     expect(result.data).toMatchObject({ promptId: 'q-1' })
+  })
+
+  it('prefers respondQuestionFn for rejects when configured', async () => {
+    const respondApprovalFn = vi.fn().mockResolvedValue(true)
+    const respondQuestionFn = vi.fn().mockResolvedValue(true)
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn,
+      respondApprovalFn,
+      respondQuestionFn
+    })
+    const result = await executor.executeQuestionReject({
+      ...sample.questionReject,
+      message: 'not enough context'
+    })
+    expect(respondQuestionFn).toHaveBeenCalledWith(
+      { ...sample.questionReject, message: 'not enough context' },
+      { kind: 'reject', reason: 'not enough context' }
+    )
+    expect(respondApprovalFn).not.toHaveBeenCalled()
+    expect(result.executed).toBe(true)
   })
 
   it('reports executed=false when respondApprovalFn returns false', async () => {
