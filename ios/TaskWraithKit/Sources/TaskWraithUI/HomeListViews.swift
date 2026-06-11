@@ -1,0 +1,494 @@
+// SwiftUI surface for the TaskWraith companion.
+//
+// Design direction (see ios/DESIGN.md): borrow the *format* of the Claude /
+// Codex iOS apps — workspaces-as-projects home, thread view with collapsed
+// history + tool chips, pill composer — but skinned entirely in TaskWraith's
+// own theme tokens (TWTheme mirrors the desktop theme.css). iPhone focuses on
+// solid thread management; iPad gets the sidebar (NavigationSplitView) where
+// advanced affordances will live. Pure SwiftUI so `swift build` compile-checks
+// on macOS; QR camera scanning is the one `#if os(iOS)` extra.
+
+import SwiftUI
+import TaskWraithKit
+
+#if canImport(UIKit)
+    import PhotosUI
+    import UIKit
+#endif
+
+struct HomeView: View {
+    @ObservedObject var model: RemoteSessionModel
+    @Binding var selection: String?
+    /// Parent chats whose sub-thread/side-chat children are collapsed.
+    @State private var collapsedParents: Set<String> = []
+    @State private var showSettings = false
+    @State private var canvasMode: ComposeMode? = nil
+
+    private func openCanvas(_ mode: ComposeMode) {
+        if explicitSelection {
+            selection = "new-\(mode == .workspace ? "chat" : mode.rawValue)"
+        } else {
+            canvasMode = mode
+        }
+    }
+    /// True when hosted in a NavigationSplitView sidebar — rows select
+    /// explicitly instead of pushing NavigationLinks. NOT derivable from
+    /// the environment: split-view columns report a COMPACT horizontal
+    /// size class, which is exactly how the iPad sidebar ended up running
+    /// the iPhone code path with destination-less links.
+    var explicitSelection: Bool = false
+    @State private var collapsedWorkspaces: Set<String> = []
+
+    /// Top-level threads per workspace; sub-threads/side chats nest under
+    /// their parent like the desktop sidebar.
+    private var cardsByWorkspace: [String: [RemoteTaskCard]] {
+        Dictionary(grouping: model.taskCards.filter { $0.parentChatId == nil }) {
+            $0.workspaceId ?? ""
+        }
+    }
+    private var childrenByParent: [String: [RemoteTaskCard]] {
+        Dictionary(grouping: model.taskCards.filter { $0.parentChatId != nil }) {
+            $0.parentChatId ?? ""
+        }
+    }
+    private var orphanCards: [RemoteTaskCard] {
+        let known = Set(model.workspaces.map(\.workspaceId))
+        return model.taskCards.filter {
+            $0.parentChatId == nil && !known.contains($0.workspaceId ?? "")
+        }
+    }
+
+    var body: some View {
+        Group {
+            // One list for both widths — iPad selection is explicit Buttons
+            // (List(selection:) needs edit mode on .plain-style iPadOS lists).
+            List { sections }
+        }
+        #if os(iOS)
+            .listStyle(.plain)
+            .listSectionSpacing(10)
+        #endif
+        .scrollContentBackground(.hidden)
+        .background(TWTheme.sidebarBg)
+        .onChange(of: model.navigationTarget) { _, threadId in
+            guard let threadId else { return }
+            selection = threadId
+            model.navigationTarget = nil
+        }
+        .navigationTitle("")
+        #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    // ALL chat types open the inline canvas (main pane) —
+                    // the compose sheet is retired.
+                    Button("New chat") { openCanvas(.workspace) }
+                    Button("New ensemble") { openCanvas(.ensemble) }
+                    Button("New global chat") { openCanvas(.global) }
+                } label: {
+                    Label("New", systemImage: "square.and.pencil")
+                }
+                .disabled(model.workspaces.isEmpty)
+            }
+            ToolbarItem(placement: .cancellationAction) {
+                HStack(spacing: 8) {
+                    Button {
+                        model.refreshConnection()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    Menu {
+                        Button("Disconnect", role: .destructive) { model.disconnect() }
+                        Button("Forget this Mac", role: .destructive) { model.forgetPairing() }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
+        .navigationDestination(item: $canvasMode) { mode in
+            NewChatCanvasView(model: model, mode: mode, initialWorkspaceId: nil)
+        }
+        .sheet(isPresented: $showSettings) {
+            AppSettingsSheet()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    @ViewBuilder
+    private var sections: some View {
+        Section {
+            MastheadRow()
+        }
+        // Mac identity header — name + live dot, like the reference apps.
+        Section {
+            HStack(spacing: 8) {
+                Circle().fill(TWTheme.statusSuccess).frame(width: 8, height: 8)
+                Image(systemName: "desktopcomputer")
+                    .foregroundStyle(TWTheme.textSecondary)
+                Text(model.macDisplayName.isEmpty ? "Connected" : model.macDisplayName)
+                    .font(.subheadline)
+                    .foregroundStyle(TWTheme.textSecondary)
+                    .lineLimit(1)
+            }
+            .listRowBackground(TWTheme.surface1)
+        }
+
+        if !model.approvals.isEmpty {
+            Section("Needs your approval") {
+                ForEach(model.approvals, id: \.toolCallId) { card in
+                    ApprovalRow(model: model, card: card)
+                        .listRowBackground(TWTheme.surface2)
+                }
+            }
+        }
+        if !model.questions.isEmpty {
+            Section("Questions") {
+	                ForEach(model.questions, id: \.stableId) { card in
+                    QuestionRow(model: model, card: card)
+                        .listRowBackground(TWTheme.surface2)
+                }
+            }
+        }
+
+        if model.workspaces.isEmpty && model.taskCards.isEmpty {
+            Section {
+                if model.projectionHydrated {
+                    // Confirmed empty — content never arrived within the
+                    // hydration window, so the setup instructions are real.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No workspaces shared with this device yet.")
+                            .foregroundStyle(TWTheme.textPrimary)
+                        Text(
+                            "On your Mac: Settings → Devices → “Add workspace access”. Chats in allowed workspaces appear here."
+                        )
+                        .font(.footnote).foregroundStyle(TWTheme.textSecondary)
+                    }
+                    .listRowBackground(TWTheme.surface1)
+                } else {
+                    // First-connect hydration — claiming "no workspaces"
+                    // here sent users to Mac Settings over a state that
+                    // wasn't real yet.
+                    HydrationTicker("Syncing workspaces from your Mac…")
+                        .listRowBackground(Color.clear)
+                }
+            }
+        }
+
+        let pinnedCards = model.taskCards.filter { $0.pinned == true }
+        if !pinnedCards.isEmpty {
+            Section {
+                ForEach(pinnedCards, id: \.id) { card in
+                    threadRow(card)
+                }
+            } header: {
+                PillSectionHeader(title: "Pinned", systemImage: "pin")
+            }
+        }
+        let recentCards = model.taskCards
+            .filter { $0.parentChatId == nil }
+            .sorted { ($0.updatedAt ?? "") > ($1.updatedAt ?? "") }
+            .prefix(4)
+        if recentCards.count > 1 {
+            Section {
+                ForEach(Array(recentCards), id: \.id) { card in
+                    threadRow(card)
+                }
+            } header: {
+                PillSectionHeader(title: "Recents", systemImage: "clock")
+            }
+        }
+
+        ForEach(model.workspaces) { workspace in
+            Section {
+                let cards = cardsByWorkspace[workspace.workspaceId] ?? []
+                if collapsedWorkspaces.contains(workspace.workspaceId) {
+                    EmptyView()
+                } else if cards.isEmpty {
+                    Text("No chats yet").font(.footnote)
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .listRowBackground(TWTheme.surface1)
+                } else {
+                    ForEach(cards, id: \.id) { card in
+                        parentRow(card)
+                        if !collapsedParents.contains(card.id) {
+                            ForEach(childrenByParent[card.id] ?? [], id: \.id) { child in
+                                threadRow(child, nested: true)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                let count = (cardsByWorkspace[workspace.workspaceId] ?? []).count
+                Button {
+                    toggleCollapsed(workspace.workspaceId)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(
+                            systemName: collapsedWorkspaces.contains(workspace.workspaceId)
+                                ? "chevron.right" : "chevron.down"
+                        )
+                        .font(.caption2.weight(.bold))
+                        PillSectionHeader(
+                            title: workspace.displayName,
+                            systemImage: "folder",
+                            trailing: count > 0 ? "\(count)" : nil)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+
+        if !orphanCards.isEmpty {
+            Section {
+                ForEach(orphanCards, id: \.id) { card in
+                    parentRow(card)
+                    if !collapsedParents.contains(card.id) {
+                        ForEach(childrenByParent[card.id] ?? [], id: \.id) { child in
+                            threadRow(child, nested: true)
+                        }
+                    }
+                }
+            } header: {
+                PillSectionHeader(title: "Chats", systemImage: "bubble.left.and.bubble.right")
+            }
+        }
+
+        if let message = model.lastActionMessage {
+            Section {
+                Text(message).font(.footnote).foregroundStyle(TWTheme.textSecondary)
+                    .listRowBackground(TWTheme.surface1)
+            }
+        }
+    }
+
+    private func toggleCollapsed(_ id: String) {
+        if collapsedWorkspaces.contains(id) {
+            collapsedWorkspaces.remove(id)
+        } else {
+            collapsedWorkspaces.insert(id)
+        }
+    }
+
+    /// Parent row with a leading disclosure chevron when the chat has
+    /// sub-thread / side-chat children — collapses the whole tree to just
+    /// the parent (desktop sidebar parity).
+    @ViewBuilder
+    private func parentRow(_ card: RemoteTaskCard) -> some View {
+        let children = childrenByParent[card.id] ?? []
+        if children.isEmpty {
+            threadRow(card)
+        } else {
+            threadRow(card)
+                .safeAreaInset(edge: .leading, spacing: 0) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            if collapsedParents.contains(card.id) {
+                                collapsedParents.remove(card.id)
+                            } else {
+                                collapsedParents.insert(card.id)
+                            }
+                        }
+                    } label: {
+                        Image(
+                            systemName: collapsedParents.contains(card.id)
+                                ? "chevron.right" : "chevron.down"
+                        )
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(TWTheme.textTertiary)
+                        .frame(width: 16)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func threadRow(_ card: RemoteTaskCard, nested: Bool = false) -> some View {
+        let accent = card.isEnsemble
+            ? TWTheme.chroma2 : TWTheme.providerAccent(card.provider)
+        let rowInsets = EdgeInsets(
+            top: 3, leading: nested ? 28 : 16, bottom: 3, trailing: 16)
+        // Satellite rows (desktop-sidebar parity): no container chrome unless
+        // the thread is ACTIVE — running or waiting on the user — which gets
+        // a faint accent wash so live work pops out of the list.
+        let isActive =
+            card.status == "running"
+            || (card.pendingApprovalCount ?? 0) + (card.pendingQuestionCount ?? 0) > 0
+        let rowChrome = Group {
+            if isActive {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(accent.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(accent.opacity(0.35))
+                    )
+                    .padding(.vertical, 2)
+            } else {
+                Color.clear
+            }
+        }
+        if explicitSelection {
+            // iPad sidebar: EXPLICIT selection. `.tag` + List(selection:)
+            // only activates in edit mode for `.plain` lists on iPadOS —
+            // tapping silently did nothing once the satellite pass dropped
+            // the sidebar list style. A Button always fires; the selected
+            // row gets the accent wash (the satellite rule's "unless
+            // selected/active" arm).
+            let isSelected = selection == card.id
+            let selectedChrome = Group {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(accent.opacity(0.16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(accent.opacity(0.5))
+                        )
+                        .padding(.vertical, 2)
+                } else {
+                    rowChrome
+                }
+            }
+            Button {
+                if card.isGuestSideChat || card.isIsolatedSideChat,
+                    let parentId = card.parentChatId
+                {
+                    selection = parentId
+                    model.inspectorPresented = true
+                    model.inspectorSideChatTarget = card.id
+                    model.requestThreadSnapshot(card.id)
+                } else {
+                    selection = card.id
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    TaskRow(model: model, card: card, nested: nested)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(TWTheme.textMuted)
+                }
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(rowInsets)
+            .listRowSeparator(.hidden)
+            .listRowBackground(selectedChrome)
+        } else {
+            NavigationLink(value: card.id) {
+                TaskRow(model: model, card: card, nested: nested)
+            }
+            .listRowInsets(rowInsets)
+            .listRowSeparator(.hidden)
+            .listRowBackground(rowChrome)
+        }
+    }
+}
+
+struct TaskRow: View {
+    @ObservedObject var model: RemoteSessionModel
+    let card: RemoteTaskCard
+    var nested: Bool = false
+
+    private var nestIcon: String {
+        if card.isGuestSideChat || card.isIsolatedSideChat {
+            return "arrow.left.arrow.right"
+        }
+        return "arrow.turn.down.right"
+    }
+
+    private var relationLabel: String? {
+        if card.isGuestSideChat { return "Guest" }
+        if card.isIsolatedSideChat { return "Side chat" }
+        if nested || card.isSubThread { return "Sub-thread" }
+        if card.isEnsemble { return "Ensemble" }
+        return nil
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if nested || card.parentChatId != nil {
+                Image(systemName: nestIcon)
+                    .font(.caption2)
+                    .foregroundStyle(TWTheme.textTertiary)
+                    .padding(.top, 4)
+            }
+            // Provider-colored bullet — the sidebar's thread dot. Sub-agents
+            // with a character identity get their identicon badge instead.
+            if let agentName = card.agentName {
+                AgentIdentityBadge(
+                    name: agentName, accentHex: card.agentAccent,
+                    slug: card.agentSlug, size: 18)
+                    .padding(.top, 2)
+            } else {
+                Circle()
+                    .fill(
+                        card.isEnsemble
+                            ? TWTheme.chroma2 : TWTheme.providerAccent(card.provider)
+                    )
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 6)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                if let agentName = card.agentName {
+                    Text(agentName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(twAgentAccentColor(card.agentAccent))
+                        .lineLimit(1)
+                }
+                Text(card.title ?? card.id)
+                    .font(nested ? .subheadline : .body)
+                    .foregroundStyle(TWTheme.textPrimary)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    if card.isEnsemble {
+                        Text("Ensemble")
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(TWTheme.chroma2.opacity(0.16), in: Capsule())
+                            .foregroundStyle(TWTheme.chroma2)
+                    } else if let provider = card.provider {
+                        Text(TWTheme.providerLabel(provider))
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(
+                                TWTheme.providerAccent(provider).opacity(0.14), in: Capsule()
+                            )
+                            .foregroundStyle(TWTheme.providerAccent(provider))
+                    }
+                    if let relationLabel {
+                        Text(relationLabel)
+                            .font(.caption2)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(TWTheme.surface3, in: Capsule())
+                            .foregroundStyle(TWTheme.textTertiary)
+                    }
+                    if let status = card.status {
+                        HStack(spacing: 4) {
+                            Circle().fill(TWTheme.statusColor(status)).frame(width: 6, height: 6)
+                            Text(status).font(.caption)
+                                .foregroundStyle(TWTheme.statusColor(status))
+                        }
+                    }
+                    if (card.pendingApprovalCount ?? 0) + (card.pendingQuestionCount ?? 0) > 0 {
+                        Image(systemName: "exclamationmark.bubble.fill")
+                            .font(.caption)
+                            .foregroundStyle(TWTheme.statusAttention)
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .padding(.leading, nested ? 8 : 0)
+    }
+}
+
+// ── Thread detail: the transcript parity surface ──────────────────────────────

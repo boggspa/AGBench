@@ -278,6 +278,15 @@ struct NewChatCanvasView: View {
                         .foregroundStyle(TWTheme.textTertiary)
                 }
 
+                // Provider catalogs ride a dedicated broadcast that fires on
+                // establish — until they land every provider menu on this
+                // canvas would render empty, which reads as broken. One
+                // ticker up top covers all of them (roster menus, picker
+                // sheet, composer pill).
+                if catalogs.isEmpty {
+                    HydrationTicker("Loading providers from your Mac…")
+                }
+
                 // Workspace chips
                 FlowChips(items: model.workspaces.map(\.id)) { id in
                     let name =

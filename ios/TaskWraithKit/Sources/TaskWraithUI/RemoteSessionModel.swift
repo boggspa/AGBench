@@ -132,6 +132,14 @@ public final class RemoteSessionModel: ObservableObject {
     /// keep-the-shell-during-reconnect behavior (transient drops must NOT
     /// eject the user to the pairing screen).
     @Published public private(set) var wasEverConnected = false
+    /// First-connect hydration gate. False until this pairing has either
+    /// received real content (workspaces / task cards) or waited out a
+    /// short post-establish grace window — views show "Syncing…" tickers
+    /// instead of authoritative empty states while it's false. The grace
+    /// covers a genuinely empty Mac AND the settling-restart case (the Mac
+    /// re-seeds at ~1.5s; 5s leaves margin on a slow relay). Never reset on
+    /// transient drops — retained data stays on screen by design.
+    @Published public private(set) var projectionHydrated = false
     /// The thread currently open in a detail view (nil on home). Used to
     /// re-request its snapshot after a reconnect — it may be outside the
     /// establish broadcast's recent-N window.
@@ -354,6 +362,7 @@ public final class RemoteSessionModel: ObservableObject {
         streamingTexts = [:]
         streamingItemIds = [:]
         providerModels = [:]
+        projectionHydrated = false
         usageRollup = nil
         modelUsage = nil
         navigationTarget = nil
@@ -410,6 +419,17 @@ public final class RemoteSessionModel: ObservableObject {
                         self.phase = .connected
                         self.wasEverConnected = true
                         self.persistCurrentPairing()
+                        // Grace fallback for the hydration gate: a Mac with
+                        // genuinely nothing shared must eventually show the
+                        // true empty state (with its setup instructions)
+                        // rather than ticking forever. Idempotent — content
+                        // arriving first flips the flag and this no-ops.
+                        if !self.projectionHydrated {
+                            Task { [weak self] in
+                                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                                await MainActor.run { self?.projectionHydrated = true }
+                            }
+                        }
                         // The establish snapshot covers recent-N threads; the
                         // one the user is LOOKING AT may be older — refresh it
                         // explicitly so the transcript catches up after a
@@ -467,6 +487,7 @@ public final class RemoteSessionModel: ObservableObject {
             } else {
                 workspaces = message.workspaces
             }
+            if !message.workspaces.isEmpty { projectionHydrated = true }
         case "bridge.broadcastModelUsage":
             guard let message = try? JSONDecoder().decode(ModelUsageMessage.self, from: params)
             else {
@@ -1018,6 +1039,10 @@ public final class RemoteSessionModel: ObservableObject {
         } else {
             taskCards = tasks
         }
+        // Real content ends the first-connect "Syncing…" state immediately;
+        // an empty settling snapshot does NOT (the grace timer or the Mac's
+        // delayed re-seed resolves it instead).
+        if !tasks.isEmpty { projectionHydrated = true }
         approvals = approvalCards
         questions = questionCards
         // Merge — don't wipe on-demand snapshots for threads outside the

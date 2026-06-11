@@ -812,5 +812,29 @@ struct StreamingDots: View {
     }
 }
 
+/// One consistent in-flight affordance for surfaces whose data hasn't
+/// arrived from the Mac yet — dots + a caption saying WHAT is loading.
+/// Use this instead of letting a view fall through to an authoritative
+/// empty state during hydration.
+struct HydrationTicker: View {
+    let caption: String
+    var accent: Color = TWTheme.chroma1
+
+    init(_ caption: String, accent: Color = TWTheme.chroma1) {
+        self.caption = caption
+        self.accent = accent
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            StreamingDots(color: accent)
+            Text(caption)
+                .font(.footnote)
+                .foregroundStyle(TWTheme.textSecondary)
+        }
+        .padding(.vertical, 10)
+    }
+}
+
 /// Live ensemble roster — desktop composer roster-chip parity: one chip
 /// per participant, provider-tinted, active speaker highlighted.

@@ -1945,6 +1945,14 @@ public struct ThreadInspector: View {
     private var children: [RemoteTaskCard] {
         model.taskCards.filter { $0.parentChatId == threadId }
     }
+    /// Same trust order as ThreadDetailView: the un-throttled snapshot
+    /// runSummary beats the (snapshot-throttled) task card when both exist.
+    private var isRunning: Bool {
+        if let runStatus = model.threadSnapshots[threadId]?.runSummary?.status {
+            return runStatus == "running"
+        }
+        return model.taskCards.first { $0.id == threadId }?.status == "running"
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -1960,7 +1968,7 @@ public struct ThreadInspector: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if tab == 0 {
-                        DiffSummaryPanel(diff: diff)
+                        DiffSummaryPanel(diff: diff, isRunning: isRunning)
                     } else if tab == 1 {
                         SubAgentsPanel(children: children, onOpenThread: onOpenThread)
                     } else if tab == 3 {
@@ -1998,6 +2006,9 @@ public struct ThreadInspector: View {
 
 struct DiffSummaryPanel: View {
     let diff: MobileDiffSummary?
+    /// Thread has an active run — absence of a diff means "not yet",
+    /// not "nothing changed".
+    var isRunning: Bool = false
 
     var body: some View {
         if let diff, let files = diff.files, !files.isEmpty {
@@ -2035,6 +2046,18 @@ struct DiffSummaryPanel: View {
                         .foregroundStyle(TWTheme.textMuted)
                 }
             }
+        } else if isRunning {
+            // Mid-run the diff projection lags the agent's writes — say so
+            // instead of declaring "no changes" while files are landing.
+            VStack(spacing: 8) {
+                StreamingDots(color: TWTheme.chroma1)
+                Text("Run in progress — file changes appear here as the agent writes.")
+                    .font(.footnote)
+                    .foregroundStyle(TWTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 32)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "plusminus.circle")
@@ -3962,10 +3985,19 @@ struct MiniThreadView: View {
             // Transcript (recent window; full history lives in the main pane)
             let rows = Array((snapshot?.rows ?? []).suffix(30))
             if rows.isEmpty {
-                Text("No messages yet — say hi below.")
-                    .font(.caption)
-                    .foregroundStyle(TWTheme.textMuted)
-                    .padding(.vertical, 10)
+                // Same trap the main thread view already solved: an
+                // existing side chat WITH history briefly looked like an
+                // empty one while its snapshot was in flight (the .task
+                // below requests it on open). Only a delivered snapshot
+                // with zero total rows is genuinely "no messages".
+                if let snapshot, (snapshot.totalRows ?? 0) == 0 {
+                    Text("No messages yet — say hi below.")
+                        .font(.caption)
+                        .foregroundStyle(TWTheme.textMuted)
+                        .padding(.vertical, 10)
+                } else {
+                    HydrationTicker("Loading side chat from your Mac…")
+                }
             } else {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(rows, id: \.id) { row in
