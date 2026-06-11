@@ -1144,6 +1144,15 @@ declare global {
           source: 'perKind' | 'mainAuthority' | 'providerDefault'
         }) => void
       ) => void
+      onAgentApprovalResolved: (
+        callback: (payload: {
+          approvalId: string
+          action?: string
+          decisionSource?: string
+          provider?: string
+          threadId?: string
+        }) => void
+      ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       onWorkflowDefinitionsChanged: (callback: (payload: WorkflowDefinition[]) => void) => void

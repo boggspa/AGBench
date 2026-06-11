@@ -19687,6 +19687,31 @@ if (isGeminiMcpBridgeProcess) {
       workspaceIdForPath: workspaceIdForApprovalPush,
       publishApprovalRunEvent: (approvalEvent) => {
         publishRunEvent('agent-output', approvalEvent.provider, approvalEvent)
+        if (approvalEvent.type === 'approval_resolved') {
+          // Cross-surface acknowledgment: a decision from ANY source (a
+          // paired iPhone, another window, the auto-deny timer) must clear
+          // every desktop modal still showing this approval — without this
+          // the composer prompt sat there after the phone had already
+          // approved and the run had moved on.
+          for (const win of BrowserWindow.getAllWindows()) {
+            try {
+              win.webContents.send('agent-approval-resolved', {
+                approvalId: approvalEvent.approvalId,
+                action: approvalEvent.action,
+                decisionSource: approvalEvent.decisionSource,
+                provider: approvalEvent.provider,
+                threadId: approvalEvent.threadId
+              })
+            } catch {
+              // Window torn down mid-send.
+            }
+          }
+          // The phone clears its card from the next projection snapshot —
+          // approval flips are rare and important, so skip the 1s throttle
+          // that could otherwise silently drop this exact update (the
+          // pending broadcast usually fired <1s earlier).
+          bridgeBroadcasterRef?.resetThrottle()
+        }
         bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
       },
       getApprovalTimeoutSettings: () => {

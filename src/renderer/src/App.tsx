@@ -6963,6 +6963,7 @@ function App(): React.JSX.Element {
     resolveActiveRunContext,
     setPendingAgentApprovalByChatId,
     setPendingAgentApprovalForChat,
+    setPendingApprovalQueueByChatId,
     enqueueApprovalForChat,
     advanceApprovalQueueForChat,
     showAttachmentPermissionRequest,
@@ -6978,6 +6979,7 @@ function App(): React.JSX.Element {
     resolveActiveRunContext,
     setPendingAgentApprovalByChatId,
     setPendingAgentApprovalForChat,
+    setPendingApprovalQueueByChatId,
     enqueueApprovalForChat,
     advanceApprovalQueueForChat,
     showAttachmentPermissionRequest,
@@ -7494,6 +7496,55 @@ function App(): React.JSX.Element {
         // queue state (not the head), so order doesn't matter
         // here — it just promotes the next queued approval into
         // the head slot for each affected chat.
+        for (const chatId of matchedChatIds) {
+          handlers.advanceApprovalQueueForChat(chatId)
+        }
+      })
+    }
+
+    if (typeof window.api.onAgentApprovalResolved === 'function') {
+      window.api.onAgentApprovalResolved((resolved) => {
+        // Cross-surface acknowledgment: the approval was decided
+        // SOMEWHERE — a paired iPhone, another window, or the auto-deny
+        // timer — and main's ApprovalService has already executed the
+        // decision. Tidy any modal still showing it here. Local clicks
+        // and timeouts clear the head before this event lands, so those
+        // paths fall through as no-ops.
+        const handlers = appEventHandlersRef.current
+        const matchedChatIds: string[] = []
+        handlers.setPendingAgentApprovalByChatId((prev) => {
+          const next: Record<string, AgentApprovalRequest | null> = {}
+          for (const [chatId, request] of Object.entries(prev)) {
+            if (request && request.id === resolved.approvalId) {
+              matchedChatIds.push(chatId)
+              next[chatId] = null
+              handlers.appendThreadRawLog(chatId, {
+                type: 'info',
+                content: `Approval ${resolved.action || 'resolved'} from ${
+                  resolved.decisionSource === 'system'
+                    ? 'the auto-deny timer'
+                    : 'a paired device or another window'
+                } — clearing this prompt.`
+              })
+            } else {
+              next[chatId] = request
+            }
+          }
+          return next
+        })
+        // Purge it from every queue tail too: an approval resolved
+        // elsewhere while queued must never be promoted back into the
+        // head as a zombie prompt.
+        handlers.setPendingApprovalQueueByChatId((prev) => {
+          let changed = false
+          const next: Record<string, AgentApprovalRequest[]> = {}
+          for (const [chatId, queue] of Object.entries(prev)) {
+            const filtered = queue.filter((request) => request.id !== resolved.approvalId)
+            if (filtered.length !== queue.length) changed = true
+            next[chatId] = filtered
+          }
+          return changed ? next : prev
+        })
         for (const chatId of matchedChatIds) {
           handlers.advanceApprovalQueueForChat(chatId)
         }
