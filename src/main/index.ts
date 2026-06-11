@@ -14501,6 +14501,9 @@ if (isGeminiMcpBridgeProcess) {
             broadcastThreadUpdate(result.guest.appChatId)
             const canonical = canonicalRemoteWorkspaceId(result.parent.workspaceId)
             if (canonical) pushRemoteThreadSnapshot(result.parent, canonical)
+            // Throttle-cleared: a recent broadcast must not swallow the
+            // snapshot that carries the new guest card (no trailing retry).
+            bridgeBroadcasterRef?.resetThrottle()
             bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
             return { ok: true, guestThreadId: result.guest.appChatId }
           } catch (err) {
@@ -14515,6 +14518,7 @@ if (isGeminiMcpBridgeProcess) {
             if (result.guest) broadcastThreadUpdate(result.guest.appChatId)
             const canonical = canonicalRemoteWorkspaceId(result.parent.workspaceId)
             if (canonical) pushRemoteThreadSnapshot(result.parent, canonical)
+            bridgeBroadcasterRef?.resetThrottle()
             bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
             return { ok: true }
           } catch (err) {
@@ -14532,6 +14536,7 @@ if (isGeminiMcpBridgeProcess) {
             broadcastThreadUpdate(chat.appChatId)
             const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
             if (canonical) pushRemoteThreadSnapshot(chat, canonical)
+            bridgeBroadcasterRef?.resetThrottle()
             bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
             return { ok: true, threadId: chat.appChatId }
           } catch (err) {
