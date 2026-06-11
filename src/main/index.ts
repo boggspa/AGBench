@@ -15463,7 +15463,22 @@ if (isGeminiMcpBridgeProcess) {
           // EVERY establish (incl. phone relaunches) re-ships the async
           // provider-model catalogs — a freshly-launched phone starts with
           // empty pickers otherwise.
-          onDeviceEstablished: () => remoteProviderModelsTrigger?.(),
+          onDeviceEstablished: () => {
+            remoteProviderModelsTrigger?.()
+            // Rehydrate guard (Codex-diagnosed): the establish-time
+            // broadcastSnapshot can fire while the store/allowlist state is
+            // still settling after a Mac restart — the phone then accepts an
+            // EMPTY snapshot as authoritative and shows "connected, no
+            // chats". A delayed, throttle-cleared second snapshot re-seeds
+            // it (projections are idempotent by envelopeId).
+            setTimeout(() => {
+              const broadcaster = bridgeBroadcasterRef
+              if (!broadcaster) return
+              broadcaster.resetThrottle()
+              broadcaster.broadcastSnapshot()
+              console.log('[remote-bridge] post-establish rehydrate snapshot sent')
+            }, 1500).unref?.()
+          },
           pairingStore: new RemotePairingStore(
             join(app.getPath('userData'), 'bridge', 'remote-pairing.json'),
             (line) => console.log(line)
