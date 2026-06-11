@@ -99,6 +99,14 @@ public struct ModelOption: Codable, Sendable, Identifiable, Hashable {
     public let id: String
     public let label: String?
     public let isDefault: Bool?
+    public let supportedReasoningEfforts: [ReasoningEffortOption]?
+    public let defaultReasoningEffort: String?
+}
+
+public struct ReasoningEffortOption: Codable, Sendable, Identifiable, Hashable {
+    public let reasoningEffort: String
+    public let description: String?
+    public var id: String { reasoningEffort }
 }
 
 public struct WorkspaceSummary: Codable, Sendable, Identifiable, Hashable {
@@ -107,6 +115,7 @@ public struct WorkspaceSummary: Codable, Sendable, Identifiable, Hashable {
     public let path: String
     public let chatCount: Int?
     public let runningChatCount: Int?
+    public let capabilities: RemoteTaskCapabilities?
     public var id: String { workspaceId }
 }
 
@@ -152,6 +161,7 @@ public struct RemoteTaskCard: Codable, Sendable {
     public let runId: String?
     public let pendingApprovalCount: Int?
     public let pendingQuestionCount: Int?
+    public let capabilities: RemoteTaskCapabilities?
 
     public var isEnsemble: Bool { chatKind == "ensemble" }
     public var isGuestSideChat: Bool {
@@ -187,8 +197,22 @@ public struct RemoteTaskCard: Codable, Sendable {
             chatKind: "single",
             runId: nil,
             pendingApprovalCount: nil,
-            pendingQuestionCount: nil)
+            pendingQuestionCount: nil,
+            capabilities: nil)
     }
+}
+
+public struct RemoteTaskCapabilities: Codable, Sendable, Hashable {
+    public let monitor: Bool?
+    public let approve: Bool?
+    public let answer: Bool?
+    public let cancel: Bool?
+    public let startTurn: Bool?
+    public let diffReview: Bool?
+    public let steer: Bool?
+    public let fileBrowse: Bool?
+    public let fileRead: Bool?
+    public let fileWrite: Bool?
 }
 
 /// Nested `result` inside a successful `bridge.ack` for action requests.
@@ -206,6 +230,66 @@ public struct BridgeActionAckData: Codable, Sendable {
     public let chatKind: String?
     public let rowId: String?
     public let row: RemoteThreadSnapshot.Row?
+    public let entries: [WorkspaceFileEntry]?
+    public let truncated: Bool?
+    public let file: WorkspaceFileReadResult?
+    public let changeSet: RawJSON?
+    /// Bounded workspace diff (the `workspaceDiff` action's ack payload).
+    public let diff: WorkspaceDiffResult?
+}
+
+public struct WorkspaceFileEntry: Codable, Sendable, Identifiable, Hashable {
+    public let path: String
+    public let name: String
+    public let isDirectory: Bool
+    public let sizeBytes: Int?
+    public let depth: Int
+    public var id: String { path }
+}
+
+public struct WorkspaceFileReadResult: Codable, Sendable {
+    public let path: String
+    public let content: String
+    public let sizeBytes: Int
+    public let mtimeMs: Double?
+    public let etag: String?
+    public let changeSet: RawJSON?
+}
+
+/// Bounded workspace diff — the Mac's `BoundedWorkspaceDiff` projection of
+/// the SAME git diff the desktop Diff Studio renders, hard-capped for the
+/// relay frame budget (≤40 files, ≤200 hunk lines/file, 400-char lines).
+public struct WorkspaceDiffResult: Codable, Sendable {
+    public let files: [WorkspaceDiffFile]
+    /// Non-noise changed files BEFORE the file cap — "showing 40 of N".
+    public let totalFiles: Int?
+    public let truncated: Bool?
+}
+
+public struct WorkspaceDiffFile: Codable, Sendable, Identifiable, Hashable {
+    public let path: String
+    /// created | modified | deleted
+    public let kind: String
+    public let additions: Int?
+    public let deletions: Int?
+    public let hunks: [WorkspaceDiffHunk]?
+    /// Hunk lines were dropped/clipped for this file (per-file cap).
+    public let truncated: Bool?
+    public var id: String { path }
+    public var name: String { path.split(separator: "/").last.map(String.init) ?? path }
+}
+
+public struct WorkspaceDiffHunk: Codable, Sendable, Hashable {
+    public let header: String
+    public let lines: [WorkspaceDiffLine]
+}
+
+public struct WorkspaceDiffLine: Codable, Sendable, Hashable {
+    /// ctx | add | del
+    public let type: String
+    public let text: String
+    public let oldLine: Int?
+    public let newLine: Int?
 }
 
 public struct MobileApprovalCard: Codable, Sendable {
@@ -248,6 +332,9 @@ public struct MobileQuestionCard: Codable, Sendable {
     public let status: String?
 
     public var resolvedId: String? { promptId ?? questionId }
+    public var stableId: String {
+        resolvedId ?? "\(threadId ?? "question")-\(runId ?? "")-\(createdAt ?? "")-\(resolvedQuestion ?? "")"
+    }
     public var resolvedQuestion: String? { question ?? prompt }
 }
 
@@ -354,6 +441,9 @@ public struct RemoteThreadSnapshot: Codable, Sendable {
         /// Bounded one-screen preview of the row body (Mac-side sanitized).
         public let preview: String?
         public let truncated: Bool?
+        /// ISO delivery moment of the underlying message (Mac transcript
+        /// timestamp) — surfaced in the long-press context menu.
+        public let timestamp: String?
         public struct ToolSummary: Codable, Sendable {
             public let activityCount: Int?
             public let status: String?
@@ -396,6 +486,29 @@ public struct RemoteThreadSnapshot: Codable, Sendable {
         public let tokensIn: Int?
         public let tokensOut: Int?
         public let costText: String?
+        /// Per-run file-change detail (run.runDiff projection) — powers the
+        /// File-changes block on every Task-complete card, not just the
+        /// latest run's diffSummary envelope.
+        public let fileChanges: FileChanges?
+
+        public struct FileChanges: Codable, Sendable {
+            public let filesChanged: Int?
+            public let additions: Int?
+            public let deletions: Int?
+            public let createdFiles: Int?
+            public let modifiedFiles: Int?
+            public let deletedFiles: Int?
+            /// Bounded (≤12) per-file rows; overflow = filesChanged - files.count.
+            public let files: [ChangedFile]?
+
+            public struct ChangedFile: Codable, Sendable, Identifiable {
+                public let path: String
+                public let status: String?
+                public let additions: Int?
+                public let deletions: Int?
+                public var id: String { path }
+            }
+        }
     }
     public let threadId: String?
     public let taskId: String?
@@ -434,27 +547,49 @@ public enum BridgeAction {
     /// Answer an agent question.
     public static func questionReply(
         questionId: String, answer: String, workspaceId: String, threadId: String,
+        runId: String? = nil,
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
-        encode([
+        var payload: [String: Any] = [
             // The Mac validator requires `promptId` (questionId was never
             // accepted — replies were silently rejected). Send both keys;
             // extra keys are ignored by the validator.
             "kind": "questionReply", "actionId": actionId, "promptId": questionId,
             "questionId": questionId,
             "answer": answer, "workspaceId": workspaceId, "threadId": threadId,
+        ]
+        if let runId, !runId.isEmpty {
+            payload["runId"] = runId
+        }
+        return encode(payload)
+    }
+
+    /// Ship the APNs device token to the Mac (pairID is overwritten
+    /// Mac-side with the authenticated transport identity).
+    public static func registerApnsToken(
+        deviceToken: String, env: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "registerApnsToken", "actionId": actionId,
+            "pairID": "transport", "deviceToken": deviceToken, "env": env,
         ])
     }
 
     /// Dismiss an agent question (resolves the parked tool as cancelled).
     public static func questionReject(
         promptId: String, workspaceId: String, threadId: String,
+        runId: String? = nil,
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
-        encode([
+        var payload: [String: Any] = [
             "kind": "questionReject", "actionId": actionId, "promptId": promptId,
             "workspaceId": workspaceId, "threadId": threadId,
-        ])
+        ]
+        if let runId, !runId.isEmpty {
+            payload["runId"] = runId
+        }
+        return encode(payload)
     }
 
     /// Cancel a running agent.
@@ -477,7 +612,7 @@ public enum BridgeAction {
     public static func composerPrompt(
         workspaceId: String, threadId: String, provider: String, text: String,
         approvalMode: String? = nil, model: String? = nil, extraWorkspaceIds: [String]? = nil,
-        imageAttachments: [[String: Any]]? = nil,
+        reasoningEffort: String? = nil, imageAttachments: [[String: Any]]? = nil,
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
         var payload: [String: Any] = [
@@ -486,6 +621,13 @@ public enum BridgeAction {
         ]
         if let approvalMode { payload["approvalMode"] = approvalMode }
         if let model { payload["model"] = model }
+        if let reasoningEffort, !reasoningEffort.isEmpty {
+            if provider.lowercased() == "claude" {
+                payload["claudeReasoningEffort"] = reasoningEffort
+            } else {
+                payload["reasoningEffort"] = reasoningEffort
+            }
+        }
         if let extraWorkspaceIds, !extraWorkspaceIds.isEmpty {
             payload["extraWorkspaceIds"] = extraWorkspaceIds
         }
@@ -527,13 +669,20 @@ public enum BridgeAction {
 
     public static func setGuestParticipant(
         workspaceId: String, threadId: String, provider: String, model: String?,
-        actionId: String = UUID().uuidString
+        reasoningEffort: String? = nil, actionId: String = UUID().uuidString
     ) -> [String: Any] {
         var payload: [String: Any] = [
             "kind": "setGuestParticipant", "actionId": actionId,
             "workspaceId": workspaceId, "threadId": threadId, "provider": provider,
         ]
         if let model, !model.isEmpty { payload["model"] = model }
+        if let reasoningEffort, !reasoningEffort.isEmpty {
+            if provider.lowercased() == "claude" {
+                payload["claudeReasoningEffort"] = reasoningEffort
+            } else {
+                payload["codexReasoningEffort"] = reasoningEffort
+            }
+        }
         return encode(payload)
     }
 
@@ -548,7 +697,8 @@ public enum BridgeAction {
     }
 
     public static func createSideChat(
-        workspaceId: String, threadId: String, provider: String?,
+        workspaceId: String, threadId: String, provider: String?, model: String? = nil,
+        reasoningEffort: String? = nil,
         actionId: String = UUID().uuidString
     ) -> [String: Any] {
         var payload: [String: Any] = [
@@ -556,6 +706,14 @@ public enum BridgeAction {
             "workspaceId": workspaceId, "threadId": threadId,
         ]
         if let provider, !provider.isEmpty { payload["provider"] = provider }
+        if let model, !model.isEmpty { payload["model"] = model }
+        if let reasoningEffort, !reasoningEffort.isEmpty {
+            if provider?.lowercased() == "claude" {
+                payload["claudeReasoningEffort"] = reasoningEffort
+            } else {
+                payload["codexReasoningEffort"] = reasoningEffort
+            }
+        }
         return encode(payload)
     }
 
@@ -660,9 +818,59 @@ public enum BridgeAction {
         ])
     }
 
+    public static func workspaceFileList(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "workspaceFileList", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
+    public static func workspaceFileRead(
+        workspaceId: String, path: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "workspaceFileRead", "actionId": actionId,
+            "workspaceId": workspaceId, "path": path,
+        ])
+    }
+
+    public static func workspaceFileWrite(
+        workspaceId: String, path: String, content: String, baseEtag: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "workspaceFileWrite", "actionId": actionId,
+            "workspaceId": workspaceId, "path": path,
+            "content": content, "baseEtag": baseEtag,
+        ])
+    }
+
+    public static func workspaceDiff(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "workspaceDiff", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
     /// Wrap a typed action payload as the `bridge.requestActionAck` params.
     private static func encode(_ payload: [String: Any]) -> [String: Any] {
-        let data = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
+        // Replay/expiry stamps (security review: the Mac REQUIRES actionId +
+        // expiresAt on mutating actions). One place for every action: each
+        // helper already mints an actionId; issuedAt/expiresAt land here so
+        // a forgotten helper can't ship an unguarded mutation. 120s expiry —
+        // generous for relay latency, short enough to bound replay windows.
+        var stamped = payload
+        let nowMs = Int(Date().timeIntervalSince1970 * 1000)
+        if stamped["issuedAt"] == nil { stamped["issuedAt"] = nowMs }
+        if stamped["expiresAt"] == nil { stamped["expiresAt"] = nowMs + 120_000 }
+        let data = (try? JSONSerialization.data(withJSONObject: stamped)) ?? Data()
         return ["payloadBase64": data.base64EncodedString(), "payloadBytes": data.count]
     }
 }
