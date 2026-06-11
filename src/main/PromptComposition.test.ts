@@ -157,6 +157,48 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextualPrompt).toContain('Current user request:\nContinue.')
   })
 
+  it('replays compact Codex history when no app-server thread can be resumed', () => {
+    const result = composeRunPrompt({
+      provider: 'codex',
+      finalPrompt: "Let's try that again.",
+      messages: [
+        message({
+          role: 'user',
+          content: 'Add fixture files so I can test transcript tool calls.'
+        })
+      ],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Codex'
+    })
+
+    expect(result.contextualPrompt).toContain('Conversation context')
+    expect(result.contextualPrompt).toContain(
+      'User: Add fixture files so I can test transcript tool calls.'
+    )
+    expect(result.contextualPrompt).toContain("Current user request:\nLet's try that again.")
+    expect(result.applicationLog).toContain('Codex: no resumable app-server thread')
+  })
+
+  it('keeps resumed Codex turns on native session history', () => {
+    const result = composeRunPrompt({
+      provider: 'codex',
+      finalPrompt: 'Continue.',
+      messages: [message({ role: 'user', content: 'Earlier request.' })],
+      chatContextTurns: 6,
+      resumeSessionId: '019eb87a-8eaa-76d2-a7a9-64cbdc9d8f15',
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Codex'
+    })
+
+    expect(result.contextualPrompt).not.toContain('Conversation context')
+    expect(result.applicationLog).toContain('provider/session history is authoritative')
+  })
+
   it('injects guest participant replies as labeled peer context', () => {
     const result = composeRunPrompt({
       provider: 'codex',

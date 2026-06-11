@@ -471,9 +471,13 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // own session continuity (with a special Codex handoff branch below).
   const kimiNeedsContextInjection = provider === 'kimi'
   const geminiNeedsContextInjection = provider === 'gemini' && !resumeSessionId
+  const codexNeedsContextInjection = provider === 'codex' && !resumeSessionId
   const ollamaNeedsContextInjection = provider === 'ollama'
   const shouldAppendContextForRun =
-    kimiNeedsContextInjection || geminiNeedsContextInjection || ollamaNeedsContextInjection
+    kimiNeedsContextInjection ||
+    geminiNeedsContextInjection ||
+    codexNeedsContextInjection ||
+    ollamaNeedsContextInjection
 
   let contextTurnsApplied = shouldAppendContextForRun
     ? clampContextTurns(chatContextTurns, contextBudget)
@@ -485,6 +489,8 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   )
   let applicationLog = kimiNeedsContextInjection
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
+    : codexNeedsContextInjection
+      ? `Context turns: ${contextTurnsApplied} (Codex: no resumable app-server thread; sending compact context + current request)`
     : ollamaNeedsContextInjection
       ? `Context turns: ${contextTurnsApplied} (Ollama: compact local context — search/read narrowly; ${contextBudget.maxBlockChars} char cap)`
     : provider !== 'gemini'
