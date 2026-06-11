@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { E2eeSession } from './session'
-import { generateIdentityKeyPair } from './keys'
+import { generateIdentityKeyPair, generateEphemeralKeyPair, exportRawX25519PublicKey, importRawX25519PublicKey } from './keys'
+import { deriveSessionKeys } from './keyschedule'
+import { seal } from './cipher'
 import type { E2eeFrame } from './protocol'
 
 /**
@@ -17,6 +19,8 @@ function wire(opts?: { trustPeer?: boolean }) {
   const macCodes: string[] = []
   const iphoneCodes: string[] = []
   const framesToIphone: E2eeFrame[] = []
+  const framesFromMac: E2eeFrame[] = []
+  const macErrors: Error[] = []
   let queue: Array<() => Promise<void>> = []
 
   let mac: E2eeSession
@@ -28,10 +32,12 @@ function wire(opts?: { trustPeer?: boolean }) {
     identityKeyPair: macIdentity,
     send: (f: E2eeFrame) => {
       framesToIphone.push(f)
+      framesFromMac.push(f)
       queue.push(() => iphone.handleFrame(f))
     },
     onAppMessage: (method, params) => macReceived.push({ method, params }),
     onConfirmCode: (c) => macCodes.push(c),
+    onError: (e) => macErrors.push(e),
     trustPeer: opts?.trustPeer === false ? () => false : () => true
   })
   iphone = new E2eeSession({
@@ -85,7 +91,9 @@ function wire(opts?: { trustPeer?: boolean }) {
     pump,
     drop,
     establish,
-    swapIphone
+    swapIphone,
+    framesFromMac,
+    macErrors
   }
 }
 
@@ -220,5 +228,74 @@ describe('E2eeSession reconnect + replay', () => {
     // Without the epoch reset these two were dropped as duplicates 1 and 2.
     expect(w.macReceived).toHaveLength(5)
     expect(w.macReceived[3].params).toEqual({ n: 'relaunch-1' })
+  })
+})
+
+describe('E2eeSession security gates (crypto review BD4)', () => {
+  it('drops an app message a peer sends before the handshake authenticates', async () => {
+    // A hostile relay completes ONLY the ephemeral ECDH (clientHello ->
+    // serverHello) — the Mac derives keys but has not verified the peer's
+    // pinned identity. A forged app frame sealed with those keys must NOT
+    // reach onAppMessage. (Mirrors the live attack; the gate is `established`,
+    // not `keys`.)
+    const w = wire()
+    const attackerEph = generateEphemeralKeyPair()
+    const attackerNonce = Buffer.alloc(16, 0x99)
+    w.mac.start()
+    // Attacker's clientHello drives the Mac to derive keys (pre-auth).
+    await w.mac.handleFrame({
+      t: 'clientHello',
+      protocol: 'taskwraith-e2ee-v1',
+      sessionId: 'sess-1',
+      role: 'iphone',
+      ephemeralPubKey: exportRawX25519PublicKey(attackerEph.publicKey).toString('base64'),
+      nonce: attackerNonce.toString('base64')
+    } as E2eeFrame)
+    const serverHello = w.framesFromMac.find((f) => f.t === 'serverHello')!
+    expect(serverHello).toBeDefined()
+    // Attacker derives the same directional keys and seals a forged action.
+    const keys = deriveSessionKeys({
+      myEphemeralPrivate: attackerEph.privateKey,
+      peerEphemeralPublic: importRawX25519PublicKey(
+        Buffer.from((serverHello as { ephemeralPubKey: string }).ephemeralPubKey, 'base64')
+      ),
+      clientNonce: attackerNonce,
+      serverNonce: Buffer.from((serverHello as { nonce: string }).nonce, 'base64')
+    })
+    const sealed = seal(
+      keys.iphoneToMac,
+      'iphone->mac',
+      'sess-1',
+      0,
+      Buffer.from(JSON.stringify({ msgId: 1, method: 'bridge.requestActionAck', params: {} }), 'utf8')
+    )
+    await w.mac.handleFrame({
+      t: 'enc',
+      sessionId: 'sess-1',
+      seq: 0,
+      nonce: sealed.nonce.toString('base64'),
+      ct: sealed.ct.toString('base64'),
+      tag: sealed.tag.toString('base64')
+    } as E2eeFrame)
+    expect(w.macReceived).toHaveLength(0)
+  })
+
+  it('tears down on a second clientHello during first pairing (SAS-grind defense)', async () => {
+    const w = wire()
+    const hello = (seed: number): E2eeFrame => {
+      const eph = generateEphemeralKeyPair()
+      return {
+        t: 'clientHello',
+        protocol: 'taskwraith-e2ee-v1',
+        sessionId: 'sess-1',
+        role: 'iphone',
+        ephemeralPubKey: exportRawX25519PublicKey(eph.publicKey).toString('base64'),
+        nonce: Buffer.alloc(16, seed).toString('base64')
+      } as E2eeFrame
+    }
+    w.mac.start()
+    await w.mac.handleFrame(hello(0x01))
+    await w.mac.handleFrame(hello(0x02))
+    expect(w.macErrors.some((e) => /grind|second clientHello/i.test(e.message))).toBe(true)
   })
 })

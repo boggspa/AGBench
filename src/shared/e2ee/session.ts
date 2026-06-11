@@ -229,6 +229,17 @@ export class E2eeSession {
   }
 
   private onClientHello(clientEphB64: string, clientNonceB64: string): void {
+    // SAS-grind defense: a relay can sample the Mac's 6-digit confirm code by
+    // looping clientHello->serverHello (a fresh ephemeral each time => a fresh
+    // transcript/code) WITHOUT ever triggering the user prompt, which only
+    // fires on clientAuth. That decouples the 2^-20 guess from the human
+    // check. A re-handshake is only legitimate AFTER an identity is pinned
+    // (the relay-kept-socket reconnect — where the pin makes a forged
+    // clientAuth impossible anyway). During FIRST pairing (no pin yet), a
+    // second clientHello is the grind signature — tear the session down.
+    if (this.role === 'mac' && !this.peerIdentityPublicKey && this.clientEphB64 !== '') {
+      throw new Error('second clientHello before pairing — refusing SAS grind')
+    }
     // A clientHello ALWAYS begins a fresh handshake. When the relay keeps the
     // Mac's socket alive across an iPhone drop/reconnect, this session object
     // still holds the previous connection's keys + transport counters — left
@@ -432,7 +443,21 @@ export class E2eeSession {
     const msg = JSON.parse(plaintext.toString('utf8')) as AppMessage
     if (typeof msg.method !== 'string') return
     if (msg.method.startsWith('transport.')) {
+      // Control frames (ping/pong/resume) ride pre-establishment by design:
+      // the peer's resume legitimately arrives before THIS side finishes its
+      // own handshake. They carry only transport bookkeeping, never actions.
       this.handleControl(msg)
+      return
+    }
+    // App messages REQUIRE a completed, authenticated handshake. Keys exist
+    // right after the ephemeral ECDH (onClientHello/onServerHello), but the
+    // peer's PINNED IDENTITY is only proven at clientAuth/serverAuth. A
+    // hostile relay that completed only the ECDH can forge valid GCM frames
+    // — gating on `keys` (the old check) let a forged action reach
+    // onAppMessage -> routeAction before any identity proof. Gate on
+    // `established`.
+    if (!this.established) {
+      this.opts.log?.(`[e2ee] dropped app message "${msg.method}" before establishment`)
       return
     }
     // App-level dedup (a replayed app message after reconnect).
