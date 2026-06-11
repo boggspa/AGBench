@@ -8,6 +8,7 @@ import TaskWraithKit
 /// transcript — the user continues right where they are.
 struct NewChatCanvasView: View {
     @ObservedObject var model: RemoteSessionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var mode: ComposeMode = .workspace
     var initialWorkspaceId: String?
 
@@ -37,7 +38,21 @@ struct NewChatCanvasView: View {
             if let threadId = createdThreadId {
                 // The canvas BECOMES the transcript once the Mac mints the
                 // thread — no navigation hop, exactly "continue from there".
-                ThreadDetailView(model: model, taskId: threadId)
+                // Same hand-rolled pane as AppShell (`.inspector` overlays).
+                HStack(spacing: 0) {
+                    ThreadDetailView(model: model, taskId: threadId)
+                    if horizontalSizeClass == .regular, model.inspectorPresented {
+                        ThreadInspector(model: model, threadId: threadId) { childId in
+                            model.inspectorPresented = false
+                            model.navigationTarget = childId
+                        }
+                        .frame(width: 390)
+                        .background(TWTheme.appBg)
+                        .iPadSidebarInnerRim(edge: .leading)
+                        .transition(.move(edge: .trailing))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.22), value: model.inspectorPresented)
             } else {
                 canvas
             }

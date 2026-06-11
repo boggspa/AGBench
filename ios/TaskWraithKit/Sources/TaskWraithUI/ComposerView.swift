@@ -25,6 +25,10 @@ struct Composer: View {
     /// (desktop composer-shell parity).
     var attachedTop: Bool = false
     var attachedBottom: Bool = false
+    /// false = sends must not move the shell's selection (side-chat mini
+    /// pane: the side chat stays in the inspector column while the parent
+    /// stays in the main pane, both active simultaneously).
+    var navigateOnSend: Bool = true
     /// Secondary workspace granted to this send (rail picker selection).
     var extraWorkspaceIds: [String]? = nil
     /// When set, send starts a new Mac thread instead of continuing `card`.
@@ -37,6 +41,7 @@ struct Composer: View {
     @State private var approvalMode = "default"
     @State private var selectedProvider: String = "claude"
     @State private var selectedModelId: String?
+    @State private var selectedReasoningEffort: String?
     @State private var didSeedProviderSelection = false
     #if canImport(UIKit)
         @State private var pickedItems: [PhotosPickerItem] = []
@@ -109,7 +114,9 @@ struct Composer: View {
                     ProviderModelPicker(
                         catalogs: catalogs,
                         provider: $selectedProvider,
-                        modelId: $selectedModelId)
+                        modelId: $selectedModelId,
+                        reasoningEffort: $selectedReasoningEffort,
+                        allowsProviderChange: newTaskWorkspaceId != nil)
                     if !card.isEnsemble, card.parentChatId == nil,
                         newTaskWorkspaceId == nil
                     {
@@ -204,16 +211,15 @@ struct Composer: View {
                     }
                 }
             #endif
-            // Inner input cluster — media button + field + send share one
-            // dark-gray, half-translucent container (the attached rows above
-            // and the telemetry rail below keep their own surfaces).
+            // Input cluster: the composer body supplies the darker material
+            // fill, so this row stays flat like the desktop central panel.
             HStack(spacing: 8) {
                 #if canImport(UIKit)
                     // Ensembles included: steer now carries attachments.
                     photosButton
                 #endif
                 TextField(placeholder, text: $text, axis: .vertical)
-                    .lineLimit(1...4)
+                    .lineLimit(1...2)
                     .foregroundStyle(TWTheme.textPrimary)
                 Button {
                     sendCurrent()
@@ -226,16 +232,9 @@ struct Composer: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(
-                TWTheme.surface2.opacity(0.5),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(TWTheme.border)
-            )
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(composerBodyBackground)
         .onAppear {
             seedProviderSelectionIfNeeded()
         }
@@ -251,6 +250,17 @@ struct Composer: View {
             if selectedModelId == nil, let newValue {
                 selectedModelId = newValue
             }
+        }
+    }
+
+    @ViewBuilder
+    private var composerBodyBackground: some View {
+        if TWTheme.composerGlassEnabled {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Rectangle().fill(TWTheme.surface2.opacity(0.34)))
+        } else {
+            Rectangle().fill(TWTheme.surface2.opacity(0.72))
         }
     }
 
@@ -326,12 +336,14 @@ struct Composer: View {
                 model.startTask(
                     workspaceId: workspaceId, provider: selectedProvider, prompt: trimmed,
                     model: selectedModelId,
+                    reasoningEffort: selectedReasoningEffort,
                     imageAttachments: hasAttachments ? encoded : nil)
                 attachments = []
             #else
                 model.startTask(
                     workspaceId: workspaceId, provider: selectedProvider, prompt: trimmed,
-                    model: selectedModelId)
+                    model: selectedModelId,
+                    reasoningEffort: selectedReasoningEffort)
             #endif
             text = ""
             return
@@ -342,14 +354,18 @@ struct Composer: View {
                 card, prompt: text,
                 approvalMode: approvalMode == "default" ? nil : approvalMode,
                 model: selectedModelId,
+                reasoningEffort: selectedReasoningEffort,
                 imageAttachments: encoded.isEmpty ? nil : encoded,
-                extraWorkspaceIds: extraWorkspaceIds)
+                extraWorkspaceIds: extraWorkspaceIds,
+                navigateOnAck: navigateOnSend)
             attachments = []
         #else
             model.continueTask(
                 card, prompt: text,
                 approvalMode: approvalMode == "default" ? nil : approvalMode,
-                model: selectedModelId)
+                model: selectedModelId,
+                reasoningEffort: selectedReasoningEffort,
+                navigateOnAck: navigateOnSend)
         #endif
         text = ""
     }

@@ -19,6 +19,9 @@ targets:
     sources:
       - path: Sources
       - path: Assets.xcassets
+      # Required-reason API declaration (UserDefaults / CA92.1) — App Store
+      # submission requirement.
+      - path: PrivacyInfo.xcprivacy
     dependencies:
       - package: TaskWraithKit
         product: TaskWraithUI
@@ -39,11 +42,20 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: "TaskWraith uses the camera to scan the pairing QR code shown on your Mac."
         NSLocalNetworkUsageDescription: "TaskWraith connects to the pairing relay on your local network to reach your Mac."
-        # Dev builds speak cleartext ws:// to a LAN / Tailscale relay; ATS
-        # would silently refuse those connections on a real device. Tighten
-        # this to a wss:// relay + remove before any TestFlight build.
+        # ATS: NO global bypass (TestFlight blocker — removed). The scoped
+        # local-networking exception covers LAN-relay dev workflows; remote
+        # use must be wss:// (e.g. `tailscale cert` for a Tailnet relay).
+        # The E2EE layer protects payloads regardless — this is about not
+        # exposing handshake metadata + the confirm code to on-path
+        # observers, and about App Store policy.
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: TaskWraith.entitlements
+      properties:
+        # Flips to `production` automatically when signed for TestFlight /
+        # App Store; dev/device builds use the sandbox APNs gateway.
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.taskwraith.companion
