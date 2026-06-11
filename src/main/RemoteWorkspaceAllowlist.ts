@@ -41,6 +41,9 @@ export type RemoteWorkspaceCapability =
   | 'startTurn'
   | 'diffReview'
   | 'steer'
+  | 'fileBrowse'
+  | 'fileRead'
+  | 'fileWrite'
   /**
    * Admin-only remote capability. Not part of read-write task-console
    * defaults; it must be explicitly present on an allowlist entry before a
@@ -66,8 +69,19 @@ export const READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceC
   'cancel',
   'startTurn',
   'diffReview',
-  'steer'
+  'steer',
+  'fileBrowse',
+  'fileRead',
+  'fileWrite'
 ]
+
+/** Pre-file-editor read-write set. Entries persisted WITHOUT explicit
+ * capabilities predate remote file editing — they materialize to THIS set,
+ * not the expanded default (security review: a new power must not silently
+ * attach to old grants). New grants + the Devices panel checkboxes write
+ * explicit capability lists, which include the file trio when chosen. */
+export const LEGACY_READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] =
+  ['monitor', 'approve', 'answer', 'cancel', 'startTurn', 'diffReview', 'steer']
 
 export const ADMIN_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] = [
   'pin',
@@ -125,6 +139,24 @@ export const REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS: Record<
     capability: 'steer',
     label: 'Steer ensembles',
     description: 'Queue, steer, skip, or wake Ensemble participants from the paired device.',
+    adminOnly: false
+  },
+  fileBrowse: {
+    capability: 'fileBrowse',
+    label: 'Browse files',
+    description: 'List editable files in the allowlisted workspace from a paired device.',
+    adminOnly: false
+  },
+  fileRead: {
+    capability: 'fileRead',
+    label: 'Read files',
+    description: 'Open UTF-8 text files in the allowlisted workspace from a paired device.',
+    adminOnly: false
+  },
+  fileWrite: {
+    capability: 'fileWrite',
+    label: 'Write files',
+    description: 'Save UTF-8 text files in the allowlisted workspace from a paired device.',
     adminOnly: false
   },
   pin: {
@@ -228,6 +260,12 @@ export class RemoteWorkspaceAllowlist {
     const existing = this.entries.get(entry.workspaceId)
     const merged: RemoteWorkspaceEntry = {
       ...entry,
+      // Materialize capabilities EXPLICITLY at write time: new/updated
+      // grants get the full current default for their mode, so only
+      // entries persisted before this change (no explicit list) count as
+      // legacy — and those deliberately exclude later-added powers (the
+      // file-editing trio). Callers passing an explicit list keep it.
+      capabilities: entry.capabilities ?? [...capabilitiesForRemoteWorkspaceMode(entry.mode)],
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
     }
@@ -378,7 +416,12 @@ export function capabilitiesForRemoteWorkspaceMode(
 export function capabilitiesForRemoteWorkspaceEntry(
   entry: RemoteWorkspaceEntry
 ): readonly RemoteWorkspaceCapability[] {
-  return entry.capabilities ?? capabilitiesForRemoteWorkspaceMode(entry.mode)
+  if (entry.capabilities) return entry.capabilities
+  // No explicit list = a legacy grant: read-write materializes WITHOUT the
+  // file-editing trio (added later); read-only is unchanged.
+  return entry.mode === 'read-only'
+    ? READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES
+    : LEGACY_READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES
 }
 
 export function isAdminRemoteWorkspaceCapability(
@@ -402,6 +445,9 @@ export function isRemoteWorkspaceCapability(value: unknown): value is RemoteWork
     value === 'startTurn' ||
     value === 'diffReview' ||
     value === 'steer' ||
+    value === 'fileBrowse' ||
+    value === 'fileRead' ||
+    value === 'fileWrite' ||
     value === 'pin' ||
     value === 'yolo'
   )

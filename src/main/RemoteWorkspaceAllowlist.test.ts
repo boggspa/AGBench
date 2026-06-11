@@ -172,15 +172,54 @@ describe('RemoteWorkspaceAllowlist', () => {
       if (!decision.allowed) {
         expect(decision.reason).toMatch(/capability "startTurn"/i)
       }
+      expect(
+        allowlist.evaluate({ workspaceId: 'ws-readonly', capability: 'fileBrowse' }).allowed
+      ).toBe(false)
     })
 
-    it('maps legacy read-write mode to the default task-console capability set', () => {
-      const allowlist = seed()
+    it('legacy read-write entries do NOT inherit the file-editing trio', () => {
+      // A TRUE legacy entry: persisted before capabilities were
+      // materialized at write time (no explicit list on disk). upsert()
+      // can't produce this anymore — go through the load path.
+      const dir = mkdtempSync(join(tmpdir(), 'tw-allowlist-'))
+      const storagePath = join(dir, 'remote-workspaces.json')
+      writeFileSync(
+        storagePath,
+        JSON.stringify({
+          version: 1,
+          entries: [
+            {
+              workspaceId: 'ws-1',
+              path: '/a',
+              mode: 'read-write',
+              allowedProviders: ['gemini', 'codex'],
+              allowedApprovalModes: ['default', 'plan'],
+              createdAt: 1,
+              updatedAt: 1
+            }
+          ]
+        })
+      )
+      const allowlist = new RemoteWorkspaceAllowlist({ storagePath, now: () => 1000 })
+      // Explicit read-write MODE still maps to the full default set (new
+      // grants are written with explicit capabilities)...
       expect(capabilitiesForRemoteWorkspaceMode('read-write')).toEqual(
         READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES
       )
       expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'startTurn' }).allowed).toBe(
         true
+      )
+      // ...but entries persisted WITHOUT explicit capabilities predate
+      // remote file editing — a new power must not silently attach to old
+      // grants (security review, no-ship finding).
+      expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'fileBrowse' }).allowed).toBe(
+        false
+      )
+      expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'fileRead' }).allowed).toBe(
+        false
+      )
+      expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'fileWrite' }).allowed).toBe(
+        false
       )
       expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'yolo' }).allowed).toBe(false)
     })

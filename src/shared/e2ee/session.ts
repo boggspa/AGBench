@@ -304,11 +304,13 @@ export class E2eeSession {
       b64.encode(exportRawEd25519PublicKey(this.opts.identityKeyPair.publicKey)),
       iphoneIdentityB64
     )
+    const transcriptHash = this.transcriptHash
+    if (!transcriptHash) throw new Error('clientAuth before key derivation')
     const iphoneIdentity = importRawEd25519PublicKey(b64.decode(iphoneIdentityB64))
-    if (!verifyEd25519(iphoneIdentity, this.transcriptHash, b64.decode(transcriptSigB64))) {
+    if (!verifyEd25519(iphoneIdentity, transcriptHash, b64.decode(transcriptSigB64))) {
       throw new Error('clientAuth signature invalid')
     }
-    const ourCode = confirmCodeFromTranscript(this.transcriptHash)
+    const ourCode = confirmCodeFromTranscript(transcriptHash)
     if (ourCode !== confirmCode) throw new Error('confirm code mismatch')
     this.opts.onConfirmCode?.(ourCode)
     // Reconnect: the iPhone identity must match the pinned key.
@@ -324,7 +326,7 @@ export class E2eeSession {
     this.opts.send({
       t: 'serverAuth',
       sessionId: this.opts.sessionId,
-      transcriptSig: b64.encode(signEd25519(this.opts.identityKeyPair.privateKey, this.transcriptHash))
+      transcriptSig: b64.encode(signEd25519(this.opts.identityKeyPair.privateKey, transcriptHash))
     })
     this.markEstablished()
   }
