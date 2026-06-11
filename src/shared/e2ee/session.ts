@@ -108,6 +108,9 @@ export class E2eeSession {
   // markEstablished has run. CryptoKit port note: the iOS side must mirror
   // this hold-until-resume rule.
   private awaitingPeerResume = false
+  /** Mac-only: serverHello sent, awaiting clientAuth. A second clientHello
+   * arriving in this window is the SAS-sampling grind signature. */
+  private awaitingClientAuth = false
   private peerResumeReceived = false
   private peerResumeLastAcked = 0
 
@@ -172,6 +175,7 @@ export class E2eeSession {
     this.sendSeq = 0
     this.lastRecvSeq = -1
     this.awaitingPeerResume = false
+    this.awaitingClientAuth = false
     this.peerResumeReceived = false
     this.peerResumeLastAcked = 0
   }
@@ -229,16 +233,18 @@ export class E2eeSession {
   }
 
   private onClientHello(clientEphB64: string, clientNonceB64: string): void {
-    // SAS-grind defense: a relay can sample the Mac's 6-digit confirm code by
-    // looping clientHello->serverHello (a fresh ephemeral each time => a fresh
-    // transcript/code) WITHOUT ever triggering the user prompt, which only
-    // fires on clientAuth. That decouples the 2^-20 guess from the human
-    // check. A re-handshake is only legitimate AFTER an identity is pinned
-    // (the relay-kept-socket reconnect — where the pin makes a forged
-    // clientAuth impossible anyway). During FIRST pairing (no pin yet), a
-    // second clientHello is the grind signature — tear the session down.
-    if (this.role === 'mac' && !this.peerIdentityPublicKey && this.clientEphB64 !== '') {
-      throw new Error('second clientHello before pairing — refusing SAS grind')
+    // SAS-grind defense: a relay can sample the Mac's confirm code by looping
+    // clientHello->serverHello and computing the code locally, WITHOUT sending
+    // clientAuth — so the user prompt (fires only on clientAuth) never sees
+    // the guesses. Refuse a clientHello arriving while a prior handshake is
+    // IN-FLIGHT (serverHello sent, no terminal clientAuth yet): the sampling
+    // loop never completes clientAuth, so the flag stays set and the next
+    // clientHello is rejected. A legitimate retry (a stranger's clientAuth
+    // FAILED, or a real reconnect) arrives after a terminal outcome that
+    // cleared the flag. (The Mac pins via trustPeer, not peerIdentity, so
+    // that field can't distinguish first-pairing from reconnect.)
+    if (this.role === 'mac' && this.awaitingClientAuth) {
+      throw new Error('clientHello while a handshake is in flight — refusing SAS grind')
     }
     // A clientHello ALWAYS begins a fresh handshake. When the relay keeps the
     // Mac's socket alive across an iPhone drop/reconnect, this session object
@@ -268,6 +274,7 @@ export class E2eeSession {
       nonce: this.serverNonceB64,
       macIdentityPubKey: b64.encode(exportRawEd25519PublicKey(this.opts.identityKeyPair.publicKey))
     })
+    this.awaitingClientAuth = true
   }
 
   private onServerHello(serverEphB64: string, serverNonceB64: string, macIdentityB64: string): void {
@@ -307,6 +314,9 @@ export class E2eeSession {
     confirmCode: string,
     transcriptSigB64: string
   ): Promise<void> {
+    // Terminal-ish: a clientAuth (whatever its outcome) ends the in-flight
+    // window, so a legitimate retry after a failed attempt is allowed.
+    this.awaitingClientAuth = false
     if (!this.keys) throw new Error('clientAuth before key derivation')
     // Bind the CLAIMED iPhone identity into the transcript before verifying:
     // a spliced identity yields a different code on the Mac's screen (user-

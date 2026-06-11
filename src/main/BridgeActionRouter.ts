@@ -195,6 +195,12 @@ export interface BridgeActionRouterOptions {
  * plain Error and accept the default `-32603 internalError` mapping. The
  * router never throws on policy decisions — only on unknown methods. */
 
+/** Hard ceiling on a mutating action's accepted lifetime (security review):
+ * caps how far past `now` an expiresAt may sit, so the in-memory replay cache
+ * always still holds a consumed id at its expiry — bounding the post-restart
+ * replay window. The phone stamps +120s; this leaves generous headroom. */
+const MAX_ACTION_WINDOW_MS = 5 * 60 * 1000
+
 export class BridgeActionRouter {
   private readonly permissiveDev: boolean
   private readonly log: (line: string) => void
@@ -805,6 +811,25 @@ export class BridgeActionRouter {
 
     const now = this.now()
     const expiresAt = expiresAtFromPayload(payload)
+    // Security review (MED): the replay cache is in-memory, so a captured
+    // mutating action with a far-future expiresAt would replay after a Mac
+    // restart. Cap the accepted window so a consumed id is always still
+    // cache-resident at its expiry (bounds the post-restart replay gap to
+    // MAX_ACTION_WINDOW_MS, not the phone's unbounded choice).
+    if (expiresAt !== null && expiresAt > now + MAX_ACTION_WINDOW_MS) {
+      const message = `Action "${actionId}" expiry too far in the future (max ${MAX_ACTION_WINDOW_MS}ms)`
+      this.log(
+        `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} actionId=${actionId} reason="${message}"`
+      )
+      return this.buildActionAck({
+        pairID,
+        accepted: false,
+        reasonCode: 'actionExpired',
+        payload,
+        scope: 'once',
+        message
+      })
+    }
     if (expiresAt !== null && expiresAt <= now) {
       const message = `Action "${actionId}" expired at ${formatTimestamp(expiresAt)}`
       this.log(

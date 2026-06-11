@@ -1109,7 +1109,7 @@ describe('payloadIsMutating', () => {
     ).toBe(false)
   })
 
-  it('classifies registerApnsToken as non-mutating (system action, bypasses gating)', () => {
+  it('classifies registerApnsToken as mutating (replay-guarded; security review)', () => {
     expect(
       payloadIsMutating({
         kind: 'registerApnsToken',
@@ -1117,7 +1117,7 @@ describe('payloadIsMutating', () => {
         deviceToken: 't',
         env: 'production'
       })
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('classifies unknown variants as mutating defensively', () => {

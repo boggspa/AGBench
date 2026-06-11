@@ -355,6 +355,22 @@ export class ApprovalService {
     )
   }
 
+  /** Scope (workspace/thread) of a pending approval — for the bridge
+   * ownership validator. An allowlisted device must not resolve a tool-call
+   * approval outside the workspace/thread it presented (the approval id is
+   * resolved GLOBALLY by the executor, so the boundary lives here). Reuses
+   * the exact projection derivation. Returns null if the id isn't pending. */
+  approvalScope(
+    approvalId: string
+  ): { workspaceId?: string; threadId?: string } | null {
+    const card = this.listProjectionCards().find((c) => c.toolCallId === approvalId)
+    if (!card) return null
+    return {
+      workspaceId: card.workspaceId ?? undefined,
+      threadId: card.threadId
+    }
+  }
+
   listProjectionCards(): MobileApprovalCard[] {
     const cards: MobileApprovalCard[] = []
     for (const [approvalId, info] of this.pendingMain.entries()) {

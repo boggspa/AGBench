@@ -15757,6 +15757,30 @@ if (isGeminiMcpBridgeProcess) {
         check: BridgeActionOwnershipCheck
       ): BridgeOwnershipValidationResult => {
         const canonicalWs = canonicalRemoteWorkspaceId(check.workspaceId) ?? check.workspaceId
+        // Approval objects resolve GLOBALLY by id in the executor, so the
+        // per-workspace `approve` capability boundary must be enforced here:
+        // the presented workspace/thread must match the approval's own scope.
+        // (questionReply/Reject are scoped in their executor; approvals were
+        // the lone gap — security review HIGH finding.)
+        if (check.approvalId) {
+          const scope = approvalService?.approvalScope(check.approvalId)
+          if (!scope) {
+            return { allowed: false, reason: 'Unknown or already-resolved approval' }
+          }
+          if (scope.workspaceId) {
+            const approvalWs =
+              canonicalRemoteWorkspaceId(scope.workspaceId) ?? scope.workspaceId
+            if (approvalWs !== canonicalWs) {
+              return {
+                allowed: false,
+                reason: 'Approval belongs to a different workspace'
+              }
+            }
+          }
+          if (scope.threadId && check.threadId && scope.threadId !== check.threadId) {
+            return { allowed: false, reason: 'Approval belongs to a different thread' }
+          }
+        }
         if (check.threadId) {
           const chat = AppStore.getChat(check.threadId)
           if (!chat) return { allowed: false, reason: 'Unknown thread for this workspace' }

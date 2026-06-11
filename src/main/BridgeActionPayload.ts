@@ -645,10 +645,12 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'togglePinChat':
     case 'togglePinWorkspace':
     case 'workspaceFileWrite':
+    // registerApnsToken mutates the token store; classify mutating so it
+    // inherits the actionId + expiry replay guard (security review LOW).
+    case 'registerApnsToken':
       return true
     case 'approvalReply':
     case 'questionReject':
-    case 'registerApnsToken':
     case 'threadSnapshotRequest':
     case 'threadRowExpand':
     case 'workspaceFileList':
