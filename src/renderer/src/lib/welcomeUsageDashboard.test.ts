@@ -1149,6 +1149,30 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
     expect(row?.displayName).toBe('Global Chat')
   })
 
+  it('humanises AGBench-era global chat sentinels as "Legacy Global Chats"', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'legacy-global-1',
+        workspaceId: '__agentbench_global_chats__',
+        totalTokens: 5_000
+      }),
+      baseRecord({
+        id: 'legacy-global-2',
+        workspaceId: '_agentbench_global_chats_',
+        totalTokens: 4_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const doubleUnderscoreRow = data.workspaceCostBreakdown.find(
+      (ws) => ws.workspaceId === '__agentbench_global_chats__'
+    )
+    const singleUnderscoreRow = data.workspaceCostBreakdown.find(
+      (ws) => ws.workspaceId === '_agentbench_global_chats_'
+    )
+    expect(doubleUnderscoreRow?.displayName).toBe('Legacy Global Chats')
+    expect(singleUnderscoreRow?.displayName).toBe('Legacy Global Chats')
+  })
+
   it('computes shareOfTotalCost as a percentage of all-workspace cost (or 0 when totalCost is 0)', () => {
     const records: UsageRecord[] = [
       baseRecord({
