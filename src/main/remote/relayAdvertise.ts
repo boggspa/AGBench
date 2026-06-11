@@ -51,3 +51,40 @@ export function embeddedRelayUrl(port: number, interfaces?: InterfaceMap): strin
   const { host } = pickRelayAdvertiseHost(interfaces)
   return `ws://${host}:${port}`
 }
+
+function normaliseHost(host: string): string {
+  return host.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
+}
+
+export function isLocalPlainRelayUrl(
+  relayUrl: string,
+  interfaces: InterfaceMap = os.networkInterfaces(),
+  hostname: string = os.hostname()
+): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(relayUrl)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'ws:') return false
+
+  const host = normaliseHost(parsed.hostname)
+  const bareHostname = normaliseHost(hostname).replace(/\.local$/, '')
+  const localHostnames = new Set([
+    'localhost',
+    '127.0.0.1',
+    '::1',
+    normaliseHost(hostname),
+    bareHostname,
+    `${bareHostname}.local`
+  ])
+  if (localHostnames.has(host)) return true
+
+  for (const list of Object.values(interfaces)) {
+    for (const info of list ?? []) {
+      if (normaliseHost(info.address) === host) return true
+    }
+  }
+  return false
+}

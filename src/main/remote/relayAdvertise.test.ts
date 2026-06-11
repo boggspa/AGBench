@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import os from 'os'
-import { embeddedRelayUrl, pickRelayAdvertiseHost } from './relayAdvertise'
+import { embeddedRelayUrl, isLocalPlainRelayUrl, pickRelayAdvertiseHost } from './relayAdvertise'
 
 function iface(address: string, internal = false): os.NetworkInterfaceInfo {
   return {
@@ -45,6 +45,31 @@ describe('pickRelayAdvertiseHost', () => {
   it('embeddedRelayUrl composes ws://host:port', () => {
     expect(embeddedRelayUrl(8787, { utun4: [iface('100.99.131.73')] })).toBe(
       'ws://100.99.131.73:8787'
+    )
+  })
+})
+
+describe('isLocalPlainRelayUrl', () => {
+  it('matches configured ws:// relay URLs that point at this Mac', () => {
+    const interfaces = {
+      en0: [iface('192.168.1.50')],
+      utun4: [iface('100.99.131.73')]
+    }
+
+    expect(isLocalPlainRelayUrl('ws://100.99.131.73:8787', interfaces)).toBe(true)
+    expect(isLocalPlainRelayUrl('ws://192.168.1.50:8787', interfaces)).toBe(true)
+    expect(isLocalPlainRelayUrl('ws://localhost:8787', interfaces)).toBe(true)
+  })
+
+  it('matches local hostnames without treating remote relay URLs as local', () => {
+    expect(isLocalPlainRelayUrl('ws://Chriss-Mac-Studio.local:8787', {}, 'Chriss-Mac-Studio')).toBe(
+      true
+    )
+    expect(isLocalPlainRelayUrl('ws://relay.example.com:8787', {}, 'Chriss-Mac-Studio')).toBe(
+      false
+    )
+    expect(isLocalPlainRelayUrl('wss://100.99.131.73:8787', { utun4: [iface('100.99.131.73')] })).toBe(
+      false
     )
   })
 })

@@ -311,6 +311,9 @@ function IosRemoteBridgeSection(): React.JSX.Element {
     : config?.effectiveEnabled
       ? 'On after restart'
       : 'Off'
+  const switchChecked = config?.envOverride
+    ? Boolean(config.effectiveEnabled)
+    : (config?.enabled ?? false)
 
   return (
     <section className="bridge-networking-section">
@@ -332,15 +335,18 @@ function IosRemoteBridgeSection(): React.JSX.Element {
         </span>
         <input
           type="checkbox"
-          checked={config?.enabled ?? false}
+          checked={switchChecked}
           disabled={saving || config === null || config.envOverride !== null}
           onChange={(event) => void save({ enabled: event.target.checked })}
         />
       </label>
       <label className="settings-service-row">
         <span>
-          External relay URL
-          <small>Optional. Empty runs the embedded relay. Use wss:// for remote access.</small>
+          External relay server URL
+          <small>
+            Optional. Leave blank for this Mac's built-in relay. Use wss:// only for a
+            separate hosted relay.
+          </small>
         </span>
         <input
           type="text"

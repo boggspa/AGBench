@@ -200,7 +200,7 @@ import { RemoteBridgeRuntime } from './remote/RemoteBridgeRuntime'
 import { RemoteIdentityStore } from './remote/RemoteIdentityStore'
 import { RemotePairingStore } from './remote/RemotePairingStore'
 import { wsTransportSocketFactory } from './remote/wsTransportSocket'
-import { pickRelayAdvertiseHost } from './remote/relayAdvertise'
+import { isLocalPlainRelayUrl, pickRelayAdvertiseHost } from './remote/relayAdvertise'
 import { createRelayServer, type RelayServerHandle } from '../../relay/src/server'
 import {
   type BridgeApnsPusher,
@@ -16034,36 +16034,53 @@ if (isGeminiMcpBridgeProcess) {
         }
       }
 
-      const configuredRelayUrl = (
-        process.env.TASKWRAITH_RELAY_URL ||
-        AppStore.getSettings().iosRemoteRelayUrl ||
-        ''
-      ).trim()
-      if (configuredRelayUrl) {
-        // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
-        console.log(
-          `[remote-bridge] iOS remote transport enabled — external relay ${configuredRelayUrl}`
-        )
-        startRuntime(configuredRelayUrl)
-      } else {
+      const envRelayUrl = (process.env.TASKWRAITH_RELAY_URL || '').trim()
+      const settingsRelayUrl = (AppStore.getSettings().iosRemoteRelayUrl || '').trim()
+      const configuredRelayUrl = envRelayUrl || settingsRelayUrl
+      const embeddedPort = (relayUrl: string | null): number => {
+        const fallbackPort = Number(process.env.TASKWRAITH_RELAY_PORT || '8787')
+        if (!relayUrl) return fallbackPort
+        try {
+          const parsed = new URL(relayUrl)
+          const parsedPort = Number(parsed.port)
+          return Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : fallbackPort
+        } catch {
+          return fallbackPort
+        }
+      }
+      const relayOriginWithPort = (relayUrl: string, port: number): string => {
+        try {
+          const parsed = new URL(relayUrl)
+          parsed.port = String(port)
+          parsed.pathname = ''
+          parsed.search = ''
+          parsed.hash = ''
+          return `${parsed.protocol}//${parsed.host}`
+        } catch {
+          return relayUrl.replace(/\/$/, '')
+        }
+      }
+      const startEmbeddedRelay = (advertiseRelayUrl: string | null): void => {
         // No external relay configured → run the relay IN-PROCESS. The relay
         // is a plain Node http+ws server and Electron main is Node, so users
         // never have to run a terminal command for the built-in case. The QR
         // advertises the Mac's Tailscale IP when present (reachable across
         // networks), else the LAN IP (same-Wi-Fi pairing).
-        const port = Number(process.env.TASKWRAITH_RELAY_PORT || '8787')
+        const port = embeddedPort(advertiseRelayUrl)
         void createRelayServer({ port })
           .then((handle) => {
             embeddedRelayHandle = handle
-            const advertised = pickRelayAdvertiseHost()
-            const relayUrl = `ws://${advertised.host}:${handle.port}`
-            if (advertised.kind === 'loopback') {
+            const advertised = advertiseRelayUrl ? null : pickRelayAdvertiseHost()
+            const relayUrl = advertiseRelayUrl
+              ? relayOriginWithPort(advertiseRelayUrl, handle.port)
+              : `ws://${advertised?.host ?? '127.0.0.1'}:${handle.port}`
+            if (advertised?.kind === 'loopback') {
               console.warn(
                 '[remote-bridge] no Tailscale/LAN address found — the pairing QR will only be reachable from this machine'
               )
             }
             console.log(
-              `[remote-bridge] embedded relay listening on :${handle.port} — advertising ${relayUrl} (${advertised.kind})`
+              `[remote-bridge] embedded relay listening on :${handle.port} — advertising ${relayUrl} (${advertised?.kind ?? 'configured-local'})`
             )
             startRuntime(relayUrl)
           })
@@ -16074,6 +16091,20 @@ if (isGeminiMcpBridgeProcess) {
               }) — remote iOS pairing disabled. Free the port, set TASKWRAITH_RELAY_PORT, or point TASKWRAITH_RELAY_URL at an external relay.`
             )
           })
+      }
+      if (settingsRelayUrl && !envRelayUrl && isLocalPlainRelayUrl(settingsRelayUrl)) {
+        console.log(
+          `[remote-bridge] iOS remote transport enabled — settings relay URL points at this Mac, starting embedded relay for ${settingsRelayUrl}`
+        )
+        startEmbeddedRelay(settingsRelayUrl)
+      } else if (configuredRelayUrl) {
+        // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
+        console.log(
+          `[remote-bridge] iOS remote transport enabled — external relay ${configuredRelayUrl}`
+        )
+        startRuntime(configuredRelayUrl)
+      } else {
+        startEmbeddedRelay(null)
       }
     }
 
