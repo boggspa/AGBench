@@ -548,15 +548,10 @@ public struct RotatingActivityHeatmap: View {
                     .font(.caption2)
                     .foregroundStyle(TWTheme.textMuted)
             }
-            ZStack(alignment: .topTrailing) {
-                if flavor.weekly {
-                    WeeklyRhythmHeatmap(dates: flavor.dates, accent: flavor.accent)
-                } else {
-                    ActivityHeatmap(dates: flavor.dates, accent: flavor.accent)
-                }
-                GhostMarkView(size: 34)
-                    .opacity(0.35)
-                    .offset(x: -6, y: -26)
+            if flavor.weekly {
+                WeeklyRhythmHeatmap(dates: flavor.dates, accent: flavor.accent)
+            } else {
+                ActivityHeatmap(dates: flavor.dates, accent: flavor.accent)
             }
         }
         .id(flavor.id)

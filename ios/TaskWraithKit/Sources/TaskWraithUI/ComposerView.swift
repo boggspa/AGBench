@@ -27,6 +27,8 @@ struct Composer: View {
     var attachedBottom: Bool = false
     /// Secondary workspace granted to this send (rail picker selection).
     var extraWorkspaceIds: [String]? = nil
+    /// When set, send starts a new Mac thread instead of continuing `card`.
+    var newTaskWorkspaceId: String? = nil
     @Binding var text: String
 
     @State private var approvalMode = "default"
@@ -210,10 +212,14 @@ struct Composer: View {
 
     private var sendDisabled: Bool {
         #if canImport(UIKit)
-            return isEmpty && attachments.isEmpty
+            let emptyContent = isEmpty && attachments.isEmpty
         #else
-            return isEmpty
+            let emptyContent = isEmpty
         #endif
+        if let workspaceId = newTaskWorkspaceId, workspaceId.isEmpty {
+            return true
+        }
+        return emptyContent
     }
 
     private func insertMention(_ candidate: MentionCandidate) {
@@ -252,10 +258,34 @@ struct Composer: View {
     #endif
 
     private func sendCurrent() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         #if canImport(UIKit)
             let encoded = attachments.compactMap {
                 twEncodeImageAttachment($0.image, name: $0.name)
             }
+            let hasAttachments = !encoded.isEmpty
+        #else
+            let hasAttachments = false
+        #endif
+        guard !trimmed.isEmpty || hasAttachments else { return }
+
+        if let workspaceId = newTaskWorkspaceId, !workspaceId.isEmpty {
+            #if canImport(UIKit)
+                model.startTask(
+                    workspaceId: workspaceId, provider: selectedProvider, prompt: trimmed,
+                    model: selectedModelId,
+                    imageAttachments: hasAttachments ? encoded : nil)
+                attachments = []
+            #else
+                model.startTask(
+                    workspaceId: workspaceId, provider: selectedProvider, prompt: trimmed,
+                    model: selectedModelId)
+            #endif
+            text = ""
+            return
+        }
+
+        #if canImport(UIKit)
             model.continueTask(
                 card, prompt: text,
                 approvalMode: approvalMode == "default" ? nil : approvalMode,
@@ -270,7 +300,6 @@ struct Composer: View {
                 model: selectedModelId)
         #endif
         text = ""
-
     }
 
     private var placeholder: String {
