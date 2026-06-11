@@ -28,6 +28,7 @@ import * as pty from 'node-pty'
 import os from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
+import trayGhostMonoline from '../../resources/tray-ghost-monoline.png?asset'
 import {
   contentPartsToText,
   extractProviderSessionId,
@@ -2332,6 +2333,20 @@ function surfaceSubThreadDispatchFailure(args: {
  * (AppStore, RunRepository) — the renderer notification is just
  * a UI freshness signal.
  */
+/** BD1 headless dispatch: a null-object WebContents for bridge-initiated
+ * runs when no window exists. Streaming consumers only ever call
+ * `send(...)` (RunEventBus renderer-forwarder, isDestroyed-guarded) — all
+ * durable paths (run events, bridge transcripts, ensemble orchestration)
+ * never touch the sender — so a no-op sender lets phone dispatches run
+ * with the window closed. */
+function createHeadlessRunSender(): Electron.WebContents {
+  return {
+    send: () => {},
+    isDestroyed: () => false,
+    id: -1
+  } as unknown as Electron.WebContents
+}
+
 function safeSendToWebContents(
   target: Electron.BrowserWindow | null | undefined,
   channel: string,
@@ -13721,7 +13736,24 @@ async function dockSideChatPopout(
 
 if (isGeminiMcpBridgeProcess) {
   startGeminiMcpBridgeProcess()
+} else if (!app.requestSingleInstanceLock()) {
+  // BD1: a second instance (login-item + manual launch, or a stale relaunch)
+  // would race the embedded relay port and the relay resolve registration —
+  // dueling bridges. Defer to the primary instance and exit.
+  console.log('[remote-bridge] another TaskWraith instance holds the lock — exiting')
+  app.quit()
 } else {
+  app.on('second-instance', () => {
+    // A second launch attempted — surface the existing window (recreating
+    // it if the app is running headless after window-all-closed).
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    } else {
+      createWindow()
+    }
+  })
   app.whenReady().then(() => {
     // Rebrand continuity: seed the new TaskWraith userData dir from a legacy
     // AGBench install BEFORE the store performs its first lazy read.
@@ -14582,10 +14614,11 @@ if (isGeminiMcpBridgeProcess) {
           AppStore.saveChat(updated)
           broadcastChatUpdated(updated)
           if (action.op === 'steerNow') {
-            const sender = mainWindow?.webContents
-            if (!sender || sender.isDestroyed()) {
-              return { ok: false, error: 'No main window available for Ensemble steering' }
-            }
+            const liveQueueSender = mainWindow?.webContents
+            const sender =
+              liveQueueSender && !liveQueueSender.isDestroyed()
+                ? liveQueueSender
+                : createHeadlessRunSender()
             const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
             const result = ensembleOrchestratorRef?.startRound({
               chatId: action.threadId,
@@ -14671,10 +14704,11 @@ if (isGeminiMcpBridgeProcess) {
           ) {
             return { ok: false, error: 'Round id is no longer active' }
           }
-          const sender = mainWindow?.webContents
-          if (!sender || sender.isDestroyed()) {
-            return { ok: false, error: 'No main window available for Ensemble steering' }
-          }
+          const liveSteerSender = mainWindow?.webContents
+          const sender =
+            liveSteerSender && !liveSteerSender.isDestroyed()
+              ? liveSteerSender
+              : createHeadlessRunSender()
           const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
           // Phone-attached images ride the same lane the desktop ensemble
           // composer uses (startRound imageAttachments {path, name}).
@@ -14881,14 +14915,9 @@ if (isGeminiMcpBridgeProcess) {
           // window is the natural target — iOS-initiated runs surface in
           // the desktop transcript live. When no window is open (rare —
           // background daemon-only mode), we skip dispatch.
-          const sender = mainWindow?.webContents
-          if (!sender || sender.isDestroyed()) {
-            return {
-              dispatched: false,
-              appRunId: null,
-              reason: 'No main window available for run streaming'
-            }
-          }
+          const liveSender = mainWindow?.webContents
+          const sender =
+            liveSender && !liveSender.isDestroyed() ? liveSender : createHeadlessRunSender()
           // Synthesize a minimal IpcMainInvokeEvent. Adapters access
           // `event.sender` for streaming; other fields are unused in the
           // run path, so a duck-typed shim is sufficient.
@@ -15491,7 +15520,63 @@ if (isGeminiMcpBridgeProcess) {
     // relay binds. The pairing IPC handlers + will-quit read it at call time.
     let iosRemoteRuntime: RemoteBridgeRuntime | null = null
     let embeddedRelayHandle: RelayServerHandle | null = null
-    if (process.env.IOS_REMOTE_TRUE === '1') {
+    // Settings-first gating (BD1 prerequisite): GUI/login-item launches
+    // don't inherit shell env, so an env-only gate silently disables the
+    // bridge for exactly the headless scenario it exists for. Env keeps
+    // override semantics (force-on/off) via the same resolver the Swift
+    // daemon toggle uses.
+    const iosRemoteResolution = resolveDaemonShouldRun(
+      AppStore.getSettings().iosRemoteEnabled === true,
+      process.env.IOS_REMOTE_TRUE
+    )
+    console.log(
+      `[remote-bridge] gate: ${iosRemoteResolution.shouldRun ? 'ON' : 'off'} (source: ${iosRemoteResolution.source}${iosRemoteResolution.envOverride ? `, env ${iosRemoteResolution.envOverride}` : ''})`
+    )
+    // BD1 tray: when the bridge can run headless, give the user a way back
+    // to the window after window-all-closed (and a visible "still alive"
+    // signal). Template image so it adapts to the menu bar appearance.
+    if (iosRemoteResolution.shouldRun) {
+      try {
+        // Monoline ghost (black + alpha) — the proper shape for a macOS
+        // template image; the full-color app icon renders as a blob.
+        const trayImage = nativeImage
+          .createFromPath(trayGhostMonoline)
+          .resize({ width: 18, height: 18 })
+        trayImage.setTemplateImage(true)
+        const tray = new Tray(trayImage)
+        const rebuildTrayMenu = (): void => {
+          tray.setContextMenu(
+            Menu.buildFromTemplate([
+              {
+                label: 'Show TaskWraith',
+                click: () => {
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                    if (mainWindow.isMinimized()) mainWindow.restore()
+                    mainWindow.show()
+                    mainWindow.focus()
+                  } else {
+                    createWindow()
+                  }
+                }
+              },
+              { type: 'separator' },
+              {
+                label: iosRemoteRuntime ? 'iOS bridge: running' : 'iOS bridge: starting…',
+                enabled: false
+              },
+              { type: 'separator' },
+              { label: 'Quit TaskWraith', click: () => app.quit() }
+            ])
+          )
+        }
+        rebuildTrayMenu()
+        tray.setToolTip('TaskWraith — iOS bridge')
+        setInterval(rebuildTrayMenu, 30_000).unref?.()
+      } catch (error) {
+        console.log(`[remote-bridge] tray unavailable: ${String(error)}`)
+      }
+    }
+    if (iosRemoteResolution.shouldRun) {
       const startRuntime = (relayUrl: string): void => {
         const identity = new RemoteIdentityStore(
           join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
@@ -19731,6 +19816,18 @@ if (isGeminiMcpBridgeProcess) {
   })
 
   app.on('window-all-closed', () => {
+    // Headless bridge (BD1): when the iOS remote bridge is enabled, closing
+    // the window must NOT tear down provider sessions or the MCP broker —
+    // phone dispatches keep running against them. Full teardown still
+    // happens in will-quit.
+    const keepBridgeAlive = resolveDaemonShouldRun(
+      AppStore.getSettings().iosRemoteEnabled === true,
+      process.env.IOS_REMOTE_TRUE
+    ).shouldRun
+    if (keepBridgeAlive) {
+      console.log('[remote-bridge] window closed — bridge stays up (headless mode)')
+      return
+    }
     appShellStatsService.stop()
     if (geminiSessionProcess) {
       geminiSessionProcess.kill()
