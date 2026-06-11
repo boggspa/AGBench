@@ -67,9 +67,16 @@ export function importRawEd25519PublicKey(raw: Buffer): KeyObject {
   return importRaw(raw, ED25519_SPKI_PREFIX)
 }
 
-/** Raw X25519 ECDH → 32-byte shared secret. */
+/** Raw X25519 ECDH → 32-byte shared secret. Rejects an all-zero output
+ * (a contributory-behaviour / small-subgroup tell) before it reaches HKDF —
+ * cheap defense-in-depth (the ephemerals are already bound into the signed
+ * transcript, so a substituted point also changes the confirm code). */
 export function deriveSharedSecret(privateKey: KeyObject, peerPublicKey: KeyObject): Buffer {
-  return diffieHellman({ privateKey, publicKey: peerPublicKey })
+  const secret = diffieHellman({ privateKey, publicKey: peerPublicKey })
+  if (secret.every((b) => b === 0)) {
+    throw new Error('X25519 shared secret is all-zero (invalid peer point)')
+  }
+  return secret
 }
 
 /** Ed25519 detached signature (64 bytes) over `message`. */

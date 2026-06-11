@@ -27,6 +27,10 @@ export interface RelayOptions {
   maxFrameBytes?: number
   /** Drop an idle room after this long with no traffic. */
   idleTtlMs?: number
+  /** Cap on concurrent rooms (resource-exhaustion bound; review MED). */
+  maxRooms?: number
+  /** Cap on concurrent sockets from one remote address. */
+  maxConnectionsPerIp?: number
   /** Trusted-reconnect directory tuning (freshness window, max TTL). */
   resolve?: ResolveDirectoryOptions
 }
@@ -47,7 +51,13 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
   // (ws kills the CONNECTION on violation — code 1009 — not just the frame).
   const maxFrameBytes = options.maxFrameBytes ?? 1024 * 1024
   const idleTtlMs = options.idleTtlMs ?? 5 * 60 * 1000
+  // Resource-exhaustion bounds (security review): an attacker that opens many
+  // sockets on unique session ids — kept alive by ws auto-pong — would
+  // otherwise grow `rooms` without limit. Cap total rooms + per-IP sockets.
+  const maxRooms = options.maxRooms ?? 4096
+  const maxConnectionsPerIp = options.maxConnectionsPerIp ?? 64
   const rooms = new Map<string, Room>()
+  const connectionsPerIp = new Map<string, number>()
   const resolveDirectory = createResolveDirectory(options.resolve)
 
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -70,11 +80,23 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
       return
     }
     const sessionId = match[1]
+    const remoteIp =
+      (req.socket && req.socket.remoteAddress) || String(req.headers['x-forwarded-for'] || '?')
     let room = rooms.get(sessionId)
     if (!room) {
+      if (rooms.size >= maxRooms) {
+        ws.close(4003, 'relay at capacity')
+        return
+      }
       room = { lastActivity: Date.now() }
       rooms.set(sessionId, room)
     }
+    const ipCount = connectionsPerIp.get(remoteIp) ?? 0
+    if (ipCount >= maxConnectionsPerIp) {
+      ws.close(4004, 'too many connections')
+      return
+    }
+    connectionsPerIp.set(remoteIp, ipCount + 1)
     if (room[role]) {
       // Anti-hijack: a role slot in a room is single-occupant.
       ws.close(4002, 'role already connected')
@@ -111,6 +133,9 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
 
     const cleanup = (): void => {
       clearInterval(heartbeat)
+      const remaining = (connectionsPerIp.get(remoteIp) ?? 1) - 1
+      if (remaining <= 0) connectionsPerIp.delete(remoteIp)
+      else connectionsPerIp.set(remoteIp, remaining)
       const r = rooms.get(sessionId)
       if (!r) return
       if (r[role] === ws) r[role] = undefined
