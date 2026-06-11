@@ -1105,7 +1105,11 @@ type BridgeRunTranscriptState = {
    * finalize so bridge runs get run.runDiff like desktop runs do. */
   preSnapshot?: WorkspaceSnapshot
   workspacePath?: string
+  /** Secondary-workspace grants: pre-run snapshots keyed by path. */
+  extraPreSnapshots?: Record<string, WorkspaceSnapshot>
+  extraWorkspacePaths?: string[]
   runDiff?: ChatRun['runDiff']
+  runDiffByPath?: ChatRun['runDiffByPath']
 }
 
 const bridgeRunTranscripts = new Map<string, BridgeRunTranscriptState>()
@@ -2846,6 +2850,7 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
     providerThreadId: state.providerSessionId || existingRun?.providerThreadId,
     stats: state.stats || existingRun?.stats,
     ...(state.runDiff ? { runDiff: state.runDiff } : {}),
+    ...(state.runDiffByPath ? { runDiffByPath: state.runDiffByPath } : {}),
     status: final ? state.status : 'running',
     endedAt: final ? timestamp : existingRun?.endedAt,
     exitCode: final && state.status === 'failed' ? 1 : existingRun?.exitCode
@@ -2915,6 +2920,23 @@ function finalizeBridgeRunTranscript(
       if (state.preSnapshot && state.workspacePath) {
         const postSnapshot = await captureWorkspaceSnapshot(state.workspacePath)
         state.runDiff = computeRunDiff(state.preSnapshot, postSnapshot, runId)
+      }
+      for (const extraPath of state.extraWorkspacePaths ?? []) {
+        const pre = state.extraPreSnapshots?.[extraPath]
+        if (!pre) continue
+        const post = await captureWorkspaceSnapshot(extraPath)
+        const diff = computeRunDiff(pre, post, runId)
+        const files = [
+          ...(diff?.createdFiles ?? []),
+          ...(diff?.modifiedFiles ?? []),
+          ...(diff?.deletedFiles ?? [])
+        ]
+        if (files.length > 0) {
+          state.runDiffByPath = {
+            ...(state.runDiffByPath ?? {}),
+            [extraPath]: files
+          }
+        }
       }
     } catch (err) {
       console.warn(`[bridge-run] run diff failed for ${runId}:`, err)
@@ -14721,6 +14743,27 @@ if (isGeminiMcpBridgeProcess) {
           // run path, so a duck-typed shim is sufficient.
           const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
           const provider = assertProviderId(action.provider)
+          // Secondary-workspace grants: each extra id must be a registered,
+          // ALLOWLISTED workspace (the router only gates the primary).
+          const extraWorkspacePaths: string[] = []
+          for (const extraId of action.extraWorkspaceIds ?? []) {
+            const extra = AppStore.getWorkspaces().find((w) => w.id === extraId)
+            if (!extra) {
+              return {
+                dispatched: false,
+                appRunId: null,
+                reason: `Secondary workspace id "${extraId}" is not registered`
+              }
+            }
+            if (!remoteWorkspaceIsVisible(extra.id)) {
+              return {
+                dispatched: false,
+                appRunId: null,
+                reason: `Secondary workspace "${extra.displayName}" is not allowlisted for this device`
+              }
+            }
+            if (extra.path !== workspaceRecord.path) extraWorkspacePaths.push(extra.path)
+          }
           // Phone-attached images → temp files → the SAME imagePaths lane the
           // desktop composer uses (adapters forward per provider). Temp dir
           // is per-run; files are small (phone downscales before sending).
@@ -14821,6 +14864,22 @@ if (isGeminiMcpBridgeProcess) {
             promptMessageId,
             workspacePath: workspaceRecord.path
           })
+          if (extraWorkspacePaths.length > 0) {
+            const transcript = bridgeRunTranscripts.get(runId)
+            if (transcript) transcript.extraWorkspacePaths = extraWorkspacePaths
+            for (const extraPath of extraWorkspacePaths) {
+              void captureWorkspaceSnapshot(extraPath)
+                .then((snapshot) => {
+                  const state = bridgeRunTranscripts.get(runId)
+                  if (!state) return
+                  state.extraPreSnapshots = {
+                    ...(state.extraPreSnapshots ?? {}),
+                    [extraPath]: snapshot
+                  }
+                })
+                .catch(() => {})
+            }
+          }
           // Pre-run workspace snapshot — diffed at finalize so the run gets
           // run.runDiff (File-changes card, diff row, Create PR) exactly
           // like a desktop run. Best-effort: capture failure only costs
@@ -14903,7 +14962,24 @@ if (isGeminiMcpBridgeProcess) {
             ...(inheritedGeminiAuthProfileId !== undefined
               ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
               : {}),
-            ...(iosImagePaths.length ? { imagePaths: iosImagePaths } : {})
+            ...(iosImagePaths.length ? { imagePaths: iosImagePaths } : {}),
+            ...(extraWorkspacePaths.length
+              ? {
+                  externalPathGrants: extraWorkspacePaths.map((grantPath) =>
+                    issueExternalPathGrant({
+                      id: `ios-grant-${runId}-${Math.random().toString(36).slice(2, 8)}`,
+                      provider,
+                      workspaceId: workspaceRecord.id,
+                      chatId: chat.appChatId,
+                      path: grantPath,
+                      kind: 'directory',
+                      access: 'write',
+                      duration: 'thisRun',
+                      createdAt: new Date().toISOString()
+                    })
+                  )
+                }
+              : {})
           }
           // Ack at ACCEPTANCE, not completion. dispatchAgentRun includes
           // heavy provider preflight (Ollama model/RAM probes, Codex
@@ -15172,7 +15248,12 @@ if (isGeminiMcpBridgeProcess) {
           const { hunks: _hunks, ...diffSummaryLean } = taskCard.diffSummary
           const diffPayload = {
             ...diffSummaryLean,
-            files: taskCard.diffSummary.files?.map(({ hunks: _fileHunks, ...file }) => file)
+            files: taskCard.diffSummary.files?.map(({ hunks: _fileHunks, ...file }) => file),
+            // Per-workspace breakdown rides stats-only: its nested
+            // files[].hunks were the one lane the hunk-strip missed.
+            workspaces: taskCard.diffSummary.workspaces?.map(
+              ({ files: _wsFiles, ...workspace }) => workspace
+            )
           }
           envelopes.push(
             buildRemoteProjectionEnvelope({

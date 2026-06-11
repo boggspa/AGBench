@@ -104,6 +104,10 @@ export interface BridgeComposerPromptAction extends BridgeActionMetadata {
    * — the same attachment lane the desktop composer uses. Capped at 2
    * images / ~900KB combined base64 to respect the relay frame budget. */
   imageAttachments?: BridgeImageAttachment[]
+  /** Additional allowlisted workspaces granted to this run (the desktop's
+   * secondary-workspace picker). The executor validates each against the
+   * allowlist and resolves them to AgentRunPayload.externalPathGrants. */
+  extraWorkspaceIds?: string[]
 }
 
 export interface BridgeImageAttachment {
@@ -719,7 +723,13 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
     (v.contextTurns === undefined ||
       (typeof v.contextTurns === 'number' &&
         Number.isInteger(v.contextTurns) &&
-        v.contextTurns >= 0))
+        v.contextTurns >= 0)) &&
+    (v.extraWorkspaceIds === undefined ||
+      (Array.isArray(v.extraWorkspaceIds) &&
+        v.extraWorkspaceIds.length <= 2 &&
+        v.extraWorkspaceIds.every(
+          (id) => typeof id === 'string' && id.trim().length > 0
+        )))
   )
 }
 

@@ -198,6 +198,7 @@ export interface MobileDiffSummary {
   filesChanged: number
   additions: number
   deletions: number
+
   createdFiles: number
   modifiedFiles: number
   deletedFiles: number
