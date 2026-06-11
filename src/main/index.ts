@@ -18571,6 +18571,17 @@ if (isGeminiMcpBridgeProcess) {
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent
     ): Promise<{ dispatched: boolean; appRunId: string }> => {
+      // Self-heal stale persisted MCP configs on EVERY dispatch path, not
+      // just renderer capability refreshes — bridge (iOS) dispatches on a
+      // Mac whose UI never opens the capabilities panel were running with
+      // pre-rebrand absolute command paths ("Failed to spawn MCP server
+      // 'TaskWraith'": ENOENT). The needs-repair probe is a cheap file
+      // read+compare and a no-op when healthy.
+      const repairCwd =
+        typeof payload?.workspace === 'string' && payload.workspace.length > 0
+          ? payload.workspace
+          : undefined
+      await repairKnownStaleGeminiMcpBridgeConfigs(repairCwd).catch(() => {})
       return runCoordinator.dispatch(payload, event)
     }
 
