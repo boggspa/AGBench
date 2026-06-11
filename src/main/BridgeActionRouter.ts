@@ -486,6 +486,12 @@ export class BridgeActionRouter {
         return this.executor.executeEnsembleRosterUpdate(payload)
       case 'ensembleQueueItem':
         return this.executor.executeEnsembleQueueItem(payload)
+      case 'setGuestParticipant':
+        return this.executor.executeSetGuestParticipant(payload)
+      case 'removeGuestParticipant':
+        return this.executor.executeRemoveGuestParticipant(payload)
+      case 'createSideChat':
+        return this.executor.executeCreateSideChat(payload)
       case 'setThreadNotes':
         return this.executor.executeSetThreadNotes(payload)
       case 'toggleMessagePin':
@@ -886,6 +892,11 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     // read-write entry covers them.
     case 'setThreadNotes':
     case 'toggleMessagePin':
+    // Guest + side-chat management creates/configures threads — same
+    // write class as starting turns.
+    case 'setGuestParticipant':
+    case 'removeGuestParticipant':
+    case 'createSideChat':
       return 'startTurn'
     // Admin-only capabilities: these are intentionally NOT included in the
     // read-write task-console default set. A workspace entry must list them

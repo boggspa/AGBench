@@ -269,6 +269,29 @@ export interface BridgeToggleMessagePinAction extends BridgeActionMetadata {
   pinned: boolean
 }
 
+export interface BridgeSetGuestParticipantAction extends BridgeActionMetadata {
+  kind: 'setGuestParticipant'
+  workspaceId: string
+  threadId: string
+  provider: string
+  model?: string
+}
+
+export interface BridgeRemoveGuestParticipantAction extends BridgeActionMetadata {
+  kind: 'removeGuestParticipant'
+  workspaceId: string
+  threadId: string
+}
+
+export interface BridgeCreateSideChatAction extends BridgeActionMetadata {
+  kind: 'createSideChat'
+  workspaceId: string
+  /** Parent thread the side chat hangs off. */
+  threadId: string
+  provider?: string
+  mode?: 'singleProvider' | 'ensembleClone' | 'fanOut'
+}
+
 export interface BridgeEnsembleQueueItemAction extends BridgeActionMetadata {
   kind: 'ensembleQueueItem'
   workspaceId: string
@@ -348,6 +371,9 @@ export type BridgeActionPayload =
   | BridgeEnsembleSteerAction
   | BridgeEnsembleRosterUpdateAction
   | BridgeEnsembleQueueItemAction
+  | BridgeSetGuestParticipantAction
+  | BridgeRemoveGuestParticipantAction
+  | BridgeCreateSideChatAction
   | BridgeSetThreadNotesAction
   | BridgeToggleMessagePinAction
   | BridgeRegisterApnsTokenAction
@@ -451,6 +477,9 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
     case 'ensembleQueueItem':
+    case 'setGuestParticipant':
+    case 'removeGuestParticipant':
+    case 'createSideChat':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -495,6 +524,9 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
     case 'ensembleQueueItem':
+    case 'setGuestParticipant':
+    case 'removeGuestParticipant':
+    case 'createSideChat':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -551,6 +583,9 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
     case 'ensembleQueueItem':
+    case 'setGuestParticipant':
+    case 'removeGuestParticipant':
+    case 'createSideChat':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -639,6 +674,18 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isEnsembleQueueItem(parsed)
         ? (parsed as unknown as BridgeEnsembleQueueItemAction)
         : { kind: 'unknown', rawKind: 'ensembleQueueItem', raw: parsed }
+    case 'setGuestParticipant':
+      return isSetGuestParticipant(parsed)
+        ? (parsed as unknown as BridgeSetGuestParticipantAction)
+        : { kind: 'unknown', rawKind: 'setGuestParticipant', raw: parsed }
+    case 'removeGuestParticipant':
+      return isWorkspaceThreadAction(parsed)
+        ? (parsed as unknown as BridgeRemoveGuestParticipantAction)
+        : { kind: 'unknown', rawKind: 'removeGuestParticipant', raw: parsed }
+    case 'createSideChat':
+      return isCreateSideChat(parsed)
+        ? (parsed as unknown as BridgeCreateSideChatAction)
+        : { kind: 'unknown', rawKind: 'createSideChat', raw: parsed }
     case 'setThreadNotes':
       return isSetThreadNotes(parsed)
         ? (parsed as unknown as BridgeSetThreadNotesAction)
@@ -874,6 +921,26 @@ function isToggleMessagePin(v: Record<string, unknown>): boolean {
     typeof v.messageId === 'string' &&
     v.messageId.trim().length > 0 &&
     typeof v.pinned === 'boolean'
+  )
+}
+
+function isSetGuestParticipant(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    typeof v.provider === 'string' &&
+    v.provider.trim().length > 0 &&
+    (v.model === undefined || typeof v.model === 'string')
+  )
+}
+
+function isCreateSideChat(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    (v.provider === undefined || typeof v.provider === 'string') &&
+    (v.mode === undefined ||
+      v.mode === 'singleProvider' ||
+      v.mode === 'ensembleClone' ||
+      v.mode === 'fanOut')
   )
 }
 

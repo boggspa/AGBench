@@ -14480,6 +14480,56 @@ if (isGeminiMcpBridgeProcess) {
           if (canonical) pushRemoteThreadSnapshot(updated, canonical)
           return { ok: true }
         },
+        setGuestParticipantFn: async (action) => {
+          try {
+            const result = chatService.setGuestParticipant({
+              parentChatId: action.threadId,
+              provider: assertProviderId(action.provider),
+              ...(action.model ? { selectedModelType: action.model } : {})
+            })
+            broadcastChatUpdated(result.parent)
+            broadcastChatUpdated(result.guest)
+            broadcastThreadUpdate(result.parent.appChatId)
+            broadcastThreadUpdate(result.guest.appChatId)
+            const canonical = canonicalRemoteWorkspaceId(result.parent.workspaceId)
+            if (canonical) pushRemoteThreadSnapshot(result.parent, canonical)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            return { ok: true, guestThreadId: result.guest.appChatId }
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) }
+          }
+        },
+        removeGuestParticipantFn: async (action) => {
+          try {
+            const result = chatService.removeGuestParticipant(action.threadId)
+            broadcastChatUpdated(result.parent)
+            broadcastThreadUpdate(result.parent.appChatId)
+            if (result.guest) broadcastThreadUpdate(result.guest.appChatId)
+            const canonical = canonicalRemoteWorkspaceId(result.parent.workspaceId)
+            if (canonical) pushRemoteThreadSnapshot(result.parent, canonical)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            return { ok: true }
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) }
+          }
+        },
+        createSideChatFn: async (action) => {
+          try {
+            const chat = chatService.createSideChat({
+              parentChatId: action.threadId,
+              ...(action.provider ? { provider: assertProviderId(action.provider) } : {}),
+              sideChatMode: action.mode ?? 'singleProvider'
+            })
+            broadcastChatUpdated(chat)
+            broadcastThreadUpdate(chat.appChatId)
+            const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+            if (canonical) pushRemoteThreadSnapshot(chat, canonical)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            return { ok: true, threadId: chat.appChatId }
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) }
+          }
+        },
         ensembleQueueItemFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble?.activeRound) {
