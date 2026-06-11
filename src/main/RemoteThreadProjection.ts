@@ -256,6 +256,17 @@ export interface RemoteRunFileChangeCounts {
   preExistingFiles?: number
   workspaceCount?: number
   workspaces?: RemoteRunWorkspaceFileChanges[]
+  /** Bounded per-file rows (desktop File-changes card parity) — remote
+   * clients render path + status + ±stats per run. Overflow is derivable
+   * from `filesChanged - files.length`. */
+  files?: RemoteRunChangedFile[]
+}
+
+export interface RemoteRunChangedFile {
+  path: string
+  status?: string
+  additions?: number
+  deletions?: number
 }
 
 export interface RemoteRunWorkspaceFileChanges {
@@ -533,15 +544,22 @@ export function summarizeRun(
 
 function summarizeRunFileChanges(run: ChatRun): RemoteRunSummary['fileChanges'] | undefined {
   const workspaces: RemoteRunWorkspaceFileChanges[] = []
+  const changedFiles: DiffFileSummary[] = []
   const primaryPath = primaryRunDiffWorkspacePath(run)
   if (isRunDiffResult(run.runDiff)) {
     workspaces.push(summarizeRunDiffFiles(run.runDiff, primaryPath))
+    changedFiles.push(
+      ...safeDiffList(run.runDiff.createdFiles),
+      ...safeDiffList(run.runDiff.modifiedFiles),
+      ...safeDiffList(run.runDiff.deletedFiles)
+    )
   }
   const byPath = run.runDiffByPath ?? {}
   for (const [workspacePath, files] of Object.entries(byPath)) {
     if (!Array.isArray(files)) continue
     if (primaryPath && workspacePath === primaryPath) continue
     workspaces.push(summarizeDiffFileList(files, workspacePath))
+    changedFiles.push(...files)
   }
   if (workspaces.length > 0) {
     const total = workspaces.reduce<RemoteRunFileChangeCounts>(
@@ -567,6 +585,7 @@ function summarizeRunFileChanges(run: ChatRun): RemoteRunSummary['fileChanges'] 
     )
     total.workspaceCount = workspaces.length
     total.workspaces = workspaces
+    if (changedFiles.length > 0) total.files = boundRunChangedFiles(changedFiles)
     return total
   }
 
@@ -647,6 +666,17 @@ function summarizeDiffFileList(
 
 function safeDiffList(files: DiffFileSummary[] | undefined): DiffFileSummary[] {
   return Array.isArray(files) ? files : []
+}
+
+/** Clip the per-run file list for the wire: 12 rows (desktop card cap),
+ * lean fields only, long paths tail-preserved (remote clients head-truncate). */
+function boundRunChangedFiles(files: DiffFileSummary[]): RemoteRunChangedFile[] {
+  return files.slice(0, 12).map((file) => ({
+    path: file.path.length > 200 ? `…${file.path.slice(-199)}` : file.path,
+    ...(file.status ? { status: file.status } : {}),
+    ...(typeof file.additions === 'number' ? { additions: file.additions } : {}),
+    ...(typeof file.deletions === 'number' ? { deletions: file.deletions } : {})
+  }))
 }
 
 function sumDiffFiles(files: DiffFileSummary[], key: 'additions' | 'deletions'): number {

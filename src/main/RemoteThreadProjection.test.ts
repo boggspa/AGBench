@@ -270,7 +270,37 @@ describe('RemoteThreadProjection', () => {
             deletedFiles: 1,
             preExistingFiles: 1
           }
+        ],
+        files: [
+          { path: 'new.ts', status: 'created', additions: 10 },
+          { path: 'main.ts', status: 'modified', additions: 2, deletions: 3 },
+          { path: 'old.ts', status: 'deleted', deletions: 4 }
         ]
+      })
+    })
+
+    it('caps per-run file rows at 12 while filesChanged keeps the true total', () => {
+      const summary = buildRunSummary([
+        {
+          runId: 'run-cap',
+          runDiffByPath: {
+            '/repo': Array.from({ length: 15 }, (_, i) => ({
+              path: `file-${i}.ts`,
+              status: 'modified',
+              additions: 1,
+              deletions: 1,
+              previewKind: 'git_diff'
+            }))
+          }
+        } as unknown as ChatRun
+      ])
+      expect(summary?.fileChanges?.filesChanged).toBe(15)
+      expect(summary?.fileChanges?.files).toHaveLength(12)
+      expect(summary?.fileChanges?.files?.[0]).toEqual({
+        path: 'file-0.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 1
       })
     })
 
@@ -342,6 +372,11 @@ describe('RemoteThreadProjection', () => {
             deletedFiles: 1,
             preExistingFiles: 0
           }
+        ],
+        files: [
+          { path: 'a.ts', status: 'created', additions: 3 },
+          { path: 'b.ts', status: 'modified', additions: 1, deletions: 2 },
+          { path: 'c.ts', status: 'deleted', deletions: 5 }
         ]
       })
     })
