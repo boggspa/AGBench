@@ -1223,6 +1223,10 @@ type BridgeRunTranscriptState = {
   flushTimer?: NodeJS.Timeout
   /** Activities parsed from tool_use/tool_result compat events. */
   activities: ToolActivity[]
+  /** Codex item id of the last appended content delta — a transition
+   * marks a NEW agentMessage item, which the desktop separates with a
+   * horizontal rule instead of letting bursts jam into one paragraph. */
+  lastContentItemId?: string
   /** Captured before dispatch; diffed against a post-run snapshot at
    * finalize so bridge runs get run.runDiff like desktop runs do. */
   preSnapshot?: WorkspaceSnapshot
@@ -3108,7 +3112,23 @@ function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string):
         (typeof parsed.content === 'string' && parsed.content) ||
         ''
       if (text) {
-        appendBridgeRunText(state, text)
+        // Desktop parity (App.tsx merge-with-separator): when Codex starts
+        // a new agentMessage item (different itemId), keep the bursts from
+        // jamming into one paragraph ("…operations.The first shell…") by
+        // inserting the same horizontal-rule separator the renderer uses.
+        // Providers without itemIds never transition, so nothing changes
+        // for token-level streams.
+        const itemId =
+          typeof parsed.itemId === 'string' && parsed.itemId ? parsed.itemId : undefined
+        const lastPart = state.parts[state.parts.length - 1]
+        const itemTransition =
+          itemId !== undefined &&
+          state.lastContentItemId !== undefined &&
+          itemId !== state.lastContentItemId &&
+          lastPart?.kind === 'text' &&
+          lastPart.content.trim().length > 0
+        if (itemId) state.lastContentItemId = itemId
+        appendBridgeRunText(state, itemTransition ? `\n\n---\n\n${text}` : text)
         if (!state.flushedOnce) flushBridgeRunTranscript(state.runId)
         else scheduleBridgeRunFlush(state.runId)
       }
