@@ -193,7 +193,7 @@ export interface BridgeCreateThreadParticipant {
 export interface BridgeCreateThreadAction extends BridgeActionMetadata {
   kind: 'createThread'
   workspaceId: string
-  variant: 'workspace' | 'ensemble' | 'global'
+  variant: 'workspace' | 'single' | 'ensemble' | 'global'
   /** Optional client-minted id (e.g. `ios-<uuid>`). When omitted the Mac
    * generates one. */
   threadId?: string
@@ -313,6 +313,8 @@ export interface BridgeSetGuestParticipantAction extends BridgeActionMetadata {
   threadId: string
   provider: string
   model?: string
+  codexReasoningEffort?: string | null
+  claudeReasoningEffort?: string | null
 }
 
 export interface BridgeRemoveGuestParticipantAction extends BridgeActionMetadata {
@@ -898,7 +900,10 @@ function isCreateThread(v: Record<string, unknown>): boolean {
   return (
     hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
-    (v.variant === 'workspace' || v.variant === 'ensemble' || v.variant === 'global') &&
+    (v.variant === 'workspace' ||
+      v.variant === 'single' ||
+      v.variant === 'ensemble' ||
+      v.variant === 'global') &&
     (v.threadId === undefined || typeof v.threadId === 'string') &&
     (v.provider === undefined || typeof v.provider === 'string') &&
     (v.title === undefined || typeof v.title === 'string') &&
@@ -1058,7 +1063,13 @@ function isSetGuestParticipant(v: Record<string, unknown>): boolean {
     isWorkspaceThreadAction(v) &&
     typeof v.provider === 'string' &&
     v.provider.trim().length > 0 &&
-    (v.model === undefined || typeof v.model === 'string')
+    (v.model === undefined || typeof v.model === 'string') &&
+    (v.codexReasoningEffort === undefined ||
+      v.codexReasoningEffort === null ||
+      typeof v.codexReasoningEffort === 'string') &&
+    (v.claudeReasoningEffort === undefined ||
+      v.claudeReasoningEffort === null ||
+      typeof v.claudeReasoningEffort === 'string')
   )
 }
 

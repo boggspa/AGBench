@@ -151,6 +151,18 @@ describe('decodeBridgeActionPayload', () => {
       }
       expect(payloadRequiresWorkspaceGating(create)).toBe(true)
       expect(payloadIsMutating(create)).toBe(true)
+      const legacySingle = decodeBridgeActionPayload(
+        encode({
+          kind: 'createThread',
+          actionId: 'a-create-legacy',
+          workspaceId: 'ws-1',
+          variant: 'single'
+        })
+      ).payload
+      expect(legacySingle.kind).toBe('createThread')
+      if (legacySingle.kind === 'createThread') {
+        expect(legacySingle.variant).toBe('single')
+      }
 
       const expand = decodeBridgeActionPayload(
         encode({

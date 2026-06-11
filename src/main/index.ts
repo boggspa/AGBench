@@ -14764,7 +14764,13 @@ if (isGeminiMcpBridgeProcess) {
             const result = chatService.setGuestParticipant({
               parentChatId: action.threadId,
               provider: assertProviderId(action.provider),
-              ...(action.model ? { selectedModelType: action.model } : {})
+              ...(action.model ? { selectedModelType: action.model } : {}),
+              ...(action.codexReasoningEffort !== undefined
+                ? { codexReasoningEffort: action.codexReasoningEffort }
+                : {}),
+              ...(action.claudeReasoningEffort !== undefined
+                ? { claudeReasoningEffort: action.claudeReasoningEffort }
+                : {})
             })
             broadcastChatUpdated(result.parent)
             broadcastChatUpdated(result.guest)
