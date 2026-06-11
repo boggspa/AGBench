@@ -156,7 +156,7 @@ struct ThreadDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(TWTheme.appBg)
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 4) {
                 if let card, card.isEnsemble, let workspaceId = card.workspaceId {
                     // Editable roster strip (desktop above-row parity):
@@ -210,13 +210,10 @@ struct ThreadDetailView: View {
                             secondaryWorkspaceId: $secondaryWorkspaceId)
                     }
                     .composerShellGlass()
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(TWTheme.border)
-                    )
                     .padding(.horizontal, 10).padding(.bottom, 6)
                 }
             }
+            .background(Color.clear)
         }
     }
 

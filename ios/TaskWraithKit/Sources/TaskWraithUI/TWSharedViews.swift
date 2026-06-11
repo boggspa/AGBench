@@ -103,10 +103,10 @@ extension View {
 }
 
 // ── Composer shell glass (thread dock) ─────────────────────────────────────
-// One shared frost layer behind the three-decker shell (diff header + composer
-// + telemetry). Inner rows stay clear so transcript scrolls through as a
-// single blurred panel. Falls back to opaque surfaces when Reduce Transparency
-// is enabled.
+// Frost is constrained to the 16pt shell — material is filled *in* the shape,
+// composited, then clipped so nothing bleeds into safeAreaInset margins.
+// Inner rows stay clear. Falls back to opaque surfaces when Reduce
+// Transparency is enabled.
 
 private struct ComposerShellGlassModifier: ViewModifier {
     var cornerRadius: CGFloat = 16
@@ -115,36 +115,26 @@ private struct ComposerShellGlassModifier: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .background {
-                if TWTheme.composerGlassEnabled {
-                    ZStack {
-                        shape.fill(.ultraThinMaterial)
-                        shape.fill(TWTheme.surface1.opacity(TWTheme.composerGlassTintOpacity))
+                Group {
+                    if TWTheme.composerGlassEnabled {
+                        shape
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                shape.fill(
+                                    TWTheme.surface1.opacity(TWTheme.composerGlassTintOpacity)))
+                    } else {
+                        shape.fill(TWTheme.surface2)
                     }
-                } else {
-                    shape.fill(TWTheme.surface2)
                 }
             }
-            .clipShape(shape)
-            .overlay(alignment: .top) {
-                if TWTheme.composerGlassEnabled {
-                    LinearGradient(
-                        colors: [
-                            TWTheme.appBg.opacity(0),
-                            TWTheme.appBg.opacity(0.37),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 14)
-                    .offset(y: -14)
-                    .allowsHitTesting(false)
-                }
-            }
+            .compositingGroup()
+            .mask(shape)
+            .overlay(shape.strokeBorder(TWTheme.border, lineWidth: 1))
     }
 }
 
 extension View {
-    /// Frosted glass behind the bordered composer shell; minimal layout impact.
+    /// Frosted glass + border clipped to the composer shell bounds.
     func composerShellGlass(cornerRadius: CGFloat = 16) -> some View {
         modifier(ComposerShellGlassModifier(cornerRadius: cornerRadius))
     }
