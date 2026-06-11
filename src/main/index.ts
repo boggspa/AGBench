@@ -14480,6 +14480,65 @@ if (isGeminiMcpBridgeProcess) {
           if (canonical) pushRemoteThreadSnapshot(updated, canonical)
           return { ok: true }
         },
+        ensembleQueueItemFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat?.ensemble?.activeRound) {
+            return { ok: false, error: 'No active Ensemble round' }
+          }
+          const round = chat.ensemble.activeRound
+          // Combined injection-order view: legacy single slot, then array —
+          // matches the projection's index addressing.
+          const legacy = round.queuedPrompt ? [round.queuedPrompt] : []
+          const combined = [...legacy, ...(round.queuedPrompts ?? [])]
+          const item = combined[action.index]
+          if (item === undefined) {
+            return { ok: false, error: 'Queued item no longer exists' }
+          }
+          if (action.textPrefix && !item.startsWith(action.textPrefix)) {
+            return { ok: false, error: 'Queue changed underneath — refresh and retry' }
+          }
+          const nextLegacy =
+            legacy.length > 0 && action.index === 0 ? undefined : round.queuedPrompt
+          const arrayIndex = action.index - legacy.length
+          const nextArray =
+            arrayIndex >= 0
+              ? (round.queuedPrompts ?? []).filter((_, i) => i !== arrayIndex)
+              : (round.queuedPrompts ?? [])
+          const updated: ChatRecord = {
+            ...chat,
+            ensemble: {
+              ...chat.ensemble,
+              activeRound: {
+                ...round,
+                queuedPrompt: nextLegacy,
+                queuedPrompts: nextArray
+              }
+            },
+            updatedAt: Date.now()
+          }
+          AppStore.saveChat(updated)
+          broadcastChatUpdated(updated)
+          if (action.op === 'steerNow') {
+            const sender = mainWindow?.webContents
+            if (!sender || sender.isDestroyed()) {
+              return { ok: false, error: 'No main window available for Ensemble steering' }
+            }
+            const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
+            const result = ensembleOrchestratorRef?.startRound({
+              chatId: action.threadId,
+              prompt: item,
+              event: fakeEvent,
+              mode: 'steer'
+            })
+            const ok = result?.status === 'started' || result?.status === 'steered'
+            broadcastThreadUpdate(action.threadId)
+            bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+            return { ok, ...result }
+          }
+          broadcastThreadUpdate(action.threadId)
+          bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          return { ok: true }
+        },
         ensembleRosterUpdateFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }

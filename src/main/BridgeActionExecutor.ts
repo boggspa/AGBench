@@ -11,6 +11,7 @@ import type {
   BridgeEnsembleSkipActiveParticipantAction,
   BridgeEnsembleSteerAction,
   BridgeEnsembleRosterUpdateAction,
+  BridgeEnsembleQueueItemAction,
   BridgeSetThreadNotesAction,
   BridgeToggleMessagePinAction,
   BridgeEnsembleWakeNowAction,
@@ -89,6 +90,9 @@ export interface BridgeActionExecutor {
   executeEnsembleSteer(action: BridgeEnsembleSteerAction): Promise<BridgeActionExecutionResult>
   executeEnsembleRosterUpdate(
     action: BridgeEnsembleRosterUpdateAction
+  ): Promise<BridgeActionExecutionResult>
+  executeEnsembleQueueItem(
+    action: BridgeEnsembleQueueItemAction
   ): Promise<BridgeActionExecutionResult>
   executeSetThreadNotes(action: BridgeSetThreadNotesAction): Promise<BridgeActionExecutionResult>
   executeToggleMessagePin(
@@ -184,6 +188,11 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeEnsembleRosterUpdateAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('ensembleRosterUpdate', action.threadId)
+  }
+  async executeEnsembleQueueItem(
+    action: BridgeEnsembleQueueItemAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('ensembleQueueItem', action.threadId)
   }
   async executeSetThreadNotes(
     action: BridgeSetThreadNotesAction
@@ -316,6 +325,7 @@ export interface MainProcessActionExecutorDependencies {
   ensembleQueuePromptFn?: (action: BridgeEnsembleQueuePromptAction) => Promise<unknown>
   ensembleSteerFn?: (action: BridgeEnsembleSteerAction) => Promise<unknown>
   ensembleRosterUpdateFn?: (action: BridgeEnsembleRosterUpdateAction) => Promise<unknown>
+  ensembleQueueItemFn?: (action: BridgeEnsembleQueueItemAction) => Promise<unknown>
   setThreadNotesFn?: (action: BridgeSetThreadNotesAction) => Promise<unknown>
   toggleMessagePinFn?: (action: BridgeToggleMessagePinAction) => Promise<unknown>
   log?: (line: string) => void
@@ -654,6 +664,17 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       'ensembleRosterUpdate',
       action.threadId,
       this.deps.ensembleRosterUpdateFn,
+      action
+    )
+  }
+
+  async executeEnsembleQueueItem(
+    action: BridgeEnsembleQueueItemAction
+  ): Promise<BridgeActionExecutionResult> {
+    return this.executeEnsembleAction(
+      'ensembleQueueItem',
+      action.threadId,
+      this.deps.ensembleQueueItemFn,
       action
     )
   }

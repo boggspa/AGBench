@@ -269,6 +269,18 @@ export interface BridgeToggleMessagePinAction extends BridgeActionMetadata {
   pinned: boolean
 }
 
+export interface BridgeEnsembleQueueItemAction extends BridgeActionMetadata {
+  kind: 'ensembleQueueItem'
+  workspaceId: string
+  threadId: string
+  /** Index into the COMBINED queue (legacy slot first, then the array). */
+  index: number
+  /** Optional race guard — first chars of the expected text; the executor
+   * rejects if the item at `index` no longer starts with it. */
+  textPrefix?: string
+  op: 'steerNow' | 'remove'
+}
+
 export interface BridgeEnsembleRosterUpdateAction extends BridgeActionMetadata {
   kind: 'ensembleRosterUpdate'
   workspaceId: string
@@ -335,6 +347,7 @@ export type BridgeActionPayload =
   | BridgeEnsembleQueuePromptAction
   | BridgeEnsembleSteerAction
   | BridgeEnsembleRosterUpdateAction
+  | BridgeEnsembleQueueItemAction
   | BridgeSetThreadNotesAction
   | BridgeToggleMessagePinAction
   | BridgeRegisterApnsTokenAction
@@ -437,6 +450,7 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'ensembleQueueItem':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -480,6 +494,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'ensembleQueueItem':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -535,6 +550,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'ensembleQueueItem':
     case 'setThreadNotes':
     case 'toggleMessagePin':
     case 'setYoloMode':
@@ -619,6 +635,10 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isEnsembleRosterUpdate(parsed)
         ? (parsed as unknown as BridgeEnsembleRosterUpdateAction)
         : { kind: 'unknown', rawKind: 'ensembleRosterUpdate', raw: parsed }
+    case 'ensembleQueueItem':
+      return isEnsembleQueueItem(parsed)
+        ? (parsed as unknown as BridgeEnsembleQueueItemAction)
+        : { kind: 'unknown', rawKind: 'ensembleQueueItem', raw: parsed }
     case 'setThreadNotes':
       return isSetThreadNotes(parsed)
         ? (parsed as unknown as BridgeSetThreadNotesAction)
@@ -854,6 +874,19 @@ function isToggleMessagePin(v: Record<string, unknown>): boolean {
     typeof v.messageId === 'string' &&
     v.messageId.trim().length > 0 &&
     typeof v.pinned === 'boolean'
+  )
+}
+
+function isEnsembleQueueItem(v: Record<string, unknown>): boolean {
+  return (
+    isWorkspaceThreadAction(v) &&
+    typeof v.index === 'number' &&
+    Number.isInteger(v.index) &&
+    v.index >= 0 &&
+    v.index < 100 &&
+    (v.textPrefix === undefined ||
+      (typeof v.textPrefix === 'string' && v.textPrefix.length <= 120)) &&
+    (v.op === 'steerNow' || v.op === 'remove')
   )
 }
 

@@ -79,6 +79,10 @@ function makeStubExecutor(
       executed: true,
       message: 'ensembleSteer done'
     }),
+    executeEnsembleQueueItem: make('executeEnsembleQueueItem', {
+      executed: true,
+      message: 'ensembleSteer done'
+    }),
     executeSetThreadNotes: make('executeSetThreadNotes', {
       executed: true,
       message: 'ensembleSteer done'

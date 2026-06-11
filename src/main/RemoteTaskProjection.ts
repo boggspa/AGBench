@@ -249,6 +249,9 @@ export interface RemoteEnsembleState {
   participants: RemoteEnsembleParticipantState[]
   /** The configured (editable) roster — independent of round state. */
   roster?: RemoteEnsembleRosterEntry[]
+  /** Queued prompt texts (combined legacy single + array, in injection
+   * order) — `index` addresses items for steerNow/remove actions. */
+  queuedPrompts?: Array<{ index: number; text: string }>
   workSessionStatus?: string
 }
 
@@ -724,6 +727,14 @@ export function buildRemoteEnsembleState(chat: ChatRecord): RemoteEnsembleState 
     continuationHops: activeRound?.continuationHops,
     maxContinuationHops: activeRound?.maxContinuationHops ?? ensemble.maxContinuationHops,
     queuedPromptCount: queuedPromptCount(activeRound),
+    ...(combinedQueuedPrompts(activeRound).length > 0
+      ? {
+          queuedPrompts: combinedQueuedPrompts(activeRound).map((text, index) => ({
+            index,
+            text: sanitizeText(text, 280).preview
+          }))
+        }
+      : {}),
     participantCount: participants.length || ensemble.participants.length,
     participants: participants.map(projectEnsembleParticipant),
     roster: [...ensemble.participants]
@@ -972,6 +983,19 @@ function sanitizeDiffLine(raw: string, maxChars: number): string {
 
 function sumFiles(files: DiffFileSummary[], key: 'additions' | 'deletions'): number {
   return files.reduce((total, file) => total + (file[key] ?? 0), 0)
+}
+
+/** Injection-order queue view: legacy single slot first, then the array —
+ * the SAME combined order the orchestrator drains and the desktop renders.
+ * Index addressing for remote steerNow/remove uses this order. */
+export function combinedQueuedPrompts(
+  activeRound: EnsembleConfig['activeRound']
+): string[] {
+  if (!activeRound) return []
+  return [
+    ...(activeRound.queuedPrompt ? [activeRound.queuedPrompt] : []),
+    ...(activeRound.queuedPrompts ?? [])
+  ]
 }
 
 function queuedPromptCount(activeRound: EnsembleConfig['activeRound']): number {

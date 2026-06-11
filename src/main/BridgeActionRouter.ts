@@ -484,6 +484,8 @@ export class BridgeActionRouter {
         return this.executor.executeEnsembleSteer(payload)
       case 'ensembleRosterUpdate':
         return this.executor.executeEnsembleRosterUpdate(payload)
+      case 'ensembleQueueItem':
+        return this.executor.executeEnsembleQueueItem(payload)
       case 'setThreadNotes':
         return this.executor.executeSetThreadNotes(payload)
       case 'toggleMessagePin':
@@ -877,6 +879,7 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     case 'ensembleQueuePrompt':
     case 'ensembleSteer':
     case 'ensembleRosterUpdate':
+    case 'ensembleQueueItem':
       return 'steer'
     // Thread annotations (notes + message pins): write-class but far less
     // powerful than starting runs — gated under startTurn so the default
