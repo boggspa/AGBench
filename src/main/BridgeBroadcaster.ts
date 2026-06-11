@@ -135,7 +135,8 @@ export const BRIDGE_BROADCAST_METHODS = {
   threadUpdated: 'bridge.broadcastThreadUpdated',
   remoteProjection: 'bridge.broadcastRemoteProjection',
   remoteProjectionSnapshot: 'bridge.broadcastRemoteProjectionSnapshot',
-  usageRollup: 'bridge.broadcastUsageRollup'
+  usageRollup: 'bridge.broadcastUsageRollup',
+  modelUsage: 'bridge.broadcastModelUsage'
 } as const
 
 /** Convert a `WorkspaceRecord` plus the chats living inside it to the
@@ -301,6 +302,15 @@ export class BridgeBroadcaster {
   private canonicalizeChats(chats: ChatRecord[]): ChatRecord[] {
     if (!this.canonicalChatWorkspaceId) return chats
     return chats.map((chat) => this.canonicalizeChat(chat))
+  }
+
+  /** Per-provider quota windows for the remote Usage tab (Model Usage
+   * sidebar parity). Bounded at source — a few KB, well under the relay
+   * frame cap. */
+  broadcastModelUsage(message: Record<string, unknown>): void {
+    const method = BRIDGE_BROADCAST_METHODS.modelUsage
+    if (!this.shouldEmit(method)) return
+    this.sendNotify(method, message)
   }
 
   /** Token totals for the remote heatmap chips (24h/7d/90d, per provider). */

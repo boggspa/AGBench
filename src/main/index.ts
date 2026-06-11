@@ -642,6 +642,10 @@ let remoteUsageRollupTrigger: (() => void) | null = null
 const registerRemoteUsageRollupTrigger = (trigger: () => void): void => {
   remoteUsageRollupTrigger = trigger
 }
+let remoteModelUsageTrigger: (() => void) | null = null
+const registerRemoteModelUsageTrigger = (trigger: () => void): void => {
+  remoteModelUsageTrigger = trigger
+}
 const registerRemoteProviderModelsTrigger = (fn: () => void): void => {
   remoteProviderModelsTrigger = fn
 }
@@ -15520,6 +15524,7 @@ if (isGeminiMcpBridgeProcess) {
           onDeviceEstablished: () => {
             remoteProviderModelsTrigger?.()
             remoteUsageRollupTrigger?.()
+            remoteModelUsageTrigger?.()
             // Rehydrate guard (Codex-diagnosed): the establish-time
             // broadcastSnapshot can fire while the store/allowlist state is
             // still settling after a Mac restart — the phone then accepts an
@@ -16581,6 +16586,54 @@ if (isGeminiMcpBridgeProcess) {
         .catch(() => {})
     }
     registerRemoteUsageRollupTrigger(broadcastUsageRollupToRemote)
+    // Usage tab (Model Usage sidebar parity): the five snapshot fetchers are
+    // TTL-cached main-side (90s-2min fresh, stale-serve beyond), so a
+    // 7.5-minute remote cadence costs nothing extra. Grok's PTY probe is
+    // deliberately excluded (expensive + gated; desktop runs it on demand).
+    const broadcastModelUsageToRemote = (): void => {
+      void (async () => {
+        const broadcaster = bridgeBroadcasterRef
+        if (!broadcaster) return
+        const entries = await Promise.all(
+          (
+            [
+              ['gemini', fetchGeminiUsageSnapshot],
+              ['codex', fetchCodexUsageSnapshot],
+              ['claude', fetchClaudeUsageSnapshot],
+              ['kimi', fetchKimiUsageSnapshot],
+              ['cursor', fetchCursorUsageSnapshot]
+            ] as const
+          ).map(async ([provider, fetcher]) => {
+            try {
+              const snapshot = await fetcher()
+              const windows = (snapshot?.windows ?? [])
+                .filter((window) => typeof window.usedPercent === 'number')
+                .slice(0, 8)
+                .map((window) => ({
+                  id: window.id,
+                  label: window.label,
+                  usedPercent: Math.max(0, Math.min(100, Math.round(window.usedPercent))),
+                  limitLabel: window.limitLabel,
+                  ...(window.resetAt ? { resetAt: window.resetAt } : {})
+                }))
+              return windows.length > 0 ? { provider, windows } : null
+            } catch {
+              return null
+            }
+          })
+        )
+        const providers = entries.filter(
+          (entry): entry is NonNullable<typeof entry> => Boolean(entry)
+        )
+        if (providers.length === 0) return
+        bridgeBroadcasterRef?.broadcastModelUsage({
+          usage: { providers, generatedAt: new Date().toISOString() }
+        })
+      })()
+    }
+    registerRemoteModelUsageTrigger(broadcastModelUsageToRemote)
+    setTimeout(() => broadcastModelUsageToRemote(), 6000).unref?.()
+    setInterval(() => broadcastModelUsageToRemote(), 7.5 * 60 * 1000).unref?.()
     // Prewarm: the external-activity scan is multi-second on busy machines;
     // warm it shortly after launch (off the critical path) + keep it fresh
     // on the heatmap's natural cadence so opens always render hydrated.
