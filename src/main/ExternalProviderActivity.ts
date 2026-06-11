@@ -36,6 +36,41 @@ const MAX_TEXT_BYTES = 8 * 1024 * 1024
 const MAX_EXPANDED_SESSION_TEXT_BYTES = 128 * 1024 * 1024
 const MAX_CODEX_SQLITE_MARKERS_PER_BUCKET = 8
 
+// ── Cached front door ───────────────────────────────────────────────────────
+// A full load re-scans up to ~5k provider session files (multi-second on a
+// busy machine) — far too heavy to run on every heatmap mount, and the data
+// only meaningfully changes over hours. Serve-stale-while-revalidate with a
+// 2h freshness window; index.ts prewarms at startup so the FIRST open is
+// hydrated too.
+
+const EXTERNAL_USAGE_CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000
+
+let externalUsageCache: { records: UsageRecord[]; scannedAt: number } | null = null
+let externalUsageInFlight: Promise<UsageRecord[]> | null = null
+
+export async function getExternalUsageCached(
+  options: ExternalProviderActivityOptions & { maxAgeMs?: number } = {}
+): Promise<UsageRecord[]> {
+  const maxAgeMs = options.maxAgeMs ?? EXTERNAL_USAGE_CACHE_MAX_AGE_MS
+  const now = Date.now()
+  const cached = externalUsageCache
+  if (cached && now - cached.scannedAt < maxAgeMs) {
+    return cached.records
+  }
+  const refresh = (externalUsageInFlight ??= loadExternalProviderUsageRecords(options)
+    .then((records) => {
+      externalUsageCache = { records, scannedAt: Date.now() }
+      return records
+    })
+    .finally(() => {
+      externalUsageInFlight = null
+    }))
+  // Stale-while-revalidate: a stale cache answers instantly while the
+  // rescan proceeds; only a COLD cache awaits the scan.
+  if (cached) return cached.records
+  return refresh
+}
+
 export async function loadExternalProviderUsageRecords(
   options: ExternalProviderActivityOptions = {}
 ): Promise<UsageRecord[]> {

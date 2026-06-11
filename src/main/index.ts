@@ -267,7 +267,7 @@ import {
   extractProviderUsage,
   mergeProviderUsage
 } from './ProviderRunStats'
-import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
+import { getExternalUsageCached } from './ExternalProviderActivity'
 import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
@@ -16565,7 +16565,12 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-usage', (_, workspaceId?: string, chatId?: string) =>
       AppStore.getUsage(workspaceId, chatId)
     )
-    ipcMain.handle('get-external-usage', () => loadExternalProviderUsageRecords())
+    ipcMain.handle('get-external-usage', () => getExternalUsageCached())
+    // Prewarm: the external-activity scan is multi-second on busy machines;
+    // warm it shortly after launch (off the critical path) + keep it fresh
+    // on the heatmap's natural cadence so opens always render hydrated.
+    setTimeout(() => void getExternalUsageCached(), 4000).unref?.()
+    setInterval(() => void getExternalUsageCached({ maxAgeMs: 0 }), 2 * 60 * 60 * 1000).unref?.()
     ipcMain.handle('get-workspace-activity', (_, workspacePath: string, dayCount?: number) =>
       getWorkspaceActivitySnapshot(requireRegisteredWorkspace(workspacePath), dayCount)
     )
