@@ -39,6 +39,11 @@ struct Composer: View {
     @Binding var text: String
 
     @State private var approvalMode = "default"
+    /// Scope-global chat — every phone-origin turn is clamped to plan mode
+    /// (no file mutation) by the Mac; the composer pins the picker to match.
+    private var isGlobalChat: Bool {
+        (card.workspaceId ?? "").isEmpty && newTaskWorkspaceId == nil
+    }
     @State private var selectedProvider: String = "claude"
     @State private var selectedModelId: String?
     @State private var selectedReasoningEffort: String?
@@ -140,7 +145,19 @@ struct Composer: View {
                             .lineLimit(1)
                     }
                 }
-                if !card.isEnsemble {
+                if isGlobalChat {
+                    // T72 — phone-origin turns in global chats ALWAYS run in
+                    // plan mode (the Mac forces it server-side; this chip just
+                    // tells the truth instead of offering a dead picker).
+                    HStack(spacing: 3) {
+                        Image(systemName: "list.bullet.clipboard")
+                        Text("Plan · no file changes")
+                    }
+                    .font(.caption2)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(TWTheme.surface3, in: Capsule())
+                    .foregroundStyle(TWTheme.textSecondary)
+                } else if !card.isEnsemble {
                     Menu {
                         Picker("Approval", selection: $approvalMode) {
                             Label("Default Approval", systemImage: "checkmark.shield").tag("default")
@@ -352,7 +369,7 @@ struct Composer: View {
         #if canImport(UIKit)
             model.continueTask(
                 card, prompt: text,
-                approvalMode: approvalMode == "default" ? nil : approvalMode,
+                approvalMode: isGlobalChat ? "plan" : (approvalMode == "default" ? nil : approvalMode),
                 model: selectedModelId,
                 reasoningEffort: selectedReasoningEffort,
                 imageAttachments: encoded.isEmpty ? nil : encoded,
@@ -362,7 +379,7 @@ struct Composer: View {
         #else
             model.continueTask(
                 card, prompt: text,
-                approvalMode: approvalMode == "default" ? nil : approvalMode,
+                approvalMode: isGlobalChat ? "plan" : (approvalMode == "default" ? nil : approvalMode),
                 model: selectedModelId,
                 reasoningEffort: selectedReasoningEffort,
                 navigateOnAck: navigateOnSend)

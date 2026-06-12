@@ -390,15 +390,14 @@ struct NewChatCanvasView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(TWTheme.statusSuccess)
-                                Text("Created on your Mac — global chats are managed from the desktop for now.")
+                                Text("Created on your Mac — find it under Global Chats. Phone turns run in plan mode (no file changes).")
                                     .font(.footnote)
                                     .foregroundStyle(TWTheme.textSecondary)
                             }
                             .padding(.vertical, 14)
                         } else {
                             Button {
-                                guard !workspaceId.isEmpty else { return }
-                                model.startGlobalChat(workspaceId: workspaceId)
+                                model.startGlobalChat()
                                 globalCreated = true
                             } label: {
                                 HStack(spacing: 7) {

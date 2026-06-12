@@ -1567,10 +1567,12 @@ public final class RemoteSessionModel: ObservableObject {
         }
     }
 
-    /// Create an empty global chat (uses an allowlisted workspace id for gating).
-    public func startGlobalChat(workspaceId: String) {
+    /// Create an empty global chat via the reserved 'global' scope (the Mac
+    /// grants it startTurn once any workspace is allowlisted; phone-origin
+    /// turns in it always run plan-mode).
+    public func startGlobalChat() {
         send(
-            BridgeAction.createThread(workspaceId: workspaceId, variant: "global"),
+            BridgeAction.createThread(workspaceId: "global", variant: "global"),
             timeoutMs: 12_000,
             successLabel: "Global chat created.")
     }
@@ -1587,7 +1589,11 @@ public final class RemoteSessionModel: ObservableObject {
         extraWorkspaceIds: [String]? = nil,
         navigateOnAck: Bool = true
     ) {
-        guard let ws = card.workspaceId, let thread = card.threadId else { return }
+        guard let thread = card.threadId else { return }
+        // Scope-global chats present the reserved 'global' scope; the Mac
+        // clamps their turns to plan mode (no file mutation).
+        let cardWorkspace = (card.workspaceId ?? "").isEmpty ? nil : card.workspaceId
+        let ws = cardWorkspace ?? "global"
         if card.isEnsemble {
             send(
                 BridgeAction.ensembleSteer(
