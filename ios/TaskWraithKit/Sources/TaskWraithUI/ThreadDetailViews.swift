@@ -66,14 +66,66 @@ struct ThreadDetailView: View {
         }
         return card?.status == "running"
     }
-    /// While the live bubble streams a run, hide that run's in-flight
-    /// snapshot assistant rows — the bubble has fresher text.
+    /// The run currently streaming into the live block (nil when idle).
+    private var liveRunId: String? {
+        guard let live = model.streamingTexts[taskId], !live.isEmpty else { return nil }
+        return model.streamingRunIds[taskId]
+    }
+
+    /// While the live block streams a run, hide that run's in-flight
+    /// snapshot assistant rows (the stream has fresher text) AND its tool
+    /// rows — those re-render inside `liveElements`, interleaved with the
+    /// streamed text at their true positions.
     private var visibleRows: [RemoteThreadSnapshot.Row] {
         let rows = snapshot?.rows ?? []
-        guard let live = model.streamingTexts[taskId], !live.isEmpty,
-            let liveRunId = model.streamingRunIds[taskId]
-        else { return rows }
-        return rows.filter { !($0.role == "assistant" && $0.runId == liveRunId) }
+        guard let liveRunId else { return rows }
+        return rows.filter { row in
+            guard row.runId == liveRunId else { return true }
+            return !(row.role == "assistant" || row.role == "tool" || row.kind == "tool")
+        }
+    }
+
+    private var liveToolRows: [RemoteThreadSnapshot.Row] {
+        guard let liveRunId else { return [] }
+        return (snapshot?.rows ?? []).filter {
+            $0.runId == liveRunId && ($0.role == "tool" || $0.kind == "tool")
+        }
+    }
+
+    /// One row of the LIVE block: a snapshot tool row or a streamed text
+    /// segment, in finished-transcript order.
+    private enum LiveElement: Identifiable {
+        case toolRow(RemoteThreadSnapshot.Row)
+        case text(id: String, content: String, isTail: Bool)
+        var id: String {
+            switch self {
+            case .toolRow(let row): return "live-row-\(row.id)"
+            case .text(let id, _, _): return id
+            }
+        }
+    }
+
+    /// Streamed segments interleaved with the live run's tool rows by
+    /// cumulative tool count (StreamingInterleave) — the streaming view
+    /// shows the same order the finished transcript will.
+    private var liveElements: [LiveElement] {
+        guard let liveRunId else { return [] }
+        let segments = model.streamingSegments[taskId] ?? [model.streamingTexts[taskId] ?? ""]
+        let rows = liveToolRows
+        let counts = rows.map {
+            max(1, $0.toolSummary?.activityCount ?? $0.toolSummary?.tools?.count ?? 1)
+        }
+        return StreamingInterleave.plan(segments: segments, toolCounts: counts).map { element in
+            switch element {
+            case .toolRow(let index):
+                return .toolRow(rows[index])
+            case .text(let segmentIndex, let isTail):
+                return .text(
+                    id: "live-seg-\(liveRunId)-\(segmentIndex)",
+                    content: segments[segmentIndex],
+                    isTail: isTail)
+            }
+        }
     }
     /// runId → id of that run's LAST visible row (cards anchor there).
     private var runLastRowIds: [String: String] {
@@ -209,14 +261,33 @@ struct ThreadDetailView: View {
                         .listRowSeparator(.hidden)
                     }
                 }
-                if let live = model.streamingTexts[taskId], !live.isEmpty {
-                    StreamingRowView(
-                        text: live,
+                if liveRunId != nil, !liveElements.isEmpty {
+                    StreamingLiveHeader(
                         provider: card?.provider,
                         model: snapshot?.runSummary?.model)
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                    ForEach(liveElements) { element in
+                        Group {
+                            switch element {
+                            case .toolRow(let row):
+                                ThreadRowView(
+                                    model: model, threadId: taskId,
+                                    row: model.resolvedRow(row, threadId: taskId),
+                                    threadProvider: card?.provider)
+                            case .text(_, let content, let isTail):
+                                StreamingSegmentRow(
+                                    text: content,
+                                    isTail: isTail,
+                                    participants: model.ensembleStates[taskId]?.participants
+                                        ?? [])
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
                 } else if isRunning {
                     ThinkingRow(provider: thinkingProvider, model: thinkingModel)
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
@@ -708,6 +779,75 @@ struct StreamingRowView: View {
                     target: text,
                     font: TWFont.transcript(),
                     color: TWTheme.textPrimary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 5)
+    }
+}
+
+/// Header line of the live streaming block — provider identity + activity
+/// dots, pinned above the interleaved segments/tool rows. The body rows
+/// below it (StreamingSegmentRow / ThreadRowView) carry the content.
+
+struct StreamingLiveHeader: View {
+    let provider: String?
+    var model: String? = nil
+
+    private var accent: Color { TWTheme.providerAccent(provider) }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Circle().fill(accent).frame(width: 6, height: 6).padding(.top, 7)
+            HStack(spacing: 5) {
+                Text(
+                    model.map { "\(TWTheme.providerLabel(provider)) · \($0)" }
+                        ?? TWTheme.providerLabel(provider)
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(accent)
+                StreamingDots(color: accent)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.top, 5)
+    }
+}
+
+/// One streamed text segment of the live block, rendered with finished-
+/// transcript fidelity: the settled prefix (paragraphs that can no longer
+/// change) goes through the same MarkdownLite pipeline as snapshot rows;
+/// only the growing tail stays plain (with the token-reveal shimmer) until
+/// its paragraph completes. Sealed segments (isTail=false) are entirely
+/// settled — pure markdown.
+
+struct StreamingSegmentRow: View {
+    let text: String
+    let isTail: Bool
+    var participants: [RemoteEnsembleState.Participant] = []
+
+    var body: some View {
+        let parts =
+            isTail
+            ? StreamingMarkdownSplitter.split(text)
+            : (settled: text, tail: "")
+        HStack(alignment: .top, spacing: 8) {
+            Color.clear.frame(width: 6, height: 6)
+            VStack(alignment: .leading, spacing: 7) {
+                if !parts.settled.isEmpty {
+                    MarkdownLite(
+                        parts.settled,
+                        participants: participants,
+                        baseColor: TWTheme.textPrimary
+                    )
+                    .textSelection(.enabled)
+                }
+                if !parts.tail.isEmpty {
+                    TokenRevealText(
+                        target: parts.tail,
+                        font: TWFont.transcript(),
+                        color: TWTheme.textPrimary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

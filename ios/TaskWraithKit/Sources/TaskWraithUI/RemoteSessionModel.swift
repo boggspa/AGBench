@@ -152,6 +152,14 @@ public final class RemoteSessionModel: ObservableObject {
     /// snapshot pushes. Cleared when the run exits (the final snapshot row
     /// supersedes it).
     @Published public private(set) var streamingTexts: [String: String] = [:]
+    /// The live text SPLIT at tool boundaries — element k is the text between
+    /// tool call k-1 and tool call k, the last element is the growing tail.
+    /// The transcript view interleaves these with the run's tool rows so the
+    /// streaming order matches the finished transcript (tool cards between
+    /// paragraphs, not clumped above one bubble). `streamingTexts` stays the
+    /// joined mirror for single-bubble surfaces (side-chat mini window) and
+    /// scroll triggers.
+    @Published public private(set) var streamingSegments: [String: [String]] = [:]
     /// Live run id per streaming thread — lets the view hide the in-flight
     /// snapshot row the bubble supersedes.
     @Published public private(set) var streamingRunIds: [String: String] = [:]
@@ -611,6 +619,7 @@ public final class RemoteSessionModel: ObservableObject {
         // streaming buffers, and usage panels survived it.
         threadSnapshots = [:]
         streamingTexts = [:]
+        streamingSegments = [:]
         streamingItemIds = [:]
         providerModels = [:]
         projectionHydrated = false
@@ -796,6 +805,7 @@ public final class RemoteSessionModel: ObservableObject {
                     await MainActor.run {
                         guard let self, self.streamingTexts[threadId] == captured else { return }
                         self.streamingTexts[threadId] = nil
+                        self.streamingSegments[threadId] = nil
                         self.streamingRunIds[threadId] = nil
                         self.streamingItemIds[threadId] = nil
                     }
@@ -817,31 +827,34 @@ public final class RemoteSessionModel: ObservableObject {
         // A new run on the same thread starts a fresh bubble — without this
         // a follow-up turn would append to the previous answer's text.
         if let runId, let current = streamingRunIds[threadId], current != runId {
+            streamingSegments[threadId] = [""]
             streamingTexts[threadId] = ""
             streamingRunIds[threadId] = runId
             streamingItemIds[threadId] = nil
         }
+        var segments = streamingSegments[threadId] ?? [streamingTexts[threadId] ?? ""]
         var appended = false
+        var changed = false
         for line in data.split(separator: "\n", omittingEmptySubsequences: true) {
             guard let lineData = line.data(using: .utf8),
                 let parsed = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
             else { continue }
             let kind = parsed["type"] as? String
             if kind == "tool_use" || kind == "tool_call" {
-                // Tool boundary = paragraph boundary in the live bubble too;
-                // without this, text segments around tool calls jam together
-                // mid-stream ("…either way.Round two done:").
-                let buffer = streamingTexts[threadId] ?? ""
-                if !buffer.isEmpty, !buffer.hasSuffix("\n\n") {
-                    streamingTexts[threadId] = buffer + "\n\n"
-                }
+                // A tool boundary SEALS the current segment — the transcript
+                // view slots the run's tool rows between sealed segments, so
+                // the live order matches the finished transcript. Empty
+                // segments are kept: they hold the position of back-to-back
+                // tool calls for the interleave count.
+                segments.append("")
+                changed = true
                 continue
             }
             guard kind == "content" || kind == "token" else { continue }
             // Cumulative restatements REPLACE on the desktop; the live
             // bubble already holds the streamed deltas — skip them.
             if (parsed["cumulative"] as? Bool) == true,
-                !(streamingTexts[threadId] ?? "").isEmpty
+                segments.contains(where: { !$0.isEmpty })
             {
                 continue
             }
@@ -853,20 +866,32 @@ public final class RemoteSessionModel: ObservableObject {
             // item, token deltas append seamlessly as before.
             let itemId = parsed["itemId"] as? String
             if let itemId, !itemId.isEmpty {
-                let buffer = streamingTexts[threadId] ?? ""
                 if let last = streamingItemIds[threadId], last != itemId,
-                    !buffer.isEmpty, !buffer.hasSuffix("\n\n")
+                    let tail = segments.last, !tail.isEmpty, !tail.hasSuffix("\n\n")
                 {
-                    streamingTexts[threadId] = buffer + "\n\n"
+                    segments[segments.count - 1] = tail + "\n\n"
                 }
                 streamingItemIds[threadId] = itemId
             }
-            streamingTexts[threadId, default: ""] += text
+            segments[segments.count - 1] += text
             appended = true
+            changed = true
         }
+        guard changed else { return }
+        streamingSegments[threadId] = segments
+        streamingTexts[threadId] = Self.joinedStreamText(segments)
         if appended, let runId, streamingRunIds[threadId] != runId {
             streamingRunIds[threadId] = runId
         }
+    }
+
+    /// The single-bubble mirror of the segment list — what `streamingTexts`
+    /// held before tool-boundary segmentation (paragraph break per boundary).
+    static func joinedStreamText(_ segments: [String]) -> String {
+        segments
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
     }
 
     /// Merge one pushed envelope into the published state.
