@@ -16,17 +16,55 @@ import TaskWraithKit
 /// Where the phone persists its long-lived Ed25519 identity seed. The iOS app
 /// supplies a Keychain-backed implementation; a file-backed default keeps the
 /// model usable on macOS for previews + compile-checking.
+///
+/// Security review (residual MED, fixed): an EXISTING identity that can't be
+/// read must surface as an error — silently minting a replacement broke the
+/// Mac's pin with no explanation and masked tampering. Implementations only
+/// generate when storage reports the identity genuinely absent.
 public protocol IdentitySeedStore: Sendable {
-    func loadOrCreateSeed() -> Data
+    func loadOrCreateSeed() throws -> Data
+}
+
+public enum IdentitySeedStoreError: LocalizedError {
+    /// The identity exists but can't be read (locked/failed keychain,
+    /// corrupt record). Never silently replaced.
+    case readFailed(String)
+    /// A fresh identity couldn't be durably persisted — proceeding would
+    /// break the pairing on the next launch instead of now.
+    case persistFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .readFailed(let detail):
+            return "This device's identity key exists but can't be read (\(detail))."
+        case .persistFailed(let detail):
+            return "A new identity key couldn't be saved (\(detail))."
+        }
+    }
 }
 
 public struct FileIdentitySeedStore: IdentitySeedStore {
     let url: URL
     public init(url: URL) { self.url = url }
-    public func loadOrCreateSeed() -> Data {
-        if let data = try? Data(contentsOf: url), data.count == 32 { return data }
+    public func loadOrCreateSeed() throws -> Data {
+        if FileManager.default.fileExists(atPath: url.path) {
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                throw IdentitySeedStoreError.readFailed(error.localizedDescription)
+            }
+            guard data.count == 32 else {
+                throw IdentitySeedStoreError.readFailed("corrupt seed (\(data.count) bytes)")
+            }
+            return data
+        }
         let seed = Curve25519.Signing.PrivateKey().rawRepresentation
-        try? seed.write(to: url, options: [.atomic])
+        do {
+            try seed.write(to: url, options: [.atomic])
+        } catch {
+            throw IdentitySeedStoreError.persistFailed(error.localizedDescription)
+        }
         return seed
     }
 }
@@ -202,22 +240,64 @@ public final class RemoteSessionModel: ObservableObject {
     @Published public var fileModeRequest: FileModeRequest?
     @Published public var diffModeRequest: DiffModeRequest?
 
-    private let identitySeed: Data
+    private var identitySeed: Data
+    private let identityStore: IdentitySeedStore
     private let pairingStore: PairedMacStore
     private var client: RelayTransportClient?
     private var eventTask: Task<Void, Never>?
     private var pinnedMacIdentityB64: String?
     private var relayUrl: String?
 
+    /// Set when the identity seed couldn't be loaded/persisted — the shell
+    /// shows a dedicated recovery screen and every connect path refuses
+    /// until `retryIdentityLoad()` succeeds. Never auto-regenerated: the
+    /// Mac pins this identity, so a silent replacement just looks like a
+    /// mysteriously dead pairing (and would mask tampering).
+    @Published public private(set) var identityError: String?
+
     public init(
         identityStore: IdentitySeedStore,
         pairingStore: PairedMacStore = UserDefaultsPairedMacStore()
     ) {
-        self.identitySeed = identityStore.loadOrCreateSeed()
+        self.identityStore = identityStore
+        var seed = Data()
+        var loadError: String? = nil
+        do {
+            seed = try identityStore.loadOrCreateSeed()
+        } catch {
+            loadError = Self.identityErrorMessage(error)
+        }
+        self.identitySeed = seed
+        self.identityError = loadError
         self.pairingStore = pairingStore
         let stored = pairingStore.load()
         self.hasStoredPairing = stored != nil
         if let stored { self.macDisplayName = stored.macDisplayName }
+    }
+
+    /// Re-attempt the identity load (e.g. after the user unlocked the
+    /// device / freed storage). Clears the error screen on success.
+    public func retryIdentityLoad() {
+        do {
+            identitySeed = try identityStore.loadOrCreateSeed()
+            identityError = nil
+        } catch {
+            identityError = Self.identityErrorMessage(error)
+        }
+    }
+
+    private static func identityErrorMessage(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+    }
+
+    /// Both connect paths refuse while the identity is unavailable — a
+    /// 0-byte seed would just fail deeper with an opaque CryptoKit error.
+    private func identityReady() -> Bool {
+        if let identityError {
+            phase = .error(identityError)
+            return false
+        }
+        return identitySeed.count == 32
     }
 
     /// This phone's identity public key (base64 raw 32B) — shown in pairing UI
@@ -250,7 +330,45 @@ public final class RemoteSessionModel: ObservableObject {
         connect(bootstrap: bootstrap)
     }
 
+    /// ATS (NSAllowsLocalNetworking) permits cleartext ws:// only to hosts
+    /// on the local network — a remote ws:// relay dies with an opaque ATS
+    /// error deep in the socket. Catch it up front with an actionable
+    /// message. wss:// is always fine. Conservative: anything we can't
+    /// positively identify as local (public DNS names, public IPs, and
+    /// Tailscale's 100.64/10 CGNAT range) gets the warning.
+    static func cleartextRelayProblem(_ relayUrl: String) -> String? {
+        guard let url = URL(string: relayUrl), url.scheme?.lowercased() == "ws" else {
+            return nil
+        }
+        let host = (url.host ?? "").lowercased()
+        if isLocalNetworkHost(host) { return nil }
+        return "“\(host)” is a cleartext ws:// relay outside your local network — iOS blocks "
+            + "that. Use a wss:// relay for remote access (e.g. a Tailscale cert), or connect "
+            + "from the Mac's own network. If this address IS local, use its LAN IP instead."
+    }
+
+    static func isLocalNetworkHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" { return true }
+        if host.hasSuffix(".local") { return true }
+        if host.hasPrefix("192.168.") || host.hasPrefix("10.") || host.hasPrefix("169.254.") {
+            return true
+        }
+        // 172.16.0.0/12
+        if host.hasPrefix("172.") {
+            let parts = host.split(separator: ".")
+            if parts.count == 4, let second = Int(parts[1]), (16...31).contains(second) {
+                return true
+            }
+        }
+        return false
+    }
+
     private func connect(bootstrap: PairingBootstrapPayload) {
+        guard identityReady() else { return }
+        if let problem = Self.cleartextRelayProblem(bootstrap.relayUrl) {
+            phase = .error(problem)
+            return
+        }
         teardown()
         macDisplayName = bootstrap.macDisplayName
         pinnedMacIdentityB64 = bootstrap.macIdentityPubKey
@@ -278,6 +396,11 @@ public final class RemoteSessionModel: ObservableObject {
     /// at first pairing, so it accepts silently (and denies anyone else).
     public func reconnectTrusted() {
         guard let record = pairingStore.load() else { return }
+        guard identityReady() else { return }
+        if let problem = Self.cleartextRelayProblem(record.relayUrl) {
+            phase = .error(problem)
+            return
+        }
         teardown()
         macDisplayName = record.macDisplayName
         pinnedMacIdentityB64 = record.macIdentityPubKey
