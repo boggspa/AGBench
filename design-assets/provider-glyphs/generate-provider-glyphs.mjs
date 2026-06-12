@@ -93,6 +93,25 @@ const providers = [
       <circle class="dot" cx="8.4" cy="15.6" r="1" />
       <circle class="dot" cx="15.6" cy="8.4" r="1" />
     `
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    accent: '#20A77A',
+    hint: 'llama profile',
+    body: `
+      <path class="line" d="M5.1 18.3v-4.2c0-1.8 1.5-3.3 3.3-3.3h5.1c1.6 0 2.9 1.3 2.9 2.9v4.6" />
+      <path class="accent" d="M15.2 11.5V6.6c0-1.4 1.1-2.5 2.5-2.5h.5c1.1 0 2 .9 2 2v1.7c0 1.1-.9 2-2 2h-3" />
+      <path class="line fine" d="m16.5 4.2-.8-1.8" />
+      <path class="line fine" d="m18.6 4.2 1-1.7" />
+      <path class="line fine" d="M5.1 14.3 3.7 13.5" />
+      <path class="line fine" d="M7.2 18.3v2.3" />
+      <path class="line fine" d="M13.8 18.3v2.3" />
+      <path class="line fine" d="M6.6 20.6h1.3" />
+      <path class="line fine" d="M13.2 20.6h1.3" />
+      <path class="line fine" d="M18.5 7.6h1.4" />
+      <circle class="dot" cx="17.8" cy="6.2" r=".7" />
+    `
   }
 ]
 

@@ -34,5 +34,11 @@
     "label": "Grok",
     "accent": "#D8DEE9",
     "hint": "crosshair diagonal slash"
+  },
+  {
+    "id": "ollama",
+    "label": "Ollama",
+    "accent": "#20A77A",
+    "hint": "llama profile"
   }
 ]
