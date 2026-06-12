@@ -7,6 +7,7 @@
 
 import Foundation
 import CryptoKit
+import Network
 import TaskWraithKit
 #if canImport(UIKit)
     import UIKit
@@ -289,6 +290,79 @@ public final class RemoteSessionModel: ObservableObject {
         let stored = pairingStore.load()
         self.hasStoredPairing = stored != nil
         if let stored { self.macDisplayName = stored.macDisplayName }
+        startPathMonitor()
+    }
+
+    // ── Reconnect self-healing ──────────────────────────────────────────────
+    // A cold cellular launch races the Tailscale tunnel: the first trusted-
+    // reconnect walk usually runs BEFORE the on-demand VPN is up, exhausts
+    // its two passes (~35s of dead dials), and parked on the error screen
+    // until the user poked the app — field reports of "reconnects after 2-3
+    // minutes" were really "reconnects when something finally retried".
+    // Two healers: a backoff loop that keeps re-walking while the error
+    // screen shows, and a network-path monitor that re-dials the INSTANT a
+    // new route (the tunnel, a Wi-Fi join) appears.
+
+    private var autoReconnectTask: Task<Void, Never>?
+    private var autoReconnectAttempt = 0
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSignature = ""
+
+    private func startPathMonitor() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        pathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            // Interface set + reachability as a change signature — utun
+            // appearing (tunnel up) or Wi-Fi joining changes it; idle
+            // re-notifications don't.
+            let signature =
+                path.availableInterfaces.map { "\($0.type)\($0.name)" }.joined(separator: ",")
+                + (path.status == .satisfied ? "|up" : "|down")
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let previous = self.lastPathSignature
+                guard signature != previous else { return }
+                self.lastPathSignature = signature
+                // First callback just seeds the signature; a route change
+                // only matters when a reconnect is winnable AND wanted.
+                guard !previous.isEmpty, path.status == .satisfied, self.hasStoredPairing
+                else { return }
+                switch self.phase {
+                case .error, .idle:
+                    self.autoReconnectAttempt = 0
+                    self.reconnectTrusted()
+                default:
+                    break
+                }
+            }
+        }
+        monitor.start(queue: .global(qos: .utility))
+    }
+
+    /// Re-walk after a failed trusted reconnect: 1.5s, 3s, 6s, 12s, 24s,
+    /// then every 30s while the error screen is up. Cancelled by success,
+    /// disconnect/forget, or a newer reconnect of any kind.
+    private func scheduleAutoReconnect() {
+        guard hasStoredPairing else { return }
+        autoReconnectTask?.cancel()
+        let attempt = autoReconnectAttempt
+        autoReconnectAttempt += 1
+        let delaySeconds = min(30.0, 1.5 * pow(2.0, Double(min(attempt, 4))))
+        autoReconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, self.hasStoredPairing else { return }
+                if case .error = self.phase { self.reconnectTrusted() }
+            }
+        }
+    }
+
+    private func cancelAutoReconnect(resetAttempts: Bool) {
+        autoReconnectTask?.cancel()
+        autoReconnectTask = nil
+        if resetAttempts { autoReconnectAttempt = 0 }
     }
 
     /// Re-attempt the identity load (e.g. after the user unlocked the
@@ -493,6 +567,9 @@ public final class RemoteSessionModel: ObservableObject {
     public func reconnectTrusted() {
         guard let record = pairingStore.load() else { return }
         guard identityReady() else { return }
+        // A fresh walk supersedes any queued auto-retry (attempt count keeps
+        // growing so the backoff curve survives across walks).
+        cancelAutoReconnect(resetAttempts: false)
         // T70 — walk every door the pairing record knows (LAN first, then
         // the wss front door). The same record reconnects from home Wi-Fi
         // (instant LAN hit) and cellular (LAN fails fast, wss connects).
@@ -575,12 +652,17 @@ public final class RemoteSessionModel: ObservableObject {
                     + "once with the Mac's current QR to add its Tailscale door."
             }
             self.phase = .error(detail)
+            // Self-heal: cold cellular launches race the VPN tunnel — keep
+            // re-walking on a backoff (the path monitor also fires the
+            // moment a new route appears, whichever comes first).
+            self.scheduleAutoReconnect()
         }
     }
 
     /// Launch-time resume: silently try the stored pairing once.
     public func resumeIfIdle() {
         guard case .idle = phase, hasStoredPairing else { return }
+        autoReconnectAttempt = 0
         reconnectTrusted()
     }
 
@@ -593,11 +675,13 @@ public final class RemoteSessionModel: ObservableObject {
         case .connected, .connecting, .awaitingMacConfirm:
             return
         case .idle, .error:
+            autoReconnectAttempt = 0
             reconnectTrusted()
         }
     }
 
     public func disconnect() {
+        cancelAutoReconnect(resetAttempts: true)
         teardown()
         phase = .idle
         taskCards = []
@@ -680,6 +764,7 @@ public final class RemoteSessionModel: ObservableObject {
                     await MainActor.run { self.phase = .awaitingMacConfirm(code: code) }
                 case .established:
                     await MainActor.run {
+                        self.cancelAutoReconnect(resetAttempts: true)
                         self.phase = .connected
                         self.wasEverConnected = true
                         self.persistCurrentPairing()
