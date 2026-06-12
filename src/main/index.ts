@@ -244,6 +244,7 @@ import {
   enableTailscaleServe,
   getTailscaleServeStatus
 } from './TailscaleServe'
+import { probeRelayFrontDoor } from './remote/relayReachability'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { LocalServersService } from './LocalServersService'
 import { SpawnRegistry } from './localServers/SpawnRegistry'
@@ -16050,6 +16051,11 @@ if (isGeminiMcpBridgeProcess) {
     // relay binds. The pairing IPC handlers + will-quit read it at call time.
     let iosRemoteRuntime: RemoteBridgeRuntime | null = null
     let embeddedRelayHandle: RelayServerHandle | null = null
+    // T69 — set when the self-hosted Tailscale wss lane is active, so
+    // bridge-begin-pairing can verify (and self-heal) the advertised front
+    // door before handing a bootstrap to the QR.
+    let selfHostedWssLane: { wssUrl: string; cliPath: string | null; relayPort: number } | null =
+      null
     // Surfaced startup failure (identity unreadable / unprotectable) — shown
     // in Settings → Bridge networking instead of a silent "Off" pill.
     let iosRemoteRuntimeError: string | null = null
@@ -16314,14 +16320,49 @@ if (isGeminiMcpBridgeProcess) {
       // QR advertises the wss:// front door, because iOS ATS blocks
       // cleartext to anything off the local network (incl. Tailscale's
       // 100.64/10). Enabled from Settings → Devices → Remote access.
-      const startSelfHostedWssRelay = (wssUrl: string, dnsName: string): void => {
+      //
+      // WATERTIGHT (T69): the lane self-heals + self-verifies. `tailscale
+      // serve --bg` is meant to persist, but it can be lost (serve reset,
+      // tailscaled reinstall, never enabled because the panel was broken) —
+      // and nothing on the Mac notices, because the Mac talks to the relay
+      // over loopback. So: (1) at lane start, re-assert the serve mapping
+      // when it's missing (restoring the user's own chosen config, keyed to
+      // the ACTUAL relay port), and (2) `bridge-begin-pairing` refuses to
+      // hand out a bootstrap until a live self-dial of the wss front door
+      // answers — the QR can never advertise a dead door again.
+      const startSelfHostedWssRelay = (
+        wssUrl: string,
+        dnsName: string,
+        cliPath: string | null
+      ): void => {
         const port = embeddedPort(null)
         void createRelayServer({ port })
-          .then((handle) => {
+          .then(async (handle) => {
             embeddedRelayHandle = handle
+            selfHostedWssLane = { wssUrl, cliPath, relayPort: handle.port }
             console.log(
               `[remote-bridge] embedded relay on :${handle.port} behind tailscale serve — Mac via loopback, phones via ${wssUrl} (${dnsName})`
             )
+            if (cliPath) {
+              const serve = await getTailscaleServeStatus({ cliPath, relayPort: handle.port })
+              if (!serve.configured) {
+                console.warn(
+                  `[remote-bridge] tailscale serve is NOT fronting :${handle.port}${
+                    serve.error ? ` (status error: ${serve.error})` : ''
+                  } — re-asserting the front door`
+                )
+                const enabled = await enableTailscaleServe({ cliPath, relayPort: handle.port })
+                console[enabled.ok ? 'log' : 'error'](
+                  enabled.ok
+                    ? `[remote-bridge] tailscale serve re-enabled for :${handle.port}`
+                    : `[remote-bridge] tailscale serve enable FAILED: ${enabled.message ?? 'unknown'} — phones cannot reach ${wssUrl} until this is fixed (pairing will refuse to advertise it)`
+                )
+              }
+            } else {
+              console.warn(
+                '[remote-bridge] tailscale CLI path unknown — cannot verify/repair the serve front door; pairing will probe reachability before advertising'
+              )
+            }
             startRuntime(`ws://127.0.0.1:${handle.port}`, wssUrl)
           })
           .catch((err: unknown) => {
@@ -16347,7 +16388,7 @@ if (isGeminiMcpBridgeProcess) {
                 console.log(
                   `[remote-bridge] iOS remote transport enabled — self-hosted wss via tailscale serve (${settingsRelayUrl})`
                 )
-                startSelfHostedWssRelay(settingsRelayUrl, dnsName)
+                startSelfHostedWssRelay(settingsRelayUrl, dnsName, tailscale.cliPath ?? null)
                 return
               }
             }
@@ -16979,6 +17020,47 @@ if (isGeminiMcpBridgeProcess) {
             error:
               'Remote iOS pairing is not available in this build. ' +
               'Enable the iOS remote bridge in Settings → Devices, then restart TaskWraith.'
+          }
+        }
+        // T69 — never hand the QR a dead front door. When the self-hosted
+        // Tailscale wss lane is active, dial the advertised origin the way
+        // the phone would; on failure try the one known repair (re-assert
+        // the serve mapping) and re-dial. Still dead → refuse with the real
+        // reason, instead of letting the phone discover it as a bare
+        // NSURLError -1004 after scanning a healthy-looking QR.
+        if (selfHostedWssLane) {
+          const lane = selfHostedWssLane
+          let probe = await probeRelayFrontDoor(lane.wssUrl)
+          if (!probe.reachable && lane.cliPath) {
+            const serve = await getTailscaleServeStatus({
+              cliPath: lane.cliPath,
+              relayPort: lane.relayPort
+            })
+            if (!serve.configured) {
+              const enabled = await enableTailscaleServe({
+                cliPath: lane.cliPath,
+                relayPort: lane.relayPort
+              })
+              console[enabled.ok ? 'warn' : 'error'](
+                `[remote-bridge] pairing self-heal: tailscale serve was off — re-enable ${
+                  enabled.ok ? 'succeeded' : `FAILED: ${enabled.message ?? 'unknown'}`
+                }`
+              )
+              if (enabled.ok) probe = await probeRelayFrontDoor(lane.wssUrl)
+            }
+          }
+          if (!probe.reachable) {
+            console.error(
+              `[remote-bridge] refusing to advertise unreachable front door ${lane.wssUrl} (${probe.detail})`
+            )
+            return {
+              ok: false,
+              error:
+                `Your Tailscale front door (${lane.wssUrl}) isn't answering (${probe.detail}). ` +
+                'Phones would scan a QR that cannot connect. Check Tailscale is running and signed in, ' +
+                'then use Settings → Devices → "Remote access via Tailscale" to re-enable — or clear the ' +
+                'relay URL to pair over your home Wi-Fi instead.'
+            }
           }
         }
         return iosRemoteRuntime.beginPairing(

@@ -178,6 +178,17 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'set-bridge-daemon-enabled': ['boolean'],
   'get-ios-remote-config': [],
   'set-ios-remote-config': ['object'],
+  // T66 Tailscale wss lane — status probe + serve enable/disable. All
+  // zero-arg; the handlers read live `tailscale` CLI state themselves.
+  // These were initially registered as handlers WITHOUT schema entries,
+  // which broke the Devices panel's status poll AND its Enable button at
+  // runtime ("No IPC schema registered") — the second occurrence of this
+  // bug class (see external-path:pick-and-persist above). The
+  // ipc-channel-registry invariant test now cross-checks every
+  // ipcMain.handle() literal against this table at test time.
+  'ios-remote-tailscale-status': [],
+  'ios-remote-tailscale-enable': [],
+  'ios-remote-tailscale-disable': [],
   'run-approved-host-command': ['nonEmptyString'],
   'list-gemini-sessions': [],
   'select-workspace': [],
