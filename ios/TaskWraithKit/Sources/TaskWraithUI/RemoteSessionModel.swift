@@ -931,10 +931,28 @@ public final class RemoteSessionModel: ObservableObject {
         }
     }
 
+    /// The workspace scope an action presents for this thread: the chat's
+    /// workspace id, or the reserved read-only "global" scope for
+    /// scope-global chats (no workspace — the Mac's allowlist grants the
+    /// sentinel `monitor` only, so these stay view-only).
+    public func remoteScopeForThread(_ threadId: String) -> String? {
+        if let card = taskCards.first(where: { $0.id == threadId }) {
+            if let workspaceId = card.workspaceId, !workspaceId.isEmpty { return workspaceId }
+            return "global"
+        }
+        return threadWorkspaceHints[threadId]
+    }
+
+    /// True for scope-global chats — passed through read-only (transcript
+    /// viewing only; no composer, no actions).
+    public func isGlobalThread(_ threadId: String) -> Bool {
+        remoteScopeForThread(threadId) == "global"
+    }
+
     /// Pull the full body for a clipped row from the Mac.
     public func expandRow(threadId: String, rowId: String) {
         guard let client else { return }
-        guard let workspaceId = taskCards.first(where: { $0.id == threadId })?.workspaceId
+        guard let workspaceId = remoteScopeForThread(threadId)
         else { return }
         expandingRows.insert(rowId)
         let params = BridgeAction.threadRowExpand(
@@ -1311,9 +1329,7 @@ public final class RemoteSessionModel: ObservableObject {
 
     public func requestThreadSnapshot(_ threadId: String) {
         guard let client else { return }
-        guard
-            let workspaceId = taskCards.first(where: { $0.id == threadId })?.workspaceId
-                ?? threadWorkspaceHints[threadId]
+        guard let workspaceId = remoteScopeForThread(threadId)
         else { return }
         let params = BridgeAction.threadSnapshotRequest(
             workspaceId: workspaceId, threadId: threadId)

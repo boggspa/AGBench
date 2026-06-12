@@ -37,7 +37,13 @@ struct HomeView: View {
     /// size class, which is exactly how the iPad sidebar ended up running
     /// the iPhone code path with destination-less links.
     var explicitSelection: Bool = false
-    @State private var collapsedWorkspaces: Set<String> = []
+    /// Workspace folders the user has EXPANDED — inverted from the old
+    /// collapsed-set so folders start collapsed (a tidy first open; expand
+    /// state then sticks for the session).
+    @State private var expandedWorkspaces: Set<String> = []
+    /// Top-level sections (activeRuns / pinned / recents / workspaces /
+    /// globalChats) the user has collapsed — sections start expanded.
+    @State private var collapsedSections: Set<String> = []
 
     /// Top-level threads per workspace; sub-threads/side chats nest under
     /// their parent like the desktop sidebar.
@@ -183,14 +189,38 @@ struct HomeView: View {
             }
         }
 
+        // ── Active Runs — live work first, desktop-sidebar parity. ────────
+        let activeCards = model.taskCards.filter { $0.status == "running" }
+        if !activeCards.isEmpty {
+            Section {
+                if !collapsedSections.contains("activeRuns") {
+                    ForEach(activeCards, id: \.id) { card in
+                        threadRow(card)
+                    }
+                }
+            } header: {
+                GlassPillHeader(
+                    title: "Active Runs", systemImage: "bolt.fill",
+                    count: activeCards.count,
+                    collapsed: collapsedSections.contains("activeRuns")
+                ) { toggleSection("activeRuns") }
+            }
+        }
+
         let pinnedCards = model.taskCards.filter { $0.pinned == true }
         if !pinnedCards.isEmpty {
             Section {
-                ForEach(pinnedCards, id: \.id) { card in
-                    threadRow(card)
+                if !collapsedSections.contains("pinned") {
+                    ForEach(pinnedCards, id: \.id) { card in
+                        threadRow(card)
+                    }
                 }
             } header: {
-                PillSectionHeader(title: "Pinned", systemImage: "pin")
+                GlassPillHeader(
+                    title: "Pinned", systemImage: "pin",
+                    count: pinnedCards.count,
+                    collapsed: collapsedSections.contains("pinned")
+                ) { toggleSection("pinned") }
             }
         }
         let recentCards = model.taskCards
@@ -199,57 +229,101 @@ struct HomeView: View {
             .prefix(4)
         if recentCards.count > 1 {
             Section {
-                ForEach(Array(recentCards), id: \.id) { card in
-                    threadRow(card)
+                if !collapsedSections.contains("recents") {
+                    ForEach(Array(recentCards), id: \.id) { card in
+                        threadRow(card)
+                    }
                 }
             } header: {
-                PillSectionHeader(title: "Recents", systemImage: "clock")
+                GlassPillHeader(
+                    title: "Recents", systemImage: "clock",
+                    collapsed: collapsedSections.contains("recents")
+                ) { toggleSection("recents") }
             }
         }
 
-        ForEach(model.workspaces) { workspace in
+        // ── Workspaces — one glass super-header over the folder hierarchy
+        //    (desktop parity); folders start COLLAPSED for a tidy first
+        //    open, and expand state sticks for the session. ───────────────
+        if !model.workspaces.isEmpty {
             Section {
-                let cards = cardsByWorkspace[workspace.workspaceId] ?? []
-                if collapsedWorkspaces.contains(workspace.workspaceId) {
-                    EmptyView()
-                } else if cards.isEmpty {
-                    Text("No chats yet").font(.footnote)
-                        .foregroundStyle(TWTheme.textTertiary)
-                        .listRowBackground(TWTheme.surface1)
-                } else {
-                    ForEach(cards, id: \.id) { card in
-                        parentRow(card)
-                        if !collapsedParents.contains(card.id) {
-                            ForEach(childrenByParent[card.id] ?? [], id: \.id) { child in
-                                threadRow(child, nested: true)
+                EmptyView()
+            } header: {
+                GlassPillHeader(
+                    title: "Workspaces", systemImage: "square.grid.2x2",
+                    count: model.workspaces.count,
+                    collapsed: collapsedSections.contains("workspaces")
+                ) { toggleSection("workspaces") }
+            }
+        }
+        if !collapsedSections.contains("workspaces") {
+            ForEach(model.workspaces) { workspace in
+                Section {
+                    let cards = cardsByWorkspace[workspace.workspaceId] ?? []
+                    if !expandedWorkspaces.contains(workspace.workspaceId) {
+                        EmptyView()
+                    } else if cards.isEmpty {
+                        Text("No chats yet").font(.footnote)
+                            .foregroundStyle(TWTheme.textTertiary)
+                            .listRowBackground(TWTheme.surface1)
+                    } else {
+                        ForEach(cards, id: \.id) { card in
+                            parentRow(card)
+                            if !collapsedParents.contains(card.id) {
+                                ForEach(childrenByParent[card.id] ?? [], id: \.id) { child in
+                                    threadRow(child, nested: true)
+                                }
                             }
                         }
                     }
-                }
-            } header: {
-                let count = (cardsByWorkspace[workspace.workspaceId] ?? []).count
-                Button {
-                    toggleCollapsed(workspace.workspaceId)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(
-                            systemName: collapsedWorkspaces.contains(workspace.workspaceId)
-                                ? "chevron.right" : "chevron.down"
-                        )
-                        .font(.caption2.weight(.bold))
-                        PillSectionHeader(
-                            title: workspace.displayName,
-                            systemImage: "folder",
-                            trailing: count > 0 ? "\(count)" : nil)
+                } header: {
+                    let count = (cardsByWorkspace[workspace.workspaceId] ?? []).count
+                    Button {
+                        toggleWorkspace(workspace.workspaceId)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(
+                                systemName: expandedWorkspaces.contains(workspace.workspaceId)
+                                    ? "chevron.down" : "chevron.right"
+                            )
+                            .font(.caption2.weight(.bold))
+                            PillSectionHeader(
+                                title: workspace.displayName,
+                                systemImage: "folder",
+                                trailing: count > 0 ? "\(count)" : nil)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 8)
                 }
-                .buttonStyle(.plain)
             }
         }
 
-        if !orphanCards.isEmpty {
+        // ── Global Chats — scope-global chats passed through READ-ONLY
+        //    (no workspace ⇒ no write capabilities; view-only on iOS). ─────
+        let globalCards = model.taskCards.filter {
+            $0.parentChatId == nil && ($0.workspaceId ?? "").isEmpty
+        }
+        if !globalCards.isEmpty {
             Section {
-                ForEach(orphanCards, id: \.id) { card in
+                if !collapsedSections.contains("globalChats") {
+                    ForEach(globalCards, id: \.id) { card in
+                        threadRow(card)
+                    }
+                }
+            } header: {
+                GlassPillHeader(
+                    title: "Global Chats", systemImage: "globe",
+                    count: globalCards.count,
+                    collapsed: collapsedSections.contains("globalChats")
+                ) { toggleSection("globalChats") }
+            }
+        }
+
+        let strayCards = orphanCards.filter { !($0.workspaceId ?? "").isEmpty }
+        if !strayCards.isEmpty {
+            Section {
+                ForEach(strayCards, id: \.id) { card in
                     parentRow(card)
                     if !collapsedParents.contains(card.id) {
                         ForEach(childrenByParent[card.id] ?? [], id: \.id) { child in
@@ -261,20 +335,23 @@ struct HomeView: View {
                 PillSectionHeader(title: "Chats", systemImage: "bubble.left.and.bubble.right")
             }
         }
+        // (The pairID/APNs ack strip that used to render here was debug
+        // noise — action feedback lives on the thread screen instead.)
+    }
 
-        if let message = model.lastActionMessage {
-            Section {
-                Text(message).font(.footnote).foregroundStyle(TWTheme.textSecondary)
-                    .listRowBackground(TWTheme.surface1)
-            }
+    private func toggleSection(_ key: String) {
+        if collapsedSections.contains(key) {
+            collapsedSections.remove(key)
+        } else {
+            collapsedSections.insert(key)
         }
     }
 
-    private func toggleCollapsed(_ id: String) {
-        if collapsedWorkspaces.contains(id) {
-            collapsedWorkspaces.remove(id)
+    private func toggleWorkspace(_ id: String) {
+        if expandedWorkspaces.contains(id) {
+            expandedWorkspaces.remove(id)
         } else {
-            collapsedWorkspaces.insert(id)
+            expandedWorkspaces.insert(id)
         }
     }
 

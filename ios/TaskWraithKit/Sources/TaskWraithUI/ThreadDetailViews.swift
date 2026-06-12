@@ -327,7 +327,25 @@ struct ThreadDetailView: View {
                         model.clearActionMessage()
                     }
                 }
-                if let card {
+                if let card, model.isGlobalThread(taskId) {
+                    // T71 — scope-global chats pass through READ-ONLY: the
+                    // Mac's allowlist grants the global scope `monitor`
+                    // only, so no composer/actions are offered. Transcript
+                    // viewing still works (snapshots ride `monitor`).
+                    HStack(spacing: 6) {
+                        Image(systemName: "eye")
+                            .font(.caption)
+                        Text("Global chat — read-only on this device. Compose from your Mac.")
+                            .font(.footnote)
+                        Spacer()
+                    }
+                    .foregroundStyle(TWTheme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .composerShellGlass()
+                    .padding(.horizontal, 10).padding(.bottom, 6)
+                    let _ = card  // silence unused-binding (read-only shell)
+                } else if let card {
                     let diff = model.diffSummaries[taskId]
                     let hasDiff = (diff?.filesChanged ?? diff?.files?.count ?? 0) > 0
                     // Desktop composer-shell parity: attached diff header

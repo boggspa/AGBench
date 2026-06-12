@@ -117,6 +117,66 @@ public struct TaskWraithMonolineBrandView: View {
 }
 
 /// Desktop sidebar section header — all-caps label in a subtle pill.
+/// Liquid-Glass capsule section header with a disclosure chevron — the
+/// sidebar's structural chrome (Active Runs / Pinned / Recents / Workspaces /
+/// Global Chats), matching the desktop sidebar's pill headers. Glass on
+/// OS 26+, ultra-thin material capsule below.
+struct GlassPillHeader: View {
+    let title: String
+    var systemImage: String? = nil
+    var count: Int? = nil
+    var collapsed: Bool = false
+    var onToggle: (() -> Void)? = nil
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) { onToggle?() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(TWTheme.textTertiary)
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.caption)
+                }
+                Text(title)
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .kerning(0.6)
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(TWTheme.surface3, in: Capsule())
+                        .foregroundStyle(TWTheme.textTertiary)
+                }
+            }
+            .foregroundStyle(TWTheme.textSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .modifier(GlassPillBackground())
+        }
+        .buttonStyle(.plain)
+        .disabled(onToggle == nil)
+    }
+}
+
+/// Capsule chrome for the pill headers: real Liquid Glass where the OS has
+/// it, an ultra-thin material capsule with the rim-highlight stroke below.
+private struct GlassPillBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(TWTheme.border))
+        }
+    }
+}
+
 struct PillSectionHeader: View {
     let title: String
     var systemImage: String? = nil
