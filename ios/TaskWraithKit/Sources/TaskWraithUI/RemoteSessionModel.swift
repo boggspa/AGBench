@@ -384,6 +384,10 @@ public final class RemoteSessionModel: ObservableObject {
         return false
     }
 
+    /// Monotonic stamp for connect attempts so the dial watchdog only fires
+    /// against ITS OWN attempt (a newer scan/reconnect invalidates it).
+    private var connectAttempt = 0
+
     private func connect(bootstrap: PairingBootstrapPayload) {
         guard identityReady() else { return }
         if let problem = Self.cleartextRelayProblem(bootstrap.relayUrl) {
@@ -395,6 +399,8 @@ public final class RemoteSessionModel: ObservableObject {
         pinnedMacIdentityB64 = bootstrap.macIdentityPubKey
         relayUrl = bootstrap.relayUrl
         phase = .connecting
+        connectAttempt += 1
+        let attempt = connectAttempt
         do {
             let client = try RelayTransportClient(identitySeed: identitySeed)
             self.client = client
@@ -409,6 +415,26 @@ public final class RemoteSessionModel: ObservableObject {
                         self.phase = .error(
                             TransportErrorCopy.friendlyMessage(for: error, relayUrl: relayUrl))
                     }
+                    return
+                }
+                // Dial watchdog — `connect()` is fire-and-forget and a dial
+                // to an unroutable address (cellular → a LAN-only relay URL)
+                // BLACKHOLES instead of erroring, leaving "Connecting…"
+                // forever. Everything up to the 6-digit confirm code is
+                // machine-speed, so still being in .connecting after 12s
+                // means the dial is dead; only the human confirm step may
+                // legitimately take longer, and by then phase has moved to
+                // .awaitingMacConfirm (which the guard skips).
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                await MainActor.run {
+                    guard self.connectAttempt == attempt, case .connecting = self.phase else {
+                        return
+                    }
+                    self.teardown()
+                    self.phase = .error(
+                        TransportErrorCopy.friendlyMessage(
+                            for: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut),
+                            relayUrl: relayUrl))
                 }
             }
         } catch {
@@ -458,13 +484,24 @@ public final class RemoteSessionModel: ObservableObject {
                 await MainActor.run {
                     // Lead with the actionable mapping when the failure was a
                     // transport error; keep the friendly who-to-blame line.
-                    let detail = lastError.map {
-                        TransportErrorCopy.friendlyMessage(for: $0, relayUrl: record.relayUrl)
+                    var detail =
+                        lastError.map {
+                            TransportErrorCopy.friendlyMessage(for: $0, relayUrl: record.relayUrl)
+                        }
+                        ?? "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
+                    // The stored pairing record pins the relay URL from
+                    // pairing time. A LAN-only URL is unreachable from
+                    // cellular even with Tailscale on — re-pairing is the
+                    // fix once the Mac advertises its wss front door.
+                    if let host = URL(string: record.relayUrl)?.host,
+                        Self.isLocalNetworkHost(host)
+                    {
+                        detail +=
+                            " This pairing uses a home-network address (\(host)); if you've since "
+                            + "enabled Remote access via Tailscale on the Mac, re-pair to pick up "
+                            + "the new address."
                     }
-                    self.phase = .error(
-                        detail
-                            ?? "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
-                    )
+                    self.phase = .error(detail)
                 }
             }
         } catch {
