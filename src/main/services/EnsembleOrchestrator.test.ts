@@ -2076,6 +2076,63 @@ Next action:
     expect(participantMessages[2].content).toContain('Found it')
   })
 
+  it('persists real write_file line stats for ensemble tool activities', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Create a file.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_use',
+      tool_id: 'write-1',
+      tool_name: 'write_file',
+      parameters: {
+        path: 'local-p5-smoke.md',
+        content: 'one\ntwo\nthree\nfour'
+      }
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_result',
+      tool_id: 'write-1',
+      content: 'Wrote local-p5-smoke.md.'
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    await vi.waitFor(() =>
+      expect(
+        harness.chat.messages.filter(
+          (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+        )
+      ).toHaveLength(1)
+    )
+    const activity = harness.chat.messages.find((message) => message.role === 'tool')
+      ?.toolActivities?.[0]
+    expect(activity?.diffSummary).toMatchObject({
+      additions: 4,
+      deletions: 0,
+      source: 'content',
+      confidence: 'estimated',
+      files: [
+        {
+          path: 'local-p5-smoke.md',
+          additions: 4,
+          deletions: 0
+        }
+      ]
+    })
+  })
+
   it('skipActiveParticipant returns false when no round is active', async () => {
     const harness = makeHarness()
     const skipped = await harness.orchestrator.skipActiveParticipant('ensemble-chat')

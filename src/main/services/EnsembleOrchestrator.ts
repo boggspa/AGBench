@@ -57,6 +57,7 @@ import { concurrentLanesEnabled, concurrentWriteLanesEnabled } from '../featureG
 // recordUsage payload, so ensemble runs reach usage.json (wall-clock + heatmaps
 // + provider totals). Ensemble runs complete here, not via handleProviderExit.
 import { buildEnsembleUsageRecord } from '../ensembleUsageRecord'
+import { bridgeToolDiffStats } from '../bridge/BridgeToolDiffStats'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -515,28 +516,35 @@ function buildEnsembleToolActivity(
       : typeof parameters.path === 'string'
         ? (parameters.path as string)
         : undefined
-  // Seed a minimal `diffSummary` for known file-write tool names so
-  // the renderer's files-changed counter picks them up. The orchestrator
-  // doesn't try to compute actual additions/deletions (that lives in
-  // the renderer's richer `ToolParser`) — but emitting a `files: [...]`
-  // entry is enough for the counter (which only counts unique paths).
-  // Without this, even when tool messages persist correctly, the
-  // counter would still read zero for ensemble runs.
+  // Seed a `diffSummary` for known file-write tool names so the renderer's
+  // files-changed counter picks them up. When the tool input contains
+  // countable evidence, carry the real +/- counts; otherwise leave counts
+  // undefined instead of seeding fake +0/-0 stats that suppress richer
+  // renderer-side derivation on the activity row.
+  const inputDiffSummary =
+    filePath && FILE_WRITE_TOOL_NAMES.has(canonicalToolName)
+      ? bridgeToolDiffStats(canonicalToolName, parameters)
+      : undefined
   const diffSummary =
     filePath && FILE_WRITE_TOOL_NAMES.has(canonicalToolName)
       ? {
-          files: [
-            {
-              path: filePath,
-              status: 'modified' as const,
-              additions: 0,
-              deletions: 0
-            }
-          ],
-          additions: 0,
-          deletions: 0,
-          source: 'unknown' as const,
-          confidence: 'estimated' as const
+          ...inputDiffSummary,
+          files:
+            inputDiffSummary?.files && inputDiffSummary.files.length > 0
+              ? inputDiffSummary.files.map((file) => ({
+                  ...file,
+                  path: file.path || filePath
+                }))
+              : [
+                  {
+                    path: filePath,
+                    status: 'modified' as const,
+                    additions: inputDiffSummary?.additions,
+                    deletions: inputDiffSummary?.deletions
+                  }
+                ],
+          source: inputDiffSummary?.source || ('unknown' as const),
+          confidence: inputDiffSummary?.confidence || ('estimated' as const)
         }
       : undefined
   return {

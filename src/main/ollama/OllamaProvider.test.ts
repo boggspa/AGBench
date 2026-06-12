@@ -24,6 +24,7 @@ import {
   parseOllamaMemoryPsOutput,
   resolveOllamaVisibleText,
   shouldEmitOllamaReasoning,
+  unwrapOllamaStructuredResponseText,
   accumulateOllamaUsageStats,
   ollamaUsageStats
 } from './OllamaProvider'
@@ -289,6 +290,17 @@ describe('parseOllamaToolRequest', () => {
       'the weather is sunny'
     )
     expect(resolveOllamaVisibleText({ content: '', thinking: '' })).toBe('')
+  })
+
+  it('unwraps GPT-OSS analysis/response JSON envelopes before rendering', () => {
+    const envelope = JSON.stringify({
+      analysis: 'private planning text',
+      response: 'Public final answer.'
+    })
+    expect(unwrapOllamaStructuredResponseText(envelope)).toBe('Public final answer.')
+    expect(resolveOllamaVisibleText({ content: envelope, thinking: '' })).toBe(
+      'Public final answer.'
+    )
   })
 
   it('emits reasoning notes except when thinking is the visible answer', () => {

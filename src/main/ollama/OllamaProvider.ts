@@ -1046,12 +1046,22 @@ export function looksLikeOllamaToolIntent(content: string, toolNames: string[]):
   return actionCue
 }
 
+export function unwrapOllamaStructuredResponseText(text: string): string {
+  const trimmed = (text || '').trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return text
+  const parsed = recordFromUnknown(parseJsonObject(trimmed))
+  const response = typeof parsed?.response === 'string' ? parsed.response : ''
+  return response.trim() ? response : text
+}
+
 /** Resolve the text TaskWraith should treat as the model's turn output.
  * Prefers the normal `content` channel; falls back to harmony reasoning
  * (`thinking`) so models like gpt-oss that emit their answer into the
  * reasoning channel still produce a visible response instead of nothing. */
 export function resolveOllamaVisibleText(turn: { content: string; thinking?: string }): string {
-  return turn.content.trim() ? turn.content : turn.thinking || ''
+  const content = unwrapOllamaStructuredResponseText(turn.content)
+  if (content.trim()) return content
+  return unwrapOllamaStructuredResponseText(turn.thinking || '')
 }
 
 /**
