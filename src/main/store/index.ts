@@ -1192,17 +1192,52 @@ export class AppStore {
     return items.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
+  /** Parsed+normalized chat records keyed by chatId, validated against the
+   * file's mtime+size on every read. Chat JSON grows to tens of MB and
+   * `getChats` sweeps ALL of it synchronously on the main process — without
+   * a cache every bridge broadcast, projection rebuild, and `get-chats` IPC
+   * re-parsed ~60MB and blocked the renderer for hundreds of ms (the 1-2s
+   * UI hang). All writes flow through `saveChat`/`deleteChat` in this one
+   * process (writeJson is atomic), so mtime+size validation makes the cache
+   * exact; an out-of-band file change simply misses and re-parses.
+   *
+   * Callers receive the SAME record instance until the file changes — the
+   * read paths (projections, broadcasts, IPC serialization) treat records
+   * as immutable; mutate-then-save flows go through `saveChat`, which
+   * re-normalizes and refreshes the cached instance. */
+  private static chatRecordCache = new Map<
+    string,
+    { mtimeMs: number; size: number; record: ChatRecord }
+  >()
+
+  private static readChatRecordCached(chatId: string, chatPath: string): ChatRecord | null {
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(chatPath)
+    } catch {
+      this.chatRecordCache.delete(chatId)
+      return null
+    }
+    const cached = this.chatRecordCache.get(chatId)
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.record
+    }
+    const chat = readJson<ChatRecord | null>(chatPath, null)
+    if (!chat) return null
+    const record = this.normalizeChatRecord(chat)
+    this.chatRecordCache.set(chatId, { mtimeMs: stat.mtimeMs, size: stat.size, record })
+    return record
+  }
+
   static getChats(workspaceId?: string): ChatRecord[] {
     if (!fs.existsSync(chatsDir)) return []
     const files = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json'))
     const chats: ChatRecord[] = []
     for (const file of files) {
-      const chat = readJson<ChatRecord | null>(path.join(chatsDir, file), null)
-      if (chat) {
-        const normalizedChat = this.normalizeChatRecord(chat)
-        if (!workspaceId || normalizedChat.workspaceId === workspaceId) {
-          chats.push(normalizedChat)
-        }
+      const chatId = path.basename(file, '.json')
+      const chat = this.readChatRecordCached(chatId, path.join(chatsDir, file))
+      if (chat && (!workspaceId || chat.workspaceId === workspaceId)) {
+        chats.push(chat)
       }
     }
     return chats.sort((a, b) => b.updatedAt - a.updatedAt)
@@ -1277,9 +1312,7 @@ export class AppStore {
 
   static getChat(chatId: string): ChatRecord | null {
     if (!isSafeChatId(chatId)) return null
-    const chatPath = chatPathForId(chatsDir, chatId)
-    const chat = readJson<ChatRecord | null>(chatPath, null)
-    return chat ? this.normalizeChatRecord(chat) : null
+    return this.readChatRecordCached(chatId, chatPathForId(chatsDir, chatId))
   }
 
   static createChat(workspaceId: string, workspacePath: string): ChatRecord {
@@ -1759,7 +1792,28 @@ export class AppStore {
     const normalizedChat = this.normalizeChatRecord(chat)
     normalizedChat.updatedAt = Date.now()
     const chatPath = chatPathForId(chatsDir, normalizedChat.appChatId)
+    const preStat = fs.existsSync(chatPath) ? fs.statSync(chatPath) : null
     writeJson(chatPath, normalizedChat)
+    // Write-through: the next read (bridge broadcast fires right after most
+    // saves) must not re-parse what we just serialized. writeJson swallows
+    // failures, so only trust the cache when the file visibly changed —
+    // otherwise invalidate and let disk be the truth.
+    try {
+      const postStat = fs.statSync(chatPath)
+      const wrote =
+        !preStat || postStat.mtimeMs !== preStat.mtimeMs || postStat.size !== preStat.size
+      if (wrote) {
+        this.chatRecordCache.set(normalizedChat.appChatId, {
+          mtimeMs: postStat.mtimeMs,
+          size: postStat.size,
+          record: normalizedChat
+        })
+      } else {
+        this.chatRecordCache.delete(normalizedChat.appChatId)
+      }
+    } catch {
+      this.chatRecordCache.delete(normalizedChat.appChatId)
+    }
     const index = readJson<Record<string, ChatListItem>>(chatListIndexPath, {})
     index[normalizedChat.appChatId] = this.toChatListItem(normalizedChat)
     writeJson(chatListIndexPath, index)
@@ -1783,6 +1837,7 @@ export class AppStore {
     if (fs.existsSync(chatPath)) {
       fs.unlinkSync(chatPath)
     }
+    this.chatRecordCache.delete(chatId)
     const index = readJson<Record<string, ChatListItem>>(chatListIndexPath, {})
     if (index[chatId]) {
       delete index[chatId]
