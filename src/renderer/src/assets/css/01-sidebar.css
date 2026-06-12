@@ -947,6 +947,10 @@
   color: color-mix(in srgb, var(--sidebar-text) 56%, transparent);
 }
 
+.sidebar-section-header-toggle > :is(.sidebar-tree-chevron, .sidebar-section-title) {
+  pointer-events: none;
+}
+
 .sidebar-section-header-toggle:hover .sidebar-tree-chevron,
 .sidebar-section-header-toggle:focus-visible .sidebar-tree-chevron {
   color: color-mix(in srgb, var(--sidebar-text) 88%, transparent);
