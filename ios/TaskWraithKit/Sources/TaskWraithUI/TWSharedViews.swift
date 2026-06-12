@@ -141,9 +141,7 @@ struct GlassPillHeader: View {
                         .font(.caption)
                 }
                 Text(title)
-                    .font(.footnote.weight(.semibold))
-                    .textCase(.uppercase)
-                    .kerning(0.6)
+                    .font(.subheadline.weight(.semibold))
                 if let count, count > 0 {
                     Text("\(count)")
                         .font(.caption2.weight(.semibold).monospacedDigit())

@@ -14516,7 +14516,12 @@ if (isGeminiMcpBridgeProcess) {
       workspaceId: string,
       limit = 40
     ): boolean => {
-      const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+      // Scope-global chats (no workspace) ride the reserved 'global' scope
+      // — without this mapping their snapshot pushes silently no-oped and
+      // the phone sat on the hydration ticker forever.
+      const canonical =
+        canonicalRemoteWorkspaceId(chat.workspaceId) ??
+        (!chat.workspaceId || chat.scope === 'global' ? GLOBAL_REMOTE_SCOPE : null)
       if (!canonical || canonical !== workspaceId) return false
       const broadcaster = bridgeBroadcasterRef
       if (!broadcaster) return false
@@ -15905,8 +15910,11 @@ if (isGeminiMcpBridgeProcess) {
 
     const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
       const canonical = canonicalRemoteWorkspaceId(workspaceId)
-      if (!canonical) return false
-      return bridgeAllowlist.evaluate({ workspaceId: canonical, capability: 'monitor' }).allowed
+      // No workspace = scope-global content (T71/T72): visible via the
+      // synthetic global scope, which is live once any real workspace is
+      // allowlisted and monitor-grants global chats/approvals/questions.
+      const scope = canonical ?? GLOBAL_REMOTE_SCOPE
+      return bridgeAllowlist.evaluate({ workspaceId: scope, capability: 'monitor' }).allowed
     }
 
     /** Relay frames cap out (1 MB) and snapshots ship every visible chat —
