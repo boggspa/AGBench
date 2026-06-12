@@ -14,15 +14,20 @@ function iface(address: string, internal = false): os.NetworkInterfaceInfo {
 }
 
 describe('pickRelayAdvertiseHost', () => {
-  it('prefers the Tailscale CGNAT address over LAN', () => {
+  it('prefers a LAN address over Tailscale (ATS blocks cleartext to CGNAT)', () => {
     const picked = pickRelayAdvertiseHost({
       en0: [iface('192.168.1.50')],
       utun4: [iface('100.99.131.73')]
     })
+    expect(picked).toEqual({ host: '192.168.1.50', kind: 'lan' })
+  })
+
+  it('falls back to Tailscale only when no LAN address exists', () => {
+    const picked = pickRelayAdvertiseHost({ utun4: [iface('100.99.131.73')] })
     expect(picked).toEqual({ host: '100.99.131.73', kind: 'tailscale' })
   })
 
-  it('falls back to a private LAN address (10.x / 172.16-31 / 192.168)', () => {
+  it('recognises private LAN ranges (10.x / 172.16-31 / 192.168)', () => {
     expect(pickRelayAdvertiseHost({ en0: [iface('192.168.1.50')] }).kind).toBe('lan')
     expect(pickRelayAdvertiseHost({ en0: [iface('10.0.0.7')] }).host).toBe('10.0.0.7')
     expect(pickRelayAdvertiseHost({ en0: [iface('172.20.1.2')] }).kind).toBe('lan')

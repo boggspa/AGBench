@@ -1,12 +1,21 @@
 /*
  * relayAdvertise — pick the address the embedded relay should advertise in
  * the pairing QR. The URL is consumed by the PHONE, so it must be an address
- * the phone can actually reach:
+ * the phone can actually reach AND that iOS App Transport Security permits.
  *
- *   1. The Mac's Tailscale IP (100.64.0.0/10 CGNAT range) when present —
- *      works across networks, survives Wi-Fi changes, the recommended setup.
- *   2. Otherwise the first non-internal private IPv4 (same-Wi-Fi pairing).
+ * The embedded relay is ALWAYS cleartext ws:// (no TLS). iOS ATS only allows
+ * cleartext to local-network hosts (NSAllowsLocalNetworking), so:
+ *
+ *   1. The first non-internal private LAN IPv4 (192.168/10/172.16-31) —
+ *      same-Wi-Fi pairing. ATS treats it as local, so cleartext ws:// works.
+ *   2. Otherwise the Mac's Tailscale IP (100.64.0.0/10 CGNAT) — reachable
+ *      across networks BUT ATS blocks cleartext to it, so a real device can't
+ *      use the embedded relay there; it's a last-ditch hint and the pairing
+ *      UI warns that remote use needs a wss:// relay (`tailscale cert`).
  *   3. Otherwise loopback — only the simulator can reach that; we log it.
+ *
+ * (Tailscale used to be #1 — wrong once ATS stopped permitting cleartext to
+ * CGNAT: the QR advertised an address the iOS preflight correctly refuses.)
  *
  * Pure given an interface map (injectable for tests).
  */
@@ -40,10 +49,13 @@ export function pickRelayAdvertiseHost(
       candidates.push(info)
     }
   }
-  const tailscale = candidates.find((info) => isTailscaleAddress(info.address))
-  if (tailscale) return { host: tailscale.address, kind: 'tailscale' }
+  // LAN first: ATS permits cleartext ws:// only to local-network hosts, so a
+  // same-Wi-Fi LAN IP is the only address a real device can use against the
+  // embedded (always-cleartext) relay.
   const lan = candidates.find((info) => isPrivateAddress(info.address))
   if (lan) return { host: lan.address, kind: 'lan' }
+  const tailscale = candidates.find((info) => isTailscaleAddress(info.address))
+  if (tailscale) return { host: tailscale.address, kind: 'tailscale' }
   return { host: '127.0.0.1', kind: 'loopback' }
 }
 
