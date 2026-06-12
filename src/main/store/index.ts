@@ -80,6 +80,7 @@ import {
 } from '../WorkspaceChangeModel'
 import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
 import { chatPathForId, isSafeChatId } from '../ChatPath'
+import { compactChatForPersist } from './ChatCompaction'
 import {
   isTerminalWorkflowExecutionStatus,
   nextLocalDayBoundaryIso,
@@ -1790,7 +1791,11 @@ export class AppStore {
       throw new Error('Cannot save a summary-only chat record; hydrate the chat first.')
     }
 
-    const normalizedChat = this.normalizeChatRecord(chat)
+    // Persisted-chat compaction (Step 4): historical runs shed raw tool
+    // events (inline screenshots become thumbnails, text raw drops) so chat
+    // files stay parse-fast and save-cheap. The latest/running runs keep
+    // full fidelity for live debugging.
+    const normalizedChat = this.normalizeChatRecord(compactChatForPersist(chat))
     normalizedChat.updatedAt = Date.now()
     const chatPath = chatPathForId(chatsDir, normalizedChat.appChatId)
     const preStat = fs.existsSync(chatPath) ? fs.statSync(chatPath) : null
