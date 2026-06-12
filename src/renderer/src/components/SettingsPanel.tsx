@@ -142,6 +142,8 @@ interface SettingsPanelProps {
   ollamaBaseUrl: string
   ollamaDefaultModel: string
   ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+  ollamaDefaultRunProfile?: AppSettings['ollamaDefaultRunProfile']
+  ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
   ollamaProviderParityAcknowledgedAt?: string
   ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
   agenticServices: AgenticServicesSettings
@@ -262,6 +264,8 @@ interface SettingsPanelProps {
     ollamaBaseUrl?: string
     ollamaDefaultModel?: string
     ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+    ollamaDefaultRunProfile?: AppSettings['ollamaDefaultRunProfile']
+    ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
     ollamaProviderParityAcknowledgedAt?: string
     ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
     agenticServices?: AgenticServicesSettings
@@ -700,6 +704,38 @@ const OLLAMA_TOOL_CONTROL_TIERS: Array<{
     value: 'provider_parity',
     label: 'Tier 4 · Provider parity',
     helper: 'Full TaskWraith tool surface after explicit risk acknowledgement.'
+  }
+]
+
+const OLLAMA_RUN_PROFILE_OPTIONS: Array<{
+  value: NonNullable<AppSettings['ollamaDefaultRunProfile']>
+  label: string
+  tier: NonNullable<AppSettings['ollamaToolControlTier']>
+  helper: string
+}> = [
+  {
+    value: 'local_scout',
+    label: 'Local Scout',
+    tier: 'read_only',
+    helper: 'Read/search/symbol/git inspection with GPT-OSS medium thinking.'
+  },
+  {
+    value: 'approved_patcher',
+    label: 'Approved Patcher',
+    tier: 'approved_edits',
+    helper: 'Bounded file edits with approval and GPT-OSS high thinking.'
+  },
+  {
+    value: 'verify_with_shell',
+    label: 'Verify With Shell',
+    tier: 'approved_shell',
+    helper: 'Adds approved task/shell verification for scoped patches.'
+  },
+  {
+    value: 'provider_parity',
+    label: 'Provider Parity',
+    tier: 'provider_parity',
+    helper: 'Full TaskWraith tool surface after workspace acknowledgement.'
   }
 ]
 
@@ -1358,6 +1394,8 @@ export function SettingsPanel({
   ollamaBaseUrl,
   ollamaDefaultModel,
   ollamaToolControlTier = 'read_only',
+  ollamaDefaultRunProfile = 'local_scout',
+  ollamaRunProfiles,
   ollamaProviderParityAcknowledgedAt,
   ollamaProviderParityWorkspaceGrants,
   agenticServices,
@@ -1862,6 +1900,7 @@ export function SettingsPanel({
     currentWorkspacePath && ollamaParityWorkspaceGrants[currentWorkspacePath]
   )
   const currentWorkspaceLabel = currentWorkspace?.displayName || currentWorkspacePath || 'workspace'
+  const ollamaCustomProfileCount = Object.keys(ollamaRunProfiles || {}).length
   const selectOllamaToolControlTier = (
     tier: NonNullable<AppSettings['ollamaToolControlTier']>
   ): void => {
@@ -1872,11 +1911,31 @@ export function SettingsPanel({
     if (tier === resolvedOllamaToolControlTier) return
     onChange({ ollamaToolControlTier: tier })
   }
+  const resolvedOllamaRunProfile =
+    ollamaDefaultRunProfile === 'approved_patcher' ||
+    ollamaDefaultRunProfile === 'verify_with_shell' ||
+    ollamaDefaultRunProfile === 'provider_parity' ||
+    ollamaDefaultRunProfile === 'custom'
+      ? ollamaDefaultRunProfile
+      : 'local_scout'
+  const selectOllamaRunProfile = (
+    profile: (typeof OLLAMA_RUN_PROFILE_OPTIONS)[number]
+  ): void => {
+    if (profile.tier === 'provider_parity' && !currentWorkspaceParityGranted) {
+      setShowOllamaParityAck(true)
+      return
+    }
+    onChange({
+      ollamaDefaultRunProfile: profile.value,
+      ollamaToolControlTier: profile.tier
+    })
+  }
   const confirmOllamaProviderParity = (): void => {
     if (!currentWorkspacePath) return
     const grantedAt = new Date().toISOString()
     setShowOllamaParityAck(false)
     onChange({
+      ollamaDefaultRunProfile: 'provider_parity',
       ollamaToolControlTier: 'provider_parity',
       ollamaProviderParityAcknowledgedAt: ollamaProviderParityAcknowledgedAt || grantedAt,
       ollamaProviderParityWorkspaceGrants: {
@@ -4446,39 +4505,6 @@ export function SettingsPanel({
                   </button>
                 </div>
 
-                {Array.isArray(ollamaStatus?.models) && ollamaStatus.models.length > 0 && (
-                  <div
-                    className="settings-hint"
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 'var(--space-2xs)',
-                      marginBottom: 'var(--space-sm)'
-                    }}
-                  >
-                    {ollamaStatus.models.slice(0, 6).map((model: any) => (
-                      <span
-                        key={model.id || model.label}
-                        style={{
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '999px',
-                          padding: '2px 8px',
-                          color: model.isDefault ? 'var(--accent)' : 'var(--text-secondary)'
-                        }}
-                        title={model.description || model.id}
-                      >
-                        {model.label || model.id}
-                        {model.isDefault ? ' default' : ''}
-                      </span>
-                    ))}
-                    {ollamaStatus.models.length > 6 && (
-                      <span style={{ color: 'var(--text-tertiary)' }}>
-                        +{ollamaStatus.models.length - 6} more
-                      </span>
-                    )}
-                  </div>
-                )}
-
                 <label className="settings-label">Ollama endpoint</label>
                 <input
                   className="settings-select"
@@ -4491,15 +4517,109 @@ export function SettingsPanel({
                 </p>
 
                 <label className="settings-label">Default local model</label>
-                <input
-                  className="settings-select"
-                  value={ollamaDefaultModel}
-                  onChange={(e) => onChange({ ollamaDefaultModel: e.target.value })}
-                  placeholder={ollamaStatus?.defaultModel || 'qwen3:4b-instruct'}
-                />
+                {Array.isArray(ollamaStatus?.models) && ollamaStatus.models.length > 0 ? (
+                  <div className="settings-option-list">
+                    {ollamaStatus.models.map((model: any) => {
+                      const modelId = String(model.id || '')
+                      const selected = ollamaDefaultModel
+                        ? modelId === ollamaDefaultModel
+                        : model.isDefault === true
+                      const chips = [
+                        model.parameterSize,
+                        model.quantizationLevel,
+                        typeof model.contextLength === 'number'
+                          ? `${Math.round(model.contextLength / 1000)}k ctx`
+                          : '',
+                        Array.isArray(model.capabilities) && model.capabilities.includes('tools')
+                          ? 'tools'
+                          : '',
+                        Array.isArray(model.capabilities) && model.capabilities.includes('thinking')
+                          ? 'thinking'
+                          : '',
+                        model.family || model.format
+                      ].filter(Boolean)
+                      return (
+                        <button
+                          key={modelId || model.label}
+                          type="button"
+                          className={`settings-radio-option ${selected ? 'active' : ''}`}
+                          onClick={() => onChange({ ollamaDefaultModel: modelId })}
+                          aria-pressed={selected}
+                          title={model.digest ? `${modelId}\n${model.digest}` : modelId}
+                        >
+                          <span className="settings-radio-dot" />
+                          <span>
+                            <strong>{model.label || modelId}</strong>
+                            <span>{modelId}</span>
+                            {chips.length > 0 && (
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: 'var(--space-2xs)',
+                                  marginTop: '4px'
+                                }}
+                              >
+                                {chips.slice(0, 6).map((chip: string) => (
+                                  <span
+                                    key={chip}
+                                    style={{
+                                      border: '1px solid var(--border-subtle)',
+                                      borderRadius: '999px',
+                                      padding: '1px 6px',
+                                      color: 'var(--text-tertiary)'
+                                    }}
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    className="settings-select"
+                    value={ollamaDefaultModel}
+                    onChange={(e) => onChange({ ollamaDefaultModel: e.target.value })}
+                    placeholder={ollamaStatus?.defaultModel || 'qwen3:4b-instruct'}
+                  />
+                )}
                 <p className="settings-hint">
-                  Leave blank to use the first installed Ollama model.
+                  Select an exact installed tag. Leave blank only when no installed model list is
+                  available.
                 </p>
+
+                <label className="settings-label">Ollama coding profile</label>
+                <div className="settings-option-list">
+                  {OLLAMA_RUN_PROFILE_OPTIONS.map((option) => {
+                    const checked = resolvedOllamaRunProfile === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`settings-radio-option ${checked ? 'active' : ''}`}
+                        onClick={() => selectOllamaRunProfile(option)}
+                        aria-pressed={checked}
+                      >
+                        <span className="settings-radio-dot" />
+                        <span>
+                          <strong>{option.label}</strong>
+                          <span>{option.helper}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {ollamaCustomProfileCount > 0 && (
+                  <p className="settings-hint">
+                    {ollamaCustomProfileCount} custom Ollama profile override
+                    {ollamaCustomProfileCount === 1 ? '' : 's'} configured.
+                  </p>
+                )}
 
                 <label className="settings-label">Local model tool control</label>
                 <div className="settings-option-list">

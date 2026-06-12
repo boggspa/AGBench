@@ -59,9 +59,18 @@ export function OllamaHealthChip({
     typeof model?.contextLength === 'number' && model.contextLength > 0
       ? `${Math.round(model.contextLength / 1000)}k ctx`
       : null
+  const metadata = [
+    model?.parameterSize,
+    model?.quantizationLevel,
+    model?.family || model?.format,
+    Array.isArray(model?.capabilities) ? model?.capabilities.join('/') : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
   const title = [
     'Ollama runtime is reachable.',
     model ? `Selected: ${model.id}` : null,
+    metadata ? `Metadata: ${metadata}.` : null,
     ctx ? `Context window: ${model?.contextLength?.toLocaleString()} tokens (from /api/tags).` : null,
     `Tool tier: ${tierShortLabel(toolControlTier)}.`
   ]

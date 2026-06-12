@@ -1208,6 +1208,10 @@ function App(): React.JSX.Element {
   const [ollamaDefaultModel, setOllamaDefaultModel] = useState('')
   const [ollamaToolControlTier, setOllamaToolControlTier] =
     useState<AppSettings['ollamaToolControlTier']>('read_only')
+  const [ollamaDefaultRunProfile, setOllamaDefaultRunProfile] =
+    useState<AppSettings['ollamaDefaultRunProfile']>('local_scout')
+  const [ollamaRunProfiles, setOllamaRunProfiles] =
+    useState<AppSettings['ollamaRunProfiles']>({})
   const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [geminiAuthStatus, setGeminiAuthStatus] = useState<GeminiAuthStatus | null>(null)
@@ -3483,6 +3487,15 @@ function App(): React.JSX.Element {
         ? s.ollamaToolControlTier
         : 'read_only'
     )
+    setOllamaDefaultRunProfile(
+      s.ollamaDefaultRunProfile === 'approved_patcher' ||
+        s.ollamaDefaultRunProfile === 'verify_with_shell' ||
+        s.ollamaDefaultRunProfile === 'provider_parity' ||
+        s.ollamaDefaultRunProfile === 'custom'
+        ? s.ollamaDefaultRunProfile
+        : 'local_scout'
+    )
+    setOllamaRunProfiles(s.ollamaRunProfiles || {})
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(s.agenticServices || {}) })
     setAutoResumeParentOnSubThreadCompletion(
       typeof s.autoResumeParentOnSubThreadCompletion === 'boolean'
@@ -3914,6 +3927,16 @@ function App(): React.JSX.Element {
     if (next.ollamaToolControlTier !== undefined) {
       setOllamaToolControlTier(next.ollamaToolControlTier)
       settingsPatch.ollamaToolControlTier = next.ollamaToolControlTier
+      providersToRefresh.push('ollama')
+    }
+    if (next.ollamaDefaultRunProfile !== undefined) {
+      setOllamaDefaultRunProfile(next.ollamaDefaultRunProfile)
+      settingsPatch.ollamaDefaultRunProfile = next.ollamaDefaultRunProfile
+      providersToRefresh.push('ollama')
+    }
+    if (next.ollamaRunProfiles !== undefined) {
+      setOllamaRunProfiles(next.ollamaRunProfiles)
+      settingsPatch.ollamaRunProfiles = next.ollamaRunProfiles
       providersToRefresh.push('ollama')
     }
     if (next.ollamaProviderParityAcknowledgedAt !== undefined) {
@@ -16048,6 +16071,8 @@ function App(): React.JSX.Element {
               ollamaBaseUrl={ollamaBaseUrl}
               ollamaDefaultModel={ollamaDefaultModel}
               ollamaToolControlTier={ollamaToolControlTier}
+              ollamaDefaultRunProfile={ollamaDefaultRunProfile}
+              ollamaRunProfiles={ollamaRunProfiles}
               ollamaProviderParityAcknowledgedAt={settings?.ollamaProviderParityAcknowledgedAt}
               ollamaProviderParityWorkspaceGrants={
                 settings?.ollamaProviderParityWorkspaceGrants

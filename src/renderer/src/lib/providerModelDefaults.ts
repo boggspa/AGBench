@@ -184,7 +184,7 @@ const OLLAMA_DEFAULT_MODELS = [
     description: 'Google Gemma 4 12B via Ollama'
   },
   {
-    id: 'gpt-oss',
+    id: 'gpt-oss:20b',
     label: 'GPT OSS (20B Param)',
     description: 'OpenAI gpt-oss 20B via Ollama'
   },

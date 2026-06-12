@@ -96,7 +96,7 @@ const OLLAMA_MODEL_COMMANDS: OllamaModelEntry[] = [
   { id: 'qwen3:4b-instruct', label: 'Qwen 3 (4B Param)', command: 'ollama run qwen3:4b-instruct' },
   { id: 'qwen3.5:9b', label: 'Qwen 3.5 (9B Param)', command: 'ollama run qwen3.5:9b' },
   { id: 'gemma4:12b', label: 'Gemma 4 (12B Param)', command: 'ollama run gemma4:12b' },
-  { id: 'gpt-oss', label: 'GPT OSS (20B Param)', command: 'ollama run gpt-oss' }
+  { id: 'gpt-oss:20b', label: 'GPT OSS (20B Param)', command: 'ollama run gpt-oss:20b' }
 ]
 
 /**

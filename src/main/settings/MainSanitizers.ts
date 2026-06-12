@@ -34,6 +34,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'ollamaBaseUrl',
   'ollamaDefaultModel',
   'ollamaToolControlTier',
+  'ollamaDefaultRunProfile',
+  'ollamaRunProfiles',
   'ollamaProviderParityAcknowledgedAt',
   'ollamaProviderParityWorkspaceGrants',
   'codexUsageCredential',
@@ -709,6 +711,21 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       ) {
         delete sanitized.ollamaToolControlTier
       }
+    }
+    if ('ollamaDefaultRunProfile' in sanitized) {
+      const profile = sanitized.ollamaDefaultRunProfile
+      if (
+        profile !== 'local_scout' &&
+        profile !== 'approved_patcher' &&
+        profile !== 'verify_with_shell' &&
+        profile !== 'provider_parity' &&
+        profile !== 'custom'
+      ) {
+        delete sanitized.ollamaDefaultRunProfile
+      }
+    }
+    if ('ollamaRunProfiles' in sanitized && !isRecord(sanitized.ollamaRunProfiles)) {
+      sanitized.ollamaRunProfiles = {}
     }
     if ('ollamaProviderParityAcknowledgedAt' in sanitized) {
       const acknowledgedAt = sanitized.ollamaProviderParityAcknowledgedAt

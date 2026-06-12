@@ -55,6 +55,8 @@ export type SettingsPanelUpdate = {
   ollamaBaseUrl?: string
   ollamaDefaultModel?: string
   ollamaToolControlTier?: AppSettings['ollamaToolControlTier']
+  ollamaDefaultRunProfile?: AppSettings['ollamaDefaultRunProfile']
+  ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
   ollamaProviderParityAcknowledgedAt?: string
   ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
   agenticServices?: AgenticServicesSettings
