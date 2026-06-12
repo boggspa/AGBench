@@ -558,14 +558,38 @@ describe('BridgeBroadcaster', () => {
         })
       ]
     })
+    // T71 — scope-global chats pass through (read-only, workspaceId null)
+    // once at least one real workspace is allowlisted; chats in
+    // NON-allowlisted workspaces stay hidden.
     expect(notify).toHaveBeenNthCalledWith(2, BRIDGE_BROADCAST_METHODS.threadList, {
       threads: [
         expect.objectContaining({
           chatId: 'chat-visible',
           workspaceId: 'ws-visible'
+        }),
+        expect.objectContaining({
+          chatId: 'chat-global',
+          workspaceId: null
         })
       ]
     })
+  })
+
+  it('keeps global chats hidden while the allowlist is empty (blank slate)', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [],
+      [makeChat({ appChatId: 'chat-global', scope: 'global', workspaceId: undefined })]
+    )
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      allowlist: makeAllowlist([]),
+      now: () => 1000
+    })
+
+    broadcaster.broadcastThreadList()
+    expect(notify).toHaveBeenCalledWith(BRIDGE_BROADCAST_METHODS.threadList, { threads: [] })
   })
 
   it('skips single update broadcasts for disallowed workspaces and chats', () => {

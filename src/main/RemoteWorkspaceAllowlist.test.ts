@@ -6,6 +6,7 @@ import {
   READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES,
   READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES,
   REMOTE_WORKSPACE_CAPABILITY_DESCRIPTIONS,
+  GLOBAL_REMOTE_SCOPE,
   RemoteWorkspaceAllowlist,
   capabilitiesForRemoteWorkspaceEntry,
   capabilitiesForRemoteWorkspaceMode,
@@ -427,6 +428,60 @@ describe('RemoteWorkspaceAllowlist', () => {
       // A second instance with no path sees nothing.
       const b = new RemoteWorkspaceAllowlist()
       expect(b.size()).toBe(0)
+    })
+  })
+
+  describe('the synthetic global scope (T71 read-only global chats)', () => {
+    const withOneEntry = (): RemoteWorkspaceAllowlist => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-1',
+        path: '/a',
+        mode: 'read-write',
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      return allowlist
+    }
+
+    it('denies the global scope while the allowlist is empty (blank slate stays blank)', () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      expect(allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE })).toMatchObject({
+        allowed: false,
+        reason: expect.stringMatching(/allowlist is empty/i)
+      })
+    })
+
+    it('grants ONLY monitor once a real workspace is allowlisted', () => {
+      const allowlist = withOneEntry()
+      expect(
+        allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE, capability: 'monitor' }).allowed
+      ).toBe(true)
+      expect(allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE }).allowed).toBe(true)
+      for (const capability of [
+        'approve',
+        'answer',
+        'cancel',
+        'startTurn',
+        'diffReview',
+        'steer',
+        'fileBrowse',
+        'fileRead',
+        'fileWrite',
+        'pin',
+        'yolo'
+      ] as const) {
+        expect(allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE, capability })).toMatchObject(
+          { allowed: false, reason: expect.stringMatching(/read-only/i) }
+        )
+      }
+    })
+
+    it('never lists or persists the virtual entry', () => {
+      const allowlist = withOneEntry()
+      expect(allowlist.size()).toBe(1)
+      expect(allowlist.get(GLOBAL_REMOTE_SCOPE)).toBeNull()
+      expect(allowlist.list().map((entry) => entry.workspaceId)).toEqual(['ws-1'])
     })
   })
 })

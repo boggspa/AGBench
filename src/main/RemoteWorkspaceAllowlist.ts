@@ -88,6 +88,29 @@ export const ADMIN_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapabi
   'yolo'
 ]
 
+/** T71 — the reserved workspace-id phones use for scope-global chats (chats
+ * with no workspace). Evaluated as a SYNTHETIC monitor-only entry — never
+ * persisted, never listed, only live when at least one real workspace is
+ * allowlisted. Real workspace ids are UUIDs/paths, so 'global' can't
+ * collide. */
+export const GLOBAL_REMOTE_SCOPE = 'global'
+
+/** The virtual entry `evaluate` returns for the global scope: read-only in
+ * the strictest sense — `monitor` only, no providers/approval modes (it can
+ * never satisfy a start-turn evaluation). */
+function globalRemoteScopeEntry(): RemoteWorkspaceEntry {
+  return {
+    workspaceId: GLOBAL_REMOTE_SCOPE,
+    path: '',
+    mode: 'read-only',
+    capabilities: ['monitor'],
+    allowedProviders: [],
+    allowedApprovalModes: [],
+    createdAt: 0,
+    updatedAt: 0
+  }
+}
+
 export interface RemoteWorkspaceCapabilityDescription {
   capability: RemoteWorkspaceCapability
   label: string
@@ -309,6 +332,29 @@ export class RemoteWorkspaceAllowlist {
    * a workspace. Returns a structured decision so the router can surface a
    * useful reason in the ack message. */
   evaluate(check: PrepareStartTurnEvaluation): AllowlistDecision {
+    // T71 — the synthetic GLOBAL scope: scope-global chats (no workspace)
+    // pass through to a paired device STRICTLY read-only. The virtual
+    // entry exists only when the user has allowlisted at least one real
+    // workspace (an empty allowlist stays a blank slate), is never
+    // persisted or listed, and grants ONLY `monitor` — every mutating
+    // capability (approve/answer/startTurn/steer/file*/…) is denied with
+    // the standard reason string.
+    if (check.workspaceId === GLOBAL_REMOTE_SCOPE) {
+      if (this.entries.size === 0) {
+        return {
+          allowed: false,
+          reason: 'Global chats are not shared while the workspace allowlist is empty'
+        }
+      }
+      if (check.capability !== undefined && check.capability !== 'monitor') {
+        const description = describeRemoteWorkspaceCapability(check.capability)
+        return {
+          allowed: false,
+          reason: `Capability "${check.capability}" (${description.label}) is not allowed for global chats — they are read-only on paired devices`
+        }
+      }
+      return { allowed: true, entry: globalRemoteScopeEntry() }
+    }
     const entry = this.entries.get(check.workspaceId)
     if (!entry) {
       return {

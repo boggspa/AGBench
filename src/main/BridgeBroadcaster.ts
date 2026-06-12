@@ -1,6 +1,9 @@
 import type { ChatRecord, ProviderId, WorkspaceRecord } from './store/types'
 import type { AllowlistDecision, PrepareStartTurnEvaluation } from './RemoteWorkspaceAllowlist'
-import { capabilitiesForRemoteWorkspaceEntry } from './RemoteWorkspaceAllowlist'
+import {
+  capabilitiesForRemoteWorkspaceEntry,
+  GLOBAL_REMOTE_SCOPE
+} from './RemoteWorkspaceAllowlist'
 import type { RemoteProjectionEnvelope, RemoteTaskCapabilities } from './RemoteTaskProjection'
 
 /**
@@ -504,14 +507,23 @@ export class BridgeBroadcaster {
 
   private visibleChats(chats: ChatRecord[], visibleWorkspaceIds: Set<string>): ChatRecord[] {
     if (!this.allowlist) return chats
+    // T71 — scope-global chats (no workspaceId) pass through READ-ONLY when
+    // the synthetic global scope is live (≥1 real workspace allowlisted).
+    // The allowlist's virtual entry grants only `monitor`, so every action
+    // beyond viewing stays denied at the router.
+    const globalVisible = this.isWorkspaceVisible(GLOBAL_REMOTE_SCOPE)
     return chats.filter((chat) =>
-      Boolean(chat.workspaceId && visibleWorkspaceIds.has(chat.workspaceId))
+      chat.workspaceId && chat.workspaceId.length > 0
+        ? visibleWorkspaceIds.has(chat.workspaceId)
+        : globalVisible
     )
   }
 
   private isChatVisible(chat: ChatRecord): boolean {
     if (!this.allowlist) return true
-    return Boolean(chat.workspaceId && this.isWorkspaceVisible(chat.workspaceId))
+    return chat.workspaceId && chat.workspaceId.length > 0
+      ? this.isWorkspaceVisible(chat.workspaceId)
+      : this.isWorkspaceVisible(GLOBAL_REMOTE_SCOPE)
   }
 
   private isWorkspaceVisible(workspaceId: string): boolean {

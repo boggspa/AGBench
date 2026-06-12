@@ -194,6 +194,7 @@ import type {
 import {
   RemoteWorkspaceAllowlist,
   capabilitiesForRemoteWorkspaceEntry,
+  GLOBAL_REMOTE_SCOPE,
   type RemoteWorkspaceCapability
 } from './RemoteWorkspaceAllowlist'
 import { RemoteBridgeRuntime } from './remote/RemoteBridgeRuntime'
@@ -14563,6 +14564,20 @@ if (isGeminiMcpBridgeProcess) {
       bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
     }
 
+    // T71 — does this chat belong to the workspace scope an iOS action
+    // presented? Workspace chats match their canonical workspace id;
+    // scope-global chats (no workspace) are addressed via the reserved
+    // read-only GLOBAL_REMOTE_SCOPE sentinel (the allowlist grants it
+    // `monitor` only, so global chats stay view-only on phones).
+    const chatMatchesRemoteScope = (chat: ChatRecord, requestedWorkspaceId: string): boolean => {
+      const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
+      if (canonical) return canonical === requestedWorkspaceId
+      return (
+        requestedWorkspaceId === GLOBAL_REMOTE_SCOPE &&
+        (!chat.workspaceId || chat.scope === 'global')
+      )
+    }
+
     const createBridgeActionExecutor = (): MainProcessActionExecutor => {
       // Phase C-late: action executor wires policy-cleared actions to real
       // main-process services. Wired today: `cancelRun`, `approvalReply`,
@@ -15194,8 +15209,7 @@ if (isGeminiMcpBridgeProcess) {
           if (!chat) {
             return { ok: false, reason: `Thread "${action.threadId}" not found` }
           }
-          const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
-          if (!canonical || canonical !== action.workspaceId) {
+          if (!chatMatchesRemoteScope(chat, action.workspaceId)) {
             return { ok: false, reason: 'Thread does not belong to the requested workspace' }
           }
           const maxChars = Math.max(
@@ -15236,8 +15250,7 @@ if (isGeminiMcpBridgeProcess) {
           if (!chat) {
             return { ok: false, reason: `Thread "${action.threadId}" not found` }
           }
-          const canonical = canonicalRemoteWorkspaceId(chat.workspaceId)
-          if (!canonical || canonical !== action.workspaceId) {
+          if (!chatMatchesRemoteScope(chat, action.workspaceId)) {
             return { ok: false, reason: 'Thread does not belong to the requested workspace' }
           }
           if (!pushRemoteThreadSnapshot(chat, action.workspaceId, action.limit ?? 40)) {
