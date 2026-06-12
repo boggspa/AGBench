@@ -55,12 +55,15 @@ export function PairingPage(): JSX.Element {
   const [maximised, setMaximised] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
 
-  const refresh = useCallback(async (name: string) => {
+  const refresh = useCallback(async (name: string, options?: { force?: boolean }) => {
     setLoading(true)
     setError(null)
     setBootstrap(null)
     try {
-      const result = await window.api.bridgeBeginPairing(name)
+      // Mount/remount re-issues the LIVE pairing session (a copied payload
+      // stays valid across tab switches); only the explicit Refresh QR
+      // button forces a fresh session.
+      const result = await window.api.bridgeBeginPairing(name, options)
       if (!result.ok || !result.bootstrap) {
         setError(result.error || 'Failed to begin pairing — no bootstrap returned.')
         return
@@ -147,7 +150,7 @@ export function PairingPage(): JSX.Element {
       e.preventDefault()
       const trimmed = displayName.trim() || 'iOS device'
       window.localStorage?.setItem(DISPLAY_NAME_STORAGE_KEY, trimmed)
-      void refresh(trimmed)
+      void refresh(trimmed, { force: true })
     },
     [displayName, refresh]
   )

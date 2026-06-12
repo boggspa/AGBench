@@ -171,6 +171,10 @@ interface PendingPairing {
   client: RemoteTransportClient
   controllerDisplayName: string
   pairingExpiryTimer: ReturnType<typeof setTimeout> | null
+  /** The exact bootstrap handed out for this session — re-issued verbatim
+   * when the Devices page remounts, so a QR/payload the user already
+   * copied or scanned stays alive instead of being silently replaced. */
+  bootstrap: NonNullable<BeginPairingResult['bootstrap']>
 }
 
 export class RemoteBridgeRuntime {
@@ -230,11 +234,31 @@ export class RemoteBridgeRuntime {
     }
   }
 
-  /** Mint a fresh pairing session + QR bootstrap. Does not disconnect
-   * already-established devices — only replaces an in-flight QR session. */
-  beginPairing(controllerDisplayName?: string): BeginPairingResult {
-    this.teardownPending()
+  /** Mint a pairing session + QR bootstrap — or RE-ISSUE the live one.
+   *
+   * Every call used to tear down the in-flight session, so merely
+   * remounting the Devices page (tab away and back) silently killed the
+   * QR/payload the user had on screen or in their clipboard — pairing
+   * then failed with no listener on the old session. A still-valid
+   * pending session (same label, >30s of window left, no handshake
+   * concluded) is now returned verbatim; pass `force` (the Refresh QR
+   * button) to deliberately mint a new one. Established devices are
+   * never touched either way. */
+  beginPairing(
+    controllerDisplayName?: string,
+    options?: { force?: boolean }
+  ): BeginPairingResult {
     const controllerDisplayNameTrimmed = controllerDisplayName?.trim() || 'iOS device'
+    if (
+      !options?.force &&
+      this.pending &&
+      this.pending.controllerDisplayName === controllerDisplayNameTrimmed &&
+      this.pending.bootstrap.bootstrapPayload.expiresAt > Date.now() + 30_000 &&
+      !this.pending.client.trustedPeerIdentityRaw()
+    ) {
+      return { ok: true, bootstrap: this.pending.bootstrap }
+    }
+    this.teardownPending()
     const sessionId = randomUUID()
     const windowMs = this.opts.pairingWindowMs ?? DEFAULT_PAIRING_WINDOW_MS
 
@@ -261,30 +285,30 @@ export class RemoteBridgeRuntime {
     }, windowMs)
     pairingExpiryTimer.unref?.()
 
+    const bootstrap: NonNullable<BeginPairingResult['bootstrap']> = {
+      pairingSessionID: sessionId,
+      bootstrapPayload: {
+        v: 1,
+        protocol: E2EE_PROTOCOL,
+        // Phones use the advertised URL (TLS front door in the
+        // self-hosted Tailscale shape); the Mac keeps `relayUrl`.
+        relayUrl: this.opts.advertiseRelayUrl ?? this.opts.relayUrl,
+        sessionId,
+        macIdentityPubKey: b64.encode(client.macIdentityRaw()),
+        macDisplayName: this.opts.macDisplayName,
+        expiresAt: Date.now() + windowMs
+      }
+    }
+
     this.pending = {
       sessionId,
       client,
       controllerDisplayName: controllerDisplayNameTrimmed,
-      pairingExpiryTimer
+      pairingExpiryTimer,
+      bootstrap
     }
 
-    return {
-      ok: true,
-      bootstrap: {
-        pairingSessionID: sessionId,
-        bootstrapPayload: {
-          v: 1,
-          protocol: E2EE_PROTOCOL,
-          // Phones use the advertised URL (TLS front door in the
-          // self-hosted Tailscale shape); the Mac keeps `relayUrl`.
-          relayUrl: this.opts.advertiseRelayUrl ?? this.opts.relayUrl,
-          sessionId,
-          macIdentityPubKey: b64.encode(client.macIdentityRaw()),
-          macDisplayName: this.opts.macDisplayName,
-          expiresAt: Date.now() + windowMs
-        }
-      }
-    }
+    return { ok: true, bootstrap }
   }
 
   /** Resolve the held trust decision for the prompt the user just answered. */

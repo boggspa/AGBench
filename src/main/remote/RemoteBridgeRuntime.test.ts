@@ -165,6 +165,26 @@ describe('RemoteBridgeRuntime pairing', () => {
     expect(bootstrapPayload.expiresAt).toBeGreaterThan(Date.now())
   })
 
+  it('re-issues the LIVE session on repeat beginPairing; force mints a new one', async () => {
+    // Remounting the Devices page calls beginPairing again — that must NOT
+    // kill the QR/payload the user already copied (the silent-invalidation
+    // pairing bug). Only the explicit Refresh button forces a new session.
+    const h = harness()
+    const first = h.runtime.beginPairing('My iPad')
+    await settle()
+    const again = h.runtime.beginPairing('My iPad')
+    expect(again.bootstrap.pairingSessionID).toBe(first.bootstrap.pairingSessionID)
+    expect(again.bootstrap.bootstrapPayload).toEqual(first.bootstrap.bootstrapPayload)
+
+    // A different device label is a different pairing intent → new session.
+    const renamed = h.runtime.beginPairing('Other iPad')
+    expect(renamed.bootstrap.pairingSessionID).not.toBe(first.bootstrap.pairingSessionID)
+
+    // Force (Refresh QR) always mints fresh.
+    const forced = h.runtime.beginPairing('Other iPad', { force: true })
+    expect(forced.bootstrap.pairingSessionID).not.toBe(renamed.bootstrap.pairingSessionID)
+  })
+
   it('surfaces the confirm prompt and establishes after user confirm', async () => {
     const h = harness()
     const { bootstrap } = h.runtime.beginPairing('My iPad')

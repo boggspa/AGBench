@@ -16822,19 +16822,23 @@ if (isGeminiMcpBridgeProcess) {
     // handlers keep the stub behavior so older renderer surfaces fail
     // gracefully. Response shape is locked to PairingPage:
     // `{ ok, bootstrap: { pairingSessionID, bootstrapPayload } }`.
-    ipcMain.handle('bridge-begin-pairing', async (_, displayName?: string) => {
-      if (!iosRemoteRuntime) {
-        return {
-          ok: false,
-          error:
-            'Remote iOS pairing is not available in this build. ' +
-            'Enable the iOS remote bridge in Settings → Devices, then restart TaskWraith.'
+    ipcMain.handle(
+      'bridge-begin-pairing',
+      async (_, displayName?: string, options?: { force?: boolean }) => {
+        if (!iosRemoteRuntime) {
+          return {
+            ok: false,
+            error:
+              'Remote iOS pairing is not available in this build. ' +
+              'Enable the iOS remote bridge in Settings → Devices, then restart TaskWraith.'
+          }
         }
+        return iosRemoteRuntime.beginPairing(
+          typeof displayName === 'string' ? displayName : undefined,
+          options?.force === true ? { force: true } : undefined
+        )
       }
-      return iosRemoteRuntime.beginPairing(
-        typeof displayName === 'string' ? displayName : undefined
-      )
-    })
+    )
 
     ipcMain.handle('bridge-list-paired-devices', async () => {
       if (!iosRemoteRuntime) return []

@@ -818,7 +818,10 @@ declare global {
       // payload (PairingBootstrapPayload from the Swift daemon) so the
       // renderer can encode it as a QR for the iOS app, or surface it
       // as raw JSON for the "Paste JSON instead" fallback on iOS.
-      bridgeBeginPairing: (displayName?: string) => Promise<{
+      bridgeBeginPairing: (
+        displayName?: string,
+        options?: { force?: boolean }
+      ) => Promise<{
         ok: boolean
         bootstrap?: unknown // PairingBootstrapPayload shape; consumer passes through to QR/JSON
         error?: string

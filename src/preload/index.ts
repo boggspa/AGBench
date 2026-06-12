@@ -511,8 +511,8 @@ const api = {
   },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
-  bridgeBeginPairing: (displayName?: string) =>
-    ipcRenderer.invoke('bridge-begin-pairing', displayName),
+  bridgeBeginPairing: (displayName?: string, options?: { force?: boolean }) =>
+    ipcRenderer.invoke('bridge-begin-pairing', displayName, options),
   bridgeListPairedDevices: () => ipcRenderer.invoke('bridge-list-paired-devices'),
   bridgeUnpairDevice: (iphoneIdentityPubKey: string) =>
     ipcRenderer.invoke('bridge-unpair-device', iphoneIdentityPubKey),
