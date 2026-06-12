@@ -242,6 +242,26 @@ struct HomeView: View {
             }
         }
 
+        // ── Ensembles — every ensemble in one place (desktop parity).
+        //    They ALSO stay listed inside their workspace folders below;
+        //    this is the cross-cutting view, like Pinned/Recents. ─────────
+        let ensembleCards = model.taskCards.filter { $0.isEnsemble && $0.parentChatId == nil }
+        if !ensembleCards.isEmpty {
+            Section {
+                if !collapsedSections.contains("ensembles") {
+                    ForEach(ensembleCards, id: \.id) { card in
+                        threadRow(card)
+                    }
+                }
+            } header: {
+                GlassPillHeader(
+                    title: "Ensembles", systemImage: "star",
+                    count: ensembleCards.count,
+                    collapsed: collapsedSections.contains("ensembles")
+                ) { toggleSection("ensembles") }
+            }
+        }
+
         // ── Workspaces — one glass super-header over the folder hierarchy
         //    (desktop parity); folders start COLLAPSED for a tidy first
         //    open, and expand state sticks for the session. ───────────────
