@@ -12,7 +12,6 @@ out
 docs/
 RELEASING.md
 scripts/publish-clean.sh
-ios/
 scripts/build-ios-simulator.cjs
 scripts/check-codexbridge-seam.cjs
 scripts/smoke-apns-push.cjs
