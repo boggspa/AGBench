@@ -59,7 +59,7 @@ const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
   const fullDiffText = collectReviewDiffText(diffObj)
   const diffText =
     fullDiffText.length > MAX_REVIEW_DIFF_CHARS
-      ? `${fullDiffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[Diff truncated by TaskWraith before sending to Gemini. Inspect the workspace with read-only commands if needed.]`
+      ? `${fullDiffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[Diff truncated by TaskWraith before sending to the reviewer. Inspect the workspace with read-only commands if needed.]`
       : fullDiffText
 
   const diffBlock = diffText

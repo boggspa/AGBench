@@ -412,11 +412,19 @@ export const COMPOSER_SLASH_GROUP_ORDER: CommandPaletteGroup[] = [
 ]
 
 /** Resolve the per-provider palette core. Mirrors the routing logic at
- * App.tsx:11874 (codex → CODEX, claude/kimi → CLI_PROVIDER, gemini →
+ * App.tsx:11874 (codex → CODEX, claude/kimi/grok → CLI_PROVIDER, gemini →
  * GEMINI). The caller still owns merging with discovered commands and
- * Gemini's quick-toggle items because those are context-dependent. */
+ * Gemini's quick-toggle items because those are context-dependent.
+ *
+ * Grok takes the generic CLI core: its TUI slash commands (e.g. 0.2.51's
+ * /code-review) are not reachable over our headless/ACP run path, and the
+ * Gemini core's PTY-backed entries ("Ask Gemini CLI…", /memory, /extensions)
+ * are meaningless for a Grok chat. /review here is TaskWraith's own read-only
+ * diff review (reviewDiffPrompt + a plan-mode run), provider-agnostic. */
 export function paletteCoreForProvider(provider: ProviderId): CommandPaletteItem[] {
   if (provider === 'codex') return CODEX_PALETTE_CORE
-  if (provider === 'claude' || provider === 'kimi') return CLI_PROVIDER_PALETTE_CORE
+  if (provider === 'claude' || provider === 'kimi' || provider === 'grok') {
+    return CLI_PROVIDER_PALETTE_CORE
+  }
   return GEMINI_PALETTE_CORE
 }

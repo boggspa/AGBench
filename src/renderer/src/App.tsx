@@ -11601,7 +11601,15 @@ function App(): React.JSX.Element {
       }
       return
     }
-    if (slashTargetProvider === 'claude' || slashTargetProvider === 'kimi') {
+    if (
+      slashTargetProvider === 'claude' ||
+      slashTargetProvider === 'kimi' ||
+      slashTargetProvider === 'grok'
+    ) {
+      // Grok routes here too: its palette is the generic CLI core, and the
+      // fall-through below writes into the GEMINI PTY session — wrong shell
+      // for a Grok chat. /review dispatches TaskWraith's provider-agnostic
+      // read-only diff review (a plan-mode run), not Grok's TUI /code-review.
       if (item.command === '/status' || item.command === '/permissions') {
         void refreshProviderMetadata(slashTargetProvider)
         openInspectorTab('safety')
@@ -15578,7 +15586,10 @@ function App(): React.JSX.Element {
   const commandPaletteItems =
     currentProvider === 'codex'
       ? CODEX_COMMAND_PALETTE_CORE
-      : currentProvider === 'claude' || currentProvider === 'kimi'
+      : // Grok rides the generic CLI core (it previously fell into the Gemini
+        // branch: PTY quick-toggles + "Ask Gemini CLI…" entries, none of which
+        // a Grok chat can service — and no /review or /diff at all).
+        currentProvider === 'claude' || currentProvider === 'kimi' || currentProvider === 'grok'
         ? CLI_PROVIDER_COMMAND_PALETTE_CORE
         : [...geminiQuickToggleItems, ...mergeCommandPaletteItems(discoveredCommands)]
   /**

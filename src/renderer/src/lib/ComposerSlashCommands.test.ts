@@ -42,6 +42,13 @@ describe('ComposerSlashCommands', () => {
     it('returns CLI_PROVIDER_PALETTE_CORE for kimi', () => {
       expect(paletteCoreForProvider('kimi')).toBe(CLI_PROVIDER_PALETTE_CORE)
     })
+    it('returns CLI_PROVIDER_PALETTE_CORE for grok (generic /review, not the Gemini PTY set)', () => {
+      // Grok's TUI slash commands (e.g. /code-review on 0.2.51) don't exist
+      // over the headless/ACP run path; the generic CLI core gives a Grok
+      // chat TaskWraith's own read-only /review + /diff instead of Gemini's
+      // PTY-backed entries.
+      expect(paletteCoreForProvider('grok')).toBe(CLI_PROVIDER_PALETTE_CORE)
+    })
   })
 
   describe('buildComposerSlashCommandRegistry', () => {
