@@ -32,6 +32,12 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UILaunchScreen: {}
+        # The Mac sends content-available:1 background pushes (wake →
+        # resolve → reconnect, see Http2ApnsPusher). iOS silently DROPS
+        # silent pushes unless the app declares this mode — without it only
+        # visible alert pushes arrive (TestFlight blocker).
+        UIBackgroundModes:
+          - remote-notification
         # iPhone stays portrait-first; iPad rotates freely (split-view shell).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
