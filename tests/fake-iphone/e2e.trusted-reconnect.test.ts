@@ -183,6 +183,45 @@ describe('e2e: trusted reconnect', () => {
     expect(mac.routedPairIds).toEqual([expectedPairId(phoneIdentity)])
   }, 20_000)
 
+  it('phone app relaunches while its OLD socket is still seated (no-FIN zombie)', async () => {
+    // The cellular field case: an app killed behind tailscale serve never
+    // FINs, so the relay still holds the old iphone seat when the relaunched
+    // app resolves its way back. The relay must seat the newcomer (takeover)
+    // instead of rejecting it — pre-fix this deadlocked until the proxy gave
+    // up, which over a dead tunnel is effectively never.
+    const macIdentity = generateIdentityKeyPair()
+    const macKeyB64 = b64.encode(exportRawEd25519PublicKey(macIdentity.publicKey))
+    const phoneIdentity = generateIdentityKeyPair()
+    const memory = memoryPairingStore()
+
+    const mac = makeMacSide(macIdentity, memory.store)
+    const begin = mac.runtime.beginPairing('Cellular iPhone')
+    const phoneA = new FakeIphoneClient({ identity: phoneIdentity })
+    cleanups.push(() => phoneA.close())
+    phoneA.scan(begin.bootstrap.bootstrapPayload)
+    await phoneA.connect()
+    await until(() => mac.prompts.length > 0, 5_000, 'pairing prompt')
+    mac.runtime.finalizePairing(begin.bootstrap.pairingSessionID, true)
+    await phoneA.waitForEstablished()
+    await until(() => mac.registrationsCompleted() > 0, 5_000, 'first registration')
+
+    // phoneA is NOT closed — its socket stays seated, exactly like a killed
+    // app whose FIN never crossed the tunnel.
+    const phoneB = new FakeIphoneClient({ identity: phoneIdentity })
+    cleanups.push(() => phoneB.close())
+    await phoneB.resolveAndScan(relayUrl, macKeyB64)
+    await phoneB.connect()
+    await phoneB.waitForEstablished()
+
+    await phoneB.waitForMessage(
+      (m) => m.method === 'bridge.broadcastRemoteProjectionSnapshot',
+      5_000,
+      'post-takeover snapshot'
+    )
+    const ack = await phoneB.request('bridge.requestActionAck', { payloadBytes: 0 })
+    expect(ack.ok).toBe(true)
+  }, 20_000)
+
   it('cold restart on both sides — resolve + reconnect with no prompt, same audit pairID', async () => {
     const macIdentity = generateIdentityKeyPair()
     const macKeyB64 = b64.encode(exportRawEd25519PublicKey(macIdentity.publicKey))

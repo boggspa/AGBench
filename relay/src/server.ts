@@ -27,6 +27,8 @@ export interface RelayOptions {
   maxFrameBytes?: number
   /** Drop an idle room after this long with no traffic. */
   idleTtlMs?: number
+  /** WS ping cadence; a socket that misses a whole interval is terminated. */
+  heartbeatMs?: number
   /** Cap on concurrent rooms (resource-exhaustion bound; review MED). */
   maxRooms?: number
   /** Cap on concurrent sockets from one remote address. */
@@ -51,6 +53,7 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
   // (ws kills the CONNECTION on violation — code 1009 — not just the frame).
   const maxFrameBytes = options.maxFrameBytes ?? 1024 * 1024
   const idleTtlMs = options.idleTtlMs ?? 5 * 60 * 1000
+  const heartbeatMs = options.heartbeatMs ?? 30_000
   // Resource-exhaustion bounds (security review): an attacker that opens many
   // sockets on unique session ids — kept alive by ws auto-pong — would
   // otherwise grow `rooms` without limit. Cap total rooms + per-IP sockets.
@@ -122,10 +125,22 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
       return
     }
     connectionsPerIp.set(remoteIp, ipCount + 1)
-    if (room[role]) {
-      // Anti-hijack: a role slot in a room is single-occupant.
-      ws.close(4002, 'role already connected')
-      return
+    const incumbent = room[role]
+    if (incumbent) {
+      // Takeover, not reject. A role seat is only a FORWARDING slot — trust
+      // is established end-to-end by the e2ee handshake against the pinned
+      // identity, and sessionIds are unguessable (UUID via QR or signed
+      // resolve), so seating a newcomer grants nothing by itself. Rejecting
+      // the newcomer (the old 4002 behavior) deadlocked trusted reconnect:
+      // an app killed behind a proxy (tailscale serve) leaves a zombie
+      // socket that never FINs, and the live peer's pongs kept the room's
+      // idle sweep from ever reaping it — so the REAL device could never
+      // get its seat back. Single occupancy still holds: the incumbent is
+      // evicted before the newcomer is seated.
+      incumbent.close(4006, 'replaced by a newer connection')
+      const evict = setTimeout(() => incumbent.terminate(), 2_000)
+      evict.unref?.()
+      incumbent.once('close', () => clearTimeout(evict))
     }
     room[role] = ws
     const peerRole: Role = role === 'mac' ? 'iphone' : 'mac'
@@ -133,6 +148,9 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
     ws.on('message', (data: RawData) => {
       const r = rooms.get(sessionId)
       if (!r) return
+      // Only the current seat-holder forwards — an evicted incumbent may
+      // linger up to its terminate grace, but its frames are dead.
+      if (r[role] !== ws) return
       r.lastActivity = Date.now()
       const peer = r[peerRole]
       if (peer && peer.readyState === WebSocket.OPEN) {
@@ -141,17 +159,27 @@ export function createRelayServer(options: RelayOptions = {}): Promise<RelayServ
       }
     })
 
-    // WS-level heartbeat: a parked Mac listener waiting for a phone sends
-    // no app frames, so without pings the idle sweeper reaps the room and
-    // the phone's trusted reconnect finds nobody until the listener's
-    // backoff loop happens to rebind. Pings (auto-ponged by ws) keep a
-    // LIVE-but-quiet socket counted as activity; truly dead sockets stop
-    // ponging and still get swept.
+    // WS-level heartbeat, two jobs:
+    //   1. Keep a LIVE-but-quiet socket (parked Mac listener) counted as
+    //      room activity so the idle sweeper doesn't reap it.
+    //   2. Reap THIS socket if it stops ponging. The room-level sweep can't
+    //      do that: lastActivity is room-wide, so a live peer's pongs kept
+    //      a dead socket's room fresh forever. A phone killed behind a
+    //      proxy (tailscale serve) never FINs — without per-socket
+    //      liveness its seat stayed occupied indefinitely.
+    let alive = true
     const heartbeat = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.ping()
-    }, 30_000)
+      if (ws.readyState !== WebSocket.OPEN) return
+      if (!alive) {
+        ws.terminate() // fires 'close' → cleanup frees the seat
+        return
+      }
+      alive = false
+      ws.ping()
+    }, heartbeatMs)
     heartbeat.unref?.()
     ws.on('pong', () => {
+      alive = true
       const r = rooms.get(sessionId)
       if (r) r.lastActivity = Date.now()
     })
