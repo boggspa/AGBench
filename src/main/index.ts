@@ -3371,32 +3371,49 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
     (id && [...state.activities].reverse().find((entry) => entry.id === id)) ||
     [...state.activities].reverse().find((entry) => entry.status === 'running')
   if (!activity) return
-  activity.status = failed ? 'error' : 'success'
-  activity.endedAt = new Date().toISOString()
-  // Write tools with computed diff stats show +N −M chips — "The file ...
-  // has been updated successfully" boilerplate adds nothing.
-  if (!failed && activity.category === 'write' && activity.diffSummary) return
+  // Codex streams INTERIM results while a patch builds (status 'running',
+  // growing preview each time). Those must not flip the activity to
+  // success / stamp endedAt — they refresh the stats below so remote
+  // odometers tick, then the terminal result settles the status.
+  const interim = !failed && payload.status === 'running'
+  if (interim) {
+    activity.status = 'running'
+  } else {
+    activity.status = failed ? 'error' : 'success'
+    activity.endedAt = new Date().toISOString()
+  }
   const summary = unwrapBridgeToolResultText(
     (typeof payload.summary === 'string' && payload.summary) ||
       (typeof payload.output === 'string' && payload.output) ||
       (typeof payload.content === 'string' && payload.content) ||
       ''
   )
-  // Last lane for ±stats: some providers only surface the patch in the
-  // RESULT (Codex shell-driven edits, apply_patch over exec). Structure-
-  // gated so reasoning/plan prose never mints phantom counts.
-  if (
-    !failed &&
-    !activity.diffSummary &&
-    summary &&
-    !/reasoning|thinking|plan/i.test(activity.toolName)
-  ) {
-    const stats = bridgeUnifiedDiffStats(summary)
-    if (stats) {
+  // ±stats from the RESULT text (Codex patch previews, apply_patch over
+  // exec). Structure-gated so reasoning/plan prose never mints phantom
+  // counts. Updates are allowed — a growing preview is exactly how the
+  // live odometer ticks — but exact input-derived stats are only ever
+  // OVERWRITTEN by larger result evidence (the first input snapshot can
+  // be a partial patch; the result stream carries the rest).
+  const stats =
+    !failed && summary && !/reasoning|thinking|plan/i.test(activity.toolName)
+      ? bridgeUnifiedDiffStats(summary)
+      : undefined
+  if (stats) {
+    if (!activity.diffSummary) {
       activity.diffSummary = { ...stats, source: 'result_diff', confidence: 'estimated' }
+    } else if (activity.diffSummary.source === 'result_diff') {
+      activity.diffSummary = { ...activity.diffSummary, ...stats }
+    } else if (
+      stats.additions > (activity.diffSummary.additions ?? 0) ||
+      stats.deletions > (activity.diffSummary.deletions ?? 0)
+    ) {
+      activity.diffSummary = { ...activity.diffSummary, ...stats }
     }
   }
-  if (summary) {
+  // Boilerplate suppression, scoped: write tools with chips drop result
+  // prose ("The file ... has been updated successfully") — but a result
+  // that IS the patch stays as the detail line under the chips.
+  if (summary && !(activity.category === 'write' && activity.diffSummary && !stats && !failed)) {
     activity.resultSummary = summary.length > 200 ? `${summary.slice(0, 197)}...` : summary
   }
 }
