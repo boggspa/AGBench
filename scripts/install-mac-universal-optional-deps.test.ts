@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
 const {
+  parseNpmPackOutput,
   resolveDarwinClaudeSdkPackages
 }: {
+  parseNpmPackOutput: (output: string) => string
   resolveDarwinClaudeSdkPackages: (lock: unknown) => Array<{
     name: string
     version: string
@@ -41,5 +43,17 @@ describe('install-mac-universal-optional-deps script', () => {
         }
       })
     ).toThrow('Missing @anthropic-ai/claude-agent-sdk-darwin-x64 version in package-lock.json.')
+  })
+
+  it('extracts the packed tarball name from npm pack JSON output', () => {
+    expect(
+      parseNpmPackOutput(
+        JSON.stringify([
+          {
+            filename: 'anthropic-ai-claude-agent-sdk-darwin-x64-0.2.141.tgz'
+          }
+        ])
+      )
+    ).toBe('anthropic-ai-claude-agent-sdk-darwin-x64-0.2.141.tgz')
   })
 })

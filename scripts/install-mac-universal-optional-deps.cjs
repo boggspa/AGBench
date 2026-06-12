@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
 
@@ -21,14 +22,60 @@ function resolveDarwinClaudeSdkPackages(lock) {
 }
 
 function missingPackageSpecs(repoRoot, packages) {
-  return packages
-    .filter(({ name }) => {
-      const packageDir = path.join(repoRoot, 'node_modules', ...name.split('/'))
-      const packageJson = path.join(packageDir, 'package.json')
-      const claudeBinary = path.join(packageDir, 'claude')
-      return !fs.existsSync(packageJson) || !fs.existsSync(claudeBinary)
+  return missingPackages(repoRoot, packages).map(({ spec }) => spec)
+}
+
+function packageDir(repoRoot, name) {
+  return path.join(repoRoot, 'node_modules', ...name.split('/'))
+}
+
+function missingPackages(repoRoot, packages) {
+  return packages.filter(({ name }) => {
+    const packagePath = packageDir(repoRoot, name)
+    const packageJson = path.join(packagePath, 'package.json')
+    const claudeBinary = path.join(packagePath, 'claude')
+    return !fs.existsSync(packageJson) || !fs.existsSync(claudeBinary)
+  })
+}
+
+function parseNpmPackOutput(output) {
+  const parsed = JSON.parse(String(output || '').trim())
+  if (!Array.isArray(parsed) || !parsed[0] || typeof parsed[0].filename !== 'string') {
+    throw new Error(`Unexpected npm pack output: ${String(output || '').slice(0, 200)}`)
+  }
+  return parsed[0].filename
+}
+
+function installPackageFromPack({ repoRoot, npmCommand, exec, packageInfo }) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwraith-optional-dep-'))
+  try {
+    const packOutput = exec(
+      npmCommand,
+      ['pack', '--json', '--ignore-scripts', '--pack-destination', tempRoot, packageInfo.spec],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'inherit']
+      }
+    )
+    const filename = parseNpmPackOutput(packOutput)
+    const tarballPath = path.join(tempRoot, filename)
+    const extractRoot = path.join(tempRoot, 'extract')
+    fs.mkdirSync(extractRoot)
+
+    exec('tar', ['-xzf', tarballPath, '-C', extractRoot], {
+      cwd: repoRoot,
+      stdio: 'inherit'
     })
-    .map(({ spec }) => spec)
+
+    const unpackedPackage = path.join(extractRoot, 'package')
+    const destination = packageDir(repoRoot, packageInfo.name)
+    fs.rmSync(destination, { recursive: true, force: true })
+    fs.mkdirSync(path.dirname(destination), { recursive: true })
+    fs.cpSync(unpackedPackage, destination, { recursive: true })
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
 }
 
 function ensureMacUniversalOptionalDeps({
@@ -44,20 +91,19 @@ function ensureMacUniversalOptionalDeps({
   const lockPath = path.join(repoRoot, 'package-lock.json')
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
   const packages = resolveDarwinClaudeSdkPackages(lock)
-  const missing = missingPackageSpecs(repoRoot, packages)
+  const missing = missingPackages(repoRoot, packages)
   if (missing.length === 0) {
     return { installed: false, reason: 'already present', specs: [] }
   }
 
-  exec(
-    npmCommand,
-    ['install', '--no-save', '--package-lock=false', '--force', '--ignore-scripts', ...missing],
-    {
-      cwd: repoRoot,
-      stdio: 'inherit'
-    }
-  )
-  return { installed: true, reason: 'installed missing packages', specs: missing }
+  for (const packageInfo of missing) {
+    installPackageFromPack({ repoRoot, npmCommand, exec, packageInfo })
+  }
+  return {
+    installed: true,
+    reason: 'installed missing packages',
+    specs: missing.map(({ spec }) => spec)
+  }
 }
 
 function main() {
@@ -76,6 +122,9 @@ if (require.main === module) {
 module.exports = {
   DARWIN_CLAUDE_SDK_PACKAGES,
   ensureMacUniversalOptionalDeps,
+  installPackageFromPack,
   missingPackageSpecs,
+  missingPackages,
+  parseNpmPackOutput,
   resolveDarwinClaudeSdkPackages
 }
