@@ -49,9 +49,20 @@ describe('detectTailscale', () => {
     expect(result.tailnetIPv4).toBe('100.64.10.20')
     expect(result.tailnetIPv6).toBe('fd7a:115c:a1e0::1')
     expect(result.hostname).toBe('chris-mac')
+    expect(result.dnsName).toBe('chris-mac.tail-abc.ts.net')
     expect(result.tailnetName).toBe('tail-abc.ts.net')
     expect(result.magicDNSEnabled).toBe(true)
     expect(result.reason).toBeUndefined()
+  })
+
+  it('strips the trailing dot Tailscale appends to DNSName', async () => {
+    const sample = JSON.parse(JSON.stringify(SAMPLE_RUNNING))
+    sample.Self.DNSName = 'chris-mac.tail-abc.ts.net.'
+    const result = await detectTailscale({
+      cliPath: '/fake/tailscale',
+      execFn: async () => ({ stdout: JSON.stringify(sample), stderr: '' })
+    })
+    expect(result.dnsName).toBe('chris-mac.tail-abc.ts.net')
   })
 
   it('treats NeedsLogin as unavailable with a sign-in hint', async () => {

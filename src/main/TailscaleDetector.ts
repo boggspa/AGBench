@@ -45,6 +45,10 @@ export interface TailscaleStatus {
   tailnetIPv6?: string
   /** The machine's tailscale hostname (e.g. "macbook"). */
   hostname?: string
+  /** This machine's MagicDNS name WITHOUT the trailing dot
+   * (e.g. "chriss-mac-studio.tail-abc.ts.net") — the hostname a
+   * `tailscale serve` HTTPS front door answers on. */
+  dnsName?: string
   /** The tailnet's DNS name (e.g. "tail-abc.ts.net"). */
   tailnetName?: string
   /** Magic DNS state — true when the tailnet has DNS resolution
@@ -171,6 +175,8 @@ export async function detectTailscale(
   const tailnetIPv4 = selfIPs.find((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip))
   const tailnetIPv6 = selfIPs.find((ip) => /:/.test(ip))
   const hostname = raw.Self?.HostName
+  // Tailscale reports DNSName with a trailing dot ("host.tail-abc.ts.net.").
+  const dnsName = raw.Self?.DNSName?.replace(/\.$/, '') || undefined
   const tailnetName = raw.CurrentTailnet?.Name
   const magicDNSEnabled = raw.CurrentTailnet?.MagicDNSEnabled
 
@@ -200,6 +206,7 @@ export async function detectTailscale(
     tailnetIPv4,
     tailnetIPv6,
     hostname,
+    dnsName,
     tailnetName,
     magicDNSEnabled
   }

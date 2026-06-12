@@ -658,6 +658,29 @@ declare global {
         runtimeActive: boolean
         openAtLogin?: boolean
       }>
+      iosRemoteTailscaleStatus: () => Promise<{
+        tailscaleAvailable: boolean
+        tailscaleReason: string | null
+        dnsName: string | null
+        suggestedUrl: string | null
+        relayPort: number
+        serveConfigured: boolean
+        serveHttpsPort: number | null
+        serveError: string | null
+        relayUrlMatches: boolean
+        active: boolean
+        runtimeActive: boolean
+      }>
+      iosRemoteTailscaleEnable: () => Promise<{
+        ok: boolean
+        message?: string | null
+        status?: Record<string, unknown>
+      }>
+      iosRemoteTailscaleDisable: () => Promise<{
+        ok: boolean
+        message?: string | null
+        status?: Record<string, unknown>
+      }>
       setBridgeDaemonEnabled: (enabled: boolean) => Promise<{
         lan: {
           enabled: boolean

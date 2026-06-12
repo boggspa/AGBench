@@ -239,6 +239,11 @@ import {
   type ApprovalTimeoutReason
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
+import {
+  disableTailscaleServe,
+  enableTailscaleServe,
+  getTailscaleServeStatus
+} from './TailscaleServe'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { LocalServersService } from './LocalServersService'
 import { SpawnRegistry } from './localServers/SpawnRegistry'
@@ -16015,7 +16020,7 @@ if (isGeminiMcpBridgeProcess) {
       }
     }
     if (iosRemoteResolution.shouldRun) {
-      const startRuntime = (relayUrl: string): void => {
+      const startRuntime = (relayUrl: string, advertiseRelayUrl?: string): void => {
         let identity: ReturnType<RemoteIdentityStore['load']>
         try {
           identity = new RemoteIdentityStore(
@@ -16040,6 +16045,7 @@ if (isGeminiMcpBridgeProcess) {
         )
         const runtime = new RemoteBridgeRuntime({
           relayUrl,
+          advertiseRelayUrl,
           macDisplayName: `${app.getName() || 'TaskWraith'} on ${os.hostname()}`,
           identity,
           socketFactory: wsTransportSocketFactory,
@@ -16153,20 +16159,69 @@ if (isGeminiMcpBridgeProcess) {
             )
           })
       }
-      if (settingsRelayUrl && !envRelayUrl && isLocalPlainRelayUrl(settingsRelayUrl)) {
-        console.log(
-          `[remote-bridge] iOS remote transport enabled — settings relay URL points at this Mac, starting embedded relay for ${settingsRelayUrl}`
-        )
-        startEmbeddedRelay(settingsRelayUrl)
-      } else if (configuredRelayUrl) {
-        // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
-        console.log(
-          `[remote-bridge] iOS remote transport enabled — external relay ${configuredRelayUrl}`
-        )
-        startRuntime(configuredRelayUrl)
-      } else {
-        startEmbeddedRelay(null)
+      // Self-hosted Tailscale TLS lane: a wss:// settings URL whose host is
+      // THIS Mac's MagicDNS name means "embedded relay behind tailscale
+      // serve". The relay still runs in-process on loopback (serve's proxy
+      // target) and the Mac connects to it via ws://127.0.0.1 — only the
+      // QR advertises the wss:// front door, because iOS ATS blocks
+      // cleartext to anything off the local network (incl. Tailscale's
+      // 100.64/10). Enabled from Settings → Devices → Remote access.
+      const startSelfHostedWssRelay = (wssUrl: string, dnsName: string): void => {
+        const port = embeddedPort(null)
+        void createRelayServer({ port })
+          .then((handle) => {
+            embeddedRelayHandle = handle
+            console.log(
+              `[remote-bridge] embedded relay on :${handle.port} behind tailscale serve — Mac via loopback, phones via ${wssUrl} (${dnsName})`
+            )
+            startRuntime(`ws://127.0.0.1:${handle.port}`, wssUrl)
+          })
+          .catch((err: unknown) => {
+            console.error(
+              `[remote-bridge] embedded relay failed to start on :${port} (${
+                err instanceof Error ? err.message : String(err)
+              }) — remote iOS pairing disabled. Free the port or set TASKWRAITH_RELAY_PORT.`
+            )
+          })
       }
+      void (async () => {
+        if (settingsRelayUrl && !envRelayUrl) {
+          try {
+            const parsed = new URL(settingsRelayUrl)
+            if (parsed.protocol === 'wss:') {
+              const tailscale = await detectTailscale()
+              const dnsName = tailscale.dnsName?.toLowerCase()
+              if (
+                tailscale.available &&
+                dnsName &&
+                parsed.hostname.toLowerCase() === dnsName
+              ) {
+                console.log(
+                  `[remote-bridge] iOS remote transport enabled — self-hosted wss via tailscale serve (${settingsRelayUrl})`
+                )
+                startSelfHostedWssRelay(settingsRelayUrl, dnsName)
+                return
+              }
+            }
+          } catch {
+            // Unparseable URL → fall through to the existing lanes.
+          }
+        }
+        if (settingsRelayUrl && !envRelayUrl && isLocalPlainRelayUrl(settingsRelayUrl)) {
+          console.log(
+            `[remote-bridge] iOS remote transport enabled — settings relay URL points at this Mac, starting embedded relay for ${settingsRelayUrl}`
+          )
+          startEmbeddedRelay(settingsRelayUrl)
+        } else if (configuredRelayUrl) {
+          // Self-hosted relay (VPS / Tailscale node / `npx tsx relay/src/cli.ts`).
+          console.log(
+            `[remote-bridge] iOS remote transport enabled — external relay ${configuredRelayUrl}`
+          )
+          startRuntime(configuredRelayUrl)
+        } else {
+          startEmbeddedRelay(null)
+        }
+      })()
     }
 
     const subscribeBridgeRunEvents = (_daemon: BridgeDaemonClient): void => {
@@ -16639,6 +16694,83 @@ if (isGeminiMcpBridgeProcess) {
         runtimeError: iosRemoteRuntimeError,
         openAtLogin: app.getLoginItemSettings().openAtLogin
       }
+    })
+
+    // ── Remote access via Tailscale ─────────────────────────────────
+    // One-click TLS front door for the embedded relay: `tailscale serve`
+    // terminates HTTPS at tailscaled with the tailnet's *.ts.net cert and
+    // reverse-proxies (WebSocket-aware) to the relay's loopback port. The
+    // pairing QR then advertises wss://<dnsName>, which iOS ATS accepts
+    // off-LAN — the only way a cellular phone can reach the bridge.
+    const iosRemoteRelayPort = (): number =>
+      Number(process.env.TASKWRAITH_RELAY_PORT || '8787')
+    const iosRemoteTailscaleStatus = async (): Promise<Record<string, unknown>> => {
+      const tailscale = await detectTailscale()
+      const relayPort = iosRemoteRelayPort()
+      const suggestedUrl = tailscale.dnsName ? `wss://${tailscale.dnsName}` : null
+      const serve =
+        tailscale.available && tailscale.cliPath
+          ? await getTailscaleServeStatus({ cliPath: tailscale.cliPath, relayPort })
+          : { configured: false as const }
+      const currentRelayUrl = (AppStore.getSettings().iosRemoteRelayUrl || '').trim()
+      const relayUrlMatches = Boolean(suggestedUrl && currentRelayUrl === suggestedUrl)
+      return {
+        tailscaleAvailable: tailscale.available,
+        tailscaleReason: tailscale.reason ?? null,
+        dnsName: tailscale.dnsName ?? null,
+        suggestedUrl,
+        relayPort,
+        serveConfigured: serve.configured,
+        serveHttpsPort: 'httpsPort' in serve ? (serve.httpsPort ?? null) : null,
+        serveError: 'error' in serve ? (serve.error ?? null) : null,
+        relayUrlMatches,
+        active: relayUrlMatches && serve.configured,
+        runtimeActive: iosRemoteRuntime !== null
+      }
+    }
+    ipcMain.handle('ios-remote-tailscale-status', () => iosRemoteTailscaleStatus())
+    ipcMain.handle('ios-remote-tailscale-enable', async () => {
+      const tailscale = await detectTailscale()
+      if (!tailscale.available || !tailscale.cliPath || !tailscale.dnsName) {
+        return {
+          ok: false,
+          message:
+            tailscale.reason ||
+            'Tailscale is not available — install it and sign in to your tailnet first.'
+        }
+      }
+      const result = await enableTailscaleServe({
+        cliPath: tailscale.cliPath,
+        relayPort: iosRemoteRelayPort()
+      })
+      if (!result.ok) {
+        return { ok: false, message: result.message || '`tailscale serve` failed.' }
+      }
+      AppStore.updateSettings({ iosRemoteRelayUrl: `wss://${tailscale.dnsName}` })
+      return { ok: true, message: result.message ?? null, status: await iosRemoteTailscaleStatus() }
+    })
+    ipcMain.handle('ios-remote-tailscale-disable', async () => {
+      const tailscale = await detectTailscale()
+      if (tailscale.cliPath) {
+        const serve = await getTailscaleServeStatus({
+          cliPath: tailscale.cliPath,
+          relayPort: iosRemoteRelayPort()
+        })
+        if (serve.configured) {
+          const result = await disableTailscaleServe({
+            cliPath: tailscale.cliPath,
+            httpsPort: serve.httpsPort
+          })
+          if (!result.ok) {
+            return { ok: false, message: result.message || '`tailscale serve off` failed.' }
+          }
+        }
+      }
+      const current = (AppStore.getSettings().iosRemoteRelayUrl || '').trim()
+      if (tailscale.dnsName && current === `wss://${tailscale.dnsName}`) {
+        AppStore.updateSettings({ iosRemoteRelayUrl: '' })
+      }
+      return { ok: true, status: await iosRemoteTailscaleStatus() }
     })
     ipcMain.handle(
       'set-ios-remote-config',

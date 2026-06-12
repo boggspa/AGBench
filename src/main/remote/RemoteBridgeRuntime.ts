@@ -114,6 +114,13 @@ export function pairIdFromIdentityPubKey(iphoneIdentityPubKey: string): string {
 
 export interface RemoteBridgeRuntimeOptions {
   relayUrl: string
+  /** The relay URL PHONES should use, when it differs from `relayUrl` (the
+   * Mac's own connection). The self-hosted Tailscale shape: the Mac talks
+   * to its embedded relay over loopback ws:// while the QR advertises the
+   * wss://<dnsName> front door `tailscale serve` puts on the same port —
+   * iOS ATS only allows cleartext to local-network hosts, so off-LAN
+   * phones need the TLS address. Defaults to `relayUrl`. */
+  advertiseRelayUrl?: string
   /** Shown on the iPhone's pairing sheet ("Pair with <macDisplayName>"). */
   macDisplayName: string
   identity: KeyPair
@@ -268,7 +275,9 @@ export class RemoteBridgeRuntime {
         bootstrapPayload: {
           v: 1,
           protocol: E2EE_PROTOCOL,
-          relayUrl: this.opts.relayUrl,
+          // Phones use the advertised URL (TLS front door in the
+          // self-hosted Tailscale shape); the Mac keeps `relayUrl`.
+          relayUrl: this.opts.advertiseRelayUrl ?? this.opts.relayUrl,
           sessionId,
           macIdentityPubKey: b64.encode(client.macIdentityRaw()),
           macDisplayName: this.opts.macDisplayName,

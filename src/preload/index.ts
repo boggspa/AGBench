@@ -479,6 +479,9 @@ const api = {
   getIosRemoteConfig: () => ipcRenderer.invoke('get-ios-remote-config'),
   setIosRemoteConfig: (config: { enabled?: boolean; relayUrl?: string; openAtLogin?: boolean }) =>
     ipcRenderer.invoke('set-ios-remote-config', config),
+  iosRemoteTailscaleStatus: () => ipcRenderer.invoke('ios-remote-tailscale-status'),
+  iosRemoteTailscaleEnable: () => ipcRenderer.invoke('ios-remote-tailscale-enable'),
+  iosRemoteTailscaleDisable: () => ipcRenderer.invoke('ios-remote-tailscale-disable'),
 
   // Phase G2: auto-update controls.
   updateSnapshot: () => ipcRenderer.invoke('update-snapshot'),

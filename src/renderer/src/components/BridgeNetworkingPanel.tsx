@@ -264,6 +264,20 @@ interface IosRemoteConfig {
   openAtLogin?: boolean
 }
 
+interface IosRemoteTailscaleStatus {
+  tailscaleAvailable: boolean
+  tailscaleReason: string | null
+  dnsName: string | null
+  suggestedUrl: string | null
+  relayPort: number
+  serveConfigured: boolean
+  serveHttpsPort: number | null
+  serveError: string | null
+  relayUrlMatches: boolean
+  active: boolean
+  runtimeActive: boolean
+}
+
 /** iOS remote bridge (relay + E2EE) — settings-first gating so login-item
  * launches keep the bridge alive without shell env. Runtime constructs at
  * startup, so changes prompt a restart. */
@@ -272,6 +286,9 @@ function IosRemoteBridgeSection(): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const [needsRestart, setNeedsRestart] = useState(false)
   const [sectionError, setSectionError] = useState<string | null>(null)
+  const [tailscale, setTailscale] = useState<IosRemoteTailscaleStatus | null>(null)
+  const [tailscaleBusy, setTailscaleBusy] = useState(false)
+  const [tailscaleMessage, setTailscaleMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -282,11 +299,45 @@ function IosRemoteBridgeSection(): React.JSX.Element {
       } catch (err) {
         if (!cancelled) setSectionError(err instanceof Error ? err.message : String(err))
       }
+      try {
+        const ts = (await window.api.iosRemoteTailscaleStatus?.()) as
+          | IosRemoteTailscaleStatus
+          | undefined
+        if (!cancelled && ts) setTailscale(ts)
+      } catch {
+        // Detection is best-effort; the row degrades to "unavailable".
+      }
     })()
     return () => {
       cancelled = true
     }
   }, [])
+
+  const toggleTailscaleRemote = async (): Promise<void> => {
+    try {
+      setTailscaleBusy(true)
+      setTailscaleMessage(null)
+      const result = tailscale?.active
+        ? await window.api.iosRemoteTailscaleDisable?.()
+        : await window.api.iosRemoteTailscaleEnable?.()
+      if (result?.status) setTailscale(result.status as unknown as IosRemoteTailscaleStatus)
+      if (!result?.ok) {
+        setTailscaleMessage(result?.message || 'Tailscale command failed.')
+      } else {
+        // The relay URL setting changed; the runtime picks it up on the
+        // next launch (same restart semantics as the toggle above).
+        setNeedsRestart(true)
+        const refreshed = (await window.api.getIosRemoteConfig?.()) as
+          | IosRemoteConfig
+          | undefined
+        if (refreshed) setConfig(refreshed)
+      }
+    } catch (err) {
+      setTailscaleMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setTailscaleBusy(false)
+    }
+  }
 
   const save = async (patch: {
     enabled?: boolean
@@ -373,6 +424,36 @@ function IosRemoteBridgeSection(): React.JSX.Element {
           }}
         />
       </label>
+      <div className="settings-service-row">
+        <span>
+          Remote access via Tailscale
+          <small>
+            {tailscale === null
+              ? 'Checking Tailscale…'
+              : !tailscale.tailscaleAvailable
+                ? tailscale.tailscaleReason ||
+                  'Tailscale not detected — install it and sign in to enable off-LAN access.'
+                : tailscale.active
+                  ? `Phones connect via ${tailscale.suggestedUrl} (TLS front door over the embedded relay). Works on cellular when the phone's Tailscale is on.`
+                  : `Puts a wss:// TLS front door on the embedded relay via \`tailscale serve\` (${tailscale.dnsName ?? 'your MagicDNS name'}) so phones can connect off-LAN — iOS blocks cleartext ws:// away from your Wi-Fi. One-time: HTTPS certificates must be enabled for your tailnet (admin console → DNS).`}
+          </small>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {tailscale?.active && <StatusPill kind="ok" label="Active" />}
+          {tailscale && tailscale.serveConfigured && !tailscale.relayUrlMatches && (
+            <StatusPill kind="warn" label="Serve on, URL differs" />
+          )}
+          <button
+            className="btn btn-sm"
+            type="button"
+            disabled={tailscaleBusy || tailscale === null || !tailscale.tailscaleAvailable}
+            onClick={() => void toggleTailscaleRemote()}
+          >
+            {tailscaleBusy ? 'Working…' : tailscale?.active ? 'Disable' : 'Enable'}
+          </button>
+        </span>
+      </div>
+      {tailscaleMessage && <div className="settings-error">{tailscaleMessage}</div>}
       <label className="settings-service-row settings-fx-toggle">
         <span>
           Start TaskWraith at login
