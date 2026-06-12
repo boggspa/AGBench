@@ -469,9 +469,23 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // transcript, so we always inject for Kimi. Gemini's CLI resume restores
   // context properly, so we skip when resuming. Codex/Claude rely on their
   // own session continuity (with a special Codex handoff branch below).
+  //
+  // Codex cold runs (no resumable app-server thread) inject like Gemini —
+  // EXCEPT when a model handoff is in play for this turn: the handoff
+  // branch below owns context then (inject once, keyed on
+  // codexModelContextAppliedKeys, never repeated). Without the carve-out
+  // this rule re-sent the context the handoff had already applied.
+  const codexPreviousModelKey = normalizeKey(lastCompletedCodexModel)
+  const codexNextModelKey = normalizeKey(nextModel)
+  const codexModelChangedAfterWork =
+    Boolean(lastCompletedCodexModel) &&
+    codexPreviousModelKey &&
+    codexNextModelKey &&
+    codexPreviousModelKey !== codexNextModelKey
   const kimiNeedsContextInjection = provider === 'kimi'
   const geminiNeedsContextInjection = provider === 'gemini' && !resumeSessionId
-  const codexNeedsContextInjection = provider === 'codex' && !resumeSessionId
+  const codexNeedsContextInjection =
+    provider === 'codex' && !resumeSessionId && !codexModelChangedAfterWork
   const ollamaNeedsContextInjection = provider === 'ollama'
   const shouldAppendContextForRun =
     kimiNeedsContextInjection ||
@@ -507,14 +521,9 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // since Codex sessions are model-scoped. We track applied handoff keys on
   // the chat so we don't re-inject.
   if (provider === 'codex') {
-    const previousModelKey = normalizeKey(lastCompletedCodexModel)
-    const nextModelKey = normalizeKey(nextModel)
-    const hasCompletedWork = Boolean(lastCompletedCodexModel)
-    const modelChangedAfterWork =
-      hasCompletedWork && previousModelKey && nextModelKey && previousModelKey !== nextModelKey
-    const handoffKey = `${previousModelKey}->${nextModelKey}`
+    const handoffKey = `${codexPreviousModelKey}->${codexNextModelKey}`
 
-    if (modelChangedAfterWork && !codexHandoffsApplied.includes(handoffKey)) {
+    if (codexModelChangedAfterWork && !codexHandoffsApplied.includes(handoffKey)) {
       contextTurnsApplied = clampContextTurns(chatContextTurns, contextBudget)
       contextualPrompt = injectAdditionalPeerContext(
         appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt, contextBudget)
