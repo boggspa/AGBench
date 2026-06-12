@@ -89,11 +89,19 @@ public enum SessionPhase: Equatable, Sendable {
 
 public struct PairedMacRecord: Codable, Sendable, Equatable {
     public let relayUrl: String
+    /// Ordered relay candidates captured at pairing time (LAN first, wss
+    /// front door second). Optional so records persisted before T70 still
+    /// decode; reconnect falls back to the single `relayUrl`.
+    public let relayUrls: [String]?
     public let macIdentityPubKey: String
     public let macDisplayName: String
 
-    public init(relayUrl: String, macIdentityPubKey: String, macDisplayName: String) {
+    public init(
+        relayUrl: String, macIdentityPubKey: String, macDisplayName: String,
+        relayUrls: [String]? = nil
+    ) {
         self.relayUrl = relayUrl
+        self.relayUrls = relayUrls
         self.macIdentityPubKey = macIdentityPubKey
         self.macDisplayName = macDisplayName
     }
@@ -369,35 +377,31 @@ public final class RemoteSessionModel: ObservableObject {
     }
 
     static func isLocalNetworkHost(_ host: String) -> Bool {
-        if host == "localhost" || host == "127.0.0.1" || host == "::1" { return true }
-        if host.hasSuffix(".local") { return true }
-        if host.hasPrefix("192.168.") || host.hasPrefix("10.") || host.hasPrefix("169.254.") {
-            return true
-        }
-        // 172.16.0.0/12
-        if host.hasPrefix("172.") {
-            let parts = host.split(separator: ".")
-            if parts.count == 4, let second = Int(parts[1]), (16...31).contains(second) {
-                return true
-            }
-        }
-        return false
+        // Single-sourced in TaskWraithKit so the candidate-ordering logic
+        // and the ATS preflight can never disagree about what "local" means.
+        RelayCandidates.isLocalNetworkHost(host)
     }
 
     /// Monotonic stamp for connect attempts so the dial watchdog only fires
     /// against ITS OWN attempt (a newer scan/reconnect invalidates it).
     private var connectAttempt = 0
+    /// The bootstrap's full candidate set, persisted into the pairing
+    /// record on establish (T70 multi-door reconnects).
+    private var lastRelayUrls: [String]?
 
     private func connect(bootstrap: PairingBootstrapPayload) {
         guard identityReady() else { return }
-        if let problem = Self.cleartextRelayProblem(bootstrap.relayUrl) {
-            phase = .error(problem)
-            return
-        }
+        // T70 — walk the bootstrap's candidate doors in order (LAN first:
+        // instant at home, a cheap 5s timeout away from it; then the wss
+        // front door). Candidates the ATS preflight rejects are skipped,
+        // not fatal — a ws:// LAN door is invalid from cellular while the
+        // wss door right after it works fine.
+        let candidates = RelayCandidates.ordered(
+            from: bootstrap.relayUrls, fallback: bootstrap.relayUrl)
         teardown()
         macDisplayName = bootstrap.macDisplayName
         pinnedMacIdentityB64 = bootstrap.macIdentityPubKey
-        relayUrl = bootstrap.relayUrl
+        lastRelayUrls = bootstrap.relayUrls
         phase = .connecting
         connectAttempt += 1
         let attempt = connectAttempt
@@ -405,36 +409,58 @@ public final class RemoteSessionModel: ObservableObject {
             let client = try RelayTransportClient(identitySeed: identitySeed)
             self.client = client
             consumeEvents(of: client)
-            let relayUrl = bootstrap.relayUrl
             Task {
-                do {
-                    try await client.scan(bootstrap)
-                    try await client.connect()
-                } catch {
-                    await MainActor.run {
-                        self.phase = .error(
-                            TransportErrorCopy.friendlyMessage(for: error, relayUrl: relayUrl))
+                var lastFailure: String? = nil
+                for candidate in candidates {
+                    guard self.connectAttempt == attempt else { return }
+                    if let problem = Self.cleartextRelayProblem(candidate) {
+                        lastFailure = problem
+                        continue
                     }
-                    return
+                    await MainActor.run { self.relayUrl = candidate }
+                    var scoped = bootstrap
+                    scoped.relayUrl = candidate
+                    do {
+                        await client.dropConnection()
+                        try await client.scan(scoped)
+                        try await client.connect()
+                    } catch {
+                        lastFailure = TransportErrorCopy.friendlyMessage(
+                            for: error, relayUrl: candidate)
+                        continue
+                    }
+                    // Dial watchdog per candidate — `connect()` is fire-and-
+                    // forget and an unroutable dial BLACKHOLES instead of
+                    // erroring. Everything up to the 6-digit confirm code is
+                    // machine-speed, so still being in .connecting after the
+                    // candidate's budget means THIS door is dead → try the
+                    // next. The human confirm step has already moved phase
+                    // to .awaitingMacConfirm, which ends the walk.
+                    let budgetMs = RelayCandidates.dialTimeoutMs(for: candidate)
+                    var waitedMs = 0
+                    while waitedMs < budgetMs {
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        waitedMs += 250
+                        guard self.connectAttempt == attempt else { return }
+                        let stillConnecting: Bool = await MainActor.run {
+                            if case .connecting = self.phase { return true }
+                            return false
+                        }
+                        if !stillConnecting { return }  // progressed or errored visibly
+                    }
+                    lastFailure = TransportErrorCopy.friendlyMessage(
+                        for: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut),
+                        relayUrl: candidate)
                 }
-                // Dial watchdog — `connect()` is fire-and-forget and a dial
-                // to an unroutable address (cellular → a LAN-only relay URL)
-                // BLACKHOLES instead of erroring, leaving "Connecting…"
-                // forever. Everything up to the 6-digit confirm code is
-                // machine-speed, so still being in .connecting after 12s
-                // means the dial is dead; only the human confirm step may
-                // legitimately take longer, and by then phase has moved to
-                // .awaitingMacConfirm (which the guard skips).
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
                 await MainActor.run {
                     guard self.connectAttempt == attempt, case .connecting = self.phase else {
                         return
                     }
                     self.teardown()
                     self.phase = .error(
-                        TransportErrorCopy.friendlyMessage(
-                            for: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut),
-                            relayUrl: relayUrl))
+                        lastFailure
+                            ?? "Couldn't reach the Mac on any advertised address — refresh the QR and try again."
+                    )
                 }
             }
         } catch {
@@ -448,58 +474,77 @@ public final class RemoteSessionModel: ObservableObject {
     public func reconnectTrusted() {
         guard let record = pairingStore.load() else { return }
         guard identityReady() else { return }
-        if let problem = Self.cleartextRelayProblem(record.relayUrl) {
-            phase = .error(problem)
-            return
-        }
+        // T70 — walk every door the pairing record knows (LAN first, then
+        // the wss front door). The same record reconnects from home Wi-Fi
+        // (instant LAN hit) and cellular (LAN fails fast, wss connects).
+        let candidates = RelayCandidates.ordered(
+            from: record.relayUrls, fallback: record.relayUrl)
         teardown()
         macDisplayName = record.macDisplayName
         pinnedMacIdentityB64 = record.macIdentityPubKey
+        lastRelayUrls = record.relayUrls
         relayUrl = record.relayUrl
         phase = .connecting
+        connectAttempt += 1
+        let attempt = connectAttempt
         do {
             let client = try RelayTransportClient(identitySeed: identitySeed)
             self.client = client
             consumeEvents(of: client)
             Task {
-                // Retry the resolve+join a few times: the Mac's parked
-                // listener cycles its relay socket (idle reap → backoff
-                // rebind), so a single-shot attempt can race a brief gap.
-                var lastError: Error? = nil
-                for attempt in 0..<3 {
-                    do {
-                        if attempt > 0 {
-                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                // Outer retries cover the Mac's parked listener cycling its
+                // relay socket (idle reap → backoff rebind); the inner walk
+                // covers which DOOR is reachable from here.
+                var lastFailure: String? = nil
+                var sawAtsSkip = false
+                for retry in 0..<2 {
+                    if retry > 0 { try? await Task.sleep(nanoseconds: 2_500_000_000) }
+                    for candidate in candidates {
+                        guard self.connectAttempt == attempt else { return }
+                        if let problem = Self.cleartextRelayProblem(candidate) {
+                            // A LAN ws:// door is simply invalid off-network —
+                            // skip it and let the wss door take the dial.
+                            sawAtsSkip = true
+                            if lastFailure == nil { lastFailure = problem }
+                            continue
                         }
-                        try await client.resolveAndScan(
-                            relayUrl: record.relayUrl,
-                            macIdentityPubKey: record.macIdentityPubKey)
-                        try await client.connectAndWaitEstablished(timeoutMs: 8_000)
-                        return
-                    } catch {
-                        lastError = error
-                        await client.dropConnection()
+                        do {
+                            let budgetMs = RelayCandidates.dialTimeoutMs(for: candidate)
+                            try await client.resolveAndScan(
+                                relayUrl: candidate,
+                                macIdentityPubKey: record.macIdentityPubKey,
+                                timeoutMs: budgetMs)
+                            try await client.connectAndWaitEstablished(timeoutMs: budgetMs)
+                            await MainActor.run {
+                                self.relayUrl = candidate
+                                // Refresh the record so the v1 field tracks
+                                // the door that actually works from here.
+                                self.persistCurrentPairing()
+                            }
+                            return
+                        } catch {
+                            lastFailure = TransportErrorCopy.friendlyMessage(
+                                for: error, relayUrl: candidate)
+                            await client.dropConnection()
+                        }
                     }
                 }
                 await MainActor.run {
-                    // Lead with the actionable mapping when the failure was a
-                    // transport error; keep the friendly who-to-blame line.
+                    guard self.connectAttempt == attempt else { return }
                     var detail =
-                        lastError.map {
-                            TransportErrorCopy.friendlyMessage(for: $0, relayUrl: record.relayUrl)
-                        }
+                        lastFailure
                         ?? "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
-                    // The stored pairing record pins the relay URL from
-                    // pairing time. A LAN-only URL is unreachable from
-                    // cellular even with Tailscale on — re-pairing is the
-                    // fix once the Mac advertises its wss front door.
-                    if let host = URL(string: record.relayUrl)?.host,
+                    // Old single-door record pinned to a home-network address
+                    // and we're not on it: re-pairing picks up the multi-door
+                    // bootstrap (new pairings carry both doors and never hit
+                    // this).
+                    if record.relayUrls?.isEmpty != false, sawAtsSkip || candidates.count == 1,
+                        let host = URL(string: record.relayUrl)?.host,
                         Self.isLocalNetworkHost(host)
                     {
                         detail +=
-                            " This pairing uses a home-network address (\(host)); if you've since "
-                            + "enabled Remote access via Tailscale on the Mac, re-pair to pick up "
-                            + "the new address."
+                            " This pairing only knows a home-network address (\(host)); re-pair "
+                            + "once with the Mac's current QR to add its Tailscale door."
                     }
                     self.phase = .error(detail)
                 }
@@ -593,7 +638,11 @@ public final class RemoteSessionModel: ObservableObject {
         guard let relayUrl, let macId = pinnedMacIdentityB64 else { return }
         pairingStore.save(
             PairedMacRecord(
-                relayUrl: relayUrl, macIdentityPubKey: macId, macDisplayName: macDisplayName))
+                relayUrl: relayUrl, macIdentityPubKey: macId, macDisplayName: macDisplayName,
+                // The full candidate set from the bootstrap (LAN + wss) —
+                // ONE pairing then reconnects from home Wi-Fi or cellular
+                // alike; `relayUrl` holds the door that last worked.
+                relayUrls: lastRelayUrls))
         hasStoredPairing = true
     }
 
