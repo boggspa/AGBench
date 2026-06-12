@@ -1039,6 +1039,55 @@ public enum BridgeAction {
     }
 }
 
+// ── Transport error copy — NSURLError walls → actionable guidance ──────────
+
+/// Maps relay connection failures to copy a human can act on. The raw
+/// `String(describing:)` of an NSURLError is a wall of UserInfo keys (the
+/// exact screenshot users send when pairing fails); this keeps the precise
+/// failure but leads with what to DO about it. Pure + unit-tested.
+public enum TransportErrorCopy {
+    /// `relayUrl` gives host-aware guidance (Tailscale vs LAN front doors).
+    public static func friendlyMessage(for error: Error, relayUrl: String?) -> String {
+        let ns = error as NSError
+        guard ns.domain == NSURLErrorDomain else {
+            return (error as? LocalizedError)?.errorDescription ?? ns.localizedDescription
+        }
+        let host = relayUrl.flatMap { URL(string: $0)?.host } ?? "your Mac"
+        let isTailnet = host.hasSuffix(".ts.net")
+        switch ns.code {
+        case NSURLErrorCannotConnectToHost:
+            if isTailnet {
+                return "Couldn't connect to your Mac's Tailscale address (\(host)). "
+                    + "Check Tailscale is ON and connected on THIS device, and that the Mac shows "
+                    + "Settings → Devices → Remote access via Tailscale as enabled with TaskWraith running. "
+                    + "Then refresh the QR and try again."
+            }
+            return "Couldn't connect to \(host) — TaskWraith isn't reachable there. "
+                + "Check TaskWraith is running on your Mac and this device is on the same network."
+        case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+            if isTailnet {
+                return "Couldn't find \(host) — this device can't resolve your tailnet name. "
+                    + "Turn Tailscale ON on this device (it provides the DNS for *.ts.net), then retry."
+            }
+            return "Couldn't find \(host) on this network — check Wi-Fi and that the pairing code is current."
+        case NSURLErrorTimedOut:
+            return "Connection to \(host) timed out. "
+                + (isTailnet
+                    ? "Check Tailscale is connected on both this device and the Mac, and that the Mac is awake."
+                    : "Check the Mac is awake, TaskWraith is running, and both devices share a network.")
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted,
+            NSURLErrorServerCertificateHasBadDate:
+            return "Secure connection to \(host) failed (\(ns.code)). "
+                + "The Mac's Tailscale HTTPS certificate may need refreshing — toggle "
+                + "Remote access via Tailscale off and on in the Mac's Settings → Devices."
+        case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
+            return "No network connection — check Wi-Fi or cellular on this device, then retry."
+        default:
+            return ns.localizedDescription
+        }
+    }
+}
+
 // ── RawJSON — hold an arbitrary JSON value losslessly inside a Codable type ────
 
 public struct RawJSON: Codable, Sendable {

@@ -399,16 +399,20 @@ public final class RemoteSessionModel: ObservableObject {
             let client = try RelayTransportClient(identitySeed: identitySeed)
             self.client = client
             consumeEvents(of: client)
+            let relayUrl = bootstrap.relayUrl
             Task {
                 do {
                     try await client.scan(bootstrap)
                     try await client.connect()
                 } catch {
-                    await MainActor.run { self.phase = .error(String(describing: error)) }
+                    await MainActor.run {
+                        self.phase = .error(
+                            TransportErrorCopy.friendlyMessage(for: error, relayUrl: relayUrl))
+                    }
                 }
             }
         } catch {
-            phase = .error(String(describing: error))
+            phase = .error(TransportErrorCopy.friendlyMessage(for: error, relayUrl: bootstrap.relayUrl))
         }
     }
 
@@ -451,15 +455,20 @@ public final class RemoteSessionModel: ObservableObject {
                         await client.dropConnection()
                     }
                 }
-                _ = lastError
                 await MainActor.run {
+                    // Lead with the actionable mapping when the failure was a
+                    // transport error; keep the friendly who-to-blame line.
+                    let detail = lastError.map {
+                        TransportErrorCopy.friendlyMessage(for: $0, relayUrl: record.relayUrl)
+                    }
                     self.phase = .error(
-                        "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
+                        detail
+                            ?? "Couldn't reach \(record.macDisplayName) — is TaskWraith running on your Mac?"
                     )
                 }
             }
         } catch {
-            phase = .error(String(describing: error))
+            phase = .error(TransportErrorCopy.friendlyMessage(for: error, relayUrl: record.relayUrl))
         }
     }
 
