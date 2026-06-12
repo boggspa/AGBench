@@ -23,6 +23,20 @@ files:
   - '!swift/**'
   - '!ios/**'
   - '!design-assets/**'
+  # Dev/release-only material that has no business in a distributed app.asar
+  # (a security reviewer found .local-only + docs + AGENTS.md shipping in
+  # 1.4.9). This `files` list is a denylist, so anything not excluded here
+  # gets bundled — keep it exhaustive for non-runtime trees.
+  - '!.local-only/**'
+  - '!docs/**'
+  - '!tests/**'
+  - '!scripts/**'
+  # relay/src is statically imported into out/main at build time (bundled),
+  # so the source tree itself is dead weight in the package.
+  - '!relay/**'
+  - '!{AGENTS.md,CLAUDE.md,ARCHITECTURE.md,WINDOWS_PARITY_QA.md,TERMS_NOTES.md}'
+  - '!{electron-builder.yml,electron-builder.debug.yml,vitest.config.ts}'
+  - '!**/*.tsbuildinfo'
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**

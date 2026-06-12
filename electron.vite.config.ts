@@ -5,20 +5,27 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
   // Load `.env` (gitignored) so build-time secrets stay out of source/git. The
-  // empty-prefix arg loads non-`VITE_`-prefixed keys too. We pick only the one
-  // key we need and bake it into the MAIN bundle via `define`, so the literal
-  // never lives in source. Fresh clones with no `.env` build cleanly (empty
-  // string) — only the Gemini Google-login refresh is then disabled.
+  // empty-prefix arg loads non-`VITE_`-prefixed keys too.
   const env = loadEnv(mode, process.cwd(), '')
   const iosRemoteEnabled = process.env.IOS_REMOTE_TRUE === '1' || env.IOS_REMOTE_TRUE === '1'
   const debugBuild = process.env.TASKWRAITH_DEBUG_BUILD === '1' || env.TASKWRAITH_DEBUG_BUILD === '1'
   const channelGatewayEnabled = mode === 'development' || debugBuild
+  // Gemini Google-login refresh needs the maintainer's OAuth client secret.
+  // It must NEVER bake into a distributed (production/notarized) build — a
+  // security review found the literal baked into the 1.4.9 app.asar. Bake it
+  // ONLY for dev + debug builds (where the maintainer exercises the login
+  // flow); public builds get an empty string, which just disables that one
+  // refresh path — exactly like a fresh clone with no `.env`. Escape hatch:
+  // TASKWRAITH_BUNDLE_GEMINI_SECRET=1 force-bundles for an unusual build.
+  const bundleGeminiSecret =
+    mode === 'development' ||
+    debugBuild ||
+    process.env.TASKWRAITH_BUNDLE_GEMINI_SECRET === '1'
+  const geminiOauthClientSecret = bundleGeminiSecret ? (env.GEMINI_OAUTH_CLIENT_SECRET ?? '') : ''
   return {
     main: {
       define: {
-        'process.env.GEMINI_OAUTH_CLIENT_SECRET': JSON.stringify(
-          env.GEMINI_OAUTH_CLIENT_SECRET ?? ''
-        )
+        'process.env.GEMINI_OAUTH_CLIENT_SECRET': JSON.stringify(geminiOauthClientSecret)
       }
     },
     preload: {},
