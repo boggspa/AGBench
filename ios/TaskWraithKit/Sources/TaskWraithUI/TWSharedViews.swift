@@ -2025,6 +2025,15 @@ public struct ThreadInspector: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if tab == 0 {
                         DiffSummaryPanel(diff: diff, isRunning: isRunning)
+                        // Git workflows need at least the diffReview read
+                        // tier (gitSnapshot); mutations additionally gate
+                        // on fileWrite inside the panel.
+                        if let workspaceId = model.taskCards.first(where: { $0.id == threadId })?
+                            .workspaceId,
+                            model.workspaceCanReviewDiffs(workspaceId)
+                        {
+                            GitWorkflowPanel(model: model, workspaceId: workspaceId)
+                        }
                     } else if tab == 1 {
                         SubAgentsPanel(children: children, onOpenThread: onOpenThread)
                     } else if tab == 3 {

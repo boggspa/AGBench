@@ -236,6 +236,13 @@ public struct BridgeActionAckData: Codable, Sendable {
     public let changeSet: RawJSON?
     /// Bounded workspace diff (the `workspaceDiff` action's ack payload).
     public let diff: WorkspaceDiffResult?
+    /// Compact git status (`gitSnapshot` / `gitStageAll` / `gitCommit` /
+    /// `gitPush` acks all return the post-action snapshot).
+    public let git: GitWorkspaceSnapshot?
+    /// PR summary (`githubPrStatus` / `githubCreatePr` acks).
+    public let pr: GitPullRequestSummary?
+    /// PR readiness probe (`githubPrReadiness` ack).
+    public let readiness: GitPrReadinessResult?
 }
 
 public struct WorkspaceFileEntry: Codable, Sendable, Identifiable, Hashable {
@@ -290,6 +297,82 @@ public struct WorkspaceDiffLine: Codable, Sendable, Hashable {
     public let text: String
     public let oldLine: Int?
     public let newLine: Int?
+}
+
+// ── Git workflow models (the `git*` / `github*` actions' ack payloads) ────
+
+/// Compact git status for a workspace repo — the Mac's GitService snapshot
+/// with a capped file list (the bridge compacts before the ack rides the
+/// relay). All fields optional-decode so older Macs can't break the phone.
+public struct GitWorkspaceSnapshot: Codable, Sendable {
+    public let repoRoot: String?
+    public let branch: String?
+    public let commit: String?
+    public let detached: Bool?
+    public let upstream: String?
+    public let remoteName: String?
+    public let remoteUrl: String?
+    public let ahead: Int?
+    public let behind: Int?
+    public let counts: GitChangeCounts?
+    public let clean: Bool?
+    /// merge | rebase | cherry-pick (nil for a normal tree).
+    public let mergeState: String?
+    public let conflicts: Int?
+    public let lineStats: GitLineStats?
+    public let files: [GitFileChange]?
+    /// The Mac dropped files beyond its cap — "showing N of more".
+    public let filesTruncated: Bool?
+}
+
+public struct GitChangeCounts: Codable, Sendable, Hashable {
+    public let changed: Int?
+    public let staged: Int?
+    public let unstaged: Int?
+    public let untracked: Int?
+}
+
+public struct GitLineStats: Codable, Sendable, Hashable {
+    public let additions: Int?
+    public let deletions: Int?
+}
+
+public struct GitFileChange: Codable, Sendable, Identifiable, Hashable {
+    public let path: String
+    /// created | modified | deleted | renamed | untracked | conflicted | ignored
+    public let kind: String?
+    public let staged: Bool?
+    public let unstaged: Bool?
+    public var id: String { path }
+    public var name: String { path.split(separator: "/").last.map(String.init) ?? path }
+}
+
+/// `gh pr view` summary for the current branch (checks capped by the Mac).
+public struct GitPullRequestSummary: Codable, Sendable {
+    public let number: Int?
+    public let url: String?
+    public let state: String?
+    public let isDraft: Bool?
+    public let headRefName: String?
+    public let baseRefName: String?
+    public let checks: [GitPullRequestCheck]?
+}
+
+public struct GitPullRequestCheck: Codable, Sendable, Hashable {
+    public let name: String?
+    public let status: String?
+    public let conclusion: String?
+}
+
+/// PR-readiness probe — whether "Create PR" may be offered and, when it
+/// can't, the human-readable reason the UI must show instead.
+public struct GitPrReadinessResult: Codable, Sendable {
+    public let canCreatePullRequest: Bool
+    public let shouldPushFirst: Bool
+    public let reason: String?
+    public let warnings: [String]?
+    public let git: GitWorkspaceSnapshot?
+    public let pr: GitPullRequestSummary?
 }
 
 public struct MobileApprovalCard: Codable, Sendable {
@@ -857,6 +940,87 @@ public enum BridgeAction {
             "kind": "workspaceDiff", "actionId": actionId,
             "workspaceId": workspaceId,
         ])
+    }
+
+    public static func gitSnapshot(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "gitSnapshot", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
+    public static func gitStageAll(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "gitStageAll", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
+    /// `message` must be user-entered text from an explicit commit field —
+    /// never synthesized from agent output. `stageAll` folds "Stage all &
+    /// Commit" into one round-trip.
+    public static func gitCommit(
+        workspaceId: String, message: String, stageAll: Bool = false,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "gitCommit", "actionId": actionId,
+            "workspaceId": workspaceId, "message": message,
+            "stageAll": stageAll,
+        ])
+    }
+
+    public static func gitPush(
+        workspaceId: String, setUpstream: Bool = false,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "gitPush", "actionId": actionId,
+            "workspaceId": workspaceId, "setUpstream": setUpstream,
+        ])
+    }
+
+    public static func githubPrStatus(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "githubPrStatus", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
+    public static func githubPrReadiness(
+        workspaceId: String,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        encode([
+            "kind": "githubPrReadiness", "actionId": actionId,
+            "workspaceId": workspaceId,
+        ])
+    }
+
+    public static func githubCreatePr(
+        workspaceId: String, title: String? = nil, body: String? = nil, draft: Bool = false,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": "githubCreatePr", "actionId": actionId,
+            "workspaceId": workspaceId, "draft": draft,
+        ]
+        if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["title"] = title
+        }
+        if let body, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["body"] = body
+        }
+        return encode(payload)
     }
 
     /// Wrap a typed action payload as the `bridge.requestActionAck` params.

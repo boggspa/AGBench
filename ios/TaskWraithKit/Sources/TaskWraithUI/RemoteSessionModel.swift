@@ -897,6 +897,16 @@ public final class RemoteSessionModel: ObservableObject {
         return capabilities.diffReview == true
     }
 
+    /// Git mutations (stage/commit/push/create-PR) ride the fileWrite
+    /// capability — the strongest existing write tier (mirrors the Mac
+    /// router's gating; git reads ride diffReview).
+    public func workspaceCanRunGitMutations(_ workspaceId: String?) -> Bool {
+        guard let workspaceId,
+            let capabilities = workspaces.first(where: { $0.id == workspaceId })?.capabilities
+        else { return false }
+        return capabilities.fileWrite == true
+    }
+
     public func requestDiffMode(workspaceId: String? = nil) {
         diffModeRequest = DiffModeRequest(workspaceId: workspaceId)
     }
@@ -953,6 +963,73 @@ public final class RemoteSessionModel: ObservableObject {
             BridgeAction.workspaceDiff(workspaceId: workspaceId), timeoutMs: 16_000)
         guard let diff = ack.data?.diff else { throw RemoteFileActionError.malformedAck }
         return diff
+    }
+
+    // ── Git workflows — the Mac's GitService is the single authority; every
+    //    mutation is an explicit phone UI action, never agent-initiated. ────
+
+    public func fetchGitSnapshot(workspaceId: String) async throws -> GitWorkspaceSnapshot {
+        let ack = try await requestFileAction(
+            BridgeAction.gitSnapshot(workspaceId: workspaceId), timeoutMs: 16_000)
+        guard let git = ack.data?.git else { throw RemoteFileActionError.malformedAck }
+        return git
+    }
+
+    public func stageAllChanges(workspaceId: String) async throws -> GitWorkspaceSnapshot {
+        let ack = try await requestFileAction(
+            BridgeAction.gitStageAll(workspaceId: workspaceId), timeoutMs: 20_000)
+        guard let git = ack.data?.git else { throw RemoteFileActionError.malformedAck }
+        return git
+    }
+
+    /// Commit with a user-entered message; `stageAll` runs `git add -A`
+    /// first (the panel's single "Stage all & Commit" button).
+    public func commitChanges(
+        workspaceId: String, message: String, stageAll: Bool
+    ) async throws -> GitWorkspaceSnapshot {
+        let ack = try await requestFileAction(
+            BridgeAction.gitCommit(workspaceId: workspaceId, message: message, stageAll: stageAll),
+            timeoutMs: 30_000)
+        guard let git = ack.data?.git else { throw RemoteFileActionError.malformedAck }
+        return git
+    }
+
+    /// Push the current branch; `setUpstream` publishes a branch that has
+    /// no upstream yet (the Mac runs `git push -u <remote> <branch>`).
+    public func pushBranch(
+        workspaceId: String, setUpstream: Bool
+    ) async throws -> GitWorkspaceSnapshot {
+        let ack = try await requestFileAction(
+            BridgeAction.gitPush(workspaceId: workspaceId, setUpstream: setUpstream),
+            timeoutMs: 60_000)
+        guard let git = ack.data?.git else { throw RemoteFileActionError.malformedAck }
+        return git
+    }
+
+    /// PR summary for the current branch — nil when no PR exists yet
+    /// (a successful read, not an error).
+    public func fetchPrStatus(workspaceId: String) async throws -> GitPullRequestSummary? {
+        let ack = try await requestFileAction(
+            BridgeAction.githubPrStatus(workspaceId: workspaceId), timeoutMs: 30_000)
+        return ack.data?.pr
+    }
+
+    public func fetchPrReadiness(workspaceId: String) async throws -> GitPrReadinessResult {
+        let ack = try await requestFileAction(
+            BridgeAction.githubPrReadiness(workspaceId: workspaceId), timeoutMs: 30_000)
+        guard let readiness = ack.data?.readiness else { throw RemoteFileActionError.malformedAck }
+        return readiness
+    }
+
+    public func createGithubPr(
+        workspaceId: String, title: String?, body: String?, draft: Bool
+    ) async throws -> GitPullRequestSummary {
+        let ack = try await requestFileAction(
+            BridgeAction.githubCreatePr(
+                workspaceId: workspaceId, title: title, body: body, draft: draft),
+            timeoutMs: 60_000)
+        guard let pr = ack.data?.pr else { throw RemoteFileActionError.malformedAck }
+        return pr
     }
 
     private func requestFileAction(
