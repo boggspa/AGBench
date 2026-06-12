@@ -23,3 +23,15 @@ Outputs:
 - `glyphs/*.svg`: individual provider glyphs.
 - `provider-glyphs.catalog.svg`: review sheet with large and small previews.
 - `provider-glyphs.manifest.json`: provider ids, accents, and drawing notes.
+
+Bake template PNGs (after changing any glyph):
+
+```bash
+npx electron design-assets/provider-glyphs/render-glyph-pngs.cjs
+```
+
+Renders each glyph white-on-transparent at 512px via Chromium (the SVGs
+lean on `<style>` + `var(--provider-accent)`, which qlmanage/NSImage
+flatten onto a white card). Writes masters to `png/` and copies into the
+iOS package resources, where `ProviderGlyphIcon` tints them with the
+provider accent at runtime (`renderingMode(.template)`).

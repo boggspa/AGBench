@@ -420,21 +420,20 @@ struct TaskRow: View {
                     .foregroundStyle(TWTheme.textTertiary)
                     .padding(.top, 4)
             }
-            // Provider-colored bullet — the sidebar's thread dot. Sub-agents
-            // with a character identity get their identicon badge instead.
+            // Provider glyph — monoline mnemonic tinted with the provider
+            // accent (star for ensembles; dot fallback for providers with
+            // no baked glyph). Sub-agents with a character identity get
+            // their identicon badge instead.
             if let agentName = card.agentName {
                 AgentIdentityBadge(
                     name: agentName, accentHex: card.agentAccent,
                     slug: card.agentSlug, size: 18)
                     .padding(.top, 2)
             } else {
-                Circle()
-                    .fill(
-                        card.isEnsemble
-                            ? TWTheme.chroma2 : TWTheme.providerAccent(card.provider)
-                    )
-                    .frame(width: 7, height: 7)
-                    .padding(.top, 6)
+                ProviderGlyphIcon(
+                    provider: card.provider, isEnsemble: card.isEnsemble, size: 16
+                )
+                .padding(.top, 2)
             }
             VStack(alignment: .leading, spacing: 4) {
                 if let agentName = card.agentName {

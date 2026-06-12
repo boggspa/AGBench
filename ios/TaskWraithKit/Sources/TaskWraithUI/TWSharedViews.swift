@@ -1419,6 +1419,62 @@ public func twMentionCandidates(
 // AttributedString and @mentions tinted by participant provider accent.
 // Deliberately dependency-free and bounded (preview text is ≤ a few KB).
 
+/// Monoline provider glyph — the sidebar's upgrade from the plain colored
+/// dot. Loads the white-on-alpha template PNG baked from
+/// design-assets/provider-glyphs (render-glyph-pngs.cjs) and tints it with
+/// the provider accent at runtime, so one master serves every theme.
+/// Ensembles get a star; providers without a baked glyph (ollama, qwen,
+/// unknown) keep the original dot.
+public struct ProviderGlyphIcon: View {
+    let provider: String?
+    let isEnsemble: Bool
+    let size: CGFloat
+
+    public init(provider: String?, isEnsemble: Bool = false, size: CGFloat = 16) {
+        self.provider = provider
+        self.isEnsemble = isEnsemble
+        self.size = size
+    }
+
+    private static func glyphImage(for provider: String?) -> Image? {
+        guard let provider = provider?.lowercased(), !provider.isEmpty else { return nil }
+        #if canImport(UIKit)
+            if let url = Bundle.module.url(
+                forResource: "provider-glyph-\(provider)", withExtension: "png"),
+                let data = try? Data(contentsOf: url),
+                let ui = UIImage(data: data)
+            {
+                return Image(uiImage: ui)
+            }
+            if let ui = UIImage(named: "provider-glyph-\(provider)") {
+                return Image(uiImage: ui)
+            }
+        #endif
+        return nil
+    }
+
+    public var body: some View {
+        if isEnsemble {
+            Image(systemName: "star.fill")
+                .font(.system(size: size * 0.72, weight: .semibold))
+                .foregroundStyle(TWTheme.chroma2)
+                .frame(width: size, height: size)
+        } else if let glyph = Self.glyphImage(for: provider) {
+            glyph
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .foregroundStyle(TWTheme.providerAccent(provider))
+        } else {
+            Circle()
+                .fill(TWTheme.providerAccent(provider))
+                .frame(width: size * 0.44, height: size * 0.44)
+                .frame(width: size, height: size)
+        }
+    }
+}
+
 public struct MarkdownLite: View {
     let text: String
     let participants: [RemoteEnsembleState.Participant]
