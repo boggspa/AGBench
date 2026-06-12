@@ -1,11 +1,12 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 
-// Keep vitest's default discovery, but never scan the local-only `ios/` tree
-// (the gitignored SwiftUI app + TaskWraithKit package and their interop driver).
-// Those are exercised by `swift test` and an explicit, env-gated vitest run
-// (`RUN_SWIFT_INTEROP=1 npx vitest run ios/interop/...`), not the main suite.
+const includeSwiftInterop = process.env.RUN_SWIFT_INTEROP === '1'
+
+// Keep vitest's default discovery, but skip the iOS tree in the normal suite.
+// The Swift package is exercised by `swift test`; the live Swift<->Node driver
+// is opt-in via RUN_SWIFT_INTEROP.
 export default defineConfig({
   test: {
-    exclude: [...configDefaults.exclude, 'ios/**']
+    exclude: includeSwiftInterop ? configDefaults.exclude : [...configDefaults.exclude, 'ios/**']
   }
 })
