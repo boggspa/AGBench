@@ -321,13 +321,34 @@ public final class RemoteSessionModel: ObservableObject {
 
     /// Pair from a scanned/pasted bootstrap JSON string.
     public func pair(fromBootstrapJSON json: String) {
-        guard let data = json.data(using: .utf8),
+        let sanitized = Self.sanitizeBootstrapJSON(json)
+        guard let data = sanitized.data(using: .utf8),
             let bootstrap = try? JSONDecoder().decode(PairingBootstrapPayload.self, from: data)
         else {
-            phase = .error("That doesn't look like a valid pairing code.")
+            phase = .error(
+                "That doesn't look like a valid pairing code. Use the Copy setup payload "
+                    + "button on your Mac (don't retype it), then paste the whole thing here."
+            )
             return
         }
         connect(bootstrap: bootstrap)
+    }
+
+    /// iOS text fields apply smart punctuation: touching the paste field
+    /// curls straight quotes (" → “”) and corrupts the JSON — the #1 cause
+    /// of "invalid pairing code". Undo that, plus the usual paste debris
+    /// (zero-width chars, BOM, surrounding whitespace).
+    static func sanitizeBootstrapJSON(_ raw: String) -> String {
+        var text = raw
+        let replacements: [(String, String)] = [
+            ("\u{201C}", "\""), ("\u{201D}", "\""),  // curly double quotes
+            ("\u{2018}", "'"), ("\u{2019}", "'"),  // curly single quotes
+            ("\u{FEFF}", ""), ("\u{200B}", ""), ("\u{200E}", ""), ("\u{200F}", "")
+        ]
+        for (from, to) in replacements {
+            text = text.replacingOccurrences(of: from, with: to)
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// ATS (NSAllowsLocalNetworking) permits cleartext ws:// only to hosts
