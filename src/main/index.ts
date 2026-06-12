@@ -16221,8 +16221,18 @@ if (isGeminiMcpBridgeProcess) {
           routeAction: (method, params) => transportActionRouter.route(method, params),
           subscribeRunEvents: (sink) => runEventBus.subscribe(sink),
           onPairingPrompt: (prompt) => {
+            // Field-debugging breadcrumb: proves the phone's clientAuth
+            // REACHED the Mac (the prompt fired), separating "handshake
+            // never arrived" from "renderer didn't show the sheet".
+            console.log(
+              `[remote-bridge] pairing confirm prompt for "${prompt.controllerDisplayName}" (session ${prompt.sessionID.slice(0, 8)}…) — code ${prompt.code}`
+            )
             if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
               mainWindow.webContents.send('bridge-pairing-response-received', prompt)
+            } else {
+              console.error(
+                '[remote-bridge] pairing confirm prompt had NO live window to land in — open the main window and retry'
+              )
             }
           },
           onBroadcasterChange: (broadcaster) => {
