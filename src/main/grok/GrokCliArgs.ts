@@ -1,7 +1,12 @@
 // Pure helpers for building the Grok CLI argv. Kept free of Electron / IPC / fs
 // imports so it can be unit-tested directly. The flags match `grok --help` on
-// 0.2.8 (the CLI is closely modelled on Claude Code, so `--deny` ==
-// `--disallowedTools` and `--permission-mode acceptEdits` mirrors Claude's).
+// 0.2.8 and were re-verified unchanged on 0.2.32 — every flag we emit (-p,
+// --cwd, --output-format streaming-json, --permission-mode, --deny, --resume,
+// --model, --effort, --disable-web-search) is still present, and there is
+// still NO per-run `--mcp-config` (per-run MCP stays an ACP session/new
+// concern; `grok mcp add` mutates user config and is never used). The CLI is
+// closely modelled on Claude Code, so `--deny` == `--disallowedTools` and
+// `--permission-mode acceptEdits` mirrors Claude's.
 //
 // PERMISSION POSTURE (keyed off the composer's approval mode, exactly like
 // Claude — see claudePermissionModeForApproval):

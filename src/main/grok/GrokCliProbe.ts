@@ -20,12 +20,15 @@ export interface GrokProbeFindings {
   topLevelFlags: string[]
   subcommands: string[]
   /**
-   * `grok agent stdio --help` is bare on 0.2.3 (only `-h/--help`), so the
-   * ACP wire protocol is undocumented at the CLI. This stays false until a
-   * future CLI version documents the stdio surface.
+   * `grok agent stdio --help` is bare on 0.2.3 (only `-h/--help`) and still
+   * undocumented on 0.2.32 (it gains only the global `--leader-socket`
+   * plumbing flag that every subcommand carries), so the ACP wire protocol
+   * remains undocumented at the CLI. This stays false until a future CLI
+   * version documents stdio-specific options.
    */
   agentStdioDocumented: boolean
   openAcpQuestions: string[]
+  answeredAcpQuestions: string[]
   errors: string[]
 }
 
@@ -52,20 +55,30 @@ export interface GrokProbeDeps {
 }
 
 /**
- * The ACP-spike questions that must be answered before a write-capable Grok
- * adapter (deferred G1/G4/G5). Carried in the probe output so the findings
- * always travel with the open unknowns.
+ * ACP-spike questions ANSWERED by the G1–G5c implementation arc (GrokAcpClient
+ * / GrokAcpProtocol fixtures from the real agent, plus gated live traces).
+ * Carried in the probe output so the findings record what is settled and how.
+ */
+export const GROK_ANSWERED_ACP_QUESTIONS: readonly string[] = [
+  'JSON-RPC methods: initialize → session/new → session/prompt; streaming session/update notifications; inbound session/request_permission; session/cancel for interrupts (GrokAcpClient).',
+  'session/new accepts cwd + mcpServers (a malformed mcpServers entry fails with -32602); model/permission posture ride the prompt + deny rules, not session/new params.',
+  'Assistant deltas arrive via session/update agent_message_chunk (GrokAcpProtocol fixtures).',
+  'Cancellation is session/cancel (protocol) followed by SIGINT; normal turn end is SIGINT after the stopReason.',
+  'Local shell/file ops are Grok-NATIVE execution. Grok asks via session/request_permission for native tools, but the live trace showed MCP tools can AUTO-RUN with no permission request — the advertised tool list + tools/call rejection is the boundary there.',
+  'The TaskWraith MCP server registers per-run via session/new mcpServers — no ~/.grok config mutation (the `grok mcp add` surface is never used).'
+]
+
+/**
+ * The ACP questions still open before the remaining Grok trust expansions
+ * (ACP-side resume, usage telemetry, relaxing TASKWRAITH_GROK_READONLY_MCP).
+ * Carried in the probe output so the findings always travel with the open
+ * unknowns.
  */
 export const GROK_OPEN_ACP_QUESTIONS: readonly string[] = [
-  'What exact JSON-RPC methods does `grok agent stdio` require (initialize / session.new / session.prompt / session.update / session.cancel)?',
-  'Does session creation accept cwd, model, permission-mode, and MCP servers?',
-  'Are assistant deltas delivered only via session/update agent_message_chunk?',
-  'Is cancellation a protocol method or process-kill only?',
-  'Does ACP expose usage / token metadata?',
-  'Does ACP expose a stable, resumable session id?',
-  'Are local shell/file operations client callbacks, MCP calls, or Grok-native execution?',
-  'Can native write/shell tools be disabled while MCP stays available?',
-  'Can the TaskWraith MCP server be registered per-run without mutating global ~/.grok config?'
+  'Does ACP expose usage / token metadata? (None observed through 0.2.32 — credits are scraped from the TUI /usage screen instead.)',
+  'Does ACP expose a stable, RESUMABLE session id (session/load or equivalent)? Headless `-r/--resume` exists; the ACP client still starts a fresh session/new per turn.',
+  'Can native write/shell tools be disabled per-seat over ACP while MCP stays available, instead of relying on request_permission auto-deny?',
+  'Do newer CLIs (0.2.51+) emit tool_call session/updates and session/request_permission for MCP tools? The 0.2.32-era trace showed MCP auto-run without permission — re-verify before relaxing TASKWRAITH_GROK_READONLY_MCP.'
 ]
 
 /** Flag every probe invocation carries to avoid a self-update side effect. */
@@ -118,12 +131,22 @@ export function parseGrokHelp(raw: string): { flags: string[]; subcommands: stri
 }
 
 /**
- * `grok agent stdio --help` documents nothing but `-h/--help` on 0.2.3.
- * "documented" = the help exposes any option beyond help (a proxy for the
+ * Global plumbing flags clap attaches to EVERY subcommand's help — their
+ * presence on `agent stdio --help` says nothing about the stdio/ACP surface
+ * itself. `--leader-socket` appeared globally in 0.2.32 (verified on the
+ * stdio, mcp, mcp add/list, inspect, and update help screens alike) and was
+ * flipping the old any-flag-beyond-help heuristic to a false positive.
+ */
+const GROK_GLOBAL_PLUMBING_FLAGS = new Set(['--help', '--leader-socket'])
+
+/**
+ * `grok agent stdio --help` documents nothing but `-h/--help` on 0.2.3 and
+ * nothing but help + the global `--leader-socket` plumbing flag on 0.2.32.
+ * "documented" = the help exposes any stdio-SPECIFIC option (a proxy for the
  * stdio/ACP surface gaining real documentation in a later CLI version).
  */
 export function agentStdioIsDocumented(raw: string): boolean {
-  return extractFlags(raw).some((flag) => flag !== '--help')
+  return extractFlags(raw).some((flag) => !GROK_GLOBAL_PLUMBING_FLAGS.has(flag))
 }
 
 export async function probeGrokCli(deps: GrokProbeDeps): Promise<GrokProbeFindings> {
@@ -138,6 +161,7 @@ export async function probeGrokCli(deps: GrokProbeDeps): Promise<GrokProbeFindin
     subcommands: [],
     agentStdioDocumented: false,
     openAcpQuestions: [...GROK_OPEN_ACP_QUESTIONS],
+    answeredAcpQuestions: [...GROK_ANSWERED_ACP_QUESTIONS],
     errors
   }
 

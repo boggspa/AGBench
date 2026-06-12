@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   agentStdioIsDocumented,
+  GROK_ANSWERED_ACP_QUESTIONS,
   GROK_OPEN_ACP_QUESTIONS,
   parseGrokHelp,
   parseGrokVersion,
@@ -76,6 +77,78 @@ Usage: grok agent stdio
 Options:
   -h, --help  Print help`
 
+// Captured verbatim from `grok --no-auto-update agent stdio --help` on 0.2.32.
+// The only addition is the global `--leader-socket` plumbing flag, which clap
+// attaches to EVERY subcommand (mcp, mcp add/list, inspect, update all show
+// it) — the stdio/ACP surface itself is still undocumented.
+const STDIO_HELP_FIXTURE_0_2_32 = `Run the agent over stdio
+
+Usage: grok agent stdio [OPTIONS]
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+      --leader-socket <PATH>
+          Use a custom leader socket path instead of the default \`~/.grok/leader.sock\`.
+
+          Both this client and the leader process it spawns bind this path (propagated via the \`GROK_LEADER_SOCKET\` env var), so a local/branch build can run an isolated leader without colliding with the default one already running on the machine.`
+
+// Representative subset of \`grok --no-auto-update --help\` on 0.2.32 — the
+// Commands table grew considerably (import/leader/login/memory/plugin/setup/
+// ssh/trace/update/version/worktree) and Options gained --leader-socket.
+const HELP_FIXTURE_0_2_32 = `Grok Build TUI
+
+Usage: grok [OPTIONS] [COMMAND]
+
+Options:
+      --allow <RULE>
+          Permission allow rule (Claude Code: --allowedTools)
+
+      --deny <RULE>
+          Permission deny rule (Claude Code: --disallowedTools)
+
+      --effort <LEVEL>
+          Effort level
+
+          [possible values: low, medium, high, xhigh, max]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+      --leader-socket <PATH>
+          Use a custom leader socket path instead of the default \`~/.grok/leader.sock\`.
+
+      --permission-mode <MODE>
+          Permission mode
+
+          [possible values: default, acceptEdits, auto, dontAsk, bypassPermissions, plan]
+
+  -r, --resume [<SESSION_ID>]
+          Resume a session by ID, or the most recent if omitted
+
+Commands:
+  agent        Run Grok without the interactive UI
+  completions  Generate shell completion scripts (bash, zsh, fish, powershell, ...)
+  export       Export a session transcript as Markdown
+  help         Print this message or the help of the given subcommand(s)
+  import       Import sessions into Grok
+  inspect      Show the configuration Grok discovers for this directory
+  leader       Manage running leader processes
+  login        Sign in to Grok
+  logout       Sign out and clear cached credentials
+  mcp          Manage MCP server configurations
+  memory       Manage cross-session memory
+  models       List available models and exit
+  plugin       Manage plugins and marketplace sources
+  sessions     List, search, or restore sessions
+  setup        Fetch and install managed deployment configuration
+  ssh          Run ssh with local clipboard support
+  trace        Export or upload session trace data
+  update       Check for updates or install a specific version
+  version      Print version information [aliases: v]
+  worktree     Manage git worktrees`
+
 describe('parseGrokVersion', () => {
   it('extracts the semver from the real version banner', () => {
     expect(parseGrokVersion(VERSION_FIXTURE)).toBe('0.2.3')
@@ -144,6 +217,10 @@ describe('agentStdioIsDocumented', () => {
     expect(agentStdioIsDocumented(STDIO_HELP_FIXTURE)).toBe(false)
   })
 
+  it('is false for the 0.2.32 stdio help — --leader-socket is global plumbing, not stdio docs', () => {
+    expect(agentStdioIsDocumented(STDIO_HELP_FIXTURE_0_2_32)).toBe(false)
+  })
+
   it('becomes true once the stdio surface documents real options', () => {
     const documented = `Run the agent over stdio
 
@@ -153,6 +230,35 @@ Options:
       --protocol <PROTO>  Wire protocol to speak
   -h, --help              Print help`
     expect(agentStdioIsDocumented(documented)).toBe(true)
+  })
+
+  it('stays true for real options even when plumbing flags are also present', () => {
+    const documented = `Run the agent over stdio
+
+Usage: grok agent stdio [OPTIONS]
+
+Options:
+      --protocol <PROTO>      Wire protocol to speak
+      --leader-socket <PATH>  Use a custom leader socket path
+  -h, --help                  Print help`
+    expect(agentStdioIsDocumented(documented)).toBe(true)
+  })
+})
+
+describe('parseGrokHelp on the 0.2.32 shape', () => {
+  const { flags, subcommands } = parseGrokHelp(HELP_FIXTURE_0_2_32)
+
+  it('extracts the grown flag set including the global plumbing flag', () => {
+    for (const flag of ['--allow', '--deny', '--effort', '--leader-socket', '--permission-mode']) {
+      expect(flags).toContain(flag)
+    }
+  })
+
+  it('extracts the grown Commands table', () => {
+    for (const subcommand of ['agent', 'inspect', 'mcp', 'update', 'worktree']) {
+      expect(subcommands).toContain(subcommand)
+    }
+    expect(subcommands).toHaveLength(20)
   })
 })
 
@@ -188,6 +294,7 @@ describe('probeGrokCli', () => {
     expect(findings.subcommands).toContain('mcp')
     expect(findings.agentStdioDocumented).toBe(false)
     expect(findings.openAcpQuestions).toEqual([...GROK_OPEN_ACP_QUESTIONS])
+    expect(findings.answeredAcpQuestions).toEqual([...GROK_ANSWERED_ACP_QUESTIONS])
     expect(findings.errors).toEqual([])
   })
 
