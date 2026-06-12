@@ -17,7 +17,7 @@ describe('getTailscaleServeStatus', () => {
     const config = JSON.stringify({
       TCP: { '443': { HTTPS: true } },
       Web: {
-        'chriss-mac-studio.tail-abc.ts.net:443': {
+        'mac.tailnet.ts.net:443': {
           Handlers: { '/': { Proxy: 'http://127.0.0.1:8787' } }
         }
       }

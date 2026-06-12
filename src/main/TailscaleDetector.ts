@@ -46,7 +46,7 @@ export interface TailscaleStatus {
   /** The machine's tailscale hostname (e.g. "macbook"). */
   hostname?: string
   /** This machine's MagicDNS name WITHOUT the trailing dot
-   * (e.g. "chriss-mac-studio.tail-abc.ts.net") — the hostname a
+   * (e.g. "mac.tailnet.ts.net") — the hostname a
    * `tailscale serve` HTTPS front door answers on. */
   dnsName?: string
   /** The tailnet's DNS name (e.g. "tail-abc.ts.net"). */

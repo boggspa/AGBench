@@ -7,9 +7,9 @@ import {
 
 describe('probeUrlForRelay', () => {
   it('maps wss:// to https:// preserving host and port', () => {
-    const url = probeUrlForRelay('wss://chriss-mac-studio.tail2d0961.ts.net')
+    const url = probeUrlForRelay('wss://mac.tailnet.ts.net')
     expect(url?.protocol).toBe('https:')
-    expect(url?.host).toBe('chriss-mac-studio.tail2d0961.ts.net')
+    expect(url?.host).toBe('mac.tailnet.ts.net')
     expect(url?.pathname).toBe('/')
 
     const withPort = probeUrlForRelay('wss://relay.example:8443/v1/session/abc?x=1')
