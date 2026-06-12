@@ -8063,13 +8063,28 @@ function App(): React.JSX.Element {
   const rehydrateQueuedRuns = async (workspaceList: WorkspaceRecord[]) => {
     if (rehydratedRunQueueRef.current || typeof window.api.getRunQueueJobs !== 'function') return
     rehydratedRunQueueRef.current = true
-    const [jobs, chatList, recoveryRecords] = await Promise.all([
+    const [jobs, recoveryRecords] = await Promise.all([
       window.api.getRunQueueJobs({ statuses: ['queued'] }),
-      window.api.getChats(),
       typeof window.api.getRunRecoveryRecords === 'function'
         ? window.api.getRunRecoveryRecords({ limit: 100 })
         : Promise.resolve([])
     ])
+    // Only chats referenced by a queued job or a recovery record need their
+    // full records here — this used to call getChats() and pull EVERY chat
+    // transcript (tens of MB) across IPC during startup for a lookup that
+    // typically touches zero or a handful of chats.
+    const neededChatIds = new Set<string>()
+    for (const job of jobs) {
+      if (job.status === 'queued' && job.chatId) neededChatIds.add(job.chatId)
+    }
+    for (const record of recoveryRecords) {
+      if (record.chatId) neededChatIds.add(record.chatId)
+    }
+    const chatList = (
+      await Promise.all(
+        Array.from(neededChatIds).map((chatId) => window.api.getChat(chatId).catch(() => null))
+      )
+    ).filter((chat): chat is ChatRecord => Boolean(chat))
     const recoveredChatList = await applyRecoveryRecordsToChats(recoveryRecords, chatList)
     setRunQueueJobs(jobs)
     const restoredRuns = jobs
