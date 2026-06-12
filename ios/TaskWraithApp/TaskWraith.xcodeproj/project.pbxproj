@@ -1,0 +1,356 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		12299021B552490B2C1C4F17 /* TaskWraithApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C10FF27BC422B0B9C03EBE /* TaskWraithApp.swift */; };
+		54644332E7359BDF2EBA0662 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 793E610251E2C2C41B44C224 /* PrivacyInfo.xcprivacy */; };
+		A4DCD2CE78DEEEB16D3B82C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F7552D09A7EE4DFE7C62B6F /* Assets.xcassets */; };
+		CE7101A9804142C180B58774 /* TaskWraithUI in Frameworks */ = {isa = PBXBuildFile; productRef = AF7441603810B23EE879F5FE /* TaskWraithUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2F7552D09A7EE4DFE7C62B6F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3370BF58F95DC204BE950651 /* TaskWraith.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TaskWraith.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		37C10FF27BC422B0B9C03EBE /* TaskWraithApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWraithApp.swift; sourceTree = "<group>"; };
+		5829A7D0E9EA0BDA0DEB9BE3 /* TaskWraithKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TaskWraithKit; path = ../TaskWraithKit; sourceTree = SOURCE_ROOT; };
+		793E610251E2C2C41B44C224 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4E3427B7FD006079DDE9829E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE7101A9804142C180B58774 /* TaskWraithUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9CCA702279B1520D4D4FA69B /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				5829A7D0E9EA0BDA0DEB9BE3 /* TaskWraithKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		D89E7A6E5D7925DE3A63DCC8 = {
+			isa = PBXGroup;
+			children = (
+				2F7552D09A7EE4DFE7C62B6F /* Assets.xcassets */,
+				793E610251E2C2C41B44C224 /* PrivacyInfo.xcprivacy */,
+				9CCA702279B1520D4D4FA69B /* Packages */,
+				E5A6165A2A67DB975B626F53 /* Sources */,
+				ED8B6943A8048572BE4B3966 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E5A6165A2A67DB975B626F53 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				37C10FF27BC422B0B9C03EBE /* TaskWraithApp.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		ED8B6943A8048572BE4B3966 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3370BF58F95DC204BE950651 /* TaskWraith.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		903E69D509196DD2813843C7 /* TaskWraith */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C60AB6663BCAA998B2E59136 /* Build configuration list for PBXNativeTarget "TaskWraith" */;
+			buildPhases = (
+				988AFDB68A5E29AE2CBF2DF7 /* Sources */,
+				EB2DC7118F9AA76C6B6BD2F7 /* Resources */,
+				4E3427B7FD006079DDE9829E /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TaskWraith;
+			packageProductDependencies = (
+				AF7441603810B23EE879F5FE /* TaskWraithUI */,
+			);
+			productName = TaskWraith;
+			productReference = 3370BF58F95DC204BE950651 /* TaskWraith.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7EDAC42A25DE2C23EFE5B551 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					903E69D509196DD2813843C7 = {
+						DevelopmentTeam = 8CZML8FK2D;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 20E0383AE089372BB7C418AF /* Build configuration list for PBXProject "TaskWraith" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D89E7A6E5D7925DE3A63DCC8;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1855D6887EB4E2132CB39DE1 /* XCLocalSwiftPackageReference "../TaskWraithKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = ED8B6943A8048572BE4B3966 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				903E69D509196DD2813843C7 /* TaskWraith */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		EB2DC7118F9AA76C6B6BD2F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A4DCD2CE78DEEEB16D3B82C8 /* Assets.xcassets in Resources */,
+				54644332E7359BDF2EBA0662 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		988AFDB68A5E29AE2CBF2DF7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				12299021B552490B2C1C4F17 /* TaskWraithApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		8D43BBF181F48514217AD077 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TaskWraith.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8CZML8FK2D;
+				INFOPLIST_FILE = Generated/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.taskwraith.companion;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A200D7ECE58157153BF18085 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A8789B56ABBA530D9544A721 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BA9A4434796613C2994D21AB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TaskWraith.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8CZML8FK2D;
+				INFOPLIST_FILE = Generated/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.taskwraith.companion;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		20E0383AE089372BB7C418AF /* Build configuration list for PBXProject "TaskWraith" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8789B56ABBA530D9544A721 /* Debug */,
+				A200D7ECE58157153BF18085 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C60AB6663BCAA998B2E59136 /* Build configuration list for PBXNativeTarget "TaskWraith" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8D43BBF181F48514217AD077 /* Debug */,
+				BA9A4434796613C2994D21AB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1855D6887EB4E2132CB39DE1 /* XCLocalSwiftPackageReference "../TaskWraithKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../TaskWraithKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AF7441603810B23EE879F5FE /* TaskWraithUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TaskWraithUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7EDAC42A25DE2C23EFE5B551 /* Project object */;
+}
