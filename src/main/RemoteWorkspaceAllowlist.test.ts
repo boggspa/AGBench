@@ -452,19 +452,26 @@ describe('RemoteWorkspaceAllowlist', () => {
       })
     })
 
-    it('grants ONLY monitor once a real workspace is allowlisted', () => {
+    it('grants the conversational set once a real workspace is allowlisted', () => {
       const allowlist = withOneEntry()
-      expect(
-        allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE, capability: 'monitor' }).allowed
-      ).toBe(true)
       expect(allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE }).allowed).toBe(true)
+      // Initiate + participate: monitor/approve/answer/cancel/startTurn/steer.
       for (const capability of [
+        'monitor',
         'approve',
         'answer',
         'cancel',
         'startTurn',
+        'steer'
+      ] as const) {
+        expect(
+          allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE, capability }).allowed
+        ).toBe(true)
+      }
+      // File access, diff review, and admin caps stay denied — global chats
+      // have no workspace and phone-origin turns must not touch files.
+      for (const capability of [
         'diffReview',
-        'steer',
         'fileBrowse',
         'fileRead',
         'fileWrite',
@@ -472,9 +479,42 @@ describe('RemoteWorkspaceAllowlist', () => {
         'yolo'
       ] as const) {
         expect(allowlist.evaluate({ workspaceId: GLOBAL_REMOTE_SCOPE, capability })).toMatchObject(
-          { allowed: false, reason: expect.stringMatching(/read-only/i) }
+          { allowed: false, reason: expect.stringMatching(/no file access/i) }
         )
       }
+    })
+
+    it('clamps phone-origin turns to plan mode — every other approval mode denies', () => {
+      const allowlist = withOneEntry()
+      expect(
+        allowlist.evaluate({
+          workspaceId: GLOBAL_REMOTE_SCOPE,
+          capability: 'startTurn',
+          approvalMode: 'plan'
+        }).allowed
+      ).toBe(true)
+      for (const approvalMode of ['default', 'allow-all', 'acceptEdits']) {
+        expect(
+          allowlist.evaluate({
+            workspaceId: GLOBAL_REMOTE_SCOPE,
+            capability: 'startTurn',
+            approvalMode
+          })
+        ).toMatchObject({
+          allowed: false,
+          reason: expect.stringMatching(/plan mode \(no file changes\)/i)
+        })
+      }
+      // Any provider may converse — the provider check does not apply to
+      // the global scope (the plan clamp is the guarantee, not the model).
+      expect(
+        allowlist.evaluate({
+          workspaceId: GLOBAL_REMOTE_SCOPE,
+          capability: 'startTurn',
+          provider: 'grok',
+          approvalMode: 'plan'
+        }).allowed
+      ).toBe(true)
     })
 
     it('never lists or persists the virtual entry', () => {

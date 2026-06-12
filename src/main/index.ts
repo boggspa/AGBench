@@ -1484,7 +1484,8 @@ function prepareIosComposerPromptChat(args: {
     approvalMode?: string
     model?: string
   }
-  workspace: WorkspaceRecord
+  /** null = a scope-global chat (T72) — no workspace binding. */
+  workspace: WorkspaceRecord | null
   imagePaths?: string[]
 }): ChatRecord {
   const { action, workspace } = args
@@ -1502,12 +1503,11 @@ function prepareIosComposerPromptChat(args: {
         : 'New Chat'
     chat = {
       appChatId: action.threadId,
-      scope: 'workspace',
+      scope: workspace ? 'workspace' : 'global',
       chatKind: 'single',
       provider,
       title,
-      workspaceId: workspace.id,
-      workspacePath: workspace.path,
+      ...(workspace ? { workspaceId: workspace.id, workspacePath: workspace.path } : {}),
       createdAt: now,
       updatedAt: now,
       archived: false,
@@ -14578,6 +14578,28 @@ if (isGeminiMcpBridgeProcess) {
       )
     }
 
+    // T72 — a phone prompt into a GLOBAL ensemble starts/extends rounds that
+    // run with each participant's OWN approval mode (the orchestrator has no
+    // per-round override). Phone-origin turns must never mutate files, so
+    // the prompt is accepted only when every enabled participant already
+    // runs in Plan; otherwise deny with the exact fix. Workspace ensembles
+    // are unaffected (their writes are the allowlisted-workspace contract).
+    const globalEnsembleWriteBlock = (chat: ChatRecord): string | null => {
+      if (chatScope(chat) !== 'global' || !chat.ensemble) return null
+      const writers = (chat.ensemble.participants ?? []).filter(
+        (participant) =>
+          participant.enabled !== false &&
+          (participant.permissionPresetId || 'default') !== 'read_only'
+      )
+      if (writers.length === 0) return null
+      const names = [...new Set(writers.map((participant) => participant.provider))].join(', ')
+      return (
+        'Global ensembles accept phone prompts only when every enabled participant uses the ' +
+        `Read-only permission preset (no file changes). Switch ${names} to Read-only on your ` +
+        'Mac, or send from the Mac.'
+      )
+    }
+
     const createBridgeActionExecutor = (): MainProcessActionExecutor => {
       // Phase C-late: action executor wires policy-cleared actions to real
       // main-process services. Wired today: `cancelRun`, `approvalReply`,
@@ -14814,6 +14836,8 @@ if (isGeminiMcpBridgeProcess) {
         ensembleQueuePromptFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          const writeBlock = globalEnsembleWriteBlock(chat)
+          if (writeBlock) return { ok: false, error: writeBlock }
           const text = action.text.trim()
           if (!text) return { ok: false, error: 'Prompt is empty' }
           if (
@@ -15052,6 +15076,8 @@ if (isGeminiMcpBridgeProcess) {
         ensembleSteerFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)
           if (!chat?.ensemble) return { ok: false, error: 'Thread is not an Ensemble chat' }
+          const writeBlock = globalEnsembleWriteBlock(chat)
+          if (writeBlock) return { ok: false, error: writeBlock }
           const text = action.text.trim()
           if (!text) return { ok: false, error: 'Prompt is empty' }
           if (
@@ -15415,15 +15441,31 @@ if (isGeminiMcpBridgeProcess) {
           return { ok: true, pr: compactGitPrForBridge(result.data) }
         },
         composerPromptFn: async (action) => {
-          // Resolve workspace path from the iOS-supplied workspaceId.
-          const workspaceRecord = AppStore.getWorkspaces().find((w) => w.id === action.workspaceId)
-          if (!workspaceRecord) {
+          // T72 — global chats are conversational from the phone, but every
+          // phone-origin turn runs READ-ONLY: approvalMode is forced to
+          // 'plan' here regardless of what arrived (the allowlist already
+          // denies non-plan; this is the defense-in-depth layer), and
+          // secondary workspace grants are refused (they would attach file
+          // access to a chat that must have none).
+          const isGlobalScope = action.workspaceId === GLOBAL_REMOTE_SCOPE
+          const workspaceRecord = isGlobalScope
+            ? null
+            : (AppStore.getWorkspaces().find((w) => w.id === action.workspaceId) ?? null)
+          if (!isGlobalScope && !workspaceRecord) {
             return {
               dispatched: false,
               appRunId: null,
               reason: `Workspace id "${action.workspaceId}" is not registered`
             }
           }
+          if (isGlobalScope && action.extraWorkspaceIds?.length) {
+            return {
+              dispatched: false,
+              appRunId: null,
+              reason: 'Global chats cannot attach workspace grants from a paired device'
+            }
+          }
+          const effectiveApprovalMode = isGlobalScope ? 'plan' : action.approvalMode
           // Need a sender for adapter event streaming. The main renderer
           // window is the natural target — iOS-initiated runs surface in
           // the desktop transcript live. When no window is open (rare —
@@ -15455,7 +15497,7 @@ if (isGeminiMcpBridgeProcess) {
                 reason: `Secondary workspace "${extra.displayName}" is not allowlisted for this device`
               }
             }
-            if (extra.path !== workspaceRecord.path) extraWorkspacePaths.push(extra.path)
+            if (extra.path !== workspaceRecord?.path) extraWorkspacePaths.push(extra.path)
           }
           // Phone-attached images → temp files → the SAME imagePaths lane the
           // desktop composer uses (adapters forward per provider). Temp dir
@@ -15495,11 +15537,12 @@ if (isGeminiMcpBridgeProcess) {
           const inheritedProfileId = [...(chat.runs ?? [])]
             .reverse()
             .find((run) => run.provider === provider && run.runtimeProfileId)?.runtimeProfileId
-          const defaultProfileId = inheritedProfileId
-            ? undefined
-            : AppStore.getRuntimeProfiles(provider).find(
-                (profile) => profile.builtin && profile.scope === 'workspace'
-              )?.id
+          const defaultProfileId =
+            inheritedProfileId || isGlobalScope
+              ? undefined
+              : AppStore.getRuntimeProfiles(provider).find(
+                  (profile) => profile.builtin && profile.scope === 'workspace'
+                )?.id
           const resolvedProfileId = inheritedProfileId ?? defaultProfileId
           // Gemini runs also carry an auth-profile selection on desktop; it
           // IS persisted per-run, so continuations inherit it. (Claude fast
@@ -15555,7 +15598,7 @@ if (isGeminiMcpBridgeProcess) {
             startedAt: new Date().toISOString(),
             promptMessageId,
             requestedModel: inheritedModel,
-            approvalMode: action.approvalMode,
+            approvalMode: effectiveApprovalMode,
             ...(resolvedProfileId ? { runtimeProfileId: resolvedProfileId } : {}),
             ...(inheritedGeminiAuthProfileId !== undefined
               ? { geminiAuthProfileId: inheritedGeminiAuthProfileId }
@@ -15574,7 +15617,7 @@ if (isGeminiMcpBridgeProcess) {
             chatId: chat.appChatId,
             provider,
             promptMessageId,
-            workspacePath: workspaceRecord.path
+            workspacePath: workspaceRecord?.path ?? globalRunCwd()
           })
           if (extraWorkspacePaths.length > 0) {
             const transcript = bridgeRunTranscripts.get(runId)
@@ -15596,14 +15639,16 @@ if (isGeminiMcpBridgeProcess) {
           // run.runDiff (File-changes card, diff row, Create PR) exactly
           // like a desktop run. Best-effort: capture failure only costs
           // the diff, never the run.
-          void captureWorkspaceSnapshot(workspaceRecord.path)
-            .then((snapshot) => {
-              const transcript = bridgeRunTranscripts.get(runId)
-              if (transcript) transcript.preSnapshot = snapshot
-            })
-            .catch((err) => {
-              console.warn(`[bridge-run] pre-run snapshot failed for ${runId}:`, err)
-            })
+          if (workspaceRecord) {
+            void captureWorkspaceSnapshot(workspaceRecord.path)
+              .then((snapshot) => {
+                const transcript = bridgeRunTranscripts.get(runId)
+                if (transcript) transcript.preSnapshot = snapshot
+              })
+              .catch((err) => {
+                console.warn(`[bridge-run] pre-run snapshot failed for ${runId}:`, err)
+              })
+          }
           broadcastChatUpdated(chat)
           broadcastThreadUpdate(chat.appChatId)
           pushRemoteThreadSnapshot(chat, action.workspaceId)
@@ -15635,8 +15680,8 @@ if (isGeminiMcpBridgeProcess) {
             ...(resumeSessionId ? { resumeSessionId } : {}),
             nextModel: action.model,
             codexHandoffsApplied: [],
-            isGlobalRun: false,
-            approvalMode: action.approvalMode || 'default',
+            isGlobalRun: isGlobalScope,
+            approvalMode: effectiveApprovalMode || 'default',
             providerLabel: providerLabel(provider),
             // Ollama continuity is NOT a session id — it's the persisted
             // tool-trajectory memory + tier the desktop composer injects.
@@ -15644,7 +15689,7 @@ if (isGeminiMcpBridgeProcess) {
               ? {
                   ollamaToolControlTier: effectiveOllamaToolControlTier(
                     AppStore.getSettings(),
-                    workspaceRecord.path
+                    workspaceRecord?.path ?? globalRunCwd()
                   ),
                   ollamaSessionMemory: normalizeOllamaSessionMemory(chat.ollamaSessionMemory)
                 }
@@ -15656,19 +15701,19 @@ if (isGeminiMcpBridgeProcess) {
             )
           }
           const payload: AgentRunPayload = {
-            // iOS-initiated runs are always scoped to a workspace (the
-            // bridge router only forwards actions whose workspaceId is in
-            // the RemoteWorkspaceAllowlist, and that list rejects global
-            // scope). The earlier 'chat' literal was a pre-existing typo
-            // that the typechecker now catches.
+            // T72 — workspace runs carry their allowlisted workspace; a
+            // global run rides the desktop's own global lane (scope
+            // 'global' → globalRunCwd(), no external grants) with
+            // approvalMode FORCED to 'plan' so a phone-origin turn can
+            // never mutate files.
             provider,
-            scope: 'workspace',
-            workspace: workspaceRecord.path,
+            scope: isGlobalScope ? 'global' : 'workspace',
+            ...(workspaceRecord ? { workspace: workspaceRecord.path } : {}),
             prompt: composed.contextualPrompt,
             ...(resumeSessionId ? { providerSessionId: resumeSessionId } : {}),
             appChatId: chat.appChatId,
             appRunId: runId,
-            approvalMode: action.approvalMode,
+            approvalMode: effectiveApprovalMode,
             model: inheritedModel,
             ...(inheritedReasoningEffort ? { reasoningEffort: inheritedReasoningEffort } : {}),
             ...(inheritedClaudeReasoningEffort
@@ -15685,7 +15730,9 @@ if (isGeminiMcpBridgeProcess) {
                     issueExternalPathGrant({
                       id: `ios-grant-${runId}-${Math.random().toString(36).slice(2, 8)}`,
                       provider,
-                      workspaceId: workspaceRecord.id,
+                      // Extras are refused for global scope, so a
+                      // non-null record is guaranteed on this path.
+                      workspaceId: workspaceRecord?.id ?? action.workspaceId,
                       chatId: chat.appChatId,
                       path: grantPath,
                       kind: 'directory',
