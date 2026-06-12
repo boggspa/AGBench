@@ -75,7 +75,8 @@ import {
   createWorkspaceChangeSet,
   createWorkspaceChangeSetFromEditorWrite,
   createWorkspaceChangeSetFromRunDiff,
-  filterWorkspaceChangeSets
+  filterWorkspaceChangeSets,
+  pruneWorkspaceChangeSets
 } from '../WorkspaceChangeModel'
 import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
 import { chatPathForId, isSafeChatId } from '../ChatPath'
@@ -2385,13 +2386,38 @@ export class AppStore {
   }
 
   // Workspace change model
+  /** Same mtime+size-validated caching as chat records: the change ledger
+   * reached 19MB on disk and was re-parsed on the main process per read. */
+  private static workspaceChangeCache: {
+    mtimeMs: number
+    size: number
+    records: WorkspaceChangeSet[]
+  } | null = null
+
+  private static readWorkspaceChangeSetsCached(): WorkspaceChangeSet[] {
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(workspaceChangesPath)
+    } catch {
+      this.workspaceChangeCache = null
+      return []
+    }
+    const cached = this.workspaceChangeCache
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.records
+    }
+    const parsed = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, [])
+    const records = Array.isArray(parsed) ? parsed : []
+    this.workspaceChangeCache = { mtimeMs: stat.mtimeMs, size: stat.size, records }
+    return records
+  }
+
   static getWorkspaceChangeSets(filter: WorkspaceChangeFilter = {}): WorkspaceChangeSet[] {
-    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, [])
-    return filterWorkspaceChangeSets(Array.isArray(records) ? records : [], filter)
+    return filterWorkspaceChangeSets(this.readWorkspaceChangeSetsCached(), filter)
   }
 
   static saveWorkspaceChangeSet(input: WorkspaceChangeSetInput): WorkspaceChangeSet {
-    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, [])
+    const records = [...this.readWorkspaceChangeSetsCached()]
     const record = createWorkspaceChangeSet(input)
     const index = records.findIndex((item) => item.id === record.id)
     if (index >= 0) {
@@ -2404,7 +2430,21 @@ export class AppStore {
     } else {
       records.push(record)
     }
-    writeJson(workspaceChangesPath, filterWorkspaceChangeSets(records))
+    // Retention on every persist — count + age caps plus per-record diff
+    // compaction, so the ledger can't grow unbounded again.
+    const pruned = pruneWorkspaceChangeSets(records)
+    const preStat = fs.existsSync(workspaceChangesPath) ? fs.statSync(workspaceChangesPath) : null
+    writeJson(workspaceChangesPath, pruned)
+    try {
+      const postStat = fs.statSync(workspaceChangesPath)
+      const wrote =
+        !preStat || postStat.mtimeMs !== preStat.mtimeMs || postStat.size !== preStat.size
+      this.workspaceChangeCache = wrote
+        ? { mtimeMs: postStat.mtimeMs, size: postStat.size, records: pruned }
+        : null
+    } catch {
+      this.workspaceChangeCache = null
+    }
     return index >= 0 ? records[index] : record
   }
 

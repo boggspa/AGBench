@@ -282,3 +282,74 @@ export function filterWorkspaceChangeSets(
   )
   return filter.limit && filter.limit > 0 ? sorted.slice(0, Math.floor(filter.limit)) : sorted
 }
+
+/** Retention bounds applied every time the change ledger is persisted.
+ * Field data: the ledger reached 19MB from 261 records — one provider_run
+ * change set stored 7.8MB of `diffText`, mostly multi-MB diffs of `.build/`
+ * noise (dSYM YAML) plus a 1.2MB diff of one generated JSON file. The store
+ * parses this whole file on the main process, so its size is a direct UI
+ * latency cost. */
+export const WORKSPACE_CHANGE_RETENTION = {
+  /** Newest records kept (sorted by updatedAt). */
+  maxRecords: 400,
+  /** Records older than this are dropped outright. */
+  maxAgeMs: 90 * 24 * 60 * 60 * 1000,
+  /** Per-file diff body cap for viewable (non-noise) files. */
+  maxDiffTextChars: 64 * 1024,
+  /** Records still over this after diff compaction shed their snapshots. */
+  maxRecordChars: 1024 * 1024
+} as const
+
+/** Bound one record's serialized size: noise/binary files lose their diff
+ * bodies (stats and rows stay), oversized real diffs truncate with a notice,
+ * and a record still over budget sheds its pre/post workspace snapshots. */
+export function compactWorkspaceChangeSet(record: WorkspaceChangeSet): WorkspaceChangeSet {
+  let compacted = record
+  if (Array.isArray(record.files) && record.files.length > 0) {
+    let changed = false
+    const files = record.files.map((file) => {
+      if (typeof file.diffText !== 'string' || file.diffText.length === 0) return file
+      if (file.isNoise || file.isBinary) {
+        changed = true
+        const { diffText: _omitted, ...rest } = file
+        return rest
+      }
+      if (file.diffText.length > WORKSPACE_CHANGE_RETENTION.maxDiffTextChars) {
+        changed = true
+        return {
+          ...file,
+          diffText:
+            file.diffText.slice(0, WORKSPACE_CHANGE_RETENTION.maxDiffTextChars) +
+            `\n… diff truncated for storage (${file.diffText.length.toLocaleString()} chars total)`
+        }
+      }
+      return file
+    })
+    if (changed) compacted = { ...compacted, files }
+  }
+  if (
+    (compacted.preSnapshot || compacted.postSnapshot) &&
+    JSON.stringify(compacted).length > WORKSPACE_CHANGE_RETENTION.maxRecordChars
+  ) {
+    const { preSnapshot: _pre, postSnapshot: _post, ...rest } = compacted
+    compacted = rest
+  }
+  return compacted
+}
+
+/** Apply the retention policy to the whole ledger (newest-first cap + age
+ * cap + per-record compaction). Runs on every save, so the ledger can never
+ * grow without bound again. */
+export function pruneWorkspaceChangeSets(
+  records: WorkspaceChangeSet[],
+  now: number = Date.now()
+): WorkspaceChangeSet[] {
+  return [...records]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .filter((record) => {
+      const updatedMs = new Date(record.updatedAt).getTime()
+      return !Number.isFinite(updatedMs) || now - updatedMs <= WORKSPACE_CHANGE_RETENTION.maxAgeMs
+    })
+    .slice(0, WORKSPACE_CHANGE_RETENTION.maxRecords)
+    .map(compactWorkspaceChangeSet)
+}

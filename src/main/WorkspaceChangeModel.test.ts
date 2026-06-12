@@ -3,7 +3,9 @@ import {
   createWorkspaceChangeSetFromEditorWrite,
   createWorkspaceChangeSetFromRunDiff,
   estimateTextEditLineDelta,
-  filterWorkspaceChangeSets
+  filterWorkspaceChangeSets,
+  pruneWorkspaceChangeSets,
+  WORKSPACE_CHANGE_RETENTION
 } from './WorkspaceChangeModel'
 import type { RunDiffResult, WorkspaceChangeSet } from './store/types'
 
@@ -190,5 +192,111 @@ describe('WorkspaceChangeModel', () => {
       )
     ).toEqual([first.id])
     expect(filterWorkspaceChangeSets([first, second], { provider: 'codex' })).toHaveLength(1)
+  })
+})
+
+describe('pruneWorkspaceChangeSets retention', () => {
+  const baseMs = new Date('2026-06-01T12:00:00.000Z').getTime()
+
+  function changeSet(partial: Partial<WorkspaceChangeSet>): WorkspaceChangeSet {
+    return {
+      schemaVersion: 1,
+      id: `cs-${Math.random().toString(36).slice(2)}`,
+      source: 'provider_run',
+      status: 'captured',
+      title: 'Change',
+      workspacePath: '/workspace',
+      createdAt: new Date(baseMs).toISOString(),
+      updatedAt: new Date(baseMs).toISOString(),
+      files: [],
+      artifacts: [],
+      stats: { fileCount: 0, additions: 0, deletions: 0 },
+      ...partial
+    } as WorkspaceChangeSet
+  }
+
+  it('caps record count newest-first and drops aged-out records', () => {
+    const fresh = changeSet({ id: 'fresh', updatedAt: new Date(baseMs).toISOString() })
+    const stale = changeSet({
+      id: 'stale',
+      updatedAt: new Date(baseMs - WORKSPACE_CHANGE_RETENTION.maxAgeMs - 1000).toISOString()
+    })
+    const bulk = Array.from({ length: WORKSPACE_CHANGE_RETENTION.maxRecords + 50 }, (_, i) =>
+      changeSet({ id: `bulk-${i}`, updatedAt: new Date(baseMs - i * 1000).toISOString() })
+    )
+    const pruned = pruneWorkspaceChangeSets([stale, fresh, ...bulk], baseMs)
+    expect(pruned).toHaveLength(WORKSPACE_CHANGE_RETENTION.maxRecords)
+    expect(pruned.some((r) => r.id === 'stale')).toBe(false)
+    expect(pruned[0].id).toBe('fresh')
+  })
+
+  it('strips diff bodies from noise/binary files and truncates oversized real diffs', () => {
+    const record = changeSet({
+      files: [
+        {
+          path: '.build/debug.yaml',
+          status: 'modified',
+          origin: 'run_diff',
+          isNoise: true,
+          previewKind: 'git_diff',
+          diffText: 'x'.repeat(500_000)
+        },
+        {
+          path: 'app.bin',
+          status: 'modified',
+          origin: 'run_diff',
+          isBinary: true,
+          previewKind: 'binary',
+          diffText: 'y'.repeat(100_000)
+        },
+        {
+          path: 'src/Real.swift',
+          status: 'modified',
+          origin: 'run_diff',
+          previewKind: 'git_diff',
+          diffText: 'z'.repeat(WORKSPACE_CHANGE_RETENTION.maxDiffTextChars + 5_000)
+        },
+        {
+          path: 'src/Small.swift',
+          status: 'modified',
+          origin: 'run_diff',
+          previewKind: 'git_diff',
+          diffText: 'small diff'
+        }
+      ]
+    })
+    const [compacted] = pruneWorkspaceChangeSets([record], baseMs)
+    const byPath = new Map(compacted.files.map((f) => [f.path, f]))
+    expect(byPath.get('.build/debug.yaml')?.diffText).toBeUndefined()
+    expect(byPath.get('app.bin')?.diffText).toBeUndefined()
+    const real = byPath.get('src/Real.swift')?.diffText ?? ''
+    expect(real.length).toBeLessThan(WORKSPACE_CHANGE_RETENTION.maxDiffTextChars + 200)
+    expect(real).toContain('diff truncated for storage')
+    expect(byPath.get('src/Small.swift')?.diffText).toBe('small diff')
+    // Rows and their stats survive the strip — only bodies go.
+    expect(compacted.files).toHaveLength(4)
+  })
+
+  it('sheds workspace snapshots only when a record stays over the size budget', () => {
+    const hugeSnapshot = {
+      capturedAt,
+      isGitRepo: true,
+      workspacePath: '/workspace',
+      files: Array.from({ length: 12_000 }, (_, i) => ({
+        path: `deep/nested/path/to/generated/file-${i}.swift`,
+        sizeBytes: 1234,
+        mtimeMs: baseMs,
+        hash: `hash-${i}-abcdefabcdefabcdefabcdefabcdef`
+      }))
+    }
+    const oversized = changeSet({ id: 'big', preSnapshot: hugeSnapshot })
+    const modest = changeSet({
+      id: 'modest',
+      preSnapshot: { capturedAt, isGitRepo: true, workspacePath: '/workspace' }
+    })
+    const pruned = pruneWorkspaceChangeSets([oversized, modest], baseMs)
+    const byId = new Map(pruned.map((r) => [r.id, r]))
+    expect(byId.get('big')?.preSnapshot).toBeUndefined()
+    expect(byId.get('modest')?.preSnapshot).toBeDefined()
   })
 })
