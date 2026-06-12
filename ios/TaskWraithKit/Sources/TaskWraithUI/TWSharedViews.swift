@@ -1478,11 +1478,11 @@ public func twMentionCandidates(
 // Deliberately dependency-free and bounded (preview text is ≤ a few KB).
 
 /// Monoline provider glyph — the sidebar's upgrade from the plain colored
-/// dot. Loads the white-on-alpha template PNG baked from
-/// design-assets/provider-glyphs (render-glyph-pngs.cjs) and tints it with
-/// the provider accent at runtime, so one master serves every theme.
-/// Ensembles get a star; providers without a baked glyph (ollama, qwen,
-/// unknown) keep the original dot.
+/// dot. Loads a white-on-alpha template PNG from the app asset catalog or
+/// package resources and tints it with the provider accent at runtime, so one
+/// master serves every theme.
+/// Ensembles get a star; providers without a baked glyph (qwen, unknown)
+/// keep the original dot.
 public struct ProviderGlyphIcon: View {
     let provider: String?
     let isEnsemble: Bool
@@ -1497,14 +1497,14 @@ public struct ProviderGlyphIcon: View {
     private static func glyphImage(for provider: String?) -> Image? {
         guard let provider = provider?.lowercased(), !provider.isEmpty else { return nil }
         #if canImport(UIKit)
+            if let ui = UIImage(named: "provider-glyph-\(provider)") {
+                return Image(uiImage: ui)
+            }
             if let url = Bundle.module.url(
                 forResource: "provider-glyph-\(provider)", withExtension: "png"),
                 let data = try? Data(contentsOf: url),
                 let ui = UIImage(data: data)
             {
-                return Image(uiImage: ui)
-            }
-            if let ui = UIImage(named: "provider-glyph-\(provider)") {
                 return Image(uiImage: ui)
             }
         #endif
