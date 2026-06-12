@@ -20,8 +20,8 @@ struct TransportErrorCopyTests {
     func cannotConnectTailnet() {
         let message = TransportErrorCopy.friendlyMessage(
             for: urlError(NSURLErrorCannotConnectToHost),
-            relayUrl: "wss://chriss-mac-studio.tail2d0961.ts.net")
-        #expect(message.contains("chriss-mac-studio.tail2d0961.ts.net"))
+            relayUrl: "wss://mac.tailnet.ts.net")
+        #expect(message.contains("mac.tailnet.ts.net"))
         #expect(message.contains("Tailscale is ON"))
         #expect(message.contains("Remote access via Tailscale"))
         // The NSError UserInfo wall must be gone.
@@ -41,7 +41,7 @@ struct TransportErrorCopyTests {
     func cannotFindTailnetHost() {
         let message = TransportErrorCopy.friendlyMessage(
             for: urlError(NSURLErrorCannotFindHost),
-            relayUrl: "wss://chriss-mac-studio.tail2d0961.ts.net")
+            relayUrl: "wss://mac.tailnet.ts.net")
         #expect(message.contains("Turn Tailscale ON on this device"))
     }
 
@@ -49,13 +49,13 @@ struct TransportErrorCopyTests {
     func timeoutAndTls() {
         let timeout = TransportErrorCopy.friendlyMessage(
             for: urlError(NSURLErrorTimedOut),
-            relayUrl: "wss://chriss-mac-studio.tail2d0961.ts.net")
+            relayUrl: "wss://mac.tailnet.ts.net")
         #expect(timeout.contains("timed out"))
         #expect(timeout.contains("Mac is awake"))
 
         let tls = TransportErrorCopy.friendlyMessage(
             for: urlError(NSURLErrorSecureConnectionFailed),
-            relayUrl: "wss://chriss-mac-studio.tail2d0961.ts.net")
+            relayUrl: "wss://mac.tailnet.ts.net")
         #expect(tls.contains("certificate"))
     }
 
@@ -65,7 +65,7 @@ struct TransportErrorCopyTests {
             var errorDescription: String? { "Pairing code expired — refresh on the Mac." }
         }
         let message = TransportErrorCopy.friendlyMessage(
-            for: CustomError(), relayUrl: "wss://chriss-mac-studio.tail2d0961.ts.net")
+            for: CustomError(), relayUrl: "wss://mac.tailnet.ts.net")
         #expect(message == "Pairing code expired — refresh on the Mac.")
     }
 

@@ -39,15 +39,13 @@ package, link the `TaskWraithUI` product, and add `Sources/TaskWraithApp.swift`.
 
 ## Testing on a real iPhone / iPad
 
-The project is pre-wired for device runs — automatic signing under the
-TaskWraith Apple Developer team (`8CZML8FK2D`, the same team that signs the Mac
-app), camera + local-network usage strings, and an ATS exception so dev builds
-can speak cleartext `ws://` to a LAN/Tailscale relay. Checklist:
+The project is wired for device runs — automatic signing, camera +
+local-network usage strings, and an ATS exception so dev builds can speak
+cleartext `ws://` to a LAN/Tailscale relay. Checklist:
 
-1. **Xcode → Settings → Accounts**: make sure the Apple ID for team
-   `8CZML8FK2D` is signed in (Xcode then mints the Apple Development
-   certificate + provisioning profile on first run). Using a different team?
-   Change it under Signing & Capabilities — automatic signing handles the rest.
+1. **Xcode → Settings → Accounts**: make sure the Apple ID for your developer
+   team is signed in, then select that team under Signing & Capabilities. Xcode
+   mints the Apple Development certificate + provisioning profile on first run.
 2. **Plug in the device** (or use Wi-Fi debugging) and pick it as the run
    destination. First install prompts the device for **Developer Mode**
    (Settings → Privacy & Security → Developer Mode → reboot), and you may need

@@ -65,10 +65,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.taskwraith.companion
-        # Pre-wired to the TaskWraith Apple Developer team (same team the Mac
-        # app's Developer ID signing uses) so device runs sign automatically —
-        # change in Signing & Capabilities if you use a different team.
-        DEVELOPMENT_TEAM: 8CZML8FK2D
+        # Select your Apple Developer team locally in Signing & Capabilities
+        # before running on a physical device.
         CODE_SIGN_STYLE: Automatic
         CURRENT_PROJECT_VERSION: "1"
         MARKETING_VERSION: "0.1.0"
