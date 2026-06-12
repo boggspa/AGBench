@@ -66,6 +66,28 @@ function makeStubExecutor(
       executed: true,
       message: 'workspaceDiff done'
     }),
+    executeGitSnapshot: make('executeGitSnapshot', {
+      executed: true,
+      message: 'gitSnapshot done'
+    }),
+    executeGitStageAll: make('executeGitStageAll', {
+      executed: true,
+      message: 'gitStageAll done'
+    }),
+    executeGitCommit: make('executeGitCommit', { executed: true, message: 'gitCommit done' }),
+    executeGitPush: make('executeGitPush', { executed: true, message: 'gitPush done' }),
+    executeGithubPrStatus: make('executeGithubPrStatus', {
+      executed: true,
+      message: 'githubPrStatus done'
+    }),
+    executeGithubPrReadiness: make('executeGithubPrReadiness', {
+      executed: true,
+      message: 'githubPrReadiness done'
+    }),
+    executeGithubCreatePr: make('executeGithubCreatePr', {
+      executed: true,
+      message: 'githubCreatePr done'
+    }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
     executeEnsembleCancelRound: make('executeEnsembleCancelRound', {
       executed: true,
@@ -1732,6 +1754,116 @@ describe('BridgeActionRouter', () => {
       expect(result.accepted).toBe(false)
       expect(result.reasonCode).toBe('capabilityDenied')
       expect(result.message).toMatch(/capability "diffReview"/i)
+      expect(calls).toHaveLength(0)
+    })
+  })
+
+  describe('git workflow action policy', () => {
+    const encodeGitAction = (action: Record<string, unknown>) =>
+      Buffer.from(
+        JSON.stringify(
+          withReplayMeta({
+            workspaceId: 'ws-git',
+            ...action
+          })
+        ),
+        'utf-8'
+      ).toString('base64')
+
+    const upsertGitWorkspace = (
+      allowlist: RemoteWorkspaceAllowlist,
+      capabilities?: string[]
+    ): void => {
+      allowlist.upsert({
+        workspaceId: 'ws-git',
+        path: '/repo',
+        mode: 'read-write',
+        ...(capabilities ? { capabilities: capabilities as never } : {}),
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+    }
+
+    it('dispatches every git action kind to its executor method', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      upsertGitWorkspace(allowlist)
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const actions = [
+        { kind: 'gitSnapshot', method: 'executeGitSnapshot' },
+        { kind: 'gitStageAll', method: 'executeGitStageAll' },
+        { kind: 'gitCommit', message: 'phone commit', method: 'executeGitCommit' },
+        { kind: 'gitPush', setUpstream: true, method: 'executeGitPush' },
+        { kind: 'githubPrStatus', method: 'executeGithubPrStatus' },
+        { kind: 'githubPrReadiness', method: 'executeGithubPrReadiness' },
+        { kind: 'githubCreatePr', title: 'Phone PR', method: 'executeGithubCreatePr' }
+      ]
+
+      for (const action of actions) {
+        const { method, ...payload } = action
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: `pair-${method}`,
+          payloadBase64: encodeGitAction(payload)
+        })) as { accepted: boolean; reasonCode?: string }
+        expect(result.accepted).toBe(true)
+        expect(result.reasonCode).toBe('accepted')
+        expect(calls[calls.length - 1]?.method).toBe(method)
+      }
+    })
+
+    it('denies git mutations when the fileWrite capability is absent', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      upsertGitWorkspace(allowlist, ['monitor', 'diffReview', 'fileBrowse', 'fileRead'])
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const mutations = [
+        { kind: 'gitStageAll' },
+        { kind: 'gitCommit', message: 'phone commit' },
+        { kind: 'gitPush' },
+        { kind: 'githubCreatePr' }
+      ]
+      for (const payload of mutations) {
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: `pair-git-deny-${payload.kind}`,
+          payloadBase64: encodeGitAction(payload)
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(false)
+        expect(result.reasonCode).toBe('capabilityDenied')
+        expect(result.message).toMatch(/capability "fileWrite"/i)
+      }
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies git reads when the diffReview capability is absent', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      upsertGitWorkspace(allowlist, ['monitor', 'fileBrowse', 'fileRead', 'fileWrite'])
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      for (const kind of ['gitSnapshot', 'githubPrStatus', 'githubPrReadiness']) {
+        const result = (await router.route('bridge.requestActionAck', {
+          pairID: `pair-git-read-deny-${kind}`,
+          payloadBase64: encodeGitAction({ kind })
+        })) as { accepted: boolean; reasonCode?: string; message?: string }
+        expect(result.accepted).toBe(false)
+        expect(result.reasonCode).toBe('capabilityDenied')
+        expect(result.message).toMatch(/capability "diffReview"/i)
+      }
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies git actions for a non-allowlisted workspace', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist, executor })
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-git-unlisted',
+        payloadBase64: encodeGitAction({ kind: 'gitCommit', message: 'phone commit' })
+      })) as { accepted: boolean; reasonCode?: string }
+      expect(result.accepted).toBe(false)
       expect(calls).toHaveLength(0)
     })
   })

@@ -275,6 +275,11 @@ import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
 import { GitService } from './services/GitService'
+import type {
+  GitPrReadiness,
+  GitPrSummary,
+  GitRepositorySnapshot
+} from './services/GitService'
 import { AppShellStatsService } from './services/AppShellStatsService'
 import { getWorkspaceActivitySnapshot } from './WorkspaceActivityService'
 import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
@@ -14568,6 +14573,68 @@ if (isGeminiMcpBridgeProcess) {
       // run as if a desktop user had started it — the iOS-initiated run
       // appears live in the desktop transcript. iOS gets only the initial
       // appRunId today; streaming events back to iOS is a future slice.
+      //
+      // Git workflow actions reuse the desktop GitService verbatim (the
+      // Mac is the single git authority — the phone only ever sees typed
+      // results). Snapshots are compacted before they ride the ack so a
+      // huge worktree can't blow the relay frame budget.
+      const bridgeGitService = new GitService()
+      const MAX_BRIDGE_GIT_FILES = 200
+      const MAX_BRIDGE_PR_CHECKS = 20
+      const compactGitSnapshotForBridge = (
+        snapshot: GitRepositorySnapshot
+      ): Record<string, unknown> => ({
+        repoRoot: snapshot.repoRoot,
+        branch: snapshot.branch,
+        commit: snapshot.commit,
+        detached: snapshot.detached,
+        upstream: snapshot.upstream,
+        remoteName: snapshot.remoteName,
+        remoteUrl: snapshot.remoteUrl,
+        ahead: snapshot.ahead,
+        behind: snapshot.behind,
+        counts: snapshot.counts,
+        clean: snapshot.clean,
+        mergeState: snapshot.mergeState,
+        conflicts: snapshot.conflicts,
+        lineStats: snapshot.lineStats,
+        files: snapshot.files.slice(0, MAX_BRIDGE_GIT_FILES).map((file) => ({
+          path: file.path,
+          kind: file.kind,
+          staged: file.staged,
+          unstaged: file.unstaged
+        })),
+        filesTruncated: snapshot.files.length > MAX_BRIDGE_GIT_FILES
+      })
+      const compactGitPrForBridge = (pr: GitPrSummary): Record<string, unknown> => ({
+        number: pr.number,
+        url: pr.url,
+        state: pr.state,
+        isDraft: pr.isDraft,
+        headRefName: pr.headRefName,
+        baseRefName: pr.baseRefName,
+        checks: (pr.checks ?? []).slice(0, MAX_BRIDGE_PR_CHECKS).map((check) => ({
+          name: check.name,
+          status: check.status,
+          conclusion: check.conclusion
+        }))
+      })
+      const compactGitReadinessForBridge = (
+        readiness: GitPrReadiness
+      ): Record<string, unknown> => ({
+        canCreatePullRequest: readiness.canCreatePullRequest,
+        shouldPushFirst: readiness.shouldPushFirst,
+        reason: readiness.reason,
+        warnings: readiness.warnings.slice(0, 10),
+        git: compactGitSnapshotForBridge(readiness.snapshot),
+        ...(readiness.existingPullRequest
+          ? { pr: compactGitPrForBridge(readiness.existingPullRequest) }
+          : {})
+      })
+      const bridgeGitWorkspacePath = (workspaceId: string): string | null => {
+        const workspace = AppStore.getWorkspaces().find((entry) => entry.id === workspaceId)
+        return workspace ? workspace.path : null
+      }
       return new MainProcessActionExecutor({
         cancelRunFn: async (provider, runId) => {
           return providerAdapters.require(assertProviderId(provider)).cancel(runId)
@@ -15251,6 +15318,87 @@ if (isGeminiMcpBridgeProcess) {
           }
           const bounded = buildBoundedWorkspaceDiff(result.summaries ?? [])
           return { ok: true, diff: bounded as unknown as Record<string, unknown> }
+        },
+        gitSnapshotFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.snapshot(path)
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, git: compactGitSnapshotForBridge(result.data) }
+        },
+        gitStageAllFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.stage({ repoPath: path, all: true })
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, git: compactGitSnapshotForBridge(result.data) }
+        },
+        gitCommitFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          if (action.stageAll) {
+            const staged = await bridgeGitService.stage({ repoPath: path, all: true })
+            if (!staged.ok) return { ok: false, reason: staged.error }
+          }
+          const result = await bridgeGitService.commit({ repoPath: path, message: action.message })
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, git: compactGitSnapshotForBridge(result.data) }
+        },
+        gitPushFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.push({
+            repoPath: path,
+            setUpstream: action.setUpstream
+          })
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, git: compactGitSnapshotForBridge(result.data) }
+        },
+        githubPrStatusFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.pullRequestStatus(path)
+          if (!result.ok) {
+            // "No PR yet" is a successful read on the phone, not an error.
+            if (result.error === 'No pull request found for the current branch.') {
+              return { ok: true }
+            }
+            return { ok: false, reason: result.error }
+          }
+          return { ok: true, pr: compactGitPrForBridge(result.data) }
+        },
+        githubPrReadinessFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.pullRequestReadiness(path)
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, readiness: compactGitReadinessForBridge(result.data) }
+        },
+        githubCreatePrFn: async (action) => {
+          const path = bridgeGitWorkspacePath(action.workspaceId)
+          if (!path) {
+            return { ok: false, reason: `Workspace id "${action.workspaceId}" is not registered` }
+          }
+          const result = await bridgeGitService.createPullRequest({
+            repoPath: path,
+            title: action.title,
+            body: action.body,
+            draft: action.draft
+          })
+          if (!result.ok) return { ok: false, reason: result.error }
+          return { ok: true, pr: compactGitPrForBridge(result.data) }
         },
         composerPromptFn: async (action) => {
           // Resolve workspace path from the iOS-supplied workspaceId.

@@ -9,6 +9,13 @@ import type {
   BridgeWorkspaceFileReadAction,
   BridgeWorkspaceFileWriteAction,
   BridgeWorkspaceDiffAction,
+  BridgeGitSnapshotAction,
+  BridgeGitStageAllAction,
+  BridgeGitCommitAction,
+  BridgeGitPushAction,
+  BridgeGithubPrStatusAction,
+  BridgeGithubPrReadinessAction,
+  BridgeGithubCreatePrAction,
   BridgeEnsembleCancelRoundAction,
   BridgeEnsembleCancelWakeupAction,
   BridgeEnsembleQueuePromptAction,
@@ -90,6 +97,15 @@ export interface BridgeActionExecutor {
     action: BridgeWorkspaceFileWriteAction
   ): Promise<BridgeActionExecutionResult>
   executeWorkspaceDiff(action: BridgeWorkspaceDiffAction): Promise<BridgeActionExecutionResult>
+  executeGitSnapshot(action: BridgeGitSnapshotAction): Promise<BridgeActionExecutionResult>
+  executeGitStageAll(action: BridgeGitStageAllAction): Promise<BridgeActionExecutionResult>
+  executeGitCommit(action: BridgeGitCommitAction): Promise<BridgeActionExecutionResult>
+  executeGitPush(action: BridgeGitPushAction): Promise<BridgeActionExecutionResult>
+  executeGithubPrStatus(action: BridgeGithubPrStatusAction): Promise<BridgeActionExecutionResult>
+  executeGithubPrReadiness(
+    action: BridgeGithubPrReadinessAction
+  ): Promise<BridgeActionExecutionResult>
+  executeGithubCreatePr(action: BridgeGithubCreatePrAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
   executeEnsembleCancelRound(
     action: BridgeEnsembleCancelRoundAction
@@ -196,6 +212,33 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeWorkspaceDiffAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('workspaceDiff', action.workspaceId)
+  }
+  async executeGitSnapshot(action: BridgeGitSnapshotAction): Promise<BridgeActionExecutionResult> {
+    return notWired('gitSnapshot', action.workspaceId)
+  }
+  async executeGitStageAll(action: BridgeGitStageAllAction): Promise<BridgeActionExecutionResult> {
+    return notWired('gitStageAll', action.workspaceId)
+  }
+  async executeGitCommit(action: BridgeGitCommitAction): Promise<BridgeActionExecutionResult> {
+    return notWired('gitCommit', action.workspaceId)
+  }
+  async executeGitPush(action: BridgeGitPushAction): Promise<BridgeActionExecutionResult> {
+    return notWired('gitPush', action.workspaceId)
+  }
+  async executeGithubPrStatus(
+    action: BridgeGithubPrStatusAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('githubPrStatus', action.workspaceId)
+  }
+  async executeGithubPrReadiness(
+    action: BridgeGithubPrReadinessAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('githubPrReadiness', action.workspaceId)
+  }
+  async executeGithubCreatePr(
+    action: BridgeGithubCreatePrAction
+  ): Promise<BridgeActionExecutionResult> {
+    return notWired('githubCreatePr', action.workspaceId)
   }
   async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
     return notWired('cancelRun', action.runId)
@@ -393,6 +436,47 @@ export interface MainProcessActionExecutorDependencies {
   workspaceDiffFn?: (action: BridgeWorkspaceDiffAction) => Promise<{
     ok: boolean
     diff?: Record<string, unknown>
+    reason?: string
+  }>
+  /** Git workflow callbacks. The caller in main/index.ts resolves the
+   * workspace path by id (allowlist-gated upstream by the router) and
+   * forwards to GitService. Each returns a COMPACT, Codable-friendly
+   * `git` snapshot (capped file list) so acks stay inside the relay
+   * frame budget; failures carry GitService's already-legible reason
+   * strings ("not a git repository", "nothing to commit", …). */
+  gitSnapshotFn?: (action: BridgeGitSnapshotAction) => Promise<{
+    ok: boolean
+    git?: Record<string, unknown>
+    reason?: string
+  }>
+  gitStageAllFn?: (action: BridgeGitStageAllAction) => Promise<{
+    ok: boolean
+    git?: Record<string, unknown>
+    reason?: string
+  }>
+  gitCommitFn?: (action: BridgeGitCommitAction) => Promise<{
+    ok: boolean
+    git?: Record<string, unknown>
+    reason?: string
+  }>
+  gitPushFn?: (action: BridgeGitPushAction) => Promise<{
+    ok: boolean
+    git?: Record<string, unknown>
+    reason?: string
+  }>
+  githubPrStatusFn?: (action: BridgeGithubPrStatusAction) => Promise<{
+    ok: boolean
+    pr?: Record<string, unknown>
+    reason?: string
+  }>
+  githubPrReadinessFn?: (action: BridgeGithubPrReadinessAction) => Promise<{
+    ok: boolean
+    readiness?: Record<string, unknown>
+    reason?: string
+  }>
+  githubCreatePrFn?: (action: BridgeGithubCreatePrAction) => Promise<{
+    ok: boolean
+    pr?: Record<string, unknown>
     reason?: string
   }>
   registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
@@ -700,6 +784,152 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       const message = err instanceof Error ? err.message : String(err)
       this.log(`[BridgeActionExecutor] workspaceDiff failed: ${message}`)
       return { executed: false, message: `Workspace diff failed: ${message}` }
+    }
+  }
+
+  async executeGitSnapshot(action: BridgeGitSnapshotAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.gitSnapshotFn) {
+      return notWired('gitSnapshot', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.gitSnapshotFn(action)
+      if (result.ok && result.git) {
+        return { executed: true, message: 'Git status read.', data: { git: result.git } }
+      }
+      return { executed: false, message: result.reason ?? 'Could not read git status.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] gitSnapshot failed: ${message}`)
+      return { executed: false, message: `Git status failed: ${message}` }
+    }
+  }
+
+  async executeGitStageAll(action: BridgeGitStageAllAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.gitStageAllFn) {
+      return notWired('gitStageAll', action.workspaceId)
+    }
+    this.log(`[BridgeActionExecutor] gitStageAll ws=${action.workspaceId}`)
+    try {
+      const result = await this.deps.gitStageAllFn(action)
+      if (result.ok && result.git) {
+        return { executed: true, message: 'All changes staged.', data: { git: result.git } }
+      }
+      return { executed: false, message: result.reason ?? 'Could not stage changes.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] gitStageAll failed: ${message}`)
+      return { executed: false, message: `Stage failed: ${message}` }
+    }
+  }
+
+  async executeGitCommit(action: BridgeGitCommitAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.gitCommitFn) {
+      return notWired('gitCommit', action.workspaceId)
+    }
+    this.log(
+      `[BridgeActionExecutor] gitCommit ws=${action.workspaceId} stageAll=${action.stageAll === true} msgLen=${action.message.length}`
+    )
+    try {
+      const result = await this.deps.gitCommitFn(action)
+      if (result.ok && result.git) {
+        return { executed: true, message: 'Committed.', data: { git: result.git } }
+      }
+      return { executed: false, message: result.reason ?? 'Could not commit.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] gitCommit failed: ${message}`)
+      return { executed: false, message: `Commit failed: ${message}` }
+    }
+  }
+
+  async executeGitPush(action: BridgeGitPushAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.gitPushFn) {
+      return notWired('gitPush', action.workspaceId)
+    }
+    this.log(
+      `[BridgeActionExecutor] gitPush ws=${action.workspaceId} setUpstream=${action.setUpstream === true}`
+    )
+    try {
+      const result = await this.deps.gitPushFn(action)
+      if (result.ok && result.git) {
+        return { executed: true, message: 'Pushed.', data: { git: result.git } }
+      }
+      return { executed: false, message: result.reason ?? 'Could not push.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] gitPush failed: ${message}`)
+      return { executed: false, message: `Push failed: ${message}` }
+    }
+  }
+
+  async executeGithubPrStatus(
+    action: BridgeGithubPrStatusAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.githubPrStatusFn) {
+      return notWired('githubPrStatus', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.githubPrStatusFn(action)
+      if (result.ok) {
+        // `pr` may legitimately be absent — "no PR for this branch" is a
+        // successful read, and the phone renders it as such.
+        return {
+          executed: true,
+          message: result.pr ? 'Pull request found.' : 'No pull request for this branch.',
+          data: result.pr ? { pr: result.pr } : {}
+        }
+      }
+      return { executed: false, message: result.reason ?? 'Could not read pull request status.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] githubPrStatus failed: ${message}`)
+      return { executed: false, message: `Pull request status failed: ${message}` }
+    }
+  }
+
+  async executeGithubPrReadiness(
+    action: BridgeGithubPrReadinessAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.githubPrReadinessFn) {
+      return notWired('githubPrReadiness', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.githubPrReadinessFn(action)
+      if (result.ok && result.readiness) {
+        return {
+          executed: true,
+          message: 'Pull request readiness computed.',
+          data: { readiness: result.readiness }
+        }
+      }
+      return {
+        executed: false,
+        message: result.reason ?? 'Could not compute pull request readiness.'
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] githubPrReadiness failed: ${message}`)
+      return { executed: false, message: `Pull request readiness failed: ${message}` }
+    }
+  }
+
+  async executeGithubCreatePr(
+    action: BridgeGithubCreatePrAction
+  ): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.githubCreatePrFn) {
+      return notWired('githubCreatePr', action.workspaceId)
+    }
+    this.log(`[BridgeActionExecutor] githubCreatePr ws=${action.workspaceId}`)
+    try {
+      const result = await this.deps.githubCreatePrFn(action)
+      if (result.ok && result.pr) {
+        return { executed: true, message: 'Pull request created.', data: { pr: result.pr } }
+      }
+      return { executed: false, message: result.reason ?? 'Could not create the pull request.' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] githubCreatePr failed: ${message}`)
+      return { executed: false, message: `Create pull request failed: ${message}` }
     }
   }
 

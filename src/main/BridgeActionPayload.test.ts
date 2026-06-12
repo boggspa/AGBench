@@ -289,6 +289,143 @@ describe('decodeBridgeActionPayload', () => {
       ).toMatchObject({ kind: 'unknown', rawKind: 'workspaceDiff' })
     })
 
+    it('decodes git reads (snapshot/prStatus/prReadiness) as read-only workspace-gated actions', () => {
+      for (const kind of ['gitSnapshot', 'githubPrStatus', 'githubPrReadiness'] as const) {
+        const payload = decodeBridgeActionPayload(
+          encode({ kind, actionId: `${kind}-1`, workspaceId: 'ws-1' })
+        ).payload
+        expect(payload.kind).toBe(kind)
+        expect(workspaceIdFromPayload(payload)).toBe('ws-1')
+        expect(payloadRequiresWorkspaceGating(payload)).toBe(true)
+        expect(payloadIsMutating(payload)).toBe(false)
+
+        // Missing workspaceId → unknown (defensive decode).
+        expect(
+          decodeBridgeActionPayload(encode({ kind, actionId: `${kind}-2` })).payload
+        ).toMatchObject({ kind: 'unknown', rawKind: kind })
+      }
+    })
+
+    it('decodes gitStageAll as a mutating workspace-gated action', () => {
+      const stage = decodeBridgeActionPayload(
+        encode({ kind: 'gitStageAll', actionId: 'stage-1', workspaceId: 'ws-1' })
+      ).payload
+      expect(stage.kind).toBe('gitStageAll')
+      expect(workspaceIdFromPayload(stage)).toBe('ws-1')
+      expect(payloadRequiresWorkspaceGating(stage)).toBe(true)
+      expect(payloadIsMutating(stage)).toBe(true)
+    })
+
+    it('decodes gitCommit with an explicit message (+ optional stageAll)', () => {
+      const commit = decodeBridgeActionPayload(
+        encode({
+          kind: 'gitCommit',
+          actionId: 'commit-1',
+          workspaceId: 'ws-1',
+          message: 'fix: phone commit',
+          stageAll: true
+        })
+      ).payload
+      expect(commit.kind).toBe('gitCommit')
+      expect(commit).toMatchObject({ message: 'fix: phone commit', stageAll: true })
+      expect(payloadIsMutating(commit)).toBe(true)
+
+      // stageAll is optional.
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'gitCommit', actionId: 'commit-2', workspaceId: 'ws-1', message: 'm' })
+        ).payload.kind
+      ).toBe('gitCommit')
+    })
+
+    it('rejects malformed gitCommit payloads', () => {
+      // No message at all.
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'gitCommit', actionId: 'commit-3', workspaceId: 'ws-1' })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'gitCommit' })
+      // Whitespace-only message — a commit message must be user-entered text.
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'gitCommit', actionId: 'commit-4', workspaceId: 'ws-1', message: '   ' })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'gitCommit' })
+      // Oversized message (> 5000 chars).
+      expect(
+        decodeBridgeActionPayload(
+          encode({
+            kind: 'gitCommit',
+            actionId: 'commit-5',
+            workspaceId: 'ws-1',
+            message: 'x'.repeat(5001)
+          })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'gitCommit' })
+      // Non-boolean stageAll.
+      expect(
+        decodeBridgeActionPayload(
+          encode({
+            kind: 'gitCommit',
+            actionId: 'commit-6',
+            workspaceId: 'ws-1',
+            message: 'm',
+            stageAll: 'yes'
+          })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'gitCommit' })
+    })
+
+    it('decodes gitPush with optional setUpstream', () => {
+      const push = decodeBridgeActionPayload(
+        encode({ kind: 'gitPush', actionId: 'push-1', workspaceId: 'ws-1', setUpstream: true })
+      ).payload
+      expect(push.kind).toBe('gitPush')
+      expect(push).toMatchObject({ setUpstream: true })
+      expect(payloadIsMutating(push)).toBe(true)
+
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'gitPush', actionId: 'push-2', workspaceId: 'ws-1', setUpstream: 'now' })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'gitPush' })
+    })
+
+    it('decodes githubCreatePr with optional title/body/draft', () => {
+      const create = decodeBridgeActionPayload(
+        encode({
+          kind: 'githubCreatePr',
+          actionId: 'pr-1',
+          workspaceId: 'ws-1',
+          title: 'Phone PR',
+          body: 'Created from iOS',
+          draft: true
+        })
+      ).payload
+      expect(create.kind).toBe('githubCreatePr')
+      expect(create).toMatchObject({ title: 'Phone PR', body: 'Created from iOS', draft: true })
+      expect(payloadIsMutating(create)).toBe(true)
+
+      // All fields optional — gh falls back to --fill.
+      expect(
+        decodeBridgeActionPayload(
+          encode({ kind: 'githubCreatePr', actionId: 'pr-2', workspaceId: 'ws-1' })
+        ).payload.kind
+      ).toBe('githubCreatePr')
+
+      // Oversized title → unknown.
+      expect(
+        decodeBridgeActionPayload(
+          encode({
+            kind: 'githubCreatePr',
+            actionId: 'pr-3',
+            workspaceId: 'ws-1',
+            title: 'x'.repeat(301)
+          })
+        ).payload
+      ).toMatchObject({ kind: 'unknown', rawKind: 'githubCreatePr' })
+    })
+
     it('rejects malformed workspace file writes', () => {
       expect(
         decodeBridgeActionPayload(

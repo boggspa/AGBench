@@ -179,6 +179,63 @@ export interface BridgeWorkspaceDiffAction extends BridgeActionMetadata {
   workspaceId: string
 }
 
+/** Read-only git status for an allowlisted workspace — branch, ahead/behind,
+ * change counts, capped file list. Returned in the ack's data; nothing is
+ * broadcast. Gated by `diffReview` (same read tier as `workspaceDiff`). */
+export interface BridgeGitSnapshotAction extends BridgeActionMetadata {
+  kind: 'gitSnapshot'
+  workspaceId: string
+}
+
+/** `git add -A` for the workspace repo. Mutating — gated by `fileWrite`. */
+export interface BridgeGitStageAllAction extends BridgeActionMetadata {
+  kind: 'gitStageAll'
+  workspaceId: string
+}
+
+/** Commit staged changes with a user-entered message. The message must come
+ * from an explicit phone UI field — never synthesized from agent prompt
+ * text. Mutating — gated by `fileWrite`. */
+export interface BridgeGitCommitAction extends BridgeActionMetadata {
+  kind: 'gitCommit'
+  workspaceId: string
+  message: string
+  /** Stage everything first (the phone's single "Stage all & Commit"
+   * button — one round-trip instead of gitStageAll + gitCommit). */
+  stageAll?: boolean
+}
+
+/** Push the current branch; `setUpstream` publishes a branch with no
+ * upstream yet. Mutating — gated by `fileWrite`. */
+export interface BridgeGitPushAction extends BridgeActionMetadata {
+  kind: 'gitPush'
+  workspaceId: string
+  setUpstream?: boolean
+}
+
+/** Read-only `gh pr view` summary for the current branch. Gated by
+ * `diffReview`. */
+export interface BridgeGithubPrStatusAction extends BridgeActionMetadata {
+  kind: 'githubPrStatus'
+  workspaceId: string
+}
+
+/** Read-only PR-readiness probe (can a PR be created, should we push
+ * first, why not). Gated by `diffReview`. */
+export interface BridgeGithubPrReadinessAction extends BridgeActionMetadata {
+  kind: 'githubPrReadiness'
+  workspaceId: string
+}
+
+/** Create a GitHub PR via `gh pr create`. Mutating — gated by `fileWrite`. */
+export interface BridgeGithubCreatePrAction extends BridgeActionMetadata {
+  kind: 'githubCreatePr'
+  workspaceId: string
+  title?: string
+  body?: string
+  draft?: boolean
+}
+
 /** Create an empty chat thread without starting a run. Used by the iOS
  * "New chat / New ensemble / New global" flows so the phone can land on
  * a welcome surface before the first prompt. */
@@ -409,6 +466,13 @@ export type BridgeActionPayload =
   | BridgeWorkspaceFileReadAction
   | BridgeWorkspaceFileWriteAction
   | BridgeWorkspaceDiffAction
+  | BridgeGitSnapshotAction
+  | BridgeGitStageAllAction
+  | BridgeGitCommitAction
+  | BridgeGitPushAction
+  | BridgeGithubPrStatusAction
+  | BridgeGithubPrReadinessAction
+  | BridgeGithubCreatePrAction
   | BridgeCancelRunAction
   | BridgeEnsembleCancelRoundAction
   | BridgeEnsembleSkipActiveParticipantAction
@@ -519,6 +583,13 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'workspaceFileRead':
     case 'workspaceFileWrite':
     case 'workspaceDiff':
+    case 'gitSnapshot':
+    case 'gitStageAll':
+    case 'gitCommit':
+    case 'gitPush':
+    case 'githubPrStatus':
+    case 'githubPrReadiness':
+    case 'githubCreatePr':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -570,6 +641,13 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'workspaceFileRead':
     case 'workspaceFileWrite':
     case 'workspaceDiff':
+    case 'gitSnapshot':
+    case 'gitStageAll':
+    case 'gitCommit':
+    case 'gitPush':
+    case 'githubPrStatus':
+    case 'githubPrReadiness':
+    case 'githubCreatePr':
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleSkipActiveParticipant':
@@ -647,6 +725,12 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'togglePinChat':
     case 'togglePinWorkspace':
     case 'workspaceFileWrite':
+    // Git mutations write repo state (index, history, remote) and must
+    // carry the same replay protections as file writes.
+    case 'gitStageAll':
+    case 'gitCommit':
+    case 'gitPush':
+    case 'githubCreatePr':
     // registerApnsToken mutates the token store; classify mutating so it
     // inherits the actionId + expiry replay guard (security review LOW).
     case 'registerApnsToken':
@@ -658,6 +742,9 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'workspaceFileList':
     case 'workspaceFileRead':
     case 'workspaceDiff':
+    case 'gitSnapshot':
+    case 'githubPrStatus':
+    case 'githubPrReadiness':
       return false
     case 'unknown':
       return true
@@ -715,6 +802,34 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isWorkspaceDiff(parsed)
         ? (parsed as unknown as BridgeWorkspaceDiffAction)
         : { kind: 'unknown', rawKind: 'workspaceDiff', raw: parsed }
+    case 'gitSnapshot':
+      return isWorkspaceScopedGitRead(parsed)
+        ? (parsed as unknown as BridgeGitSnapshotAction)
+        : { kind: 'unknown', rawKind: 'gitSnapshot', raw: parsed }
+    case 'gitStageAll':
+      return isWorkspaceScopedGitRead(parsed)
+        ? (parsed as unknown as BridgeGitStageAllAction)
+        : { kind: 'unknown', rawKind: 'gitStageAll', raw: parsed }
+    case 'gitCommit':
+      return isGitCommit(parsed)
+        ? (parsed as unknown as BridgeGitCommitAction)
+        : { kind: 'unknown', rawKind: 'gitCommit', raw: parsed }
+    case 'gitPush':
+      return isGitPush(parsed)
+        ? (parsed as unknown as BridgeGitPushAction)
+        : { kind: 'unknown', rawKind: 'gitPush', raw: parsed }
+    case 'githubPrStatus':
+      return isWorkspaceScopedGitRead(parsed)
+        ? (parsed as unknown as BridgeGithubPrStatusAction)
+        : { kind: 'unknown', rawKind: 'githubPrStatus', raw: parsed }
+    case 'githubPrReadiness':
+      return isWorkspaceScopedGitRead(parsed)
+        ? (parsed as unknown as BridgeGithubPrReadinessAction)
+        : { kind: 'unknown', rawKind: 'githubPrReadiness', raw: parsed }
+    case 'githubCreatePr':
+      return isGithubCreatePr(parsed)
+        ? (parsed as unknown as BridgeGithubCreatePrAction)
+        : { kind: 'unknown', rawKind: 'githubCreatePr', raw: parsed }
     case 'cancelRun':
       return isCancelRun(parsed)
         ? (parsed as unknown as BridgeCancelRunAction)
@@ -950,6 +1065,47 @@ function isWorkspaceFileList(v: Record<string, unknown>): boolean {
 
 function isWorkspaceDiff(v: Record<string, unknown>): boolean {
   return hasValidActionMetadata(v) && typeof v.workspaceId === 'string'
+}
+
+/** Shared gate for the workspace-only git actions (gitSnapshot,
+ * gitStageAll, githubPrStatus, githubPrReadiness). */
+function isWorkspaceScopedGitRead(v: Record<string, unknown>): boolean {
+  return hasValidActionMetadata(v) && typeof v.workspaceId === 'string'
+}
+
+const MAX_GIT_COMMIT_MESSAGE_LENGTH = 5_000
+const MAX_GITHUB_PR_TITLE_LENGTH = 300
+const MAX_GITHUB_PR_BODY_LENGTH = 20_000
+
+function isGitCommit(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    typeof v.message === 'string' &&
+    v.message.trim().length > 0 &&
+    v.message.length <= MAX_GIT_COMMIT_MESSAGE_LENGTH &&
+    (v.stageAll === undefined || typeof v.stageAll === 'boolean')
+  )
+}
+
+function isGitPush(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    (v.setUpstream === undefined || typeof v.setUpstream === 'boolean')
+  )
+}
+
+function isGithubCreatePr(v: Record<string, unknown>): boolean {
+  return (
+    hasValidActionMetadata(v) &&
+    typeof v.workspaceId === 'string' &&
+    (v.title === undefined ||
+      (typeof v.title === 'string' && v.title.length <= MAX_GITHUB_PR_TITLE_LENGTH)) &&
+    (v.body === undefined ||
+      (typeof v.body === 'string' && v.body.length <= MAX_GITHUB_PR_BODY_LENGTH)) &&
+    (v.draft === undefined || typeof v.draft === 'boolean')
+  )
 }
 
 function isWorkspaceFileRead(v: Record<string, unknown>): boolean {

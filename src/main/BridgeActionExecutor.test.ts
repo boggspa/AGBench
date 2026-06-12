@@ -18,6 +18,13 @@ import type {
   BridgeWorkspaceFileReadAction,
   BridgeWorkspaceFileWriteAction,
   BridgeWorkspaceDiffAction,
+  BridgeGitSnapshotAction,
+  BridgeGitStageAllAction,
+  BridgeGitCommitAction,
+  BridgeGitPushAction,
+  BridgeGithubPrStatusAction,
+  BridgeGithubPrReadinessAction,
+  BridgeGithubCreatePrAction,
   BridgeTogglePinChatAction,
   BridgeTogglePinWorkspaceAction
 } from './BridgeActionPayload'
@@ -137,7 +144,39 @@ const sample = {
   workspaceDiff: {
     kind: 'workspaceDiff',
     workspaceId: 'ws-1'
-  } satisfies BridgeWorkspaceDiffAction
+  } satisfies BridgeWorkspaceDiffAction,
+  gitSnapshot: {
+    kind: 'gitSnapshot',
+    workspaceId: 'ws-1'
+  } satisfies BridgeGitSnapshotAction,
+  gitStageAll: {
+    kind: 'gitStageAll',
+    workspaceId: 'ws-1'
+  } satisfies BridgeGitStageAllAction,
+  gitCommit: {
+    kind: 'gitCommit',
+    workspaceId: 'ws-1',
+    message: 'fix: from the phone',
+    stageAll: true
+  } satisfies BridgeGitCommitAction,
+  gitPush: {
+    kind: 'gitPush',
+    workspaceId: 'ws-1',
+    setUpstream: true
+  } satisfies BridgeGitPushAction,
+  githubPrStatus: {
+    kind: 'githubPrStatus',
+    workspaceId: 'ws-1'
+  } satisfies BridgeGithubPrStatusAction,
+  githubPrReadiness: {
+    kind: 'githubPrReadiness',
+    workspaceId: 'ws-1'
+  } satisfies BridgeGithubPrReadinessAction,
+  githubCreatePr: {
+    kind: 'githubCreatePr',
+    workspaceId: 'ws-1',
+    title: 'Phone PR'
+  } satisfies BridgeGithubCreatePrAction
 }
 
 describe('NoopActionExecutor', () => {
@@ -257,6 +296,134 @@ describe('MainProcessActionExecutor workspace file actions', () => {
       executed: false,
       message: 'not a git repository'
     })
+  })
+})
+
+describe('MainProcessActionExecutor git workflow actions', () => {
+  const gitData = { branch: 'main', ahead: 1, behind: 0, clean: false }
+
+  it('returns the compact snapshot from each wired git mutation callback', async () => {
+    const gitSnapshotFn = vi.fn().mockResolvedValue({ ok: true, git: gitData })
+    const gitStageAllFn = vi.fn().mockResolvedValue({ ok: true, git: gitData })
+    const gitCommitFn = vi.fn().mockResolvedValue({ ok: true, git: gitData })
+    const gitPushFn = vi.fn().mockResolvedValue({ ok: true, git: gitData })
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      gitSnapshotFn,
+      gitStageAllFn,
+      gitCommitFn,
+      gitPushFn
+    })
+
+    await expect(executor.executeGitSnapshot(sample.gitSnapshot)).resolves.toMatchObject({
+      executed: true,
+      data: { git: { branch: 'main' } }
+    })
+    expect(gitSnapshotFn).toHaveBeenCalledWith(sample.gitSnapshot)
+
+    await expect(executor.executeGitStageAll(sample.gitStageAll)).resolves.toMatchObject({
+      executed: true,
+      data: { git: { branch: 'main' } }
+    })
+    await expect(executor.executeGitCommit(sample.gitCommit)).resolves.toMatchObject({
+      executed: true,
+      data: { git: { branch: 'main' } }
+    })
+    expect(gitCommitFn).toHaveBeenCalledWith(sample.gitCommit)
+    await expect(executor.executeGitPush(sample.gitPush)).resolves.toMatchObject({
+      executed: true,
+      data: { git: { branch: 'main' } }
+    })
+  })
+
+  it('treats "no PR for this branch" as a successful read with empty data', async () => {
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      githubPrStatusFn: vi.fn().mockResolvedValue({ ok: true })
+    })
+    const result = await executor.executeGithubPrStatus(sample.githubPrStatus)
+    expect(result.executed).toBe(true)
+    expect(result.message).toMatch(/no pull request/i)
+    expect(result.data?.pr).toBeUndefined()
+  })
+
+  it('returns PR summary and readiness data from wired callbacks', async () => {
+    const pr = { number: 7, url: 'https://github.com/o/r/pull/7', state: 'OPEN' }
+    const readiness = { canCreatePullRequest: false, shouldPushFirst: true, reason: 'Push first' }
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      githubPrStatusFn: vi.fn().mockResolvedValue({ ok: true, pr }),
+      githubPrReadinessFn: vi.fn().mockResolvedValue({ ok: true, readiness }),
+      githubCreatePrFn: vi.fn().mockResolvedValue({ ok: true, pr })
+    })
+
+    await expect(executor.executeGithubPrStatus(sample.githubPrStatus)).resolves.toMatchObject({
+      executed: true,
+      data: { pr: { number: 7 } }
+    })
+    await expect(
+      executor.executeGithubPrReadiness(sample.githubPrReadiness)
+    ).resolves.toMatchObject({
+      executed: true,
+      data: { readiness: { canCreatePullRequest: false, shouldPushFirst: true } }
+    })
+    await expect(executor.executeGithubCreatePr(sample.githubCreatePr)).resolves.toMatchObject({
+      executed: true,
+      data: { pr: { url: 'https://github.com/o/r/pull/7' } }
+    })
+  })
+
+  it('surfaces git callback declines with their legible reasons', async () => {
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      gitCommitFn: vi.fn().mockResolvedValue({ ok: false, reason: 'No staged changes to commit.' }),
+      gitPushFn: vi
+        .fn()
+        .mockResolvedValue({ ok: false, reason: 'No git remote is configured. Add a remote before pushing.' }),
+      githubCreatePrFn: vi
+        .fn()
+        .mockResolvedValue({ ok: false, reason: 'This branch already has a pull request.' })
+    })
+
+    await expect(executor.executeGitCommit(sample.gitCommit)).resolves.toMatchObject({
+      executed: false,
+      message: 'No staged changes to commit.'
+    })
+    await expect(executor.executeGitPush(sample.gitPush)).resolves.toMatchObject({
+      executed: false,
+      message: 'No git remote is configured. Add a remote before pushing.'
+    })
+    await expect(executor.executeGithubCreatePr(sample.githubCreatePr)).resolves.toMatchObject({
+      executed: false,
+      message: 'This branch already has a pull request.'
+    })
+  })
+
+  it('reports git callback exceptions as execution failures', async () => {
+    const executor = new MainProcessActionExecutor({
+      cancelRunFn: vi.fn(),
+      gitPushFn: vi.fn().mockRejectedValue(new Error('remote hung up'))
+    })
+    const result = await executor.executeGitPush(sample.gitPush)
+    expect(result.executed).toBe(false)
+    expect(result.message).toMatch(/remote hung up/)
+  })
+
+  it('returns notWired for every git action when callbacks are absent', async () => {
+    const executor = new MainProcessActionExecutor({ cancelRunFn: vi.fn() })
+    for (const probe of [
+      executor.executeGitSnapshot(sample.gitSnapshot),
+      executor.executeGitStageAll(sample.gitStageAll),
+      executor.executeGitCommit(sample.gitCommit),
+      executor.executeGitPush(sample.gitPush),
+      executor.executeGithubPrStatus(sample.githubPrStatus),
+      executor.executeGithubPrReadiness(sample.githubPrReadiness),
+      executor.executeGithubCreatePr(sample.githubCreatePr)
+    ]) {
+      const result = await probe
+      expect(result.executed).toBe(false)
+      expect(result.message).toMatch(/not yet wired/i)
+    }
   })
 })
 

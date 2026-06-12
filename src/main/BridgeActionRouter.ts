@@ -516,6 +516,20 @@ export class BridgeActionRouter {
         return this.executor.executeWorkspaceFileWrite(payload)
       case 'workspaceDiff':
         return this.executor.executeWorkspaceDiff(payload)
+      case 'gitSnapshot':
+        return this.executor.executeGitSnapshot(payload)
+      case 'gitStageAll':
+        return this.executor.executeGitStageAll(payload)
+      case 'gitCommit':
+        return this.executor.executeGitCommit(payload)
+      case 'gitPush':
+        return this.executor.executeGitPush(payload)
+      case 'githubPrStatus':
+        return this.executor.executeGithubPrStatus(payload)
+      case 'githubPrReadiness':
+        return this.executor.executeGithubPrReadiness(payload)
+      case 'githubCreatePr':
+        return this.executor.executeGithubCreatePr(payload)
       case 'cancelRun':
         return this.executor.executeCancelRun(payload)
       case 'ensembleCancelRound':
@@ -951,6 +965,20 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
       return 'fileWrite'
     case 'workspaceDiff':
       return 'diffReview'
+    // Git reads are the same trust tier as reviewing diffs — they reveal
+    // repo state but change nothing.
+    case 'gitSnapshot':
+    case 'githubPrStatus':
+    case 'githubPrReadiness':
+      return 'diffReview'
+    // Git mutations (stage/commit/push/PR-create) rewrite repo state — the
+    // strongest existing write capability covers them without a schema
+    // migration. A workspace must grant fileWrite to commit from the phone.
+    case 'gitStageAll':
+    case 'gitCommit':
+    case 'gitPush':
+    case 'githubCreatePr':
+      return 'fileWrite'
     case 'cancelRun':
     case 'ensembleCancelRound':
     case 'ensembleCancelWakeup':
