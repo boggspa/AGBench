@@ -53,17 +53,15 @@ export function ParticipantMention({ reference, children }: ParticipantMentionPr
     participants.find((p) => p.provider === lower)
 
   if (!participant) {
-    // `@user` / `@human` / `@you` — a handback to the user, not a
-    // participant. Render the distinct user-mention chip (echoing the
-    // user's bubble colour) so an orchestration handback reads as a
-    // state change instead of bare prose. Uses the canonical alias set
-    // so it can never drift from the orchestrator's round-close gate.
+    // `@user` / `@human` / `@you` — an address to the user, not a
+    // participant. Render the distinct user-mention chip echoing the
+    // user's bubble colour. Routing remains explicit via tools.
     if (isUserMentionToken(trimmed)) {
       return (
         <span
           className="participant-mention participant-mention--user"
           style={{ color: 'var(--user-bubble-base, var(--accent))' }}
-          title="Hands control back to you"
+          title="Addresses you"
         >
           @{trimmed}
         </span>

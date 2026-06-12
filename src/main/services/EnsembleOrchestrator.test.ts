@@ -1938,11 +1938,7 @@ Next action:
     expect(entries?.length).toBe(2)
   })
 
-  it('closes the round immediately when a speaker uses @user', async () => {
-    // 1.0.4 — `@user` is the explicit return-to-human signal.
-    // The orchestrator should NOT promote any further participants
-    // even if there are unspoken ones still in `remaining`, and
-    // should emit a transcript note explaining why the round closed.
+  it('treats @user as informational text instead of closing the round', async () => {
     const harness = makeHarness()
     harness.orchestrator.startRound({
       chatId: 'ensemble-chat',
@@ -1953,8 +1949,8 @@ Next action:
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
     expect(harness.dispatched[0].provider).toBe('claude')
 
-    // Claude finishes with `@user` in its content — should close
-    // the round before Codex (order 2) or Gemini (order 3) get a turn.
+    // Claude addresses the user inline. This should NOT close the
+    // round before Codex (order 2) gets a turn.
     harness.orchestrator.handleProviderOutput(
       'claude',
       {
@@ -1979,22 +1975,41 @@ Next action:
       }
     )
 
-    // Give the orchestrator a tick to flush + decide on next steps.
-    // We assert by NEGATIVE: no second dispatch should happen.
-    await new Promise((r) => setTimeout(r, 50))
-    expect(harness.dispatched).toHaveLength(1)
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+    expect(harness.chat.messages.map((message) => message.content).join('\n')).not.toContain(
+      'handed control back to the user'
+    )
+  })
+
+  it('closes the round when a speaker explicitly yields to user', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start the work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
     expect(harness.dispatched[0].provider).toBe('claude')
 
-    // System-note explaining the early close should be in the
-    // transcript with the ensembleRoundStatus metadata kind.
+    expect(
+      harness.orchestrator.markYielded(
+        harness.dispatched[0].appRunId!,
+        'Need the user to choose.',
+        'user'
+      )
+    ).toBe(true)
+
+    await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
+    expect(harness.dispatched).toHaveLength(1)
     const closeNote = harness.chat.messages.find(
       (message) =>
         message.role === 'system' &&
         message.metadata?.kind === 'ensembleRoundStatus' &&
         typeof message.content === 'string' &&
-        message.content.includes('@user')
+        message.content.includes('yielded to the user')
     )
-    expect(closeNote?.content).toContain('handed control back to the user')
+    expect(closeNote?.content).toContain('yielded to the user')
     expect(closeNote?.content).toContain('Round closed')
   })
 
@@ -2436,6 +2451,70 @@ Next action:
     // Default order would be Codex next; @Researcher should override.
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.dispatched[1].provider).toBe('gemini')
+  })
+
+  it('promotes multiple @mentioned participants in mention order', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 3,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and route.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const claudeRoute = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'content',
+      text: 'Plan ready. @Researcher check facts, then @Worker implement.'
+    })
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('gemini')
+    harness.orchestrator.handleProviderOutput(
+      'gemini',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].provider).toBe('codex')
   })
 
   it('promotes a participant tagged via @mention even when the speaker yields with the same target', async () => {

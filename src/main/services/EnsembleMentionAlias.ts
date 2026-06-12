@@ -99,10 +99,9 @@ const RESERVED_TOKENS = new Set(['me', 'self'])
  * 1.0.4 — explicit user-mention aliases. When an agent writes
  * `@user`, `@human`, or `@you`, the resolver returns a
  * `UserMentionMatch` (no `participant` field) instead of falling
- * back to participant-alias matching. The orchestrator uses this
- * as a clean "return to user, end the round" signal — replaces
- * the previous heuristic of "no explicit yield-target ⇒ probably
- * meant for user."
+ * back to participant-alias matching. Runtime routing treats these
+ * as informational address tokens; explicit handback is handled by
+ * structured yield-to-user actions.
  *
  * Surface treatment in the transcript / composer overlay: user
  * mentions render with `var(--user-bubble-color)` (the appearance-
@@ -344,11 +343,10 @@ export interface ParticipantMentionMatch extends BaseMentionMatch {
 }
 
 /**
- * 1.0.4 — explicit user-handoff mention. Returned when the
- * resolver hits a `USER_ALIASES` token (`user` / `human` / `you`).
- * No `participant` field — the orchestrator treats this as a
- * "round ends after current turn" signal rather than promoting a
- * participant.
+ * User-address mention. Returned when the resolver hits a
+ * `USER_ALIASES` token (`user` / `human` / `you`). No `participant`
+ * field — the orchestrator ignores this for routing while the
+ * renderer can still style it as a user-address chip.
  */
 export interface UserMentionMatch extends BaseMentionMatch {
   kind: 'user'
@@ -382,8 +380,8 @@ export function findAllMentions(
 ): MentionMatch[] {
   if (!text || !text.includes('@')) return []
   // User-mentions (`@user` / `@human` / `@you`) resolve even when
-  // the ensemble has no participants — they're a return-to-human
-  // signal independent of the panel. The participant alias map
+  // the ensemble has no participants — they're address tokens
+  // independent of the panel. The participant alias map
   // remains the right structure for the rest of the resolution
   // path, but we early-out before building it when there's no
   // panel AND no user-mention possible (the loop below covers
@@ -586,7 +584,7 @@ export function isReservedMentionToken(token: string): boolean {
 
 /** Companion to `isReservedMentionToken`: is this bare token one of the
  * user-mention aliases (`user` / `human` / `you`)? The assistant-side
- * `ParticipantMention` chip uses it to style an `@user` handback
+ * `ParticipantMention` chip uses it to style an `@user` address
  * distinctly instead of letting it fall through to plain text. Reuses
  * the canonical `USER_ALIASES` set so renderer + orchestrator can't
  * drift. Exported for tests. */

@@ -88,6 +88,37 @@ describe('Ensemble prompt composition', () => {
     ])
   })
 
+  it('keeps multiple mentioned participants in prompt order', () => {
+    const config: EnsembleConfig = {
+      ...ensemble,
+      maxParticipants: 4,
+      participants: [
+        ...ensemble.participants,
+        {
+          id: 'cursor',
+          provider: 'cursor',
+          enabled: true,
+          role: 'Cursor',
+          instructions: 'Check IDE behavior.',
+          order: 4,
+          permissionPresetId: 'read_only'
+        },
+        {
+          id: 'local',
+          provider: 'ollama',
+          enabled: true,
+          role: 'Local',
+          model: 'gpt-oss',
+          instructions: 'Check local model behavior.',
+          order: 5,
+          permissionPresetId: 'read_only'
+        }
+      ]
+    }
+    const ordered = getOrderedEnsembleParticipants(config, '@Cursor @Local what do you think?')
+    expect(ordered.map((participant) => participant.id).slice(0, 2)).toEqual(['cursor', 'local'])
+  })
+
   it('moves the configured synthesizer last in chair-summary rounds', () => {
     const ordered = getOrderedEnsembleParticipants({
       ...ensemble,
@@ -479,7 +510,8 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('SPEAKING LAST in this turn-bound round')
     expect(prompt).toContain('position 3 of 3')
     expect(prompt).toContain('`ensemble_yield(target: ...)` cannot route')
-    expect(prompt).toContain('`@user`')
+    expect(prompt).toContain('ensemble_yield(target: "user")')
+    expect(prompt).toContain('Plain `@user`, `@human`, and `@you` mentions address the human')
   })
 
   it('does NOT emit the last-speaker rule for non-last speakers in turn_bound', () => {

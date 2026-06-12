@@ -97,11 +97,11 @@ describe('MarkdownMessage', () => {
     expect(html).toMatch(/<li>[\s\S]*<ul>[\s\S]*nested/)
   })
 
-  it('tokenises an @user handback chip in both body text and headings', () => {
+  it('tokenises an @user address chip in both body text and headings', () => {
     const html = renderToStaticMarkup(
       <MarkdownMessage content={['## Handing to @user', '', 'Back to @user now.'].join('\n')} />
     )
-    // Heading + paragraph both get the user-handback chip — heading
+    // Heading + paragraph both get the user-address chip — heading
     // tokenisation is the 1.0.72 markdown-audit gap-fix.
     const chips = (html.match(/participant-mention--user/g) || []).length
     expect(chips).toBe(2)

@@ -13,14 +13,14 @@ const reviewerChat = {
 } as unknown as ChatRecord
 
 describe('ParticipantMention', () => {
-  it('renders @user / @human / @you as a distinct user-handback chip', () => {
+  it('renders @user / @human / @you as a distinct user-address chip', () => {
     for (const word of ['user', 'human', 'you']) {
       const html = renderToStaticMarkup(
         <AgentIdentityContext.Provider value={emptyEnsembleChat}>
           <ParticipantMention reference={word}>@{word}</ParticipantMention>
         </AgentIdentityContext.Provider>
       )
-      // Distinct user-handback styling, not the bare-text fallback.
+      // Distinct user-address styling, not the bare-text fallback.
       expect(html).toContain('participant-mention--user')
       expect(html).toContain('--user-bubble-base')
       expect(html).toContain(`@${word}`)

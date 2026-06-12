@@ -413,10 +413,9 @@ describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
 
 describe('user-mention resolution', () => {
   /**
-   * 1.0.4 — `@user` / `@human` / `@you` are explicit return-to-
-   * human handoff signals. The resolver returns a UserMentionMatch
-   * (no `participant` field) — distinct from participant matches
-   * so the orchestrator can close the round instead of promoting.
+   * `@user` / `@human` / `@you` are visible user-address tokens.
+   * The resolver returns a UserMentionMatch (no `participant` field)
+   * so routing code can distinguish them from participant targets.
    *
    * Resolved even when the ensemble has no participants — these
    * aliases are panel-independent.
@@ -445,7 +444,7 @@ describe('user-mention resolution', () => {
   it('resolves user-mentions even when the ensemble has no participants', () => {
     // The user-mention path must be panel-independent — a chat
     // with no ensemble participants should still recognise the
-    // signal so a solo agent can hand control back.
+    // token so the renderer can style it consistently.
     const match = findFirstMention('@user thoughts?', [])
     expect(match?.kind).toBe('user')
   })
@@ -463,9 +462,8 @@ describe('user-mention resolution', () => {
   })
 
   it('participant mentions before a user mention are still resolved in order', () => {
-    // `findAllMentions` should yield both — the orchestrator only
-    // acts on the FIRST mention but the renderer overlay needs all
-    // of them tokenised for styling.
+    // `findAllMentions` should yield both — runtime routing ignores
+    // the user-address token, and the renderer overlay still styles it.
     const matches = findAllMentions('@codex then @user', [CODEX])
     expect(matches.length).toBe(2)
     expect(matches[0].kind).toBe('participant')

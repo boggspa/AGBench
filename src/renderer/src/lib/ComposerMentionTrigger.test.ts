@@ -84,10 +84,10 @@ describe('extractFirstEnsembleDmTarget', () => {
     expect(extractFirstEnsembleDmTarget('Just a plain message.')).toBeNull()
   })
 
-  it('returns the first match when multiple participants are mentioned', () => {
+  it('does not collapse multiple explicit participants into a single DM target', () => {
     expect(
       extractFirstEnsembleDmTarget('[@A](ensemble-dm://id-a) and [@B](ensemble-dm://id-b)')
-    ).toBe('id-a')
+    ).toBeNull()
   })
 
   it('ignores other markdown link schemes (e.g. agent://)', () => {
@@ -116,6 +116,14 @@ describe('extractFirstEnsembleDmTarget', () => {
     expect(extractFirstEnsembleDmTarget('hey @gemini check this', participants)).toBe(
       'ensemble-gemini'
     )
+  })
+
+  it('does not collapse multiple plain participant mentions into a single DM target', () => {
+    const participants = [
+      { id: 'ensemble-cursor', role: 'Cursor', provider: 'cursor' },
+      { id: 'ensemble-local', role: 'Local', provider: 'ollama', model: 'gpt-oss' }
+    ]
+    expect(extractFirstEnsembleDmTarget('@Cursor @Local what do you think?', participants)).toBeNull()
   })
 
   it('skips @-mentions that match no participant', () => {

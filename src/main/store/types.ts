@@ -948,8 +948,7 @@ export interface WorkSessionConfig {
   acceptanceCriteria: string
   /** Subset of ensemble participants allowed to act in the session.
    * `null` means "all currently-enabled participants". Participants
-   * not in the list are skipped from rotation but may still receive
-   * `@user` returns. */
+   * not in the list are skipped from rotation. */
   allowedParticipantIds: string[] | null
   /** Designated lead — gets the first speaker slot of every round.
    * Optional; absent = roster-order. */

@@ -23,7 +23,7 @@
  */
 
 import type { ProviderId } from '../../../main/store/types'
-import { findFirstMention, normalizeAlias } from '../../../main/services/EnsembleMentionAlias'
+import { findAllMentions, normalizeAlias } from '../../../main/services/EnsembleMentionAlias'
 import { getProviderLabel } from './providerLabels'
 
 export type ComposerMentionTriggerKind = 'mention' | 'file-mention'
@@ -124,16 +124,23 @@ export interface GuestParticipantAddressInput {
  *      `@GPT 5.5` / `@Sonnet 4.7` / `@Flash Lite` / `@Kimi K2.6`
  *      model-name forms.
  *
- * Returns the FIRST match found. If a user wrote `@A @B` we DM A.
+ * Returns a DM target only when the prompt addresses exactly one participant.
+ * Multiple participant mentions are a panel-routing request, not a DM.
  */
 export function extractFirstEnsembleDmTarget(
   prompt: string,
   participants?: EnsembleDmCandidate[]
 ): string | null {
   // Markdown form — always wins because the link unambiguously
-  // carries the participant id.
-  const linkMatch = prompt.match(/\]\(ensemble-dm:\/\/([^)\s]+)\)/)
-  if (linkMatch) return linkMatch[1]
+  // carries the participant id. Multiple explicit links mean the
+  // prompt is addressed to multiple participants, so leave it as a
+  // normal ensemble round.
+  const linkMatches = Array.from(prompt.matchAll(/\]\(ensemble-dm:\/\/([^)\s]+)\)/g))
+    .map((match) => match[1])
+    .filter(Boolean)
+  const uniqueLinkTargets = [...new Set(linkMatches)]
+  if (uniqueLinkTargets.length === 1) return uniqueLinkTargets[0]
+  if (uniqueLinkTargets.length > 1) return null
 
   if (!participants || participants.length === 0) return null
   // Shared multi-word matcher — same logic that powers the composer
@@ -143,16 +150,20 @@ export function extractFirstEnsembleDmTarget(
   // EnsembleDmCandidate is a structural subset of EnsembleParticipant;
   // cast through unknown because the matcher only reads id /
   // provider / role / model.
-  const match = findFirstMention(
+  const mentions = findAllMentions(
     prompt,
-    participants as unknown as Parameters<typeof findFirstMention>[1]
+    participants as unknown as Parameters<typeof findAllMentions>[1]
   )
-  // 1.0.4 — a user-mention (`@user`) does NOT resolve to a DM
-  // target. It's a return-to-human signal that the orchestrator
-  // handles separately. From the send-path's perspective, the
-  // prompt has no DM-routing intent so we return null.
-  if (!match || match.kind !== 'participant') return null
-  return match.participant.id
+  const participantIds = [
+    ...new Set(
+      mentions
+        .filter((match) => match.kind === 'participant')
+        .map((match) => match.participant.id)
+    )
+  ]
+  // User mentions are informational in this send path. They do not
+  // create a DM target.
+  return participantIds.length === 1 ? participantIds[0] : null
 }
 
 const GUEST_ROUTE_MENTION_REGEX = new RegExp(

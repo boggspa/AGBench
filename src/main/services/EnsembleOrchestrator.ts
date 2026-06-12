@@ -25,7 +25,11 @@ import type {
   ToolActivityStatus,
   UsageRecord
 } from '../store/types'
-import { findFirstMention, resolvePhraseToParticipant } from './EnsembleMentionAlias'
+import {
+  findAllMentions,
+  resolvePhraseToParticipant,
+  type ParticipantMentionMatch
+} from './EnsembleMentionAlias'
 import {
   classifyDispatchError,
   formatAllUnreachableNote,
@@ -315,6 +319,11 @@ function normalizeFanoutMode(value: unknown): EnsembleFanoutMode | null {
 
 function stripLeadingAt(value: string): string {
   return value.trim().replace(/^@+/, '').trim()
+}
+
+function isUserYieldTarget(value: string | undefined): boolean {
+  const target = stripLeadingAt(value || '').toLowerCase()
+  return target === 'user' || target === 'human' || target === 'you'
 }
 
 function normalizeTargetList(value: unknown): string[] {
@@ -2395,31 +2404,41 @@ export class EnsembleOrchestrator {
       // future yield without `target` reverts to default order.
       let routedByYieldTarget = false
       if (runtime.yieldTarget) {
-        const idx = resolveYieldTargetIndex(remaining, runtime.yieldTarget)
-        if (idx > 0) {
-          const [moved] = remaining.splice(idx, 1)
-          remaining.unshift(moved)
+        if (isUserYieldTarget(runtime.yieldTarget)) {
           routedByYieldTarget = true
+          remaining.length = 0
           this.appendRoundStatus(
             runtime.chatId,
             runtime.roundId,
-            `Yielded to ${moved.role || moved.provider} (${moved.provider}).`
+            `${participant.role || providerLabel(participant.provider)} yielded to the user. Round closed.`
           )
-        } else if (idx === 0) {
-          routedByYieldTarget = true
-        } else if (runtime.orchestrationMode === 'continuous') {
-          const target = resolveYieldTargetParticipant(
-            chat.ensemble.participants || [],
-            runtime.yieldTarget,
-            participant
-          )
-          if (target?.enabled) {
-            routedByYieldTarget = this.tryAppendContinuationTurn(
-              runtime,
-              remaining,
-              target,
-              `Yielded back to ${target.role || target.provider} (${target.provider}).`
+        } else {
+          const idx = resolveYieldTargetIndex(remaining, runtime.yieldTarget)
+          if (idx > 0) {
+            const [moved] = remaining.splice(idx, 1)
+            remaining.unshift(moved)
+            routedByYieldTarget = true
+            this.appendRoundStatus(
+              runtime.chatId,
+              runtime.roundId,
+              `Yielded to ${moved.role || moved.provider} (${moved.provider}).`
             )
+          } else if (idx === 0) {
+            routedByYieldTarget = true
+          } else if (runtime.orchestrationMode === 'continuous') {
+            const target = resolveYieldTargetParticipant(
+              chat.ensemble.participants || [],
+              runtime.yieldTarget,
+              participant
+            )
+            if (target?.enabled) {
+              routedByYieldTarget = this.tryAppendContinuationTurn(
+                runtime,
+                remaining,
+                target,
+                `Yielded back to ${target.role || target.provider} (${target.provider}).`
+              )
+            }
           }
         }
         runtime.yieldTarget = undefined
@@ -2435,7 +2454,7 @@ export class EnsembleOrchestrator {
       // other by name and the orchestrator routes the next turn
       // there.
       //
-      // Resolution lives in `EnsembleMentionAlias.findFirstMention`,
+      // Resolution lives in `EnsembleMentionAlias.findAllMentions`,
       // shared with the renderer-side composer overlay + DM router so
       // tagging behaves identically across the three surfaces. New in
       // 1.0.3: multi-word model-name aliases (`@GPT 5.5`,
@@ -2445,92 +2464,74 @@ export class EnsembleOrchestrator {
       // Skips self-mentions (agents talking about themselves) — the
       // `excludeIds` arg drops the speaker from the alias-map result
       // so an agent narrating its own role can't promote itself into
-      // an infinite loop. First match wins per turn — multiple
-      // `@A @B @C` mentions only promote A.
+      // an infinite loop. Participant mentions are applied in prompt
+      // order, while user mentions (`@user`, `@human`, `@you`) are
+      // informational and never route the round.
       //
       // `chat` is already in scope from the top of the while loop —
       // no need to re-fetch.
       const allParticipants = chat?.ensemble?.participants || []
-      const tagMatch = routedByYieldTarget
-        ? null
-        : findFirstMention(run.content, allParticipants, new Set([participant.id]))
+      const tagMatches = routedByYieldTarget
+        ? []
+        : findAllMentions(run.content, allParticipants, new Set([participant.id])).filter(
+            (match): match is ParticipantMentionMatch =>
+              match.kind === 'participant' && match.participant.enabled
+          )
 
-      // 1.0.4 — explicit `@user` handoff. The speaker said "back
-      // to the human" inline. Terminate the round immediately by
-      // draining `remaining` so the while-loop exits next
-      // iteration. Skips auto-promotion entirely; emits a status
-      // note so the transcript records WHY the round closed early.
-      if (tagMatch && tagMatch.kind === 'user') {
-        const speakerLabel = participant.role || providerLabel(participant.provider)
-        this.appendRoundStatus(
-          runtime.chatId,
-          runtime.roundId,
-          `${speakerLabel} handed control back to the user via @${tagMatch.text}. Round closed.`
-        )
-        remaining.length = 0
-      } else if (tagMatch && tagMatch.kind === 'participant' && tagMatch.participant.enabled) {
-        // 1.0.4 same-provider disambiguation. The shared resolver
-        // returns `ambiguousAmong` when the alias (e.g. plain
-        // `@codex`) could have resolved to >1 participant after the
-        // speaker was excluded. Two policies kick in:
-        //
-        //   1. Re-pick: among candidates, prefer the next-in-rotation
-        //      that hasn't spoken yet in this round (still in
-        //      `remaining`). Falls back to the resolver's ensemble-
-        //      order pick if no candidate is still in remaining.
-        //   2. Warn: emit a transcript system message so the user can
-        //      see WHICH same-provider participant was actually
-        //      addressed, and learn the explicit alias forms.
-        //
-        // Unambiguous matches (single role-name / single model alias)
-        // skip both policies, matching pre-1.0.4 behaviour.
-        let tagged = tagMatch.participant
-        let ambiguityWarning: string | undefined
-        if (tagMatch.ambiguousAmong && tagMatch.ambiguousAmong.length > 0) {
-          const candidates = [tagMatch.participant, ...tagMatch.ambiguousAmong]
-          const preferred = candidates.find((p) => remaining.some((r) => r.id === p.id))
-          if (preferred) tagged = preferred
-          const totalPeers = candidates.length
-          ambiguityWarning =
-            `@-mention: \`@${tagMatch.text}\` was ambiguous (${totalPeers} ${providerLabel(tagged.provider)} participants). ` +
-            `Routed to ${tagged.role || tagged.provider} (next in rotation). ` +
-            `Use @<role> or @<model> for explicit targeting.`
-        }
-        const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
-        if (existingIdx > 0) {
-          // Already queued for this round — bring them forward.
-          const [moved] = remaining.splice(existingIdx, 1)
-          remaining.unshift(moved)
-          if (ambiguityWarning) {
-            this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
+      if (tagMatches.length > 0) {
+        const seenTagged = new Set<string>()
+        const mentionedParticipants: EnsembleParticipant[] = []
+        const ambiguityWarnings: string[] = []
+        for (const tagMatch of tagMatches) {
+          let tagged = tagMatch.participant
+          if (tagMatch.ambiguousAmong && tagMatch.ambiguousAmong.length > 0) {
+            const candidates = [tagMatch.participant, ...tagMatch.ambiguousAmong]
+            const preferred = candidates.find((p) => remaining.some((r) => r.id === p.id))
+            if (preferred) tagged = preferred
+            ambiguityWarnings.push(
+              `@-mention: \`@${tagMatch.text}\` was ambiguous (${candidates.length} ${providerLabel(tagged.provider)} participants). ` +
+                `Routed to ${tagged.role || tagged.provider} (next in rotation). ` +
+                `Use @<role> or @<model> for explicit targeting.`
+            )
           }
+          if (seenTagged.has(tagged.id)) continue
+          seenTagged.add(tagged.id)
+          mentionedParticipants.push(tagged)
+        }
+        for (const warning of ambiguityWarnings) {
+          this.appendRoundStatus(runtime.chatId, runtime.roundId, warning)
+        }
+        const remainingTargetIds = new Set(
+          mentionedParticipants
+            .filter((tagged) => remaining.some((entry) => entry.id === tagged.id))
+            .map((tagged) => tagged.id)
+        )
+        const orderedTargets = mentionedParticipants.filter((tagged) =>
+          remainingTargetIds.has(tagged.id)
+        )
+        if (orderedTargets.length > 0) {
+          const rest = remaining.filter((entry) => !remainingTargetIds.has(entry.id))
+          remaining.splice(0, remaining.length, ...orderedTargets, ...rest)
           this.appendRoundStatus(
             runtime.chatId,
             runtime.roundId,
-            `@-mention: ${moved.role || moved.provider} promoted to speak next.`
+            `@-mention: ${orderedTargets
+              .map((entry) => entry.role || entry.provider)
+              .join(', ')} promoted to speak next.`
           )
-        } else if (existingIdx === -1 && runtime.orchestrationMode === 'continuous') {
-          // Already spoke this round (or never on the roster) — append
-          // an extra turn at the FRONT so the back-and-forth continues
-          // immediately. The participant gets a fresh `seedParticipantRun`
-          // with a new runId, so no state collides. This extra-turn
-          // path is only available in explicit Continuous mode; the
-          // default Turn-bound mode treats @mentions as routing hints
-          // for still-unspoken participants only.
-          if (ambiguityWarning) {
-            this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
+        }
+        if (runtime.orchestrationMode === 'continuous') {
+          const extraTargets = mentionedParticipants.filter(
+            (tagged) => !remainingTargetIds.has(tagged.id)
+          )
+          for (const tagged of extraTargets.slice().reverse()) {
+            this.tryAppendContinuationTurn(
+              runtime,
+              remaining,
+              tagged,
+              `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
+            )
           }
-          this.tryAppendContinuationTurn(
-            runtime,
-            remaining,
-            tagged,
-            `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
-          )
-        } else if (existingIdx === 0 && ambiguityWarning) {
-          // Already at the front — no rotation change, but the
-          // ambiguity is still real and the user should see why the
-          // resolver picked this particular Codex/Claude/etc.
-          this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
         }
       }
       // 1.0.4 — remember whose dispatch is "the yield target" for

@@ -34,7 +34,7 @@ export { OLLAMA_ENSEMBLE_MAX_CONTEXT_TURNS, OLLAMA_ENSEMBLE_MAX_TRANSCRIPT_CHARS
 // risked telling agents to write `@Sonnet 4.7` while the resolver
 // only knew `@Sonnet 4.6`, which Codex / Claude would dutifully
 // follow into a routing failure.
-import { getParticipantAliases } from './services/EnsembleMentionAlias'
+import { findAllMentions, getParticipantAliases } from './services/EnsembleMentionAlias'
 // M4 (1.0.7) — shared blackboard digest. Surfaced above the prior-round
 // summary so every participant opens its turn with the panel's agreed
 // decisions / risks / corrections as compact context.
@@ -115,19 +115,12 @@ export function getOrderedEnsembleParticipants(
     return applyActiveWorkSessionRoster(applyChairSummaryOrder(enabled, config), config)
   }
 
-  const prompt = currentPrompt.toLowerCase()
   const mentioned = new Set<string>()
-  for (const participant of enabled) {
-    const provider = participant.provider.toLowerCase()
-    const label = providerLabel(participant.provider).toLowerCase()
-    const role = String(participant.role || '').toLowerCase()
-    if (
-      prompt.includes(`@${provider}`) ||
-      prompt.includes(`@${label}`) ||
-      (role && prompt.includes(`@${role.replace(/\s+/g, '')}`))
-    ) {
-      mentioned.add(participant.id)
-    }
+  const mentionedInPromptOrder: EnsembleParticipant[] = []
+  for (const match of findAllMentions(currentPrompt, enabled)) {
+    if (match.kind !== 'participant' || mentioned.has(match.participant.id)) continue
+    mentioned.add(match.participant.id)
+    mentionedInPromptOrder.push(match.participant)
   }
   if (mentioned.size === 0) {
     return applyActiveWorkSessionRoster(applyChairSummaryOrder(enabled, config), config)
@@ -135,7 +128,7 @@ export function getOrderedEnsembleParticipants(
   return applyActiveWorkSessionRoster(
     applyChairSummaryOrder(
       [
-        ...enabled.filter((participant) => mentioned.has(participant.id)),
+        ...mentionedInPromptOrder,
         ...enabled.filter((participant) => !mentioned.has(participant.id))
       ],
       config
@@ -253,9 +246,9 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   // in a multi-participant turn-bound round get extra nudges so the
   // panel doesn't lopside: the opener scopes rather than executing
   // through (1.0.4-Y), and the closer knows there's nobody left to
-  // yield to so they should address `@user` rather than reach for
-  // ensemble_yield(target) and bounce the round off the end of the
-  // rotation (1.0.4-AJ).
+  // yield to so they should either close cleanly or deliberately yield
+  // to `user` instead of bouncing an invalid participant target off the
+  // end of the rotation (1.0.4-AJ).
   //
   // Continuous-mode rounds don't have a fixed "last" speaker —
   // continuationHops budget keeps the round open until someone
@@ -516,11 +509,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
               '- This is a conversational global chat — no workspace is bound and the user may not have a specific task in mind. Match the tone of a casual panel: share thoughts, weigh in on what the user actually said, and respond like an expert at a coffee table. Do NOT push the user to bind a workspace, assign a project, or treat the round as "we should be doing real work" unless they explicitly ask for that kind of help. If they want to start a concrete task they will bind a workspace themselves; until then, just chat.'
             ]
           : []),
-    // 1.0.4 — explicit `@user` handoff. Ends the round immediately
-    // when the orchestrator sees it; bypasses participant
-    // auto-promotion. Use when the speaker genuinely needs human
-    // input vs. handing off to another panelist.
-    '- To hand control back to the human and end the round, write `@user` (or `@human` / `@you`) inline. The orchestrator closes the round; no further participants speak this turn. Use this instead of `ensemble_yield()` when you want the conversation to wait on the user rather than progress through more agent turns.',
+    '- Plain `@user`, `@human`, and `@you` mentions address the human in visible text only; they do not route or close the round. If the round must wait for human input, explicitly call `ensemble_yield` with target `user` and a short reason.',
     // 1.0.4 — first-speaker scoping rule. Emitted ONLY when the
     // current speaker is opening a multi-participant round.
     // Addresses the maintainer's "agents dive in and leave nothing for the
@@ -546,13 +535,13 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // orchestrator routes the failed yield back to the user. Now
     // the closer knows: no more participants are scheduled — either
     // close cleanly (final summary / observation / no extra agent
-    // work needed) or use `@user` to ask a follow-up question. Risk
+    // work needed) or explicitly yield to `user` for a follow-up question. Risk
     // noted: agents could theoretically abuse turn-position
     // awareness to manipulate flow (e.g. always extending). User
     // will monitor over time; trust-but-verify.
     ...(isLastSpeaker
       ? [
-          `- You are SPEAKING LAST in this turn-bound round (position ${positionOneIndexed} of ${totalParticipants}). No further participants are scheduled — \`ensemble_yield(target: ...)\` cannot route to another panelist this round. Either close with a final observation / summary / decision OR write \`@user\` if you have a question the user should answer next. Avoid attempting a participant yield that has nowhere to land.`
+          `- You are SPEAKING LAST in this turn-bound round (position ${positionOneIndexed} of ${totalParticipants}). No further participants are scheduled — \`ensemble_yield(target: ...)\` cannot route to another panelist this round. Either close with a final observation / summary / decision OR call \`ensemble_yield(target: "user")\` if you have a question the user should answer next. Avoid attempting a participant yield that has nowhere to land.`
         ]
       : []),
     // 1.0.4-AJ — continuous-mode hop-budget awareness. When the
