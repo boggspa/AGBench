@@ -133,17 +133,23 @@ export function parseGrokHelp(raw: string): { flags: string[]; subcommands: stri
 /**
  * Global plumbing flags clap attaches to EVERY subcommand's help — their
  * presence on `agent stdio --help` says nothing about the stdio/ACP surface
- * itself. `--leader-socket` appeared globally in 0.2.32 (verified on the
- * stdio, mcp, mcp add/list, inspect, and update help screens alike) and was
+ * itself. `--leader-socket` appeared globally in 0.2.32 and `--debug` /
+ * `--debug-file` in 0.2.51 (each verified identically on the stdio, mcp,
+ * mcp add/list, inspect, and top-level help screens) — any of them was
  * flipping the old any-flag-beyond-help heuristic to a false positive.
  */
-const GROK_GLOBAL_PLUMBING_FLAGS = new Set(['--help', '--leader-socket'])
+const GROK_GLOBAL_PLUMBING_FLAGS = new Set([
+  '--help',
+  '--leader-socket',
+  '--debug',
+  '--debug-file'
+])
 
 /**
  * `grok agent stdio --help` documents nothing but `-h/--help` on 0.2.3 and
- * nothing but help + the global `--leader-socket` plumbing flag on 0.2.32.
- * "documented" = the help exposes any stdio-SPECIFIC option (a proxy for the
- * stdio/ACP surface gaining real documentation in a later CLI version).
+ * nothing but help + global plumbing flags through 0.2.51. "documented" =
+ * the help exposes any stdio-SPECIFIC option (a proxy for the stdio/ACP
+ * surface gaining real documentation in a later CLI version).
  */
 export function agentStdioIsDocumented(raw: string): boolean {
   return extractFlags(raw).some((flag) => !GROK_GLOBAL_PLUMBING_FLAGS.has(flag))

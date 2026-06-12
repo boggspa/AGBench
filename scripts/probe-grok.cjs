@@ -107,9 +107,10 @@ if (helpRes.error) findings.errors.push('help probe failed: ' + helpRes.error)
 
 const stdioRes = capture(resolved.binaryPath, [READ_ONLY, 'agent', 'stdio', '--help'])
 // Ignore global plumbing flags clap attaches to every subcommand's help —
-// 0.2.32 added --leader-socket everywhere, which is not stdio documentation.
-// Mirrors agentStdioIsDocumented in src/main/grok/GrokCliProbe.ts.
-const GLOBAL_PLUMBING_FLAGS = new Set(['--help', '--leader-socket'])
+// 0.2.32 added --leader-socket everywhere and 0.2.51 added --debug /
+// --debug-file, none of which is stdio documentation. Mirrors
+// agentStdioIsDocumented in src/main/grok/GrokCliProbe.ts.
+const GLOBAL_PLUMBING_FLAGS = new Set(['--help', '--leader-socket', '--debug', '--debug-file'])
 findings.agentStdioDocumented = extractFlags(stdioRes.stdout || stdioRes.stderr || '').some(
   (flag) => !GLOBAL_PLUMBING_FLAGS.has(flag)
 )

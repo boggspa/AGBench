@@ -221,6 +221,22 @@ describe('agentStdioIsDocumented', () => {
     expect(agentStdioIsDocumented(STDIO_HELP_FIXTURE_0_2_32)).toBe(false)
   })
 
+  it('is false for the 0.2.51 stdio help — --debug/--debug-file are global plumbing too', () => {
+    // Captured verbatim from `grok --no-auto-update agent stdio --help` on
+    // 0.2.51; the same two flags appear on mcp add/list, inspect, and the
+    // top-level help, so they document nothing stdio-specific.
+    const stdioHelp051 = `Run the agent over stdio
+
+Usage: grok agent stdio [OPTIONS]
+
+Options:
+      --debug                 Enable debug logging
+      --debug-file <FILE>     Write debug logs to FILE
+  -h, --help                  Print help
+      --leader-socket <PATH>  Use a custom leader socket path instead of the default \`~/.grok/leader.sock\``
+    expect(agentStdioIsDocumented(stdioHelp051)).toBe(false)
+  })
+
   it('becomes true once the stdio surface documents real options', () => {
     const documented = `Run the agent over stdio
 
