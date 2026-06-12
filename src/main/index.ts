@@ -153,6 +153,7 @@ import {
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
 import { bridgeResultDiffStats, bridgeToolDiffStats } from './bridge/BridgeToolDiffStats'
+import { backfillRunDiffCounts, toolEvidenceFromActivities } from '../shared/runDiffBackfill'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
 import {
   REMOTE_QUESTION_MAX_ANSWER_CHARS,
@@ -3090,15 +3091,21 @@ function finalizeBridgeRunTranscript(
   // Create PR prompt ever appears for phone-initiated work.
   void (async () => {
     try {
+      // Non-git workspaces can't line-count modified/deleted files from
+      // snapshots — the run's successful write tools carry that evidence.
+      const toolEvidence = toolEvidenceFromActivities(state.activities)
       if (state.preSnapshot && state.workspacePath) {
         const postSnapshot = await captureWorkspaceSnapshot(state.workspacePath)
-        state.runDiff = computeRunDiff(state.preSnapshot, postSnapshot, runId)
+        state.runDiff = backfillRunDiffCounts(
+          computeRunDiff(state.preSnapshot, postSnapshot, runId),
+          toolEvidence
+        )
       }
       for (const extraPath of state.extraWorkspacePaths ?? []) {
         const pre = state.extraPreSnapshots?.[extraPath]
         if (!pre) continue
         const post = await captureWorkspaceSnapshot(extraPath)
-        const diff = computeRunDiff(pre, post, runId)
+        const diff = backfillRunDiffCounts(computeRunDiff(pre, post, runId), toolEvidence)
         const files = [
           ...(diff?.createdFiles ?? []),
           ...(diff?.modifiedFiles ?? []),
@@ -3241,6 +3248,12 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
       : undefined
   const effectiveName = innerName || toolName
   const diffSummary = bridgeToolDiffStats(effectiveName, input)
+  // Patch tools carry no path field — when the parsed patch touches exactly
+  // one file, that file names the card ("Edited foo.swift", desktop parity).
+  const patchPaths = new Set(
+    (diffSummary?.files ?? []).map((file) => file.path).filter(Boolean) as string[]
+  )
+  const effectiveFilePath = filePath || (patchPaths.size === 1 ? [...patchPaths][0] : undefined)
   const activity: ToolActivity = {
     id,
     toolName,
@@ -3248,7 +3261,7 @@ function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): 
     category: bridgeToolCategory(effectiveName),
     status: 'running',
     startedAt: new Date().toISOString(),
-    ...(filePath ? { filePath } : {}),
+    ...(effectiveFilePath ? { filePath: effectiveFilePath } : {}),
     ...(diffSummary ? { diffSummary } : {})
   }
   state.activities.push(activity)
@@ -3324,6 +3337,13 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
       (stats.deletions ?? 0) > (activity.diffSummary.deletions ?? 0)
     ) {
       activity.diffSummary = { ...activity.diffSummary, ...stats }
+    }
+    // Late filename: a patch streamed via results names the card too.
+    if (!activity.filePath) {
+      const paths = new Set(
+        (activity.diffSummary?.files ?? []).map((file) => file.path).filter(Boolean) as string[]
+      )
+      if (paths.size === 1) activity.filePath = [...paths][0]
     }
   }
   // Boilerplate suppression, scoped: write tools with chips drop result

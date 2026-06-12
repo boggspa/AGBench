@@ -10,6 +10,7 @@ import {
 } from './lib/scheduledEnsembleSnapshot'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
+import { backfillRunDiffCounts, toolEvidenceFromActivities } from '../../shared/runDiffBackfill'
 // 1.0.5-EW25 — User-currency cost formatting helper.
 import { setFxRatesPerUsd, type DisplayCurrency } from './lib/formatCost'
 import { computeCumulativeRunBaseMs } from './lib/cumulativeRunTimecode'
@@ -7313,7 +7314,19 @@ function App(): React.JSX.Element {
                   scheduledTaskId: completedScheduledTaskId || undefined
                 }
               })
-              .then(async (runDiffResult) => {
+              .then(async (rawRunDiffResult) => {
+                // Non-git workspaces: snapshot diffs can't line-count
+                // modified/deleted files — backfill from this run's
+                // successful write-tool evidence so the File-changes card
+                // and composer diff row show −M, not just created +N.
+                const runDiffResult = backfillRunDiffCounts(
+                  rawRunDiffResult,
+                  toolEvidenceFromActivities(
+                    (chatByIdRef.current.get(completedRunChatId)?.messages ?? [])
+                      .filter((message) => message.runId === completedRunId)
+                      .flatMap((message) => message.toolActivities ?? [])
+                  )
+                )
                 appendDurableRunEvent({
                   runId: completedRunId,
                   chatId: completedRunChatId,

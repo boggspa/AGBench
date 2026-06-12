@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   bridgeResultDiffStats,
   bridgeToolDiffStats,
-  bridgeUnifiedDiffStats
+  bridgeUnifiedDiffStats,
+  parsePatchFileStats
 } from './BridgeToolDiffStats'
 
 describe('bridgeToolDiffStats (input-side derivation)', () => {
@@ -81,6 +82,82 @@ describe('bridgeToolDiffStats (input-side derivation)', () => {
       patchPreview: 'prose without any diff markers'
     })
     expect(stats).toBeUndefined()
+  })
+})
+
+describe('parsePatchFileStats (per-file evidence + card filenames)', () => {
+  it('splits a multi-file unified diff into per-file ± counts', () => {
+    const patch = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1,2 +1,3 @@',
+      '-old',
+      '+new',
+      '+more',
+      'diff --git a/src/b.ts b/src/b.ts',
+      '--- a/src/b.ts',
+      '+++ b/src/b.ts',
+      '@@ -1 +1 @@',
+      '-x',
+      '+y'
+    ].join('\n')
+    expect(parsePatchFileStats(patch)).toEqual([
+      { path: 'src/a.ts', status: 'modified', additions: 2, deletions: 1 },
+      { path: 'src/b.ts', status: 'modified', additions: 1, deletions: 1 }
+    ])
+  })
+
+  it('classifies bare-pair deletions and creations (/dev/null markers)', () => {
+    const patch = [
+      '--- a/gone.json',
+      '+++ /dev/null',
+      '@@ -1,3 +0,0 @@',
+      '-a',
+      '-b',
+      '-c',
+      '--- /dev/null',
+      '+++ b/fresh.md',
+      '@@ -0,0 +1,2 @@',
+      '+one',
+      '+two'
+    ].join('\n')
+    expect(parsePatchFileStats(patch)).toEqual([
+      { path: 'gone.json', status: 'deleted', additions: 0, deletions: 3 },
+      { path: 'fresh.md', status: 'created', additions: 2, deletions: 0 }
+    ])
+  })
+
+  it('refines a git-header deletion instead of opening a duplicate', () => {
+    const patch = [
+      'diff --git a/dead.txt b/dead.txt',
+      '--- a/dead.txt',
+      '+++ /dev/null',
+      '@@ -1 +0,0 @@',
+      '-bye'
+    ].join('\n')
+    expect(parsePatchFileStats(patch)).toEqual([
+      { path: 'dead.txt', status: 'deleted', additions: 0, deletions: 1 }
+    ])
+  })
+
+  it('reads codex apply_patch envelope verbs', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: notes/new.md',
+      '+hello',
+      '+world',
+      '*** Update File: src/main.ts',
+      '-old line',
+      '+new line',
+      '*** Delete File: tmp/scratch.txt',
+      '*** End Patch'
+    ].join('\n')
+    expect(parsePatchFileStats(patch)).toEqual([
+      { path: 'notes/new.md', status: 'created', additions: 2, deletions: 0 },
+      { path: 'src/main.ts', status: 'modified', additions: 1, deletions: 1 },
+      { path: 'tmp/scratch.txt', status: 'deleted', additions: 0, deletions: 0 }
+    ])
   })
 })
 

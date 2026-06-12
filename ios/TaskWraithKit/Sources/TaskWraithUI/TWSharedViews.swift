@@ -1976,7 +1976,9 @@ public struct ToolActivityCards: View {
                     // Live edits tick like an odometer — numericText rolls
                     // the digits as the Mac re-projects growing ± totals.
                     // Desktop parity: when EITHER side is nonzero, BOTH
-                    // chips render ("+1 −0"), zero included.
+                    // chips render ("+1 −0"), zero included. fixedSize keeps
+                    // the chips rigid so a long filename truncates instead
+                    // of squeezing the counters.
                     let additions = entry.additions ?? 0
                     let deletions = entry.deletions ?? 0
                     if additions > 0 || deletions > 0 {
@@ -1985,11 +1987,13 @@ public struct ToolActivityCards: View {
                             .foregroundStyle(TWTheme.statusSuccess)
                             .contentTransition(.numericText(value: Double(additions)))
                             .animation(.snappy(duration: 0.25), value: additions)
+                            .fixedSize()
                         Text("−\(deletions)")
                             .font(.caption2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(TWTheme.statusFailed)
                             .contentTransition(.numericText(value: Double(deletions)))
                             .animation(.snappy(duration: 0.25), value: deletions)
+                            .fixedSize()
                     }
                     Spacer(minLength: 0)
                     Circle()

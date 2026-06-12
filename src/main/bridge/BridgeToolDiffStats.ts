@@ -14,7 +14,7 @@
  *     (codex `fileChange` add items preview content, not a unified diff)
  */
 
-import type { ToolDiffSummary } from '../store/types'
+import type { ToolDiffFileSummary, ToolDiffSummary } from '../store/types'
 
 /** Lenient non-negative integer reader for provider change entries. */
 export function bridgeNumberish(value: unknown): number | undefined {
@@ -73,6 +73,92 @@ function lineCount(text: string): number {
   return text.length ? text.split('\n').length : 0
 }
 
+/** Per-file ± stats parsed out of patch text. Understands unified diffs
+ * (`diff --git`, `+++ b/…`, `/dev/null` markers) AND the codex apply_patch
+ * envelope (`*** Update File:` / `*** Add File:` / `*** Delete File:`).
+ * Files give the transcript card its FILENAME ("Edited foo.swift") and the
+ * run-diff backfill its per-file evidence. */
+export function parsePatchFileStats(patch: string): ToolDiffFileSummary[] {
+  const files: ToolDiffFileSummary[] = []
+  let current: ToolDiffFileSummary | null = null
+  /** Old-side path from a bare `--- ` line awaiting its `+++ ` partner —
+   * unified diffs without `diff --git` headers open files via the pair. */
+  let pendingOldSide: string | null = null
+  const open = (
+    path: string | undefined,
+    status: ToolDiffFileSummary['status']
+  ): ToolDiffFileSummary => {
+    const entry: ToolDiffFileSummary = { path: path || undefined, status, additions: 0, deletions: 0 }
+    files.push(entry)
+    return entry
+  }
+  const stripAB = (raw: string): string => raw.replace(/^[ab]\//, '').trim()
+  for (const line of patch.split('\n')) {
+    const gitHeader = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
+    if (gitHeader) {
+      pendingOldSide = null
+      current = open(gitHeader[2] || gitHeader[1], 'modified')
+      continue
+    }
+    const codexHeader = line.match(/^\*{3}\s+(Update|Add|Delete)\s+File:\s*(.+)$/i)
+    if (codexHeader) {
+      pendingOldSide = null
+      const verb = codexHeader[1].toLowerCase()
+      current = open(
+        codexHeader[2].trim(),
+        verb === 'add' ? 'created' : verb === 'delete' ? 'deleted' : 'modified'
+      )
+      continue
+    }
+    if (line.startsWith('--- ')) {
+      const target = line.slice(4).trim()
+      if (current && files[files.length - 1] === current && current.additions === 0 && current.deletions === 0 && target === '/dev/null') {
+        // `diff --git` already opened this file; refine to created.
+        current.status = 'created'
+      } else {
+        pendingOldSide = target
+      }
+      continue
+    }
+    if (line.startsWith('+++ ')) {
+      const target = line.slice(4).trim()
+      if (pendingOldSide !== null) {
+        const oldPath = stripAB(pendingOldSide)
+        const newPath = target === '/dev/null' ? null : stripAB(target)
+        const refinesCurrent =
+          current !== null &&
+          files[files.length - 1] === current &&
+          (current.additions ?? 0) === 0 &&
+          (current.deletions ?? 0) === 0 &&
+          (current.path === newPath || current.path === oldPath)
+        if (refinesCurrent && current) {
+          // The pair belongs to the file the git header already opened —
+          // refine its status instead of opening a duplicate.
+          if (newPath === null) current.status = 'deleted'
+          else if (pendingOldSide === '/dev/null') current.status = 'created'
+        } else if (newPath === null) {
+          current = open(oldPath, 'deleted')
+        } else if (pendingOldSide === '/dev/null') {
+          current = open(newPath, 'created')
+        } else {
+          current = open(newPath, 'modified')
+        }
+        pendingOldSide = null
+      } else if (current && target !== '/dev/null' && (!current.path || current.path === '/dev/null')) {
+        current.path = stripAB(target)
+      }
+      continue
+    }
+    if (!current) continue
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      current.additions = (current.additions ?? 0) + 1
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      current.deletions = (current.deletions ?? 0) + 1
+    }
+  }
+  return files.filter((file) => Boolean(file.path))
+}
+
 /** A change `kind` that means "this file is being created" — the preview is
  * the new file's CONTENT, so line-counting it as additions is honest. */
 function isCreateKind(kind: unknown): boolean {
@@ -122,7 +208,14 @@ export function bridgeToolDiffStats(
     // branches below can count it instead of minting a 0/0 'exact' that
     // blocks later evidence.
     if (additions > 0 || deletions > 0) {
-      return { additions, deletions, source: 'patch_preview', confidence: 'exact' }
+      const files = parsePatchFileStats(patch)
+      return {
+        additions,
+        deletions,
+        ...(files.length > 0 ? { files } : {}),
+        source: 'patch_preview',
+        confidence: 'exact'
+      }
     }
     if (isCreateKind(input.kind)) {
       return {
@@ -165,7 +258,13 @@ export function bridgeResultDiffStats(args: {
   if (flat) return flat
   const structural = bridgeUnifiedDiffStats(args.summary)
   if (structural) {
-    return { ...structural, source: 'result_diff', confidence: 'estimated' }
+    const files = parsePatchFileStats(args.summary)
+    return {
+      ...structural,
+      ...(files.length > 0 ? { files } : {}),
+      source: 'result_diff',
+      confidence: 'estimated'
+    }
   }
   if (isCreateKind(args.kind) && args.summary.trim()) {
     return {

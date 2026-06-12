@@ -435,8 +435,14 @@ function buildToolSummary(message: ChatMessage): RemoteThreadRow['toolSummary'] 
     if (typeof activity.diffSummary?.deletions === 'number') {
       entry.deletions = activity.diffSummary.deletions
     }
+    // Desktop parity: an edit card is one line — "Edited <file> +N −M" —
+    // with no result text underneath. Write entries that carry ± chips
+    // drop their detail (often a raw MCP result envelope); everything
+    // else keeps the one-line summary.
+    const hasDiffChips =
+      entry.category === 'write' && ((entry.additions ?? 0) > 0 || (entry.deletions ?? 0) > 0)
     const detail = activity.resultSummary?.trim()
-    if (detail) {
+    if (detail && !hasDiffChips) {
       entry.detail = detail.length > 90 ? `${detail.slice(0, 87).trimEnd()}...` : detail
     }
     return entry
