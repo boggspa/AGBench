@@ -21,13 +21,56 @@ function summarizeReadFileOutput(output: string, maxChars: number): string {
 }
 
 function summarizeSearchOutput(output: string, maxChars: number): string {
-  const lines = output.split(/\r?\n/).filter(Boolean)
-  if (lines.length <= SEARCH_SNIPPET_LINES && output.length <= maxChars) return output
+  const flattened = flattenSearchOutput(output)
+  const lines = flattened.split(/\r?\n/).filter(Boolean)
+  if (lines.length <= SEARCH_SNIPPET_LINES && flattened.length <= maxChars) return flattened
   const head = lines.slice(0, SEARCH_SNIPPET_LINES).join('\n')
   const summary = `${head}\n[workspace_search summary: ${lines.length} result lines; top ${SEARCH_SNIPPET_LINES} kept]`
   return summary.length <= maxChars
     ? summary
     : `${summary.slice(0, maxChars)}\n[tool result truncated for local model context]`
+}
+
+function flattenSearchOutput(output: string): string {
+  const value = String(output || '').trim()
+  if (!value.startsWith('{')) return output
+  try {
+    const parsed = JSON.parse(value) as {
+      matches?: Array<{ path?: unknown; line?: unknown; text?: unknown }>
+      symbols?: Array<{ path?: unknown; line?: unknown; name?: unknown; kind?: unknown }>
+      count?: unknown
+      truncated?: unknown
+      query?: unknown
+    }
+    const rows: string[] = []
+    if (Array.isArray(parsed.matches)) {
+      for (const match of parsed.matches) {
+        const path = String(match.path || '').trim()
+        const line = Number(match.line)
+        const text = String(match.text || '').trim()
+        if (!path || !Number.isFinite(line)) continue
+        rows.push(`${path}:${line}: ${text}`)
+      }
+    }
+    if (Array.isArray(parsed.symbols)) {
+      for (const symbol of parsed.symbols) {
+        const path = String(symbol.path || '').trim()
+        const line = Number(symbol.line)
+        const name = String(symbol.name || '').trim()
+        const kind = String(symbol.kind || '').trim()
+        if (!path || !Number.isFinite(line) || !name) continue
+        rows.push(`${path}:${line}: ${kind ? `${kind} ` : ''}${name}`)
+      }
+    }
+    if (rows.length === 0) return output
+    const suffix =
+      parsed.truncated === true
+        ? `\n[search truncated at ${String(parsed.count || rows.length)} results]`
+        : ''
+    return `${rows.join('\n')}${suffix}`
+  } catch {
+    return output
+  }
 }
 
 function summarizeListDirectoryOutput(output: string, maxChars: number): string {

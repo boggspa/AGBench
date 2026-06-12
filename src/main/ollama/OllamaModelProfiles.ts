@@ -17,8 +17,10 @@ import {
  * models otherwise apply to "hi, how are you?". */
 export function ollamaModelFamilyPromptLines(
   modelId: string,
-  intent: OllamaPromptIntent = 'workspace'
+  intent: OllamaPromptIntent = 'workspace',
+  tier: OllamaToolControlTier | string | undefined | null = 'read_only'
 ): string[] {
+  const normalizedTier = normalizeOllamaToolControlTier(tier)
   const family = resolveOllamaModelFamily(modelId)
   if (intent === 'conversational') {
     if (family === 'gpt_oss_20b') {
@@ -53,7 +55,14 @@ export function ollamaModelFamilyPromptLines(
         'When embedding code in JSON tool args, escape backslashes correctly (Swift \\(…), Windows paths).',
         'Prefer native tool/function calls over describing tools in prose.',
         'Call exactly one TaskWraith tool per turn.',
-        'Use todo_write (merge:true) to publish the harness checklist, then follow explore → read → edit → verify.',
+        normalizedTier === 'read_only'
+          ? 'Read-only profile: act as a scout. Search/list first, read narrow ranges, then report findings and handoff-worthy next steps.'
+          : normalizedTier === 'approved_edits'
+            ? 'Approved patch profile: make bounded, localized edits only after search/list and read_file. Stop and summarize when the task becomes broad.'
+            : normalizedTier === 'approved_shell'
+              ? 'Approved shell profile: after a scoped edit, run a targeted verification command when useful and approved.'
+              : 'Provider parity profile: use the broader TaskWraith surface only when it is directly relevant; prefer the smallest governed tool that solves the request.',
+        'Use todo_write only for multi-step work where a visible checklist genuinely helps; it is not required as the first tool.',
         'Worked trajectories:',
         ...ollamaGptOssFewShotTrajectories()
       ]
@@ -78,6 +87,13 @@ function describeTool(toolName: OllamaToolName): string | null {
   if (toolName === 'workspace_search') {
     return '- workspace_search: {"query":"text or regex","path":".","maxResults":50,"contextLines":1} — ripgrep over the workspace; search a distinctive literal string to pinpoint the exact file and line you will read or edit.'
   }
+  if (toolName === 'workspace_symbols') {
+    return '- workspace_symbols: {"query":"symbol or function name","path":"src"} — language-aware symbol lookup for definitions before reading or editing.'
+  }
+  if (toolName === 'git_status') return '- git_status: {} — inspect current git state without changing files.'
+  if (toolName === 'git_diff') {
+    return '- git_diff: {"path":"relative/path.txt"} — inspect unstaged changes or a focused path diff without changing files.'
+  }
   if (toolName === 'web_search') {
     return '- web_search: {"query":"current information to search for"} — returns a ranked list of result titles and URLs from the live web.'
   }
@@ -99,6 +115,12 @@ function describeTool(toolName: OllamaToolName): string | null {
   if (toolName === 'run_shell_command') {
     return '- run_shell_command: {"command":"exact command","intent":"short reason before running it"}'
   }
+  if (toolName === 'run_task') {
+    return '- run_task: {"task":"test","intent":"verify the focused change"} — run a configured task/test through TaskWraith policy.'
+  }
+  if (toolName === 'test_result_summary') {
+    return '- test_result_summary: {"path":"optional/result/path"} — summarize available test output without editing files.'
+  }
   if (toolName === 'todo_write') {
     return '- todo_write: {"merge":true,"todos":[{"id":"1","content":"short step label","status":"in_progress"}]} — publish goal steps the user sees as a checklist; keep one item in_progress.'
   }
@@ -115,7 +137,9 @@ export function ollamaLocalToolSystemPrompt(
   const normalizedTier = normalizeOllamaToolControlTier(tier)
   const tools = ollamaToolNamesForTier(normalizedTier)
   const hasWebTools = tools.includes('web_search') || tools.includes('web_fetch')
-  const familyLines = modelId?.trim() ? ollamaModelFamilyPromptLines(modelId, intent) : []
+  const familyLines = modelId?.trim()
+    ? ollamaModelFamilyPromptLines(modelId, intent, normalizedTier)
+    : []
   const lines = [
     'You are running inside TaskWraith through local Ollama.',
     'You do not have direct shell or filesystem access, but TaskWraith DOES give you working tools (listed below) that you can call right now. Use them instead of telling the user you lack a capability.',
@@ -134,16 +158,21 @@ export function ollamaLocalToolSystemPrompt(
         ]
       : []),
     ...familyLines,
-	    'Available tools:'
-	  ]
+    ...(normalizedTier === 'provider_parity' && tools.includes('delegate_to_subthread')
+      ? [
+          'Provider parity includes delegation tools in this workspace. Use delegate_to_subthread only for work that clearly exceeds the local model or needs another provider; otherwise keep the run local and scoped.'
+        ]
+      : []),
+    'Available tools:'
+  ]
   for (const toolName of tools) {
     const line = describeTool(toolName)
     if (line) lines.push(line)
   }
-	lines.push(
-	    'Paths must stay inside the active workspace.',
-	    'Use ask_user_question when the request is too ambiguous to continue safely or when a mid-task choice belongs to the user. After the answer returns, continue the task and summarize the chosen path.',
-	    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
+  lines.push(
+    'Paths must stay inside the active workspace.',
+    'Use ask_user_question when the request is too ambiguous to continue safely or when a mid-task choice belongs to the user. After the answer returns, continue the task and summarize the chosen path.',
+    'web_search and web_fetch are read-only network tools routed through TaskWraith policy. A typical flow is: web_search for the topic, pick the most relevant result, then web_fetch that URL and summarize its readable text for the user.',
     'Mutating tools require an intent or summary. TaskWraith will show a modal approval before running approved-edit and approved-shell tools.',
     'After TaskWraith returns a tool result, answer normally or request one more tool with the same JSON shape.',
     'Do not invent file contents or workspace facts when a tool result is needed.'
@@ -152,7 +181,36 @@ export function ollamaLocalToolSystemPrompt(
 }
 
 export function ollamaScoutDelegateWorkflowHint(modelId?: string | null): string {
+  return ollamaTierAwareWorkflowHint(modelId, 'read_only')
+}
+
+export function ollamaTierAwareWorkflowHint(
+  modelId?: string | null,
+  tier: OllamaToolControlTier | string | undefined | null = 'read_only'
+): string {
+  const normalizedTier = normalizeOllamaToolControlTier(tier)
   const family = resolveOllamaModelFamily(modelId || '')
+  if (normalizedTier === 'approved_edits') {
+    return [
+      'TaskWraith approved-patcher workflow:',
+      'Search or list before reading unfamiliar files, read the exact target, then make a localized edit.',
+      'Keep the patch bounded; when the task becomes multi-file or ambiguous, summarize the partial result and ask for delegation or a stronger provider.'
+    ].join(' ')
+  }
+  if (normalizedTier === 'approved_shell') {
+    return [
+      'TaskWraith verify-with-shell workflow:',
+      'Search/list, read, patch only scoped files, then run a targeted approved verification command when it adds confidence.',
+      'Do not attempt full-suite repair loops alone; summarize failures and recommend delegation when the loop expands.'
+    ].join(' ')
+  }
+  if (normalizedTier === 'provider_parity') {
+    return [
+      'TaskWraith provider-parity workflow:',
+      'Use the full tool surface sparingly and stay anchored to the user request.',
+      'Delegation is available only through TaskWraith tools in this tier; use it for broad refactors or long autonomous loops, not as a default.'
+    ].join(' ')
+  }
   const scout =
     family === 'qwen3_5_9b' || family === 'qwen3_4b' || family === 'gemma4_12b'
       ? 'Use this Ollama thread to search, read narrowly, and draft a short implementation plan.'

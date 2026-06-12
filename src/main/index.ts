@@ -9943,6 +9943,59 @@ async function runCodexProvider(
   }
 }
 
+function flattenOllamaWorkspaceSearchResult(result: unknown): string {
+  if (!isRecord(result) || !Array.isArray(result.matches)) return mcpJson(result)
+  const rows = result.matches
+    .map((match) => {
+      if (!isRecord(match)) return ''
+      const path = String(match.path || '').trim()
+      const line = Number(match.line)
+      const text = String(match.text || '').trim()
+      if (!path || !Number.isFinite(line)) return ''
+      return `${path}:${line}: ${text}`
+    })
+    .filter(Boolean)
+  if (rows.length === 0) return mcpJson(result)
+  if (result.truncated === true) {
+    rows.push(`[search truncated at ${String(result.count || rows.length)} results]`)
+  }
+  return rows.join('\n')
+}
+
+function integerArg(value: unknown): number | null {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Math.max(1, Math.trunc(numeric))
+}
+
+function sliceOllamaReadFileOutput(
+  content: string,
+  args: Record<string, unknown>
+): {
+  output: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  truncated: boolean
+} {
+  const lines = content.split(/\r?\n/)
+  const totalLines = lines.length
+  const requestedStart = integerArg(args.startLine ?? args.start_line ?? args.lineStart)
+  const requestedEnd = integerArg(args.endLine ?? args.end_line ?? args.lineEnd)
+  const requestedMax = integerArg(args.maxLines ?? args.max_lines ?? args.limit)
+  const startLine = Math.min(totalLines, requestedStart || 1)
+  const endByMax = requestedMax ? startLine + requestedMax - 1 : totalLines
+  const endLine = Math.min(totalLines, requestedEnd || endByMax)
+  const safeEndLine = Math.max(startLine, endLine)
+  return {
+    output: lines.slice(startLine - 1, safeEndLine).join('\n'),
+    startLine,
+    endLine: safeEndLine,
+    totalLines,
+    truncated: startLine > 1 || safeEndLine < totalLines
+  }
+}
+
 async function executeOllamaLocalTool(
   request: OllamaToolExecutionRequest
 ): Promise<OllamaToolExecutionResult> {
@@ -9976,6 +10029,41 @@ async function executeOllamaLocalTool(
           isRecord(result) &&
           (result.ok === true || result.exitCode === 0 || result.exitCode === 1) &&
           result.timedOut !== true,
+        output: flattenOllamaWorkspaceSearchResult(result),
+        structuredContent: result
+      }
+    }
+
+    if (request.toolName === 'workspace_symbols') {
+      const result = await workspaceToolExecutors.executeWorkspaceSymbols(
+        request.arguments,
+        context,
+        workspacePath
+      )
+      return {
+        ok: true,
+        output: mcpJson(result),
+        structuredContent: result
+      }
+    }
+
+    if (request.toolName === 'git_status') {
+      const result = await workspaceToolExecutors.executeGitStatus(workspacePath)
+      return {
+        ok: isRecord(result) ? result.ok !== false : true,
+        output: mcpJson(result),
+        structuredContent: result
+      }
+    }
+
+    if (request.toolName === 'git_diff') {
+      const result = await workspaceToolExecutors.executeGitDiff(
+        request.arguments,
+        context,
+        workspacePath
+      )
+      return {
+        ok: isRecord(result) ? result.ok !== false : true,
         output: mcpJson(result),
         structuredContent: result
       }
@@ -9993,14 +10081,19 @@ async function executeOllamaLocalTool(
       }
       const buffer = await fs.readFile(targetPath)
       assertTextBuffer(buffer)
+      const sliced = sliceOllamaReadFileOutput(buffer.toString('utf8'), request.arguments)
       return {
         ok: true,
-        output: buffer.toString('utf8'),
+        output: sliced.output,
         structuredContent: {
           ok: true,
           tool: 'read_file',
           path: formatWorkspaceToolScopedPath(context, targetPath),
-          bytes: stat.size
+          bytes: stat.size,
+          startLine: sliced.startLine,
+          endLine: sliced.endLine,
+          totalLines: sliced.totalLines,
+          truncated: sliced.truncated
         }
       }
     }
@@ -10012,6 +10105,8 @@ async function executeOllamaLocalTool(
       request.toolName === 'replace' ||
       request.toolName === 'apply_patch' ||
       request.toolName === 'run_shell_command' ||
+      request.toolName === 'run_task' ||
+      request.toolName === 'test_result_summary' ||
       request.toolName === 'todo_write' ||
       tier === 'provider_parity'
     ) {
@@ -19234,12 +19329,7 @@ if (isGeminiMcpBridgeProcess) {
         try {
           const settings = AppStore.getSettings()
           const models = await fetchOllamaModels(settings)
-          return models.map((model) => ({
-            id: model.id,
-            label: model.label,
-            description: model.description,
-            isDefault: model.isDefault
-          }))
+          return models
         } catch {
           return [
             {
@@ -19259,9 +19349,9 @@ if (isGeminiMcpBridgeProcess) {
               description: 'Install with `ollama pull gemma4:12b`'
             },
             {
-              id: 'gpt-oss',
-              label: humanizeOllamaModelId('gpt-oss'),
-              description: 'Install with `ollama pull gpt-oss`'
+              id: 'gpt-oss:20b',
+              label: humanizeOllamaModelId('gpt-oss:20b'),
+              description: 'Install with `ollama pull gpt-oss:20b`'
             }
           ]
         }

@@ -1,7 +1,7 @@
 import { resolveOllamaContextBudget } from './ollama/OllamaContextBudget'
 import { formatOllamaSessionMemoryForPrompt, type OllamaSessionMemory } from './ollama/OllamaRunMemory'
 import { classifyOllamaPromptIntent } from './ollama/OllamaPromptIntent'
-import { ollamaScoutDelegateWorkflowHint } from './ollama/OllamaModelProfiles'
+import { ollamaTierAwareWorkflowHint } from './ollama/OllamaModelProfiles'
 import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
 import type {
   ChatMessage,
@@ -300,7 +300,7 @@ export function buildConversationContextBlock(
 
   const lines = windowedMessages.map((item) => {
     const content = isChannelInboundMessage(item) ? channelInboundReplayText(item) : item.content
-    return `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(content, budget.maxCharsPerTurn)}`
+    return `${item.role === 'user' ? 'User' : 'Assistant'}: ${sanitizeContextText(content, budget.maxCharsPerTurn)}`
   })
 
   const contextBlock = [
@@ -486,7 +486,13 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   const geminiNeedsContextInjection = provider === 'gemini' && !resumeSessionId
   const codexNeedsContextInjection =
     provider === 'codex' && !resumeSessionId && !codexModelChangedAfterWork
-  const ollamaNeedsContextInjection = provider === 'ollama'
+  const ollamaPromptIntent =
+    provider === 'ollama'
+      ? classifyOllamaPromptIntent(finalPrompt, {
+          ongoingWork: (ollamaSessionMemory?.toolTurnCount ?? 0) > 0
+        })
+      : null
+  const ollamaNeedsContextInjection = provider === 'ollama' && ollamaPromptIntent === 'workspace'
   const shouldAppendContextForRun =
     kimiNeedsContextInjection ||
     geminiNeedsContextInjection ||
@@ -505,6 +511,8 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
     : codexNeedsContextInjection
       ? `Context turns: ${contextTurnsApplied} (Codex: no resumable app-server thread; sending compact context + current request)`
+    : provider === 'ollama' && ollamaPromptIntent !== 'workspace'
+      ? 'Context turns: 0 (Ollama: conversational turn; skipping compact workspace context)'
     : ollamaNeedsContextInjection
       ? `Context turns: ${contextTurnsApplied} (Ollama: compact local context — search/read narrowly; ${contextBudget.maxBlockChars} char cap)`
     : provider !== 'gemini'
@@ -697,12 +705,10 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     // Small local models latch onto whatever scaffolding surrounds the prompt,
     // so greetings/small talk get neither the scout-workflow hint nor the prior
     // tool-trajectory block — just the user's words. Work prompts keep both.
-    const promptIntent = classifyOllamaPromptIntent(finalPrompt, {
-      ongoingWork: (ollamaSessionMemory?.toolTurnCount ?? 0) > 0
-    })
+    const promptIntent = ollamaPromptIntent || 'workspace'
     if (promptIntent === 'workspace') {
       const sessionMemoryBlock = formatOllamaSessionMemoryForPrompt(ollamaSessionMemory)
-      const scoutHint = ollamaScoutDelegateWorkflowHint(nextModel)
+      const scoutHint = ollamaTierAwareWorkflowHint(nextModel, ollamaToolControlTier)
       contextualPrompt = [sessionMemoryBlock, scoutHint, contextualPrompt]
         .filter(Boolean)
         .join('\n\n')

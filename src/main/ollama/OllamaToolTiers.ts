@@ -7,6 +7,10 @@ export const OLLAMA_READ_TOOL_NAMES = [
   'read_file',
   'list_directory',
   'workspace_search',
+  'workspace_symbols',
+  'git_status',
+  'git_diff',
+  'test_result_summary',
   'web_search',
   'web_fetch',
   'ask_user_question'
@@ -19,7 +23,8 @@ export const OLLAMA_FILE_EDIT_TOOL_NAMES = [
 ] as const satisfies readonly OllamaToolName[]
 
 export const OLLAMA_SHELL_TOOL_NAMES = [
-  'run_shell_command'
+  'run_shell_command',
+  'run_task'
 ] as const satisfies readonly OllamaToolName[]
 
 /** Non-mutating coordination tools unlocked at tier 3 (approved edits) and above. */

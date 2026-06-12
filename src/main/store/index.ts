@@ -312,6 +312,8 @@ const defaultSettings: AppSettings = {
   ollamaBaseUrl: 'http://127.0.0.1:11434',
   ollamaDefaultModel: '',
   ollamaToolControlTier: 'read_only',
+  ollamaDefaultRunProfile: 'local_scout',
+  ollamaRunProfiles: {},
   defaultGeminiAuthProfileId: null,
   geminiAuthProfiles: [],
   geminiApiRuntime: 'auto',
@@ -769,6 +771,15 @@ export class AppStore {
         stored.ollamaToolControlTier === 'provider_parity'
           ? stored.ollamaToolControlTier
           : defaultSettings.ollamaToolControlTier,
+      ollamaDefaultRunProfile:
+        stored.ollamaDefaultRunProfile === 'local_scout' ||
+        stored.ollamaDefaultRunProfile === 'approved_patcher' ||
+        stored.ollamaDefaultRunProfile === 'verify_with_shell' ||
+        stored.ollamaDefaultRunProfile === 'provider_parity' ||
+        stored.ollamaDefaultRunProfile === 'custom'
+          ? stored.ollamaDefaultRunProfile
+          : defaultSettings.ollamaDefaultRunProfile,
+      ollamaRunProfiles: objectOrUndefined(stored.ollamaRunProfiles) || {},
       ollamaProviderParityAcknowledgedAt:
         typeof stored.ollamaProviderParityAcknowledgedAt === 'string' &&
         stored.ollamaProviderParityAcknowledgedAt.trim()

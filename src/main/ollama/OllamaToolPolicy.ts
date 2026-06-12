@@ -44,7 +44,8 @@ const OLLAMA_FORCE_PROMPT_TOOLS = new Set([
   'write_file',
   'replace',
   'apply_patch',
-  'run_shell_command'
+  'run_shell_command',
+  'run_task'
 ])
 
 export function ollamaShellRiskLabels(command: string): string[] {

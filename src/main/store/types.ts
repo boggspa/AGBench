@@ -173,6 +173,27 @@ export type OllamaToolControlTier =
   | 'approved_edits'
   | 'approved_shell'
   | 'provider_parity'
+export type OllamaRunProfileId =
+  | 'local_scout'
+  | 'approved_patcher'
+  | 'verify_with_shell'
+  | 'provider_parity'
+  | 'custom'
+export type OllamaReasoningLevel = 'low' | 'medium' | 'high'
+export type OllamaToolProtocolMode = 'native_first' | 'json_fallback' | 'json_only'
+export interface OllamaRunProfile {
+  id?: OllamaRunProfileId | string
+  label?: string
+  tier?: OllamaToolControlTier
+  reasoningLevel?: OllamaReasoningLevel
+  contextCapTokens?: number
+  protocolMode?: OllamaToolProtocolMode
+  compactToolSchemas?: boolean
+  oneToolAtATime?: boolean
+  numPredictTool?: number
+  numPredictFinal?: number
+  keepAlive?: string
+}
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
 export type PermissionPresetId =
@@ -1356,6 +1377,8 @@ export interface AppSettings {
   ollamaBaseUrl?: string
   ollamaDefaultModel?: string
   ollamaToolControlTier?: OllamaToolControlTier
+  ollamaDefaultRunProfile?: OllamaRunProfileId
+  ollamaRunProfiles?: Record<string, OllamaRunProfile>
   /** Per-model timestamps (ms) for the one-shot honest capability preflight. */
   ollamaModelPreflightAt?: Record<string, number>
   ollamaProviderParityAcknowledgedAt?: string

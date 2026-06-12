@@ -36,7 +36,7 @@ export function normalizeOllamaHarnessPath(pathValue: unknown): string {
 }
 
 export function ollamaHarnessEnforced(modelId?: string | null): boolean {
-  return ollamaEnforcesRetrievalFirst(modelId)
+  return Boolean(String(modelId || '').trim()) || ollamaEnforcesRetrievalFirst(modelId)
 }
 
 export function ollamaHarnessDefaultTodos(): OllamaHarnessTodoScaffoldItem[] {
@@ -67,7 +67,7 @@ export function ollamaHarnessWorkflowSystemLine(
   return [
     'Harness workflow: explore (workspace_search or list_directory) → read one target file → localized edit.',
     hasTodos
-      ? 'Publish the harness checklist with todo_write on your first tool turn, then advance steps as you go.'
+      ? 'Use todo_write for complex multi-step work, then advance steps as you go.'
       : 'Do not edit files you have not read in this run.'
   ].join(' ')
 }
@@ -89,8 +89,9 @@ export function ollamaHarnessKickoffPrompt(
     ].join(' ')
   }
   return [
-    'Workspace coding task: publish the harness checklist with todo_write first (merge:true).',
-    'Then explore with workspace_search or list_directory, read only what you need, and edit one file at a time.',
+    'Workspace coding task: start by grounding in the repo.',
+    'Use todo_write only if the task needs a visible multi-step checklist.',
+    'Explore with workspace_search or list_directory, read only what you need, and edit one file at a time.',
     `Suggested todos: ${JSON.stringify(ollamaHarnessDefaultTodos())}`,
     anchor
   ].join(' ')
@@ -107,8 +108,9 @@ function pathsFromApplyPatch(patchValue: unknown): string[] {
   for (const line of patch.split(/\r?\n/)) {
     const match = line.match(/^(?:---|\+\+\+)\s+(?:[ab]\/)?(.+)$/)
     if (!match) continue
+    if (match[1].trim() === '/dev/null' || match[1].trim() === 'dev/null') continue
     const normalized = normalizeOllamaHarnessPath(match[1])
-    if (normalized && normalized !== '/dev/null') paths.add(normalized)
+    if (normalized && normalized !== 'dev/null') paths.add(normalized)
   }
   return [...paths]
 }
@@ -161,19 +163,8 @@ export function evaluateOllamaHarnessGate(input: OllamaHarnessGateInput): {
   blocked: boolean
   message?: string
 } {
-  const { modelId, tier, state, toolName, args } = input
+  const { modelId, state, toolName, args } = input
   if (!ollamaHarnessEnforced(modelId)) return { blocked: false }
-
-  const tools = ollamaToolNamesForTier(tier)
-  const todoRequired =
-    Boolean(input.requireTodoScaffold) &&
-    tools.includes('todo_write') &&
-    !state.publishedTodos &&
-    toolName !== 'todo_write'
-
-  if (todoRequired) {
-    return { blocked: true, message: ollamaHarnessTodoBlockedMessage() }
-  }
 
   if (toolName === 'read_file') {
     const readPath = normalizeOllamaHarnessPath(args.path || args.file_path)
@@ -215,7 +206,7 @@ export function recordOllamaHarnessToolResult(
 ): OllamaHarnessRunState {
   if (!ok) return state
 
-  if (toolName === 'workspace_search' || toolName === 'list_directory') {
+  if (toolName === 'workspace_search' || toolName === 'list_directory' || toolName === 'workspace_symbols') {
     state.hasExplored = true
     state.activePhase = 'explore'
   }
@@ -259,7 +250,7 @@ export function ollamaHarnessToolFollowUpPrompt(input: {
 
   const guidance: string[] = []
   if (input.ok) {
-    if (input.toolName === 'workspace_search' || input.toolName === 'list_directory') {
+    if (input.toolName === 'workspace_search' || input.toolName === 'list_directory' || input.toolName === 'workspace_symbols') {
       guidance.push(
         'Pick the best match from these results and read_file that path only — do not read whole directories blindly.'
       )

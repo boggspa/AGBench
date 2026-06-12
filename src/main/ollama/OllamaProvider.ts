@@ -7,6 +7,7 @@ import type { RunManager, RunSessionStatus } from '../RunManager'
 import type { AppSettings, OllamaToolControlTier, ProviderCapabilityContract } from '../store/types'
 import {
   evaluateOllamaModelPreflight,
+  ollamaModelPreflightKey,
   shouldRunOllamaModelPreflight,
   type OllamaModelPreflightResult
 } from './OllamaModelPreflight'
@@ -50,6 +51,10 @@ import {
   ollamaStruggleHandoffMessage
 } from './OllamaModelProfiles'
 import { buildOllamaMidRunTierBumpWarning } from './OllamaTierSuggestion'
+import {
+  resolveOllamaRunProfile,
+  resolveOllamaThinkingLevel
+} from './OllamaRunProfiles'
 
 export { ollamaLocalToolSystemPrompt } from './OllamaModelProfiles'
 import {
@@ -69,9 +74,32 @@ export interface OllamaModelInfo {
   label: string
   description?: string
   isDefault?: boolean
+  sizeBytes?: number
+  digest?: string
+  format?: string
+  family?: string
+  families?: string[]
+  embeddingLength?: number
   contextLength?: number
   parameterSize?: string
   quantizationLevel?: string
+  capabilities?: string[]
+  show?: OllamaModelShowInfo
+}
+
+export interface OllamaModelShowInfo {
+  license?: string
+  modelfile?: string
+  parameters?: string
+  template?: string
+  details?: {
+    format?: string
+    family?: string
+    families?: string[]
+    parameter_size?: string
+    quantization_level?: string
+  }
+  model_info?: Record<string, unknown>
   capabilities?: string[]
 }
 
@@ -105,6 +133,8 @@ export interface OllamaProviderDeps {
     | 'ollamaBaseUrl'
     | 'ollamaDefaultModel'
     | 'ollamaToolControlTier'
+    | 'ollamaDefaultRunProfile'
+    | 'ollamaRunProfiles'
     | 'ollamaModelPreflightAt'
     | 'ollamaProviderParityWorkspaceGrants'
     | 'agenticServices'
@@ -155,10 +185,15 @@ interface OllamaTagsResponse {
     name?: string
     model?: string
     size?: number
+    digest?: string
     details?: {
+      format?: string
+      family?: string
+      families?: string[]
       parameter_size?: string
       quantization_level?: string
       context_length?: number
+      embedding_length?: number
     }
     capabilities?: string[]
   }>
@@ -218,6 +253,7 @@ interface OllamaChatTurnResult {
    * legacy JSON-in-prose protocol when present. */
   toolCalls: OllamaToolRequest[]
   lastDone: OllamaChatChunk | null
+  parseErrors: string[]
 }
 
 export interface OllamaToolExecutionRequest {
@@ -340,11 +376,25 @@ export function humanizeOllamaModelId(model: string): string {
 function modelDescription(model: OllamaTagModel): string | undefined {
   const details = model.details || {}
   const pieces = [
+    details.family,
     details.parameter_size,
     details.quantization_level,
     typeof details.context_length === 'number' ? `${details.context_length.toLocaleString()} ctx` : ''
   ].filter(Boolean)
   return pieces.length > 0 ? pieces.join(' · ') : undefined
+}
+
+function ollamaModelIdsMatch(a: string, b: string): boolean {
+  const left = a.trim().toLowerCase()
+  const right = b.trim().toLowerCase()
+  if (!left || !right) return false
+  if (left === right) return true
+  const withoutLatest = (value: string) => value.replace(/:latest$/, '')
+  if (withoutLatest(left) === withoutLatest(right)) return true
+  return (
+    (left === 'gpt-oss' && (right === 'gpt-oss:latest' || right === 'gpt-oss:20b')) ||
+    (right === 'gpt-oss' && (left === 'gpt-oss:latest' || left === 'gpt-oss:20b'))
+  )
 }
 
 export function normalizeOllamaModels(
@@ -361,12 +411,25 @@ export function normalizeOllamaModels(
     const info: OllamaModelInfo = {
       id,
       label: humanizeOllamaModelId(id),
-      isDefault: selectedDefault ? id === selectedDefault : seen.size === 1
+      isDefault: selectedDefault ? ollamaModelIdsMatch(id, selectedDefault) : seen.size === 1
     }
     const description = modelDescription(entry)
     if (description) info.description = description
+    if (typeof entry.size === 'number') info.sizeBytes = entry.size
+    if (typeof entry.digest === 'string' && entry.digest.trim()) info.digest = entry.digest.trim()
+    if (entry.details?.format) info.format = entry.details.format
+    if (entry.details?.family) info.family = entry.details.family
+    if (Array.isArray(entry.details?.families)) {
+      const families = entry.details.families.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0
+      )
+      if (families.length > 0) info.families = families
+    }
     if (typeof entry.details?.context_length === 'number') {
       info.contextLength = entry.details.context_length
+    }
+    if (typeof entry.details?.embedding_length === 'number') {
+      info.embeddingLength = entry.details.embedding_length
     }
     if (entry.details?.parameter_size) info.parameterSize = entry.details.parameter_size
     if (entry.details?.quantization_level) {
@@ -529,6 +592,59 @@ export async function fetchOllamaModels(
   }
 }
 
+async function fetchOllamaModelShow(
+  baseUrl: string,
+  model: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<OllamaModelShowInfo | null> {
+  const timeoutMs = options.timeoutMs ?? 2_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const signal = options.signal || controller.signal
+  try {
+    const response = await fetch(endpoint(baseUrl, '/api/show'), {
+      method: 'POST',
+      signal,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model })
+    })
+    if (!response.ok) return null
+    const parsed = (await response.json()) as OllamaModelShowInfo
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function mergeOllamaModelShow(
+  modelInfo: OllamaModelInfo | null,
+  show: OllamaModelShowInfo | null
+): OllamaModelInfo | null {
+  if (!modelInfo || !show) return modelInfo
+  const next: OllamaModelInfo = { ...modelInfo, show }
+  if (!next.format && show.details?.format) next.format = show.details.format
+  if (!next.family && show.details?.family) next.family = show.details.family
+  if (!next.families && Array.isArray(show.details?.families)) {
+    next.families = show.details.families.filter(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0
+    )
+  }
+  if (!next.parameterSize && show.details?.parameter_size) {
+    next.parameterSize = show.details.parameter_size
+  }
+  if (!next.quantizationLevel && show.details?.quantization_level) {
+    next.quantizationLevel = show.details.quantization_level
+  }
+  if (!next.capabilities && Array.isArray(show.capabilities)) {
+    next.capabilities = show.capabilities.filter(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0
+    )
+  }
+  return next
+}
+
 export async function getOllamaStatusSnapshot(
   settings: Pick<AppSettings, 'ollamaBaseUrl' | 'ollamaDefaultModel'>
 ): Promise<OllamaStatusSnapshot> {
@@ -594,12 +710,17 @@ function resolveRequestedOllamaModel(
   settings: Pick<AppSettings, 'ollamaDefaultModel'>,
   models: OllamaModelInfo[]
 ): string {
+  const resolveInstalled = (value: string): string => {
+    const target = value.trim()
+    if (!target) return ''
+    return models.find((model) => ollamaModelIdsMatch(model.id, target))?.id || target
+  }
   const requested = String(payload.model || '').trim()
   if (requested && !['cli-default', 'auto', 'default', 'custom'].includes(requested)) {
-    return requested
+    return resolveInstalled(requested)
   }
   const configured = String(settings.ollamaDefaultModel || '').trim()
-  if (configured) return configured
+  if (configured) return resolveInstalled(configured)
   return models.find((model) => model.isDefault)?.id || models[0]?.id || ''
 }
 
@@ -760,7 +881,12 @@ function ollamaNativeToolParameters(
     case 'read_file':
       return {
         description: compact ? 'Read workspace file.' : 'Read a UTF-8 text file inside the active workspace.',
-        properties: { path: { ...STRING, description: compact ? 'Relative path.' : 'Workspace-relative file path.' } },
+        properties: {
+          path: { ...STRING, description: compact ? 'Relative path.' : 'Workspace-relative file path.' },
+          startLine: { type: 'number', description: 'Optional 1-based first line to read.' },
+          endLine: { type: 'number', description: 'Optional 1-based last line to read.' },
+          maxLines: { type: 'number', description: 'Optional maximum number of lines to return.' }
+        },
         required: ['path']
       }
     case 'list_directory':
@@ -1080,6 +1206,53 @@ export function shouldEmitOllamaReasoning(
   return !reasoningIsAnswer
 }
 
+function estimateOllamaContextTokens(input: {
+  messages: OllamaChatMessage[]
+  tools?: OllamaNativeToolDefinition[]
+}): number {
+  const messageChars = input.messages.reduce(
+    (sum, message) =>
+      sum +
+      message.content.length +
+      (message.tool_calls ? JSON.stringify(message.tool_calls).length : 0) +
+      (message.tool_name ? message.tool_name.length : 0),
+    0
+  )
+  const toolChars = input.tools?.length ? JSON.stringify(input.tools).length : 0
+  return Math.ceil((messageChars + toolChars) / 3.6)
+}
+
+function roundOllamaContext(tokens: number): number {
+  const quantum = 4096
+  return Math.ceil(tokens / quantum) * quantum
+}
+
+function resolveOllamaNumCtx(input: {
+  messages: OllamaChatMessage[]
+  tools?: OllamaNativeToolDefinition[]
+  modelInfo?: OllamaModelInfo | null
+  contextCapTokens?: number
+  reserveTokens?: number
+}): number | undefined {
+  const modelLimit =
+    typeof input.modelInfo?.contextLength === 'number' && input.modelInfo.contextLength > 0
+      ? input.modelInfo.contextLength
+      : undefined
+  const profileLimit =
+    typeof input.contextCapTokens === 'number' && input.contextCapTokens > 0
+      ? input.contextCapTokens
+      : undefined
+  const limit = Math.min(modelLimit || 131_072, profileLimit || modelLimit || 65_536)
+  const required = estimateOllamaContextTokens(input) + (input.reserveTokens || 4096)
+  const rounded = roundOllamaContext(Math.max(8192, required))
+  return Math.min(limit, rounded)
+}
+
+function ollamaModelSupportsNativeTools(modelInfo?: OllamaModelInfo | null): boolean {
+  if (!modelInfo?.capabilities?.length) return true
+  return modelInfo.capabilities.some((capability) => capability.toLowerCase() === 'tools')
+}
+
 async function runOllamaChatTurn(input: {
   baseUrl: string
   model: string
@@ -1088,7 +1261,20 @@ async function runOllamaChatTurn(input: {
   tools?: OllamaNativeToolDefinition[]
   temperature?: number
   jsonToolFallback?: boolean
+  think?: 'low' | 'medium' | 'high'
+  numCtx?: number
+  numPredict?: number
+  keepAlive?: string
 }): Promise<OllamaChatTurnResult> {
+  const options: Record<string, unknown> = {
+    temperature: input.temperature ?? 0.2
+  }
+  if (typeof input.numCtx === 'number' && Number.isFinite(input.numCtx)) {
+    options.num_ctx = Math.max(1024, Math.trunc(input.numCtx))
+  }
+  if (typeof input.numPredict === 'number' && Number.isFinite(input.numPredict)) {
+    options.num_predict = Math.max(1, Math.trunc(input.numPredict))
+  }
   const response = await fetch(endpoint(input.baseUrl, '/api/chat'), {
     method: 'POST',
     signal: input.signal,
@@ -1099,9 +1285,9 @@ async function runOllamaChatTurn(input: {
       messages: input.messages,
       ...(input.tools && input.tools.length ? { tools: input.tools } : {}),
       ...(input.jsonToolFallback ? { format: 'json' } : {}),
-      options: {
-        temperature: input.temperature ?? 0.2
-      }
+      ...(input.think ? { think: input.think } : {}),
+      ...(input.keepAlive ? { keep_alive: input.keepAlive } : {}),
+      options
     })
   })
 
@@ -1115,6 +1301,7 @@ async function runOllamaChatTurn(input: {
   let thinking = ''
   const toolCalls: OllamaToolRequest[] = []
   let lastDone: OllamaChatChunk | null = null
+  const parseErrors: string[] = []
   const handleChunk = (chunk: OllamaChatChunk) => {
     if (chunk.error) {
       throw new Error(chunk.error)
@@ -1129,22 +1316,30 @@ async function runOllamaChatTurn(input: {
       lastDone = chunk
     }
   }
+  const handleLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    try {
+      handleChunk(JSON.parse(trimmed) as OllamaChatChunk)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      parseErrors.push(`Malformed Ollama stream chunk ignored: ${message}`)
+    }
+  }
 
   for await (const value of response.body as any as AsyncIterable<Uint8Array>) {
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      handleChunk(JSON.parse(trimmed) as OllamaChatChunk)
+      handleLine(line)
     }
   }
   const trailing = buffer.trim()
   if (trailing) {
-    handleChunk(JSON.parse(trailing) as OllamaChatChunk)
+    handleLine(trailing)
   }
-  return { content, thinking, toolCalls, lastDone }
+  return { content, thinking, toolCalls, lastDone, parseErrors }
 }
 
 export async function runOllamaProvider(
@@ -1176,9 +1371,14 @@ export async function runOllamaProvider(
       return
     }
     const modelLabel = humanizeOllamaModelId(model)
-    const modelInfo = models.find((entry) => entry.id === model) || null
+    const taggedModelInfo = models.find((entry) => entry.id === model) || null
+    const modelInfo = mergeOllamaModelShow(
+      taggedModelInfo,
+      await fetchOllamaModelShow(baseUrl, model)
+    )
+    const preflightKey = ollamaModelPreflightKey(model, modelInfo)
     if (
-      shouldRunOllamaModelPreflight(settings.ollamaModelPreflightAt, model) &&
+      shouldRunOllamaModelPreflight(settings.ollamaModelPreflightAt, preflightKey) &&
       deps.emitOllamaModelPreflight
     ) {
       const preflight = evaluateOllamaModelPreflight({
@@ -1189,7 +1389,7 @@ export async function runOllamaProvider(
         totalMemoryBytes: deps.getTotalMemoryBytes?.() || 16 * 1024 ** 3
       })
       deps.emitOllamaModelPreflight(event.sender, preflight, route)
-      deps.markOllamaModelPreflightComplete?.(model)
+      deps.markOllamaModelPreflightComplete?.(preflightKey)
     }
     memoryMonitor = createOllamaMemoryMonitor()
     memoryMonitor.start()
@@ -1219,13 +1419,25 @@ export async function runOllamaProvider(
       Boolean(deps.executeTool && payload.workspace && payload.scope !== 'global') &&
       settings.agenticServices?.mcpTools !== 'deny'
     const ensembleRun = Boolean(payload.ensembleRun)
-    const toolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
-    const compactToolSchemas = ensembleRun || ollamaUsesCompactToolSchemas(model)
-    const nativeToolDefs = toolProtocolEnabled
+    const baseToolControlTier = effectiveOllamaToolControlTier(settings, payload.workspace)
+    const runProfile = resolveOllamaRunProfile(settings, baseToolControlTier, model)
+    const toolControlTier = baseToolControlTier
+    const nativeToolsSupported = ollamaModelSupportsNativeTools(modelInfo)
+    const compactToolSchemas =
+      ensembleRun ||
+      runProfile.compactToolSchemas === true ||
+      ollamaUsesCompactToolSchemas(model, modelInfo)
+    const nativeToolDefs = toolProtocolEnabled && nativeToolsSupported && runProfile.protocolMode !== 'json_only'
       ? ollamaNativeToolDefinitions(toolControlTier, { compact: compactToolSchemas })
       : []
-    const availableToolNames = nativeToolDefs.map((def) => def.function.name)
+    const availableToolNames =
+      nativeToolDefs.length > 0
+        ? nativeToolDefs.map((def) => def.function.name)
+        : toolProtocolEnabled
+          ? ollamaToolNamesForTier(toolControlTier)
+          : []
     const modelTemperature = ollamaModelFamilyTemperature(model)
+    const thinkingLevel = resolveOllamaThinkingLevel(model, runProfile)
     const chatId = route.appChatId || payload.appChatId
     const persistedMemory =
       chatId && deps.getOllamaSessionMemory
@@ -1274,16 +1486,49 @@ export async function runOllamaProvider(
     let lastDone: OllamaChatChunk | null = null
     let runUsageStats: Record<string, unknown> | undefined
     let toolCallCount = 0
+    let forceJsonToolFallback =
+      toolProtocolEnabled && (!nativeToolsSupported || runProfile.protocolMode === 'json_only')
+    let finalContentEmitted = false
+    let loopLimitReached = false
     for (let turnIndex = 0; turnIndex <= OLLAMA_TOOL_LOOP_LIMIT; turnIndex += 1) {
+      const jsonToolFallback =
+        forceJsonToolFallback ||
+        runProfile.protocolMode === 'json_fallback' ||
+        (nativeToolDefs.length === 0 && toolProtocolEnabled && ollamaPrefersJsonToolProtocol(model, modelInfo))
+      const numPredict = toolCallCount > 0 ? runProfile.numPredictFinal : runProfile.numPredictTool
       const turn = await runOllamaChatTurn({
         baseUrl,
         model,
         messages,
         signal: controller.signal,
-        tools: nativeToolDefs,
-        jsonToolFallback: toolProtocolEnabled && ollamaPrefersJsonToolProtocol(model),
-        ...(modelTemperature != null ? { temperature: modelTemperature } : {})
+        tools: jsonToolFallback ? [] : nativeToolDefs,
+        jsonToolFallback,
+        ...(modelTemperature != null ? { temperature: modelTemperature } : {}),
+        ...(thinkingLevel ? { think: thinkingLevel } : {}),
+        numCtx: resolveOllamaNumCtx({
+          messages,
+          tools: jsonToolFallback ? [] : nativeToolDefs,
+          modelInfo,
+          contextCapTokens: runProfile.contextCapTokens,
+          reserveTokens: runProfile.numPredictFinal
+        }),
+        ...(numPredict ? { numPredict } : {}),
+        ...(runProfile.keepAlive ? { keepAlive: runProfile.keepAlive } : {})
       })
+      for (const parseError of turn.parseErrors.slice(0, 3)) {
+        deps.sendAgentCompatLine(
+          event.sender,
+          'ollama',
+          {
+            type: 'provider_warning',
+            id: 'ollama-stream-parse-warning',
+            severity: 'warning',
+            title: 'Ollama stream chunk skipped',
+            message: parseError
+          },
+          route
+        )
+      }
       if (turn.lastDone) {
         lastDone = turn.lastDone
         runUsageStats = accumulateOllamaUsageStats(runUsageStats, turn.lastDone)
@@ -1306,7 +1551,8 @@ export async function runOllamaProvider(
         : fallbackRequest
           ? [fallbackRequest]
           : []
-      if (ollamaOneToolAtATime(model) && toolRequests.length > 1) {
+      const oneToolAtATime = runProfile.oneToolAtATime !== false && ollamaOneToolAtATime(model, modelInfo)
+      if (oneToolAtATime && toolRequests.length > 1) {
         toolRequests = toolRequests.slice(0, 1)
       }
       // Surface the model's reasoning (`thinking`) channel as a streamed
@@ -1379,6 +1625,7 @@ export async function runOllamaProvider(
           turnIndex < OLLAMA_TOOL_LOOP_LIMIT &&
           looksLikeLeakedOllamaToolProtocol(turn.content)
         ) {
+          forceJsonToolFallback = true
           messages.push({ role: 'assistant', content: turn.content })
           messages.push({ role: 'user', content: ollamaMalformedToolJsonNudgePrompt() })
           continue
@@ -1393,6 +1640,7 @@ export async function runOllamaProvider(
           turnIndex < OLLAMA_TOOL_LOOP_LIMIT &&
           looksLikeOllamaToolIntent(turn.content, availableToolNames)
         ) {
+          forceJsonToolFallback = true
           messages.push({ role: 'assistant', content: turn.content })
           messages.push({
             role: 'user',
@@ -1412,7 +1660,31 @@ export async function runOllamaProvider(
           messages.push({ role: 'user', content: ollamaDegenerateResponseNudgePrompt() })
           continue
         }
+        if (
+          turnIndex >= OLLAMA_TOOL_LOOP_LIMIT &&
+          toolProtocolEnabled &&
+          (!visibleText.trim() ||
+            looksLikeLeakedOllamaToolProtocol(turn.content) ||
+            looksLikeOllamaToolIntent(turn.content, availableToolNames) ||
+            isDegenerateOllamaTurn(turn, visibleText, toolRequests.length, outputTokens))
+        ) {
+          loopLimitReached = true
+          deps.sendAgentCompatLine(
+            event.sender,
+            'ollama',
+            {
+              type: 'provider_warning',
+              id: 'ollama-tool-loop-limit',
+              severity: 'warning',
+              title: 'Ollama tool loop limit reached',
+              message: ollamaStruggleHandoffMessage(modelLabel)
+            },
+            route
+          )
+          break
+        }
         if (visibleText) {
+          finalContentEmitted = true
           deps.sendAgentCompatLine(
             event.sender,
             'ollama',
@@ -1429,6 +1701,7 @@ export async function runOllamaProvider(
         break
       }
       if (turnIndex >= OLLAMA_TOOL_LOOP_LIMIT) {
+        loopLimitReached = true
         deps.sendAgentCompatLine(
           event.sender,
           'ollama',
@@ -1449,7 +1722,7 @@ export async function runOllamaProvider(
         messages.push({
           role: 'assistant',
           content: turn.content || '',
-          tool_calls: nativeCalls.map((request) => ({
+          tool_calls: toolRequests.map((request) => ({
             function: { name: request.toolName, arguments: request.arguments }
           }))
         })
@@ -1477,9 +1750,7 @@ export async function runOllamaProvider(
               tier: toolControlTier,
               state: harnessState,
               toolName: toolRequest.toolName,
-              args: toolRequest.arguments,
-              requireTodoScaffold:
-                workspaceIntent && !harnessState.publishedTodos && toolCallCount === 1
+              args: toolRequest.arguments
             })
           : { blocked: false as const }
         if (harnessGate.blocked) {
@@ -1587,6 +1858,10 @@ export async function runOllamaProvider(
           })
         }
       }
+    }
+
+    if (loopLimitReached && !finalContentEmitted) {
+      throw new Error(ollamaStruggleHandoffMessage(modelLabel))
     }
 
     if (chatId && deps.saveOllamaSessionMemory && sessionMemory.toolTurnCount > 0) {

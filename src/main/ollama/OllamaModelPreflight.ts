@@ -40,8 +40,30 @@ function warning(
   return { id, severity, title, message }
 }
 
+function metadataText(modelInfo?: OllamaModelInfo | null): string {
+  return [
+    modelInfo?.family,
+    ...(Array.isArray(modelInfo?.families) ? modelInfo.families : []),
+    modelInfo?.show?.details?.family,
+    ...(Array.isArray(modelInfo?.show?.details?.families) ? modelInfo.show.details.families : [])
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
 /** Normalize a pulled Ollama tag to a stable family key. */
-export function resolveOllamaModelFamily(modelId: string): OllamaModelFamily {
+export function resolveOllamaModelFamily(
+  modelId: string,
+  modelInfo?: OllamaModelInfo | null
+): OllamaModelFamily {
+  const meta = metadataText(modelInfo)
+  if (meta.includes('gptoss') || meta.includes('gpt-oss')) {
+    return 'gpt_oss_20b'
+  }
+  if (meta.includes('qwen3') && meta.includes('9b')) return 'qwen3_5_9b'
+  if (meta.includes('qwen3')) return 'qwen3_4b'
+  if (meta.includes('gemma')) return 'gemma4_12b'
   const key = modelId.trim().toLowerCase()
   if (key === 'qwen3:4b-instruct' || key.startsWith('qwen3:4b')) return 'qwen3_4b'
   if (key === 'qwen3.5:9b' || key.startsWith('qwen3.5:9b')) return 'qwen3_5_9b'
@@ -58,6 +80,20 @@ export function resolveOllamaModelFamily(modelId: string): OllamaModelFamily {
   return 'unknown'
 }
 
+export function ollamaModelIdAliases(modelId: string): string[] {
+  const target = modelId.trim()
+  if (!target) return []
+  const lower = target.toLowerCase()
+  const aliases = new Set<string>([lower])
+  if (lower === 'gpt-oss' || lower === 'gpt-oss:20b' || lower === 'gpt-oss:latest') {
+    aliases.add('gpt-oss')
+    aliases.add('gpt-oss:20b')
+    aliases.add('gpt-oss:latest')
+    aliases.add('openai/gpt-oss-20b')
+  }
+  return [...aliases]
+}
+
 export function parseOllamaParameterBillions(parameterSize?: string | null): number | null {
   const raw = String(parameterSize || '').trim()
   if (!raw) return null
@@ -71,11 +107,21 @@ export function parseOllamaParameterBillions(parameterSize?: string | null): num
 export function estimateOllamaModelRamGb(input: {
   parameterBillions?: number | null
   quantizationLevel?: string | null
+  sizeBytes?: number | null
 }): number | null {
+  if (typeof input.sizeBytes === 'number' && Number.isFinite(input.sizeBytes) && input.sizeBytes > 0) {
+    return Math.round((input.sizeBytes / 1_000_000_000) * 1.25 * 10) / 10
+  }
   const params = input.parameterBillions
   if (params == null) return null
   const quant = String(input.quantizationLevel || '').toUpperCase()
-  const bytesPerParam = quant.includes('Q8') ? 1.0 : quant.includes('Q6') ? 0.75 : 0.62
+  const bytesPerParam = quant.includes('MXFP4')
+    ? 0.53125
+    : quant.includes('Q8')
+      ? 1.0
+      : quant.includes('Q6')
+        ? 0.75
+        : 0.62
   // Add ~25% headroom for runtime/KV overhead on first load.
   return Math.round(params * bytesPerParam * 1.25 * 10) / 10
 }
@@ -86,8 +132,8 @@ export function formatMemoryGb(bytes: number): string {
 }
 
 function modelInstalled(modelId: string, installedModelIds: string[]): boolean {
-  const target = modelId.trim().toLowerCase()
-  return installedModelIds.some((id) => id.trim().toLowerCase() === target)
+  const aliases = new Set(ollamaModelIdAliases(modelId))
+  return installedModelIds.some((id) => aliases.has(id.trim().toLowerCase()))
 }
 
 function modelSupportsNativeTools(modelInfo?: OllamaModelInfo | null): boolean | null {
@@ -137,7 +183,7 @@ function familyGuidance(family: OllamaModelFamily, modelLabel: string): {
 export function evaluateOllamaModelPreflight(
   input: OllamaModelPreflightInput
 ): OllamaModelPreflightResult {
-  const family = resolveOllamaModelFamily(input.modelId)
+  const family = resolveOllamaModelFamily(input.modelId, input.modelInfo)
   const { guidance, delegateHint } = familyGuidance(family, input.modelLabel)
   const checks: OllamaModelPreflightCheck[] = []
   const warnings: ProviderCapabilityWarning[] = []
@@ -174,7 +220,8 @@ export function evaluateOllamaModelPreflight(
             : null)
   const estimatedRamGb = estimateOllamaModelRamGb({
     parameterBillions: paramB,
-    quantizationLevel: input.modelInfo?.quantizationLevel
+    quantizationLevel: input.modelInfo?.quantizationLevel,
+    sizeBytes: input.modelInfo?.sizeBytes
   })
   const usableRamBytes = Math.floor(input.totalMemoryBytes * 0.55)
   const ramOk =
@@ -243,4 +290,14 @@ export function shouldRunOllamaModelPreflight(
   const key = modelId.trim()
   if (!key) return false
   return !completedAtByModel?.[key]
+}
+
+export function ollamaModelPreflightKey(
+  modelId: string,
+  modelInfo?: Pick<OllamaModelInfo, 'digest'> | null
+): string {
+  const id = modelId.trim()
+  if (!id) return ''
+  const digest = String(modelInfo?.digest || '').trim()
+  return digest ? `${id}@${digest}` : id
 }
