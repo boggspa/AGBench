@@ -340,6 +340,9 @@ struct HomeView: View {
             }
         }
 
+        // Defensive fallback only: cards whose workspace id isn't in the
+        // workspace list yet (a mid-hydration race). The Mac hides chats
+        // from stale/unknown workspaces, so this should stay empty.
         let strayCards = orphanCards.filter { !($0.workspaceId ?? "").isEmpty }
         if !strayCards.isEmpty {
             Section {
@@ -352,7 +355,7 @@ struct HomeView: View {
                     }
                 }
             } header: {
-                PillSectionHeader(title: "Chats", systemImage: "bubble.left.and.bubble.right")
+                PillSectionHeader(title: "Other chats", systemImage: "bubble.left.and.bubble.right")
             }
         }
         // (The pairID/APNs ack strip that used to render here was debug

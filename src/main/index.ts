@@ -15909,12 +15909,23 @@ if (isGeminiMcpBridgeProcess) {
       resolveCanonicalWorkspaceId(workspaceId, AppStore.getWorkspaces(), canonicalPath)
 
     const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
+      // NO workspace id at all = scope-global content (T71/T72): visible
+      // via the synthetic global scope (live once any real workspace is
+      // allowlisted; monitor-grants global chats/approvals/questions).
+      //
+      // A workspace id that IS set but doesn't canonicalize is a stale or
+      // unknown workspace — that is NOT global and must stay hidden
+      // (mapping it through the global lane leaked removed-workspace chats
+      // onto paired phones as orphan "Chats" rows).
+      if (!workspaceId) {
+        return bridgeAllowlist.evaluate({
+          workspaceId: GLOBAL_REMOTE_SCOPE,
+          capability: 'monitor'
+        }).allowed
+      }
       const canonical = canonicalRemoteWorkspaceId(workspaceId)
-      // No workspace = scope-global content (T71/T72): visible via the
-      // synthetic global scope, which is live once any real workspace is
-      // allowlisted and monitor-grants global chats/approvals/questions.
-      const scope = canonical ?? GLOBAL_REMOTE_SCOPE
-      return bridgeAllowlist.evaluate({ workspaceId: scope, capability: 'monitor' }).allowed
+      if (!canonical) return false
+      return bridgeAllowlist.evaluate({ workspaceId: canonical, capability: 'monitor' }).allowed
     }
 
     /** Relay frames cap out (1 MB) and snapshots ship every visible chat —
