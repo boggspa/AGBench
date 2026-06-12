@@ -169,7 +169,7 @@ describe('humaniseModelId', () => {
       expect(labels['qwen3:4b-instruct']).toBeDefined()
       expect(labels['qwen3.5:9b']).toBeDefined()
       expect(labels['gemma4:12b']).toBeDefined()
-      expect(labels['gpt-oss']).toBeDefined()
+      expect(labels['gpt-oss:20b']).toBeDefined()
       // CLI Default is a non-canonical Gemini composer id but is
       // surfaced in the comparison list when a user has run with
       // it — must humanise to something readable.

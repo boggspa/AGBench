@@ -54,7 +54,7 @@ describe('OllamaHarnessGates', () => {
     expect(gate.message).toContain('read_file')
   })
 
-  it('requires todo_write before other tools when scaffold is enabled', () => {
+  it('does not require todo_write before other tools when scaffold is enabled', () => {
     const state = createOllamaHarnessRunState()
     const gate = evaluateOllamaHarnessGate({
       modelId: 'gpt-oss:20b',
@@ -64,8 +64,7 @@ describe('OllamaHarnessGates', () => {
       args: { query: 'foo' },
       requireTodoScaffold: true
     })
-    expect(gate.blocked).toBe(true)
-    expect(gate.message).toContain('todo_write')
+    expect(gate.blocked).toBe(false)
   })
 
   it('extracts apply_patch paths and clears read cache after edit', () => {
@@ -74,6 +73,11 @@ describe('OllamaHarnessGates', () => {
         patch: '--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\n'
       })
     ).toEqual(['src/foo.ts'])
+    expect(
+      ollamaHarnessTargetPaths('apply_patch', {
+        patch: '--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+new\n'
+      })
+    ).toEqual(['src/new.ts'])
 
     let state = createOllamaHarnessRunState()
     state = recordOllamaHarnessToolResult(state, 'workspace_search', { query: 'foo' }, true)

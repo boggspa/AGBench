@@ -215,7 +215,7 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
       'qwen3:4b-instruct',
       'qwen3.5:9b',
       'gemma4:12b',
-      'gpt-oss'
+      'gpt-oss:20b'
     ])
     expect(ollama.reasoningOptions).toEqual([])
   })

@@ -110,10 +110,16 @@ describe('normalizeOllamaModels', () => {
         models: [
           {
             name: 'qwen3:4b-instruct',
+            size: 2_500_000_000,
+            digest: 'sha256:qwen',
             details: {
+              format: 'gguf',
+              family: 'qwen3',
+              families: ['qwen3'],
               parameter_size: '4B',
               quantization_level: 'Q4_K_M',
-              context_length: 262144
+              context_length: 262144,
+              embedding_length: 2560
             },
             capabilities: ['completion', 'tools']
           },
@@ -131,8 +137,14 @@ describe('normalizeOllamaModels', () => {
     expect(models[0]).toMatchObject({
       id: 'qwen3:4b-instruct',
       label: 'Qwen 3 (4B Param)',
-      description: '4B · Q4_K_M · 262,144 ctx',
+      description: 'qwen3 · 4B · Q4_K_M · 262,144 ctx',
+      sizeBytes: 2_500_000_000,
+      digest: 'sha256:qwen',
+      format: 'gguf',
+      family: 'qwen3',
+      families: ['qwen3'],
       contextLength: 262144,
+      embeddingLength: 2560,
       parameterSize: '4B',
       quantizationLevel: 'Q4_K_M',
       capabilities: ['completion', 'tools'],
@@ -166,6 +178,14 @@ describe('normalizeOllamaModels', () => {
 
     expect(models[0]?.isDefault).toBe(true)
     expect(models[1]?.isDefault).toBe(false)
+  })
+
+  it('marks exact installed GPT-OSS tags as default when configured by alias', () => {
+    const models = normalizeOllamaModels(
+      { models: [{ model: 'qwen3:4b-instruct' }, { model: 'gpt-oss:latest' }] },
+      'gpt-oss'
+    )
+    expect(models.find((model) => model.id === 'gpt-oss:latest')?.isDefault).toBe(true)
   })
 })
 
@@ -409,11 +429,15 @@ describe('ollamaNativeToolDefinitions', () => {
     expect(names).toEqual([
       'read_file',
       'list_directory',
-	      'workspace_search',
-	      'web_search',
-	      'web_fetch',
-	      'ask_user_question'
-	    ])
+      'workspace_search',
+      'workspace_symbols',
+      'git_status',
+      'git_diff',
+      'test_result_summary',
+      'web_search',
+      'web_fetch',
+      'ask_user_question'
+    ])
     const webSearch = defs.find((def) => def.function.name === 'web_search')
     expect(webSearch?.type).toBe('function')
     expect(webSearch?.function.parameters.required).toEqual(['query'])
@@ -458,13 +482,19 @@ describe('Ollama tool tiers', () => {
     expect(ollamaToolNamesForTier('read_only')).toEqual([
       'read_file',
       'list_directory',
-	      'workspace_search',
-	      'web_search',
-	      'web_fetch',
-	      'ask_user_question'
-	    ])
-	    expect(ollamaToolAllowedInTier('ask_user_question', 'read_only')).toBe(true)
-	    expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
+      'workspace_search',
+      'workspace_symbols',
+      'git_status',
+      'git_diff',
+      'test_result_summary',
+      'web_search',
+      'web_fetch',
+      'ask_user_question'
+    ])
+    expect(ollamaToolAllowedInTier('ask_user_question', 'read_only')).toBe(true)
+    expect(ollamaToolAllowedInTier('git_status', 'read_only')).toBe(true)
+    expect(ollamaToolAllowedInTier('test_result_summary', 'read_only')).toBe(true)
+    expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)
   })
 
   it('adds file edits and shell incrementally', () => {
@@ -473,6 +503,7 @@ describe('Ollama tool tiers', () => {
     expect(ollamaToolAllowedInTier('todo_write', 'read_only')).toBe(false)
     expect(ollamaToolAllowedInTier('run_shell_command', 'approved_edits')).toBe(false)
     expect(ollamaToolAllowedInTier('run_shell_command', 'approved_shell')).toBe(true)
+    expect(ollamaToolAllowedInTier('run_task', 'approved_shell')).toBe(true)
     expect(ollamaToolRequiresIntent('write_file')).toBe(true)
     expect(ollamaToolRequiresIntent('run_shell_command')).toBe(true)
   })

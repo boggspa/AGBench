@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   estimateOllamaModelRamGb,
   evaluateOllamaModelPreflight,
+  ollamaModelPreflightKey,
   parseOllamaParameterBillions,
   resolveOllamaModelFamily,
   shouldRunOllamaModelPreflight
@@ -17,6 +18,17 @@ describe('resolveOllamaModelFamily', () => {
     expect(resolveOllamaModelFamily('gpt-oss:latest')).toBe('gpt_oss_20b')
     expect(resolveOllamaModelFamily('llama3.2:3b')).toBe('unknown')
   })
+
+  it('detects GPT-OSS from Ollama metadata before tag heuristics', () => {
+    expect(
+      resolveOllamaModelFamily('local-custom:latest', {
+        id: 'local-custom:latest',
+        label: 'Local Custom',
+        family: 'gptoss',
+        families: ['gptoss']
+      })
+    ).toBe('gpt_oss_20b')
+  })
 })
 
 describe('estimateOllamaModelRamGb', () => {
@@ -28,6 +40,12 @@ describe('estimateOllamaModelRamGb', () => {
     expect(
       estimateOllamaModelRamGb({ parameterBillions: 20, quantizationLevel: 'Q4_K_M' })
     ).toBeGreaterThan(12)
+    expect(
+      estimateOllamaModelRamGb({ parameterBillions: 20.9, quantizationLevel: 'MXFP4' })
+    ).toBeLessThan(14)
+    expect(
+      estimateOllamaModelRamGb({ sizeBytes: 14_000_000_000, quantizationLevel: 'MXFP4' })
+    ).toBe(17.5)
   })
 })
 
@@ -84,6 +102,16 @@ describe('evaluateOllamaModelPreflight', () => {
     expect(result.warnings.some((w) => w.id === 'ollama-tools-unadvertised')).toBe(true)
     expect(result.guidance).toContain('finicky with tool calls')
   })
+
+  it('treats gpt-oss aliases as installed when an exact tag is present', () => {
+    const result = evaluateOllamaModelPreflight({
+      modelId: 'gpt-oss',
+      modelLabel: 'GPT OSS (20B Param)',
+      installedModelIds: ['gpt-oss:latest'],
+      totalMemoryBytes: 64 * GB
+    })
+    expect(result.checks.find((c) => c.id === 'installed')?.ok).toBe(true)
+  })
 })
 
 describe('shouldRunOllamaModelPreflight', () => {
@@ -94,6 +122,9 @@ describe('shouldRunOllamaModelPreflight', () => {
     )
     expect(shouldRunOllamaModelPreflight({ 'qwen3.5:9b': Date.now() }, 'gpt-oss:latest')).toBe(
       true
+    )
+    expect(ollamaModelPreflightKey('gpt-oss:latest', { digest: 'sha256:abc' })).toBe(
+      'gpt-oss:latest@sha256:abc'
     )
   })
 })

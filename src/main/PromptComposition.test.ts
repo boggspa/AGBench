@@ -165,7 +165,8 @@ describe('composeRunPrompt sub-thread returns', () => {
         message({
           role: 'user',
           content: 'Add fixture files so I can test transcript tool calls.'
-        })
+        }),
+        message({ role: 'assistant', content: 'I found the transcript renderer.' })
       ],
       chatContextTurns: 6,
       codexHandoffsApplied: [],
@@ -178,6 +179,8 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextualPrompt).toContain(
       'User: Add fixture files so I can test transcript tool calls.'
     )
+    expect(result.contextualPrompt).toContain('Assistant: I found the transcript renderer.')
+    expect(result.contextualPrompt).not.toContain('Gemini: I found')
     expect(result.contextualPrompt).toContain("Current user request:\nLet's try that again.")
     expect(result.applicationLog).toContain('Codex: no resumable app-server thread')
   })

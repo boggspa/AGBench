@@ -3,7 +3,8 @@ import {
   ollamaLocalToolSystemPrompt,
   ollamaModelFamilyPromptLines,
   ollamaScoutDelegateWorkflowHint,
-  ollamaStruggleHandoffMessage
+  ollamaStruggleHandoffMessage,
+  ollamaTierAwareWorkflowHint
 } from './OllamaModelProfiles'
 
 describe('ollamaModelFamilyPromptLines', () => {
@@ -47,22 +48,29 @@ describe('ollamaLocalToolSystemPrompt', () => {
     expect(prompt).not.toContain('Worked trajectories')
   })
 
-	  it('keeps the workspace scaffold by default', () => {
-	    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest')
-	    expect(prompt).toContain('harness checklist')
-	    expect(prompt).not.toContain('The current user message is conversational')
-	  })
+  it('keeps the workspace scaffold by default', () => {
+    const prompt = ollamaLocalToolSystemPrompt('approved_edits', 'gpt-oss:latest')
+    expect(prompt).toContain('Use todo_write only for multi-step work')
+    expect(prompt).toContain('Approved patch profile')
+    expect(prompt).not.toContain('The current user message is conversational')
+  })
 
-	  it('includes ask_user_question in the safe read-only local tool tier', () => {
-	    const prompt = ollamaLocalToolSystemPrompt('read_only', 'qwen3.5:9b')
-	    expect(prompt).toContain('ask_user_question')
-	    expect(prompt).toContain('pause and ask the user for clarification')
-	  })
-	})
+  it('includes ask_user_question in the safe read-only local tool tier', () => {
+    const prompt = ollamaLocalToolSystemPrompt('read_only', 'qwen3.5:9b')
+    expect(prompt).toContain('ask_user_question')
+    expect(prompt).toContain('pause and ask the user for clarification')
+  })
+})
 
 describe('workflow hints', () => {
   it('documents scout-then-delegate workflow', () => {
     expect(ollamaScoutDelegateWorkflowHint('qwen3.5:9b')).toContain('delegate implementation')
+  })
+
+  it('documents approved patcher behavior without default delegation', () => {
+    expect(ollamaTierAwareWorkflowHint('gpt-oss:20b', 'approved_edits')).toContain(
+      'approved-patcher workflow'
+    )
   })
 
   it('suggests cloud handoff after struggle', () => {
