@@ -152,6 +152,7 @@ import {
   summarizeCodexFileChanges
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
+import { bridgeResultDiffStats, bridgeToolDiffStats } from './bridge/BridgeToolDiffStats'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
 import {
   REMOTE_QUESTION_MAX_ANSWER_CHARS,
@@ -3193,13 +3194,6 @@ function bridgeToolDisplayName(name: string): string {
   return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
 }
 
-/** Lenient non-negative integer reader for provider change entries. */
-function bridgeNumberish(value: unknown): number | undefined {
-  const numeric =
-    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : undefined
-}
-
 /** Append streamed text to the current text part (or open a new one after
  * a tool burst) — this is what interleaves text and tool messages in the
  * persisted transcript the way the desktop renderer does. */
@@ -3216,104 +3210,6 @@ function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): voi
       activities: []
     })
   }
-}
-
-/** Count ±lines in text that is structurally a unified diff (hunk header,
- * `diff --git`, or a `+++`/`---` pair). The structure gate keeps prose with
- * leading +/- (markdown bullets in reasoning traces) from minting phantom
- * stats — same rule as the renderer's parseUnifiedDiffSummary. */
-function bridgeUnifiedDiffStats(
-  text: string
-): { additions: number; deletions: number } | undefined {
-  if (!text.trim()) return undefined
-  const hasDiffStructure =
-    /^@@ .*@@/m.test(text) ||
-    /^diff --git /m.test(text) ||
-    (/^\+\+\+ /m.test(text) && /^--- /m.test(text))
-  if (!hasDiffStructure) return undefined
-  let additions = 0
-  let deletions = 0
-  for (const line of text.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) additions++
-    else if (line.startsWith('-') && !line.startsWith('---')) deletions++
-  }
-  if (additions === 0 && deletions === 0) return undefined
-  return { additions, deletions }
-}
-
-/** Per-edit diff stats derivable from the tool INPUT — what the desktop
- * shows for write tools instead of truncated result text. */
-function bridgeToolDiffStats(
-  toolName: string,
-  input: Record<string, unknown>
-): ToolActivity['diffSummary'] | undefined {
-  const oldString = typeof input.old_string === 'string' ? input.old_string : undefined
-  const newString = typeof input.new_string === 'string' ? input.new_string : undefined
-  if (oldString !== undefined && newString !== undefined) {
-    return {
-      additions: newString.length ? newString.split('\n').length : 0,
-      deletions: oldString.length ? oldString.split('\n').length : 0,
-      source: 'string_replace',
-      confidence: 'exact'
-    }
-  }
-  // Codex app-server fileChange items carry a `changes` array; when entries
-  // expose explicit line counts, trust them (renderer parseChanges parity).
-  if (Array.isArray(input.changes)) {
-    let additions = 0
-    let deletions = 0
-    let hasStats = false
-    for (const change of input.changes) {
-      if (!change || typeof change !== 'object' || Array.isArray(change)) continue
-      const entry = change as Record<string, unknown>
-      const add = bridgeNumberish(
-        entry.additions ?? entry.added ?? entry.linesAdded ?? entry.insertions
-      )
-      const del = bridgeNumberish(
-        entry.deletions ?? entry.deleted ?? entry.linesDeleted ?? entry.removals
-      )
-      if (add !== undefined || del !== undefined) hasStats = true
-      additions += add ?? 0
-      deletions += del ?? 0
-    }
-    if (hasStats && (additions > 0 || deletions > 0)) {
-      return { additions, deletions, source: 'codex_changes', confidence: 'exact' }
-    }
-  }
-  // `patchPreview` is what emitCodexPatchUpdate stamps on edit_file tool
-  // uses — without it Codex edits showed no ±odometer on remote clients.
-  const patch =
-    (typeof input.patch === 'string' && input.patch) ||
-    (typeof input.diff === 'string' && input.diff) ||
-    (typeof input.patchPreview === 'string' && input.patchPreview) ||
-    (typeof input.patch_preview === 'string' && input.patch_preview) ||
-    (typeof input.unifiedDiff === 'string' && input.unifiedDiff) ||
-    (typeof input.unified_diff === 'string' && input.unified_diff) ||
-    undefined
-  if (patch) {
-    let additions = 0
-    let deletions = 0
-    for (const line of patch.split('\n')) {
-      if (line.startsWith('+') && !line.startsWith('+++')) additions++
-      else if (line.startsWith('-') && !line.startsWith('---')) deletions++
-    }
-    return { additions, deletions, source: 'patch_preview', confidence: 'exact' }
-  }
-  if (/write|create/i.test(toolName)) {
-    const content =
-      (typeof input.content === 'string' && input.content) ||
-      (typeof input.file_text === 'string' && input.file_text) ||
-      undefined
-    if (content !== undefined) {
-      return {
-        additions: content.length ? content.split('\n').length : 0,
-        deletions: 0,
-        source: 'content',
-        confidence: 'estimated'
-      }
-    }
-  }
-  return undefined
 }
 
 function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): void {
@@ -3400,24 +3296,32 @@ function ingestBridgeRunToolResult(state: BridgeRunTranscriptState, payload: any
       (typeof payload.content === 'string' && payload.content) ||
       ''
   )
-  // ±stats from the RESULT text (Codex patch previews, apply_patch over
-  // exec). Structure-gated so reasoning/plan prose never mints phantom
-  // counts. Updates are allowed — a growing preview is exactly how the
-  // live odometer ticks — but exact input-derived stats are only ever
+  // ±stats from the RESULT: explicit change counts the emitter forwarded
+  // (codex patch updates), structural diffs in the result text (apply_patch
+  // over exec), or — for create-kind edits — the new file's content, whose
+  // line count is the honest "+N" (codex add items preview content, never a
+  // unified diff; this was why created files showed no chip on phones).
+  // Updates are allowed — a growing preview is exactly how the live
+  // odometer ticks — but exact input-derived stats are only ever
   // OVERWRITTEN by larger result evidence (the first input snapshot can
   // be a partial patch; the result stream carries the rest).
   const stats =
-    !failed && summary && !/reasoning|thinking|plan/i.test(activity.toolName)
-      ? bridgeUnifiedDiffStats(summary)
+    !failed && summary
+      ? bridgeResultDiffStats({
+          toolName: activity.toolName,
+          summary,
+          changes: payload.changes,
+          kind: payload.kind
+        })
       : undefined
   if (stats) {
     if (!activity.diffSummary) {
-      activity.diffSummary = { ...stats, source: 'result_diff', confidence: 'estimated' }
-    } else if (activity.diffSummary.source === 'result_diff') {
+      activity.diffSummary = stats
+    } else if (activity.diffSummary.source === stats.source) {
       activity.diffSummary = { ...activity.diffSummary, ...stats }
     } else if (
-      stats.additions > (activity.diffSummary.additions ?? 0) ||
-      stats.deletions > (activity.diffSummary.deletions ?? 0)
+      (stats.additions ?? 0) > (activity.diffSummary.additions ?? 0) ||
+      (stats.deletions ?? 0) > (activity.diffSummary.deletions ?? 0)
     ) {
       activity.diffSummary = { ...activity.diffSummary, ...stats }
     }
@@ -8637,7 +8541,11 @@ function sendCodexSyntheticToolResult(
   state: CodexRunState,
   itemId: string,
   output: string,
-  status: 'running' | 'success' | 'warning' | 'error' = 'success'
+  status: 'running' | 'success' | 'warning' | 'error' = 'success',
+  // ±stat evidence riding the result: the timeline tool_use is emitted ONCE
+  // per item (often before any patch content exists), so growing patch
+  // updates can only reach diff derivation through their results.
+  extras?: { changes?: unknown[]; kind?: string }
 ) {
   sendAgentCompatLine(
     state.sender,
@@ -8647,7 +8555,9 @@ function sendCodexSyntheticToolResult(
       tool_id: itemId,
       output,
       status: status === 'running' ? 'warning' : status,
-      provider: 'codex'
+      provider: 'codex',
+      ...(extras?.changes ? { changes: extras.changes } : {}),
+      ...(extras?.kind ? { kind: extras.kind } : {})
     },
     state
   )
@@ -8719,7 +8629,8 @@ function emitCodexPatchUpdate(state: CodexRunState, params: any) {
     state,
     itemId,
     preview || summarizeCodexFileChanges(Array.isArray(changes) ? changes : []),
-    'running'
+    'running',
+    { ...(Array.isArray(changes) && changes.length > 0 ? { changes } : {}), kind: String(kind) }
   )
 }
 

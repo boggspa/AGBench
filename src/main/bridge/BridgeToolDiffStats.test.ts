@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest'
+import {
+  bridgeResultDiffStats,
+  bridgeToolDiffStats,
+  bridgeUnifiedDiffStats
+} from './BridgeToolDiffStats'
+
+describe('bridgeToolDiffStats (input-side derivation)', () => {
+  it('counts string replaces from old/new strings (TaskWraith MCP replace, Claude Edit)', () => {
+    const stats = bridgeToolDiffStats('replace', {
+      path: 'src/App.tsx',
+      old_string: 'one\ntwo',
+      new_string: 'one\nTWO\nthree'
+    })
+    expect(stats).toMatchObject({
+      additions: 3,
+      deletions: 2,
+      source: 'string_replace',
+      confidence: 'exact'
+    })
+  })
+
+  it('counts whole-file writes from content', () => {
+    const stats = bridgeToolDiffStats('write_file', { path: 'a.md', content: 'a\nb\nc' })
+    expect(stats).toMatchObject({ additions: 3, deletions: 0, source: 'content' })
+  })
+
+  it('trusts explicit codex change counts', () => {
+    const stats = bridgeToolDiffStats('edit_file', {
+      changes: [
+        { path: 'a.ts', additions: 4, deletions: 1 },
+        { path: 'b.ts', added: 2 }
+      ]
+    })
+    expect(stats).toMatchObject({
+      additions: 6,
+      deletions: 1,
+      source: 'codex_changes',
+      confidence: 'exact'
+    })
+  })
+
+  it('counts ± lines in codex apply_patch envelopes (no unified-diff headers)', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/main.ts',
+      ' context',
+      '-old line',
+      '+new line',
+      '+another line',
+      '*** End Patch'
+    ].join('\n')
+    const stats = bridgeToolDiffStats('apply_patch', { patch })
+    expect(stats).toMatchObject({
+      additions: 2,
+      deletions: 1,
+      source: 'patch_preview',
+      confidence: 'exact'
+    })
+  })
+
+  it('treats a content-y patchPreview on a create-kind edit as +lines, never 0/0 exact', () => {
+    // codex fileChange `add` items preview the NEW FILE CONTENT on the patch
+    // field — pre-fix this returned {0,0,'patch_preview','exact'} (or nothing),
+    // so created files never showed a chip on phones.
+    const stats = bridgeToolDiffStats('edit_file', {
+      kind: 'add',
+      patchPreview: '# Added Diff Fixture\n\nline one\nline two'
+    })
+    expect(stats).toMatchObject({
+      additions: 4,
+      deletions: 0,
+      source: 'content',
+      confidence: 'estimated'
+    })
+  })
+
+  it('falls through a zero-count patch on a non-create edit instead of minting 0/0', () => {
+    const stats = bridgeToolDiffStats('edit_file', {
+      kind: 'update',
+      patchPreview: 'prose without any diff markers'
+    })
+    expect(stats).toBeUndefined()
+  })
+})
+
+describe('bridgeUnifiedDiffStats (structure gate)', () => {
+  it('requires diff structure so prose bullets never mint counts', () => {
+    expect(bridgeUnifiedDiffStats('- a markdown bullet\n+ a plus bullet')).toBeUndefined()
+    expect(
+      bridgeUnifiedDiffStats('@@ -1,2 +1,3 @@\n-old\n+new\n+more')
+    ).toEqual({ additions: 2, deletions: 1 })
+  })
+})
+
+describe('bridgeResultDiffStats (result-side derivation)', () => {
+  it('prefers explicit forwarded change counts', () => {
+    const stats = bridgeResultDiffStats({
+      toolName: 'edit_file',
+      summary: 'whatever',
+      changes: [{ path: 'a.ts', additions: 5, deletions: 2 }]
+    })
+    expect(stats).toMatchObject({ additions: 5, deletions: 2, source: 'codex_changes' })
+  })
+
+  it('falls back to structural diff counting of the result text', () => {
+    const stats = bridgeResultDiffStats({
+      toolName: 'edit_file',
+      summary: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-x\n+y\n+z'
+    })
+    expect(stats).toMatchObject({ additions: 2, deletions: 1, source: 'result_diff' })
+  })
+
+  it('counts a create-kind result as content (+lines) when no diff structure exists', () => {
+    const stats = bridgeResultDiffStats({
+      toolName: 'edit_file',
+      kind: 'add',
+      summary: '# Added Diff Fixture\n\nbody line'
+    })
+    expect(stats).toMatchObject({ additions: 3, deletions: 0, source: 'content' })
+  })
+
+  it('never derives for reasoning pseudo-tools or structureless non-create results', () => {
+    expect(
+      bridgeResultDiffStats({ toolName: 'grok_thinking', kind: 'add', summary: '+looks\n-diffy' })
+    ).toBeUndefined()
+    expect(
+      bridgeResultDiffStats({ toolName: 'edit_file', summary: 'The file was updated successfully.' })
+    ).toBeUndefined()
+  })
+})
