@@ -71,6 +71,41 @@ export function probeUrlForRelay(relayUrl: string): URL | null {
   return parsed
 }
 
+export interface AdvertisableRelaySelection {
+  /** Candidates that answered, in the caller's preference order. */
+  advertisable: string[]
+  /** One line per dropped candidate — surfaced on the pairing page. */
+  warnings: string[]
+}
+
+/**
+ * Probe an ordered candidate list (LAN first, wss front door second) and
+ * keep only the doors that answer FROM THE MAC. The LAN probe proves the
+ * relay process is up; the wss probe proves serve termination + proxy
+ * wiring end-to-end (the Mac is a tailnet member, so dialing its own front
+ * door exercises the same path a remote phone uses). Phone-side
+ * reachability (is the phone actually on that Wi-Fi / tailnet?) is the
+ * phone's candidate walk — this filter only removes doors that are dead
+ * for EVERYONE, with a warning the pairing page shows per drop.
+ */
+export async function selectAdvertisableRelayUrls(
+  candidates: string[],
+  options: { timeoutMs?: number; probe?: typeof probeRelayFrontDoor } = {}
+): Promise<AdvertisableRelaySelection> {
+  const probe = options.probe ?? probeRelayFrontDoor
+  const advertisable: string[] = []
+  const warnings: string[] = []
+  for (const candidate of candidates) {
+    const result = await probe(candidate, { timeoutMs: options.timeoutMs })
+    if (result.reachable) {
+      advertisable.push(candidate)
+    } else {
+      warnings.push(`${candidate} isn't answering (${result.detail})`)
+    }
+  }
+  return { advertisable, warnings }
+}
+
 /**
  * Dial the advertised relay origin once. Reachable = any HTTP response.
  * Unreachable carries the dial failure verbatim (ECONNREFUSED, timeout,

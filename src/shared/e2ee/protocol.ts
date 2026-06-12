@@ -147,6 +147,12 @@ export interface PairingBootstrapPayload {
   v: 1
   protocol: string
   relayUrl: string
+  /** Ordered relay candidates the phone should try (LAN ws:// first, then
+   * the wss:// Tailscale front door). Additive on v1: old phones ignore the
+   * key and keep dialing `relayUrl`; new phones prefer this list so ONE
+   * pairing works from home Wi-Fi and cellular alike — no re-pair when the
+   * network story changes. */
+  relayUrls?: string[]
   sessionId: string
   /** base64 raw 32B Ed25519 Mac identity public key. */
   macIdentityPubKey: string

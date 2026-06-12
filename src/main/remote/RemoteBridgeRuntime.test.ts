@@ -165,6 +165,47 @@ describe('RemoteBridgeRuntime pairing', () => {
     expect(bootstrapPayload.expiresAt).toBeGreaterThan(Date.now())
   })
 
+  it('defaults relayUrls to the single advertised URL (v1 parity)', () => {
+    const h = harness()
+    const { bootstrapPayload } = h.runtime.beginPairing('My iPad').bootstrap
+    expect(bootstrapPayload.relayUrls).toEqual(['ws://relay.test'])
+  })
+
+  it('advertises the per-call candidate list, preferring wss for the v1 relayUrl field', () => {
+    const h = harness()
+    const { bootstrapPayload } = h.runtime.beginPairing('My iPad', {
+      advertiseRelayUrls: ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net']
+    }).bootstrap
+    // New phones walk the ordered list LAN-first…
+    expect(bootstrapPayload.relayUrls).toEqual([
+      'ws://192.168.0.147:8787',
+      'wss://mac.tailnet.ts.net'
+    ])
+    // …old phones read the single field, which keeps the works-anywhere door.
+    expect(bootstrapPayload.relayUrl).toBe('wss://mac.tailnet.ts.net')
+  })
+
+  it('mints a NEW session when the live candidate set changes (stale-QR guard)', async () => {
+    const h = harness()
+    const first = h.runtime.beginPairing('My iPad', {
+      advertiseRelayUrls: ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net']
+    })
+    await settle()
+    // Same candidates → cached session is reused (copied payloads stay live).
+    const same = h.runtime.beginPairing('My iPad', {
+      advertiseRelayUrls: ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net']
+    })
+    expect(same.bootstrap.pairingSessionID).toBe(first.bootstrap.pairingSessionID)
+    // Front door died between clicks → the cached bootstrap would re-advertise
+    // a known-dead door; a fresh session is minted with the live set instead.
+    const degraded = h.runtime.beginPairing('My iPad', {
+      advertiseRelayUrls: ['ws://192.168.0.147:8787']
+    })
+    expect(degraded.bootstrap.pairingSessionID).not.toBe(first.bootstrap.pairingSessionID)
+    expect(degraded.bootstrap.bootstrapPayload.relayUrls).toEqual(['ws://192.168.0.147:8787'])
+    expect(degraded.bootstrap.bootstrapPayload.relayUrl).toBe('ws://192.168.0.147:8787')
+  })
+
   it('re-issues the LIVE session on repeat beginPairing; force mints a new one', async () => {
     // Remounting the Devices page calls beginPairing again — that must NOT
     // kill the QR/payload the user already copied (the silent-invalidation

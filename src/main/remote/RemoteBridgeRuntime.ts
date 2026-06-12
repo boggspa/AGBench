@@ -112,6 +112,11 @@ export function pairIdFromIdentityPubKey(iphoneIdentityPubKey: string): string {
   return `iphone-${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`
 }
 
+/** Order-sensitive equality for advertised candidate lists. */
+function sameStringList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
 export interface RemoteBridgeRuntimeOptions {
   relayUrl: string
   /** The relay URL PHONES should use, when it differs from `relayUrl` (the
@@ -121,6 +126,10 @@ export interface RemoteBridgeRuntimeOptions {
    * iOS ATS only allows cleartext to local-network hosts, so off-LAN
    * phones need the TLS address. Defaults to `relayUrl`. */
   advertiseRelayUrl?: string
+  /** Ordered candidate list for the bootstrap's `relayUrls` (LAN first,
+   * wss front door second). Defaults to the single advertised URL. The
+   * begin-pairing caller may override per call with the live-probed set. */
+  advertiseRelayUrls?: string[]
   /** Shown on the iPhone's pairing sheet ("Pair with <macDisplayName>"). */
   macDisplayName: string
   identity: KeyPair
@@ -246,15 +255,20 @@ export class RemoteBridgeRuntime {
    * never touched either way. */
   beginPairing(
     controllerDisplayName?: string,
-    options?: { force?: boolean }
+    options?: { force?: boolean; advertiseRelayUrls?: string[] }
   ): BeginPairingResult {
     const controllerDisplayNameTrimmed = controllerDisplayName?.trim() || 'iOS device'
+    const advertiseRelayUrls = this.resolveAdvertiseRelayUrls(options?.advertiseRelayUrls)
     if (
       !options?.force &&
       this.pending &&
       this.pending.controllerDisplayName === controllerDisplayNameTrimmed &&
       this.pending.bootstrap.bootstrapPayload.expiresAt > Date.now() + 30_000 &&
-      !this.pending.client.trustedPeerIdentityRaw()
+      !this.pending.client.trustedPeerIdentityRaw() &&
+      // The reachable-candidate set can change between clicks (front door
+      // healed / died) — a cached bootstrap with a stale list must not be
+      // reused, or the QR re-advertises a door we just probed dead.
+      sameStringList(this.pending.bootstrap.bootstrapPayload.relayUrls ?? [], advertiseRelayUrls)
     ) {
       return { ok: true, bootstrap: this.pending.bootstrap }
     }
@@ -291,8 +305,16 @@ export class RemoteBridgeRuntime {
         v: 1,
         protocol: E2EE_PROTOCOL,
         // Phones use the advertised URL (TLS front door in the
-        // self-hosted Tailscale shape); the Mac keeps `relayUrl`.
-        relayUrl: this.opts.advertiseRelayUrl ?? this.opts.relayUrl,
+        // self-hosted Tailscale shape); the Mac keeps `relayUrl`. The v1
+        // single field prefers the wss front door (works from anywhere
+        // with Tailscale) so old clients keep today's behavior; new
+        // clients walk `relayUrls` LAN-first.
+        relayUrl:
+          advertiseRelayUrls.find((url) => url.startsWith('wss:')) ??
+          advertiseRelayUrls[0] ??
+          this.opts.advertiseRelayUrl ??
+          this.opts.relayUrl,
+        relayUrls: advertiseRelayUrls,
         sessionId,
         macIdentityPubKey: b64.encode(client.macIdentityRaw()),
         macDisplayName: this.opts.macDisplayName,
@@ -309,6 +331,19 @@ export class RemoteBridgeRuntime {
     }
 
     return { ok: true, bootstrap }
+  }
+
+  /** The candidate list a fresh bootstrap advertises: per-call override
+   * (the live-probed set) → static opts list → the single legacy URL. */
+  private resolveAdvertiseRelayUrls(override?: string[]): string[] {
+    const clean = (urls?: string[]): string[] => [
+      ...new Set((urls ?? []).map((url) => url.trim()).filter(Boolean))
+    ]
+    const fromOverride = clean(override)
+    if (fromOverride.length > 0) return fromOverride
+    const fromOpts = clean(this.opts.advertiseRelayUrls)
+    if (fromOpts.length > 0) return fromOpts
+    return [this.opts.advertiseRelayUrl ?? this.opts.relayUrl]
   }
 
   /** Resolve the held trust decision for the prompt the user just answered. */

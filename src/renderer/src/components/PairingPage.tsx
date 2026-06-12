@@ -50,6 +50,7 @@ export function PairingPage(): JSX.Element {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null)
   const [copied, setCopied] = useState(false)
   const [maximised, setMaximised] = useState(false)
@@ -58,6 +59,7 @@ export function PairingPage(): JSX.Element {
   const refresh = useCallback(async (name: string, options?: { force?: boolean }) => {
     setLoading(true)
     setError(null)
+    setWarning(null)
     setBootstrap(null)
     try {
       // Mount/remount re-issues the LIVE pairing session (a copied payload
@@ -67,6 +69,13 @@ export function PairingPage(): JSX.Element {
       if (!result.ok || !result.bootstrap) {
         setError(result.error || 'Failed to begin pairing — no bootstrap returned.')
         return
+      }
+      // T70 — a degraded-but-working bootstrap (a relay door was probed
+      // dead and left out of the QR) pairs fine; surface why remotely or
+      // locally it may not reach until the other door is fixed.
+      const warningText = (result as { warning?: unknown }).warning
+      if (typeof warningText === 'string' && warningText) {
+        setWarning(warningText)
       }
       // The Swift daemon returns `BeginPairingResult` =
       //   { pairingSessionID, bootstrapPayload }
@@ -192,6 +201,12 @@ export function PairingPage(): JSX.Element {
       </form>
 
       {error && <div className="settings-error pairing-page__error">{error}</div>}
+
+      {!error && warning && (
+        <div className="settings-warning pairing-page__warning" role="status">
+          {warning}
+        </div>
+      )}
 
       {!error && (
         <div className="pairing-page__body">

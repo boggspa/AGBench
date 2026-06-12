@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { probeRelayFrontDoor, probeUrlForRelay } from './relayReachability'
+import {
+  probeRelayFrontDoor,
+  probeUrlForRelay,
+  selectAdvertisableRelayUrls
+} from './relayReachability'
 
 describe('probeUrlForRelay', () => {
   it('maps wss:// to https:// preserving host and port', () => {
@@ -70,5 +74,55 @@ describe('probeRelayFrontDoor', () => {
     expect(result.reachable).toBe(false)
     expect(result.detail).toMatch(/not a ws:\/\/ or wss:\/\/ URL/)
     expect(request).not.toHaveBeenCalled()
+  })
+})
+
+describe('selectAdvertisableRelayUrls', () => {
+  const probeMap = (
+    map: Record<string, { reachable: boolean; detail: string }>
+  ): typeof probeRelayFrontDoor => {
+    return async (url) => map[url] ?? { reachable: false, detail: 'unknown candidate' }
+  }
+
+  it('keeps every answering door in caller order', async () => {
+    const selection = await selectAdvertisableRelayUrls(
+      ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net'],
+      {
+        probe: probeMap({
+          'ws://192.168.0.147:8787': { reachable: true, detail: 'HTTP 404' },
+          'wss://mac.tailnet.ts.net': { reachable: true, detail: 'HTTP 404' }
+        })
+      }
+    )
+    expect(selection.advertisable).toEqual(['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net'])
+    expect(selection.warnings).toEqual([])
+  })
+
+  it('drops a dead wss front door with a warning, keeping LAN pairing alive', async () => {
+    const selection = await selectAdvertisableRelayUrls(
+      ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net'],
+      {
+        probe: probeMap({
+          'ws://192.168.0.147:8787': { reachable: true, detail: 'HTTP 404' },
+          'wss://mac.tailnet.ts.net': {
+            reachable: false,
+            detail: 'ECONNREFUSED: connect ECONNREFUSED 100.99.131.73:443'
+          }
+        })
+      }
+    )
+    expect(selection.advertisable).toEqual(['ws://192.168.0.147:8787'])
+    expect(selection.warnings).toEqual([
+      "wss://mac.tailnet.ts.net isn't answering (ECONNREFUSED: connect ECONNREFUSED 100.99.131.73:443)"
+    ])
+  })
+
+  it('returns an empty advertisable set when nothing answers', async () => {
+    const selection = await selectAdvertisableRelayUrls(
+      ['ws://192.168.0.147:8787', 'wss://mac.tailnet.ts.net'],
+      { probe: probeMap({}) }
+    )
+    expect(selection.advertisable).toEqual([])
+    expect(selection.warnings).toHaveLength(2)
   })
 })
