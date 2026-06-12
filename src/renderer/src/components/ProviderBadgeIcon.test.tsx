@@ -15,4 +15,13 @@ describe('ProviderBadgeIcon', () => {
     expect(cursor).not.toContain('M15.6 4.7a7.9 7.9')
     expect(cursor).not.toEqual(kimi)
   })
+
+  it('renders the Ollama llama glyph in sidebar provider badges', () => {
+    const ollama = renderToStaticMarkup(<ProviderBadgeIcon provider="ollama" />)
+
+    expect(ollama).toContain('provider-ollama')
+    expect(ollama).toContain('provider-glyph-ollama')
+    expect(ollama).toContain('M15.2 11.5V6.6')
+    expect(ollama).not.toContain('M4.6 6.2h14.8v11.6H4.6Z')
+  })
 })

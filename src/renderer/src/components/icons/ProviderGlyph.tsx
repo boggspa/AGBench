@@ -99,12 +99,23 @@ function glyphBody(provider: string): ReactElement {
     case 'ollama':
       return (
         <>
-          <path className="provider-glyph-line" d="M5.3 15.9v-6.2l6.7-3.8 6.7 3.8v6.2l-6.7 3.9Z" />
-          <path className="provider-glyph-accent" d="M8.3 11.2h7.4" />
-          <path className="provider-glyph-accent" d="M8.3 14.2h7.4" />
-          <path className="provider-glyph-line provider-glyph-fine" d="M12 5.9v13.7" />
-          <circle className="provider-glyph-dot" cx="8.2" cy="8.8" r="1" />
-          <circle className="provider-glyph-dot" cx="15.8" cy="8.8" r="1" />
+          <path
+            className="provider-glyph-line"
+            d="M5.1 18.3v-4.2c0-1.8 1.5-3.3 3.3-3.3h5.1c1.6 0 2.9 1.3 2.9 2.9v4.6"
+          />
+          <path
+            className="provider-glyph-accent"
+            d="M15.2 11.5V6.6c0-1.4 1.1-2.5 2.5-2.5h.5c1.1 0 2 .9 2 2v1.7c0 1.1-.9 2-2 2h-3"
+          />
+          <path className="provider-glyph-line provider-glyph-fine" d="m16.5 4.2-.8-1.8" />
+          <path className="provider-glyph-line provider-glyph-fine" d="m18.6 4.2 1-1.7" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M5.1 14.3 3.7 13.5" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M7.2 18.3v2.3" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M13.8 18.3v2.3" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M6.6 20.6h1.3" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M13.2 20.6h1.3" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M18.5 7.6h1.4" />
+          <circle className="provider-glyph-dot" cx="17.8" cy="6.2" r=".7" />
         </>
       )
     default:
