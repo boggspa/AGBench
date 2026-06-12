@@ -258,6 +258,9 @@ interface IosRemoteConfig {
   effectiveEnabled: boolean
   envOverride: string | null
   runtimeActive: boolean
+  /** Startup failure that held the bridge down (identity unreadable /
+   * unprotectable) — rendered instead of a silent "Off" pill. */
+  runtimeError?: string | null
   openAtLogin?: boolean
 }
 
@@ -305,12 +308,20 @@ function IosRemoteBridgeSection(): React.JSX.Element {
     }
   }
 
-  const pillKind = config?.runtimeActive ? 'ok' : config?.effectiveEnabled ? 'warn' : 'idle'
+  const pillKind = config?.runtimeActive
+    ? 'ok'
+    : config?.runtimeError
+      ? 'err'
+      : config?.effectiveEnabled
+        ? 'warn'
+        : 'idle'
   const pillLabel = config?.runtimeActive
     ? 'Running'
-    : config?.effectiveEnabled
-      ? 'On after restart'
-      : 'Off'
+    : config?.runtimeError
+      ? 'Failed to start'
+      : config?.effectiveEnabled
+        ? 'On after restart'
+        : 'Off'
   const switchChecked = config?.envOverride
     ? Boolean(config.effectiveEnabled)
     : (config?.enabled ?? false)
@@ -322,6 +333,7 @@ function IosRemoteBridgeSection(): React.JSX.Element {
         <StatusPill kind={pillKind} label={pillLabel} />
       </header>
       {sectionError && <div className="settings-error">{sectionError}</div>}
+      {config?.runtimeError && <div className="settings-error">{config.runtimeError}</div>}
       <label className="settings-service-row settings-fx-toggle">
         <span>
           Enable iOS remote bridge
@@ -389,7 +401,7 @@ function StatusPill({
   kind,
   label
 }: {
-  kind: 'ok' | 'warn' | 'idle'
+  kind: 'ok' | 'warn' | 'idle' | 'err'
   label: string
 }): React.JSX.Element {
   return <span className={`bridge-networking-pill bridge-networking-pill-${kind}`}>{label}</span>

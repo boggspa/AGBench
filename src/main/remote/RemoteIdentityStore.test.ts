@@ -50,15 +50,41 @@ describe('RemoteIdentityStore', () => {
     expect(Buffer.from(parsed.encryptedKey, 'base64').toString('utf8').startsWith('enc:')).toBe(true)
   })
 
-  it('regenerates if the stored file is corrupt', () => {
+  it('REFUSES to load when the stored file is corrupt (no silent regeneration)', () => {
+    // Security review residual (fixed): silently minting a fresh identity on
+    // read failure broke every phone's pin with no explanation and masked
+    // tampering. Corruption must surface, not self-heal into a stranger.
     const path = tempPath()
-    const first = new RemoteIdentityStore(path, fakeSafeStorage).load()
-    // Corrupt the file, then load → a new identity (different key), no throw.
+    new RemoteIdentityStore(path, fakeSafeStorage).load()
     const { writeFileSync } = require('fs') as typeof import('fs')
     writeFileSync(path, 'not json')
-    const second = new RemoteIdentityStore(path, fakeSafeStorage).load()
-    expect(exportRawEd25519PublicKey(second.publicKey).equals(exportRawEd25519PublicKey(first.publicKey))).toBe(
-      false
+    expect(() => new RemoteIdentityStore(path, fakeSafeStorage).load()).toThrow(
+      /can't be read|Refusing to silently replace/
+    )
+  })
+
+  it('REFUSES to load when decryption fails (keychain changed)', () => {
+    const path = tempPath()
+    new RemoteIdentityStore(path, fakeSafeStorage).load()
+    const brokenStorage: IdentitySafeStorage = {
+      ...fakeSafeStorage,
+      decryptString: () => {
+        throw new Error('decryption failed')
+      }
+    }
+    expect(() => new RemoteIdentityStore(path, brokenStorage).load()).toThrow(
+      /decryption failed/
+    )
+  })
+
+  it('refuses to mint a new identity when safeStorage is unavailable', () => {
+    const path = tempPath()
+    const noStorage: IdentitySafeStorage = {
+      ...fakeSafeStorage,
+      isEncryptionAvailable: () => false
+    }
+    expect(() => new RemoteIdentityStore(path, noStorage).load()).toThrow(
+      /safeStorage.*unavailable|cannot be stored safely/
     )
   })
 })

@@ -1095,6 +1095,10 @@
   background: rgba(160, 160, 160, 0.12);
   color: rgba(220, 220, 220, 0.88);
 }
+.bridge-networking-pill-err {
+  background: rgba(220, 80, 80, 0.16);
+  color: rgba(255, 180, 180, 0.95);
+}
 .bridge-networking-fields {
   margin: 0;
   display: flex;

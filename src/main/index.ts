@@ -15880,6 +15880,9 @@ if (isGeminiMcpBridgeProcess) {
     // relay binds. The pairing IPC handlers + will-quit read it at call time.
     let iosRemoteRuntime: RemoteBridgeRuntime | null = null
     let embeddedRelayHandle: RelayServerHandle | null = null
+    // Surfaced startup failure (identity unreadable / unprotectable) — shown
+    // in Settings → Bridge networking instead of a silent "Off" pill.
+    let iosRemoteRuntimeError: string | null = null
     // Settings-first gating (BD1 prerequisite): GUI/login-item launches
     // don't inherit shell env, so an env-only gate silently disables the
     // bridge for exactly the headless scenario it exists for. Env keeps
@@ -15996,11 +15999,22 @@ if (isGeminiMcpBridgeProcess) {
     }
     if (iosRemoteResolution.shouldRun) {
       const startRuntime = (relayUrl: string): void => {
-        const identity = new RemoteIdentityStore(
-          join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
-          safeStorage,
-          (line) => console.log(line)
-        ).load()
+        let identity: ReturnType<RemoteIdentityStore['load']>
+        try {
+          identity = new RemoteIdentityStore(
+            join(app.getPath('userData'), 'bridge', 'remote-mac-identity.json'),
+            safeStorage,
+            (line) => console.log(line)
+          ).load()
+          iosRemoteRuntimeError = null
+        } catch (err) {
+          // Security review residual (fixed): the store now REFUSES to
+          // silently mint a replacement identity — every paired phone pins
+          // this key. Hold the bridge down and surface why.
+          iosRemoteRuntimeError = err instanceof Error ? err.message : String(err)
+          console.error(`[remote-bridge] NOT starting — ${iosRemoteRuntimeError}`)
+          return
+        }
         const transportActionRouter = BridgeActionRouter.fromEnvironment(
           (line) => console.log(line),
           bridgeAllowlist,
@@ -16605,6 +16619,7 @@ if (isGeminiMcpBridgeProcess) {
         effectiveEnabled: resolution.shouldRun,
         envOverride: resolution.envOverride,
         runtimeActive: iosRemoteRuntime !== null,
+        runtimeError: iosRemoteRuntimeError,
         openAtLogin: app.getLoginItemSettings().openAtLogin
       }
     })
@@ -16633,6 +16648,7 @@ if (isGeminiMcpBridgeProcess) {
           // The runtime is constructed at startup; a toggle takes effect
           // on the next launch (restart prompt in the panel).
           runtimeActive: iosRemoteRuntime !== null,
+          runtimeError: iosRemoteRuntimeError,
           openAtLogin: app.getLoginItemSettings().openAtLogin
         }
       }
