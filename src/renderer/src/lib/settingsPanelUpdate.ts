@@ -40,6 +40,8 @@ export type SettingsPanelUpdate = {
   currency?: AppSettings['currency']
   /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
   currencyOverestimatePercent?: AppSettings['currencyOverestimatePercent']
+  /** Sidebar Model Usage card view ('plan' quota meters | 'spend' API cost). */
+  modelUsagePanelView?: AppSettings['modelUsagePanelView']
   /**
    * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
    * visibility map + global "reset all" timestamp). See

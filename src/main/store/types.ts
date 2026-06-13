@@ -1339,6 +1339,15 @@ export interface AppSettings {
    * round-trip a value they never set. */
   currencyOverestimatePercent?: number
   /**
+   * Sidebar Model Usage card view toggle. `'plan'` (default) shows the
+   * PLAN-subsidised quota meters; `'spend'` shows per-provider API/SDK
+   * spend (projected from the per-model rate table, in the display
+   * currency) over rolling Day / 7-day / 30-day windows. Persisted as a
+   * lightweight UI pref so the chosen view survives reload. Optional so
+   * older settings files / fixtures default to the quota view.
+   */
+  modelUsagePanelView?: 'plan' | 'spend'
+  /**
    * 1.0.5-EW49 — Dashboard statistics preferences. Two slots:
    *   - `visibility` (per-stat boolean map): hide a chip to
    *     remove it from the dense grid without losing the

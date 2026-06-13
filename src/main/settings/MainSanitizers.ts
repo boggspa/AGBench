@@ -73,6 +73,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'advancedFx',
   'currency',
   'currencyOverestimatePercent',
+  'modelUsagePanelView',
   'dashboardStatPrefs',
   'welcomeHeatmapPrefs',
   'kimiSanitiserEnabled',
@@ -862,6 +863,10 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       } else {
         delete sanitized.currencyOverestimatePercent
       }
+    }
+    if ('modelUsagePanelView' in sanitized) {
+      const value = sanitized.modelUsagePanelView
+      if (value !== 'plan' && value !== 'spend') delete sanitized.modelUsagePanelView
     }
     if ('dashboardStatPrefs' in sanitized) {
       const prefs = isRecord(sanitized.dashboardStatPrefs) ? sanitized.dashboardStatPrefs : {}

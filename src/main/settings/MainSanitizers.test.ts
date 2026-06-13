@@ -195,6 +195,18 @@ describe('MainSanitizers settings patches', () => {
     })
   })
 
+  it('accepts a valid modelUsagePanelView and drops invalid values', () => {
+    const settings = makeSettings()
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+    expect(sanitizeSettingsPatch({ modelUsagePanelView: 'spend' }).modelUsagePanelView).toBe('spend')
+    expect(sanitizeSettingsPatch({ modelUsagePanelView: 'plan' }).modelUsagePanelView).toBe('plan')
+    // Anything outside the enum is stripped so a malformed value can't persist.
+    expect(
+      'modelUsagePanelView' in
+        sanitizeSettingsPatch({ modelUsagePanelView: 'bogus' as unknown as 'plan' })
+    ).toBe(false)
+  })
+
   it('sanitizes the local-servers lifecycle toggles', () => {
     const settings = makeSettings()
     const { sanitizeSettingsPatch } = makeSanitizers(settings)
