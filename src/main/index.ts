@@ -9649,6 +9649,35 @@ async function runApprovedHostCommand(requestId: string): Promise<boolean> {
   return true
 }
 
+function syncCodexGoalCapabilityMetadata(appChatId: string | undefined, nativeAvailable: boolean) {
+  if (!appChatId) return
+  const chat = AppStore.getChat(appChatId)
+  if (!chat || chat.provider !== 'codex') return
+  const providerMetadata = {
+    ...(chat.providerMetadata || {}),
+    codexGoalNativeAvailable: nativeAvailable
+  }
+  const activeGoal =
+    chat.activeGoal?.provider === 'codex'
+      ? {
+          ...chat.activeGoal,
+          mode: resolveActiveGoalMode('codex', { codexNativeAvailable: nativeAvailable })
+        }
+      : chat.activeGoal
+  const metadataUnchanged =
+    Boolean(chat.providerMetadata?.codexGoalNativeAvailable) === nativeAvailable
+  const goalUnchanged = activeGoal === chat.activeGoal || activeGoal?.mode === chat.activeGoal?.mode
+  if (metadataUnchanged && goalUnchanged) return
+  const updated: ChatRecord = {
+    ...chat,
+    providerMetadata,
+    ...(activeGoal ? { activeGoal } : {}),
+    updatedAt: Date.now()
+  }
+  AppStore.saveChat(updated)
+  broadcastChatUpdated(updated)
+}
+
 async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
   const client = getCodexClient(payload.runtimeProfile ?? null)
   client.setNotificationHandler(handleCodexNotification)
@@ -9661,6 +9690,7 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   })
 
   await client.ensureStarted(app.getVersion())
+  syncCodexGoalCapabilityMetadata(payload.appChatId, client.supportsNativeGoalControl())
 
   const settings = runtimeSettings(AppStore.getSettings(), payload.runtimeProfile)
   const model = normalizeCodexModel(payload.model)

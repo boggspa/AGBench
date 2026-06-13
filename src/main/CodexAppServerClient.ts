@@ -172,6 +172,52 @@ interface PendingRequest {
   timeout: NodeJS.Timeout
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function capabilityValueEnabled(value: unknown): boolean {
+  if (value === true) return true
+  if (typeof value === 'string') return value.toLowerCase() === 'true'
+  if (!isRecord(value)) return false
+  return ['enabled', 'available', 'supported', 'write', 'update', 'control', 'native'].some(
+    (key) => capabilityValueEnabled(value[key])
+  )
+}
+
+function capabilityObjectHasGoalControl(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return Object.entries(value).some(([key, child]) => {
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (
+      (normalized === 'nativegoalcontrol' ||
+        normalized === 'goalcontrol' ||
+        normalized === 'goallifecycle' ||
+        normalized === 'goalstate') &&
+      capabilityValueEnabled(child)
+    ) {
+      return true
+    }
+    if ((normalized === 'goal' || normalized === 'goals') && capabilityValueEnabled(child)) {
+      return true
+    }
+    if (
+      (normalized === 'capabilities' ||
+        normalized === 'experimental' ||
+        normalized === 'experimentalcapabilities' ||
+        normalized === 'servercapabilities') &&
+      capabilityObjectHasGoalControl(child)
+    ) {
+      return true
+    }
+    return false
+  })
+}
+
+export function codexInitializeAdvertisesNativeGoalControl(initializeResult: unknown): boolean {
+  return capabilityObjectHasGoalControl(initializeResult)
+}
+
 export interface CodexApprovalResponse {
   requestId: string
   action: 'accept' | 'acceptForSession' | 'decline' | 'cancel'
@@ -264,6 +310,7 @@ export class CodexAppServerClient {
   private mcpConfig: CodexMcpTaskWraithConfig | null = null
   private runtimeProfile: RuntimeProfile | null = null
   private runtimeProfileKey = codexRuntimeProfileKey(null)
+  private initializeResult: unknown = null
   // Ring buffer of the most recent stderr the codex CLI emitted. When the
   // app-server refuses to start because of a bad ~/.codex/config.toml, the
   // CLI writes the parse error here and exits — and `ensureStarted` otherwise
@@ -279,6 +326,10 @@ export class CodexAppServerClient {
    */
   getRecentStderr(): string {
     return this.recentStderr
+  }
+
+  supportsNativeGoalControl(): boolean {
+    return codexInitializeAdvertisesNativeGoalControl(this.initializeResult)
   }
 
   setNotificationHandler(handler: ((message: any) => void) | null) {
@@ -372,6 +423,7 @@ export class CodexAppServerClient {
 
   dispose() {
     this.startPromise = null
+    this.initializeResult = null
     this.stdoutReader?.close()
     this.stdoutReader = null
     if (this.proc && !this.proc.killed) {
@@ -419,6 +471,7 @@ export class CodexAppServerClient {
     // Reset the stderr ring buffer for this start attempt so a stale error
     // from a prior failed start can't be misattributed to this one.
     this.recentStderr = ''
+    this.initializeResult = null
     const resolvedCodex = await resolveCliProviderBinary('codex', this.runtimeProfile)
     if (!resolvedCodex.binaryPath) {
       throw new Error(resolvedCodex.error || 'Codex CLI was not found.')
@@ -463,7 +516,7 @@ export class CodexAppServerClient {
     })
 
     try {
-      await this.request(
+      this.initializeResult = await this.request(
         'initialize',
         {
           clientInfo: {

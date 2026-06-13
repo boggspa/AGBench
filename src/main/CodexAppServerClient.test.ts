@@ -11,6 +11,7 @@ import {
   buildCodexFastServiceTierCompatibilityArgs,
   buildCodexTaskWraithMcpArgs,
   codexConfigParseUserMessage,
+  codexInitializeAdvertisesNativeGoalControl,
   codexRuntimeProfileKey,
   CodexAppServerClient,
   compareCodexVersions,
@@ -220,6 +221,48 @@ describe('codexConfigParseUserMessage', () => {
     expect(msg).toContain('brew upgrade codex')
     expect(msg).toContain('fast')
     expect(msg).toContain('flex')
+  })
+})
+
+describe('codexInitializeAdvertisesNativeGoalControl', () => {
+  it('detects explicit native goal-control capabilities from initialize results', () => {
+    expect(
+      codexInitializeAdvertisesNativeGoalControl({
+        capabilities: {
+          nativeGoalControl: true
+        }
+      })
+    ).toBe(true)
+    expect(
+      codexInitializeAdvertisesNativeGoalControl({
+        capabilities: {
+          experimental: {
+            goals: {
+              native: true,
+              update: true
+            }
+          }
+        }
+      })
+    ).toBe(true)
+  })
+
+  it('does not infer native goal control from generic TaskWraith goal tools', () => {
+    expect(
+      codexInitializeAdvertisesNativeGoalControl({
+        capabilities: {
+          tools: ['goal_read', 'goal_update', 'goal_complete', 'goal_blocked']
+        }
+      })
+    ).toBe(false)
+    expect(
+      codexInitializeAdvertisesNativeGoalControl({
+        capabilities: {
+          experimentalApi: true,
+          mcpServers: ['TaskWraith']
+        }
+      })
+    ).toBe(false)
   })
 })
 
