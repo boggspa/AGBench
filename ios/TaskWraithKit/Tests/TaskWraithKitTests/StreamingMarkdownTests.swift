@@ -243,4 +243,33 @@ struct StreamingSnapshotFoldTests {
         // The pre-tool prose appears exactly once, in segment 0.
         #expect(segments.filter { $0.contains("Reading the file.") }.count == 1)
     }
+
+    // Cursor snapshot stream with BACK-TO-BACK tools the Mac collapses into one
+    // row: the snapshot fold leaves an empty middle segment that the interleave
+    // consumes under the grouped row, and the post-burst tail lands after it.
+    @Test func cursorSnapshotWithCollapsedBackToBackToolsGroupsCorrectly() {
+        var segments = [""]
+        func content(_ snapshot: String) {
+            switch StreamingSnapshotFold.plan(segments: segments, incoming: snapshot) {
+            case .append: segments[segments.count - 1] += snapshot
+            case .replaceLastSegment(let tail): segments[segments.count - 1] = tail
+            case .skip: break
+            }
+        }
+        content("Searching.")          // snapshot
+        segments.append("")            // tool 1 (grep)
+        segments.append("")            // tool 2 (grep) — back-to-back, no text
+        content("Searching.\n\nFound it.")  // snapshot restating the whole turn
+
+        #expect(segments == ["Searching.", "", "\n\nFound it."])
+
+        // The Mac collapsed the two grep calls into ONE row covering 2 calls.
+        let plan = StreamingInterleave.plan(segments: segments, toolCounts: [2])
+        #expect(
+            plan == [
+                .text(segmentIndex: 0, isTail: false),
+                .toolRow(index: 0),
+                .text(segmentIndex: 2, isTail: true)
+            ])
+    }
 }
