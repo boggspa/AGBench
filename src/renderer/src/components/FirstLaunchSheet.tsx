@@ -14,7 +14,6 @@ import {
   summariseProviderApiKeyStatus,
   type ProviderAuthVariant
 } from '../lib/providerAuthSummary'
-import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 // 1.0.7-EW — onboarding "out of usage" card state. ModelUsageAggregate is the
 // same per-provider quota shape the sidebar Model Usage card consumes; type-only
@@ -561,14 +560,11 @@ export function FirstLaunchSheet({
         <header className="first-launch-sheet-header">
           <div className="first-launch-sheet-header-text">
             {/*
-              TaskWraith's branded ghost mark (WWDC26 chrome render).
-              `taskwraith-ghost-mark.png` ← `design-assets/ghost/ghost-guy-wwdc26 alpha.png`.
-              `.taskwraith-brand-ghost` adds the subtle cyan rim glow.
+              Theme-aware monoline mark. CSS masks the SVG so the glyph
+              inherits the active TaskWraith palette instead of a fixed PNG tint.
             */}
-            <img
-              src={taskwraithGhostMark}
-              alt=""
-              className="first-launch-sheet-ghost taskwraith-brand-ghost"
+            <span
+              className="first-launch-sheet-ghost first-launch-sheet-ghost-monoline"
               aria-hidden
             />
             <div>

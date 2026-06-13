@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="taskwraith-ghost-monoline-title">
+  <title id="taskwraith-ghost-monoline-title">TaskWraith monoline ghost mark</title>
+  <g fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42 88V50C42 38.95 50.95 30 62 30h7c13.81 0 25 11.19 25 25v33"/>
+    <path d="M42 88h9l6 10 8-10 8 10 6-10h15"/>
+    <path d="M55 56v12"/>
+    <path d="M80 56v12"/>
+    <path d="M56 79h24"/>
+  </g>
+</svg>

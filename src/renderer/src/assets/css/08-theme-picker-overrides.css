@@ -1495,14 +1495,28 @@
   flex: 1;
   min-width: 0;
 }
-/* Branded TaskWraith ghost mark next to the welcome heading (WWDC26
- * chrome PNG). Glow lives on `.taskwraith-brand-ghost` in
- * 05-polish-fx-layouts.css; this rule is sizing only. */
+/* Theme-aware monoline TaskWraith ghost mark next to the welcome heading.
+ * The original 40px PNG slot is deliberately enlarged 1.5x for the
+ * first-launch masthead. */
 .first-launch-sheet-ghost {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 60px;
+  height: 60px;
   display: block;
+}
+.first-launch-sheet-ghost-monoline {
+  background: color-mix(in srgb, var(--text-tertiary) 84%, var(--accent-blue, #60a5fa) 16%);
+  opacity: 0.94;
+  -webkit-mask: url('../taskwraith-ghost-monoline.svg') center / contain no-repeat;
+  mask: url('../taskwraith-ghost-monoline.svg') center / contain no-repeat;
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--accent-blue, #60a5fa) 36%, transparent))
+    drop-shadow(0 0 18px color-mix(in srgb, var(--accent-blue, #60a5fa) 18%, transparent));
+}
+:is([data-theme='light'], [data-theme='mist'], [data-theme='sage'])
+  .first-launch-sheet-ghost-monoline {
+  background: color-mix(in srgb, var(--text-secondary) 78%, var(--accent-blue, #2563eb) 22%);
+  opacity: 0.9;
 }
 .first-launch-sheet-header h2 {
   margin: 0 0 4px 0;
