@@ -279,8 +279,10 @@ describe('ActivityStack compactDensity routing', () => {
 
     expect(html).toContain('provider-codex')
     expect(html).toContain('provider-claude')
-    expect(html).toContain('write_file')
-    expect(html).toContain('Edit')
+    // Each actor's tool surfaces under its own human-friendly label —
+    // Codex's write_file as "Wrote …", Claude's Edit as "Edited …".
+    expect(html).toContain('Wrote /repo/src/foo.ts')
+    expect(html).toContain('Edited /repo/src/foo.ts')
   })
 
   it('still renders ChildAgentSpawnBlock and falls back to ActivityRow when an activity has a child thread, even in compact mode', () => {
