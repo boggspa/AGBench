@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { createMainSanitizers, sanitizeAuditOrchestration } from './MainSanitizers'
+import {
+  createMainSanitizers,
+  normalizeAuditRunIdentity,
+  sanitizeAuditOrchestration
+} from './MainSanitizers'
 import type { AppSettings, ExternalPathGrant, WorkspaceRecord } from '../store/types'
+
+describe('normalizeAuditRunIdentity', () => {
+  it('accepts a valid audit role identity with optional dimension/findingId', () => {
+    expect(
+      normalizeAuditRunIdentity({
+        auditRunId: 'a1',
+        role: 'reviewer',
+        dimension: 'code health'
+      })
+    ).toEqual({ auditRunId: 'a1', role: 'reviewer', dimension: 'code health' })
+    expect(
+      normalizeAuditRunIdentity({ auditRunId: 'a1', role: 'skeptic', findingId: 'f1' })
+    ).toEqual({ auditRunId: 'a1', role: 'skeptic', findingId: 'f1' })
+  })
+
+  it('rejects an unknown role or non-record', () => {
+    expect(normalizeAuditRunIdentity({ auditRunId: 'a1', role: 'hacker' })).toBeUndefined()
+    expect(normalizeAuditRunIdentity(null)).toBeUndefined()
+    expect(normalizeAuditRunIdentity({ role: 'recon' })).toBeUndefined() // missing id
+  })
+})
 
 describe('sanitizeAuditOrchestration', () => {
   it('drops unknown providers from the allowlist + per-role prefs', () => {

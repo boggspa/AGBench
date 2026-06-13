@@ -390,6 +390,7 @@ import {
   imageAttachmentSnapshots,
   isAppearanceMode,
   isRecord,
+  normalizeAuditRunIdentity,
   normalizeEnsembleRunIdentity,
   optionalNumber,
   optionalString,
@@ -1853,7 +1854,8 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     effectivePermissions: isRecord(payload.effectivePermissions)
       ? (payload.effectivePermissions as unknown as EffectiveRunPermissions)
       : undefined,
-    ensembleRun: normalizeEnsembleRunIdentity(payload.ensembleRun)
+    ensembleRun: normalizeEnsembleRunIdentity(payload.ensembleRun),
+    auditRun: normalizeAuditRunIdentity(payload.auditRun)
   }
 }
 

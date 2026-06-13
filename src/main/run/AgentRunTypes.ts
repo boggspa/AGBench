@@ -1,4 +1,5 @@
 import type {
+  AuditRunIdentity,
   ChatScope,
   EffectiveRunPermissions,
   EnsembleRunIdentity,
@@ -40,4 +41,8 @@ export interface AgentRunPayload {
   runtimeProfile?: RuntimeProfile
   effectivePermissions?: EffectiveRunPermissions
   ensembleRun?: EnsembleRunIdentity
+  /** Present for audit-orchestration role-runs (parallel to ensembleRun) so
+   * the adapter/MCP layer routes the run's findings/verdicts/profile back to
+   * the AuditOrchestrator's per-run collector. See src/main/audit/. */
+  auditRun?: AuditRunIdentity
 }

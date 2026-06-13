@@ -6,6 +6,7 @@ import type {
   AppSettings,
   AuditOrchestrationSettings,
   AuditRole,
+  AuditRunIdentity,
   EnsembleRunIdentity,
   ExternalPathGrant,
   HandoffCard,
@@ -335,6 +336,24 @@ export function normalizeEnsembleRunIdentity(value: unknown): EnsembleRunIdentit
     provider: assertProviderId(value.provider),
     role: optionalString(value.role) || 'Participant',
     order: optionalNumber(value.order) ?? 0
+  }
+}
+
+export function normalizeAuditRunIdentity(value: unknown): AuditRunIdentity | undefined {
+  if (!isRecord(value)) return undefined
+  // Optional payload field — a malformed identity is dropped (the run is just
+  // treated as a non-audit run), never thrown.
+  const auditRunId = optionalString(value.auditRunId)
+  const role = optionalString(value.role)
+  if (!auditRunId) return undefined
+  if (role !== 'recon' && role !== 'reviewer' && role !== 'skeptic' && role !== 'synthesis') {
+    return undefined
+  }
+  return {
+    auditRunId,
+    role,
+    ...(optionalString(value.dimension) ? { dimension: optionalString(value.dimension) } : {}),
+    ...(optionalString(value.findingId) ? { findingId: optionalString(value.findingId) } : {})
   }
 }
 
