@@ -292,6 +292,31 @@ describe('AuditOrchestrator — resilience', () => {
     expect(second.coverage?.dimensionsCompleted).toBe(3)
   })
 
+  it('does not emit awaitingConfirm when no confirmation gate is wired', async () => {
+    const statuses: AuditRunRecord['status'][] = []
+    const deps = baseDeps({
+      onUpdate: (run) => statuses.push(run.status)
+    })
+
+    await new AuditOrchestrator(deps).run(input)
+
+    expect(statuses).toContain('running')
+    expect(statuses).not.toContain('awaitingConfirm')
+  })
+
+  it('emits awaitingConfirm only when a confirmation gate is wired', async () => {
+    const statuses: AuditRunRecord['status'][] = []
+    const deps = baseDeps({
+      confirmPlan: async () => true,
+      onUpdate: (run) => statuses.push(run.status)
+    })
+
+    await new AuditOrchestrator(deps).run(input)
+
+    expect(statuses).toContain('awaitingConfirm')
+    expect(statuses).toContain('running')
+  })
+
   it('fails cleanly when no provider is eligible', async () => {
     const deps = baseDeps({
       resolveSignals: async () => [

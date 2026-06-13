@@ -321,7 +321,11 @@ export class AuditOrchestrator {
       // ── plan (+ confirm) ────────────────────────────────────────────────────
       this.beginPhase('plan')
       const dimensions = planDimensions(input.mode, profile)
-      this.persist({ dimensions, status: 'awaitingConfirm' })
+      if (this.deps.confirmPlan) {
+        this.persist({ dimensions, status: 'awaitingConfirm' })
+      } else {
+        this.persist({ dimensions, status: 'running' })
+      }
       const confirmed = this.deps.confirmPlan ? await this.deps.confirmPlan(this.record) : true
       if (!confirmed) {
         this.endPhase('plan', 'completed')
