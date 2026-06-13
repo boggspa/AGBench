@@ -236,6 +236,18 @@ describe('AuditOrchestrator — resilience', () => {
     expect(result.coverage?.notes?.some((n) => n.includes('Budget ceiling'))).toBe(true)
   })
 
+  it('snapshots the latest dynamic policy at run start', async () => {
+    let policy = { providerAllowlist: ['claude' as ProviderId], budgetMaxAgents: 9 }
+    const deps = baseDeps({ getPolicy: () => policy })
+    const orchestrator = new AuditOrchestrator(deps)
+    policy = { providerAllowlist: ['codex' as ProviderId], budgetMaxAgents: 4 }
+
+    const result = await orchestrator.run(input)
+
+    expect(result.budget.maxAgents).toBe(4)
+    expect(result.roster?.perRole.reviewer).toEqual(['codex'])
+  })
+
   it('fails cleanly when no provider is eligible', async () => {
     const deps = baseDeps({
       resolveSignals: async () => [

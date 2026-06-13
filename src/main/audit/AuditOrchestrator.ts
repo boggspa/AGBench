@@ -93,7 +93,10 @@ export interface AuditOrchestratorDeps {
   resolveSignals: () => Promise<ProviderSignal[]>
   dispatchRole: (req: AuditRoleRunRequest) => Promise<AuditRoleRunResult>
   runGates: (checks: AuditGateCheck[], workspacePath: string) => Promise<AuditGateResult[]>
+  /** Static policy fallback, mostly for tests/back-compat. */
   policy?: AuditOrchestrationSettings
+  /** Dynamic settings source. Snapshotted once at run start. */
+  getPolicy?: () => AuditOrchestrationSettings | undefined
   /** Plan-confirmation gate (the UI supplies the real one). Default: approve. */
   confirmPlan?: (run: AuditRunRecord) => Promise<boolean>
   /** Cooperative cancellation, checked between phases + spawns. */
@@ -248,7 +251,7 @@ function policyForRun(
 
 export class AuditOrchestrator {
   private readonly deps: AuditOrchestratorDeps
-  private readonly localGate: Semaphore
+  private localGate: Semaphore
   private record!: AuditRunRecord
   private substitutions = 0
 
@@ -257,7 +260,13 @@ export class AuditOrchestrator {
     this.localGate = new Semaphore(Math.max(1, deps.policy?.ollamaMaxConcurrent ?? 1))
   }
 
+  private currentPolicy(): AuditOrchestrationSettings | undefined {
+    return this.deps.getPolicy?.() ?? this.deps.policy
+  }
+
   async run(input: StartAuditInput): Promise<AuditRunRecord> {
+    const basePolicy = this.currentPolicy()
+    this.localGate = new Semaphore(Math.max(1, basePolicy?.ollamaMaxConcurrent ?? 1))
     const phases: AuditPhase[] = (
       ['recon', 'plan', 'gates', 'review', 'dedup', 'verify', 'synthesis'] as AuditPhaseId[]
     ).map((id) => ({ id, status: 'pending' }))
@@ -269,7 +278,7 @@ export class AuditOrchestrator {
       status: 'planning',
       phases,
       dimensions: [],
-      budget: defaultBudgetForMode(input.mode, this.deps.policy),
+      budget: defaultBudgetForMode(input.mode, basePolicy),
       startedAt: this.deps.now()
     })
     this.persist({})
@@ -277,7 +286,7 @@ export class AuditOrchestrator {
     try {
       // ── eligibility (before a single token is spent) ──────────────────────
       const signals = await this.deps.resolveSignals()
-      const policy = policyForRun(this.deps.policy, input.preferredProvider)
+      const policy = policyForRun(basePolicy, input.preferredProvider)
       const roster = resolveProviderCapabilities({
         rolesNeeded: AUDIT_ROLES,
         signals,

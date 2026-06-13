@@ -20141,7 +20141,7 @@ if (isGeminiMcpBridgeProcess) {
         runCommand: (command, cwd) => runHostCommand(command, cwd),
         uuid: () => randomUUID()
       }).runGates,
-      policy: AppStore.getSettings().auditOrchestration,
+      getPolicy: () => AppStore.getSettings().auditOrchestration,
       // Cooperative cancellation scoped to the live run: the start handler sets
       // activeAuditRunId before run(); audit-run:cancel adds the id to the set.
       isCancelled: () => activeAuditRunId !== null && cancelledAuditRunIds.has(activeAuditRunId),
