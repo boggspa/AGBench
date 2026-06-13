@@ -9044,3 +9044,48 @@
   border-bottom-right-radius: 14px;
   margin-bottom: 0;
 }
+
+/* Light-mode sky reveal — only the top sky band fades; the rest of the
+ * transcript pane stays a solid reading surface. */
+:root[data-fx-enabled="true"]:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .app-transcript {
+  --transcript-sky-reveal-solid: color-mix(
+    in srgb,
+    var(--main-pane-opacity-override-bg, var(--content-bg, #ffffff)) var(--main-pane-opacity-100, 100%),
+    transparent
+  );
+  background-color: var(--transcript-sky-reveal-solid) !important;
+  background-image: linear-gradient(
+    180deg,
+    transparent 0,
+    color-mix(in srgb, var(--transcript-sky-reveal-top, rgba(255, 255, 255, 0)) 48%, #c8e6ff 52%) 6vh,
+    color-mix(in srgb, var(--transcript-sky-reveal-upper, rgba(255, 255, 255, 0.05)) 62%, #dff2ff 38%) 14vh,
+    var(--transcript-sky-reveal-solid) 30vh,
+    var(--transcript-sky-reveal-solid) 100%
+  ) !important;
+}
+
+:root[data-fx-enabled="true"]:is(
+    [data-theme="light"],
+    [data-theme="citrus"],
+    [data-theme="mist"],
+    [data-theme="sage"],
+    [data-theme="alabaster"]
+  )
+  .app-transcript.welcome-mode {
+  --transcript-sky-reveal-top: rgba(255, 255, 255, 0);
+  background-image: linear-gradient(
+    180deg,
+    transparent 0,
+    color-mix(in srgb, var(--transcript-sky-reveal-top) 38%, #c8e6ff 62%) 8vh,
+    color-mix(in srgb, var(--transcript-sky-reveal-upper, rgba(255, 255, 255, 0.05)) 58%, #dff2ff 42%) 16vh,
+    var(--transcript-sky-reveal-solid) 34vh,
+    var(--transcript-sky-reveal-solid) 100%
+  ) !important;
+}

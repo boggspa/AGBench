@@ -534,19 +534,20 @@
   top: 0;
   left: 0;
   right: 0;
-  height: min(62%, 560px);
+  height: min(70%, 640px);
   z-index: 2;
   overflow: hidden;
   pointer-events: none;
-  opacity: 0.86;
-  mix-blend-mode: screen;
+  opacity: var(--fx-sky-layer-opacity, 0.9);
+  mix-blend-mode: var(--fx-sky-blend-mode, screen);
+  filter: var(--fx-sky-filter, saturate(1.144) brightness(1.108));
   contain: strict;
   isolation: isolate;
   transform: translateZ(0);
   backface-visibility: hidden;
   will-change: transform, opacity;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.96), rgba(0, 0, 0, 0.74) 54%, rgba(0, 0, 0, 0.32) 82%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.96), rgba(0, 0, 0, 0.74) 54%, rgba(0, 0, 0, 0.32) 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.9) 48%, rgba(0, 0, 0, 0.62) 78%, rgba(0, 0, 0, 0.18) 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.9) 48%, rgba(0, 0, 0, 0.62) 78%, rgba(0, 0, 0, 0.18) 92%, transparent 100%);
 }
 
 .sky-fog-filter {
@@ -561,9 +562,9 @@
   position: absolute;
   inset: -18% -8% 0;
   background:
-    radial-gradient(circle at 16% 26%, rgba(77, 137, 255, 0.22), transparent 36%),
-    radial-gradient(circle at 84% 18%, rgba(107, 214, 255, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(17, 40, 83, 0.2), transparent 76%);
+    radial-gradient(circle at 16% 26%, rgba(77, 137, 255, 0.34), transparent 40%),
+    radial-gradient(circle at 84% 18%, rgba(107, 214, 255, 0.28), transparent 38%),
+    linear-gradient(180deg, rgba(17, 40, 83, 0.32), transparent 80%);
   animation: skyGlowDrift 24s ease-in-out infinite alternate;
   backface-visibility: hidden;
   will-change: transform, opacity;
@@ -574,18 +575,19 @@
   position: absolute;
   inset: -22% -12% -14%;
   background:
-    radial-gradient(ellipse at 72% 4%, rgba(255, 242, 162, 0.24), transparent 42%),
-    radial-gradient(ellipse at 48% 0%, rgba(246, 252, 255, 0.42), transparent 50%),
-    linear-gradient(180deg, rgba(72, 186, 255, 0.42), rgba(123, 212, 255, 0.28) 44%, rgba(194, 234, 255, 0.12) 78%, transparent 100%);
+    radial-gradient(ellipse at 72% 4%, rgba(255, 242, 162, 0.38), transparent 44%),
+    radial-gradient(ellipse at 48% 0%, rgba(246, 252, 255, 0.58), transparent 54%),
+    linear-gradient(180deg, rgba(72, 186, 255, 0.56), rgba(123, 212, 255, 0.38) 44%, rgba(194, 234, 255, 0.18) 78%, transparent 100%);
   opacity: 1;
   pointer-events: none;
 }
 
 .sky-night .sky-glow {
+  opacity: var(--fx-sky-night-glow-opacity, 1);
   background:
-    radial-gradient(circle at 18% 22%, rgba(84, 119, 255, 0.16), transparent 34%),
-    radial-gradient(circle at 82% 18%, rgba(65, 220, 255, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(11, 25, 58, 0.34), transparent 76%);
+    radial-gradient(circle at 18% 22%, rgba(84, 119, 255, 0.34), transparent 38%),
+    radial-gradient(circle at 82% 18%, rgba(65, 220, 255, 0.24), transparent 36%),
+    linear-gradient(180deg, rgba(11, 25, 58, 0.56), rgba(24, 48, 96, 0.22) 58%, transparent 82%);
 }
 
 .sky-day.sky-clear .sky-glow,
@@ -639,16 +641,16 @@
   position: absolute;
   top: 79px;
   right: clamp(54px, 12vw, 150px);
-  width: 62px;
-  height: 62px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 1) 0 13%, rgba(255, 248, 177, 0.98) 26%, rgba(255, 210, 71, 0.96) 58%, rgba(255, 151, 41, 0.78) 82%, rgba(255, 151, 41, 0) 84%);
   box-shadow:
-    0 0 18px rgba(255, 250, 198, 0.66),
-    0 0 46px rgba(255, 204, 68, 0.44),
-    0 0 96px rgba(255, 178, 48, 0.24),
-    0 0 152px rgba(255, 222, 111, 0.13);
+    0 0 24px rgba(255, 250, 198, 0.82),
+    0 0 58px rgba(255, 204, 68, 0.58),
+    0 0 112px rgba(255, 178, 48, 0.34),
+    0 0 168px rgba(255, 222, 111, 0.18);
   /* GPU: skySunPulse removed — it animated `filter: brightness/saturate`
    * which is paint-bound on a sun-sized layer. The orb already reads as
    * "alive" from skyOrbFloat's gentle transform drift. */
@@ -686,15 +688,17 @@
 }
 
 .sky-night .sky-orb {
-  width: 48px;
-  height: 48px;
-  right: clamp(62px, 14vw, 168px);
+  width: 56px;
+  height: 56px;
+  right: clamp(58px, 13vw, 162px);
+  opacity: var(--fx-sky-night-orb-opacity, 1);
   background:
     radial-gradient(circle at 64% 35%, rgba(18, 24, 38, 0.88) 0 34%, transparent 35%),
-    radial-gradient(circle at 42% 42%, rgba(248, 252, 255, 0.94), rgba(199, 224, 255, 0.76) 62%, transparent 64%);
+    radial-gradient(circle at 42% 42%, rgba(248, 252, 255, 1), rgba(199, 224, 255, 0.88) 62%, transparent 64%);
   box-shadow:
-    0 0 24px rgba(177, 211, 255, 0.22),
-    0 0 58px rgba(97, 145, 255, 0.12);
+    0 0 30px rgba(177, 211, 255, 0.48),
+    0 0 72px rgba(97, 145, 255, 0.32),
+    0 0 128px rgba(97, 145, 255, 0.16);
 }
 
 .sky-night .sky-orb::before,
@@ -721,13 +725,13 @@
 
 .sky-star {
   position: absolute;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: rgba(239, 247, 255, 0.95);
+  background: rgba(239, 247, 255, 1);
   box-shadow:
-    0 0 10px rgba(172, 211, 255, 0.72),
-    0 0 18px rgba(120, 178, 255, 0.26);
+    0 0 14px rgba(172, 211, 255, 0.92),
+    0 0 26px rgba(120, 178, 255, 0.48);
   opacity: 0;
   animation: skyStarTwinkle 7.4s ease-in-out infinite;
   backface-visibility: hidden;
@@ -735,7 +739,7 @@
 }
 
 .sky-night .sky-star {
-  opacity: 0.78;
+  opacity: min(1, calc(0.96 * var(--fx-sky-night-star-opacity, 1)));
 }
 
 .sky-star-1 {
@@ -776,6 +780,37 @@
   animation-delay: -4.4s;
 }
 
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
+  .sky-star {
+  width: 6px;
+  height: 6px;
+  box-shadow:
+    0 0 18px rgba(172, 211, 255, 1),
+    0 0 34px rgba(120, 178, 255, 0.62);
+}
+
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
+  .sky-orb {
+  width: 76px;
+  height: 76px;
+  box-shadow:
+    0 0 30px rgba(255, 250, 198, 0.94),
+    0 0 72px rgba(255, 204, 68, 0.72),
+    0 0 136px rgba(255, 178, 48, 0.46),
+    0 0 196px rgba(255, 222, 111, 0.24);
+}
+
+:is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
+  .sky-night
+  .sky-orb {
+  width: 62px;
+  height: 62px;
+  box-shadow:
+    0 0 38px rgba(177, 211, 255, 0.62),
+    0 0 88px rgba(97, 145, 255, 0.42),
+    0 0 148px rgba(97, 145, 255, 0.22);
+}
+
 .sky-cloud {
   position: absolute;
   width: 178px;
@@ -793,7 +828,7 @@
     inset 0 -10px 20px rgba(255, 216, 196, 0.08),
     inset 0 8px 18px rgba(255, 255, 255, 0.2),
     0 12px 34px rgba(255, 255, 255, 0.04);
-  opacity: 0.34;
+  opacity: calc(0.5 * var(--fx-sky-cloud-opacity-scale, 1));
   animation: skyCloudDrift 138s linear infinite;
   backface-visibility: hidden;
   will-change: transform, opacity;
@@ -830,11 +865,11 @@
 }
 
 .sky-day.sky-clear .sky-cloud {
-  opacity: 0.1;
+  opacity: calc(0.22 * var(--fx-sky-cloud-opacity-scale, 1));
 }
 
 .sky-day.sky-partly_cloudy .sky-cloud {
-  opacity: 0.36;
+  opacity: calc(0.52 * var(--fx-sky-cloud-opacity-scale, 1));
 }
 
 .sky-cloud-1 {
@@ -896,7 +931,7 @@
 .sky-fog .sky-cloud,
 .sky-storm .sky-cloud,
 .sky-unknown .sky-cloud {
-  opacity: 0.42;
+  opacity: calc(0.58 * var(--fx-sky-cloud-opacity-scale, 1));
 }
 
 .sky-cloudy .sky-cloud,
@@ -907,30 +942,30 @@
 .sky-mist .sky-cloud,
 .sky-fog .sky-cloud,
 .sky-storm .sky-cloud {
-  opacity: 0.46;
+  opacity: calc(0.64 * var(--fx-sky-cloud-opacity-scale, 1));
 }
 
 .sky-day.sky-cloudy .sky-cloud,
 .sky-day.sky-overcast .sky-cloud,
 .sky-day.sky-mist .sky-cloud,
 .sky-day.sky-fog .sky-cloud {
-  opacity: 0.7;
+  opacity: calc(0.86 * var(--fx-sky-cloud-opacity-scale, 1));
   filter: blur(8px) saturate(0.55) brightness(0.9);
 }
 
 .sky-day.sky-overcast .sky-cloud {
-  opacity: 0.86;
+  opacity: calc(1 * var(--fx-sky-cloud-opacity-scale, 1));
   filter: blur(9px) saturate(0.4) brightness(0.78);
 }
 
 .sky-day.sky-rain .sky-cloud {
-  opacity: 0.74;
+  opacity: calc(0.9 * var(--fx-sky-cloud-opacity-scale, 1));
   filter: blur(8px) saturate(0.52) brightness(0.78);
 }
 
 .sky-day.sky-heavy_rain .sky-cloud,
 .sky-day.sky-storm .sky-cloud {
-  opacity: 0.86;
+  opacity: calc(1 * var(--fx-sky-cloud-opacity-scale, 1));
   filter: blur(9px) saturate(0.42) brightness(0.62);
 }
 
@@ -1723,8 +1758,13 @@
 
 @media (max-width: 760px) {
   .sky-visual-fx {
-    height: 220px;
-    opacity: 0.44;
+    height: 260px;
+    opacity: calc(var(--fx-sky-layer-opacity, 0.9) * 0.9);
+  }
+
+  :is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
+    .sky-visual-fx {
+    opacity: calc(var(--fx-sky-layer-opacity, 1) * 0.96);
   }
 
   .ghost-companion {

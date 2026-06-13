@@ -2851,9 +2851,20 @@
   opacity: var(--sidebar-opacity-factor) !important;
 }
 
-[data-main-pane-opacity-override="true"] .app-transcript,
 [data-main-pane-opacity-override="true"] .app-settings-pane {
-  background: color-mix(in srgb, var(--main-pane-opacity-override-bg) var(--main-pane-opacity-100), transparent) !important;
+  background: color-mix(in srgb, var(--main-pane-opacity-override-bg, var(--content-bg)) var(--main-pane-opacity-100), transparent) !important;
+  background-image: none !important;
+}
+
+/* Flatten transcript fill when the user dials pane opacity — except
+ * light-mode sky reveal, which keeps the top gradient and only scales
+ * the solid floor via --transcript-sky-reveal-solid. */
+:root[data-main-pane-opacity-override="true"]:not([data-fx-enabled="true"]) .app-transcript,
+:root[data-main-pane-opacity-override="true"][data-fx-enabled="true"]:not(
+    :is([data-theme="light"], [data-theme="citrus"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])
+  )
+  .app-transcript {
+  background: color-mix(in srgb, var(--main-pane-opacity-override-bg, var(--content-bg)) var(--main-pane-opacity-100), transparent) !important;
   background-image: none !important;
 }
 
