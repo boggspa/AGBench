@@ -63,12 +63,20 @@ describe('shortModelName', () => {
     expect(shortModelName('ollama', '', 'qwen3.5:9b-q4_K_M')).toBe(
       'Qwen 3.5 (9B Param)'
     )
+    expect(shortModelName('ollama', '', 'qwen3.6:35b')).toBe('Qwen 3.6 (35B-A3B)')
     expect(shortModelName('ollama', '', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
     expect(shortModelName('ollama', '', 'gemma4:12b-it-q4_K_M')).toBe(
       'Gemma 4 (12B Param)'
     )
     expect(shortModelName('ollama', '', 'gpt-oss')).toBe('GPT OSS (20B Param)')
     expect(shortModelName('ollama', '', 'gpt-oss:20b')).toBe('GPT OSS (20B Param)')
+    expect(shortModelName('ollama', '', 'minicpm-v4.5:8b')).toBe(
+      'MiniCPM-V 4.5 (8B Param)'
+    )
+    expect(shortModelName('ollama', '', 'granite4.1:30b')).toBe('Granite 4.1 (30B Param)')
+    expect(shortModelName('ollama', '', 'nemotron3:33b')).toBe(
+      'Nemotron 3 Nano Omni (33B Param)'
+    )
   })
 
   it("resolves the cli-default sentinel to each provider's real default", () => {

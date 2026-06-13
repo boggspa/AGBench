@@ -96,11 +96,17 @@ describe('normalizeOllamaModels', () => {
     expect(humanizeOllamaModelId('qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
     expect(humanizeOllamaModelId('qwen3.5:9b')).toBe('Qwen 3.5 (9B Param)')
     expect(humanizeOllamaModelId('qwen3.5:9b-q4_K_M')).toBe('Qwen 3.5 (9B Param)')
+    expect(humanizeOllamaModelId('qwen3.6:35b')).toBe('Qwen 3.6 (35B-A3B)')
     expect(humanizeOllamaModelId('gemma4:12b')).toBe('Gemma 4 (12B Param)')
     expect(humanizeOllamaModelId('gemma4:12b-it-q4_K_M')).toBe('Gemma 4 (12B Param)')
     expect(humanizeOllamaModelId('gpt-oss')).toBe('GPT OSS (20B Param)')
     expect(humanizeOllamaModelId('gpt-oss:20b')).toBe('GPT OSS (20B Param)')
     expect(humanizeOllamaModelId('gpt-oss:latest')).toBe('GPT OSS (20B Param)')
+    expect(humanizeOllamaModelId('minicpm-v4.5:8b')).toBe('MiniCPM-V 4.5 (8B Param)')
+    expect(humanizeOllamaModelId('granite4.1:30b')).toBe('Granite 4.1 (30B Param)')
+    expect(humanizeOllamaModelId('nemotron3:33b')).toBe(
+      'Nemotron 3 Nano Omni (33B Param)'
+    )
     expect(humanizeOllamaModelId('llama3.2:3b')).toBe('llama3.2:3b')
   })
 
@@ -125,15 +131,20 @@ describe('normalizeOllamaModels', () => {
           },
           { model: 'qwen3:4b-instruct' },
           { model: 'qwen3.5:9b' },
+          { model: 'qwen3.6:35b' },
           { model: 'gemma4:12b' },
           { model: 'gpt-oss:20b' },
+          { model: 'minicpm-v4.5:8b' },
+          { model: 'granite4.1:3b' },
+          { model: 'granite4.1:30b' },
+          { model: 'nemotron3:33b' },
           { model: 'llama3.2:3b' }
         ]
       },
       'llama3.2:3b'
     )
 
-    expect(models).toHaveLength(5)
+    expect(models).toHaveLength(10)
     expect(models[0]).toMatchObject({
       id: 'qwen3:4b-instruct',
       label: 'Qwen 3 (4B Param)',
@@ -156,16 +167,41 @@ describe('normalizeOllamaModels', () => {
       isDefault: false
     })
     expect(models[2]).toMatchObject({
+      id: 'qwen3.6:35b',
+      label: 'Qwen 3.6 (35B-A3B)',
+      isDefault: false
+    })
+    expect(models[3]).toMatchObject({
       id: 'gemma4:12b',
       label: 'Gemma 4 (12B Param)',
       isDefault: false
     })
-    expect(models[3]).toMatchObject({
+    expect(models[4]).toMatchObject({
       id: 'gpt-oss:20b',
       label: 'GPT OSS (20B Param)',
       isDefault: false
     })
-    expect(models[4]).toMatchObject({
+    expect(models[5]).toMatchObject({
+      id: 'minicpm-v4.5:8b',
+      label: 'MiniCPM-V 4.5 (8B Param)',
+      isDefault: false
+    })
+    expect(models[6]).toMatchObject({
+      id: 'granite4.1:3b',
+      label: 'Granite 4.1 (3B Param)',
+      isDefault: false
+    })
+    expect(models[7]).toMatchObject({
+      id: 'granite4.1:30b',
+      label: 'Granite 4.1 (30B Param)',
+      isDefault: false
+    })
+    expect(models[8]).toMatchObject({
+      id: 'nemotron3:33b',
+      label: 'Nemotron 3 Nano Omni (33B Param)',
+      isDefault: false
+    })
+    expect(models[9]).toMatchObject({
       id: 'llama3.2:3b',
       isDefault: true
     })

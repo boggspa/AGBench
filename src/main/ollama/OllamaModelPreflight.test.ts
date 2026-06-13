@@ -13,10 +13,26 @@ const GB = 1024 ** 3
 describe('resolveOllamaModelFamily', () => {
   it('maps curated TaskWraith model tags to families', () => {
     expect(resolveOllamaModelFamily('qwen3.5:9b')).toBe('qwen3_5_9b')
+    expect(resolveOllamaModelFamily('qwen3.6:35b')).toBe('qwen3_6_35b')
     expect(resolveOllamaModelFamily('qwen3:4b-instruct')).toBe('qwen3_4b')
+    expect(resolveOllamaModelFamily('minicpm-v4.5:8b')).toBe('minicpm_v45_8b')
     expect(resolveOllamaModelFamily('gemma4:12b-it-q4_K_M')).toBe('gemma4_12b')
+    expect(resolveOllamaModelFamily('granite4.1:3b')).toBe('granite4_1_3b')
+    expect(resolveOllamaModelFamily('granite4.1:30b')).toBe('granite4_1_30b')
+    expect(resolveOllamaModelFamily('nemotron3:33b')).toBe('nemotron3_33b')
     expect(resolveOllamaModelFamily('gpt-oss:latest')).toBe('gpt_oss_20b')
     expect(resolveOllamaModelFamily('llama3.2:3b')).toBe('unknown')
+  })
+
+  it('uses exact tags before architecture metadata that could be ambiguous', () => {
+    expect(
+      resolveOllamaModelFamily('minicpm-v4.5:8b', {
+        id: 'minicpm-v4.5:8b',
+        label: 'MiniCPM-V 4.5',
+        family: 'qwen3',
+        parameterSize: '8.2B'
+      })
+    ).toBe('minicpm_v45_8b')
   })
 
   it('detects GPT-OSS from Ollama metadata before tag heuristics', () => {
@@ -71,6 +87,25 @@ describe('evaluateOllamaModelPreflight', () => {
     expect(result.guidance).toContain('scoped tasks')
     expect(result.delegateHint).toContain('Codex or Claude')
     expect(result.warnings[0].id).toBe('ollama-model-guidance')
+  })
+
+  it('surfaces new large local model guidance without treating it as unknown', () => {
+    const result = evaluateOllamaModelPreflight({
+      modelId: 'nemotron3:33b',
+      modelLabel: 'Nemotron 3 Nano Omni (33B Param)',
+      modelInfo: {
+        id: 'nemotron3:33b',
+        label: 'Nemotron 3 Nano Omni (33B Param)',
+        parameterSize: '33B',
+        quantizationLevel: 'Q4_K_M',
+        capabilities: ['completion', 'vision', 'tools', 'thinking']
+      },
+      installedModelIds: ['nemotron3:33b'],
+      totalMemoryBytes: 96 * GB
+    })
+    expect(result.family).toBe('nemotron3_33b')
+    expect(result.guidance).toContain('multimodal')
+    expect(result.checks.find((c) => c.id === 'tools')?.ok).toBe(true)
   })
 
   it('warns when the model tag is missing or RAM is tight', () => {

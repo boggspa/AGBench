@@ -1,6 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ModelUsageProviderTableBlock, ModelUsageSettingsTable, ModelUsageTableTotalsFooter } from './ModelUsageSettingsTable'
+import {
+  ModelUsageOllamaTableBlock,
+  ModelUsageProviderTableBlock,
+  ModelUsageSettingsTable,
+  ModelUsageTableTotalsFooter
+} from './ModelUsageSettingsTable'
 import { buildModelUsageTable, sumModelUsageProviderTotals } from '../lib/modelUsageTable'
 import { buildOllamaMemoryModelTable } from '../lib/ollamaMemoryAggregation'
 import type { RendererProviderRates } from '../lib/providerRateEstimate'
@@ -127,6 +132,44 @@ describe('ModelUsageProviderTableBlock (populated render)', () => {
     expect(html).toContain('Cursor')
     expect(html).toContain('tok')
     expect(html).toContain('~$0.11')
+  })
+})
+
+describe('ModelUsageOllamaTableBlock (populated render)', () => {
+  it('renders GPT OSS memory aliases as one model row', () => {
+    const group = buildOllamaMemoryModelTable(
+      [
+        {
+          ...makeRecord({
+            provider: 'ollama',
+            model: 'gpt-oss:20b',
+            timestamp: NOW - 60_000
+          }),
+          ollamaMemoryPeakRssGb: 16,
+          ollamaMemorySampleCount: 10
+        },
+        {
+          ...makeRecord({
+            provider: 'ollama',
+            model: 'gpt-oss:latest',
+            timestamp: NOW - 30_000
+          }),
+          ollamaMemoryPeakRssGb: 18,
+          ollamaMemorySampleCount: 18
+        }
+      ],
+      NOW
+    )
+    const html = renderToStaticMarkup(
+      <table>
+        {group ? <ModelUsageOllamaTableBlock group={group} /> : null}
+      </table>
+    )
+    expect(html).toContain('GPT OSS (20B Param)')
+    expect(html).toContain('1 model')
+    expect(html.match(/model-usage-table-model-row/g)).toHaveLength(1)
+    expect(html).toContain('17GB')
+    expect(html).toContain('14 avg')
   })
 })
 

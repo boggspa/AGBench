@@ -24,10 +24,16 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('grok', 'grok-build')).toBe(256_000)
     expect(resolveContextWindow('ollama', 'qwen3:4b-instruct')).toBe(262_144)
     expect(resolveContextWindow('ollama', 'qwen3.5:9b')).toBe(262_144)
+    expect(resolveContextWindow('ollama', 'qwen3.6:35b')).toBe(262_144)
+    expect(resolveContextWindow('ollama', 'qwen3.6:35b-a3b')).toBe(262_144)
     expect(resolveContextWindow('ollama', 'gemma4:12b')).toBe(262_144)
     expect(resolveContextWindow('ollama', 'gemma4:12b-it-q4_K_M')).toBe(262_144)
     expect(resolveContextWindow('ollama', 'gpt-oss')).toBe(131_072)
     expect(resolveContextWindow('ollama', 'gpt-oss:20b')).toBe(131_072)
+    expect(resolveContextWindow('ollama', 'minicpm-v4.5:8b')).toBe(40_960)
+    expect(resolveContextWindow('ollama', 'granite4.1:3b')).toBe(131_072)
+    expect(resolveContextWindow('ollama', 'granite4.1:30b')).toBe(131_072)
+    expect(resolveContextWindow('ollama', 'nemotron3:33b')).toBe(131_072)
   })
 
   it('prefers live Ollama context_length from /api/tags over static table', () => {

@@ -148,6 +148,19 @@ export function canonicalModelIdForProvider(
   if (provider === 'cursor' && STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) {
     return 'composer-2.5-fast'
   }
+  if (provider === 'ollama') {
+    if (
+      key === 'gpt-oss' ||
+      key === 'gpt-oss:latest' ||
+      key === 'gpt-oss:20b' ||
+      key === 'openai/gpt-oss-20b'
+    ) {
+      return 'gpt-oss:20b'
+    }
+    if (key === 'qwen3.6:35b-a3b') {
+      return 'qwen3.6:35b'
+    }
+  }
   return trimmed
 }
 

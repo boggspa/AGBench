@@ -107,6 +107,8 @@ describe('humaniseModelId', () => {
       expect(humaniseModelId('ollama', 'qwen3.5:9b-q4_K_M')).toBe(
         'Qwen 3.5 (9B Param)'
       )
+      expect(humaniseModelId('ollama', 'qwen3.6:35b')).toBe('Qwen 3.6 (35B-A3B)')
+      expect(humaniseModelId('ollama', 'qwen3.6:35b-a3b')).toBe('Qwen 3.6 (35B-A3B)')
       expect(humaniseModelId('ollama', 'gemma4:12b')).toBe('Gemma 4 (12B Param)')
       expect(humaniseModelId('ollama', 'gemma4:12b-it-q4_K_M')).toBe(
         'Gemma 4 (12B Param)'
@@ -114,6 +116,14 @@ describe('humaniseModelId', () => {
       expect(humaniseModelId('ollama', 'gpt-oss')).toBe('GPT OSS (20B Param)')
       expect(humaniseModelId('ollama', 'gpt-oss:20b')).toBe('GPT OSS (20B Param)')
       expect(humaniseModelId('ollama', 'gpt-oss:latest')).toBe('GPT OSS (20B Param)')
+      expect(humaniseModelId('ollama', 'minicpm-v4.5:8b')).toBe(
+        'MiniCPM-V 4.5 (8B Param)'
+      )
+      expect(humaniseModelId('ollama', 'granite4.1:3b')).toBe('Granite 4.1 (3B Param)')
+      expect(humaniseModelId('ollama', 'granite4.1:30b')).toBe('Granite 4.1 (30B Param)')
+      expect(humaniseModelId('ollama', 'nemotron3:33b')).toBe(
+        'Nemotron 3 Nano Omni (33B Param)'
+      )
     })
   })
 
@@ -151,6 +161,13 @@ describe('humaniseModelId', () => {
       expect(humaniseModelId('cursor', 'gemini-3.1-flash-lite')).toBe('Composer 2.5 Fast')
       expect(humaniseModelId('gemini', 'flash-lite')).toBe('Gemini Flash Lite')
     })
+
+    it('canonicalizes Ollama aliases that render as the same model', () => {
+      expect(canonicalModelIdForProvider('ollama', 'gpt-oss')).toBe('gpt-oss:20b')
+      expect(canonicalModelIdForProvider('ollama', 'gpt-oss:latest')).toBe('gpt-oss:20b')
+      expect(canonicalModelIdForProvider('ollama', 'openai/gpt-oss-20b')).toBe('gpt-oss:20b')
+      expect(canonicalModelIdForProvider('ollama', 'qwen3.6:35b-a3b')).toBe('qwen3.6:35b')
+    })
   })
 
   describe('getKnownModelLabels', () => {
@@ -175,8 +192,12 @@ describe('humaniseModelId', () => {
       expect(labels['composer-2.5-fast']).toBeDefined()
       expect(labels['qwen3:4b-instruct']).toBeDefined()
       expect(labels['qwen3.5:9b']).toBeDefined()
+      expect(labels['qwen3.6:35b']).toBeDefined()
       expect(labels['gemma4:12b']).toBeDefined()
       expect(labels['gpt-oss:20b']).toBeDefined()
+      expect(labels['minicpm-v4.5:8b']).toBeDefined()
+      expect(labels['granite4.1:30b']).toBeDefined()
+      expect(labels['nemotron3:33b']).toBeDefined()
       // CLI Default is a non-canonical Gemini composer id but is
       // surfaced in the comparison list when a user has run with
       // it — must humanise to something readable.
@@ -198,6 +219,7 @@ describe('humaniseModelIdCompact', () => {
     expect(humaniseModelIdCompact('gemini', 'cli-default')).toBe('CLI Default')
     expect(humaniseModelIdCompact('cursor', 'composer-2.5-fast')).toBe('Composer 2.5 Fast')
     expect(humaniseModelIdCompact('ollama', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+    expect(humaniseModelIdCompact('ollama', 'qwen3.6:35b-a3b')).toBe('Qwen 3.6 (35B-A3B)')
   })
 })
 

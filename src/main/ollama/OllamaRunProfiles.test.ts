@@ -21,9 +21,18 @@ describe('OllamaRunProfiles', () => {
     expect(profile.numPredictFinal).toBeGreaterThan(profile.numPredictTool || 0)
   })
 
-  it('returns GPT-OSS thinking level only for GPT-OSS models', () => {
+  it('returns thinking level for Ollama tags that advertise thinking support', () => {
     expect(
       resolveOllamaThinkingLevel('gpt-oss:latest', OLLAMA_RUN_PROFILE_PRESETS.local_scout)
+    ).toBe('medium')
+    expect(
+      resolveOllamaThinkingLevel('qwen3.6:35b', OLLAMA_RUN_PROFILE_PRESETS.local_scout)
+    ).toBe('medium')
+    expect(
+      resolveOllamaThinkingLevel('minicpm-v4.5:8b', OLLAMA_RUN_PROFILE_PRESETS.local_scout)
+    ).toBe('medium')
+    expect(
+      resolveOllamaThinkingLevel('nemotron3:33b', OLLAMA_RUN_PROFILE_PRESETS.local_scout)
     ).toBe('medium')
     expect(
       resolveOllamaThinkingLevel('qwen3.5:9b', OLLAMA_RUN_PROFILE_PRESETS.local_scout)

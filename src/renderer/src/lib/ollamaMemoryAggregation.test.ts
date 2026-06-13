@@ -88,6 +88,30 @@ describe('ollamaMemoryAggregation', () => {
     expect(group?.totals.d90.avgPeakRssGb).toBe(18)
   })
 
+  it('collapses GPT OSS aliases before grouping RAM rows', () => {
+    const group = buildOllamaMemoryModelTable(
+      [
+        makeRecord({
+          model: 'gpt-oss:20b',
+          timestamp: NOW - 1000,
+          ollamaMemoryPeakRssGb: 16,
+          ollamaMemorySampleCount: 10
+        }),
+        makeRecord({
+          model: 'gpt-oss:latest',
+          timestamp: NOW - 2000,
+          ollamaMemoryPeakRssGb: 18,
+          ollamaMemorySampleCount: 18
+        })
+      ],
+      NOW
+    )
+    expect(group?.models).toHaveLength(1)
+    expect(group?.models[0]?.model).toBe('gpt-oss:20b')
+    expect(group?.models[0]?.windows.d90.avgPeakRssGb).toBe(17)
+    expect(group?.models[0]?.windows.d90.avgSampleCount).toBe(14)
+  })
+
   it('formats RAM and sample cells for display', () => {
     expect(formatOllamaMemoryAvgCell(12.4)).toBe('12 GB avg')
     expect(formatOllamaSampleAvgCell(8, 2)).toBe('8 samples avg')

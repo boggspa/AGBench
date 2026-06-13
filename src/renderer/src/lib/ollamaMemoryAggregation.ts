@@ -23,6 +23,7 @@ import {
   MODEL_USAGE_WINDOW_ORDER,
   type ModelUsageWindowKey
 } from './modelUsageTable'
+import { canonicalModelIdForProvider } from './modelDisplayName'
 
 interface MemoryAccumulator {
   peakSumGb: number
@@ -115,7 +116,7 @@ const finalizeTableWindowSet = (
 
 const modelKeyFor = (record: UsageRecord): string => {
   const raw = (record.model || '').trim()
-  return raw || 'ollama'
+  return canonicalModelIdForProvider('ollama', raw || 'ollama') || 'ollama'
 }
 
 const isOllamaMemoryRecord = (record: UsageRecord): boolean =>
