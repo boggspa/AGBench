@@ -112,6 +112,24 @@ const providers = [
       <path class="line fine" d="M18.5 7.6h1.4" />
       <circle class="dot" cx="17.8" cy="6.2" r=".7" />
     `
+  },
+  {
+    id: 'ensemble',
+    label: 'Ensemble',
+    accent: '#E8DDE3',
+    hint: 'staggered three-agent roster with identicon visor',
+    body: `
+      <circle class="line fine" cx="6.7" cy="7.3" r="2.35" />
+      <circle class="line fine" cx="17.3" cy="7.3" r="2.35" />
+      <circle class="accent" cx="12" cy="6.5" r="2.7" />
+      <path class="line fine" d="M2.8 18.4c.35-2.9 2.65-4.7 5.45-4.7 1.15 0 2.25.3 3.15.85" />
+      <path class="line fine" d="M21.2 18.4c-.35-2.9-2.65-4.7-5.45-4.7-1.15 0-2.25.3-3.15.85" />
+      <path class="accent" d="M6.6 19.8c.25-3.45 2.55-5.65 5.4-5.65s5.15 2.2 5.4 5.65" />
+      <path class="line fine" d="M5.55 7.35h2.3" />
+      <path class="line fine" d="M16.15 7.35h2.3" />
+      <path class="line" d="M9.8 6.55h4.4" />
+      <path class="line fine" d="m9.7 12.25 2.3 1.9 2.3-1.9" />
+    `
   }
 ]
 

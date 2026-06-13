@@ -97,6 +97,7 @@ public enum TWTheme {
         case "kimi": return Color(hex: 0x84A33B)
         case "cursor": return Color(hex: 0xE3B91E)
         case "ollama": return Color(hex: 0x20A77A)
+        case "ensemble": return Color(hex: 0xE8DDE3)
         case "qwen": return Color(hex: 0xD946EF)
         case "grok": return textPrimary
         default: return chroma1
@@ -113,6 +114,7 @@ public enum TWTheme {
         case "grok": return "Grok"
         case "cursor": return "Cursor"
         case "ollama": return "Ollama"
+        case "ensemble": return "Ensemble"
         case "qwen": return "Qwen"
         case .some(let other): return other.prefix(1).uppercased() + other.dropFirst()
         case nil: return "Agent"

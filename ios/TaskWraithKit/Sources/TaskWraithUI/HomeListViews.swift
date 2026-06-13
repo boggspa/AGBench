@@ -521,9 +521,9 @@ struct TaskRow: View {
                     .padding(.top, 4)
             }
             // Provider glyph — monoline mnemonic tinted with the provider
-            // accent (star for ensembles; dot fallback for providers with
-            // no baked glyph). Sub-agents with a character identity get
-            // their identicon badge instead.
+            // accent, with dot fallback for providers with no baked glyph.
+            // Sub-agents with a character identity get their identicon badge
+            // instead.
             if let agentName = card.agentName {
                 AgentIdentityBadge(
                     name: agentName, accentHex: card.agentAccent,

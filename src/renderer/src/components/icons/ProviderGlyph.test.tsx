@@ -11,7 +11,8 @@ describe('ProviderGlyph', () => {
       'kimi',
       'grok',
       'cursor',
-      'ollama'
+      'ollama',
+      'ensemble'
     ] as const) {
       const html = renderToStaticMarkup(<ProviderGlyph provider={provider} />)
       expect(html).toContain(`provider-glyph-${provider}`)

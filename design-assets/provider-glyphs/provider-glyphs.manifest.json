@@ -40,5 +40,11 @@
     "label": "Ollama",
     "accent": "#20A77A",
     "hint": "llama profile"
+  },
+  {
+    "id": "ensemble",
+    "label": "Ensemble",
+    "accent": "#E8DDE3",
+    "hint": "staggered three-agent roster with identicon visor"
   }
 ]

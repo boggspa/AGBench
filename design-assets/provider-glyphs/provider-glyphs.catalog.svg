@@ -245,4 +245,37 @@
     <text class="accent-label" x="72" y="188">#20A77A</text>
     <text class="hint" x="72" y="207">64px + 16px preview</text>
   </g>
+  <g transform="translate(144 420)">
+    <g transform="translate(40 24) scale(2.65)" style="color: #E8DDE3; --provider-accent: #E8DDE3;">
+
+      <circle class="line fine" cx="6.7" cy="7.3" r="2.35" />
+      <circle class="line fine" cx="17.3" cy="7.3" r="2.35" />
+      <circle class="accent" cx="12" cy="6.5" r="2.7" />
+      <path class="line fine" d="M2.8 18.4c.35-2.9 2.65-4.7 5.45-4.7 1.15 0 2.25.3 3.15.85" />
+      <path class="line fine" d="M21.2 18.4c-.35-2.9-2.65-4.7-5.45-4.7-1.15 0-2.25.3-3.15.85" />
+      <path class="accent" d="M6.6 19.8c.25-3.45 2.55-5.65 5.4-5.65s5.15 2.2 5.4 5.65" />
+      <path class="line fine" d="M5.55 7.35h2.3" />
+      <path class="line fine" d="M16.15 7.35h2.3" />
+      <path class="line" d="M9.8 6.55h4.4" />
+      <path class="line fine" d="m9.7 12.25 2.3 1.9 2.3-1.9" />
+
+    </g>
+    <g transform="translate(61 112) scale(0.9)" style="color: #E8DDE3; --provider-accent: #E8DDE3;">
+
+      <circle class="line fine" cx="6.7" cy="7.3" r="2.35" />
+      <circle class="line fine" cx="17.3" cy="7.3" r="2.35" />
+      <circle class="accent" cx="12" cy="6.5" r="2.7" />
+      <path class="line fine" d="M2.8 18.4c.35-2.9 2.65-4.7 5.45-4.7 1.15 0 2.25.3 3.15.85" />
+      <path class="line fine" d="M21.2 18.4c-.35-2.9-2.65-4.7-5.45-4.7-1.15 0-2.25.3-3.15.85" />
+      <path class="accent" d="M6.6 19.8c.25-3.45 2.55-5.65 5.4-5.65s5.15 2.2 5.4 5.65" />
+      <path class="line fine" d="M5.55 7.35h2.3" />
+      <path class="line fine" d="M16.15 7.35h2.3" />
+      <path class="line" d="M9.8 6.55h4.4" />
+      <path class="line fine" d="m9.7 12.25 2.3 1.9 2.3-1.9" />
+
+    </g>
+    <text class="label" x="72" y="168">Ensemble</text>
+    <text class="accent-label" x="72" y="188">#E8DDE3</text>
+    <text class="hint" x="72" y="207">64px + 16px preview</text>
+  </g>
 </svg>

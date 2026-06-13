@@ -126,6 +126,8 @@
   --provider-cursor-color: #E3B91E;
   /* Ollama / Local — green-teal for on-device inference. */
   --provider-ollama-color: #20A77A;
+  /* Ensemble — aggregate provider roster in a soft white-gray pink. */
+  --provider-ensemble-color: #E8DDE3;
   /* Ollama-backed display brands. Runtime provider remains `ollama`; these
    * presentation aliases let local models wear their upstream brand hue. */
   --provider-qwen-color: #D946EF;

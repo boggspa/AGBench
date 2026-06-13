@@ -118,6 +118,33 @@ function glyphBody(provider: string): ReactElement {
           <circle className="provider-glyph-dot" cx="17.8" cy="6.2" r=".7" />
         </>
       )
+    case 'ensemble':
+      return (
+        <>
+          <circle className="provider-glyph-line provider-glyph-fine" cx="6.7" cy="7.3" r="2.35" />
+          <circle className="provider-glyph-line provider-glyph-fine" cx="17.3" cy="7.3" r="2.35" />
+          <circle className="provider-glyph-accent" cx="12" cy="6.5" r="2.7" />
+          <path
+            className="provider-glyph-line provider-glyph-fine"
+            d="M2.8 18.4c.35-2.9 2.65-4.7 5.45-4.7 1.15 0 2.25.3 3.15.85"
+          />
+          <path
+            className="provider-glyph-line provider-glyph-fine"
+            d="M21.2 18.4c-.35-2.9-2.65-4.7-5.45-4.7-1.15 0-2.25.3-3.15.85"
+          />
+          <path
+            className="provider-glyph-accent"
+            d="M6.6 19.8c.25-3.45 2.55-5.65 5.4-5.65s5.15 2.2 5.4 5.65"
+          />
+          <path className="provider-glyph-line provider-glyph-fine" d="M5.55 7.35h2.3" />
+          <path className="provider-glyph-line provider-glyph-fine" d="M16.15 7.35h2.3" />
+          <path className="provider-glyph-line" d="M9.8 6.55h4.4" />
+          <path
+            className="provider-glyph-line provider-glyph-fine"
+            d="m9.7 12.25 2.3 1.9 2.3-1.9"
+          />
+        </>
+      )
     default:
       return (
         <>

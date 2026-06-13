@@ -1520,8 +1520,8 @@ public func twMentionCandidates(
 /// dot. Loads a white-on-alpha template PNG from the app asset catalog or
 /// package resources and tints it with the provider accent at runtime, so one
 /// master serves every theme.
-/// Ensembles get a star; providers without a baked glyph (qwen, unknown)
-/// keep the original dot.
+/// Ensembles and providers with a baked glyph use the monoline PNG;
+/// providers without one (qwen, unknown) keep the original dot.
 public struct ProviderGlyphIcon: View {
     let provider: String?
     let isEnsemble: Bool
@@ -1552,10 +1552,19 @@ public struct ProviderGlyphIcon: View {
 
     public var body: some View {
         if isEnsemble {
-            Image(systemName: "star.fill")
-                .font(.system(size: size * 0.72, weight: .semibold))
-                .foregroundStyle(TWTheme.chroma2)
-                .frame(width: size, height: size)
+            if let glyph = Self.glyphImage(for: "ensemble") {
+                glyph
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+                    .foregroundStyle(TWTheme.providerAccent("ensemble"))
+            } else {
+                Image(systemName: "star.fill")
+                    .font(.system(size: size * 0.72, weight: .semibold))
+                    .foregroundStyle(TWTheme.providerAccent("ensemble"))
+                    .frame(width: size, height: size)
+            }
         } else if let glyph = Self.glyphImage(for: provider) {
             glyph
                 .renderingMode(.template)
