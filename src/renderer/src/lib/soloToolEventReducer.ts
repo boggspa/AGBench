@@ -38,21 +38,19 @@ export function reduceSoloToolEventMessages(
   let nextMessages = messages
   let lastMsgIndex = nextMessages.length - 1
   let lastMsg = nextMessages[lastMsgIndex]
+  // Only collapse into an EXISTING tool row when it is the trailing message —
+  // i.e. consecutive tool events with no text between them. If the last
+  // message is anything else (most commonly a trailing assistant streamed
+  // between two tool bursts), start a NEW tool row appended at the end so the
+  // tools land at their true sequence position. Reaching back past a trailing
+  // assistant to the prior tool row would merge tool bursts that are separated
+  // by text into one ActivityStack, destroying the interleaving (text → tools
+  // → text → tools collapses to [all tools] → [all text]).
   if (nextMessages.length === 0 || lastMsg?.role !== 'tool') {
-    const trailingAssistant = lastMsg?.role === 'assistant' ? lastMsg : null
-    const previousToolIndex = trailingAssistant ? nextMessages.length - 2 : -1
-    const previousTool = previousToolIndex >= 0 ? nextMessages[previousToolIndex] : null
-    if (trailingAssistant && previousTool?.role === 'tool') {
-      lastMsgIndex = previousToolIndex
-      lastMsg = previousTool
-    } else {
-      const toolMessage = createToolMessage()
-      nextMessages = trailingAssistant
-        ? [...nextMessages.slice(0, -1), toolMessage, trailingAssistant]
-        : [...nextMessages, toolMessage]
-      lastMsgIndex = trailingAssistant ? nextMessages.length - 2 : nextMessages.length - 1
-      lastMsg = toolMessage
-    }
+    const toolMessage = createToolMessage()
+    nextMessages = [...nextMessages, toolMessage]
+    lastMsgIndex = nextMessages.length - 1
+    lastMsg = toolMessage
   }
 
   const acts = [...(lastMsg.toolActivities || [])]

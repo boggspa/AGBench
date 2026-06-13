@@ -73,7 +73,9 @@ describe('reduceSoloToolEventMessages', () => {
     expect(second.isResult).toBe(true)
   })
 
-  it('keeps trailing assistant text after a newly inserted tool row', () => {
+  it('appends a tool row AFTER trailing assistant text (true stream order)', () => {
+    // The assistant text streamed first, then the tool ran — the tool card
+    // belongs below the text, not pushed above it.
     const messages: ChatMessage[] = [
       {
         id: 'assistant-1',
@@ -93,8 +95,75 @@ describe('reduceSoloToolEventMessages', () => {
       }
     })
 
-    expect(result.messages.map((message) => message.role)).toEqual(['tool', 'assistant'])
+    expect(result.messages.map((message) => message.role)).toEqual(['assistant', 'tool'])
+    expect(result.messages[0].id).toBe('assistant-1')
+    expect(result.messages[1].toolActivities?.[0]?.id).toBe('call-1')
+  })
+
+  it('starts a NEW tool row when a tool burst is separated from a prior tool burst by assistant text', () => {
+    // [tool burst 1] -> assistant text -> [new tool] must stay as TWO tool
+    // groups in order. Reaching back past the assistant to merge into the
+    // first burst is exactly the interleaving regression this guards against.
+    const messages: ChatMessage[] = [
+      {
+        id: 'tool-1',
+        role: 'tool',
+        content: '',
+        timestamp: NOW,
+        toolActivities: [
+          {
+            id: 'call-1',
+            toolName: 'read_file',
+            displayName: 'Read file',
+            status: 'success'
+          } as any
+        ]
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Found it. Now editing.',
+        timestamp: NOW
+      }
+    ]
+    const result = reduce(messages, {
+      type: 'tool_event',
+      isUse: true,
+      data: {
+        type: 'tool_use',
+        tool_id: 'call-2',
+        tool_name: 'edit_file',
+        parameters: { file_path: 'a.ts' }
+      }
+    })
+
+    // Three messages in stream order: tools, text, tools — NOT [tools+tools, text].
+    expect(result.messages.map((message) => message.role)).toEqual(['tool', 'assistant', 'tool'])
+    expect(result.messages[0].id).toBe('tool-1')
+    expect(result.messages[0].toolActivities).toHaveLength(1)
+    expect(result.messages[0].toolActivities?.[0]?.id).toBe('call-1')
     expect(result.messages[1].id).toBe('assistant-1')
+    expect(result.messages[2].toolActivities).toHaveLength(1)
+    expect(result.messages[2].toolActivities?.[0]?.id).toBe('call-2')
+  })
+
+  it('collapses consecutive tool events (no text between) into one row', () => {
+    // The desirable collapse: back-to-back tools with no assistant text
+    // between them stay in a single ActivityStack group.
+    const first = reduce([], {
+      type: 'tool_event',
+      isUse: true,
+      data: { type: 'tool_use', tool_id: 'call-1', tool_name: 'read_file', parameters: {} }
+    })
+    const second = reduce(first.messages, {
+      type: 'tool_event',
+      isUse: true,
+      data: { type: 'tool_use', tool_id: 'call-2', tool_name: 'grep', parameters: {} }
+    })
+
+    expect(second.messages).toHaveLength(1)
+    expect(second.messages[0].role).toBe('tool')
+    expect(second.messages[0].toolActivities?.map((a) => a.id)).toEqual(['call-1', 'call-2'])
   })
 
   it('creates a paired orphan activity when a result arrives without its use event', () => {
