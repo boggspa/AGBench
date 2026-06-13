@@ -305,4 +305,43 @@ describe('loadExternalProviderUsageRecords', () => {
       await rm(homeDir, { recursive: true, force: true })
     }
   })
+
+  it('loads Cursor IDE agent-transcript usage with estimated tokens', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-cursor-'))
+    try {
+      const transcriptDir = join(
+        homeDir,
+        '.cursor',
+        'projects',
+        'Users-me-Documents-sample',
+        'agent-transcripts',
+        'composer-abc'
+      )
+      await mkdir(transcriptDir, { recursive: true })
+      await writeFile(
+        join(transcriptDir, 'composer-abc.jsonl'),
+        [
+          JSON.stringify({
+            role: 'user',
+            message: { content: [{ type: 'text', text: 'a'.repeat(400) }] }
+          }),
+          JSON.stringify({
+            role: 'assistant',
+            message: { content: [{ type: 'text', text: 'b'.repeat(200) }] }
+          })
+        ].join('\n')
+      )
+
+      const records = await loadExternalProviderUsageRecords({
+        homeDir,
+        now: new Date('2026-06-13T13:00:00.000Z')
+      })
+      const cursor = records.find((record) => record.provider === 'cursor')
+      expect(cursor?.totalTokens).toBe(150)
+      expect(cursor?.model).toBe('composer-2.5-fast')
+      expect(cursor?.workspaceId).toBe('external')
+    } finally {
+      await rm(homeDir, { recursive: true, force: true })
+    }
+  })
 })

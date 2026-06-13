@@ -4,7 +4,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import os from 'os'
 import type { ProviderId, UsageRecord } from './store/types'
-import { cursorStateDbCandidates } from './cursor/CursorUsage'
+import { loadCursorIdeUsageEvents } from './cursor/CursorExternalActivity'
 
 type ExternalActivityProvider = Extract<
   ProviderId,
@@ -450,46 +450,7 @@ async function readKimiActivity(homeDir: string, sinceMs: number): Promise<Exter
 }
 
 async function readCursorActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
-  const rows: string[] = []
-  for (const dbPath of cursorStateDbCandidates(homeDir)) {
-    try {
-      await fs.access(dbPath)
-    } catch {
-      continue
-    }
-    const result = await runSqliteRows(dbPath)
-    if (result.length > 0) {
-      rows.push(...result)
-      break
-    }
-  }
-
-  const events: ExternalUsageEvent[] = []
-  for (const row of rows) {
-    const tab = row.indexOf('\t')
-    const rawValue = tab >= 0 ? row.slice(tab + 1) : row
-    try {
-      const parsed = JSON.parse(rawValue)
-      const timestamp = parseCursorDailyStatTimestamp(parsed)
-      if (!timestamp || timestamp < sinceMs) continue
-      events.push({
-        provider: 'cursor',
-        timestamp,
-        model: 'Cursor',
-        totalTokens: 0,
-        sourceKey: `cursor:${parsed.date || timestamp}`
-      })
-    } catch {
-      continue
-    }
-  }
-  return events
-}
-
-async function runSqliteRows(dbPath: string): Promise<string[]> {
-  const query =
-    "SELECT key || char(9) || value FROM ItemTable WHERE key LIKE 'aiCodeTracking.dailyStats.%' ORDER BY key ASC;"
-  return runSqliteQuery(dbPath, query)
+  return loadCursorIdeUsageEvents({ homeDir, sinceMs })
 }
 
 async function runSqliteQuery(dbPath: string, query: string): Promise<string[]> {
@@ -643,12 +604,6 @@ function parseTimestamp(value: unknown): number | null {
   }
   if (typeof value !== 'string' || !value.trim()) return null
   const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function parseCursorDailyStatTimestamp(value: any): number | null {
-  if (typeof value?.date !== 'string' || !value.date.trim()) return null
-  const parsed = Date.parse(`${value.date.trim()}T12:00:00`)
   return Number.isFinite(parsed) ? parsed : null
 }
 
