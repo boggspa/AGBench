@@ -2024,6 +2024,8 @@ function App(): React.JSX.Element {
   const rawEventsAutoFollowRef = useRef(true)
   const rawEventsUserScrolledAwayRef = useRef(false)
   const composerAreaRef = useRef<HTMLDivElement>(null)
+  const welcomeDashboardRegionRef = useRef<HTMLDivElement>(null)
+  const [welcomeDashboardHiddenByFit, setWelcomeDashboardHiddenByFit] = useState(false)
   // Composer textarea + @-mention popover state. AgentMentionMenu can insert
   // agent markdown mentions or plain path text at the caret.
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -14992,8 +14994,6 @@ function App(): React.JSX.Element {
   const welcomeHeatmapLayout: 'single' | 'stacked' =
     settings?.welcomeHeatmapPrefs?.layout === 'single' ? 'single' : 'stacked'
   const welcomeDashboardCardEnabled = settings?.dashboardStatPrefs?.dashboardEnabled !== false
-  const welcomeDashboardSize =
-    settings?.dashboardStatPrefs?.dashboardSize === 'small' ? 'small' : 'large'
   const welcomeHeatmapSlots: WelcomeHeatmapSlot[] = []
   if (welcomeWorkspaceActivityPath) {
     welcomeHeatmapSlots.push({
@@ -15037,6 +15037,99 @@ function App(): React.JSX.Element {
       )
     })
   }
+  const welcomeDashboardFitActive =
+    isWelcomeChat &&
+    welcomeDashboardCardEnabled &&
+    (shouldShowWelcomeUsageDashboard || !usageInitialized)
+  useLayoutEffect(() => {
+    if (!welcomeDashboardFitActive) {
+      setWelcomeDashboardHiddenByFit(false)
+      return
+    }
+    const transcript = appTranscriptRef.current
+    const composer = composerAreaRef.current
+    if (!transcript || !composer || typeof window === 'undefined') return
+
+    const readPx = (raw: string | null | undefined): number => {
+      const value = Number.parseFloat(String(raw || ''))
+      return Number.isFinite(value) ? value : 0
+    }
+    const measureComposerContentHeight = (): number => {
+      const composerRect = composer.getBoundingClientRect()
+      let bottom = 0
+      for (const child of Array.from(composer.children)) {
+        if (!(child instanceof HTMLElement)) continue
+        const childStyle = window.getComputedStyle(child)
+        if (childStyle.display === 'none' || childStyle.visibility === 'hidden') continue
+        const childRect = child.getBoundingClientRect()
+        if (childRect.width <= 0 && childRect.height <= 0) continue
+        bottom = Math.max(
+          bottom,
+          childRect.bottom - composerRect.top + readPx(childStyle.marginBottom)
+        )
+      }
+      const composerStyle = window.getComputedStyle(composer)
+      return Math.max(composer.scrollHeight, bottom + readPx(composerStyle.paddingBottom))
+    }
+
+    let frame: number | null = null
+    const measure = () => {
+      frame = null
+      const dashboard =
+        welcomeDashboardRegionRef.current ||
+        transcript.querySelector<HTMLElement>('.welcome-usage-region')
+      if (!dashboard) {
+        setWelcomeDashboardHiddenByFit(false)
+        return
+      }
+      const transcriptStyle = window.getComputedStyle(transcript)
+      const dashboardStyle = window.getComputedStyle(dashboard)
+      const dashboardHeight =
+        readPx(dashboardStyle.getPropertyValue('--welcome-usage-dashboard-visual-height')) ||
+        dashboard.getBoundingClientRect().height
+      const availableHeight = transcript.clientHeight
+      const requiredHeight =
+        readPx(transcriptStyle.paddingTop) + dashboardHeight + measureComposerContentHeight()
+      const overflow = requiredHeight - availableHeight
+      setWelcomeDashboardHiddenByFit((hidden) => {
+        if (!hidden && overflow > 12) return true
+        if (hidden && overflow < -48) return false
+        return hidden
+      })
+    }
+    const scheduleMeasure = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(measure)
+    }
+
+    const resizeObserver =
+      typeof window.ResizeObserver === 'function'
+        ? new window.ResizeObserver(scheduleMeasure)
+        : null
+    if (resizeObserver) {
+      resizeObserver.observe(transcript)
+      resizeObserver.observe(composer)
+      const dashboard = welcomeDashboardRegionRef.current
+      if (dashboard) resizeObserver.observe(dashboard)
+      const heatmaps = composer.querySelector<HTMLElement>('.welcome-standalone-heatmaps')
+      if (heatmaps) resizeObserver.observe(heatmaps)
+    }
+    window.addEventListener('resize', scheduleMeasure)
+    scheduleMeasure()
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame)
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', scheduleMeasure)
+    }
+  }, [
+    currentChat?.appChatId,
+    usageInitialized,
+    welcomeDashboardFitActive,
+    welcomeHeatmapLayout,
+    welcomeHeatmapSlots.length,
+    welcomeUsageTab
+  ])
   const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
     const style: CSSProperties = {}
     if (ensembleBlendStyle) {
@@ -16169,7 +16262,7 @@ function App(): React.JSX.Element {
           <div className="chat-split-main">
             <div
               ref={appTranscriptRef}
-              className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
+              className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${welcomeDashboardHiddenByFit ? 'welcome-dashboard-hidden-by-fit' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
               style={transcriptStyle}
             >
           {chatContextNotice && (
@@ -16787,7 +16880,7 @@ function App(): React.JSX.Element {
           </>
 
           {shouldShowWelcomeUsageDashboard && welcomeDashboardCardEnabled && (
-            <div className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize}`}>
+            <div className="welcome-usage-region welcome-usage-region-small" ref={welcomeDashboardRegionRef}>
               <WelcomeUsageDashboard
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}
@@ -16835,7 +16928,8 @@ function App(): React.JSX.Element {
               brand-new accounts that turn out to have no history. */}
           {isWelcomeChat && welcomeDashboardCardEnabled && !usageInitialized && (
               <div
-                className={`welcome-usage-region welcome-usage-region-${welcomeDashboardSize} welcome-usage-region-reserved`}
+                className="welcome-usage-region welcome-usage-region-small welcome-usage-region-reserved"
+                ref={welcomeDashboardRegionRef}
                 aria-hidden
               />
             )}

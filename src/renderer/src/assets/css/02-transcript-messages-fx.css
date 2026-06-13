@@ -2254,6 +2254,10 @@
   margin-top: clamp(60px, 8vh, 112px);
 }
 
+.app-transcript.welcome-mode .welcome-standalone-heatmaps {
+  margin-bottom: auto;
+}
+
 .usage-heatmap--welcome-standalone {
   margin-top: 0;
   padding: 0;

@@ -103,28 +103,14 @@
   bottom: auto;
 }
 
-/* 1.0.6-CRUX23 — welcome-screen overlap fix, breakpoint-free (supersedes the
- * CRUX16 max-height breakpoint, which kicked in far too late: the dashboard +
- * centred composer overlap starts well above any sane breakpoint, so flow was
- * engaging long after the overlap had already begun).
- *
- * The welcome dashboard (`.welcome-usage-region`) and the greeting+composer
- * block (`.welcome-mode .composer-area`) were BOTH absolutely positioned inside
- * `.app-transcript` (dashboard pinned near the top, composer vertically centred)
- * — they only clear each other on very tall windows. Drop the absolute layout
- * entirely on the welcome screen and FLOW both into ONE scrollable column —
- * dashboard → greeting → composer → starters — that `safe center`s: centred as
- * a group when it fits (tall windows stay balanced) and start-aligned +
- * scrollable when it doesn't (short windows never overlap, top stays reachable).
- * No breakpoint, no overlap at any height. Applies to every shell's welcome
- * screen (the overlap was shell-agnostic). */
+/* Welcome screen fixed-pane layout. The dashboard reserves only its scaled
+ * visual height, then the welcome composer block uses `margin-top: auto` as a
+ * dynamic spacer: tall windows keep the signed-off proportions, short windows
+ * collapse the empty gap so a fresh thread doesn't become a scroll pane. */
 .app-transcript.welcome-mode {
-  overflow-y: auto;
-  /* 1.0.6-CRUX28 — top-anchor the welcome content with a fixed 120px clearance
-   * (was `safe center`). Content starts 120px from the top and scrolls if it
-   * overflows; the top stays reachable (flex-start never clips). */
+  overflow: hidden;
   justify-content: flex-start;
-  padding-top: 120px;
+  padding-top: clamp(72px, 9.5vh, 120px);
 }
 /* The messages scroller is empty on the welcome screen (the greeting lives in
  * the composer-area); remove it from the flex column so the flowed dashboard +
@@ -136,15 +122,14 @@
   position: relative;
   top: auto;
   width: 100%;
-  /* No extra top margin — the container's 120px padding IS the clearance. */
+  height: var(--welcome-usage-dashboard-visual-height, 422px);
+  min-height: var(--welcome-usage-dashboard-visual-height, 422px);
   margin-top: 0;
-  flex: 0 0 auto;
+  flex: 0 0 var(--welcome-usage-dashboard-visual-height, 422px);
 }
-/* Empty placeholder shown while the first usage fetch is in flight: reserves
- * the dashboard's fixed height (--welcome-usage-dashboard-height) so the
- * composer beneath it doesn't shift when the real dashboard mounts. */
 .app-transcript.welcome-mode .welcome-usage-region.welcome-usage-region-reserved {
-  min-height: var(--welcome-usage-dashboard-height, 680px);
+  height: var(--welcome-usage-dashboard-visual-height, 422px);
+  min-height: var(--welcome-usage-dashboard-visual-height, 422px);
   pointer-events: none;
 }
 .app-transcript.welcome-mode .composer-area {
@@ -153,14 +138,25 @@
   bottom: auto;
   transform: none;
   width: 100%;
-  /* 1.0.6-CRUX29 — scaleable spacer between the dashboard and the
-   * greeting/composer: a viewport-relative gap that breathes on tall windows
-   * and stays compact (down to --space-lg) on short ones, so it never forces
-   * scroll. Not flex-grow — that would un-anchor the top-pinned content. */
-  margin-top: clamp(var(--space-lg), 6vh, 120px);
-  padding-bottom: var(--space-xl);
+  margin-top: auto;
+  margin-bottom: auto;
+  padding-bottom: clamp(var(--space-md), 4vh, var(--space-xl));
   justify-content: flex-start;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.app-transcript.welcome-mode.welcome-dashboard-hidden-by-fit {
+  padding-top: clamp(48px, 7vh, 72px);
+}
+
+.app-transcript.welcome-mode.welcome-dashboard-hidden-by-fit .welcome-usage-region {
+  display: none;
+}
+
+.app-transcript.welcome-mode.welcome-dashboard-hidden-by-fit .composer-area {
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 .welcome-hero {
@@ -1233,6 +1229,8 @@
    * (`.welcome-usage-region-reserved`) so the reserved space always matches
    * the real card and the welcome screen never jumps. */
   --welcome-usage-dashboard-height: 680px;
+  --welcome-usage-dashboard-scale: 0.621;
+  --welcome-usage-dashboard-visual-height: 422px;
   position: absolute;
   left: 0;
   right: 0;
@@ -1240,7 +1238,8 @@
   box-sizing: border-box;
   padding: 0 var(--chat-side-gutter);
   display: flex;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   pointer-events: none;
   z-index: 3;
 }
@@ -1254,9 +1253,9 @@
   overflow: visible;
 }
 
-.welcome-usage-region-small .welcome-usage-dashboard {
+.welcome-usage-region .welcome-usage-dashboard {
   margin: 0 0 0 auto;
-  transform: scale(0.621);
+  transform: scale(var(--welcome-usage-dashboard-scale, 0.621));
   transform-origin: top right;
 }
 
