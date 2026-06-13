@@ -12378,7 +12378,7 @@ function App(): React.JSX.Element {
         })
         void executeRunRef.current({ ...nextRun, appRunId: leased.runId })
       })
-  }, [queuedRuns, runningChatIds, currentWorkspace, currentChat])
+  }, [queuedRuns, runningChatIds, runQueueJobs, currentWorkspace, currentChat])
 
   useEffect(() => {
     try {

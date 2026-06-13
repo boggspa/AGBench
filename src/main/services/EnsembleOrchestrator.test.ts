@@ -2678,7 +2678,7 @@ Next action:
     expect(harness.chat.ensemble?.activeRound?.continuationHops).toBe(1)
   })
 
-  it('keeps default turn-bound rounds from looping back to already-spoken participants', async () => {
+  it('allows turn-bound panel rounds to retag an already-spoken participant for reconciliation', async () => {
     const harness = makeHarness()
     harness.chat.ensemble!.participants = [
       {
@@ -2725,9 +2725,16 @@ Next action:
       { type: 'result', status: 'success', stats: { total_tokens: 10 } }
     )
 
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].provider).toBe('claude')
+    expect(harness.chat.ensemble?.activeRound?.continuationHops).toBe(1)
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[2].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
     await vi.waitFor(() => expect(harness.chat.ensemble?.activeRound?.status).toBe('completed'))
-    expect(harness.dispatched).toHaveLength(2)
-    expect(harness.chat.ensemble?.activeRound?.continuationHops || 0).toBe(0)
   })
 
   it('caps continuous back-and-forth at the configured handoff limit', async () => {

@@ -2523,18 +2523,17 @@ export class EnsembleOrchestrator {
               .join(', ')} promoted to speak next.`
           )
         }
-        if (runtime.orchestrationMode === 'continuous') {
-          const extraTargets = mentionedParticipants.filter(
-            (tagged) => !remainingTargetIds.has(tagged.id)
+        const extraTargets = mentionedParticipants.filter(
+          (tagged) => !remainingTargetIds.has(tagged.id)
+        )
+        for (const tagged of extraTargets.slice().reverse()) {
+          this.tryAppendContinuationTurn(
+            runtime,
+            remaining,
+            tagged,
+            `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`,
+            { allowTurnBound: true }
           )
-          for (const tagged of extraTargets.slice().reverse()) {
-            this.tryAppendContinuationTurn(
-              runtime,
-              remaining,
-              tagged,
-              `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
-            )
-          }
         }
       }
       // 1.0.4 — remember whose dispatch is "the yield target" for
@@ -3062,17 +3061,20 @@ export class EnsembleOrchestrator {
     runtime: ActiveRoundRuntime,
     remaining: EnsembleParticipant[],
     participant: EnsembleParticipant,
-    statusMessage: string
+    statusMessage: string,
+    options: { allowTurnBound?: boolean } = {}
   ): boolean {
-    if (runtime.orchestrationMode !== 'continuous') return false
+    if (runtime.orchestrationMode !== 'continuous' && !options.allowTurnBound) return false
     if (runtime.unreachableParticipantIds?.has(participant.id)) return false
     if (runtime.continuationHops >= runtime.maxContinuationHops) {
       if (!runtime.continuationLimitNotified) {
         runtime.continuationLimitNotified = true
+        const label =
+          runtime.orchestrationMode === 'continuous' ? 'Continuous handoff' : 'Extra turn'
         this.appendRoundStatus(
           runtime.chatId,
           runtime.roundId,
-          `Continuous handoff limit reached (${runtime.continuationHops}/${runtime.maxContinuationHops}); returning control to the user.`
+          `${label} limit reached (${runtime.continuationHops}/${runtime.maxContinuationHops}); returning control to the user.`
         )
       }
       return false
@@ -3088,10 +3090,11 @@ export class EnsembleOrchestrator {
           }
         : round
     )
+    const label = runtime.orchestrationMode === 'continuous' ? 'Continuous handoff' : 'Extra turn'
     this.appendRoundStatus(
       runtime.chatId,
       runtime.roundId,
-      `${statusMessage} Continuous handoff ${runtime.continuationHops}/${runtime.maxContinuationHops}.`
+      `${statusMessage} ${label} ${runtime.continuationHops}/${runtime.maxContinuationHops}.`
     )
     return true
   }
