@@ -946,6 +946,29 @@ public final class RemoteSessionModel: ObservableObject {
             let text =
                 (parsed["text"] as? String) ?? (parsed["content"] as? String) ?? ""
             guard !text.isEmpty else { continue }
+            // UNTAGGED cumulative snapshot (Cursor — cursor-agent stream-json,
+            // no --stream-partial-output): every `assistant` frame re-states
+            // the WHOLE turn so far, forwarded with no `cumulative` flag. A
+            // blind append would re-add the pre-tool prose below each tool
+            // (text -> tool -> WHOLE-TURN-again), clumping/duplicating the
+            // bubble. Desktop parity: resolveAssistantDeltaMerge detects the
+            // (equal/growing) superset and resolveAssistantDeltaTarget keeps
+            // only the post-last-tool TAIL. Mirror both here on the segment
+            // list — a stale shorter snapshot is dropped, never a genuine
+            // increment (a true delta never restarts from the full prose).
+            switch StreamingSnapshotFold.plan(segments: segments, incoming: text) {
+            case .skip:
+                // Stale/older snapshot we've already surpassed — drop it,
+                // but the seal above (if any) still changed the segments.
+                continue
+            case .replaceLastSegment(let newTail):
+                segments[segments.count - 1] = newTail
+                appended = true
+                changed = true
+                continue
+            case .append:
+                break  // genuine increment — fall through to the append path
+            }
             // Desktop merge-with-separator parity: a NEW Codex agentMessage
             // item (itemId transition) is a paragraph boundary. Within an
             // item, token deltas append seamlessly as before.

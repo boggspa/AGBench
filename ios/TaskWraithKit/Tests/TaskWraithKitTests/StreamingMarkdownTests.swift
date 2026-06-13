@@ -141,3 +141,106 @@ struct StreamingInterleaveTests {
             ])
     }
 }
+
+@Suite("StreamingSnapshotFold")
+struct StreamingSnapshotFoldTests {
+    typealias D = StreamingSnapshotFold.Decision
+
+    @Test func firstChunkOnEmptyTailAppends() {
+        #expect(StreamingSnapshotFold.plan(segments: [""], incoming: "Hello") == .append)
+    }
+
+    @Test func genuineIncrementAppends() {
+        // Codex/Gemini/Kimi: the delta is the NEW suffix, never the full prose.
+        #expect(StreamingSnapshotFold.plan(segments: ["Hello"], incoming: " world") == .append)
+    }
+
+    @Test func cumulativeSnapshotNoToolReplacesTheGrowingSegment() {
+        // Cursor pre-tool: each frame re-states the whole turn. With a single
+        // segment the tail IS the full snapshot — replace, don't append (which
+        // would yield "Reading.Reading. more").
+        #expect(
+            StreamingSnapshotFold.plan(segments: ["Reading."], incoming: "Reading. more")
+                == .replaceLastSegment("Reading. more"))
+    }
+
+    @Test func cumulativeSnapshotAcrossAToolKeepsOnlyTheTail() {
+        // The crux: text "Reading." → tool sealed → Cursor re-emits the WHOLE
+        // turn untagged. Only the post-tool tail belongs in the new segment;
+        // the pre-tool "Reading." stays in the earlier sealed segment. A blind
+        // append would duplicate "Reading." below the tool.
+        #expect(
+            StreamingSnapshotFold.plan(
+                segments: ["Reading.", ""], incoming: "Reading.\n\nEditing.")
+                == .replaceLastSegment("\n\nEditing."))
+    }
+
+    @Test func cumulativeSnapshotAcrossTwoToolsKeepsOnlyTheNewestTail() {
+        // text → tool → "Editing." → tool → Cursor restates the full turn.
+        // Earlier segments hold "Reading." + "\n\nEditing."; only "\n\nDone."
+        // lands in the latest segment.
+        #expect(
+            StreamingSnapshotFold.plan(
+                segments: ["Reading.", "\n\nEditing.", ""],
+                incoming: "Reading.\n\nEditing.\n\nDone.")
+                == .replaceLastSegment("\n\nDone."))
+    }
+
+    @Test func staleShorterSnapshotIsSkipped() {
+        // An out-of-order/older Cursor frame shorter than what we already show.
+        #expect(
+            StreamingSnapshotFold.plan(segments: ["Reading. more"], incoming: "Reading.") == .skip)
+    }
+
+    @Test func equalRestatementReplacesToANoOpTail() {
+        // Re-statement equal to the accumulated text after a tool: tail empty,
+        // last segment stays empty — no duplication, nothing extra rendered.
+        #expect(
+            StreamingSnapshotFold.plan(segments: ["Reading.", ""], incoming: "Reading.")
+                == .replaceLastSegment(""))
+    }
+
+    @Test func divergentDeltaThatIsNotASupersetAppends() {
+        // A delta that neither supersets nor is a prefix of the shown text is a
+        // genuine increment (e.g. provider whitespace quirk) — append, never drop.
+        #expect(
+            StreamingSnapshotFold.plan(segments: ["Hello"], incoming: "Goodbye") == .append)
+    }
+
+    // End-to-end: the full Cursor live interleave. Drive the snapshot-fold the
+    // way RemoteSessionModel.appendStreamingDeltas does, then plan the
+    // interleave — the result must be text → tool → text → tool with NO
+    // duplicated pre-tool prose.
+    @Test func cursorSnapshotStreamInterleavesWithoutDuplication() {
+        var segments = [""]
+        func content(_ snapshot: String) {
+            switch StreamingSnapshotFold.plan(segments: segments, incoming: snapshot) {
+            case .append: segments[segments.count - 1] += snapshot
+            case .replaceLastSegment(let tail): segments[segments.count - 1] = tail
+            case .skip: break
+            }
+        }
+        func toolBoundary() { segments.append("") }
+
+        content("Reading the file.")            // frame 1 (full snapshot)
+        toolBoundary()                          // read_file
+        content("Reading the file.\n\nNow editing.")   // frame 2 (full snapshot)
+        toolBoundary()                          // edit_file
+        content("Reading the file.\n\nNow editing.\n\nDone.")  // frame 3 (full snapshot)
+
+        #expect(segments == ["Reading the file.", "\n\nNow editing.", "\n\nDone."])
+
+        // Two separate (non-collapsed) tool rows, each covering one call.
+        let plan = StreamingInterleave.plan(segments: segments, toolCounts: [1, 1])
+        #expect(
+            plan == [
+                .text(segmentIndex: 0, isTail: false),
+                .toolRow(index: 0),
+                .text(segmentIndex: 1, isTail: false),
+                .toolRow(index: 1),
+                .text(segmentIndex: 2, isTail: true)
+            ])
+        // The pre-tool prose appears exactly once, in segment 0.
+        #expect(segments.filter { $0.contains("Reading the file.") }.count == 1)
+    }
+}

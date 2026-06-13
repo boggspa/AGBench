@@ -93,3 +93,58 @@ public enum StreamingInterleave {
         return out
     }
 }
+
+/// Reconciles an incoming live `content` delta against the streamed segment
+/// list, distinguishing a genuine INCREMENT from an UNTAGGED CUMULATIVE
+/// SNAPSHOT.
+///
+/// Most providers (Codex / Gemini / Kimi, and Claude's sliced stream) send
+/// true increments — the new suffix only. But Cursor (cursor-agent
+/// stream-json, no `--stream-partial-output`) re-states the WHOLE turn so far
+/// in EVERY `assistant` frame, forwarded with no `cumulative` flag. Appending
+/// such a frame blindly re-adds the pre-tool prose below each tool boundary
+/// (text → tool → whole-turn-again), clumping/duplicating the bubble.
+///
+/// This mirrors the desktop's two pure helpers on the segment model:
+///   - `resolveAssistantDeltaMerge`: equal/growing superset → replace; a
+///     shorter prefix → skip a stale snapshot; otherwise append.
+///   - `resolveAssistantDeltaTarget`: a snapshot spanning a tool boundary
+///     contributes ONLY its post-last-tool tail — the pre-tool text already
+///     lives in earlier sealed segments and is never rewritten.
+///
+/// Detection is on the RAW concatenation of segment contents (`segments
+/// .joined()`), which is exactly the text Cursor's snapshot builds on — the
+/// cosmetic `\n\n` joins the view inserts between segments are not part of it.
+public enum StreamingSnapshotFold {
+    public enum Decision: Equatable, Sendable {
+        /// Genuine increment — append `incoming` to the last segment.
+        case append
+        /// Cumulative snapshot — set the last (post-tool) segment to this tail.
+        case replaceLastSegment(String)
+        /// Stale/duplicate snapshot already fully shown — ignore it.
+        case skip
+    }
+
+    public static func plan(segments: [String], incoming: String) -> Decision {
+        guard !incoming.isEmpty else { return .append }
+        let rendered = segments.joined()
+        // Nothing shown yet → first chunk; plain append onto the empty tail.
+        if rendered.isEmpty { return .append }
+        // A genuine delta is the NEW suffix and never restarts from the full
+        // accumulated prose, so neither branch below matches it — only a
+        // re-statement (equal or growing superset) does.
+        if incoming.count >= rendered.count && incoming.hasPrefix(rendered) {
+            // Cumulative snapshot. The text owned by EARLIER (sealed) segments
+            // stays put; only the tail beyond them lands in the last segment.
+            let earlier = segments.dropLast().joined()
+            return .replaceLastSegment(String(incoming.dropFirst(earlier.count)))
+        }
+        // Incoming is a shorter prefix of what we already show — an older /
+        // out-of-order snapshot we've surpassed. Drop it (the desktop skip).
+        if incoming.count < rendered.count && rendered.hasPrefix(incoming) {
+            return .skip
+        }
+        // Otherwise a genuine increment (or a new Codex item) — append.
+        return .append
+    }
+}
