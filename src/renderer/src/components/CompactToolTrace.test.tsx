@@ -28,7 +28,7 @@ describe('CompactToolTrace', () => {
   it('renders a one-line trace with toolName, status, duration, and preview', () => {
     const html = renderToStaticMarkup(<CompactToolTrace activity={makeActivity()} />)
     expect(html).toContain('compact-tool-trace')
-    expect(html).toContain('write_file')
+    expect(html).toContain('Wrote /repo/src/foo.ts')
     expect(html).toContain('ok')
     expect(html).toContain('250ms')
     expect(html).toContain('wrote 1 line')
@@ -55,6 +55,29 @@ describe('CompactToolTrace', () => {
     )
     expect(html).toContain('provider-cursor')
     expect(html).toContain('Cursor')
+  })
+
+  it('renders Ollama as a first-class provider label', () => {
+    const html = renderToStaticMarkup(
+      <CompactToolTrace activity={makeActivity({ metadata: { provider: 'ollama' } })} />
+    )
+    expect(html).toContain('provider-ollama')
+    expect(html).toContain('Ollama')
+  })
+
+  it('humanises raw TaskWraith MCP tool names in compact rows', () => {
+    const html = renderToStaticMarkup(
+      <CompactToolTrace
+        activity={makeActivity({
+          toolName: 'mcp_TaskWraith_git_status',
+          displayName: 'mcp_TaskWraith_git_status',
+          category: 'unknown',
+          parameters: {}
+        })}
+      />
+    )
+    expect(html).toContain('Git status')
+    expect(html).not.toContain('mcp_TaskWraith_git_status')
   })
 
   it('lets metadata.ensembleProvider override metadata.provider for cross-provider rounds', () => {

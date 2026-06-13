@@ -1,6 +1,6 @@
 import type { ProviderId, ToolActivity } from '../../../main/store/types'
 import { isTodoToolName, parseTodoItemsFromActivity, summarizeTodoProgress } from '../../../main/TodoList'
-import { prettyPrintJson, unwrapMcpEnvelope } from '../lib/ToolParser'
+import { getToolDisplayName, prettyPrintJson, unwrapMcpEnvelope } from '../lib/ToolParser'
 import {
   extractHttpUrls,
   mergeLinkPresentationTargets,
@@ -36,9 +36,26 @@ export function providerLabel(provider: ProviderId | undefined): string {
       return 'Grok'
     case 'cursor':
       return 'Cursor'
+    case 'ollama':
+      return 'Ollama'
     default:
       return provider
   }
+}
+
+export function compactToolDisplayName(activity: ToolActivity): string {
+  const fallback = getToolDisplayName(activity.toolName || '', activity.parameters || {})
+  const displayName = activity.displayName || ''
+  const rawToolName = activity.toolName || ''
+  const lowerDisplay = displayName.toLowerCase()
+  const displayLooksRaw =
+    !displayName ||
+    displayName === rawToolName ||
+    lowerDisplay.startsWith('mcp_taskwraith_') ||
+    lowerDisplay.startsWith('mcp__taskwraith__') ||
+    lowerDisplay.startsWith('taskwraith__') ||
+    lowerDisplay.includes('_')
+  return displayLooksRaw ? fallback || displayName || rawToolName || 'tool' : displayName
 }
 
 export function statusLabel(status: ToolActivity['status']): string {

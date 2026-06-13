@@ -5,6 +5,7 @@ import {
   REDACTION_HINT,
   buildFoldoutSections,
   buildResultPreview,
+  compactToolDisplayName,
   durationLabel,
   extractToolUrlTargets,
   providerLabel,
@@ -27,7 +28,7 @@ export function CompactToolTrace({ activity, provider }: CompactToolTraceProps) 
   const preview = buildResultPreview(activity)
   const duration = durationLabel(activity.durationMs)
   const status = statusLabel(activity.status)
-  const toolName = activity.toolName || activity.displayName || 'tool'
+  const toolName = compactToolDisplayName(activity)
   const provLabel = providerLabel(resolvedProvider)
   const urlTargets = extractToolUrlTargets(activity)
 
