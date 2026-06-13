@@ -218,6 +218,27 @@ describe('AuditOrchestrator — resilience', () => {
     expect(result.participants.some((p) => p.substitutedFrom === 'claude')).toBe(true)
   })
 
+  it('counts fallback substitutions as additional spawned agents', async () => {
+    const deps = baseDeps({ policy: { budgetMaxAgents: 6 } })
+    let claudeReviewerFailed = false
+    deps.dispatchRole = async (req): Promise<AuditRoleRunResult> => {
+      if (req.role === 'reviewer' && req.provider === 'claude' && !claudeReviewerFailed) {
+        claudeReviewerFailed = true
+        return { ok: false, runId: 'r-fail', error: 'temporary provider failure' }
+      }
+      if (req.role === 'recon') return { ok: true, runId: 'r-recon', profile: {} }
+      if (req.role === 'synthesis') return { ok: true, runId: 'r-syn', report: 'R' }
+      if (req.role === 'reviewer') return { ok: true, runId: `r-${++idSeq}`, findings: [] }
+      return { ok: true, runId: `r-${++idSeq}`, verdicts: [] }
+    }
+
+    const result = await new AuditOrchestrator(deps).run(input)
+
+    expect(result.status).toBe('completed')
+    expect(result.budget.spentAgents).toBe(6)
+    expect(result.coverage?.substitutions).toBe(1)
+  })
+
   it('truncates skeptics when the agent budget is exhausted', async () => {
     const deps = baseDeps({ policy: { budgetMaxAgents: 5 } })
     deps.dispatchRole = async (req): Promise<AuditRoleRunResult> => {

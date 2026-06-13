@@ -473,18 +473,19 @@ export class AuditOrchestrator {
     dimension?: string
     findingId?: string
   }): Promise<AuditRoleRunResult | null> {
-    // Reserve the agent slot SYNCHRONOUSLY before the first await — this is
-    // what makes the budget gate correct under concurrent fan-out. Each
-    // mapWithConcurrency worker runs to its first await before the next
-    // starts, so a check-then-reserve here serializes; counting agents after
-    // `await dispatchRole` would let every worker pass the ceiling at once.
-    this.persist({ budget: recordSpend(this.record.budget, { agents: 1 }) })
-
     const tried: ProviderId[] = []
     let firstProvider: ProviderId | null = null
     for (;;) {
       const provider = nextProviderInChain(args.chain, tried)
       if (!provider) break
+      if (budgetExhausted(this.record.budget)) {
+        this.persist({ budget: markTruncated(this.record.budget) })
+        break
+      }
+      // Reserve each provider-run attempt SYNCHRONOUSLY before the first await.
+      // This keeps concurrent fan-out honest and counts fallback substitutions
+      // as the additional spawned agents they really are.
+      this.persist({ budget: recordSpend(this.record.budget, { agents: 1 }) })
       tried.push(provider)
       if (firstProvider === null) firstProvider = provider
       else {
@@ -526,8 +527,7 @@ export class AuditOrchestrator {
         durationMs: result.durationMs,
         endedAt: this.deps.now()
       })
-      // Agent already reserved at entry; record only the token spend here
-      // (per attempt — a substitution retry also burns tokens).
+      // Agent already reserved for this attempt; record only token spend here.
       this.persist({
         budget: recordSpend(this.record.budget, { tokens: result.tokens ?? 0 })
       })
