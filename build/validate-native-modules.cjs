@@ -111,7 +111,14 @@ function resolveElectronExecutable(context, resourcesDir) {
   const appInfo = context.packager && context.packager.appInfo
   const productFilename = appInfo && (appInfo.productFilename || appInfo.productName)
   const productName = appInfo && appInfo.productName
-  const names = Array.from(new Set([productFilename, productName, 'TaskWraith'].filter(Boolean)))
+  const appName = appInfo && (appInfo.name || appInfo.sanitizedName)
+  // Linux runners are case-sensitive and electron-builder lowercases the linux
+  // executable to the package `name` (taskwraith), while macOS/Windows keep the
+  // productName casing (TaskWraith). Check both cases so fuse-hardening finds the
+  // binary everywhere — a capitalized-only check passed on case-insensitive macOS
+  // but failed on the ubuntu CI linux build.
+  const base = [productFilename, productName, 'TaskWraith', appName].filter(Boolean)
+  const names = Array.from(new Set([...base, ...base.map((n) => n.toLowerCase())]))
 
   const candidates = []
   if (platform === 'darwin') {
