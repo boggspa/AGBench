@@ -1083,6 +1083,31 @@ function auditRunIsActive(run: AuditRunRecord): boolean {
   return run.status === 'planning' || run.status === 'awaitingConfirm' || run.status === 'running'
 }
 
+const DISMISSED_AUDIT_RUNS_STORAGE_KEY = 'taskwraith.dismissedAuditRunIds'
+
+function readDismissedAuditRunIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_AUDIT_RUNS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeDismissedAuditRunIds(ids: Set<string>): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      DISMISSED_AUDIT_RUNS_STORAGE_KEY,
+      JSON.stringify([...ids].slice(-100))
+    )
+  } catch {
+    // localStorage is optional; the in-memory state still hides it this session.
+  }
+}
+
 function App(): React.JSX.Element {
   // Shared copy-to-clipboard feedback for every in-app copy affordance
   // (message chips, latest-response button). One instance keeps the
@@ -1290,6 +1315,9 @@ function App(): React.JSX.Element {
   const [diffRefreshStatus, setDiffRefreshStatus] = useState<string>('')
   const [isPreparingDiffReview, setIsPreparingDiffReview] = useState(false)
   const [auditRuns, setAuditRuns] = useState<AuditRunRecord[]>([])
+  const [dismissedAuditRunIds, setDismissedAuditRunIds] = useState<Set<string>>(
+    readDismissedAuditRunIds
+  )
 
   const currentRunWarningsRef = useRef<RunWarning[]>([])
   const preSnapshotRef = useRef<any>(null)
@@ -2153,8 +2181,10 @@ function App(): React.JSX.Element {
     if (!currentChat?.appChatId) return null
     const forChat = auditRuns.filter((run) => run.chatId === currentChat.appChatId)
     if (forChat.length === 0) return null
-    return forChat.find(auditRunIsActive) || sortAuditRuns(forChat)[0] || null
-  }, [auditRuns, currentChat?.appChatId])
+    const active = forChat.find(auditRunIsActive)
+    if (active) return active
+    return sortAuditRuns(forChat).find((run) => !dismissedAuditRunIds.has(run.id)) || null
+  }, [auditRuns, currentChat?.appChatId, dismissedAuditRunIds])
   const canOpenWorkspacePopout = Boolean(currentWorkspacePopoutPath)
   const isCurrentChatProviderLocked = Boolean(
     currentChat &&
@@ -6576,6 +6606,15 @@ function App(): React.JSX.Element {
   const handleCancelAuditRun = useCallback((auditRunId: string) => {
     void window.api.cancelAuditRun(auditRunId).catch((err) => {
       console.error('[audit] cancelAuditRun failed', err)
+    })
+  }, [])
+
+  const handleDismissAuditRun = useCallback((auditRunId: string) => {
+    setDismissedAuditRunIds((prev) => {
+      const next = new Set(prev)
+      next.add(auditRunId)
+      writeDismissedAuditRunIds(next)
+      return next
     })
   }, [])
 
@@ -16997,7 +17036,11 @@ function App(): React.JSX.Element {
           )}
 
           {visibleAuditRun && (
-            <AuditRunCard run={visibleAuditRun} onCancel={handleCancelAuditRun} />
+            <AuditRunCard
+              run={visibleAuditRun}
+              onCancel={handleCancelAuditRun}
+              onDismiss={handleDismissAuditRun}
+            />
           )}
 
           {/*

@@ -3,6 +3,7 @@ import type { AuditGateResult, AuditParticipant, AuditRunRecord } from '../../..
 interface AuditRunCardProps {
   run: AuditRunRecord
   onCancel?: (auditRunId: string) => void
+  onDismiss?: (auditRunId: string) => void
 }
 
 function isActiveStatus(status: AuditRunRecord['status']): boolean {
@@ -57,7 +58,7 @@ function budgetSummary(run: AuditRunRecord): string {
   return run.budget.truncated ? `${agents} / ${tokens} / truncated` : `${agents} / ${tokens}`
 }
 
-export function AuditRunCard({ run, onCancel }: AuditRunCardProps) {
+export function AuditRunCard({ run, onCancel, onDismiss }: AuditRunCardProps) {
   const active = isActiveStatus(run.status)
   const completedPhases = run.phases.filter((phase) => phase.status === 'completed').length
   const totalPhases = run.phases.length
@@ -111,6 +112,17 @@ export function AuditRunCard({ run, onCancel }: AuditRunCardProps) {
           title="Cancel this audit run"
         >
           Cancel
+        </button>
+      )}
+      {!active && onDismiss && (
+        <button
+          type="button"
+          className="audit-run-dismiss"
+          onClick={() => onDismiss(run.id)}
+          title="Dismiss this audit banner"
+          aria-label="Dismiss audit banner"
+        >
+          Dismiss
         </button>
       )}
     </section>

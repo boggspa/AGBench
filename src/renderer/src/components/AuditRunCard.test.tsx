@@ -53,6 +53,17 @@ describe('AuditRunCard', () => {
     expect(html).not.toContain('Cancel')
   })
 
+  it('renders a dismiss action for terminal audit banners', () => {
+    const html = renderToStaticMarkup(
+      <AuditRunCard
+        run={auditRun({ status: 'completed', report: '# Audit report' })}
+        onDismiss={() => {}}
+      />
+    )
+    expect(html).toContain('Dismiss')
+    expect(html).not.toContain('Cancel')
+  })
+
   it('surfaces failed audit errors', () => {
     const html = renderToStaticMarkup(
       <AuditRunCard run={auditRun({ status: 'failed', error: 'No eligible provider.' })} />
