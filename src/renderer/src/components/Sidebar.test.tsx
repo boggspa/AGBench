@@ -443,7 +443,7 @@ describe('Sidebar ensembles section', () => {
     expect(html).not.toContain('sidebar-ensemble-create')
   })
 
-  it('uses the silver ensemble dot in ensemble and pinned chat rows', () => {
+  it('uses the ensemble provider glyph in ensemble, pinned, and recent chat rows', () => {
     stubSidebarStorage({
       [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept(
         'pinned',
@@ -474,12 +474,47 @@ describe('Sidebar ensembles section', () => {
 
     expect(html).toContain('sidebar-ensemble-item')
     expect(html).toContain('sidebar-pinned-item')
-    // 1.0.7 — three ensemble dots now: the unpinned ensemble renders in BOTH
+    // 1.0.7 — three ensemble glyphs now: the unpinned ensemble renders in BOTH
     // the Ensembles section AND Recents (Recents includes ensembles as of
     // 1.0.7), plus the pinned ensemble in the Pinned section. Pinned ensembles
     // are excluded from Recents by selectRecentChats, so only the unpinned one
     // dual-surfaces.
-    expect((html.match(/sidebar-provider-dot-ensemble/g) || []).length).toBe(3)
+    expect((html.match(/provider-glyph-ensemble/g) || []).length).toBe(3)
+    expect(html).not.toContain('sidebar-provider-dot-ensemble')
+  })
+
+  it('uses provider glyphs instead of colored dots in Pinned and Recents', () => {
+    stubSidebarStorage({
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: collapseSectionsExcept('pinned', 'recents')
+    })
+
+    const html = renderSidebar([
+      makeChat({
+        appChatId: 'pinned-codex',
+        title: 'Pinned Codex',
+        provider: 'codex',
+        pinned: true,
+        createdAt: 2,
+        updatedAt: 2
+      }),
+      makeChat({
+        appChatId: 'recent-ollama',
+        title: 'Recent Ollama',
+        provider: 'ollama',
+        createdAt: 3,
+        updatedAt: 3
+      })
+    ])
+
+    const pinnedBlock = html.slice(
+      html.indexOf('sidebar-pinned-section'),
+      html.indexOf('sidebar-recents-section')
+    )
+    const recentsBlock = html.slice(html.indexOf('sidebar-recents-section'))
+
+    expect(pinnedBlock).toContain('provider-glyph-codex')
+    expect(recentsBlock).toContain('provider-glyph-ollama')
+    expect(html).not.toContain('sidebar-provider-dot')
   })
 
   it('1.0.7 — surfaces an unpinned ensemble chat in the Recents section', () => {

@@ -1010,7 +1010,9 @@ export function getProviderName(provider?: ProviderId) {
 
 // Exported so compact provider rows can reuse the same original
 // provider mnemonic glyphs as the sidebar.
-export function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
+type SidebarProviderBadgeId = ProviderId | 'ensemble'
+
+export function ProviderBadgeIcon({ provider }: { provider?: SidebarProviderBadgeId }) {
   const providerKey = provider || 'gemini'
 
   return (
@@ -1709,22 +1711,12 @@ export function Sidebar({
     visiblePinnedChats.length === 0 &&
     chats.find((c) => c.appChatId === draggedChatId)?.pinned !== true
 
-  const renderProviderDot = (provider: ProviderId | undefined): ReactNode => {
-    const providerKey = provider || 'gemini'
-    return (
-      <span
-        className="sidebar-provider-dot"
-        aria-hidden="true"
-        style={{ background: `var(--provider-${providerKey}-color)` }}
-      />
-    )
+  const getChatProviderBadgeId = (chat: ChatRecord): SidebarProviderBadgeId => {
+    return chat.chatKind === 'ensemble' ? 'ensemble' : chat.provider || 'gemini'
   }
 
-  const renderChatProviderDot = (chat: ChatRecord): ReactNode => {
-    if (chat.chatKind === 'ensemble') {
-      return <span className="sidebar-provider-dot sidebar-provider-dot-ensemble" aria-hidden />
-    }
-    return renderProviderDot(chat.provider)
+  const renderChatProviderBadge = (chat: ChatRecord): ReactNode => {
+    return <ProviderBadgeIcon provider={getChatProviderBadgeId(chat)} />
   }
   // Linked child chats (agent sub-threads + user side chats) render directly
   // under their parent so the sidebar preserves relationship continuity.
@@ -2725,7 +2717,7 @@ export function Sidebar({
                       key={`pinned-chat-${chat.appChatId}`}
                       role="button"
                       tabIndex={0}
-                      className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
+                      className={`sidebar-pinned-item provider-${getChatProviderBadgeId(chat)} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
                       onClick={() => onSelectChat(chat)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return
@@ -2736,7 +2728,7 @@ export function Sidebar({
                       }}
                       title={chat.title}
                     >
-                      {renderChatProviderDot(chat)}
+                      {renderChatProviderBadge(chat)}
                       <SidebarChatTitleEditable
                         chat={chat}
                         className="sidebar-pinned-label"
@@ -2809,7 +2801,7 @@ export function Sidebar({
                         key={`recent-${chat.appChatId}`}
                         role="button"
                         tabIndex={0}
-                        className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
+                        className={`sidebar-recents-item provider-${getChatProviderBadgeId(chat)} ${selectedChatId === chat.appChatId ? 'active' : ''}`}
                         onClick={() => onSelectChat(chat)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return
@@ -2821,7 +2813,7 @@ export function Sidebar({
                         title={chat.title}
                         {...getChatTileDragProps(chat)}
                       >
-                        {renderChatProviderDot(chat)}
+                        {renderChatProviderBadge(chat)}
                         <SidebarChatTitleEditable
                           chat={chat}
                           className="sidebar-recents-label"
@@ -2926,7 +2918,7 @@ export function Sidebar({
                         <div key={`ensemble-${chat.appChatId}`} className="sidebar-chat-family">
                           <button
                             type="button"
-                            className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${selectedChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
+                            className={`sidebar-item sidebar-chat-item sidebar-ensemble-item provider-ensemble ${selectedChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
                             onClick={() => onSelectChat(chat)}
                             {...getChatTileDragProps(chat)}
                           >
@@ -2956,7 +2948,7 @@ export function Sidebar({
                                 <ChevronSymbolIcon isExpanded={subThreadsExpanded} />
                               </span>
                             )}
-                            {renderChatProviderDot(chat)}
+                            {renderChatProviderBadge(chat)}
                             <span className="sidebar-chat-copy" title={chat.title}>
                               <span className="sidebar-chat-title-line">
                                 <span className="sidebar-provider-label provider-ensemble">

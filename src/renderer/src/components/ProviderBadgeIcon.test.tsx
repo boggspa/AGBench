@@ -24,4 +24,12 @@ describe('ProviderBadgeIcon', () => {
     expect(ollama).toContain('M15.2 11.5V6.6')
     expect(ollama).not.toContain('M4.6 6.2h14.8v11.6H4.6Z')
   })
+
+  it('renders the Ensemble glyph in sidebar provider badges', () => {
+    const ensemble = renderToStaticMarkup(<ProviderBadgeIcon provider="ensemble" />)
+
+    expect(ensemble).toContain('provider-ensemble')
+    expect(ensemble).toContain('provider-glyph-ensemble')
+    expect(ensemble).toContain('M6.6 19.8c.25-3.45')
+  })
 })

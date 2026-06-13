@@ -2462,6 +2462,11 @@
   text-shadow: 0 0 10px color-mix(in srgb, var(--provider-cursor-color) 32%, transparent);
 }
 
+.sidebar-provider-label.provider-ensemble {
+  color: var(--provider-ensemble-color);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--provider-ensemble-color) 28%, transparent);
+}
+
 .sidebar-provider-separator {
   color: var(--text-tertiary);
 }
