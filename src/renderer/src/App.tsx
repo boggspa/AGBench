@@ -86,6 +86,7 @@ import { toDateTimeLocalValue, formatScheduledRunTime } from './lib/dateTimeForm
 import { buildReviewCurrentDiffPrompt } from './lib/reviewDiffPrompt'
 import { normalizeExternalPathGrants } from './lib/normalizeExternalPathGrants'
 import { parseSideSlashCommand, type SideSlashCommand } from './lib/SideSlashCommand'
+import { selectVisibleAuditRun } from './lib/auditRunVisibility'
 import {
   buildHiddenSideChatInitialPrompt,
   buildSideChatRunResultSeedPrompt
@@ -1077,10 +1078,6 @@ function sortAuditRuns(runs: AuditRunRecord[]): AuditRunRecord[] {
 
 function upsertAuditRunList(runs: AuditRunRecord[], run: AuditRunRecord): AuditRunRecord[] {
   return sortAuditRuns([run, ...runs.filter((item) => item.id !== run.id)]).slice(0, 30)
-}
-
-function auditRunIsActive(run: AuditRunRecord): boolean {
-  return run.status === 'planning' || run.status === 'awaitingConfirm' || run.status === 'running'
 }
 
 const DISMISSED_AUDIT_RUNS_STORAGE_KEY = 'taskwraith.dismissedAuditRunIds'
@@ -2178,12 +2175,7 @@ function App(): React.JSX.Element {
   const currentWorkspacePopoutPath = currentWorkspace?.path || currentChat?.workspacePath || ''
   const auditRunWorkspaceId = currentWorkspace?.id || currentChat?.workspaceId
   const visibleAuditRun = useMemo(() => {
-    if (!currentChat?.appChatId) return null
-    const forChat = auditRuns.filter((run) => run.chatId === currentChat.appChatId)
-    if (forChat.length === 0) return null
-    const active = forChat.find(auditRunIsActive)
-    if (active) return active
-    return sortAuditRuns(forChat).find((run) => !dismissedAuditRunIds.has(run.id)) || null
+    return selectVisibleAuditRun(auditRuns, currentChat?.appChatId, dismissedAuditRunIds)
   }, [auditRuns, currentChat?.appChatId, dismissedAuditRunIds])
   const canOpenWorkspacePopout = Boolean(currentWorkspacePopoutPath)
   const isCurrentChatProviderLocked = Boolean(

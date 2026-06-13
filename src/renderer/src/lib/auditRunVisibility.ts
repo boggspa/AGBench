@@ -1,0 +1,29 @@
+import type { AuditRunRecord } from '../../../main/store/types'
+
+export function auditRunIsActive(run: AuditRunRecord): boolean {
+  return run.status === 'planning' || run.status === 'awaitingConfirm' || run.status === 'running'
+}
+
+function auditRunTimeKey(run: AuditRunRecord): string {
+  return run.updatedAt || run.endedAt || run.startedAt || run.createdAt || ''
+}
+
+function sortAuditRuns(runs: AuditRunRecord[]): AuditRunRecord[] {
+  return runs.slice().sort((a, b) => auditRunTimeKey(b).localeCompare(auditRunTimeKey(a)))
+}
+
+export function selectVisibleAuditRun(
+  runs: AuditRunRecord[],
+  chatId: string | undefined,
+  dismissedIds: ReadonlySet<string>
+): AuditRunRecord | null {
+  if (!chatId) return null
+  const forChat = runs.filter((run) => run.chatId === chatId)
+  if (forChat.length === 0) return null
+
+  const active = forChat.find(auditRunIsActive)
+  if (active) return active
+
+  const latest = sortAuditRuns(forChat)[0]
+  return latest && !dismissedIds.has(latest.id) ? latest : null
+}
