@@ -1,0 +1,383 @@
+import { describe, expect, it } from 'vitest'
+import type { UsageRecord } from '../../../main/store/types'
+import {
+  MODEL_USAGE_WINDOW_MS,
+  MODEL_USAGE_WINDOW_ORDER,
+  buildModelUsageTable,
+  type ModelUsageTableOptions
+} from './modelUsageTable'
+import { getFxRatesPerUsd, setFxRatesPerUsd } from './formatCost'
+import type { RendererProviderRates } from './providerRateEstimate'
+
+// Fixed reference clock so every window boundary is exact.
+const NOW = new Date('2026-06-13T12:00:00.000Z').getTime()
+
+// $1/M in, $10/M out for codex; $5/M in, $25/M out for claude — round numbers
+// make the cost assertions obvious. Cursor ships no public rate.
+const RATES: RendererProviderRates = {
+  codex: [{ modelId: 'gpt-5.5', inputUsdPerMillion: 1, outputUsdPerMillion: 10 }],
+  claude: [{ modelId: 'opus', inputUsdPerMillion: 5, outputUsdPerMillion: 25 }],
+  cursor: []
+}
+
+function makeRecord(overrides: Partial<UsageRecord> & { timestamp: number }): UsageRecord {
+  return {
+    id: Math.random().toString(36).slice(2),
+    workspaceId: 'ws-1',
+    chatId: 'chat-1',
+    runId: 'run-1',
+    model: 'gpt-5.5',
+    provider: 'codex',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    durationMs: 0,
+    ...overrides
+  } as UsageRecord
+}
+
+/** Always force USD so conversion tests don't depend on a hot-swapped FX map. */
+const USD: ModelUsageTableOptions = { currency: 'USD' }
+
+// Readable relative-timestamp helpers.
+function HOURS(n: number): number {
+  return n * 60 * 60 * 1000
+}
+function DAYS(n: number): number {
+  return n * 24 * 60 * 60 * 1000
+}
+
+describe('buildModelUsageTable — empty / zero / exclusions', () => {
+  it('returns an empty array when there are no records', () => {
+    expect(buildModelUsageTable([], [], RATES, USD, NOW)).toEqual([])
+  })
+
+  it('omits providers outside the priced roster (grok, ollama)', () => {
+    const records = [
+      makeRecord({ provider: 'grok', timestamp: NOW - 1000, inputTokens: 1000 }),
+      makeRecord({ provider: 'ollama', timestamp: NOW - 1000, inputTokens: 1000 })
+    ]
+    expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
+  })
+
+  it('skips reset_hint records entirely', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - 1000, inputTokens: 5000, usageKind: 'reset_hint' })
+    ]
+    expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
+  })
+
+  it('aggregates tokens but reports empty cost display for zero-priced models', () => {
+    const records = [
+      makeRecord({
+        provider: 'cursor',
+        model: 'composer',
+        timestamp: NOW - 1000,
+        inputTokens: 10_000,
+        outputTokens: 5000
+      })
+    ]
+    const [cursor] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(cursor.provider).toBe('cursor')
+    expect(cursor.models).toHaveLength(1)
+    expect(cursor.models[0].model).toBe('composer')
+    expect(cursor.models[0].windows.h1.totalTokens).toBe(15_000)
+    expect(cursor.models[0].windows.h1.costUsd).toBe(0)
+    // No positive cost → empty display string (caller renders a placeholder).
+    expect(cursor.models[0].windows.h1.costDisplay).toBe('')
+    // Provider roll-up mirrors the lone model.
+    expect(cursor.totals.h1.totalTokens).toBe(15_000)
+    expect(cursor.totals.h1.costDisplay).toBe('')
+  })
+
+  it('buckets a blank model id under a provider-named fallback row', () => {
+    const records = [
+      makeRecord({ provider: 'codex', model: '', timestamp: NOW - 1000, inputTokens: 1_000_000 })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(codex.models).toHaveLength(1)
+    expect(codex.models[0].model).toBe('codex')
+  })
+})
+
+describe('buildModelUsageTable — window bucketing at exact boundaries (injected now)', () => {
+  it('counts a record exactly at each window boundary inclusively', () => {
+    // One record sitting exactly on each window's lower edge.
+    const records = MODEL_USAGE_WINDOW_ORDER.map((key) =>
+      makeRecord({ timestamp: NOW - MODEL_USAGE_WINDOW_MS[key], inputTokens: 1 })
+    )
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows
+    // h1 boundary record only lands in every window (it's the freshest);
+    // each wider window also captures all the records at/after its edge.
+    // Count expectations: h1=1 (only the 1H-edge record),
+    // h24=2 (1H + 24H edges), d7=3, d30=4, d90=5.
+    expect(row.h1.runs).toBe(1)
+    expect(row.h24.runs).toBe(2)
+    expect(row.d7.runs).toBe(3)
+    expect(row.d30.runs).toBe(4)
+    expect(row.d90.runs).toBe(5)
+  })
+
+  it('drops a record one ms older than the 1H boundary from the 1H column only', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - MODEL_USAGE_WINDOW_MS.h1 - 1, inputTokens: 1_000_000 })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows
+    expect(row.h1.runs).toBe(0)
+    expect(row.h1.totalTokens).toBe(0)
+    expect(row.h24.runs).toBe(1)
+    expect(row.d90.runs).toBe(1)
+  })
+
+  it('counts a record exactly at the 24H boundary in 24H+ but not 1H', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - MODEL_USAGE_WINDOW_MS.h24, inputTokens: 1_000_000 })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows
+    expect(row.h1.runs).toBe(0)
+    expect(row.h24.runs).toBe(1)
+    expect(row.d7.runs).toBe(1)
+    expect(row.d90.runs).toBe(1)
+  })
+
+  it('counts a record exactly at the 90D boundary in 90D only', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - MODEL_USAGE_WINDOW_MS.d90, inputTokens: 3_000_000 })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows
+    expect(row.h1.runs).toBe(0)
+    expect(row.h24.runs).toBe(0)
+    expect(row.d7.runs).toBe(0)
+    expect(row.d30.runs).toBe(0)
+    expect(row.d90.runs).toBe(1)
+    expect(row.d90.tokensIn).toBe(3_000_000)
+  })
+
+  it('drops a record one ms older than the 90D boundary from every window', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - MODEL_USAGE_WINDOW_MS.d90 - 1, inputTokens: 9_000_000 })
+    ]
+    expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
+  })
+
+  it('drops future-dated (clock-skew) records', () => {
+    const records = [makeRecord({ timestamp: NOW + 60_000, inputTokens: 1_000_000 })]
+    expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
+  })
+})
+
+describe('buildModelUsageTable — per-model grouping', () => {
+  it('splits one provider into separate rows per model, busiest first', () => {
+    const records = [
+      // gpt-5.5: 1M in fresh
+      makeRecord({
+        provider: 'codex',
+        model: 'gpt-5.5',
+        timestamp: NOW - HOURS(2),
+        inputTokens: 1_000_000
+      }),
+      // gpt-5.5-mini: 5M in fresh (busier on the d90 axis)
+      makeRecord({
+        provider: 'codex',
+        model: 'gpt-5.5-mini',
+        timestamp: NOW - HOURS(2),
+        inputTokens: 5_000_000
+      })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(codex.models.map((m) => m.model)).toEqual(['gpt-5.5-mini', 'gpt-5.5'])
+    // Provider roll-up sums both models.
+    expect(codex.totals.h24.tokensIn).toBe(6_000_000)
+    expect(codex.totals.h24.runs).toBe(2)
+  })
+
+  it('sums multiple runs of the same model into one row across the right windows', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - HOURS(2), inputTokens: 1_000_000 }), // 24h..90d
+      makeRecord({ timestamp: NOW - DAYS(3), inputTokens: 2_000_000 }), // 7d..90d
+      makeRecord({ timestamp: NOW - DAYS(45), inputTokens: 4_000_000 }) // 90d only
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(codex.models).toHaveLength(1)
+    const row = codex.models[0].windows
+    expect(row.h1.runs).toBe(0) // 2h-old run is past the 1H edge
+    expect(row.h24.costUsd).toBeCloseTo(1, 6)
+    expect(row.d7.costUsd).toBeCloseTo(3, 6) // $1 + $2
+    expect(row.d30.costUsd).toBeCloseTo(3, 6) // 45d run not in 30d
+    expect(row.d90.costUsd).toBeCloseTo(7, 6) // $1 + $2 + $4
+    expect(row.d90.runs).toBe(3)
+  })
+
+  it('returns providers in canonical order with independent windows', () => {
+    const records = [
+      makeRecord({
+        provider: 'claude',
+        model: 'opus',
+        timestamp: NOW - HOURS(1),
+        outputTokens: 1_000_000 // $25
+      }),
+      makeRecord({
+        provider: 'codex',
+        model: 'gpt-5.5',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 1_000_000 // $1
+      })
+    ]
+    const result = buildModelUsageTable(records, [], RATES, USD, NOW)
+    // Canonical: gemini, codex, claude, kimi, cursor → codex before claude.
+    expect(result.map((g) => g.provider)).toEqual(['codex', 'claude'])
+    const claude = result.find((g) => g.provider === 'claude')!
+    expect(claude.models[0].windows.h24.costUsd).toBeCloseTo(25, 6)
+    expect(claude.models[0].windows.h24.tokensOut).toBe(1_000_000)
+  })
+})
+
+describe('buildModelUsageTable — cost math + token flooring', () => {
+  it('prices input + output via the rate table and formats the display', () => {
+    // 2M in * $1/M = $2 ; 0.5M out * $10/M = $5 ; total $7.
+    const records = [
+      makeRecord({ timestamp: NOW - 1000, inputTokens: 2_000_000, outputTokens: 500_000 })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows.h1
+    expect(row.costUsd).toBeCloseTo(7, 6)
+    expect(row.tokensIn).toBe(2_000_000)
+    expect(row.tokensOut).toBe(500_000)
+    expect(row.totalTokens).toBe(2_500_000)
+    expect(row.costDisplay).toBe('$7.00')
+  })
+
+  it('prefers an explicit cost over the rate estimate when present', () => {
+    const record = makeRecord({ timestamp: NOW - 1000, inputTokens: 1_000_000 })
+    ;(record as unknown as Record<string, unknown>).explicitCostUsd = 42
+    const [codex] = buildModelUsageTable([record], [], RATES, USD, NOW)
+    expect(codex.models[0].windows.h1.costUsd).toBe(42)
+  })
+
+  it('treats negative / NaN token counts as zero', () => {
+    const records = [
+      makeRecord({ timestamp: NOW - 1000, inputTokens: -5 as number, outputTokens: NaN as number })
+    ]
+    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    const row = codex.models[0].windows.h1
+    expect(row.tokensIn).toBe(0)
+    expect(row.tokensOut).toBe(0)
+    expect(row.costUsd).toBe(0)
+  })
+})
+
+describe('buildModelUsageTable — currency conversion + overestimate', () => {
+  it('converts USD to the display currency at the FX rate', () => {
+    const before = getFxRatesPerUsd()
+    setFxRatesPerUsd({ GBP: 0.8 })
+    try {
+      const records = [makeRecord({ timestamp: NOW - 1000, inputTokens: 10_000_000 })] // $10
+      const [codex] = buildModelUsageTable(records, [], RATES, { currency: 'GBP' }, NOW)
+      const row = codex.models[0].windows.h1
+      expect(row.costUsd).toBeCloseTo(10, 6) // raw stays USD
+      expect(row.costDisplay).toBe('£8.00') // 10 * 0.8
+    } finally {
+      setFxRatesPerUsd(before)
+    }
+  })
+
+  it('applies the overestimate multiplier before FX conversion, clamped to 25%', () => {
+    const before = getFxRatesPerUsd()
+    setFxRatesPerUsd({ USD: 1 })
+    try {
+      const records = [makeRecord({ timestamp: NOW - 1000, inputTokens: 10_000_000 })] // $10
+      const [codex] = buildModelUsageTable(
+        records,
+        [],
+        RATES,
+        { currency: 'USD', overestimatePercent: 999 },
+        NOW
+      )
+      const row = codex.models[0].windows.h1
+      expect(row.costUsd).toBeCloseTo(10, 6) // raw unbiased
+      expect(row.costDisplay).toBe('$12.50') // 999% clamps to 25% → $12.50
+    } finally {
+      setFxRatesPerUsd(before)
+    }
+  })
+})
+
+describe('buildModelUsageTable — external merge on/off', () => {
+  const internal = [
+    makeRecord({
+      provider: 'codex',
+      model: 'gpt-5.5',
+      timestamp: NOW - HOURS(2),
+      inputTokens: 1_000_000 // $1
+    })
+  ]
+  const external = [
+    // Same provider+model from a CLI session → folds into the SAME row.
+    makeRecord({
+      id: 'external-codex-1',
+      provider: 'codex',
+      model: 'gpt-5.5',
+      timestamp: NOW - HOURS(3),
+      inputTokens: 2_000_000 // $2
+    }),
+    // A model only seen externally → its own row when merged.
+    makeRecord({
+      id: 'external-claude-1',
+      provider: 'claude',
+      model: 'opus',
+      timestamp: NOW - HOURS(4),
+      outputTokens: 1_000_000 // $25
+    })
+  ]
+
+  it('ignores external records when includeExternal is off (default)', () => {
+    const result = buildModelUsageTable(internal, external, RATES, USD, NOW)
+    expect(result.map((g) => g.provider)).toEqual(['codex'])
+    expect(result[0].models[0].windows.h24.tokensIn).toBe(1_000_000)
+    expect(result[0].models[0].windows.h24.costUsd).toBeCloseTo(1, 6)
+  })
+
+  it('merges external records into matching rows + new rows when includeExternal is on', () => {
+    const result = buildModelUsageTable(
+      internal,
+      external,
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    // Now both providers appear.
+    expect(result.map((g) => g.provider)).toEqual(['codex', 'claude'])
+    const codex = result.find((g) => g.provider === 'codex')!
+    // Same provider+model row absorbed both internal ($1) and external ($2).
+    expect(codex.models).toHaveLength(1)
+    const codexRow = codex.models[0].windows.h24
+    expect(codexRow.tokensIn).toBe(3_000_000)
+    expect(codexRow.runs).toBe(2)
+    expect(codexRow.costUsd).toBeCloseTo(3, 6)
+    // Claude row exists only because of the external dataset.
+    const claude = result.find((g) => g.provider === 'claude')!
+    expect(claude.models[0].windows.h24.costUsd).toBeCloseTo(25, 6)
+  })
+
+  it('still drops out-of-roster + future-dated external records when merged', () => {
+    const noisyExternal = [
+      makeRecord({ provider: 'grok', timestamp: NOW - HOURS(1), inputTokens: 5_000_000 }),
+      makeRecord({ provider: 'ollama', timestamp: NOW - HOURS(1), inputTokens: 5_000_000 }),
+      makeRecord({ provider: 'codex', timestamp: NOW + 60_000, inputTokens: 5_000_000 })
+    ]
+    const result = buildModelUsageTable(
+      internal,
+      noisyExternal,
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    // Only the internal codex run survives.
+    expect(result.map((g) => g.provider)).toEqual(['codex'])
+    expect(result[0].totals.h24.tokensIn).toBe(1_000_000)
+  })
+})
