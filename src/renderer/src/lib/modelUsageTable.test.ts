@@ -96,7 +96,7 @@ describe('buildModelUsageTable — empty / zero / exclusions', () => {
     const [cursor] = buildModelUsageTable(records, [], RATES, USD, NOW)
     expect(cursor.provider).toBe('cursor')
     expect(cursor.models).toHaveLength(1)
-    expect(cursor.models[0].model).toBe('composer')
+    expect(cursor.models[0].model).toBe('composer-2.5-fast')
     expect(cursor.models[0].windows.h1.totalTokens).toBe(15_000)
     expect(cursor.models[0].windows.h1.costUsd).toBeCloseTo(0.105, 6)
     expect(cursor.models[0].windows.h1.costDisplay).toBe('$0.11')
@@ -512,7 +512,7 @@ describe('buildModelUsageTableForSettings — grok/cursor supplement when extern
     expect(result.find((g) => g.provider === 'cursor')!.totals.h24.totalTokens).toBe(15_000)
   })
 
-  it('does not double-count cursor when external already has cursor usage', () => {
+  it('merges internal and external cursor usage additively by canonical model id', () => {
     const internal = [
       makeRecord({
         provider: 'cursor',
@@ -527,7 +527,7 @@ describe('buildModelUsageTableForSettings — grok/cursor supplement when extern
       makeRecord({
         id: 'external-cursor',
         provider: 'cursor',
-        model: 'composer-2.5-fast',
+        model: 'composer-2.5',
         timestamp: NOW - HOURS(2),
         inputTokens: 20_000,
         outputTokens: 10_000
@@ -541,8 +541,63 @@ describe('buildModelUsageTableForSettings — grok/cursor supplement when extern
       NOW
     )
     const cursor = result.find((g) => g.provider === 'cursor')!
-    expect(cursor.totals.h24.totalTokens).toBe(30_000)
+    expect(cursor.totals.h24.totalTokens).toBe(45_000)
+    expect(cursor.models).toHaveLength(2)
+  })
+
+  it('dedupes external cursor rows that mirror a TaskWraith cursor-agent run', () => {
+    const ts = NOW - HOURS(1)
+    const internal = [
+      makeRecord({
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: ts,
+        inputTokens: 10_000,
+        outputTokens: 5_000
+      })
+    ]
+    const external = [
+      makeRecord({
+        id: 'external-cursor-dup',
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: ts + 30_000,
+        inputTokens: 10_500,
+        outputTokens: 4_800
+      })
+    ]
+    const result = buildModelUsageTableForSettings(
+      internal,
+      external,
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    const cursor = result.find((g) => g.provider === 'cursor')!
+    expect(cursor.totals.h24.totalTokens).toBe(15_000)
     expect(cursor.totals.h24.runs).toBe(1)
+  })
+
+  it('collapses duplicate cursor model ids that only differ by display label', () => {
+    const records = [
+      makeRecord({
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 10_000,
+        outputTokens: 5_000
+      }),
+      makeRecord({
+        provider: 'cursor',
+        model: 'Composer 2.5 Fast',
+        timestamp: NOW - HOURS(2),
+        inputTokens: 4_000,
+        outputTokens: 1_000
+      })
+    ]
+    const [cursor] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(cursor.models).toHaveLength(1)
+    expect(cursor.totals.h24.totalTokens).toBe(20_000)
   })
 
   it('matches buildModelUsageTable when external is off', () => {

@@ -145,7 +145,14 @@ export function canonicalModelIdForProvider(
   if (provider === 'grok' && STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) {
     return 'grok-build'
   }
-  if (provider === 'cursor' && STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) {
+  if (provider === 'cursor') {
+    if (STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) return 'composer-2.5-fast'
+    if (!key || key === 'cursor' || key === 'composer') return 'composer-2.5-fast'
+    if (key === 'composer 2.5 fast' || key === 'composer-2.5-fast') return 'composer-2.5-fast'
+    if (key === 'composer 2.5' || key === 'composer-2.5') return 'composer-2.5'
+    if (key.startsWith('composer-')) return key
+    if (key.includes('fast')) return 'composer-2.5-fast'
+    if (key.includes('composer')) return 'composer-2.5'
     return 'composer-2.5-fast'
   }
   if (provider === 'ollama') {

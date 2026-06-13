@@ -40,6 +40,7 @@
  */
 
 import type { ProviderId, UsageRecord } from '../../../main/store/types'
+import { canonicalModelIdForProvider } from './modelDisplayName'
 import { estimateRunCostUsd, type RendererProviderRates } from './providerRateEstimate'
 import { formatCost, type DisplayCurrency } from './formatCost'
 
@@ -206,7 +207,8 @@ function recordCostUsd(record: UsageRecord, rates: RendererProviderRates): numbe
  * into an empty-string key. */
 function modelKeyFor(record: UsageRecord): string {
   const raw = (record.model || '').trim()
-  return raw || record.provider || 'unknown'
+  const canonical = canonicalModelIdForProvider(record.provider, raw)
+  return canonical || raw || record.provider || 'unknown'
 }
 
 /** Materialise an accumulator into the public window totals shape, formatting
@@ -386,19 +388,107 @@ export function buildModelUsageTable(
 }
 
 /**
- * Providers whose TaskWraith-internal runs are merged into the table when
- * External Usage is ON. Grok is never scanned by the external activity
- * loader; Cursor is supplemented only when the external set has no cursor
- * section (avoids double-counting TaskWraith cursor CLI runs that already
- * appear in the provider-wide dataset).
+ * Providers whose TaskWraith-internal runs are always folded into the table
+ * when External Usage is ON. Grok is never scanned externally. Cursor is
+ * additive: IDE-native Composer activity comes from the external scanner while
+ * TaskWraith-dispatched cursor-agent runs stay in the internal set.
  */
-const INTERNAL_SUPPLEMENT_WHEN_EXTERNAL: ProviderId[] = ['grok', 'cursor']
+const ALWAYS_SUPPLEMENT_WHEN_EXTERNAL: ProviderId[] = ['grok', 'cursor']
+
+/** Drop external Cursor rows that likely duplicate a TaskWraith cursor-agent run
+ * already captured in the internal set (same ~2m window and similar token total). */
+function dedupeCursorExternalAgainstInternal(
+  internalRecords: UsageRecord[],
+  externalRecords: UsageRecord[]
+): UsageRecord[] {
+  const internalCursor = internalRecords.filter(
+    (record) =>
+      record?.provider === 'cursor' &&
+      record.usageKind !== 'reset_hint' &&
+      (record.totalTokens || record.inputTokens + record.outputTokens) > 0
+  )
+  if (internalCursor.length === 0) return externalRecords
+
+  return externalRecords.filter((record) => {
+    if (record?.provider !== 'cursor' || record.usageKind === 'reset_hint') return true
+    const extTokens = record.totalTokens || record.inputTokens + record.outputTokens
+    if (extTokens <= 0) return false
+    const duplicate = internalCursor.some((inner) => {
+      const innerTokens = inner.totalTokens || inner.inputTokens + inner.outputTokens
+      if (innerTokens <= 0) return false
+      if (Math.abs(inner.timestamp - record.timestamp) > 120_000) return false
+      const ratio = innerTokens / extTokens
+      return ratio >= 0.75 && ratio <= 1.33
+    })
+    return !duplicate
+  })
+}
+
+/** Merge two provider groups that share the same provider id, combining model rows
+ * by canonical model key and re-rolling provider totals. */
+function mergeModelUsageProviderGroups(
+  primary: ModelUsageProviderGroup,
+  secondary: ModelUsageProviderGroup,
+  currency: DisplayCurrency,
+  overestimatePercent: number,
+  locale: string | undefined
+): ModelUsageProviderGroup {
+  const byModel = new Map<string, Record<ModelUsageWindowKey, UsageAccumulator>>()
+
+  const ingest = (group: ModelUsageProviderGroup) => {
+    for (const row of group.models) {
+      const key = canonicalModelIdForProvider(group.provider, row.model) || row.model
+      let accSet = byModel.get(key)
+      if (!accSet) {
+        accSet = emptyWindowSet()
+        byModel.set(key, accSet)
+      }
+      for (const windowKey of MODEL_USAGE_WINDOW_ORDER) {
+        const window = row.windows[windowKey]
+        accSet[windowKey].tokensIn += window.tokensIn
+        accSet[windowKey].tokensOut += window.tokensOut
+        accSet[windowKey].runs += window.runs
+        accSet[windowKey].costUsd += window.costUsd
+      }
+    }
+  }
+
+  ingest(primary)
+  ingest(secondary)
+
+  const models: ModelUsageModelRow[] = []
+  const providerTotals = emptyWindowSet()
+  for (const [model, windowSet] of byModel.entries()) {
+    models.push({
+      model,
+      windows: finalizeWindowSet(windowSet, currency, overestimatePercent, locale)
+    })
+    for (const key of MODEL_USAGE_WINDOW_ORDER) {
+      providerTotals[key].tokensIn += windowSet[key].tokensIn
+      providerTotals[key].tokensOut += windowSet[key].tokensOut
+      providerTotals[key].runs += windowSet[key].runs
+      providerTotals[key].costUsd += windowSet[key].costUsd
+    }
+  }
+
+  models.sort(
+    (a, b) =>
+      b.windows.d90.totalTokens - a.windows.d90.totalTokens || a.model.localeCompare(b.model)
+  )
+
+  return {
+    provider: primary.provider,
+    models,
+    totals: finalizeWindowSet(providerTotals, currency, overestimatePercent, locale)
+  }
+}
 
 /**
  * Settings-table entry point. When External Usage is OFF this is identical to
  * {@link buildModelUsageTable}. When ON it uses the provider-wide external
- * dataset for the five CLI providers but still folds in TaskWraith-internal
- * grok runs (and cursor runs only when external has none).
+ * dataset for CLI providers, always folds in TaskWraith-internal grok runs,
+ * and additively merges internal + external Cursor (IDE Composer + TaskWraith
+ * cursor-agent) with fuzzy dedup for overlapping runs.
  */
 export function buildModelUsageTableForSettings(
   internalRecords: UsageRecord[],
@@ -411,9 +501,17 @@ export function buildModelUsageTableForSettings(
     return buildModelUsageTable(internalRecords, externalRecords, rates, options, now)
   }
 
+  const currency: DisplayCurrency = options.currency ?? 'USD'
+  const overestimatePercent = Number.isFinite(options.overestimatePercent)
+    ? (options.overestimatePercent as number)
+    : 0
+  const locale = options.locale
+
+  const filteredExternal = dedupeCursorExternalAgainstInternal(internalRecords, externalRecords)
+
   const externalGroups = buildModelUsageTable(
     internalRecords,
-    externalRecords,
+    filteredExternal,
     rates,
     { ...options, includeExternal: true },
     now
@@ -426,18 +524,34 @@ export function buildModelUsageTableForSettings(
     now
   )
 
-  const externalProviders = new Set(externalGroups.map((group) => group.provider))
-  const supplementProviders = INTERNAL_SUPPLEMENT_WHEN_EXTERNAL.filter(
-    (provider) => provider === 'grok' || !externalProviders.has(provider)
-  )
-  const supplemented = internalGroups.filter((group) =>
-    supplementProviders.includes(group.provider)
-  )
+  const externalByProvider = new Map(externalGroups.map((group) => [group.provider, group]))
+  const internalByProvider = new Map(internalGroups.map((group) => [group.provider, group]))
 
-  const byProvider = new Map(externalGroups.map((group) => [group.provider, group]))
-  for (const group of supplemented) {
+  const byProvider = new Map<ProviderId, ModelUsageProviderGroup>()
+  for (const group of externalGroups) {
     byProvider.set(group.provider, group)
   }
+
+  for (const provider of ALWAYS_SUPPLEMENT_WHEN_EXTERNAL) {
+    const internalGroup = internalByProvider.get(provider)
+    if (!internalGroup) continue
+    const existing = byProvider.get(provider)
+    if (!existing) {
+      byProvider.set(provider, internalGroup)
+      continue
+    }
+    if (provider === 'cursor') {
+      byProvider.set(
+        provider,
+        mergeModelUsageProviderGroups(existing, internalGroup, currency, overestimatePercent, locale)
+      )
+    } else {
+      byProvider.set(provider, internalGroup)
+    }
+  }
+
+  // Providers only in internal (shouldn't happen for priced roster) — ignore.
+  void externalByProvider
 
   return MODEL_USAGE_PROVIDER_ORDER.map((provider) => byProvider.get(provider)).filter(
     (group): group is ModelUsageProviderGroup => Boolean(group)
