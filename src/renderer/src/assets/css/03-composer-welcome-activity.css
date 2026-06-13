@@ -3969,6 +3969,261 @@
   animation: none;
 }
 
+.composer-goal-control-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-goal-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 54%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.composer-goal-button:hover:not(:disabled),
+.composer-goal-button.is-open {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.composer-goal-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.composer-goal-button .composer-control-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.composer-goal-button.is-active {
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.composer-goal-button.is-paused {
+  color: color-mix(in srgb, var(--warning) 84%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+.composer-goal-button.is-blocked {
+  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+}
+
+.composer-goal-button.is-completed {
+  color: color-mix(in srgb, var(--success) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success) 36%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.composer-goal-button-dot,
+.composer-goal-button-check {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px var(--composer-bg, var(--surface-base));
+}
+
+.composer-goal-button-dot {
+  background: var(--accent);
+}
+
+.composer-goal-button.is-paused .composer-goal-button-dot {
+  background: var(--warning);
+}
+
+.composer-goal-button.is-blocked .composer-goal-button-dot {
+  background: var(--danger);
+}
+
+.composer-goal-button-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 9px;
+  height: 9px;
+  font-size: 7px;
+  line-height: 1;
+  color: var(--success);
+  background: var(--composer-bg, var(--surface-base));
+  animation: composer-goal-complete-flash 900ms ease-out 1;
+}
+
+@keyframes composer-goal-complete-flash {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.45;
+  }
+  45% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.composer-goal-popover {
+  position: fixed;
+  z-index: 9500;
+  width: min(340px, 76vw);
+  max-height: min(360px, calc(100vh - 16px));
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 68%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
+  box-shadow: var(--shadow-elevated);
+  color: var(--text-primary);
+}
+
+.composer-goal-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.composer-goal-popover-title {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.composer-goal-mode-chip,
+.composer-goal-status {
+  flex: 0 0 auto;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  background: color-mix(in srgb, var(--text-secondary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 52%, transparent);
+}
+
+.composer-goal-status {
+  display: inline-flex;
+  margin-bottom: 7px;
+  text-transform: capitalize;
+}
+
+.composer-goal-status.is-active {
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.composer-goal-status.is-paused {
+  color: color-mix(in srgb, var(--warning) 86%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning) 11%, transparent);
+}
+
+.composer-goal-status.is-blocked {
+  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--danger) 11%, transparent);
+}
+
+.composer-goal-status.is-completed {
+  color: color-mix(in srgb, var(--success) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--success) 11%, transparent);
+}
+
+.composer-goal-objective,
+.composer-goal-reason {
+  margin: 0 0 8px;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.composer-goal-reason {
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+}
+
+.composer-goal-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+  max-height: 180px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.composer-goal-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.composer-goal-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.composer-goal-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 25px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.composer-goal-action:hover {
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.composer-goal-action.primary {
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.composer-goal-action.danger {
+  color: color-mix(in srgb, var(--danger) 82%, var(--text-primary));
+}
+
 .composer-thread-token-tally {
   max-width: min(260px, 28vw);
   color: color-mix(in srgb, var(--text-secondary) 82%, transparent);

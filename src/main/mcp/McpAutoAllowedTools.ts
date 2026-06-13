@@ -54,6 +54,12 @@ export const MCP_AUTO_ALLOWED_TOOLS = new Set<TaskWraithMcpToolName>([
   // The renderer modal IS the approval surface, so a second confirm
   // step would be silly. Universally auto-allowed.
   'ask_user_question',
+  // Persistent goal lifecycle is host UI coordination only. Tool schemas
+  // prevent agents from replacing or clearing the user-owned objective.
+  'goal_read',
+  'goal_update',
+  'goal_complete',
+  'goal_blocked',
   // 1.4.2 — goal-step checklist updates are non-mutating run coordination.
   'todo_write',
   // 1.0.71 — workspace READ tools (see header). Read-only + host-gate-safe:

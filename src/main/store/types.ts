@@ -162,6 +162,27 @@ export type ProviderId =
   | 'grok'
   | 'cursor'
   | 'ollama'
+export type ActiveGoalStatus = 'active' | 'paused' | 'blocked' | 'completed'
+export type ActiveGoalMode =
+  | 'codex_native'
+  | 'claude_native'
+  | 'taskwraith_steered'
+  | 'ollama_harness'
+export interface ActiveGoal {
+  id: string
+  objective: string
+  status: ActiveGoalStatus
+  mode: ActiveGoalMode
+  provider: ProviderId
+  createdAt: string
+  updatedAt: string
+  pausedAt?: string
+  blockedAt?: string
+  blockedReason?: string
+  completedAt?: string
+  completedSummary?: string
+  lastStatusReason?: string
+}
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type ChatParentRelation = 'subThread' | 'sideChat'
@@ -2018,6 +2039,7 @@ export interface ChatRecord {
   linkedProviderSessionId?: string
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string
+  activeGoal?: ActiveGoal
   ensemble?: EnsembleConfig
   guestParticipant?: GuestParticipantConfig
   /**

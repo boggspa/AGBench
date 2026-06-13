@@ -1425,6 +1425,20 @@ public final class RemoteSessionModel: ObservableObject {
         scheduleThreadRefresh(thread)
     }
 
+    /// Set, edit, pause, resume, complete, block, or clear the thread goal.
+    public func updateGoal(
+        _ card: RemoteTaskCard, op: String, objective: String? = nil, reason: String? = nil
+    ) {
+        guard let thread = card.threadId else { return }
+        let ws = (card.workspaceId ?? "").isEmpty ? "global" : card.workspaceId!
+        send(
+            BridgeAction.goalUpdate(
+                workspaceId: ws, threadId: thread, op: op,
+                objective: objective, reason: reason),
+            successLabel: "Goal updated.")
+        scheduleThreadRefresh(thread)
+    }
+
     /// Pin or unpin a transcript message.
     public func toggleMessagePin(_ card: RemoteTaskCard, messageId: String, pinned: Bool) {
         guard let ws = card.workspaceId, let thread = card.threadId else { return }

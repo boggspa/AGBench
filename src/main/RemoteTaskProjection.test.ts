@@ -155,6 +155,15 @@ describe('RemoteTaskProjection', () => {
   it('projects task card status, preview and latest run details', () => {
     const card = buildRemoteTaskCard(
       chat({
+        activeGoal: {
+          id: 'goal-1',
+          objective: 'Finish the goal rail',
+          status: 'active',
+          mode: 'taskwraith_steered',
+          provider: 'codex',
+          createdAt: ISO,
+          updatedAt: ISO
+        },
         runs: [
           run({ runId: 'old', startedAt: '2026-05-30T11:00:00.000Z', status: 'success' }),
           run({ runId: 'new', startedAt: '2026-05-30T12:00:00.000Z', status: 'running' })
@@ -168,7 +177,12 @@ describe('RemoteTaskProjection', () => {
       latestRunId: 'new',
       status: 'awaitingApproval',
       preview: 'Working on the projection path',
-      pendingApprovalCount: 1
+      pendingApprovalCount: 1,
+      activeGoal: {
+        id: 'goal-1',
+        objective: 'Finish the goal rail',
+        status: 'active'
+      }
     })
   })
 

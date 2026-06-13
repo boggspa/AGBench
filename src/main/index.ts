@@ -611,6 +611,12 @@ import {
   sanitiseForKimi
 } from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
+import {
+  createActiveGoal,
+  normalizeActiveGoalObjective,
+  resolveActiveGoalMode,
+  updateActiveGoalLifecycle
+} from './GoalState'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from './TaskWraithMcpTools'
 import { validateTodoWriteArgs } from './TodoList'
 import { handleChatTodoWrite } from './TodoWriteRegistry'
@@ -12797,6 +12803,74 @@ async function executeGeminiMcpTool(
           })
         }
       }
+    } else if (toolName === 'goal_read') {
+      const chatId = String(context.appChatId || '').trim()
+      const chat = chatId ? AppStore.getChat(chatId) : null
+      text = mcpJson({
+        ok: true,
+        tool: 'goal_read',
+        goal: chat?.activeGoal || null
+      })
+    } else if (
+      toolName === 'goal_update' ||
+      toolName === 'goal_complete' ||
+      toolName === 'goal_blocked'
+    ) {
+      const chatId = String(context.appChatId || '').trim()
+      const chat = chatId ? AppStore.getChat(chatId) : null
+      const goal = chat?.activeGoal
+      if (!chat || !goal) {
+        toolIsError = true
+        text = mcpJson({
+          ok: false,
+          tool: toolName,
+          error: 'No active TaskWraith goal is set for this chat.'
+        })
+      } else {
+        const lifecycleStatus =
+          toolName === 'goal_complete'
+            ? 'completed'
+            : toolName === 'goal_blocked'
+              ? 'blocked'
+              : optionalString(args.status)
+        const reason =
+          toolName === 'goal_complete'
+            ? optionalString(args.summary) || optionalString(args.reason)
+            : optionalString(args.reason)
+        if (
+          lifecycleStatus !== 'active' &&
+          lifecycleStatus !== 'paused' &&
+          lifecycleStatus !== 'blocked' &&
+          lifecycleStatus !== 'completed'
+        ) {
+          toolIsError = true
+          text = mcpJson({
+            ok: false,
+            tool: toolName,
+            error: 'Goal status must be active, paused, blocked, or completed.'
+          })
+        } else if (lifecycleStatus === 'blocked' && !(reason || '').trim()) {
+          toolIsError = true
+          text = mcpJson({
+            ok: false,
+            tool: toolName,
+            error: 'Blocking an active goal requires a concrete reason.'
+          })
+        } else {
+          const nextGoal = updateActiveGoalLifecycle(goal, lifecycleStatus, reason)
+          const updatedChat: ChatRecord = {
+            ...chat,
+            activeGoal: nextGoal,
+            updatedAt: Date.now()
+          }
+          saveAndBroadcastChat(updatedChat)
+          text = mcpJson({
+            ok: true,
+            tool: toolName,
+            goal: nextGoal
+          })
+        }
+      }
     } else if (toolName === 'todo_write') {
       const validated = validateTodoWriteArgs(args)
       if (!validated.ok) {
@@ -15107,6 +15181,72 @@ if (isGeminiMcpBridgeProcess) {
           const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
           if (canonical) pushRemoteThreadSnapshot(updated, canonical)
           return { ok: true }
+        },
+        goalUpdateFn: async (action) => {
+          const chat = AppStore.getChat(action.threadId)
+          if (!chat) return { ok: false, reason: 'Thread not found' }
+          const canonicalActionWs =
+            canonicalRemoteWorkspaceId(action.workspaceId) ?? action.workspaceId
+          const chatWs = canonicalRemoteWorkspaceId(chat.workspaceId) ?? chat.workspaceId
+          if (chat.scope !== 'global' && chatWs && chatWs !== canonicalActionWs) {
+            return {
+              ok: false,
+              reason: `Thread does not belong to workspace "${action.workspaceId}"`
+            }
+          }
+
+          let activeGoal = chat.activeGoal || null
+          if (action.op === 'clear') {
+            activeGoal = null
+          } else if (action.op === 'set' || action.op === 'edit') {
+            const objective = normalizeActiveGoalObjective(action.objective)
+            if (!objective) return { ok: false, reason: 'Goal objective is required' }
+            const provider = assertProviderId(chat.provider ?? 'gemini')
+            const now = new Date()
+            if (activeGoal) {
+              activeGoal = {
+                ...updateActiveGoalLifecycle(activeGoal, 'active', action.reason, now),
+                objective,
+                provider,
+                mode: resolveActiveGoalMode(provider, {
+                  codexNativeAvailable: Boolean(
+                    chat.providerMetadata?.codexGoalNativeAvailable
+                  )
+                }),
+                updatedAt: now.toISOString()
+              }
+            } else {
+              activeGoal = createActiveGoal(provider, objective, {
+                now,
+                codexNativeAvailable: Boolean(chat.providerMetadata?.codexGoalNativeAvailable)
+              })
+            }
+          } else {
+            if (!activeGoal) return { ok: false, reason: 'No active goal is set for this thread' }
+            const status =
+              action.op === 'pause'
+                ? 'paused'
+                : action.op === 'resume'
+                  ? 'active'
+                  : action.op === 'complete'
+                    ? 'completed'
+                    : 'blocked'
+            activeGoal = updateActiveGoalLifecycle(activeGoal, status, action.reason)
+          }
+
+          const updated: ChatRecord = {
+            ...chat,
+            updatedAt: Date.now()
+          }
+          if (activeGoal) updated.activeGoal = activeGoal
+          else delete updated.activeGoal
+          AppStore.saveChat(updated)
+          broadcastChatUpdated(updated)
+          broadcastThreadUpdate(updated.appChatId)
+          const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
+          if (canonical) pushRemoteThreadSnapshot(updated, canonical)
+          bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+          return { ok: true, goal: activeGoal }
         },
         toggleMessagePinFn: async (action) => {
           const chat = AppStore.getChat(action.threadId)

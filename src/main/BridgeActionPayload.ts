@@ -61,6 +61,8 @@ const BRIDGE_QUESTION_ANSWER_MAX_CHARS = 8000
 const BRIDGE_QUESTION_REJECT_MESSAGE_MAX_CHARS = 1000
 const BRIDGE_WORKSPACE_FILE_PATH_MAX_CHARS = 4096
 const BRIDGE_WORKSPACE_FILE_WRITE_MAX_CHARS = 1_600_000
+const BRIDGE_GOAL_OBJECTIVE_MAX_CHARS = 4000
+const BRIDGE_GOAL_REASON_MAX_CHARS = 800
 
 export interface BridgeApprovalReplyAction extends BridgeActionMetadata {
   kind: 'approvalReply'
@@ -356,6 +358,24 @@ export interface BridgeSetThreadNotesAction extends BridgeActionMetadata {
   notes: string
 }
 
+export type BridgeGoalUpdateOperation =
+  | 'set'
+  | 'edit'
+  | 'clear'
+  | 'pause'
+  | 'resume'
+  | 'complete'
+  | 'block'
+
+export interface BridgeGoalUpdateAction extends BridgeActionMetadata {
+  kind: 'goalUpdate'
+  workspaceId: string
+  threadId: string
+  op: BridgeGoalUpdateOperation
+  objective?: string
+  reason?: string
+}
+
 export interface BridgeToggleMessagePinAction extends BridgeActionMetadata {
   kind: 'toggleMessagePin'
   workspaceId: string
@@ -486,6 +506,7 @@ export type BridgeActionPayload =
   | BridgeRemoveGuestParticipantAction
   | BridgeCreateSideChatAction
   | BridgeSetThreadNotesAction
+  | BridgeGoalUpdateAction
   | BridgeToggleMessagePinAction
   | BridgeRegisterApnsTokenAction
   | BridgeSetYoloModeAction
@@ -603,6 +624,7 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'removeGuestParticipant':
     case 'createSideChat':
     case 'setThreadNotes':
+    case 'goalUpdate':
     case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
@@ -661,6 +683,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'removeGuestParticipant':
     case 'createSideChat':
     case 'setThreadNotes':
+    case 'goalUpdate':
     case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
@@ -720,6 +743,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'removeGuestParticipant':
     case 'createSideChat':
     case 'setThreadNotes':
+    case 'goalUpdate':
     case 'toggleMessagePin':
     case 'setYoloMode':
     case 'togglePinChat':
@@ -882,6 +906,10 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isSetThreadNotes(parsed)
         ? (parsed as unknown as BridgeSetThreadNotesAction)
         : { kind: 'unknown', rawKind: 'setThreadNotes', raw: parsed }
+    case 'goalUpdate':
+      return isGoalUpdate(parsed)
+        ? (parsed as unknown as BridgeGoalUpdateAction)
+        : { kind: 'unknown', rawKind: 'goalUpdate', raw: parsed }
     case 'toggleMessagePin':
       return isToggleMessagePin(parsed)
         ? (parsed as unknown as BridgeToggleMessagePinAction)
@@ -1202,6 +1230,41 @@ function isEnsembleQueuePrompt(v: Record<string, unknown>): boolean {
 function isSetThreadNotes(v: Record<string, unknown>): boolean {
   return (
     isWorkspaceThreadAction(v) && typeof v.notes === 'string' && v.notes.length <= 20_000
+  )
+}
+
+function isGoalUpdate(v: Record<string, unknown>): boolean {
+  const op = v.op
+  if (
+    !isWorkspaceThreadAction(v) ||
+    !(
+      op === 'set' ||
+      op === 'edit' ||
+      op === 'clear' ||
+      op === 'pause' ||
+      op === 'resume' ||
+      op === 'complete' ||
+      op === 'block'
+    )
+  ) {
+    return false
+  }
+  if (
+    (op === 'set' || op === 'edit') &&
+    !(
+      typeof v.objective === 'string' &&
+      v.objective.trim().length > 0 &&
+      v.objective.length <= BRIDGE_GOAL_OBJECTIVE_MAX_CHARS
+    )
+  ) {
+    return false
+  }
+  return (
+    v.objective === undefined ||
+    (typeof v.objective === 'string' && v.objective.length <= BRIDGE_GOAL_OBJECTIVE_MAX_CHARS)
+  ) && (
+    v.reason === undefined ||
+    (typeof v.reason === 'string' && v.reason.length <= BRIDGE_GOAL_REASON_MAX_CHARS)
   )
 }
 

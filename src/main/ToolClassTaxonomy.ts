@@ -78,6 +78,10 @@ export const READ_ONLY_TOOL_PRESET: ReadonlyArray<string> = Object.freeze([
   // shell / network), so a read-only run may do it. Mirrors the main-
   // participant behaviour for Codex / Claude / Kimi.
   'ask_user_question',
+  'goal_read',
+  'goal_update',
+  'goal_complete',
+  'goal_blocked',
   // 1.4.2 — read-only runs may publish goal-step checklists.
   'todo_write'
 ])
@@ -146,6 +150,11 @@ const ORCHESTRATION_TOOLS = new Set<string>([
   'ensemble_continue',
   'scout_brief',
   'blackboard_post',
+  // Persistent thread goal lifecycle (no workspace mutation).
+  'goal_read',
+  'goal_update',
+  'goal_complete',
+  'goal_blocked',
   // 1.4.2 — structured goal-step checklist (no workspace mutation).
   'todo_write'
 ])

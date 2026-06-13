@@ -25,6 +25,7 @@ import type {
   BridgeGithubPrStatusAction,
   BridgeGithubPrReadinessAction,
   BridgeGithubCreatePrAction,
+  BridgeGoalUpdateAction,
   BridgeTogglePinChatAction,
   BridgeTogglePinWorkspaceAction
 } from './BridgeActionPayload'
@@ -114,6 +115,13 @@ const sample = {
     workspaceId: 'ws-1',
     enabled: true
   } satisfies BridgeSetYoloModeAction,
+  goalUpdate: {
+    kind: 'goalUpdate',
+    workspaceId: 'ws-1',
+    threadId: 't-1',
+    op: 'set',
+    objective: 'Ship the mobile goal control'
+  } satisfies BridgeGoalUpdateAction,
   togglePinChat: {
     kind: 'togglePinChat',
     workspaceId: 'ws-1',
@@ -196,6 +204,7 @@ describe('NoopActionExecutor', () => {
       executor.executeEnsembleSteer(sample.ensembleSteer),
       executor.executeRegisterApnsToken(sample.registerApnsToken),
       executor.executeSetYoloMode(sample.setYoloMode),
+      executor.executeGoalUpdate(sample.goalUpdate),
       executor.executeTogglePinChat(sample.togglePinChat),
       executor.executeTogglePinWorkspace(sample.togglePinWorkspace),
       executor.executeWorkspaceFileList(sample.workspaceFileList),
@@ -221,12 +230,13 @@ describe('NoopActionExecutor', () => {
     expect(results[10].message).toContain('t-1')
     expect(results[11].message).toContain('pair-1')
     expect(results[12].message).toContain('true')
-    expect(results[13].message).toContain('chat-1')
-    expect(results[14].message).toContain('ws-1')
+    expect(results[13].message).toContain('t-1')
+    expect(results[14].message).toContain('chat-1')
     expect(results[15].message).toContain('ws-1')
-    expect(results[16].message).toContain('README.md')
+    expect(results[16].message).toContain('ws-1')
     expect(results[17].message).toContain('README.md')
-    expect(results[18].message).toContain('ws-1')
+    expect(results[18].message).toContain('README.md')
+    expect(results[19].message).toContain('ws-1')
   })
 })
 
@@ -554,6 +564,28 @@ describe('MainProcessActionExecutor session and pin controls', () => {
     const result = await executor.executeSetYoloMode(sample.setYoloMode)
     expect(result.executed).toBe(false)
     expect(result.message).toMatch(/session store unavailable/)
+  })
+
+  it('updates a thread goal through goalUpdateFn', async () => {
+    const goalUpdateFn = vi.fn().mockResolvedValue({
+      ok: true,
+      goal: { id: 'goal-1', status: 'active' }
+    })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, goalUpdateFn })
+    const result = await executor.executeGoalUpdate(sample.goalUpdate)
+    expect(goalUpdateFn).toHaveBeenCalledWith(sample.goalUpdate)
+    expect(result).toMatchObject({
+      executed: true,
+      data: { threadId: 't-1', goal: { id: 'goal-1', status: 'active' } }
+    })
+  })
+
+  it('surfaces goalUpdateFn decline reasons', async () => {
+    const goalUpdateFn = vi.fn().mockResolvedValue({ ok: false, reason: 'thread missing' })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, goalUpdateFn })
+    const result = await executor.executeGoalUpdate(sample.goalUpdate)
+    expect(result.executed).toBe(false)
+    expect(result.message).toBe('thread missing')
   })
 
   it('updates a chat pin through togglePinChatFn', async () => {

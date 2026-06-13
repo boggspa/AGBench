@@ -1,4 +1,5 @@
 import { startTransition, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
@@ -62,8 +63,18 @@ import {
   SideChatLifecycleState,
   PinnedMessageGroup,
   PinnedMessageSummary,
-  AuditRunRecord
+  AuditRunRecord,
+  ActiveGoal,
+  ActiveGoalStatus
 } from '../../main/store/types'
+import {
+  activeGoalModeLabel,
+  createActiveGoal,
+  isUnfinishedActiveGoal,
+  normalizeActiveGoalObjective,
+  resolveActiveGoalMode,
+  updateActiveGoalLifecycle
+} from '../../main/GoalState'
 import type { NativeCapabilitySnapshot } from '../../main/NativeCapabilities'
 import {
   canonicalizeExternalPathGrantMetadata,
@@ -226,6 +237,7 @@ import {
   ExclamationShieldIcon,
   FileMenuSelectionIcon,
   GhostCompanionIcon,
+  GoalSymbolIcon,
   InfoCircleIcon,
   LinkCircleSymbolIcon,
   ModelSymbolIcon,
@@ -2124,6 +2136,15 @@ function App(): React.JSX.Element {
   const [slashMenuOpen, setSlashMenuOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
   const slashAnchorIndexRef = useRef<number | null>(null)
+  const [goalPopoverOpen, setGoalPopoverOpen] = useState(false)
+  const [goalDraft, setGoalDraft] = useState('')
+  const [goalEditing, setGoalEditing] = useState(false)
+  const goalButtonRef = useRef<HTMLButtonElement | null>(null)
+  const goalPopoverRef = useRef<HTMLDivElement | null>(null)
+  const [goalPopoverPosition, setGoalPopoverPosition] = useState<{
+    left: number
+    top: number
+  } | null>(null)
   const adapterRef = useRef<GeminiStreamAdapter | null>(null)
   const activeRunsRef = useRef<Map<string, ActiveRunContext>>(new Map())
   // Phase K1 — short-window completion memory. The 07d6811 stream-safe
@@ -11866,6 +11887,222 @@ function App(): React.JSX.Element {
     })
   }
 
+  const currentActiveGoal = currentChat?.activeGoal || null
+  const currentGoalMode =
+    currentActiveGoal?.mode ||
+    resolveActiveGoalMode(currentProvider, {
+      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+    })
+  const currentGoalModeLabel = activeGoalModeLabel(currentGoalMode)
+  const currentGoalStatus = currentActiveGoal?.status || 'empty'
+  const currentGoalButtonTitle = currentActiveGoal
+    ? `${currentGoalModeLabel} · ${currentActiveGoal.status}: ${currentActiveGoal.objective}`
+    : `${currentGoalModeLabel} · Set an active goal`
+
+  const persistGoalForCurrentChat = (nextGoal: ActiveGoal | null): void => {
+    const chat = currentChat
+    if (!chat) return
+    const updated: ChatRecord = nextGoal
+      ? {
+          ...chat,
+          activeGoal: nextGoal,
+          updatedAt: Date.now()
+        }
+      : {
+          ...chat,
+          updatedAt: Date.now()
+        }
+    if (!nextGoal) {
+      delete updated.activeGoal
+    }
+    chatByIdRef.current.set(updated.appChatId, updated)
+    setCurrentChat(updated)
+    setChats((prev) => mergeChatRecord(prev, updated))
+    void window.api.saveChat(updated).catch((err) => {
+      console.error('[goal] saveChat failed', err)
+    })
+  }
+
+  const setGoalFromObjective = (rawObjective: string, options: { confirmReplace?: boolean } = {}) => {
+    const objective = normalizeActiveGoalObjective(rawObjective)
+    const existingGoal = currentActiveGoal
+    if (!objective) {
+      window.alert('Type a goal objective first.')
+      return
+    }
+    if (
+      options.confirmReplace !== false &&
+      existingGoal &&
+      existingGoal.status !== 'completed' &&
+      existingGoal.objective.trim() !== objective
+    ) {
+      const confirmed = window.confirm(
+        'Replace the current active goal?\n\nThe existing goal will stop steering this chat.'
+      )
+      if (!confirmed) return
+    }
+    const now = new Date()
+    const mode = resolveActiveGoalMode(currentProvider, {
+      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+    })
+    const goal: ActiveGoal = existingGoal
+      ? {
+          ...existingGoal,
+          objective,
+          provider: currentProvider,
+          mode,
+          status: existingGoal.status === 'completed' ? 'active' : existingGoal.status,
+          updatedAt: now.toISOString()
+        }
+      : createActiveGoal(currentProvider, objective, {
+          now,
+          codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+        })
+    if (existingGoal?.status === 'completed') {
+      delete goal.completedAt
+      delete goal.completedSummary
+    }
+    persistGoalForCurrentChat(goal)
+    setGoalDraft(goal.objective)
+    setGoalEditing(false)
+    setGoalPopoverOpen(true)
+  }
+
+  const updateCurrentGoalStatus = (status: ActiveGoalStatus, reason?: string): void => {
+    if (!currentActiveGoal) {
+      window.alert('No active goal is set for this chat.')
+      return
+    }
+    const nextGoal = updateActiveGoalLifecycle(currentActiveGoal, status, reason)
+    persistGoalForCurrentChat(nextGoal)
+    setGoalDraft(nextGoal.objective)
+    setGoalEditing(false)
+  }
+
+  const clearCurrentGoal = (): void => {
+    if (!currentActiveGoal) return
+    if (isUnfinishedActiveGoal(currentActiveGoal)) {
+      const confirmed = window.confirm('Clear the current active goal? This stops goal steering.')
+      if (!confirmed) return
+    }
+    persistGoalForCurrentChat(null)
+    setGoalDraft('')
+    setGoalEditing(false)
+    setGoalPopoverOpen(false)
+  }
+
+  const updateGoalPopoverPosition = useCallback((): void => {
+    const trigger = goalButtonRef.current
+    if (!trigger) {
+      setGoalPopoverPosition(null)
+      return
+    }
+    const margin = 8
+    const gap = 8
+    const rect = trigger.getBoundingClientRect()
+    const popover = goalPopoverRef.current
+    const fallbackWidth = Math.min(340, Math.max(240, window.innerWidth - margin * 2))
+    const width = Math.min(popover?.offsetWidth || fallbackWidth, window.innerWidth - margin * 2)
+    const height = Math.min(popover?.offsetHeight || 240, window.innerHeight - margin * 2)
+    let left = rect.left
+    if (left + width + margin > window.innerWidth) {
+      left = window.innerWidth - width - margin
+    }
+    left = Math.max(margin, left)
+
+    let top = rect.top - height - gap
+    if (top < margin) {
+      top = rect.bottom + gap
+      if (top + height + margin > window.innerHeight) {
+        top = Math.max(margin, window.innerHeight - height - margin)
+      }
+    }
+
+    setGoalPopoverPosition({
+      left: Math.round(left),
+      top: Math.round(top)
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!goalPopoverOpen) {
+      setGoalPopoverPosition(null)
+      return
+    }
+    updateGoalPopoverPosition()
+    const frame = window.requestAnimationFrame(updateGoalPopoverPosition)
+    return () => window.cancelAnimationFrame(frame)
+  }, [
+    goalPopoverOpen,
+    goalEditing,
+    goalDraft,
+    currentActiveGoal?.id,
+    currentActiveGoal?.status,
+    currentActiveGoal?.objective,
+    updateGoalPopoverPosition
+  ])
+
+  useEffect(() => {
+    if (!goalPopoverOpen) return
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null
+      if (!target) return
+      if (goalButtonRef.current?.contains(target)) return
+      if (goalPopoverRef.current?.contains(target)) return
+      setGoalPopoverOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setGoalPopoverOpen(false)
+    }
+    document.addEventListener('mousedown', handlePointerDown, true)
+    document.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('resize', updateGoalPopoverPosition)
+    window.addEventListener('scroll', updateGoalPopoverPosition, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true)
+      document.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('resize', updateGoalPopoverPosition)
+      window.removeEventListener('scroll', updateGoalPopoverPosition, true)
+    }
+  }, [goalPopoverOpen, updateGoalPopoverPosition])
+
+  const openGoalPopover = (editing = false): void => {
+    setGoalDraft(currentActiveGoal?.objective || prompt.trim())
+    setGoalEditing(editing)
+    setGoalPopoverOpen(true)
+  }
+
+  const handleGoalSlashCommand = (): void => {
+    const trimmed = prompt.trim()
+    if (trimmed && !/^\/goal\b/i.test(trimmed)) {
+      openGoalPopover(false)
+      return
+    }
+    const args = trimmed.replace(/^\/goal\b/i, '').trim()
+    if (!args) {
+      openGoalPopover(false)
+      return
+    }
+    const [verbToken, ...restTokens] = args.split(/\s+/)
+    const verb = verbToken.toLowerCase()
+    const remainder = restTokens.join(' ').trim()
+    if (verb === 'pause') {
+      updateCurrentGoalStatus('paused', remainder)
+    } else if (verb === 'resume') {
+      updateCurrentGoalStatus('active', remainder)
+    } else if (verb === 'clear') {
+      clearCurrentGoal()
+    } else if (verb === 'complete' || verb === 'done') {
+      updateCurrentGoalStatus('completed', remainder)
+    } else if (verb === 'blocked' || verb === 'block') {
+      updateCurrentGoalStatus('blocked', remainder || 'Blocked by user slash command.')
+    } else if (verb === 'edit') {
+      openGoalPopover(true)
+    } else {
+      setGoalFromObjective(args)
+    }
+  }
+
   const openSideChatFromSlashCommand = (sideCommand: SideSlashCommand): void => {
     if (currentChat && currentChatIsLinkedChild) {
       void openCurrentSideChatPresentation(
@@ -15913,6 +16150,18 @@ function App(): React.JSX.Element {
               message: auditActionErrorMessage('Audit start failed.', err)
             })
           })
+      }
+    },
+    {
+      kind: 'action',
+      id: 'taskwraith-goal',
+      command: '/goal',
+      label: currentActiveGoal ? 'Manage active goal' : 'Set active goal',
+      description:
+        'Set or manage this chat’s persistent objective. Usage: /goal <objective>, /goal pause, /goal resume, /goal clear.',
+      group: 'Custom',
+      run: () => {
+        handleGoalSlashCommand()
       }
     },
     {
@@ -20078,17 +20327,162 @@ function App(): React.JSX.Element {
                   data-resumable={!attachedWindow && resumeAppWatchSnapshot ? 'true' : 'false'}
                 >
                   <ScreenWatchSymbolIcon />
-                  {attachedWindow?.streaming && (
-                    <span className="composer-screen-watch-button-dot" aria-hidden="true" />
-                  )}
-                  {!attachedWindow && resumeAppWatchSnapshot && (
-                    <span
-                      className="composer-screen-watch-button-dot composer-screen-watch-button-dot--resume"
-                      aria-hidden="true"
-                    />
-                  )}
-                </button>
-                {/* 1.0.5-AR12c — Workspace switcher in its new home.
+	                  {attachedWindow?.streaming && (
+	                    <span className="composer-screen-watch-button-dot" aria-hidden="true" />
+	                  )}
+	                  {!attachedWindow && resumeAppWatchSnapshot && (
+	                    <span
+	                      className="composer-screen-watch-button-dot composer-screen-watch-button-dot--resume"
+	                      aria-hidden="true"
+	                    />
+	                  )}
+	                </button>
+	                <span className="composer-goal-control-wrap">
+	                  <button
+	                    ref={goalButtonRef}
+	                    type="button"
+	                    className={`composer-goal-button is-${currentGoalStatus}${goalPopoverOpen ? ' is-open' : ''}`}
+	                    onClick={() => {
+	                      if (!currentChat) return
+	                      if (goalPopoverOpen) {
+	                        setGoalPopoverOpen(false)
+	                        return
+	                      }
+	                      openGoalPopover(false)
+	                    }}
+	                    title={currentGoalButtonTitle}
+	                    aria-label={
+	                      currentActiveGoal
+	                        ? `Manage active goal: ${currentActiveGoal.objective}`
+	                        : 'Set active goal'
+	                    }
+	                    disabled={!currentChat}
+	                    data-goal-status={currentGoalStatus}
+	                  >
+	                    <GoalSymbolIcon />
+	                    {(currentActiveGoal?.status === 'active' ||
+	                      currentActiveGoal?.status === 'paused' ||
+	                      currentActiveGoal?.status === 'blocked') && (
+	                      <span className="composer-goal-button-dot" aria-hidden="true" />
+	                    )}
+	                    {currentActiveGoal?.status === 'completed' && (
+	                      <span className="composer-goal-button-check" aria-hidden="true">
+	                        ✓
+	                      </span>
+	                    )}
+	                  </button>
+	                  {goalPopoverOpen && currentChat && typeof document !== 'undefined' && createPortal(
+	                    <div
+	                      ref={goalPopoverRef}
+	                      className={`composer-goal-popover shell-${appearance.composerStyle}`}
+	                      style={{
+	                        left: goalPopoverPosition ? `${goalPopoverPosition.left}px` : '0px',
+	                        top: goalPopoverPosition ? `${goalPopoverPosition.top}px` : '0px',
+	                        visibility: goalPopoverPosition ? 'visible' : 'hidden'
+	                      }}
+	                      role="dialog"
+	                      aria-label="Active goal"
+	                    >
+	                      <div className="composer-goal-popover-header">
+	                        <span className="composer-goal-popover-title">
+	                          {currentActiveGoal ? 'Active goal' : 'Set goal'}
+	                        </span>
+	                        <span className="composer-goal-mode-chip">{currentGoalModeLabel}</span>
+	                      </div>
+	                      {!currentActiveGoal || goalEditing ? (
+	                        <>
+	                          <textarea
+	                            className="composer-goal-textarea"
+	                            value={goalDraft}
+	                            onChange={(event) => setGoalDraft(event.target.value)}
+	                            placeholder="Describe the objective and stopping condition"
+	                            rows={3}
+	                            maxLength={4000}
+	                          />
+	                          <div className="composer-goal-popover-actions">
+	                            <button
+	                              type="button"
+	                              className="composer-goal-action primary"
+	                              onClick={() => setGoalFromObjective(goalDraft)}
+	                            >
+	                              {currentActiveGoal ? 'Save' : 'Set goal'}
+	                            </button>
+	                            <button
+	                              type="button"
+	                              className="composer-goal-action"
+	                              onClick={() => {
+	                                setGoalEditing(false)
+	                                setGoalDraft(currentActiveGoal?.objective || '')
+	                                if (!currentActiveGoal) setGoalPopoverOpen(false)
+	                              }}
+	                            >
+	                              Cancel
+	                            </button>
+	                          </div>
+	                        </>
+	                      ) : (
+	                        <>
+	                          <div className={`composer-goal-status is-${currentActiveGoal.status}`}>
+	                            {currentActiveGoal.status}
+	                          </div>
+	                          <p className="composer-goal-objective">{currentActiveGoal.objective}</p>
+	                          {currentActiveGoal.blockedReason && (
+	                            <p className="composer-goal-reason">
+	                              {currentActiveGoal.blockedReason}
+	                            </p>
+	                          )}
+	                          <div className="composer-goal-popover-actions">
+	                            <button
+	                              type="button"
+	                              className="composer-goal-action"
+	                              onClick={() => {
+	                                setGoalDraft(currentActiveGoal.objective)
+	                                setGoalEditing(true)
+	                              }}
+	                            >
+	                              Edit
+	                            </button>
+	                            {currentActiveGoal.status === 'paused' ? (
+	                              <button
+	                                type="button"
+	                                className="composer-goal-action"
+	                                onClick={() => updateCurrentGoalStatus('active')}
+	                              >
+	                                Resume
+	                              </button>
+	                            ) : currentActiveGoal.status !== 'completed' ? (
+	                              <button
+	                                type="button"
+	                                className="composer-goal-action"
+	                                onClick={() => updateCurrentGoalStatus('paused')}
+	                              >
+	                                Pause
+	                              </button>
+	                            ) : null}
+	                            {currentActiveGoal.status !== 'completed' && (
+	                              <button
+	                                type="button"
+	                                className="composer-goal-action primary"
+	                                onClick={() => updateCurrentGoalStatus('completed')}
+	                              >
+	                                Mark complete
+	                              </button>
+	                            )}
+	                            <button
+	                              type="button"
+	                              className="composer-goal-action danger"
+	                              onClick={clearCurrentGoal}
+	                            >
+	                              Clear
+	                            </button>
+	                          </div>
+	                        </>
+	                      )}
+	                    </div>,
+	                    document.body
+	                  )}
+	                </span>
+	                {/* 1.0.5-AR12c — Workspace switcher in its new home.
                      Sits between the timecodes / Screen Watch cluster
                      on the left and the token tally on the right. The
                      `composer-workspace-button` class gets a

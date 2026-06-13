@@ -2510,6 +2510,8 @@ public struct ChangesAttachedRow: View {
 public struct TelemetryFooterRail: View {
     let run: RemoteThreadSnapshot.RunSummary?
     let workspaceName: String?
+    let activeGoal: RemoteActiveGoal?
+    let onGoalUpdate: ((String, String?, String?) -> Void)?
     /// Allowlisted workspaces for the secondary-grant picker (empty = the
     /// rail renders the plain read-only label).
     var workspaceOptions: [(id: String, name: String)] = []
@@ -2521,10 +2523,14 @@ public struct TelemetryFooterRail: View {
         run: RemoteThreadSnapshot.RunSummary?, workspaceName: String?,
         workspaceOptions: [(id: String, name: String)] = [],
         primaryWorkspaceId: String? = nil,
-        secondaryWorkspaceId: Binding<String?>? = nil
+        secondaryWorkspaceId: Binding<String?>? = nil,
+        activeGoal: RemoteActiveGoal? = nil,
+        onGoalUpdate: ((String, String?, String?) -> Void)? = nil
     ) {
         self.run = run
         self.workspaceName = workspaceName
+        self.activeGoal = activeGoal
+        self.onGoalUpdate = onGoalUpdate
         self.workspaceOptions = workspaceOptions
         self.primaryWorkspaceId = primaryWorkspaceId
         self.secondaryWorkspaceId = secondaryWorkspaceId
@@ -2634,6 +2640,9 @@ public struct TelemetryFooterRail: View {
                         .font(.system(size: 11, design: .monospaced))
                 }
                 .foregroundStyle(isRunning ? TWTheme.chroma1 : TWTheme.textTertiary)
+                if let onGoalUpdate {
+                    GoalRailControl(goal: activeGoal, onUpdate: onGoalUpdate)
+                }
                 Spacer()
                 if let workspaceName {
                     if let binding = secondaryWorkspaceId, !workspaceOptions.isEmpty {
@@ -2696,6 +2705,159 @@ public struct TelemetryFooterRail: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
+        }
+    }
+}
+
+private struct GoalRailControl: View {
+    let goal: RemoteActiveGoal?
+    let onUpdate: (String, String?, String?) -> Void
+
+    @State private var presented = false
+    @State private var editing = false
+    @State private var draft = ""
+    @State private var reason = ""
+
+    private var status: String { goal?.status ?? "empty" }
+
+    @MainActor
+    private var accent: Color {
+        switch goal?.status {
+        case "active": return TWTheme.chroma1
+        case "paused": return TWTheme.statusAttention
+        case "blocked": return TWTheme.statusFailed
+        case "completed": return TWTheme.statusSuccess
+        default: return TWTheme.textTertiary
+        }
+    }
+
+    private var modeLabel: String {
+        switch goal?.mode {
+        case "codex_native": return "Codex native"
+        case "claude_native": return "Claude native"
+        case "ollama_harness": return "Ollama harness"
+        case "taskwraith_steered": return "TaskWraith-steered"
+        default: return "Goal"
+        }
+    }
+
+    var body: some View {
+        Button {
+            draft = goal?.objective ?? ""
+            reason = ""
+            editing = goal == nil
+            presented = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: goal?.status == "completed" ? "checkmark.circle.fill" : "scope")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 18, height: 18)
+                    .background(accent.opacity(goal == nil ? 0 : 0.12), in: RoundedRectangle(cornerRadius: 5))
+                if goal?.status == "active" || goal?.status == "paused" || goal?.status == "blocked" {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 5, height: 5)
+                        .offset(x: 2, y: -2)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(goal == nil ? "Set active goal" : "Manage active goal")
+        .popover(isPresented: $presented) {
+            popoverBody
+                .frame(width: 320)
+                .padding(12)
+                .background(TWTheme.surface2)
+        }
+    }
+
+    @ViewBuilder
+    private var popoverBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(goal == nil ? "Set goal" : "Active goal")
+                    .font(.headline)
+                    .foregroundStyle(TWTheme.textPrimary)
+                Spacer()
+                Text(modeLabel)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(TWTheme.surface3, in: Capsule())
+                    .foregroundStyle(TWTheme.textSecondary)
+            }
+
+            if goal == nil || editing {
+                TextEditor(text: $draft)
+                    .font(.callout)
+                    .foregroundStyle(TWTheme.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 86)
+                    .padding(6)
+                    .background(TWTheme.surface3, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(TWTheme.border))
+                HStack(spacing: 8) {
+                    Button(goal == nil ? "Set goal" : "Save") {
+                        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        onUpdate(goal == nil ? "set" : "edit", trimmed, nil)
+                        editing = false
+                        presented = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Cancel") {
+                        editing = false
+                        if goal == nil { presented = false }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } else if let goal {
+                Text(status.capitalized)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(accent.opacity(0.14), in: Capsule())
+                    .foregroundStyle(accent)
+                Text(goal.objective)
+                    .font(.callout)
+                    .foregroundStyle(TWTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let blockedReason = goal.blockedReason, !blockedReason.isEmpty {
+                    Text(blockedReason)
+                        .font(.caption)
+                        .foregroundStyle(TWTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                TextField("Reason (optional)", text: $reason)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 8) {
+                    Button("Edit") {
+                        draft = goal.objective
+                        editing = true
+                    }
+                    .buttonStyle(.bordered)
+                    if goal.status == "paused" {
+                        Button("Resume") { onUpdate("resume", nil, reason) }
+                            .buttonStyle(.bordered)
+                    } else if goal.status != "completed" {
+                        Button("Pause") { onUpdate("pause", nil, reason) }
+                            .buttonStyle(.bordered)
+                    }
+                    if goal.status != "completed" {
+                        Button("Complete") { onUpdate("complete", nil, reason) }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                HStack(spacing: 8) {
+                    if goal.status != "blocked" && goal.status != "completed" {
+                        Button("Block") {
+                            onUpdate("block", nil, reason.isEmpty ? "Blocked from iPhone." : reason)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    Button("Clear", role: .destructive) { onUpdate("clear", nil, nil) }
+                        .buttonStyle(.bordered)
+                }
+            }
         }
     }
 }
@@ -4193,7 +4355,11 @@ struct MiniThreadView: View {
                 Rectangle().fill(TWTheme.border).frame(height: 1)
                 TelemetryFooterRail(
                     run: snapshot?.runSummary,
-                    workspaceName: model.workspaceName(for: card.workspaceId))
+                    workspaceName: model.workspaceName(for: card.workspaceId),
+                    activeGoal: card.activeGoal,
+                    onGoalUpdate: { op, objective, reason in
+                        model.updateGoal(card, op: op, objective: objective, reason: reason)
+                    })
             }
             .composerShellGlass()
         }

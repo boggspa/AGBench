@@ -472,7 +472,11 @@ describe('ollamaNativeToolDefinitions', () => {
       'test_result_summary',
       'web_search',
       'web_fetch',
-      'ask_user_question'
+      'ask_user_question',
+      'goal_read',
+      'goal_update',
+      'goal_complete',
+      'goal_blocked'
     ])
     const webSearch = defs.find((def) => def.function.name === 'web_search')
     expect(webSearch?.type).toBe('function')
@@ -525,9 +529,15 @@ describe('Ollama tool tiers', () => {
       'test_result_summary',
       'web_search',
       'web_fetch',
-      'ask_user_question'
+      'ask_user_question',
+      'goal_read',
+      'goal_update',
+      'goal_complete',
+      'goal_blocked'
     ])
     expect(ollamaToolAllowedInTier('ask_user_question', 'read_only')).toBe(true)
+    expect(ollamaToolAllowedInTier('goal_read', 'read_only')).toBe(true)
+    expect(ollamaToolAllowedInTier('goal_complete', 'read_only')).toBe(true)
     expect(ollamaToolAllowedInTier('git_status', 'read_only')).toBe(true)
     expect(ollamaToolAllowedInTier('test_result_summary', 'read_only')).toBe(true)
     expect(ollamaToolAllowedInTier('write_file', 'read_only')).toBe(false)

@@ -556,6 +556,8 @@ export class BridgeActionRouter {
         return this.executor.executeCreateSideChat(payload)
       case 'setThreadNotes':
         return this.executor.executeSetThreadNotes(payload)
+      case 'goalUpdate':
+        return this.executor.executeGoalUpdate(payload)
       case 'toggleMessagePin':
         return this.executor.executeToggleMessagePin(payload)
       case 'registerApnsToken':
@@ -994,6 +996,7 @@ function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapa
     // powerful than starting runs — gated under startTurn so the default
     // read-write entry covers them.
     case 'setThreadNotes':
+    case 'goalUpdate':
     case 'toggleMessagePin':
     // Guest + side-chat management creates/configures threads — same
     // write class as starting turns.

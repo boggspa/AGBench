@@ -91,6 +91,12 @@ export const TASKWRAITH_MCP_TOOLS = [
   // Critical for vague prompts, mid-task decision forks, and plan-mode
   // clarification alike. Universally auto-allowed.
   'ask_user_question',
+  // Persistent thread goal lifecycle. The user owns objective set/clear via
+  // /goal and composer controls; agents may read and update lifecycle only.
+  'goal_read',
+  'goal_update',
+  'goal_complete',
+  'goal_blocked',
   // 1.4.2 — universal goal-step / todo checklist surface. Agents call this
   // to publish a structured task list the renderer shows as a checklist
   // card (and pins the current step in the live activity viewport).

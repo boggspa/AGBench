@@ -459,7 +459,11 @@ struct ThreadDetailView: View {
                                 (id: $0.id, name: $0.displayName)
                             },
                             primaryWorkspaceId: card.workspaceId,
-                            secondaryWorkspaceId: $secondaryWorkspaceId)
+                            secondaryWorkspaceId: $secondaryWorkspaceId,
+                            activeGoal: card.activeGoal,
+                            onGoalUpdate: { op, objective, reason in
+                                model.updateGoal(card, op: op, objective: objective, reason: reason)
+                            })
                     }
                     .composerShellGlass()
                     .padding(.horizontal, 10).padding(.bottom, 6)

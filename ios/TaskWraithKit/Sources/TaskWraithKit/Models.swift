@@ -161,6 +161,7 @@ public struct RemoteTaskCard: Codable, Sendable {
     public let runId: String?
     public let pendingApprovalCount: Int?
     public let pendingQuestionCount: Int?
+    public let activeGoal: RemoteActiveGoal?
     public let capabilities: RemoteTaskCapabilities?
 
     public var isEnsemble: Bool { chatKind == "ensemble" }
@@ -198,8 +199,30 @@ public struct RemoteTaskCard: Codable, Sendable {
             runId: nil,
             pendingApprovalCount: nil,
             pendingQuestionCount: nil,
+            activeGoal: nil,
             capabilities: nil)
     }
+}
+
+public struct RemoteActiveGoal: Codable, Sendable, Hashable {
+    public let id: String
+    public let objective: String
+    public let status: String
+    public let mode: String
+    public let provider: String
+    public let createdAt: String
+    public let updatedAt: String
+    public let pausedAt: String?
+    public let blockedAt: String?
+    public let blockedReason: String?
+    public let completedAt: String?
+    public let completedSummary: String?
+    public let lastStatusReason: String?
+
+    public var isActive: Bool { status == "active" }
+    public var isPaused: Bool { status == "paused" }
+    public var isBlocked: Bool { status == "blocked" }
+    public var isCompleted: Bool { status == "completed" }
 }
 
 public struct RemoteTaskCapabilities: Codable, Sendable, Hashable {
@@ -737,6 +760,20 @@ public enum BridgeAction {
             "kind": "setThreadNotes", "actionId": actionId,
             "workspaceId": workspaceId, "threadId": threadId, "notes": notes,
         ])
+    }
+
+    public static func goalUpdate(
+        workspaceId: String, threadId: String, op: String,
+        objective: String? = nil, reason: String? = nil,
+        actionId: String = UUID().uuidString
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": "goalUpdate", "actionId": actionId,
+            "workspaceId": workspaceId, "threadId": threadId, "op": op,
+        ]
+        if let objective, !objective.isEmpty { payload["objective"] = objective }
+        if let reason, !reason.isEmpty { payload["reason"] = reason }
+        return encode(payload)
     }
 
     public static func toggleMessagePin(

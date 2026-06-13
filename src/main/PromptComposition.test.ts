@@ -202,6 +202,60 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.applicationLog).toContain('provider/session history is authoritative')
   })
 
+  it('injects an active thread goal even when provider session history is authoritative', () => {
+    const result = composeRunPrompt({
+      provider: 'codex',
+      finalPrompt: 'Continue.',
+      messages: [message({ role: 'user', content: 'Earlier request.' })],
+      chatContextTurns: 6,
+      resumeSessionId: 'codex-session-1',
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Codex',
+      activeGoal: {
+        id: 'goal-1',
+        objective: 'Finish the composer goal affordance with tests.',
+        status: 'active',
+        mode: 'taskwraith_steered',
+        provider: 'codex',
+        createdAt: '2026-06-13T12:00:00Z',
+        updatedAt: '2026-06-13T12:00:00Z'
+      }
+    })
+
+    expect(result.contextualPrompt).toContain('<taskwraith_active_goal>')
+    expect(result.contextualPrompt).toContain('Finish the composer goal affordance with tests.')
+    expect(result.contextualPrompt).toContain('Current user request:\nContinue.')
+    expect(result.applicationLog).toContain('active goal injected')
+  })
+
+  it('does not inject paused active goals', () => {
+    const result = composeRunPrompt({
+      provider: 'codex',
+      finalPrompt: 'Continue.',
+      messages: [],
+      chatContextTurns: 6,
+      resumeSessionId: 'codex-session-1',
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Codex',
+      activeGoal: {
+        id: 'goal-1',
+        objective: 'Paused objective.',
+        status: 'paused',
+        mode: 'taskwraith_steered',
+        provider: 'codex',
+        createdAt: '2026-06-13T12:00:00Z',
+        updatedAt: '2026-06-13T12:00:00Z'
+      }
+    })
+
+    expect(result.contextualPrompt).not.toContain('<taskwraith_active_goal>')
+    expect(result.contextualPrompt).not.toContain('Paused objective.')
+  })
+
   it('injects guest participant replies as labeled peer context', () => {
     const result = composeRunPrompt({
       provider: 'codex',

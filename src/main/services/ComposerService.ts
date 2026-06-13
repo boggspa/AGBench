@@ -174,6 +174,7 @@ export class ComposerService {
       providerLabel: getProviderLabel(provider),
       nativeSubAgentRequests: settings.nativeSubAgentRequests,
       guestParticipant: chat.guestParticipant,
+      activeGoal: chat.activeGoal,
       ...(provider === 'ollama'
         ? {
             ollamaToolControlTier: effectiveOllamaToolControlTier(

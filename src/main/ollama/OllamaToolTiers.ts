@@ -13,7 +13,11 @@ export const OLLAMA_READ_TOOL_NAMES = [
   'test_result_summary',
   'web_search',
   'web_fetch',
-  'ask_user_question'
+  'ask_user_question',
+  'goal_read',
+  'goal_update',
+  'goal_complete',
+  'goal_blocked'
 ] as const satisfies readonly OllamaToolName[]
 
 export const OLLAMA_FILE_EDIT_TOOL_NAMES = [

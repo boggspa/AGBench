@@ -1,4 +1,5 @@
 import type {
+  ActiveGoal,
   AppSettings,
   AppearanceMode,
   ChatRecord,
@@ -35,6 +36,22 @@ export type RemoteTaskStatus =
   | 'success'
   | 'failed'
   | 'cancelled'
+
+export interface RemoteActiveGoal {
+  id: string
+  objective: string
+  status: ActiveGoal['status']
+  mode: ActiveGoal['mode']
+  provider: ProviderId
+  createdAt: string
+  updatedAt: string
+  pausedAt?: string
+  blockedAt?: string
+  blockedReason?: string
+  completedAt?: string
+  completedSummary?: string
+  lastStatusReason?: string
+}
 
 export interface RemoteProjectionEnvelope<TPayload = unknown> {
   schemaVersion: 1
@@ -85,6 +102,7 @@ export interface RemoteTaskCard {
   previewTruncated: boolean
   pendingApprovalCount: number
   pendingQuestionCount: number
+  activeGoal?: RemoteActiveGoal
   capabilities?: RemoteTaskCapabilities
   diffSummary?: MobileDiffSummary
   ensembleState?: RemoteEnsembleState
@@ -525,6 +543,25 @@ function preferredColorSchemeForRemoteShell(theme: ThemeAppearance): RemoteShell
   return 'system'
 }
 
+function projectActiveGoal(goal?: ActiveGoal): RemoteActiveGoal | undefined {
+  if (!goal) return undefined
+  return {
+    id: goal.id,
+    objective: goal.objective,
+    status: goal.status,
+    mode: goal.mode,
+    provider: goal.provider,
+    createdAt: goal.createdAt,
+    updatedAt: goal.updatedAt,
+    ...(goal.pausedAt ? { pausedAt: goal.pausedAt } : {}),
+    ...(goal.blockedAt ? { blockedAt: goal.blockedAt } : {}),
+    ...(goal.blockedReason ? { blockedReason: goal.blockedReason } : {}),
+    ...(goal.completedAt ? { completedAt: goal.completedAt } : {}),
+    ...(goal.completedSummary ? { completedSummary: goal.completedSummary } : {}),
+    ...(goal.lastStatusReason ? { lastStatusReason: goal.lastStatusReason } : {})
+  }
+}
+
 export function buildRemoteTaskCard(
   chat: ChatRecord,
   options: BuildRemoteTaskCardOptions = {}
@@ -565,6 +602,8 @@ export function buildRemoteTaskCard(
   }
   if (latestRun?.startedAt) card.runStartedAt = latestRun.startedAt
   if (latestRun?.endedAt) card.runEndedAt = latestRun.endedAt
+  const activeGoal = projectActiveGoal(chat.activeGoal)
+  if (activeGoal) card.activeGoal = activeGoal
   if (options.capabilities) card.capabilities = options.capabilities
   const diffSummary = latestRun
     ? buildMobileDiffSummary(latestRun, {

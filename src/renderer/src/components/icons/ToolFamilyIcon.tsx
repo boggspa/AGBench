@@ -103,6 +103,10 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
     case 'workspace_symbols':
       return 'search'
     case 'codex_plan':
+    case 'goal_read':
+    case 'goal_update':
+    case 'goal_complete':
+    case 'goal_blocked':
     case 'todo_write':
     case 'todowrite':
     case 'update_todo_list':

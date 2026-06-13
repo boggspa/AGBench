@@ -826,6 +826,43 @@ describe('decodeBridgeActionPayload', () => {
         expect(payload.rawKind).toBe('ensembleCancelRound')
       }
     })
+
+    it('decodes goalUpdate as a workspace-bound chat control', () => {
+      const { payload } = decodeBridgeActionPayload(
+        encode({
+          kind: 'goalUpdate',
+          actionId: 'goal-1',
+          workspaceId: 'ws-1',
+          threadId: 'thread-1',
+          op: 'set',
+          objective: 'Finish the remote goal rail'
+        })
+      )
+      expect(payload.kind).toBe('goalUpdate')
+      if (payload.kind !== 'goalUpdate') throw new Error('expected goalUpdate')
+      expect(payload.objective).toBe('Finish the remote goal rail')
+      expect(workspaceIdFromPayload(payload)).toBe('ws-1')
+      expect(payloadRequiresWorkspaceGating(payload)).toBe(true)
+      expect(payloadIsMutating(payload)).toBe(true)
+    })
+
+    it('rejects malformed goalUpdate payloads', () => {
+      for (const variant of [
+        { kind: 'goalUpdate', workspaceId: 'ws-1', threadId: 't-1', op: 'set' },
+        {
+          kind: 'goalUpdate',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          op: 'edit',
+          objective: ' '
+        },
+        { kind: 'goalUpdate', workspaceId: 'ws-1', threadId: 't-1', op: 'unknown' }
+      ]) {
+        const { payload } = decodeBridgeActionPayload(encode(variant))
+        expect(payload.kind).toBe('unknown')
+        if (payload.kind === 'unknown') expect(payload.rawKind).toBe('goalUpdate')
+      }
+    })
   })
 
   describe('unknown / forward-compat', () => {
@@ -1124,6 +1161,7 @@ describe('payloadRequiresWorkspaceGating', () => {
       { kind: 'composerPrompt', workspaceId: 'w', threadId: 't', provider: 'gemini', text: 'x' },
       { kind: 'cancelRun', workspaceId: 'w', threadId: 't', provider: 'gemini', runId: 'r' },
       { kind: 'setYoloMode', workspaceId: 'w', enabled: false },
+      { kind: 'goalUpdate', workspaceId: 'w', threadId: 't', op: 'pause' },
       { kind: 'togglePinChat', workspaceId: 'w', appChatId: 'chat', pinned: true },
       { kind: 'togglePinWorkspace', workspaceId: 'w', pinned: true },
       { kind: 'ensembleCancelRound', workspaceId: 'w', threadId: 't', roundId: 'round' },
@@ -1198,6 +1236,14 @@ describe('payloadIsMutating', () => {
 
   it('classifies session and pin controls as mutating', () => {
     expect(payloadIsMutating({ kind: 'setYoloMode', workspaceId: 'w', enabled: true })).toBe(true)
+    expect(
+      payloadIsMutating({
+        kind: 'goalUpdate',
+        workspaceId: 'w',
+        threadId: 't',
+        op: 'complete'
+      })
+    ).toBe(true)
     expect(
       payloadIsMutating({
         kind: 'togglePinChat',

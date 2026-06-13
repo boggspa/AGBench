@@ -137,6 +137,10 @@ function makeStubExecutor(
       executed: true,
       message: 'ensembleSteer done'
     }),
+    executeGoalUpdate: make('executeGoalUpdate', {
+      executed: true,
+      message: 'goalUpdate done'
+    }),
     executeToggleMessagePin: make('executeToggleMessagePin', {
       executed: true,
       message: 'ensembleSteer done'

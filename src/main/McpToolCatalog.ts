@@ -1410,6 +1410,91 @@ export function createTaskWraithMcpToolDefinitions(): TaskWraithMcpToolDefinitio
       }
     },
     {
+      name: 'goal_read',
+      description:
+        'Read the active TaskWraith thread goal. A goal is the persistent objective and stopping condition for this chat; it is separate from todo_write checklists.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'goal_update',
+      description:
+        'Update the lifecycle status of the existing active TaskWraith goal without changing its objective. Use this for status transitions only; the user owns setting, replacing, and clearing the objective.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['active', 'paused', 'blocked', 'completed'],
+            description: 'New lifecycle status for the existing active goal.'
+          },
+          reason: {
+            type: 'string',
+            maxLength: 800,
+            description: 'Optional concise reason, blocker detail, or completion summary.'
+          }
+        },
+        required: ['status']
+      }
+    },
+    {
+      name: 'goal_complete',
+      description:
+        'Mark the existing active TaskWraith goal completed. Only call this when the objective has genuinely been achieved and verified; todo_write completion alone is not enough.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          summary: {
+            type: 'string',
+            maxLength: 800,
+            description: 'Optional concise completion summary or verification evidence.'
+          }
+        }
+      }
+    },
+    {
+      name: 'goal_blocked',
+      description:
+        'Mark the existing active TaskWraith goal blocked when meaningful progress requires user input or an external state change. Include a concrete blocker reason.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            maxLength: 800,
+            description: 'Concrete blocker reason.'
+          }
+        },
+        required: ['reason']
+      }
+    },
+    {
       // 1.4.2 — structured goal-step / todo checklist for every provider.
       // Renderer parses `todos[]` into a checklist card and pins the
       // current `in_progress` (or first `pending`) step in the live

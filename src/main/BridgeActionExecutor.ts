@@ -27,6 +27,7 @@ import type {
   BridgeRemoveGuestParticipantAction,
   BridgeCreateSideChatAction,
   BridgeSetThreadNotesAction,
+  BridgeGoalUpdateAction,
   BridgeToggleMessagePinAction,
   BridgeEnsembleWakeNowAction,
   BridgeQuestionRejectAction,
@@ -137,6 +138,7 @@ export interface BridgeActionExecutor {
     action: BridgeCreateSideChatAction
   ): Promise<BridgeActionExecutionResult>
   executeSetThreadNotes(action: BridgeSetThreadNotesAction): Promise<BridgeActionExecutionResult>
+  executeGoalUpdate(action: BridgeGoalUpdateAction): Promise<BridgeActionExecutionResult>
   executeToggleMessagePin(
     action: BridgeToggleMessagePinAction
   ): Promise<BridgeActionExecutionResult>
@@ -302,6 +304,9 @@ export class NoopActionExecutor implements BridgeActionExecutor {
     action: BridgeSetThreadNotesAction
   ): Promise<BridgeActionExecutionResult> {
     return notWired('setThreadNotes', action.threadId)
+  }
+  async executeGoalUpdate(action: BridgeGoalUpdateAction): Promise<BridgeActionExecutionResult> {
+    return notWired('goalUpdate', action.threadId)
   }
   async executeToggleMessagePin(
     action: BridgeToggleMessagePinAction
@@ -506,6 +511,11 @@ export interface MainProcessActionExecutorDependencies {
   removeGuestParticipantFn?: (action: BridgeRemoveGuestParticipantAction) => Promise<unknown>
   createSideChatFn?: (action: BridgeCreateSideChatAction) => Promise<unknown>
   setThreadNotesFn?: (action: BridgeSetThreadNotesAction) => Promise<unknown>
+  goalUpdateFn?: (action: BridgeGoalUpdateAction) => Promise<{
+    ok: boolean
+    goal?: unknown
+    reason?: string
+  }>
   toggleMessagePinFn?: (action: BridgeToggleMessagePinAction) => Promise<unknown>
   log?: (line: string) => void
 }
@@ -1163,6 +1173,30 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       this.deps.setThreadNotesFn,
       action
     )
+  }
+
+  async executeGoalUpdate(action: BridgeGoalUpdateAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.goalUpdateFn) {
+      this.log(
+        `[BridgeActionExecutor] goalUpdate has no goalUpdateFn — threadId=${action.threadId}`
+      )
+      return notWired('goalUpdate', action.threadId)
+    }
+    try {
+      const result = await this.deps.goalUpdateFn(action)
+      if (!result.ok) {
+        return { executed: false, message: result.reason || 'Goal update was declined' }
+      }
+      return {
+        executed: true,
+        message: 'Goal updated.',
+        data: { threadId: action.threadId, goal: result.goal ?? null }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] goalUpdate failed: ${errMessage}`)
+      return { executed: false, message: `Goal update failed: ${errMessage}` }
+    }
   }
 
   async executeToggleMessagePin(

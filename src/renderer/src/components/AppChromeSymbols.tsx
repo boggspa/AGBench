@@ -112,6 +112,25 @@ export function ChatMediaIcon() {
   )
 }
 
+export function GoalSymbolIcon() {
+  return (
+    <span className="composer-control-icon">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="8" cy="8" r="5.2" />
+        <circle cx="8" cy="8" r="2.4" />
+        <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2" />
+      </svg>
+    </span>
+  )
+}
+
 export function ChatPopoutIcon() {
   return (
     <span className="chat-corner-symbol">

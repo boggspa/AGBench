@@ -6,7 +6,9 @@ import {
 import { classifyOllamaPromptIntent } from './ollama/OllamaPromptIntent'
 import { ollamaTierAwareWorkflowHint } from './ollama/OllamaModelProfiles'
 import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
+import { formatActiveGoalPromptBlock, shouldInjectActiveGoal } from './GoalState'
 import type {
+  ActiveGoal,
   ChatMessage,
   GuestParticipantConfig,
   NativeSubAgentRequestPolicy,
@@ -74,7 +76,7 @@ const TASKWRAITH_MCP_TOOL_GROUPS =
   'edit tools: write_file, replace, apply_patch; ' +
   'git tools: git_status, git_diff, git_stage, git_commit; ' +
   'task/test tools: run_task, test_result_summary; ' +
-  'user coordination tools: ask_user_question, todo_write; ' +
+  'user coordination tools: ask_user_question, goal_read, goal_update, goal_complete, goal_blocked, todo_write; ' +
   'sub-thread tools: delegate_to_subthread, list_subthreads, read_subthread_result, cancel_subthread; ' +
   'creative app tools: creative_app_status, creative_app_capabilities, creative_project_snapshot, creative_timeline_validate, creative_timeline_ir, creative_timeline_diff; ' +
   'browser tools: browser_open, browser_click, browser_screenshot, browser_console; ' +
@@ -401,6 +403,8 @@ export interface ComposeRunPromptInput {
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** Optional normal-chat guest participant attached to the parent chat. */
   guestParticipant?: GuestParticipantConfig
+  /** Persistent thread objective controlled by /goal and the composer goal control. */
+  activeGoal?: ActiveGoal | null
 }
 
 export interface ComposeRunPromptResult {
@@ -526,6 +530,20 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
         )
       : finalPrompt
   )
+  const activeGoalContext = shouldInjectActiveGoal(input.activeGoal)
+    ? formatActiveGoalPromptBlock(input.activeGoal)
+    : ''
+  const injectActiveGoalContext = (prompt: string): string => {
+    if (!activeGoalContext) return prompt
+    const currentRequestMarker = `Current user request:\n${finalPrompt}`
+    if (prompt.includes(currentRequestMarker)) {
+      return prompt.replace(
+        currentRequestMarker,
+        `${activeGoalContext}\n\n${currentRequestMarker}`
+      )
+    }
+    return `${activeGoalContext}\n\nCurrent user request:\n${prompt}`
+  }
   let applicationLog = kimiNeedsContextInjection
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
     : codexNeedsContextInjection
@@ -570,6 +588,11 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       }
       uiNoticeMessage = `Chat context is being applied once for the Codex model change: ${lastCompletedCodexModel} -> ${nextModel}.`
     }
+  }
+
+  contextualPrompt = injectActiveGoalContext(contextualPrompt)
+  if (activeGoalContext) {
+    applicationLog = `${applicationLog}; active goal injected`
   }
 
   // (3) Gemini write-tool preamble: workspace runs (non-global) outside plan
