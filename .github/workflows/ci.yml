@@ -9,6 +9,10 @@ on:
         description: "Tag to attach an UNSIGNED Windows installer to (e.g. v1.1.0). Blank = skip."
         required: false
         default: ""
+      linux_release_tag:
+        description: "Tag to attach an UNSIGNED Linux AppImage/deb to (e.g. v1.5.0). Blank = skip."
+        required: false
+        default: ""
 
 jobs:
   test:
@@ -159,3 +163,36 @@ jobs:
           }
           Write-Host "Uploading $($assets.Count) asset(s) to release $tag"
           gh release upload $tag @assets --clobber
+
+  unsigned-linux-build:
+    name: Unsigned Linux Build (testing)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.linux_release_tag != ''
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # AppImage + deb only — snap needs snapcraft (absent on the default
+      # runner). `--publish never` stops electron-builder's implicit CI publish
+      # from trying to attach to a release created >2h ago; the gh step below
+      # attaches the assets (gh release upload --clobber on an existing release).
+      - run: npm run build:linux:nopublish
+      - name: Upload unsigned Linux artifacts to the release
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.linux_release_tag }}"
+          shopt -s nullglob
+          assets=(dist/*.AppImage dist/*.deb dist/latest-linux*.yml)
+          if [ ${#assets[@]} -lt 1 ]; then
+            echo "Expected Linux artifacts in dist/, found none."
+            exit 1
+          fi
+          echo "Uploading ${#assets[@]} asset(s) to release $tag"
+          gh release upload "$tag" "${assets[@]}" --clobber

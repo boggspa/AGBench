@@ -54,7 +54,8 @@
     "build:win:signed": "node scripts/require-windows-signing-env.cjs && npm run build:win",
     "build:mac": "npm run clean:dist && npm run test:swift:bridge && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal && npm run validate:mac-update-feed",
     "build:mac:notarized": "npm run clean:dist && npm run test:swift:bridge && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist && npm run validate:mac-update-feed",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:linux:nopublish": "npm run build && electron-builder --linux AppImage deb --publish never"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.140",
