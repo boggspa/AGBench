@@ -400,9 +400,10 @@ demands):**
     - The sub-thread runs with `approvalMode: 'default'` and
       `model: 'cli-default'`. Future revs may expose the full
       composer surface as additional tool args.
-    - **Phase I2-I4 (landed by 1.0.3): all four providers have the
-      same MCP tool surface.** TaskWraith registers the `TaskWraith` MCP
-      server with each provider's runtime at spawn time:
+    - **Phase I2-I4 (landed by 1.0.3): the four CLI/SDK providers
+      below share the full TaskWraith MCP tool surface.** TaskWraith
+      registers the `TaskWraith` MCP server with each of their runtimes
+      at spawn time:
         - **Gemini** — via the TaskWraith MCP bridge (CLI) or function
           calling (API path).
         - **Codex** — via `-c mcp_servers.TaskWraith.*` overrides on
@@ -492,7 +493,13 @@ documented (as of **1.0.3**):
   `src/main/TaskWraithMcpTools.ts`; key tools documented above
   (including the 1.0.3 additions `ensemble_yield` +
   `ask_user_question`).
-- All four providers (Gemini / Codex / Claude / Kimi) now share the
-  same MCP tool surface (Phase I2-I4 landed at 1.0.3)
+- Gemini / Codex / Claude / Kimi share the full brokered MCP tool
+  surface (Phase I2-I4, landed 1.0.3). The later-added providers
+  integrate TaskWraith tools through narrower surfaces: Cursor and Grok
+  get a brokered `taskwraith` MCP server but keep their native
+  shell/file tools (Cursor brokers web fetch/search; Grok's MCP tools
+  are often readonly-gated), while Ollama runs a TaskWraith-controlled
+  local tool loop with tier-gated tool subsets rather than a
+  provider-native MCP registration. See `ProviderCapabilities.ts`.
 
 Internal roadmap notes are intentionally kept outside the public source tree.

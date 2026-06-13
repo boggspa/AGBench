@@ -61,7 +61,7 @@ workspace state on the user's machine.
 - **Release Tooling**: Security, dependency, packaging, and signing hooks for
   reproducible local release work.
 
-Current release: **v1.4.8** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release: **v1.5.0** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Public Source Boundary
 
@@ -98,8 +98,17 @@ Run `npm run security:deps` before release work or after dependency changes.
 npm run security:deps
 npm run typecheck
 npm run test
+npm run test:swift:bridge   # macOS only — see note below
 npm run build
 ```
+
+`npm run test:swift:bridge` runs the native macOS bridge daemon's Swift test
+suite in `swift/TaskWraithBridge`. The bridge gates native macOS actions
+(Screen Watch, creative-app, and editor helpers), so its tests run
+automatically in two places: the macOS legs of CI, and the `build:mac` /
+`build:mac:notarized` release recipes (as a pre-flight gate, so a release
+build fails fast on a bridge regression). It requires macOS with the Xcode
+Swift toolchain and is not part of the cross-platform `npm run ci`.
 
 ## Project Layout
 
