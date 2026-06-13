@@ -45,6 +45,10 @@ const TOOL_ROLE: Record<AuditMcpToolName, AuditRole> = {
 
 export interface AuditToolContext {
   auditRunId: string
+  /** The provider run id this tool call belongs to — lets the collector
+   * attribute artifacts to the specific role-run that produced them, so the
+   * orchestrator's dispatchRole can drain exactly that run's output. */
+  runId: string
   role: AuditRole
   /** Reviewer's dimension; ignored for other roles. */
   dimension?: string
@@ -53,9 +57,9 @@ export interface AuditToolContext {
 }
 
 export interface AuditToolDependencies {
-  recordFinding: (auditRunId: string, finding: AuditFinding) => void | Promise<void>
-  recordVerdict: (auditRunId: string, verdict: AuditVerdict) => void | Promise<void>
-  setProfile: (auditRunId: string, profile: AuditProjectProfile) => void | Promise<void>
+  recordFinding: (context: AuditToolContext, finding: AuditFinding) => void | Promise<void>
+  recordVerdict: (context: AuditToolContext, verdict: AuditVerdict) => void | Promise<void>
+  setProfile: (context: AuditToolContext, profile: AuditProjectProfile) => void | Promise<void>
   /** Injected for deterministic tests. */
   uuid: () => string
   now: () => string
@@ -313,7 +317,7 @@ export function createAuditToolExecutors(deps: AuditToolDependencies): AuditTool
         return fail(`Tool "${toolName}" is not available to the ${context.role} role.`)
       }
       if (toolName === 'audit_set_profile') {
-        await deps.setProfile(context.auditRunId, coerceProfile(args))
+        await deps.setProfile(context, coerceProfile(args))
         return { result: { ok: true }, isError: false }
       }
       if (toolName === 'audit_record_finding') {
@@ -322,13 +326,13 @@ export function createAuditToolExecutors(deps: AuditToolDependencies): AuditTool
         if (finding.evidenceRefs.length === 0) {
           return fail('A finding requires at least one evidence ref (file path).')
         }
-        await deps.recordFinding(context.auditRunId, finding)
+        await deps.recordFinding(context, finding)
         return { result: { ok: true, id: finding.id }, isError: false }
       }
       if (toolName === 'audit_record_verdict') {
         const verdict = coerceVerdict(args, context, ids)
         if (!verdict) return fail('A verdict requires a `findingId`.')
-        await deps.recordVerdict(context.auditRunId, verdict)
+        await deps.recordVerdict(context, verdict)
         return { result: { ok: true, id: verdict.id }, isError: false }
       }
       return fail(`Unknown audit tool "${toolName}".`)

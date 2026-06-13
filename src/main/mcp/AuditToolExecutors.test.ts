@@ -19,7 +19,14 @@ const ids = {
 }
 
 function reviewerCtx(over: Partial<AuditToolContext> = {}): AuditToolContext {
-  return { auditRunId: 'run-1', role: 'reviewer', provider: 'claude', dimension: 'code health', ...over }
+  return {
+    auditRunId: 'run-1',
+    runId: 'rr-1',
+    role: 'reviewer',
+    provider: 'claude',
+    dimension: 'code health',
+    ...over
+  }
 }
 
 describe('coercion helpers', () => {
@@ -110,9 +117,9 @@ describe('createAuditToolExecutors', () => {
     const verdicts: AuditVerdict[] = []
     const profiles: AuditProjectProfile[] = []
     const deps: AuditToolDependencies = {
-      recordFinding: (_id, f) => void findings.push(f),
-      recordVerdict: (_id, v) => void verdicts.push(v),
-      setProfile: (_id, p) => void profiles.push(p),
+      recordFinding: (_ctx, f) => void findings.push(f),
+      recordVerdict: (_ctx, v) => void verdicts.push(v),
+      setProfile: (_ctx, p) => void profiles.push(p),
       uuid: () => `id-${++counter}`,
       now: () => '2026-06-13T00:00:00.000Z'
     }
@@ -167,7 +174,7 @@ describe('createAuditToolExecutors', () => {
     const verdictRes = await ex.executeAuditMcpTool(
       'audit_record_verdict',
       { findingId: 'f1', decision: 'refute', counterEvidence: [{ path: 'x', line: 2 }] },
-      { auditRunId: 'run-1', role: 'skeptic', provider: 'codex' }
+      { auditRunId: 'run-1', runId: 'rr-2', role: 'skeptic', provider: 'codex' }
     )
     expect(verdictRes.isError).toBe(false)
     expect(verdicts[0].skepticProvider).toBe('codex')
@@ -175,7 +182,7 @@ describe('createAuditToolExecutors', () => {
     const profileRes = await ex.executeAuditMcpTool(
       'audit_set_profile',
       { stack: ['electron', 'react'], riskZones: ['god modules'], junk: 1 },
-      { auditRunId: 'run-1', role: 'recon', provider: 'claude' }
+      { auditRunId: 'run-1', runId: 'rr-3', role: 'recon', provider: 'claude' }
     )
     expect(profileRes.isError).toBe(false)
     expect(profiles[0].stack).toEqual(['electron', 'react'])
