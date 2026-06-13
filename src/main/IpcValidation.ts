@@ -221,7 +221,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'import-codex-usage-credential': ['optionalString'],
   'clear-codex-usage-credential': [],
   'get-codex-usage-snapshot': [],
-  'get-external-usage': [],
+  'get-external-usage': ['optionalObject'],
   'get-workspace-activity': ['workspacePath', 'optionalNumber'],
   'grok-usage:probe': [],
   'get-claude-auth-status': [],

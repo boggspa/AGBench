@@ -36,7 +36,13 @@
   color: var(--text-tertiary, var(--text-secondary));
 }
 
-/* External Usage toggle */
+/* External Usage toggle + manual refresh */
+.model-usage-table-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .model-usage-table-external-toggle {
   display: inline-flex;
   align-items: center;
@@ -67,6 +73,32 @@
   padding: 1px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent, #6b7cff) 14%, transparent);
+}
+
+.model-usage-table-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--panel-border, var(--surface-border));
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, var(--panel-elevated-bg));
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.model-usage-table-refresh-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent, #6b7cff) 35%, var(--panel-border, var(--surface-border)));
+}
+
+.model-usage-table-refresh-button:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* Horizontal scroll wrapper — five windows × two columns is wide. */

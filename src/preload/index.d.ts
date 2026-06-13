@@ -359,7 +359,7 @@ declare global {
       importCodexUsageCredential: (filePath?: string) => Promise<any>
       clearCodexUsageCredential: () => Promise<boolean>
       getCodexUsageSnapshot: () => Promise<any>
-      getExternalUsage: () => Promise<UsageRecord[]>
+      getExternalUsage: (options?: { force?: boolean }) => Promise<UsageRecord[]>
       probeGrokUsage: () => Promise<GrokUsageSnapshot>
       gitSnapshot: (payload: {
         workspacePath?: string

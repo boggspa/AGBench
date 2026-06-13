@@ -18142,7 +18142,9 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-usage', (_, workspaceId?: string, chatId?: string) =>
       AppStore.getUsage(workspaceId, chatId)
     )
-    ipcMain.handle('get-external-usage', () => getExternalUsageCached())
+    ipcMain.handle('get-external-usage', (_, options?: { force?: boolean }) =>
+      getExternalUsageCached(options?.force ? { maxAgeMs: 0 } : {})
+    )
     const broadcastUsageRollupToRemote = (): void => {
       void getExternalUsageCached()
         .then((records) => {

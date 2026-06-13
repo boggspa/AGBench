@@ -152,7 +152,8 @@ const api = {
     ipcRenderer.invoke('import-codex-usage-credential', filePath),
   clearCodexUsageCredential: () => ipcRenderer.invoke('clear-codex-usage-credential'),
   getCodexUsageSnapshot: () => ipcRenderer.invoke('get-codex-usage-snapshot'),
-  getExternalUsage: () => ipcRenderer.invoke('get-external-usage'),
+  getExternalUsage: (options?: { force?: boolean }) =>
+    ipcRenderer.invoke('get-external-usage', options),
   probeGrokUsage: () => ipcRenderer.invoke('grok-usage:probe'),
   gitSnapshot: (payload: { workspacePath?: string; repoPath?: string }) =>
     ipcRenderer.invoke('git:snapshot', payload) as Promise<GitResult<GitRepositorySnapshot>>,

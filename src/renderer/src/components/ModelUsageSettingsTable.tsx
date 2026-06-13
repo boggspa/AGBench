@@ -377,6 +377,7 @@ export function ModelUsageSettingsTable({
   }
   // Bumped on the `usage-changed` event to force a refetch.
   const [refreshTick, setRefreshTick] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Self-hydrate the persisted toggle when the caller didn't control it. Runs
   // once on mount; defers the setState to a microtask so it isn't a synchronous
@@ -535,6 +536,32 @@ export function ModelUsageSettingsTable({
     }
   }
 
+  const manualRefresh = () => {
+    if (isRefreshing || typeof window === 'undefined') return
+    setIsRefreshing(true)
+    const usagePromise =
+      typeof window.api?.getUsage === 'function'
+        ? window.api.getUsage().catch(() => [] as UsageRecord[])
+        : Promise.resolve([] as UsageRecord[])
+    const chatsPromise =
+      typeof window.api?.getChats === 'function'
+        ? window.api.getChats().catch(() => [] as ChatRecord[])
+        : Promise.resolve([] as ChatRecord[])
+    const externalPromise =
+      includeExternal && typeof window.api?.getExternalUsage === 'function'
+        ? window.api.getExternalUsage({ force: true }).catch(() => [] as UsageRecord[])
+        : Promise.resolve(null)
+    void Promise.all([usagePromise, chatsPromise, externalPromise])
+      .then(([usage, chatList, external]) => {
+        setInternalRecords(Array.isArray(usage) ? usage : [])
+        setChats(Array.isArray(chatList) ? chatList : [])
+        if (external !== null) {
+          setExternalRecords(Array.isArray(external) ? external : [])
+        }
+      })
+      .finally(() => setIsRefreshing(false))
+  }
+
   const shownRuns =
     countShownRuns(groups) + (ollamaGroup?.totals.d90.runs ?? 0)
 
@@ -548,20 +575,32 @@ export function ModelUsageSettingsTable({
             {ollamaGroup ? ' · Ollama shows average llama-server RAM' : ''}
           </span>
         </div>
-        <label className="model-usage-table-external-toggle">
-          <input
-            type="checkbox"
-            checked={includeExternal}
-            onChange={(event) => selectExternal(event.target.checked)}
-          />
-          <span className="model-usage-table-external-toggle-label">External Usage</span>
-          <span
-            className="model-usage-table-external-toggle-hint"
-            title="When on, includes provider activity tracked outside TaskWraith (the same data behind the External Activity heatmap) so you see provider-wide usage."
+        <div className="model-usage-table-header-controls">
+          <label className="model-usage-table-external-toggle">
+            <input
+              type="checkbox"
+              checked={includeExternal}
+              onChange={(event) => selectExternal(event.target.checked)}
+            />
+            <span className="model-usage-table-external-toggle-label">External Usage</span>
+            <span
+              className="model-usage-table-external-toggle-hint"
+              title="When on, includes provider activity tracked outside TaskWraith (the same data behind the External Activity heatmap) so you see provider-wide usage."
+            >
+              {includeExternal ? 'provider-wide' : 'this app only'}
+            </span>
+          </label>
+          <button
+            type="button"
+            className="model-usage-table-refresh-button"
+            onClick={manualRefresh}
+            disabled={isRefreshing}
+            title="Refresh usage data"
+            aria-label="Refresh usage data"
           >
-            {includeExternal ? 'provider-wide' : 'this app only'}
-          </span>
-        </label>
+            {isRefreshing ? '…' : '↻'}
+          </button>
+        </div>
       </div>
 
       {hasTableContent ? (

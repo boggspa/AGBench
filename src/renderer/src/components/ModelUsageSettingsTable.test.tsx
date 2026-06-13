@@ -67,6 +67,13 @@ describe('ModelUsageSettingsTable (SSR — effects do not fire)', () => {
     // Subtitle present even in the empty state — frames cost as estimated.
     expect(html).toContain('estimated API-equivalent cost · not billed')
   })
+
+  it('renders a manual refresh control beside the External Usage toggle', () => {
+    const html = renderToStaticMarkup(<ModelUsageSettingsTable currency="USD" />)
+    expect(html).toContain('model-usage-table-refresh-button')
+    expect(html).toContain('Refresh usage data')
+    expect(html).toContain('↻')
+  })
 })
 
 describe('ModelUsageProviderTableBlock (populated render)', () => {
