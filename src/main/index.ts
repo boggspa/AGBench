@@ -485,6 +485,7 @@ import {
 import {
   brokerRequest as mcpBridgeBrokerRequest,
   createMcpBridgeRuntime,
+  GEMINI_MCP_AUDIT_SUBSET_ARG,
   GEMINI_MCP_SAFE_SUBSET_ARG,
   mcpToolCallResponseFromBrokerResult as mcpBridgeToolCallResponseFromBrokerResult,
   startGeminiMcpBridgeProcess as startGeminiMcpBridgeProcessWithDeps
@@ -5840,6 +5841,10 @@ function runCliProviderProcess(
         TASKWRAITH_PARENT_PROVIDER: provider,
         TASKWRAITH_RUN_ID: route.appRunId || '',
         TASKWRAITH_CHAT_ID: route.appChatId || '',
+        // Audit role-run: advertise the audit_* MCP tools to THIS run's bridge
+        // child (it inherits the CLI's env). Set only for audit runs; a normal
+        // run never carries payload.auditRun, so the namespace stays hidden.
+        ...(payload.auditRun ? { TASKWRAITH_MCP_AUDIT: '1' } : {}),
         ...(options.extraEnv || {})
       },
       command
@@ -6973,6 +6978,14 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
       }
       await mcpBridgeRuntime.startGeminiMcpBroker()
       const safeSubset = grokReadOnlySeat
+      // Audit role-run: also advertise the audit_* tool namespace to Grok's
+      // per-turn ACP bridge. Grok's bridge env is an explicit ACP list (not
+      // inherited), so set BOTH the --audit-subset arg (appended LAST, after the
+      // safe-subset flag, so the socket/token index parsing is unaffected) and
+      // the matching env entry. (Read-only Grok shares the plan-mode bridge gap;
+      // this only takes effect when the bridge is actually advertised above.)
+      const grokAuditRun = Boolean(payload.auditRun)
+      const grokBridgeArgs = taskwraithMcpBridgeArgs(geminiMcpSocketPath(), safeSubset)
       grokMcpServers = [
         {
           // ACP McpServer is an UNTAGGED enum: the stdio variant is
@@ -6983,12 +6996,13 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
           // THIS run.
           name: safeSubset ? GROK_SCOPED_MCP_SERVER_NAME : GEMINI_MCP_SERVER_NAME,
           command: bridgeCommandStatus.command,
-          args: taskwraithMcpBridgeArgs(geminiMcpSocketPath(), safeSubset),
+          args: grokAuditRun ? [...grokBridgeArgs, GEMINI_MCP_AUDIT_SUBSET_ARG] : grokBridgeArgs,
           env: [
             { name: GEMINI_MCP_BRIDGE_ENV, value: '1' },
             { name: 'TASKWRAITH_PARENT_PROVIDER', value: 'grok' },
             { name: 'TASKWRAITH_RUN_ID', value: route.appRunId || '' },
-            { name: 'TASKWRAITH_CHAT_ID', value: route.appChatId || '' }
+            { name: 'TASKWRAITH_CHAT_ID', value: route.appChatId || '' },
+            ...(grokAuditRun ? [{ name: 'TASKWRAITH_MCP_AUDIT', value: '1' }] : [])
           ]
         }
       ]
@@ -7351,6 +7365,10 @@ async function runKimiWireProvider(
           // platforms / Kimi internals that strip env on grandchild
           // spawn. Matches the Gemini / Codex / Claude pattern.
           TASKWRAITH_PARENT_PROVIDER: 'kimi',
+          // Audit role-run: advertise the audit_* MCP tools to this run's
+          // bridge child (inherited via the Kimi CLI process env). Audit runs
+          // only; a normal Kimi run never carries payload.auditRun.
+          ...(payload.auditRun ? { TASKWRAITH_MCP_AUDIT: '1' } : {}),
           ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
         },
         binaryPath
@@ -9857,7 +9875,17 @@ async function runCodexExecFallback(
     env: createCliEnv({
       FORCE_COLOR: '0',
       NO_COLOR: '1',
-      TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
+      TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+      // Audit role-run: advertise the audit_* MCP tools to this exec-fallback's
+      // bridge child. NOTE (v1 gap): Codex's PRIMARY path is the shared
+      // app-server daemon (runCodexAppServer), whose MCP bridge env is fixed at
+      // daemon start — there is no per-role-run injection point there, and the
+      // daemon does not stamp TASKWRAITH_RUN_ID, so audit tool calls from the
+      // app-server path would not route back to the role-run's audit context.
+      // Making Codex fully audit-capable needs daemon-scoped advertisement +
+      // per-turn run-id correlation, deferred to a follow-up. This exec path is
+      // only the fallback; threading the flag here is harmless and forward-looking.
+      ...(payload.auditRun ? { TASKWRAITH_MCP_AUDIT: '1' } : {})
     })
   })
   codexExecProcess = child
@@ -10749,6 +10777,16 @@ async function runGeminiProvider(
       TASKWRAITH_RUN_ID: route.appRunId || '',
       TASKWRAITH_CHAT_ID: route.appChatId || '',
       TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+      // Audit role-run: advertise the audit_* MCP tools to this run's bridge
+      // child (inherited via the Gemini CLI env). NOTE (v1 gap): by default a
+      // plan-mode Gemini run keeps the --sandbox seatbelt, which blocks the
+      // bridge subprocess from reaching the broker — so the audit tools (like
+      // every TaskWraith MCP tool in plan mode) are unreachable unless the
+      // flagged read-only-advertise path (TASKWRAITH_GEMINI_READONLY_MCP) is on,
+      // which drops the seatbelt. geminiReadOnlyAdvertise below ORs in audit
+      // runs so opted-in users get the bridge; the security-gated default-OFF
+      // seatbelt swap is the deferred fix for the rest.
+      ...(payload.auditRun ? { TASKWRAITH_MCP_AUDIT: '1' } : {}),
       // Phase I2: every CLI spawn now carries the parent provider so
       // the TaskWraith MCP bridge subprocess (inherited via env) stamps
       // broker requests with the right routing key. Codex's persistent
@@ -13391,6 +13429,13 @@ function startGeminiMcpBridgeProcess(): void {
   // not depend on the parent forwarding env to the MCP child).
   if (process.argv.includes(GEMINI_MCP_SAFE_SUBSET_ARG)) {
     process.env.TASKWRAITH_MCP_SAFE_SUBSET = '1'
+  }
+  // Audit role-run scope: a bridge launched with --audit-subset additionally
+  // advertises the audit_* tool namespace. Mirrors the safe-subset translation
+  // so the scope is atomic with the spawn even when env is not forwarded to the
+  // MCP child (stdio providers also set the env directly; this is the belt).
+  if (process.argv.includes(GEMINI_MCP_AUDIT_SUBSET_ARG)) {
+    process.env.TASKWRAITH_MCP_AUDIT = '1'
   }
   startGeminiMcpBridgeProcessWithDeps({
     getDefaultSocketPath: () => geminiMcpSocketPath(),

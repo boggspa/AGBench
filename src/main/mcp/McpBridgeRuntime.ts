@@ -9,6 +9,11 @@ import { dirname, join, resolve } from 'path'
 import type { WebContents } from 'electron'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../TaskWraithMcpTools'
 import { isReadOnlyAdvertisedTool } from './McpAutoAllowedTools'
+// Audit MCP tool definitions — advertised ONLY to audit role-runs (the bridge
+// child carries TASKWRAITH_MCP_AUDIT=1, set per-run at the provider spawn site).
+// AuditToolExecutors imports McpToolDefinition from here as `import type` (erased
+// at runtime), so this value import introduces no runtime require cycle.
+import { auditToolDefinitions } from './AuditToolExecutors'
 import {
   KIMI_LEGACY_TASKWRAITH_SERVER_NAMES,
   KIMI_TASKWRAITH_SERVER_NAME,
@@ -48,6 +53,14 @@ export const GEMINI_MCP_TOKEN_ARG = '--token'
 // auto-runs MCP tools with NO host gate — so the advertised list + the call
 // reject ARE the entire safety boundary, and the scope must travel with the spawn.
 export const GEMINI_MCP_SAFE_SUBSET_ARG = '--safe-subset'
+// Audit scope flag. Carried in the bridge ARGV (atomic with the spawn, like
+// safe-subset) AND/OR inherited via env: a bridge launched for an audit role-run
+// also advertises the audit_* tool namespace. The bootstrap translates this arg
+// to TASKWRAITH_MCP_AUDIT=1 (the env tools/list reads); for stdio providers the
+// CLI sets the env directly and the bridge child inherits it. Unlike safe-subset
+// this does NOT restrict tools/call — audit tools route through the registered
+// audit context, and non-audit runs never set the flag.
+export const GEMINI_MCP_AUDIT_SUBSET_ARG = '--audit-subset'
 export const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
   ...TASKWRAITH_MCP_TOOLS,
   ...TASKWRAITH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
@@ -501,10 +514,17 @@ export function handleMcpJsonRpcMessage(
     // tools/call gate below is the matching enforcement.
     const safeSubsetOnly =
       (deps.env?.TASKWRAITH_MCP_SAFE_SUBSET ?? process.env.TASKWRAITH_MCP_SAFE_SUBSET) === '1'
+    // Audit role-run bridge (TASKWRAITH_MCP_AUDIT=1): additionally advertise the
+    // audit_* tool namespace so the role-run can record findings/verdicts/profile.
+    // The flag is set per-run at the provider spawn site and never on a normal
+    // run, so non-audit runs never see these tools. tools/call is NOT gated here
+    // (audit tools route via the registered audit context in the broker).
+    const auditSubset = (deps.env?.TASKWRAITH_MCP_AUDIT ?? process.env.TASKWRAITH_MCP_AUDIT) === '1'
     const allTools = deps.getMcpToolDefinitions()
-    const tools = safeSubsetOnly
+    const baseTools = safeSubsetOnly
       ? allTools.filter((tool) => isReadOnlyAdvertisedTool(tool.name))
       : allTools
+    const tools = auditSubset ? [...baseTools, ...auditToolDefinitions()] : baseTools
     writeMcpResponse(id, { tools }, transport, stdout)
     return
   }
