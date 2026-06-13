@@ -242,14 +242,18 @@ describe('ProviderCapabilities', () => {
       'test_result_summary',
       'web_search',
       'web_fetch',
-      'ask_user_question'
-	    ])
-	    expect(contract.tools.mcpTools.state).toBe('gated')
-	    expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
-	    expect(contract.tools.elicit.state).toBe('available')
-	    expect(contract.tools.elicit.requiresApproval).toBe(false)
-	    expect(contract.tools.shellCommands.state).toBe('unavailable')
-	    expect(contract.tools.fileChanges.state).toBe('unavailable')
+      'ask_user_question',
+      'goal_read',
+      'goal_update',
+      'goal_complete',
+      'goal_blocked'
+    ])
+    expect(contract.tools.mcpTools.state).toBe('gated')
+    expect(contract.tools.mcpTools.enforcedByTaskWraith).toBe(true)
+    expect(contract.tools.elicit.state).toBe('available')
+    expect(contract.tools.elicit.requiresApproval).toBe(false)
+    expect(contract.tools.shellCommands.state).toBe('unavailable')
+    expect(contract.tools.fileChanges.state).toBe('unavailable')
   })
 
   it('advertises Ollama approved edit and shell tiers through TaskWraith gates', () => {
@@ -314,7 +318,11 @@ describe('ProviderCapabilities', () => {
       'test_result_summary',
       'web_search',
       'web_fetch',
-      'ask_user_question'
+      'ask_user_question',
+      'goal_read',
+      'goal_update',
+      'goal_complete',
+      'goal_blocked'
     ])
     expect(contract.tools.fileChanges.state).toBe('unavailable')
     expect(contract.tools.shellCommands.state).toBe('unavailable')

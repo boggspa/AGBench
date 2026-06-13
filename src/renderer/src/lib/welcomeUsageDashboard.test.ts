@@ -522,7 +522,7 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
     const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
 
     expect(data.modelBreakdown.map((m) => [m.provider, m.model, m.label])).toEqual([
-      ['ollama', 'gpt-oss', 'GPT OSS (20B Param)']
+      ['ollama', 'gpt-oss:20b', 'GPT OSS (20B Param)']
     ])
   })
 
