@@ -171,8 +171,8 @@ const OLLAMA_STATIC_MODELS = [
   },
   {
     id: 'qwen3.6:35b',
-    label: 'Qwen 3.6 (35B Param)',
-    description: 'Qwen 3.6 35B via Ollama · 262k context · vision/tools/thinking'
+    label: 'Qwen 3.6 (35B-A3B)',
+    description: 'Qwen 3.6 35B-A3B via Ollama · 262k context · vision/tools/thinking'
   },
   {
     id: 'gemma4:12b',

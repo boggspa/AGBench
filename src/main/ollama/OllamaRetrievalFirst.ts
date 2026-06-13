@@ -1,6 +1,16 @@
 import { resolveOllamaModelFamily } from './OllamaModelPreflight'
 
-const RETRIEVAL_FIRST_FAMILIES = new Set(['gpt_oss_20b', 'qwen3_5_9b', 'qwen3_4b', 'gemma4_12b'])
+const RETRIEVAL_FIRST_FAMILIES = new Set([
+  'gpt_oss_20b',
+  'qwen3_5_9b',
+  'qwen3_6_35b',
+  'qwen3_4b',
+  'minicpm_v45_8b',
+  'gemma4_12b',
+  'granite4_1_3b',
+  'granite4_1_30b',
+  'nemotron3_33b'
+])
 
 const EXEMPT_READ_PATHS = new Set([
   'readme.md',

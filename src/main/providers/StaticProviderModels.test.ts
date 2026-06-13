@@ -49,6 +49,22 @@ describe('getStaticProviderModels (provider-specific catalogs)', () => {
     expect(normalizeCliProviderModel('cursor', 'pro')).toBe('composer-2.5-fast')
     expect(normalizeCliProviderModel('gemini', 'flash')).toBe('flash')
   })
+
+  it('exposes the curated optional Ollama model tags', () => {
+    const ollama = getStaticProviderModels('ollama').map((m) => m.id)
+    expect(ollama).toEqual([
+      'qwen3:4b-instruct',
+      'qwen3.5:9b',
+      'qwen3.6:35b',
+      'gemma4:12b',
+      'gpt-oss:20b',
+      'minicpm-v4.5:8b',
+      'granite4.1:3b',
+      'granite4.1:30b',
+      'nemotron3:33b',
+      'custom'
+    ])
+  })
 })
 
 describe('normalizeCliProviderModel (kimi)', () => {

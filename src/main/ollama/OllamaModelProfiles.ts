@@ -39,15 +39,41 @@ export function ollamaModelFamilyPromptLines(
         'Keep tool arguments compact — do not paste large file bodies into JSON string fields.',
         'For multi-file refactors or long test-fix loops, summarize your plan and stop rather than guessing.'
       ]
+    case 'qwen3_6_35b':
+      return [
+        'Model profile (Qwen 3.6 35B): use its larger local context for deeper review, but still search before reading unfamiliar files.',
+        'Prefer native tool calls and keep each tool payload focused on the next concrete step.',
+        'For release-critical edits, summarize verification gaps and ask for a second-provider review when useful.'
+      ]
     case 'qwen3_4b':
       return [
         'Model profile (Qwen 3 4B): stay lightweight — search first, read one file at a time, answer concisely.',
         'Avoid wide refactors; prefer a short plan the user can hand to a larger model.'
       ]
+    case 'minicpm_v45_8b':
+      return [
+        'Model profile (MiniCPM-V 4.5 8B): stay scoped; search/read narrowly and use native tools when available.',
+        'For code edits, prefer a concise plan or a single localized patch rather than broad autonomous changes.'
+      ]
     case 'gemma4_12b':
       return [
         'Model profile (Gemma 4 12B): search narrowly, then read targeted files before editing.',
         'Use one tool at a time and summarize results instead of chaining many speculative calls.'
+      ]
+    case 'granite4_1_3b':
+      return [
+        'Model profile (Granite 4.1 3B): use it as a fast local scout; list/search first and keep reads small.',
+        'Avoid broad edits or long shell/test loops; hand off a short plan when the task grows.'
+      ]
+    case 'granite4_1_30b':
+      return [
+        'Model profile (Granite 4.1 30B): strong for local review, RAG-style search, and structured tool use.',
+        'Read targeted files before editing and summarize any assumptions before broad changes.'
+      ]
+    case 'nemotron3_33b':
+      return [
+        'Model profile (Nemotron 3 33B): use its multimodal reasoning profile for deeper local analysis, but keep workspace tools scoped.',
+        'Prefer native tool calls and make verification gaps explicit before release-sensitive changes.'
       ]
     case 'gpt_oss_20b':
       return [
@@ -212,7 +238,14 @@ export function ollamaTierAwareWorkflowHint(
     ].join(' ')
   }
   const scout =
-    family === 'qwen3_5_9b' || family === 'qwen3_4b' || family === 'gemma4_12b'
+    family === 'qwen3_5_9b' ||
+    family === 'qwen3_6_35b' ||
+    family === 'qwen3_4b' ||
+    family === 'minicpm_v45_8b' ||
+    family === 'gemma4_12b' ||
+    family === 'granite4_1_3b' ||
+    family === 'granite4_1_30b' ||
+    family === 'nemotron3_33b'
       ? 'Use this Ollama thread to search, read narrowly, and draft a short implementation plan.'
       : 'Use this local thread to explore the workspace and outline the next steps.'
   return [

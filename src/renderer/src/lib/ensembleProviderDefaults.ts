@@ -122,7 +122,7 @@ const CURSOR_MODELS: CombinedModelPickerModelOption[] = [
 const OLLAMA_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'qwen3:4b-instruct', label: 'Qwen 3 (4B Param)' },
   { id: 'qwen3.5:9b', label: 'Qwen 3.5 (9B Param)' },
-  { id: 'qwen3.6:35b', label: 'Qwen 3.6 (35B Param)' },
+  { id: 'qwen3.6:35b', label: 'Qwen 3.6 (35B-A3B)' },
   { id: 'gemma4:12b', label: 'Gemma 4 (12B Param)' },
   { id: 'gpt-oss:20b', label: 'GPT OSS (20B Param)' },
   { id: 'minicpm-v4.5:8b', label: 'MiniCPM-V 4.5 (8B Param)' },

@@ -51,7 +51,15 @@ export function resolveOllamaContextTokenLimit(
   }
   const family = resolveOllamaModelFamily(modelId || '')
   if (family === 'gpt_oss_20b') return 8192
-  if (family === 'gemma4_12b' || family === 'qwen3_5_9b') return 8192
+  if (
+    family === 'gemma4_12b' ||
+    family === 'qwen3_5_9b' ||
+    family === 'qwen3_6_35b' ||
+    family === 'minicpm_v45_8b' ||
+    family === 'granite4_1_3b' ||
+    family === 'granite4_1_30b' ||
+    family === 'nemotron3_33b'
+  ) return 8192
   if (family === 'qwen3_4b') return 4096
   return OLLAMA_CONSERVATIVE_CONTEXT_TOKENS
 }

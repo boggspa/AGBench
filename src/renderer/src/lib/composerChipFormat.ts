@@ -132,7 +132,7 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
       return 'Qwen 3.5 (9B Param)'
     }
     if (id === 'qwen3.6:35b' || id.startsWith('qwen3.6:35b-')) {
-      return 'Qwen 3.6 (35B Param)'
+      return 'Qwen 3.6 (35B-A3B)'
     }
     if (id === 'gemma4:12b' || id.startsWith('gemma4:12b-')) {
       return 'Gemma 4 (12B Param)'
