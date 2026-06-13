@@ -6,6 +6,7 @@ import {
   COMPOSER_SLASH_GROUP_ORDER,
   buildComposerSlashCommandRegistry,
   filterComposerSlashCommands,
+  matchLeadingActionCommand,
   paletteCoreForProvider,
   wrapPaletteItemAsSlashCommand,
   type ComposerSlashCommand
@@ -127,6 +128,52 @@ describe('ComposerSlashCommands', () => {
 
     it('returns no entries when nothing matches', () => {
       expect(filterComposerSlashCommands(registry, '__never_appears__')).toEqual([])
+    })
+  })
+
+  describe('matchLeadingActionCommand', () => {
+    const auditCommand = {
+      kind: 'action',
+      id: 'audit',
+      command: '/audit',
+      label: 'Audit',
+      description: 'Run audit workflow',
+      group: 'Custom',
+      run: () => undefined
+    } satisfies ComposerSlashCommand
+    const clearCommand = {
+      kind: 'action',
+      id: 'clear',
+      command: '/clear',
+      label: 'Clear',
+      description: 'Clear transcript',
+      group: 'Custom',
+      run: () => undefined
+    } satisfies ComposerSlashCommand
+    const registry = buildComposerSlashCommandRegistry({
+      provider: 'codex',
+      paletteItems: CODEX_PALETTE_CORE,
+      extraCommands: [auditCommand, clearCommand]
+    })
+
+    it('matches a leading action command with trailing args', () => {
+      expect(matchLeadingActionCommand('/audit quick', registry)).toBe(auditCommand)
+    })
+
+    it('matches action commands case-insensitively', () => {
+      expect(matchLeadingActionCommand('  /AuDiT deep  ', registry)).toBe(auditCommand)
+    })
+
+    it('does not match non-leading action commands inside normal prose', () => {
+      expect(matchLeadingActionCommand('please run /audit quick', registry)).toBeNull()
+    })
+
+    it('does not match provider palette passthrough commands', () => {
+      expect(matchLeadingActionCommand('/review this diff', registry)).toBeNull()
+    })
+
+    it('does not match action command prefixes as full commands', () => {
+      expect(matchLeadingActionCommand('/audit-trail quick', registry)).toBeNull()
     })
   })
 

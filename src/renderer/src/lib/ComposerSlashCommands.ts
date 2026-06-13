@@ -401,6 +401,29 @@ export function filterComposerSlashCommands(
   })
 }
 
+/**
+ * Find the ACTION command a submitted prompt leads with, so the composer can
+ * fire it instead of sending the literal text to the provider. The slash MENU
+ * dispatches a command on selection, but typing the full command + a space
+ * (e.g. `/audit quick`) closes the menu — without this, Enter would send
+ * `/audit quick` as a chat message. Matches the prompt's first
+ * whitespace-delimited token (case-insensitive) against each action command's
+ * `command`; trailing args are allowed (the command's own `run` parses them).
+ * Only a LEADING token matches — `fix /audit later` is a normal message.
+ */
+export function matchLeadingActionCommand(
+  prompt: string,
+  commands: ComposerSlashCommand[]
+): ActionCommand | null {
+  const trimmed = prompt.trim()
+  if (!trimmed.startsWith('/')) return null
+  const token = trimmed.split(/\s+/)[0].toLowerCase()
+  const command = commands.find(
+    (entry) => entry.kind === 'action' && entry.command.toLowerCase() === token
+  )
+  return command && command.kind === 'action' ? command : null
+}
+
 /** Group sort key. Cmd-K palette enforces this order today; mirror it
  * so the slash picker reads identically. */
 export const COMPOSER_SLASH_GROUP_ORDER: CommandPaletteGroup[] = [

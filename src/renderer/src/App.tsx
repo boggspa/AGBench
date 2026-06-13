@@ -168,7 +168,8 @@ import {
   GEMINI_PALETTE_CORE as COMMAND_PALETTE_CORE,
   CODEX_PALETTE_CORE as CODEX_COMMAND_PALETTE_CORE,
   CLI_PROVIDER_PALETTE_CORE as CLI_PROVIDER_COMMAND_PALETTE_CORE,
-  buildComposerSlashCommandRegistry
+  buildComposerSlashCommandRegistry,
+  matchLeadingActionCommand
 } from './lib/ComposerSlashCommands'
 import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
@@ -15975,6 +15976,26 @@ function App(): React.JSX.Element {
     extraCommands: composerSlashExtraCommands,
     capabilities: currentProviderCapabilities
   })
+
+  // Submit-time dispatch for ACTION slash commands (e.g. /audit, /clear). The
+  // slash MENU fires command.run() on selection, but typing the full command +
+  // a space (e.g. "/audit quick") CLOSES the menu, so Enter would otherwise send
+  // the literal "/audit quick" to the provider. Mirror tryHandleSideSlashSubmit:
+  // if the prompt LEADS with a registered action command's token, run it and
+  // clear the prompt instead of sending. Case-insensitive; trailing args (parsed
+  // by the command's own run()) are allowed.
+  const tryHandleActionSlashSubmit = (): boolean => {
+    const command = matchLeadingActionCommand(prompt, composerSlashCommands)
+    if (!command) return false
+    setSlashMenuOpen(false)
+    setSlashQuery('')
+    slashAnchorIndexRef.current = null
+    // run() reads the current `prompt` (e.g. to parse "/audit deep"); clear it
+    // AFTER so the literal command text never reaches the provider as a message.
+    void command.run()
+    setPrompt('')
+    return true
+  }
   const commandPaletteSearch = commandPaletteQuery.trim().toLowerCase()
   const visibleCommandPaletteItems = commandPaletteSearch
     ? commandPaletteItems.filter((item) =>
@@ -17942,6 +17963,9 @@ function App(): React.JSX.Element {
                             if (tryHandleSideSlashSubmit()) {
                               return
                             }
+                            if (tryHandleActionSlashSubmit()) {
+                              return
+                            }
                             triggerSendConfirmation()
                             // DM target resolution order (first match wins):
                             //   1. An explicit `@participant` mention in the
@@ -19663,6 +19687,9 @@ function App(): React.JSX.Element {
                                   if (tryHandleSideSlashSubmit()) {
                                     return
                                   }
+                                  if (tryHandleActionSlashSubmit()) {
+                                    return
+                                  }
                                   triggerSendConfirmation()
                                   handleRun()
                                 }}
@@ -19722,6 +19749,9 @@ function App(): React.JSX.Element {
                               className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
                               onClick={(event) => {
                                 if (tryHandleSideSlashSubmit()) {
+                                  return
+                                }
+                                if (tryHandleActionSlashSubmit()) {
                                   return
                                 }
                                 triggerSendConfirmation()
