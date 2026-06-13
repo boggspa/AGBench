@@ -1,0 +1,384 @@
+/**
+ * ModelUsageSettingsTable — the comprehensive per-provider, per-MODEL
+ * usage/cost table for Settings → Model usage.
+ *
+ * Where the sidebar Model Usage card (ModelUsageCard / ApiSpendView) rolls up
+ * Day / 7d / 30d per provider, this table breaks each provider down PER MODEL
+ * and shows FIVE rolling windows — 1H / 24H / 7D / 30D / 90D — with token +
+ * estimated-cost columns. It is the takeover-tab companion to that card.
+ *
+ * Data: SELF-FETCHED over the existing IPC (same pattern as ApiSpendView /
+ * UsageHeatmap) — no new IPC, no prop drilling of records:
+ *   - `window.api.getUsage()`          → TaskWraith's own runs
+ *   - `window.api.getExternalUsage()`  → externally-tracked provider activity
+ *                                        (the 90-day dataset behind the
+ *                                        External Activity heatmap)
+ *   - `window.api.getProviderRates()`  → per-model USD rate table
+ * It refetches on the `usage-changed` event the app already broadcasts, via a
+ * tiny leak-free subscription shim (see `subscribeUsageChanged`) so multiple
+ * mounts share ONE underlying listener and never clobber App's own handler.
+ *
+ * The "External Usage" toggle drives `includeExternal`: ON merges the external
+ * dataset in so the user sees provider-WIDE usage; OFF shows only TaskWraith's
+ * runs. The chosen value is seeded from `externalUsageDefault` (a persisted
+ * pref threaded from SettingsPanel) and kept in local state so a click is
+ * instant.
+ *
+ * **Honesty (non-negotiable):** records carry token counts only — never a
+ * billed amount. Every cost here is a rate-table PROJECTION, so it is badged:
+ * a `~` prefix on every figure, an "estimated, not billed" column note, and a
+ * footnote. We never render a bare currency string that implies money spent
+ * (mirrors the just-fixed ApiSpendView footnote).
+ *
+ * Testing: SSR via `renderToStaticMarkup` (this repo has no jsdom, so effects
+ * don't fire). The data math lives in the pure `buildModelUsageTable`
+ * aggregator (unit-tested separately); this file tests structure + empty
+ * state, and exposes the pure {@link ModelUsageProviderTableBlock} so a
+ * populated render can be SSR-tested by feeding aggregator output directly.
+ */
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import type { UsageRecord } from '../../../main/store/types'
+import {
+  MODEL_USAGE_WINDOW_LABEL,
+  MODEL_USAGE_WINDOW_ORDER,
+  buildModelUsageTable,
+  type ModelUsageProviderGroup,
+  type ModelUsageWindowKey,
+  type ModelUsageWindowTotals
+} from '../lib/modelUsageTable'
+import { fetchProviderRates, type RendererProviderRates } from '../lib/providerRateEstimate'
+import type { DisplayCurrency } from '../lib/formatCost'
+import { humaniseModelId } from '../lib/modelDisplayName'
+import { formatTokenCount } from '../lib/UsageHeatmap'
+import { getProviderName } from './Sidebar'
+import { ProviderLogoTile } from './ProviderLogoTile'
+import './ModelUsageSettingsTable.css'
+
+export interface ModelUsageSettingsTableProps {
+  /** Display currency for the cost columns. */
+  currency?: DisplayCurrency
+  /** Conservative-overestimate bias percent (0–25). */
+  overestimatePercent?: number
+  /** Optional locale override for `Intl.NumberFormat`. */
+  locale?: string
+  /**
+   * Initial value of the "External Usage" toggle. Threaded from a persisted
+   * settings pref so the chosen view survives reload. Defaults to OFF
+   * (TaskWraith-only).
+   */
+  externalUsageDefault?: boolean
+  /**
+   * Persist a new toggle value. Optional — when absent the toggle is purely
+   * component-local (still functional, just not remembered across reloads).
+   */
+  onExternalUsageChange?: (next: boolean) => void
+}
+
+// ── usage-changed subscription shim ─────────────────────────────────────────
+// `window.api.onUsageChanged` registers an ipc listener but returns no
+// unsubscribe, and the renderer's global teardown calls
+// `removeAllListeners('usage-changed')`. So we must NOT register a fresh raw
+// listener per mount (that would leak across the takeover's mount/unmount
+// cycles AND risk being wiped alongside App's listener). Instead we keep ONE
+// process-lifetime underlying listener and fan it out to a Set of local
+// subscribers; mounting adds a callback, unmounting removes it. App's own
+// listener is untouched.
+const usageChangedSubscribers = new Set<() => void>()
+let usageChangedWired = false
+
+function subscribeUsageChanged(callback: () => void): () => void {
+  usageChangedSubscribers.add(callback)
+  if (
+    !usageChangedWired &&
+    typeof window !== 'undefined' &&
+    typeof window.api?.onUsageChanged === 'function'
+  ) {
+    usageChangedWired = true
+    window.api.onUsageChanged(() => {
+      for (const sub of usageChangedSubscribers) {
+        try {
+          sub()
+        } catch {
+          // A misbehaving subscriber must not break the others.
+        }
+      }
+    })
+  }
+  return () => {
+    usageChangedSubscribers.delete(callback)
+  }
+}
+
+/** Format a single window's cost cell. Honesty: badge with `~` and fall back
+ * to a neutral dash when the projection rounds to nothing. */
+function costCell(totals: ModelUsageWindowTotals): string {
+  return totals.costDisplay ? `~${totals.costDisplay}` : '—'
+}
+
+/** Format a single window's token cell. */
+function tokenCell(totals: ModelUsageWindowTotals): string {
+  return totals.totalTokens > 0 ? `${formatTokenCount(totals.totalTokens)} tok` : '—'
+}
+
+/** One token+cost pair of cells for a given window. */
+function WindowCells({
+  windowKey,
+  totals
+}: {
+  windowKey: ModelUsageWindowKey
+  totals: ModelUsageWindowTotals
+}) {
+  return (
+    <>
+      <td
+        className="model-usage-table-tokens"
+        title={`${totals.totalTokens.toLocaleString()} tokens · ${totals.runs.toLocaleString()} run${
+          totals.runs === 1 ? '' : 's'
+        } (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`}
+      >
+        {tokenCell(totals)}
+      </td>
+      <td
+        className="model-usage-table-cost"
+        title={
+          totals.costDisplay
+            ? `Projected API-equivalent — estimated, not billed (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {costCell(totals)}
+      </td>
+    </>
+  )
+}
+
+/**
+ * One provider's block of rows: a provider summary row (bold, all models
+ * summed) followed by one row per model. Pure given its `group` — exported so
+ * a populated render can be SSR-tested by feeding aggregator output directly.
+ */
+export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProviderGroup }) {
+  return (
+    <tbody className={`model-usage-table-provider provider-${group.provider}`}>
+      <tr className="model-usage-table-provider-row">
+        <th scope="rowgroup" className="model-usage-table-provider-cell">
+          <span className={`model-usage-table-provider-label provider-${group.provider}`}>
+            <ProviderLogoTile provider={group.provider} />
+            <span className="model-usage-table-provider-name">
+              {getProviderName(group.provider)}
+            </span>
+            <span className="model-usage-table-model-count">
+              {group.models.length} model{group.models.length === 1 ? '' : 's'}
+            </span>
+          </span>
+        </th>
+        {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+          <WindowCells key={windowKey} windowKey={windowKey} totals={group.totals[windowKey]} />
+        ))}
+      </tr>
+      {group.models.map((model) => (
+        <tr key={`${group.provider}-${model.model}`} className="model-usage-table-model-row">
+          <td className="model-usage-table-model-cell" title={model.model}>
+            {humaniseModelId(group.provider, model.model)}
+          </td>
+          {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+            <WindowCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  )
+}
+
+/** Count the runs feeding the widest (90d) window across all shown providers —
+ * so the footnote can't claim runs the table doesn't display. */
+function countShownRuns(groups: ModelUsageProviderGroup[]): number {
+  return groups.reduce((total, group) => total + group.totals.d90.runs, 0)
+}
+
+export function ModelUsageSettingsTable({
+  currency,
+  overestimatePercent,
+  locale,
+  externalUsageDefault,
+  onExternalUsageChange
+}: ModelUsageSettingsTableProps) {
+  const [internalRecords, setInternalRecords] = useState<UsageRecord[]>([])
+  const [externalRecords, setExternalRecords] = useState<UsageRecord[]>([])
+  const [rates, setRates] = useState<RendererProviderRates>({})
+  // Toggle: seed from the persisted pref, mirror locally so a click is instant.
+  // Reconcile to the persisted value during render (no effect) by tracking the
+  // last-seen pref — same pattern ModelUsageCard uses for its view toggle.
+  const persistedExternal = externalUsageDefault === true
+  const [includeExternal, setIncludeExternal] = useState<boolean>(persistedExternal)
+  const [lastPersistedExternal, setLastPersistedExternal] = useState<boolean>(persistedExternal)
+  if (persistedExternal !== lastPersistedExternal) {
+    setLastPersistedExternal(persistedExternal)
+    setIncludeExternal(persistedExternal)
+  }
+  // Bumped on the `usage-changed` event to force a refetch.
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  // Fetch the priced rate table once (rarely changes within a session).
+  useEffect(() => {
+    let cancelled = false
+    void fetchProviderRates().then((next) => {
+      if (!cancelled) setRates(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Fetch TaskWraith's own usage records (+ refetch on usage-changed).
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.api?.getUsage !== 'function') return
+    let cancelled = false
+    window.api
+      .getUsage()
+      .then((latest) => {
+        if (!cancelled) setInternalRecords(Array.isArray(latest) ? latest : [])
+      })
+      .catch(() => {
+        // Best-effort — keep whatever we have rather than crashing the tab.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTick])
+
+  // Fetch the external provider activity only when the toggle is on — no point
+  // scanning ~thousands of CLI session files for a view the user isn't seeing.
+  // When the toggle is OFF we skip the fetch and leave any previously fetched
+  // set untouched: the aggregator ignores `externalRecords` unless
+  // `includeExternal` is true, so a stale set is inert (and re-toggling on is
+  // instant). This keeps the effect free of a synchronous in-body setState.
+  useEffect(() => {
+    if (!includeExternal) return
+    if (typeof window === 'undefined' || typeof window.api?.getExternalUsage !== 'function') return
+    let cancelled = false
+    window.api
+      .getExternalUsage()
+      .then((latest) => {
+        if (!cancelled) setExternalRecords(Array.isArray(latest) ? latest : [])
+      })
+      .catch(() => {
+        // Best-effort — leave the table on the internal-only data.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [includeExternal, refreshTick])
+
+  // Live-refresh on the broadcast usage-changed event (shared shim).
+  useEffect(() => {
+    return subscribeUsageChanged(() => setRefreshTick((tick) => tick + 1))
+  }, [])
+
+  const groups = useMemo<ModelUsageProviderGroup[]>(
+    () =>
+      buildModelUsageTable(internalRecords, externalRecords, rates, {
+        currency,
+        overestimatePercent,
+        locale,
+        includeExternal
+      }),
+    [
+      internalRecords,
+      externalRecords,
+      rates,
+      currency,
+      overestimatePercent,
+      locale,
+      includeExternal
+    ]
+  )
+
+  const selectExternal = (next: boolean) => {
+    if (next === includeExternal) return
+    setIncludeExternal(next)
+    onExternalUsageChange?.(next)
+  }
+
+  const shownRuns = countShownRuns(groups)
+
+  return (
+    <section className="model-usage-table-section" aria-label="Per-model usage and estimated cost">
+      <div className="model-usage-table-header">
+        <div className="model-usage-table-heading">
+          <span className="model-usage-table-title">Usage by provider &amp; model</span>
+          <span className="model-usage-table-subtitle">
+            Tokens and estimated API-equivalent cost · not billed
+          </span>
+        </div>
+        <label className="model-usage-table-external-toggle">
+          <input
+            type="checkbox"
+            checked={includeExternal}
+            onChange={(event) => selectExternal(event.target.checked)}
+          />
+          <span className="model-usage-table-external-toggle-label">External Usage</span>
+          <span
+            className="model-usage-table-external-toggle-hint"
+            title="When on, includes provider activity tracked outside TaskWraith (the same data behind the External Activity heatmap) so you see provider-wide usage."
+          >
+            {includeExternal ? 'provider-wide' : 'this app only'}
+          </span>
+        </label>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="model-usage-table-empty" role="note">
+          <strong>No tracked usage in the last 90 days.</strong>
+          <span>
+            {includeExternal
+              ? 'No priced provider activity found — start a chat or use a provider CLI to populate this table.'
+              : 'Start a chat with any provider to populate this table, or turn on External Usage to include activity from outside TaskWraith.'}
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="model-usage-table-scroll">
+            <table className="model-usage-table">
+              <thead>
+                <tr>
+                  <th scope="col" className="model-usage-table-corner">
+                    Provider / model
+                  </th>
+                  {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+                    <th key={windowKey} scope="colgroup" colSpan={2}>
+                      {MODEL_USAGE_WINDOW_LABEL[windowKey]}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="model-usage-table-subhead">
+                  <th scope="col" aria-hidden />
+                  {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+                    <Fragment key={windowKey}>
+                      <th scope="col" className="model-usage-table-tokens">
+                        tokens
+                      </th>
+                      <th scope="col" className="model-usage-table-cost">
+                        ~cost
+                      </th>
+                    </Fragment>
+                  ))}
+                </tr>
+              </thead>
+              {groups.map((group) => (
+                <ModelUsageProviderTableBlock key={group.provider} group={group} />
+              ))}
+            </table>
+          </div>
+          <p className="model-usage-table-footnote">
+            Cost columns are projected API-equivalents from the per-model rate table —{' '}
+            <strong>estimated, not billed</strong> (records carry token counts only). To see real
+            invoices, visit each provider&apos;s billing page.{' '}
+            {shownRuns === 1 ? '1 run' : `${shownRuns.toLocaleString()} runs`} over the 90-day
+            window{includeExternal ? ', including external activity.' : '.'}
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
