@@ -83,6 +83,7 @@ import { LocalServersSettingsPanel } from './LocalServersSettingsPanel'
 import { PinnedMessagesSettingsPage } from './PinnedMessagesSettingsPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
+import { ModelUsageSettingsTable } from './ModelUsageSettingsTable'
 import { GrokTelemetryCard } from './GrokTelemetryCard'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { ProviderInstallCommands } from './ProviderInstallCommands'
@@ -5565,6 +5566,17 @@ export function SettingsPanel({
                 <div className="settings-model-usage-card">
                   <ModelUsageCard usageSummary={usageSummary} />
                 </div>
+
+                {/* Comprehensive per-provider / per-model table: token +
+                  estimated-cost columns across 1H / 24H / 7D / 30D / 90D, with
+                  an "External Usage" toggle to fold in provider activity
+                  tracked outside TaskWraith. Self-fetches its records + rates
+                  and self-persists the toggle; currency/overestimate come from
+                  the same settings the sidebar card uses. */}
+                <ModelUsageSettingsTable
+                  currency={currency}
+                  overestimatePercent={currencyOverestimatePercent}
+                />
 
                 {comparisonEntries.length > 0 && (
                   <section className="settings-model-comparisons" aria-label="Model comparisons">
