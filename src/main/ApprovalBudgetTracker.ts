@@ -1,19 +1,20 @@
 /**
  * 1.0.5-C4 — Approval budget tracker.
  *
- * Runtime counter that pairs with `PermissionEnvelope.approvalBudget`
- * to prevent delegation-loop approval spam. The envelope carries
- * the cap; this tracker holds the consumed-so-far count per
- * envelope id. When the consumed count crosses the cap, future
- * approval requests against that envelope return `'exhausted'`
- * and the orchestrator surfaces the rejection back to the
- * parent / router / user.
+ * In-memory counter that prevents approval spam: it holds a
+ * consumed-so-far count per key and reports `'exhausted'` once the
+ * count crosses a caller-supplied cap, so a gate can decline further
+ * requests instead of flooding the user with modals.
  *
- * In-memory only — counts reset on app restart along with the
- * lanes / envelopes they tracked. Persistence would matter for
- * cross-session budgets but envelopes themselves are tied to
- * runtime sub-thread delegations that don't survive a process
- * exit anyway.
+ * Originally built for a per-child permission-envelope budget (since
+ * removed); its sole live consumer today is
+ * `DelegationApprovalBudgetGuard`, which keys on the parent *run* id
+ * to cap delegation approvals on the `delegate_to_subthread` gate. The
+ * `envelopeId` key param is treated as an opaque string, so any gate
+ * can reuse the `(key, budget)` API — hence the historical name.
+ *
+ * In-memory only — counts reset on app restart, matching the volatile
+ * per-process lifetime of the runtime delegations they bound.
  *
  * All methods are pure-ish (mutate the internal Map; no other
  * side effects). `getConsumed` returns a snapshot integer so
