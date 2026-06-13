@@ -4214,33 +4214,54 @@
 }
 
 .composer-goal-action {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 25px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
-  color: var(--text-primary);
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+  font: inherit;
   font-size: var(--font-size-xs);
   font-weight: 650;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
-.composer-goal-action:hover {
-  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.composer-goal-action:hover,
+.composer-goal-action:focus-visible {
+  outline: none;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
 }
 
 .composer-goal-action.primary {
-  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
-  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.composer-goal-action.primary:hover,
+.composer-goal-action.primary:focus-visible {
+  color: color-mix(in srgb, var(--accent) 96%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .composer-goal-action.danger {
   color: color-mix(in srgb, var(--danger) 82%, var(--text-primary));
+}
+
+.composer-goal-action.danger:hover,
+.composer-goal-action.danger:focus-visible {
+  color: color-mix(in srgb, var(--danger) 92%, var(--text-primary));
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-goal-popover {
