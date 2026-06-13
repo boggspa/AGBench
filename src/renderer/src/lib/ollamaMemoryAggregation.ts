@@ -16,7 +16,6 @@ import {
 } from './ollamaMemoryDisplay'
 import {
   API_SPEND_WINDOW_MS,
-  API_SPEND_WINDOW_ORDER,
   type ApiSpendWindowKey
 } from './apiSpendAggregation'
 import {

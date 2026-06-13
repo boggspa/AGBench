@@ -100,8 +100,9 @@ describe('ollamaMemoryAggregation', () => {
         appChatId: 'chat-1',
         workspaceId: 'ws-1',
         title: 'Ollama thread',
-        createdAt: '2026-06-01T00:00:00.000Z',
-        updatedAt: '2026-06-13T12:00:00.000Z',
+        createdAt: 1_780_000_000_000,
+        updatedAt: 1_781_000_000_000,
+        archived: false,
         messages: [],
         runs: [
           {
@@ -135,8 +136,9 @@ describe('ollamaMemoryAggregation', () => {
         appChatId: 'chat-1',
         workspaceId: 'ws-1',
         title: 'Ollama thread',
-        createdAt: '2026-06-01T00:00:00.000Z',
-        updatedAt: '2026-06-13T12:00:00.000Z',
+        createdAt: 1_780_000_000_000,
+        updatedAt: 1_781_000_000_000,
+        archived: false,
         messages: [],
         runs: [
           {
