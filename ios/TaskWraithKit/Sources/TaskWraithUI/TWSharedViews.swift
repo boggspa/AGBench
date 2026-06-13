@@ -2742,10 +2742,10 @@ private struct GoalRailControl: View {
 
     private var modeLabel: String {
         switch goal?.mode {
-        case "codex_native": return "Codex native"
-        case "claude_native": return "Claude native"
-        case "ollama_harness": return "Ollama harness"
-        case "taskwraith_steered": return "TaskWraith-steered"
+        case "codex_native": return "Native Codex"
+        case "claude_native": return "Native Claude"
+        case "ollama_harness": return "Ollama managed"
+        case "taskwraith_steered": return "Guided by TaskWraith"
         default: return "Goal"
         }
     }
@@ -2790,10 +2790,9 @@ private struct GoalRailControl: View {
                     .foregroundStyle(TWTheme.textPrimary)
                 Spacer()
                 Text(modeLabel)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(TWTheme.surface3, in: Capsule())
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(TWTheme.textSecondary)
+                    .lineLimit(1)
             }
 
             if goal == nil || editing {
@@ -2844,7 +2843,7 @@ private struct GoalRailControl: View {
                         editing = true
                     }
                     .buttonStyle(.bordered)
-                    if goal.status == "paused" {
+                    if goal.status == "paused" || goal.status == "blocked" {
                         Button("Resume") { onUpdate("resume", nil, reason) }
                             .buttonStyle(.bordered)
                     } else if goal.status != "completed" {
