@@ -42,6 +42,8 @@ describe('AuditRunCard', () => {
     expect(html).toContain('0 findings')
     expect(html).toContain('1 running')
     expect(html).toContain('3/12 agents')
+    expect(html).toContain('Kimi')
+    expect(html).not.toContain('>kimi<')
     expect(html).toContain('Cancel')
   })
 

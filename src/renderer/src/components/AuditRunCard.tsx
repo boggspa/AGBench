@@ -1,4 +1,10 @@
-import type { AuditGateResult, AuditParticipant, AuditRunRecord } from '../../../main/store/types'
+import type {
+  AuditGateResult,
+  AuditParticipant,
+  AuditRunRecord,
+  ProviderId
+} from '../../../main/store/types'
+import { getProviderLabel } from '../lib/providerLabels'
 
 interface AuditRunCardProps {
   run: AuditRunRecord
@@ -97,7 +103,13 @@ export function AuditRunCard({ run, onCancel, onDismiss }: AuditRunCardProps) {
           <span>{gateSummary(run.gates)}</span>
           <span>{participantSummary(run.participants)}</span>
           <span>{budgetSummary(run)}</span>
-          {rosterProviders.length > 0 && <span>{rosterProviders.join(' / ')}</span>}
+          {rosterProviders.length > 0 && (
+            <span>
+              {rosterProviders
+                .map((provider) => getProviderLabel(provider as ProviderId))
+                .join(' / ')}
+            </span>
+          )}
         </div>
         {run.error && <div className="audit-run-error">{run.error}</div>}
         {run.coverage?.notes?.length ? (
