@@ -190,9 +190,9 @@ function extractCodexSessionModel(json: Record<string, unknown>): string | null 
   if (collaboration && typeof collaboration === 'object') {
     const settings = (collaboration as Record<string, unknown>).settings
     if (settings && typeof settings === 'object') {
-      const nested = typeof (settings as Record<string, unknown>).model === 'string'
-        ? (settings as Record<string, unknown>).model.trim()
-        : ''
+      const settingsRecord = settings as Record<string, unknown>
+      const settingsModel = settingsRecord.model
+      const nested = typeof settingsModel === 'string' ? settingsModel.trim() : ''
       if (nested) return nested
     }
   }
