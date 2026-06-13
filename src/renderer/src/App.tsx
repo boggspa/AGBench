@@ -180,6 +180,8 @@ import { useAppearance } from './hooks/useAppearance'
 import { usePanelPresence } from './hooks/usePanelPresence'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { useUpdateStatus } from './hooks/useUpdateStatus'
+import { useHostWeather } from './hooks/useHostWeather'
+import { useAppVersion } from './hooks/useAppVersion'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { ExternalPathGrantPromptCard } from './components/ExternalPathGrantPromptCard'
 import {
@@ -416,8 +418,7 @@ import {
   LivingWorkspaceLayer,
   RunDataVizLayer,
   SkyWeatherVisual,
-  type AgentAuraStatus,
-  type HostWeatherVisualState
+  type AgentAuraStatus
 } from './components/FxLayers'
 import { ComposerCumulativeTimecode, ComposerRunTimecode } from './components/ComposerTimecodes'
 import {
@@ -490,7 +491,6 @@ const WORKSPACE_ADD_POINTER_DURATION_MS = 6000
 
 // clampContextTurns moved to `src/main/PromptComposition.ts` and re-exported below.
 
-const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 const EMPTY_AGENT_QUESTION_QUEUE: readonly AgentQuestionState[] = Object.freeze([])
 
 function enqueueAgentQuestion(
@@ -1492,32 +1492,10 @@ function App(): React.JSX.Element {
    * prompt so the user clicks Send to launch (avoids re-implementing
    * the full send-message payload composition here). */
   const [showWorkSessionSheet, setShowWorkSessionSheet] = useState(false)
-  /** Fetched once on mount so the BugReportSheet's auto-captured row
-   * shows the same version string the main process will stamp into
-   * the file. Falls back to "unknown" before the IPC resolves so the
-   * UI never flashes empty. */
-  const [appVersion, setAppVersion] = useState<string>('unknown')
-  useEffect(() => {
-    let cancelled = false
-    const api = window.api as typeof window.api & {
-      getAppVersion?: () => Promise<string>
-    }
-    if (typeof api.getAppVersion !== 'function') return
-    api
-      .getAppVersion()
-      .then((version) => {
-        if (!cancelled && typeof version === 'string' && version.trim()) {
-          setAppVersion(version)
-        }
-      })
-      .catch(() => {
-        /* Non-fatal — the sheet displays "unknown" and the main
-         * process stamps the canonical version on the file regardless. */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // App version for the BugReportSheet's auto-captured row, fetched once on
+  // mount; "unknown" until the IPC resolves so the UI never flashes empty. See
+  // useAppVersion.
+  const appVersion = useAppVersion()
   useEffect(() => {
     void refreshChangelogSnapshot()
   }, [refreshChangelogSnapshot])
@@ -1572,7 +1550,7 @@ function App(): React.JSX.Element {
   const [previewChatMediaRef, setPreviewChatMediaRef] = useState<ChatMediaRef | null>(null)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
-  const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
+  const hostWeather = useHostWeather(showSkyVisualFx)
   const [fxBurstClass, setFxBurstClass] = useState('')
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
   const liveToolFileSummaryCacheRef = useRef<Map<string, LiveToolFileSummaryState>>(new Map())
@@ -12460,43 +12438,6 @@ function App(): React.JSX.Element {
       window.localStorage.setItem(SKY_VISUAL_FX_STORAGE_KEY, String(showSkyVisualFx))
     } catch {
       // Local persistence is best-effort only.
-    }
-  }, [showSkyVisualFx])
-
-  useEffect(() => {
-    if (!showSkyVisualFx) {
-      return
-    }
-
-    let isDisposed = false
-    const refreshHostWeather = async (): Promise<void> => {
-      try {
-        const nextWeather = await window.api.getHostWeather()
-        if (!isDisposed) {
-          setHostWeather(nextWeather)
-        }
-      } catch {
-        if (!isDisposed) {
-          const hour = new Date().getHours()
-          setHostWeather({
-            kind: 'unknown',
-            description: hour >= 7 && hour < 19 ? 'Local daytime sky' : 'Local night sky',
-            isDay: hour >= 7 && hour < 19,
-            updatedAt: new Date().toISOString(),
-            source: 'fallback'
-          })
-        }
-      }
-    }
-
-    void refreshHostWeather()
-    const weatherInterval = window.setInterval(() => {
-      void refreshHostWeather()
-    }, SKY_WEATHER_REFRESH_MS)
-
-    return () => {
-      isDisposed = true
-      window.clearInterval(weatherInterval)
     }
   }, [showSkyVisualFx])
 
