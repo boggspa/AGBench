@@ -1060,6 +1060,20 @@ export function ollamaToolResultFollowUpPrompt(input: {
   ].join('\n')
 }
 
+export function ollamaGoalLifecycleStopContent(toolName: string): string | null {
+  if (toolName === 'goal_complete') {
+    return 'Goal marked complete. I will stop here so the active objective stays closed.'
+  }
+  if (toolName === 'goal_blocked') {
+    return 'Goal marked blocked. I will stop here so the handoff stays explicit.'
+  }
+  return null
+}
+
+export function shouldStopOllamaAfterGoalLifecycleTool(toolName: string, ok: boolean): boolean {
+  return ok && ollamaGoalLifecycleStopContent(toolName) !== null
+}
+
 export function ollamaEmptyToolResponseRetryPrompt(): string {
   return [
     'Your previous response was empty after TaskWraith returned tool results.',
@@ -1733,6 +1747,7 @@ export async function runOllamaProvider(
       }
       // Echo the assistant's native tool-call turn so the model keeps a coherent
       // transcript across the stateless HTTP loop.
+      let goalLifecycleStopContent: string | null = null
       if (usingNativeToolCalls) {
         messages.push({
           role: 'assistant',
@@ -1832,6 +1847,25 @@ export async function runOllamaProvider(
           ok: toolResult.ok,
           resultSummary: truncatedOutput
         })
+        goalLifecycleStopContent = toolResult.ok
+          ? ollamaGoalLifecycleStopContent(toolRequest.toolName)
+          : null
+        if (goalLifecycleStopContent) {
+          finalContentEmitted = true
+          deps.sendAgentCompatLine(
+            event.sender,
+            'ollama',
+            {
+              type: 'content',
+              text: goalLifecycleStopContent,
+              model,
+              modelLabel,
+              timestamp: new Date().toISOString()
+            },
+            route
+          )
+          break
+        }
         if (shouldRollOllamaRunSummary(sessionMemory.toolTurnCount)) {
           messages.splice(
             0,
@@ -1872,6 +1906,9 @@ export async function runOllamaProvider(
                 })
           })
         }
+      }
+      if (goalLifecycleStopContent) {
+        break
       }
     }
 

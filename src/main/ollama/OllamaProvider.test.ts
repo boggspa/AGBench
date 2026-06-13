@@ -13,6 +13,8 @@ import {
   ollamaReasoningOnlyNudgePrompt,
   ollamaToolIntentNudgePrompt,
   ollamaToolResultFollowUpPrompt,
+  ollamaGoalLifecycleStopContent,
+  shouldStopOllamaAfterGoalLifecycleTool,
   isDegenerateOllamaTurn,
   looksLikeDegenerateOllamaStub,
   looksLikeLeakedOllamaToolProtocol,
@@ -573,6 +575,24 @@ describe('Ollama tool tiers', () => {
     expect(ollamaProviderParityWorkspaceGranted(settings, '/tmp/other')).toBe(false)
     expect(effectiveOllamaToolControlTier(settings, '/tmp/granted')).toBe('provider_parity')
     expect(effectiveOllamaToolControlTier(settings, '/tmp/other')).toBe('read_only')
+  })
+})
+
+describe('Ollama goal lifecycle tools', () => {
+  it('stops the local tool loop after successful terminal goal actions', () => {
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_complete', true)).toBe(true)
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_blocked', true)).toBe(true)
+    expect(ollamaGoalLifecycleStopContent('goal_complete')).toContain('complete')
+    expect(ollamaGoalLifecycleStopContent('goal_blocked')).toContain('blocked')
+  })
+
+  it('continues after non-terminal goal tools and failed lifecycle calls', () => {
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_complete', false)).toBe(false)
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_blocked', false)).toBe(false)
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_read', true)).toBe(false)
+    expect(shouldStopOllamaAfterGoalLifecycleTool('goal_update', true)).toBe(false)
+    expect(shouldStopOllamaAfterGoalLifecycleTool('write_file', true)).toBe(false)
+    expect(ollamaGoalLifecycleStopContent('goal_update')).toBeNull()
   })
 })
 
