@@ -46,7 +46,8 @@ import {
   HandoffCardFilter,
   RunAnalystRequest,
   RunAnalystSnapshot,
-  AgenticServiceId
+  AgenticServiceId,
+  AuditRunRecord
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
@@ -1075,6 +1076,15 @@ declare global {
       ) => Promise<WorkflowDefinition | null>
       deleteWorkflowDefinition: (id: string) => Promise<void>
       runWorkflowNow: (id: string) => Promise<ScheduledTask | null>
+      startAuditRun: (input: {
+        mode?: AuditRunRecord['mode']
+        chatId: string
+        workspacePath: string
+        workspaceId?: string
+      }) => Promise<AuditRunRecord>
+      cancelAuditRun: (auditRunId: string) => Promise<{ ok: boolean }>
+      getAuditRun: (auditRunId: string) => Promise<AuditRunRecord | null>
+      getAuditRuns: (workspaceId?: string) => Promise<AuditRunRecord[]>
       getRunQueueJobs: (filter?: RunQueueJobFilter) => Promise<RunQueueJob[]>
       requestRunQueueJob: (
         job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'>
@@ -1184,6 +1194,7 @@ declare global {
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       onWorkflowDefinitionsChanged: (callback: (payload: WorkflowDefinition[]) => void) => void
+      onAuditRunChanged: (callback: (run: AuditRunRecord) => void) => () => void
       onUsageChanged: (callback: () => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => () => void
       onAppShellStatsChanged: (callback: (snapshot: AppShellStatsSnapshot) => void) => () => void

@@ -838,6 +838,17 @@ const api = {
   deleteWorkflowDefinition: (id: string) =>
     ipcRenderer.invoke('delete-workflow-definition', id),
   runWorkflowNow: (id: string) => ipcRenderer.invoke('run-workflow-now', id),
+  // Audit-run orchestration. startAuditRun resolves with the terminal record;
+  // live phase/finding updates arrive via onAuditRunChanged ('audit-run-changed').
+  startAuditRun: (input: {
+    mode?: string
+    chatId: string
+    workspacePath: string
+    workspaceId?: string
+  }) => ipcRenderer.invoke('audit-run:start', input),
+  cancelAuditRun: (auditRunId: string) => ipcRenderer.invoke('audit-run:cancel', auditRunId),
+  getAuditRun: (auditRunId: string) => ipcRenderer.invoke('get-audit-run', auditRunId),
+  getAuditRuns: (workspaceId?: string) => ipcRenderer.invoke('get-audit-runs', workspaceId),
   getRunQueueJobs: (filter: any = {}) => ipcRenderer.invoke('get-run-queue-jobs', filter),
   requestRunQueueJob: (job: any) => ipcRenderer.invoke('request-run-queue-job', job),
   leaseRunQueueJob: (request: any = {}) => ipcRenderer.invoke('lease-run-queue-job', request),
@@ -948,6 +959,11 @@ const api = {
   onWorkflowDefinitionsChanged: (callback: (payload: any) => void) => {
     ipcRenderer.on('workflow-definitions-changed', (_event, payload) => callback(payload))
   },
+  onAuditRunChanged: (callback: (run: any) => void) => {
+    const wrapped = (_event: unknown, run: unknown): void => callback(run)
+    ipcRenderer.on('audit-run-changed', wrapped)
+    return () => ipcRenderer.removeListener('audit-run-changed', wrapped)
+  },
   onUsageChanged: (callback: () => void) => {
     ipcRenderer.on('usage-changed', () => callback())
   },
@@ -1038,6 +1054,7 @@ const api = {
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
     ipcRenderer.removeAllListeners('workflow-definitions-changed')
+    ipcRenderer.removeAllListeners('audit-run-changed')
     ipcRenderer.removeAllListeners('usage-changed')
     ipcRenderer.removeAllListeners('chat-updated')
     ipcRenderer.removeAllListeners('app-shell-stats-changed')
