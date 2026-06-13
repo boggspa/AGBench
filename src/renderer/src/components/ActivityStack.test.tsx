@@ -413,6 +413,88 @@ describe('ActivityStack controlled expansion (1.0.6-TV2)', () => {
   })
 })
 
+describe('ActivityStack expanded result rendering', () => {
+  it('renders markdown-shaped result prose as markdown in expanded tool details', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeReadActivity({
+            id: 'tool-markdown-result',
+            toolName: 'web_fetch',
+            displayName: 'Fetch page',
+            category: 'read',
+            resultSummary: [
+              '## Findings',
+              '',
+              '- **Useful** result',
+              '- [Source](https://example.com/docs)'
+            ].join('\n')
+          })
+        ]}
+        provider="codex"
+        expandedActivityIds={new Set(['tool-markdown-result'])}
+        onExpandedActivityIdsChange={() => {}}
+      />
+    )
+
+    expect(html).toContain('activity-output-markdown')
+    expect(html).toContain('<h2>')
+    expect(html).toContain('<strong>Useful</strong>')
+    expect(html).toContain('data-link-kind="external"')
+    expect(html).not.toContain('activity-output-diff')
+  })
+
+  it('keeps JSON-ish result bodies preformatted rather than markdown-rendering them', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeReadActivity({
+            id: 'tool-json-result',
+            toolName: 'git_status',
+            displayName: 'Git status',
+            category: 'read',
+            resultSummary: '{"branch":"main","files":["src/App.tsx"]}'
+          })
+        ]}
+        provider="codex"
+        expandedActivityIds={new Set(['tool-json-result'])}
+        onExpandedActivityIdsChange={() => {}}
+      />
+    )
+
+    expect(html).not.toContain('activity-output-markdown')
+    expect(html).toContain('activity-output-diff')
+    expect(html).toContain('&quot;branch&quot;')
+  })
+
+  it('keeps path-line search output preformatted even when matched text contains markdown', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeReadActivity({
+            id: 'tool-search-result',
+            toolName: 'workspace_search',
+            displayName: 'Workspace search',
+            category: 'search',
+            parameters: { query: 'markdown' },
+            resultSummary: [
+              'src/a.ts:1: - **markdown-looking** text',
+              'src/b.ts:2: [Source](https://example.com/docs)'
+            ].join('\n')
+          })
+        ]}
+        provider="codex"
+        expandedActivityIds={new Set(['tool-search-result'])}
+        onExpandedActivityIdsChange={() => {}}
+      />
+    )
+
+    expect(html).not.toContain('activity-output-markdown')
+    expect(html).toContain('activity-output-diff')
+    expect(html).not.toContain('<strong>markdown-looking</strong>')
+  })
+})
+
 describe('ActivityStack denied / errored edit rendering', () => {
   // Repro: a read-only ("Plan / Read-only") Grok seat asks to edit the
   // README; Grok calls native `search_replace`; TaskWraith's gate auto-denies

@@ -29,6 +29,7 @@ import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 import { CompactToolTrace } from './CompactToolTrace'
 import { LiveActivityViewport } from './LiveActivityViewport'
+import { MarkdownMessage } from './MarkdownMessage'
 import { TodoChecklistCard } from './TodoChecklistCard'
 import {
   computeMergedTodosByActivityId,
@@ -1239,6 +1240,66 @@ function getDiffToneClass(line: string, tone: SanitizedDetail['previews'][number
   return 'activity-diff-line-context'
 }
 
+function isJsonLikeText(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (!/^(?:\{|\[)/.test(trimmed)) return false
+  try {
+    JSON.parse(trimmed)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isRawStructuredOutput(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (isJsonLikeText(trimmed)) return true
+  if (/^(diff --git|@@\s|---\s|\+\+\+\s)/m.test(trimmed)) return true
+
+  const nonEmptyLines = trimmed.split('\n').filter((line) => line.trim())
+  if (nonEmptyLines.length >= 2) {
+    const pathLineCount = nonEmptyLines.filter((line) =>
+      /^[^:\n]+:\d+(?::\d+)?:/.test(line.trim())
+    ).length
+    if (pathLineCount / nonEmptyLines.length > 0.7) return true
+
+    const logLineCount = nonEmptyLines.filter((line) =>
+      /^(stdout|stderr|error|warning|\$|>|[+-]\s)/i.test(line.trim())
+    ).length
+    if (logLineCount / nonEmptyLines.length > 0.7) return true
+  }
+
+  return false
+}
+
+function hasMarkdownSignal(value: string): boolean {
+  return (
+    /(^|\n)\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|```|~~~)/m.test(value) ||
+    /(^|\n)\s{0,3}\|.+\|\s*$/m.test(value) ||
+    /\[[^\]\n]+\]\([^)]+\)|!\[[^\]\n]*\]\([^)]+\)|\*\*[^*\n]+\*\*|`[^`\n]+`/.test(
+      value
+    )
+  )
+}
+
+function shouldRenderPreviewAsMarkdown(
+  preview: SanitizedDetail['previews'][number],
+  cleanedContent: string
+): boolean {
+  if (
+    preview.terminal ||
+    preview.tone === 'diff' ||
+    preview.tone === 'addition' ||
+    preview.tone === 'deletion'
+  ) {
+    return false
+  }
+  if (!hasMarkdownSignal(cleanedContent)) return false
+  return !isRawStructuredOutput(cleanedContent)
+}
+
 function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][number] }) {
   // Phase L5 slice 1 — clean output content before rendering:
   //   1. Unwrap MCP envelopes so we never render
@@ -1252,6 +1313,14 @@ function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][num
 
   if (preview.terminal) {
     return <pre className="activity-output-terminal">{cleanedContent}</pre>
+  }
+
+  if (shouldRenderPreviewAsMarkdown(preview, cleanedContent)) {
+    return (
+      <div className="activity-output-markdown">
+        <MarkdownMessage content={cleanedContent} />
+      </div>
+    )
   }
 
   return (
