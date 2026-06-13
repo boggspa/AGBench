@@ -50,6 +50,13 @@ import { fetchProviderRates, type RendererProviderRates } from '../lib/providerR
 import type { DisplayCurrency } from '../lib/formatCost'
 import { humaniseModelId } from '../lib/modelDisplayName'
 import { formatTokenCount } from '../lib/UsageHeatmap'
+import {
+  buildOllamaMemoryModelTable,
+  formatOllamaMemoryAvgCell,
+  formatOllamaSampleAvgCell,
+  type OllamaMemoryProviderGroup,
+  type OllamaMemoryWindowTotals
+} from '../lib/ollamaMemoryAggregation'
 import { getProviderName } from './Sidebar'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import './ModelUsageSettingsTable.css'
@@ -195,6 +202,69 @@ export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProvi
   )
 }
 
+/** Ollama block — RAM / periodic-sample columns instead of tokens/cost. */
+export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProviderGroup }) {
+  const MemoryCells = ({
+    windowKey,
+    totals
+  }: {
+    windowKey: ModelUsageWindowKey
+    totals: OllamaMemoryWindowTotals
+  }) => (
+    <>
+      <td
+        className="model-usage-table-memory"
+        title={
+          totals.avgPeakRssGb > 0
+            ? `Average per-run peak llama-server RSS (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb)}
+      </td>
+      <td
+        className="model-usage-table-samples"
+        title={
+          totals.runs > 0
+            ? `Average periodic memory samples per run (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs)}
+      </td>
+    </>
+  )
+
+  return (
+    <tbody className="model-usage-table-provider provider-ollama model-usage-table-provider--memory">
+      <tr className="model-usage-table-provider-row">
+        <th scope="rowgroup" className="model-usage-table-provider-cell">
+          <span className="model-usage-table-provider-label provider-ollama">
+            <ProviderLogoTile provider="ollama" />
+            <span className="model-usage-table-provider-name">{getProviderName('ollama')}</span>
+            <span className="model-usage-table-model-count">
+              {group.models.length} model{group.models.length === 1 ? '' : 's'}
+            </span>
+          </span>
+        </th>
+        {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+          <MemoryCells key={windowKey} windowKey={windowKey} totals={group.totals[windowKey]} />
+        ))}
+      </tr>
+      {group.models.map((model) => (
+        <tr key={`ollama-${model.model}`} className="model-usage-table-model-row">
+          <td className="model-usage-table-model-cell" title={model.model}>
+            {humaniseModelId('ollama', model.model)}
+          </td>
+          {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+            <MemoryCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  )
+}
+
 /** Count the runs feeding the widest (90d) window across all shown providers —
  * so the footnote can't claim runs the table doesn't display. */
 function countShownRuns(groups: ModelUsageProviderGroup[]): number {
@@ -330,6 +400,13 @@ export function ModelUsageSettingsTable({
     ]
   )
 
+  const ollamaGroup = useMemo(
+    () => (includeExternal ? null : buildOllamaMemoryModelTable(internalRecords)),
+    [internalRecords, includeExternal]
+  )
+
+  const hasTableContent = groups.length > 0 || Boolean(ollamaGroup)
+
   const selectExternal = (next: boolean) => {
     if (next === includeExternal) return
     setIncludeExternal(next)
@@ -344,7 +421,8 @@ export function ModelUsageSettingsTable({
     }
   }
 
-  const shownRuns = countShownRuns(groups)
+  const shownRuns =
+    countShownRuns(groups) + (ollamaGroup?.totals.d90.runs ?? 0)
 
   return (
     <section className="model-usage-table-section" aria-label="Per-model usage and estimated cost">
@@ -353,6 +431,7 @@ export function ModelUsageSettingsTable({
           <span className="model-usage-table-title">Usage by provider &amp; model</span>
           <span className="model-usage-table-subtitle">
             Tokens and estimated API-equivalent cost · not billed
+            {ollamaGroup ? ' · Ollama shows average llama-server RAM' : ''}
           </span>
         </div>
         <label className="model-usage-table-external-toggle">
@@ -371,19 +450,17 @@ export function ModelUsageSettingsTable({
         </label>
       </div>
 
-      {groups.length === 0 ? (
-        <div className="model-usage-table-empty" role="note">
-          <strong>No tracked usage in the last 90 days.</strong>
-          <span>
-            {includeExternal
-              ? 'No priced provider activity found — start a chat or use a provider CLI to populate this table.'
-              : 'Start a chat with any provider to populate this table, or turn on External Usage to include activity from outside TaskWraith.'}
-          </span>
-        </div>
-      ) : (
+      {hasTableContent ? (
         <>
           <div className="model-usage-table-scroll">
             <table className="model-usage-table">
+              <colgroup>
+                <col className="model-usage-table-name-col" />
+                {MODEL_USAGE_WINDOW_ORDER.flatMap((windowKey) => [
+                  <col key={`${windowKey}-metric-a`} className="model-usage-table-metric-col" />,
+                  <col key={`${windowKey}-metric-b`} className="model-usage-table-metric-col" />
+                ])}
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col" className="model-usage-table-corner">
@@ -412,6 +489,7 @@ export function ModelUsageSettingsTable({
               {groups.map((group) => (
                 <ModelUsageProviderTableBlock key={group.provider} group={group} />
               ))}
+              {ollamaGroup ? <ModelUsageOllamaTableBlock group={ollamaGroup} /> : null}
             </table>
           </div>
           <p className="model-usage-table-footnote">
@@ -420,8 +498,20 @@ export function ModelUsageSettingsTable({
             invoices, visit each provider&apos;s billing page.{' '}
             {shownRuns === 1 ? '1 run' : `${shownRuns.toLocaleString()} runs`} over the 90-day
             window{includeExternal ? ', including external activity.' : '.'}
+            {ollamaGroup
+              ? ' Ollama RAM columns average per-run peak llama-server RSS and periodic sample counts.'
+              : ''}
           </p>
         </>
+      ) : (
+        <div className="model-usage-table-empty" role="note">
+          <strong>No tracked usage in the last 90 days.</strong>
+          <span>
+            {includeExternal
+              ? 'No priced provider activity found — start a chat or use a provider CLI to populate this table.'
+              : 'Start a chat with any provider to populate this table, or turn on External Usage to include activity from outside TaskWraith.'}
+          </span>
+        </div>
       )}
     </section>
   )

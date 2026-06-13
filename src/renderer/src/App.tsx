@@ -400,6 +400,7 @@ import {
   normalizeModelName
 } from './lib/usageStats'
 import { formatWorkDuration } from './lib/runCompleteSummary'
+import { ollamaMemoryUsageFields } from './lib/ollamaMemoryDisplay'
 import { fetchProviderRates, type RendererProviderRates } from './lib/providerRateEstimate'
 import {
   getMemoryPreviewText,
@@ -9425,6 +9426,7 @@ function App(): React.JSX.Element {
                     resetAt: mergedReset.resetAt,
                     resetText: mergedReset.resetText,
                     durationMs: entryDurationMs ?? runDurationMs,
+                    ...(runProvider === 'ollama' ? ollamaMemoryUsageFields(event.stats) : {}),
                     promptText: contextualPrompt,
                     responseText:
                       updated.messages[updated.messages.length - 1]?.role === 'assistant'

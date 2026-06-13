@@ -37,6 +37,13 @@ import {
   type ApiSpendProviderTotals,
   type ApiSpendWindowKey
 } from '../lib/apiSpendAggregation'
+import {
+  buildOllamaMemorySpend,
+  formatOllamaMemoryAvgCell,
+  formatOllamaSampleAvgCell,
+  type OllamaMemorySpendTotals,
+  type OllamaMemoryWindowTotals
+} from '../lib/ollamaMemoryAggregation'
 import { computeQuotaPace } from '../lib/QuotaPace'
 import type { RendererProviderRates } from '../lib/providerRateEstimate'
 import { formatResetShort } from '../lib/UsageFormat'
@@ -87,6 +94,16 @@ const PROVIDER_ORDER: ProviderId[] = [
   'grok',
   'cursor',
   'ollama'
+]
+
+/** Token/cost providers in the spend view (Ollama uses RAM rows). */
+const API_SPEND_RENDER_ORDER: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor'
 ]
 const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'taskwraith-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
@@ -334,6 +351,60 @@ export function ApiSpendProviderBlock({ entry }: { entry: ApiSpendProviderTotals
   )
 }
 
+/** One Day/7d/30d row for Ollama's RAM section (avg peak + sample polls). */
+function OllamaMemorySpendRow({
+  windowKey,
+  totals
+}: {
+  windowKey: ApiSpendWindowKey
+  totals: OllamaMemoryWindowTotals
+}) {
+  return (
+    <div className="model-usage-spend-row model-usage-spend-row--memory">
+      <span className="model-usage-spend-window">{API_SPEND_WINDOW_LABEL[windowKey]}</span>
+      <span
+        className="model-usage-spend-tokens"
+        title={
+          totals.avgPeakRssGb > 0
+            ? `Average per-run peak llama-server RSS (${API_SPEND_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb)}
+      </span>
+      <span
+        className="model-usage-spend-cost"
+        title={
+          totals.runs > 0
+            ? `Average periodic memory samples per run (${API_SPEND_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs)}
+      </span>
+    </div>
+  )
+}
+
+/** Ollama RAM section for View B. Exported for SSR render tests. */
+export function OllamaMemorySpendBlock({ entry }: { entry: OllamaMemorySpendTotals }) {
+  return (
+    <div className="model-usage-item provider-ollama spend-only memory-only">
+      <div className="model-usage-provider-heading">
+        <span className="sidebar-provider-label provider-ollama">
+          <ProviderLogoTile provider="ollama" />
+          <span className="model-usage-provider-name">{getProviderName('ollama')}</span>
+        </span>
+      </div>
+      <div className="model-usage-spend-rows">
+        {API_SPEND_WINDOW_ORDER.map((windowKey) => (
+          <OllamaMemorySpendRow key={windowKey} windowKey={windowKey} totals={entry[windowKey]} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * View B body. Fetches usage records over the existing `getUsage` IPC
  * (same pattern as `UsageHeatmap`), aggregates them through the pure
@@ -381,7 +452,12 @@ function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefi
     options?.locale
   ])
 
-  if (spend.length === 0) {
+  const ollamaMemory = useMemo(
+    () => buildOllamaMemorySpend(records),
+    [records]
+  )
+
+  if (spend.length === 0 && !ollamaMemory) {
     return (
       <div className="model-usage-spend-empty">
         No API spend tracked in the last 30 days. Runs on API keys / SDK credits show their
@@ -393,15 +469,21 @@ function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefi
   // Count only the runs that feed the displayed windows (the 30d window is the
   // widest), so the footnote can't claim runs from excluded providers or older
   // than the view shows.
-  const shownRuns = spend.reduce((total, entry) => total + entry.month.runs, 0)
+  const shownRuns =
+    spend.reduce((total, entry) => total + entry.month.runs, 0) +
+    (ollamaMemory?.month.runs ?? 0)
+  const spendByProvider = new Map(spend.map((entry) => [entry.provider, entry]))
   return (
     <div className="model-usage-list model-usage-spend-list">
-      {spend.map((entry) => (
-        <ApiSpendProviderBlock key={entry.provider} entry={entry} />
-      ))}
+      {API_SPEND_RENDER_ORDER.map((provider) => {
+        const entry = spendByProvider.get(provider)
+        return entry ? <ApiSpendProviderBlock key={provider} entry={entry} /> : null
+      })}
+      {ollamaMemory ? <OllamaMemorySpendBlock entry={ollamaMemory} /> : null}
       <p className="model-usage-spend-footnote">
         Estimated API-equivalent · not billed ·{' '}
         {shownRuns === 1 ? '1 run' : `${shownRuns.toLocaleString()} runs`}
+        {ollamaMemory ? ' · Ollama shows average llama-server RAM' : ''}
       </p>
     </div>
   )

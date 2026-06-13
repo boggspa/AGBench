@@ -51,16 +51,16 @@ export const API_SPEND_WINDOW_ORDER: ApiSpendWindowKey[] = ['day', 'week', 'mont
 
 /**
  * Providers that can surface in View B. Token/cost-bearing providers
- * only — Grok is excluded because its sidebar meter is a separate
- * subscription-credit probe (no per-token records), and Ollama is
- * local/free so an API-spend row would always read zero. Mirrors the
- * provider roster the rate table actually prices.
+ * only — Ollama is local/free and uses a separate RAM aggregation
+ * (`ollamaMemoryAggregation`). Grok token runs are priced via the rate
+ * table (subscription credits stay on the plan-side meter).
  */
 export const API_SPEND_PROVIDER_ORDER: ProviderId[] = [
   'gemini',
   'codex',
   'claude',
   'kimi',
+  'grok',
   'cursor'
 ]
 

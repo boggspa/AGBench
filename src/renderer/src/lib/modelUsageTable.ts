@@ -72,20 +72,19 @@ export const MODEL_USAGE_WINDOW_LABEL: Record<ModelUsageWindowKey, string> = {
 }
 
 /**
- * Providers that can surface in the table. Same priced roster as
- * `apiSpendAggregation.API_SPEND_PROVIDER_ORDER`: Grok is excluded (its meter
- * is a separate subscription-credit probe with no per-token records) and
- * Ollama is excluded (local/free — a cost row would always read zero). This
- * also happens to be exactly the set the External Activity scanner covers
- * (`codex/claude/gemini/kimi/cursor`), so the internal-only and
- * external-merged views share one provider roster and never sprout a
- * stray Grok/Ollama section when External Usage is toggled on.
+ * Providers that can surface in the token/cost table. Ollama is handled
+ * separately via {@link buildOllamaMemoryModelTable} (RAM semantics).
+ * Grok token runs are priced here; subscription credits stay on the plan
+ * meter. Mirrors the priced roster the external scanner covers for the
+ * five CLI providers (codex/claude/gemini/kimi/cursor) plus grok when
+ * TaskWraith runs exist.
  */
 export const MODEL_USAGE_PROVIDER_ORDER: ProviderId[] = [
   'gemini',
   'codex',
   'claude',
   'kimi',
+  'grok',
   'cursor'
 ]
 

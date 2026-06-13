@@ -45,12 +45,31 @@ describe('buildApiSpendByProvider — empty / zero', () => {
     expect(buildApiSpendByProvider([], RATES, USD, NOW)).toEqual([])
   })
 
-  it('omits providers outside the priced roster (e.g. grok, ollama)', () => {
+  it('omits ollama from the token/cost roster (handled via RAM aggregation)', () => {
     const records = [
-      makeRecord({ provider: 'grok', timestamp: NOW - 1000, inputTokens: 1000 }),
       makeRecord({ provider: 'ollama', timestamp: NOW - 1000, inputTokens: 1000 })
     ]
     expect(buildApiSpendByProvider(records, RATES, USD, NOW)).toEqual([])
+  })
+
+  it('includes grok token runs in the priced roster', () => {
+    const rates: RendererProviderRates = {
+      ...RATES,
+      grok: [{ modelId: 'grok-build', inputUsdPerMillion: 2, outputUsdPerMillion: 10 }]
+    }
+    const records = [
+      makeRecord({
+        provider: 'grok',
+        model: 'grok-build',
+        timestamp: NOW - 1000,
+        inputTokens: 1_000_000,
+        outputTokens: 0
+      })
+    ]
+    const [grok] = buildApiSpendByProvider(records, rates, USD, NOW)
+    expect(grok.provider).toBe('grok')
+    expect(grok.day.totalTokens).toBe(1_000_000)
+    expect(grok.day.costUsd).toBeCloseTo(2, 5)
   })
 
   it('skips reset_hint records entirely', () => {

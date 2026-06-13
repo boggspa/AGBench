@@ -52,12 +52,26 @@ describe('buildModelUsageTable — empty / zero / exclusions', () => {
     expect(buildModelUsageTable([], [], RATES, USD, NOW)).toEqual([])
   })
 
-  it('omits providers outside the priced roster (grok, ollama)', () => {
+  it('omits ollama from the token/cost roster (handled via RAM aggregation)', () => {
     const records = [
-      makeRecord({ provider: 'grok', timestamp: NOW - 1000, inputTokens: 1000 }),
       makeRecord({ provider: 'ollama', timestamp: NOW - 1000, inputTokens: 1000 })
     ]
     expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
+  })
+
+  it('includes grok token runs in the priced roster', () => {
+    const records = [
+      makeRecord({
+        provider: 'grok',
+        model: 'grok-build',
+        timestamp: NOW - 1000,
+        inputTokens: 1000,
+        outputTokens: 500
+      })
+    ]
+    const [grok] = buildModelUsageTable(records, [], RATES, USD, NOW)
+    expect(grok.provider).toBe('grok')
+    expect(grok.totals.d90.totalTokens).toBe(1500)
   })
 
   it('skips reset_hint records entirely', () => {
@@ -412,10 +426,11 @@ describe('buildModelUsageTable — External Usage switches source (no double-cou
       { currency: 'USD', includeExternal: true },
       NOW
     )
-    // Internal is NOT counted (external is on); only the valid external run.
-    expect(result.map((g) => g.provider)).toEqual(['codex'])
-    expect(result[0].totals.h24.tokensIn).toBe(2_000_000)
-    expect(result[0].totals.h24.runs).toBe(1)
+    // Internal is NOT counted (external is on); ollama stays off the token roster.
+    expect(result.map((g) => g.provider)).toEqual(['codex', 'grok'])
+    const codex = result.find((group) => group.provider === 'codex')!
+    expect(codex.totals.h24.tokensIn).toBe(2_000_000)
+    expect(codex.totals.h24.runs).toBe(1)
   })
 
   it('does not count zero-token marker records as runs', () => {

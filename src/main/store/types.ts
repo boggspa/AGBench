@@ -2419,6 +2419,10 @@ export interface UsageRecord {
   durationMs: number
   promptText?: string
   responseText?: string
+  /** Peak llama-server RSS (GB) sampled during an Ollama run. */
+  ollamaMemoryPeakRssGb?: number
+  /** Number of periodic memory polls taken during the run. */
+  ollamaMemorySampleCount?: number
 }
 
 export type WorkspaceActivityEventKind = 'git_commit' | 'worktree_change' | 'filesystem_change'
