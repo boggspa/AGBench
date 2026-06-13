@@ -99,6 +99,11 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'update-workflow-definition': ['string', 'object'],
   'delete-workflow-definition': ['string'],
   'run-workflow-now': ['string'],
+  // Audit-run orchestration (handlers in src/main/ipc/auditHandlers.ts).
+  'audit-run:start': ['object'],
+  'audit-run:cancel': ['nonEmptyString'],
+  'get-audit-run': ['nonEmptyString'],
+  'get-audit-runs': ['optionalString'],
   'get-run-queue-jobs': ['optionalObject'],
   'get-run-recovery-records': ['optionalObject'],
   'request-run-queue-job': ['object'],

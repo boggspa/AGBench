@@ -468,7 +468,16 @@ import {
   type WorkspaceMcpToolName,
   type WorkspaceToolContext
 } from './mcp/WorkspaceToolExecutors'
-import { createAuditRuntime, isAuditMcpToolName } from './audit/AuditOrchestratorWiring'
+import {
+  buildProviderSignals,
+  createAuditRoleDispatcher,
+  createAuditRuntime,
+  isAuditMcpToolName,
+  type ProviderSignalInput
+} from './audit/AuditOrchestratorWiring'
+import { AuditOrchestrator } from './audit/AuditOrchestrator'
+import { AuditRunTracker } from './audit/AuditRunTracker'
+import { createAuditGatesRunner } from './audit/AuditGatesRunner'
 import {
   createDesktopToolExecutors,
   isDesktopMcpToolName
@@ -574,6 +583,7 @@ import {
 import { installIpcValidation } from './IpcValidation'
 import { registerPtyHandlers } from './ipc/ptyHandlers'
 import { registerShellHandlers } from './ipc/shellHandlers'
+import { registerAuditHandlers } from './ipc/auditHandlers'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 // 1.0.5-EW26 — Kimi compatibility filter (curated + user-
 // editable keyword list, redacts matched sentences before the
@@ -1998,6 +2008,27 @@ const auditRuntime = createAuditRuntime({
   uuid: () => randomUUID(),
   now: () => new Date().toISOString()
 })
+
+// Completion bridge for audit role-runs. `RunCoordinator.dispatch` resolves when
+// the provider CLI is spawned, NOT when the run finishes; the tracker stashes a
+// resolver per appRunId (mirroring EnsembleOrchestrator) and is fed the same
+// provider-output / process-exit events the ensemble hooks consume below. Both
+// `handleProviderOutput` and `handleExit` internally no-op for runs that aren't
+// being tracked, so the per-event hooks are gated cheaply by `isTracked`.
+const auditRunTracker = new AuditRunTracker({ nowMs: () => Date.now() })
+
+// Cooperative cancellation flags per audit run id. `audit-run:cancel` flips the
+// flag; the orchestrator checks `isCancelled` between phases + spawns. The
+// orchestrator holds per-run state (this.record) so it runs audits serially;
+// `activeAuditRunId` is the id currently executing, set by the start handler so
+// the shared `isCancelled` dep can scope the flag check to the live run.
+const cancelledAuditRunIds = new Set<string>()
+let activeAuditRunId: string | null = null
+
+// The live AuditOrchestrator, assigned in app.whenReady() (Slice A) where
+// runCoordinator + mainWindow are in scope. Module ref so the IPC handlers
+// (Slice C) can reach it. Same pattern as ensembleOrchestratorRef.
+let auditOrchestratorRef: AuditOrchestrator | null = null
 
 const WORKSPACE_MCP_TOOL_NAME_SET = new Set<string>(WORKSPACE_MCP_TOOL_NAMES)
 
@@ -8285,6 +8316,9 @@ function sendAgentCompatLine(
   materializeBackgroundSubThreadProviderOutput(provider, routed, payload)
   materializeBridgeRunProviderOutput(provider, routed, payload)
   ensembleOrchestratorRef?.handleProviderOutput(provider, routed, payload)
+  // Audit completion bridge — settles a tracked audit role-run on its terminal
+  // `result` event (lifting token/cost/duration). No-ops for non-audit runs.
+  auditRunTracker.handleProviderOutput(routed.appRunId, payload)
   const line = `${JSON.stringify(routed)}\n`
   const outputPayload = {
     provider,
@@ -8355,6 +8389,10 @@ function sendAgentCompatExit(
     'provider'
   )
   ensembleOrchestratorRef?.markRunExited(routed.appRunId, typeof code === 'number' ? code : -1)
+  // Audit completion bridge — resolve a tracked audit role-run that ended
+  // without a terminal `result` event (crash/kill). No-ops for non-audit runs
+  // and once already settled by a result. Mirrors the markRunExited hook.
+  auditRunTracker.handleExit(routed.appRunId, typeof code === 'number' ? code : -1)
   if (routed.appRunId) {
     finalizeBridgeRunTranscript(
       routed.appRunId,
@@ -10974,6 +11012,13 @@ async function runGeminiProvider(
     // every other provider; legacy Gemini PTY was the only path
     // missing the call.
     ensembleOrchestratorRef?.markRunExited(route.appRunId, typeof code === 'number' ? code : -1)
+    // Audit completion bridge — the Gemini one-shot path finalises here rather
+    // than through sendAgentCompatExit, so settle a tracked audit role-run on
+    // this exit too (no-op for non-audit runs). v1: Gemini audit role-runs
+    // settle on exit (ok/fail + duration); token/cost stats are NOT scraped
+    // from the Gemini stream here — a v1 cut, the audit still completes and the
+    // structured findings/verdicts flow via the artifact collector.
+    auditRunTracker.handleExit(route.appRunId, typeof code === 'number' ? code : -1)
     publishRunEvent('gemini-exit', 'gemini', { provider: 'gemini', code, ...route }, event.sender)
     if (geminiProcess === child) {
       geminiProcess = null
@@ -11020,6 +11065,9 @@ async function runGeminiProvider(
     // hang because the process never even produced output, so
     // feedOrchestrator never ran and there's no fallback signal.
     ensembleOrchestratorRef?.markRunExited(route.appRunId, -1)
+    // Audit completion bridge — settle a tracked audit role-run whose Gemini
+    // process failed before exit (no-op for non-audit runs).
+    auditRunTracker.handleExit(route.appRunId, -1)
     publishRunEvent(
       'gemini-exit',
       'gemini',
@@ -19853,6 +19901,160 @@ if (isGeminiMcpBridgeProcess) {
       // ensemble runs complete inside the orchestrator and never hit that path.
       recordUsage: (entry) => AppStore.recordUsage(entry)
     })
+
+    // ── Audit orchestrator (Slice A — live wiring) ───────────────────────────
+    // The deterministic /audit phase-DAG executor, instantiated here where
+    // runCoordinator + mainWindow are in scope (mirrors the ensemble pattern).
+    // The pure/tested foundations (orchestrator core, runtime/registry/collector,
+    // gates runner, role-dispatcher glue, run tracker) are imported and wired to
+    // the live app services below.
+
+    // spawnAndAwait: the SOLE RunCoordinator touch-point for audit role-runs.
+    // createAuditRoleDispatcher pre-allocates each role-run's appRunId and
+    // registers its audit tool context in the registry BEFORE calling this, so a
+    // tool call can never arrive before its context exists. routeWithRunId
+    // PRESERVES a pre-set payload.appRunId (run/RunRoute.ts), so the run executes
+    // under the pre-allocated id and its audit_* tool calls route back correctly.
+    // dispatch() resolves when the CLI is spawned; the AuditRunTracker bridges to
+    // the run's actual COMPLETION (fed by the central provider-output / exit
+    // pumps above).
+    const spawnAndAwait = (
+      payload: AgentRunPayload
+    ): Promise<import('./audit/AuditOrchestratorWiring').AuditRoleRunOutcome> => {
+      const appRunId = payload.appRunId
+      if (!appRunId) {
+        return Promise.resolve({
+          runId: 'n/a',
+          ok: false,
+          error: 'Audit role-run payload is missing a pre-allocated appRunId.'
+        })
+      }
+      const completion = auditRunTracker.track(appRunId)
+      if (!runCoordinatorRef || !mainWindow) {
+        // No coordinator / window to dispatch through — settle the tracked
+        // promise as a failure so the orchestrator can substitute or degrade.
+        auditRunTracker.handleExit(appRunId, -1)
+        return completion
+      }
+      void runCoordinatorRef
+        .dispatch(payload, { sender: mainWindow.webContents })
+        .then((result) => {
+          // dispatch() resolving false means the run never started (queue
+          // rejection, preflight failure, …) — settle as a failure rather than
+          // leaving the tracked promise hanging forever.
+          if (!result?.dispatched) {
+            auditRunTracker.handleExit(appRunId, -1)
+          }
+        })
+        .catch(() => {
+          auditRunTracker.handleExit(appRunId, -1)
+        })
+      return completion
+    }
+
+    // resolveSignals: live provider auth/health/usage → resolver ProviderSignals.
+    // Reuses the app's existing per-provider auth determination (the same cheap
+    // signals the get-*-auth-status handlers use): binary resolution for
+    // `configured`, and per-provider credential/auth-state for `authenticated`
+    // (a provider with no auth comes back authenticated:false). v1 cuts:
+    //   - healthy:true for every provider (no live reachability probe yet — a
+    //     later enhancement; the resolver only excludes on configured/auth/usage).
+    //   - usageBand omitted (cheap path only) — the resolver treats a missing
+    //     band as 'unknown', which never excludes a provider.
+    //   - codex is treated as authenticated when configured: codex auth lives in
+    //     its app-server and a real probe would spin the server up here; the run
+    //     fails at dispatch and the orchestrator substitutes if it's actually
+    //     logged out.
+    const resolveAuditProviderSignals = async (): Promise<
+      import('./audit/ProviderCapabilityResolver').ProviderSignal[]
+    > => {
+      const settings = AppStore.getSettings()
+      const inputs: ProviderSignalInput[] = []
+      for (const provider of availableProviderIds()) {
+        if (provider === 'ollama') {
+          // Local model: include only when the Ollama server is reachable AND has
+          // at least one model installed. isLocal defaults true in
+          // buildProviderSignals; the resolver gates it behind policy.ollamaEnabled.
+          try {
+            const snapshot = await getOllamaStatusSnapshot(settings)
+            if (snapshot.available && snapshot.modelCount > 0) {
+              inputs.push({
+                provider,
+                configured: true,
+                authenticated: true,
+                healthy: true,
+                isLocal: true
+              })
+            }
+          } catch {
+            // Unreachable → omit ollama entirely.
+          }
+          continue
+        }
+        let configured = false
+        let authenticated = false
+        try {
+          const resolved = await resolveCliProviderBinary(provider)
+          configured = Boolean(resolved.binaryPath)
+          if (provider === 'claude') {
+            authenticated =
+              Boolean(settings.claudeApiKey) ||
+              (configured && (await readClaudeAuthState(resolved)) === 'authenticated')
+          } else if (provider === 'kimi') {
+            authenticated = Boolean(settings.kimiApiKey)
+          } else if (provider === 'gemini') {
+            const geminiAuth = await getGeminiAuthStatusSnapshot()
+            authenticated = geminiAuth.authState === 'authenticated'
+          } else if (provider === 'codex') {
+            // v1 cut (see header): treat a configured codex as authenticated.
+            authenticated = configured
+          }
+        } catch {
+          // Binary resolution / auth probe failed → leave unconfigured so the
+          // resolver degrades the provider with reason 'unconfigured'.
+        }
+        inputs.push({ provider, configured, authenticated, healthy: true })
+      }
+      return buildProviderSignals(inputs)
+    }
+
+    auditOrchestratorRef = new AuditOrchestrator({
+      store: {
+        createAuditRun: (input) => AppStore.createAuditRun(input),
+        updateAuditRun: (id, partial) => AppStore.updateAuditRun(id, partial)
+      },
+      resolveSignals: resolveAuditProviderSignals,
+      dispatchRole: createAuditRoleDispatcher({
+        runtime: auditRuntime,
+        spawnAndAwait,
+        uuid: () => randomUUID()
+      }),
+      runGates: createAuditGatesRunner({
+        runCommand: (command, cwd) => runHostCommand(command, cwd),
+        uuid: () => randomUUID()
+      }).runGates,
+      policy: AppStore.getSettings().auditOrchestration,
+      // Cooperative cancellation scoped to the live run: the start handler sets
+      // activeAuditRunId before run(); audit-run:cancel adds the id to the set.
+      isCancelled: () => activeAuditRunId !== null && cancelledAuditRunIds.has(activeAuditRunId),
+      onUpdate: (run) => {
+        // Track the live run id so the shared isCancelled dep can scope its flag
+        // check (audits run serially — the most recently updated run is the
+        // active one). Cleared when the run reaches a terminal status.
+        if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+          if (activeAuditRunId === run.id) activeAuditRunId = null
+        } else {
+          activeAuditRunId = run.id
+        }
+        // Live-update push to the renderer (Slice C: 'audit-run-changed').
+        safeSendToWebContents(mainWindow, 'audit-run-changed', run)
+      },
+      now: () => new Date().toISOString(),
+      uuid: () => randomUUID()
+      // v1: confirmPlan omitted → the orchestrator auto-approves the plan (the
+      // plan-confirm sheet is a later UI slice).
+    })
+
     // 1.0.5-EW37 — Solo-chat wakeup service. Same shared timer +
     // recovery substrate as ensemble; dispatches a continuation
     // `AgentRunPayload` via the run coordinator when a wakeup
@@ -20898,6 +21100,22 @@ if (isGeminiMcpBridgeProcess) {
     // the validation-patched singleton, and the two index-local collaborators
     // are injected so the module needs no back-reference into index.ts.
     registerPtyHandlers({ requireRegisteredWorkspace, requestAgenticServiceApproval })
+
+    // Audit-run IPC: audit-run:start / audit-run:cancel / get-audit-run(s).
+    // Extracted to ./ipc/auditHandlers (register-fn DI, like ptyHandlers). The
+    // orchestrator (assigned above) is reached via a getter; cancellation
+    // bookkeeping + store reads are injected so the module needs no back-ref.
+    registerAuditHandlers({
+      getAuditOrchestrator: () => auditOrchestratorRef,
+      getAuditRun: (id) => AppStore.getAuditRun(id),
+      getAuditRuns: (workspaceId) => AppStore.getAuditRuns(workspaceId),
+      markAuditRunCancelled: (id) => {
+        cancelledAuditRunIds.add(id)
+      },
+      clearAuditRunCancelled: (id) => {
+        cancelledAuditRunIds.delete(id)
+      }
+    })
 
     void startGeminiMcpBroker().catch((error) => {
       console.error('Failed to start Gemini MCP broker', error)
