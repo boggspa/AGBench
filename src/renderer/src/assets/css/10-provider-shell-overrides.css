@@ -414,6 +414,10 @@
 }
 .message-bubble:hover .message-actions-chip,
 .message-bubble:focus-within .message-actions-chip,
+.provider-run-failure-card:hover .message-actions-chip,
+.provider-run-failure-card:focus-within .message-actions-chip,
+.subthread-return-card:hover .message-actions-chip,
+.subthread-return-card:focus-within .message-actions-chip,
 .message-actions-chip:hover,
 .message-actions-chip:focus-within {
   opacity: 1;

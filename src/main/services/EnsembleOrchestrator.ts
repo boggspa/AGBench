@@ -382,6 +382,12 @@ function extractToolName(event: any): string {
   )
 }
 
+function extractToolKind(event: any): string {
+  if (!event || typeof event !== 'object') return ''
+  const raw = event.tool_kind || event.toolKind || event.kind
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+}
+
 function extractToolParameters(event: any): Record<string, unknown> {
   if (!event || typeof event !== 'object') return {}
   const raw =
@@ -441,7 +447,29 @@ function participantLabel(participant?: EnsembleParticipant): string {
   return participant.role || participant.provider
 }
 
-function getEnsembleToolCategory(toolName: string): ToolActivity['category'] {
+function mapEnsembleToolKindToCategory(kind: string): ToolActivity['category'] | undefined {
+  switch (kind) {
+    case 'read':
+      return 'read'
+    case 'edit':
+    case 'delete':
+    case 'move':
+      return 'write'
+    case 'search':
+    case 'fetch':
+      return 'search'
+    case 'execute':
+      return 'shell'
+    case 'think':
+      return 'task'
+    default:
+      return undefined
+  }
+}
+
+function getEnsembleToolCategory(toolName: string, toolKind = ''): ToolActivity['category'] {
+  const kindCategory = mapEnsembleToolKindToCategory(toolKind)
+  if (kindCategory) return kindCategory
   const name = stripToolNamespace(toolName)
   if (
     name === 'ensemble_yield' ||
@@ -517,6 +545,7 @@ function buildEnsembleToolActivity(
   participant?: EnsembleParticipant
 ): ToolActivity {
   const toolName = extractToolName(event)
+  const toolKind = extractToolKind(event)
   const canonicalToolName = stripToolNamespace(toolName)
   const parameters = extractToolParameters(event)
   const filePath =
@@ -560,7 +589,7 @@ function buildEnsembleToolActivity(
     id: extractToolId(event),
     toolName,
     displayName: getEnsembleToolDisplayName(toolName, parameters, participant),
-    category: getEnsembleToolCategory(toolName),
+    category: getEnsembleToolCategory(toolName, toolKind),
     status: 'running',
     startedAt,
     parameters,

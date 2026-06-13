@@ -9517,7 +9517,8 @@ function App(): React.JSX.Element {
               runContext.toolCallsCount += 1
             }
             const reduction = reduceSoloToolEventMessages(updated.messages, event, {
-              createMessageId
+              createMessageId,
+              provider: runProvider
             })
             updated.messages = reduction.messages
 

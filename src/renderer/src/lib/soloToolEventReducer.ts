@@ -1,9 +1,10 @@
-import type { ChatMessage, ToolActivity } from '../../../main/store/types'
+import type { ChatMessage, ProviderId, ToolActivity } from '../../../main/store/types'
 import { createToolActivity, isToolResultEvent, isToolUseEvent, pairToolResult } from './ToolParser'
 
 interface SoloToolEventReducerOptions {
   createMessageId: () => string
   nowIso?: () => string
+  provider?: ProviderId
 }
 
 export interface SoloToolEventReduction {
@@ -20,6 +21,13 @@ function toolEventId(event: any): string {
     event?.data?.call_id ||
     `unknown-${Date.now()}`
   )
+}
+
+function eventDataWithProvider(data: any, event: any, fallbackProvider?: ProviderId): any {
+  const provider = data?.provider ?? event?.provider ?? fallbackProvider
+  if (!provider) return data
+  const base = data && typeof data === 'object' ? data : {}
+  return { ...base, provider }
 }
 
 export function reduceSoloToolEventMessages(
@@ -55,13 +63,14 @@ export function reduceSoloToolEventMessages(
 
   const acts = [...(lastMsg.toolActivities || [])]
   const tData = event.data
+  const activityData = eventDataWithProvider(tData, event, options.provider)
   const isUse = event.isUse || isToolUseEvent(tData)
   const isResult = event.isResult || isToolResultEvent(tData)
   const tId = toolEventId(event)
   let latestToolActivity: ToolActivity | null = null
 
   if (isUse) {
-    const newActivity = createToolActivity(tData)
+    const newActivity = createToolActivity(activityData)
     acts.push(newActivity)
     latestToolActivity = newActivity
   } else if (isResult) {
@@ -73,7 +82,8 @@ export function reduceSoloToolEventMessages(
       const orphan = createToolActivity({
         type: 'tool_use',
         tool_id: tId,
-        tool_name: event.name || 'unknown'
+        tool_name: event.name || 'unknown',
+        ...(activityData?.provider ? { provider: activityData.provider } : {})
       })
       const paired = pairToolResult(orphan, tData)
       acts.push(paired)
@@ -84,7 +94,7 @@ export function reduceSoloToolEventMessages(
       type: 'tool_use',
       tool_id: tId,
       tool_name: event.name || 'unknown',
-      ...tData
+      ...activityData
     })
     fallback.status = 'success'
     acts.push(fallback)

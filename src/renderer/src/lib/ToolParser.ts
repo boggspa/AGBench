@@ -1,5 +1,6 @@
-import {
+import type {
   DiffFileStatus,
+  ProviderId,
   ToolActivity,
   ToolActivityStatus,
   ToolDiffFileSummary,
@@ -78,6 +79,24 @@ export function extractToolKind(event: any): string {
   if (!event || typeof event !== 'object') return ''
   const raw = event.tool_kind || event.toolKind || event.kind
   return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+}
+
+const TOOL_ACTIVITY_PROVIDER_IDS = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+])
+
+function extractToolProvider(event: any): ProviderId | undefined {
+  if (!event || typeof event !== 'object') return undefined
+  const raw = event.provider ?? event.metadata?.provider
+  return typeof raw === 'string' && TOOL_ACTIVITY_PROVIDER_IDS.has(raw as ProviderId)
+    ? (raw as ProviderId)
+    : undefined
 }
 
 /**
@@ -918,6 +937,7 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
   const displayName = getToolDisplayName(toolName, parameters)
   const filePath = (parameters.file_path as string) || (parameters.path as string) || undefined
   const parentToolCallId = extractParentToolCallId(toolUseEvent)
+  const provider = extractToolProvider(toolUseEvent)
 
   return {
     id: extractToolId(toolUseEvent),
@@ -931,6 +951,7 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
     diffSummary: deriveToolDiffSummary(toolName, parameters),
     rawUseEvent: toolUseEvent,
     parentToolCallId,
+    ...(provider ? { metadata: { provider } } : {}),
     // Legacy fields
     operationCategory: category as any,
     affectedFilePath: filePath

@@ -40,6 +40,45 @@ describe('reduceSoloToolEventMessages', () => {
     expect(result.isResult).toBe(false)
   })
 
+  it('preserves provider attribution from solo tool events and reducer fallback', () => {
+    const fromEvent = reduce([], {
+      type: 'tool_event',
+      provider: 'cursor',
+      isUse: true,
+      data: {
+        type: 'tool_use',
+        tool_id: 'call-provider-event',
+        tool_name: 'read_file',
+        parameters: {}
+      }
+    })
+    expect(fromEvent.messages[0].toolActivities?.[0].metadata).toMatchObject({
+      provider: 'cursor'
+    })
+
+    const fromFallback = reduceSoloToolEventMessages(
+      [],
+      {
+        type: 'tool_event',
+        isUse: true,
+        data: {
+          type: 'tool_use',
+          tool_id: 'call-provider-fallback',
+          tool_name: 'workspace_search',
+          parameters: {}
+        }
+      },
+      {
+        createMessageId: () => 'tool-message-provider-fallback',
+        nowIso: () => NOW,
+        provider: 'ollama'
+      }
+    )
+    expect(fromFallback.messages[0].toolActivities?.[0].metadata).toMatchObject({
+      provider: 'ollama'
+    })
+  })
+
   it('pairs a solo tool_result with the existing tool activity', () => {
     const first = reduce([], {
       type: 'tool_event',

@@ -8,6 +8,7 @@ import {
 import { AgentIdentityIcon } from './icons/AgentIdentityIcon'
 import { assignAgentIdentityFromSeed } from '../lib/agentIdentitySeed'
 import { MarkdownMessage } from './MarkdownMessage'
+import { MessageActionsChip } from './MessageActionsChip'
 import { subThreadReturnBody } from './SubThreadReturnCardModel'
 
 interface SubThreadReturnCardProps {
@@ -15,6 +16,12 @@ interface SubThreadReturnCardProps {
   chat?: ChatRecord
   onOpenSubThread?: (chatId: string) => void
   onOpenSubThreadInSidePanel?: (chatId: string, presentation?: 'split' | 'drawer') => void
+  onCopyMessage?: (messageId: string, content: string) => void
+  onDeleteMessage?: (messageId: string) => void
+  onTogglePinMessage?: (messageId: string) => void
+  onOpenSideChatFromMessage?: (message: ChatMessage) => void
+  pinned?: boolean
+  copied?: boolean
 }
 
 function textValue(value: unknown): string | undefined {
@@ -25,7 +32,13 @@ export function SubThreadReturnCard({
   message,
   chat,
   onOpenSubThread,
-  onOpenSubThreadInSidePanel
+  onOpenSubThreadInSidePanel,
+  onCopyMessage,
+  onDeleteMessage,
+  onTogglePinMessage,
+  onOpenSideChatFromMessage,
+  pinned = false,
+  copied = false
 }: SubThreadReturnCardProps) {
   const metadata = message.metadata || {}
   const provider = metadata.subThreadProvider
@@ -106,6 +119,19 @@ export function SubThreadReturnCard({
       <div className="subthread-return-body">
         <MarkdownMessage content={body} chat={chat} />
       </div>
+      {onCopyMessage && (
+        <MessageActionsChip
+          onCopy={() => onCopyMessage(message.id, body)}
+          onTogglePin={onTogglePinMessage ? () => onTogglePinMessage(message.id) : undefined}
+          onDelete={onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
+          onOpenSideChat={
+            onOpenSideChatFromMessage ? () => onOpenSideChatFromMessage(message) : undefined
+          }
+          pinned={pinned}
+          copied={copied}
+          label="sub-thread result"
+        />
+      )}
     </article>
   )
 }

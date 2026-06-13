@@ -1016,10 +1016,16 @@ export const TranscriptPanel = memo(
                         chat={currentChat || undefined}
                         onOpenSubThread={onOpenSubThread}
                         onOpenSubThreadInSidePanel={onOpenSubThreadInSidePanel}
+                        onCopyMessage={onCopyMessage}
+                        onTogglePinMessage={onTogglePinMessage}
+                        onDeleteMessage={onDeleteMessage}
+                        onOpenSideChatFromMessage={onOpenSideChatFromMessage}
+                        pinned={isPinned}
+                        copied={copiedId === msg.id}
                       />
                     )}
                   </div>
-                ) : msg.role === 'tool' ? (
+                ) : msg.role === 'tool' && (msg.toolActivities?.length || 0) > 0 ? (
                   <ActivityStack
                     key={msg.id}
                     activities={msg.toolActivities || []}
@@ -1035,6 +1041,32 @@ export const TranscriptPanel = memo(
                     }
                     onExpandedActivityIdsChange={(next) => setActivityExpansionForRow(msg.id, next)}
                   />
+                ) : msg.role === 'tool' ? (
+                  <div key={msg.id} className="message-group tool-message-fallback">
+                    <div className="message-meta">Tool</div>
+                    <div className="message-bubble system tool-message-fallback-bubble">
+                      {msg.content ? (
+                        <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
+                      ) : (
+                        <span>Tool event recorded without displayable details.</span>
+                      )}
+                      <MessageActionsChip
+                        onCopy={() => onCopyMessage(msg.id, msg.content || '')}
+                        onTogglePin={
+                          onTogglePinMessage ? () => onTogglePinMessage(msg.id) : undefined
+                        }
+                        onDelete={() => onDeleteMessage(msg.id)}
+                        onOpenSideChat={
+                          onOpenSideChatFromMessage
+                            ? () => onOpenSideChatFromMessage(msg)
+                            : undefined
+                        }
+                        pinned={isPinned}
+                        copied={copiedId === msg.id}
+                        label="tool message"
+                      />
+                    </div>
+                  </div>
                 ) : msg.metadata?.kind === 'ensembleParticipantHealth' ? (
                   /*
                     1.0.5-EW29 — Structured participant-health pre-flight

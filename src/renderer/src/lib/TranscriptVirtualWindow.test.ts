@@ -98,8 +98,18 @@ describe('TranscriptVirtualWindow', () => {
       expect(classifyRowType(m)).toBe('return')
     })
 
-    it('classifies a plain tool message as a tool row', () => {
-      expect(classifyRowType(msg({ id: 't', role: 'tool' }))).toBe('tool')
+    it('classifies a plain tool message with activities as a tool row', () => {
+      expect(
+        classifyRowType(
+          msg({ id: 't', role: 'tool', toolActivities: [activity({ id: 'activity-1' })] })
+        )
+      ).toBe('tool')
+    })
+
+    it('classifies a content-only tool message as a text fallback row', () => {
+      expect(
+        classifyRowType(msg({ id: 't-content', role: 'tool', content: '**legacy result**' }))
+      ).toBe('system')
     })
 
     it('classifies an ensemble participant-health card', () => {
@@ -170,8 +180,9 @@ describe('TranscriptVirtualWindow', () => {
       expect(contentVersion(b)).not.toBe(contentVersion(a))
     })
 
-    it('handles a tool row with no activities and empty content defensively', () => {
-      expect(contentVersion(msg({ id: 't', role: 'tool' }))).toBe('t:0::0')
+    it('uses content length for a tool fallback row with no activities', () => {
+      expect(contentVersion(msg({ id: 't', role: 'tool' }))).toBe('t:0')
+      expect(contentVersion(msg({ id: 't', role: 'tool', content: 'legacy result' }))).toBe('t:13')
       expect(contentVersion(msg({ id: 'a', content: undefined as unknown as string }))).toBe('a:0')
     })
   })

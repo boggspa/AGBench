@@ -59,6 +59,26 @@ describe('SubThreadReturnCard', () => {
     expect(html).toContain('Open sub-thread')
   })
 
+  it('renders transcript message actions when handlers are provided', () => {
+    const html = renderToStaticMarkup(
+      <SubThreadReturnCard
+        message={subThreadMessage()}
+        onCopyMessage={() => {}}
+        onTogglePinMessage={() => {}}
+        onDeleteMessage={() => {}}
+        onOpenSideChatFromMessage={() => {}}
+        pinned
+        copied
+      />
+    )
+
+    expect(html).toContain('Actions for sub-thread result')
+    expect(html).toContain('message-actions-chip-button--copy')
+    expect(html).toContain('message-actions-chip-button--pin is-pinned')
+    expect(html).toContain('message-actions-chip-button--side-chat')
+    expect(html).toContain('message-actions-chip-button--delete')
+  })
+
   it('routes the drawer action through the side-panel presentation callback', () => {
     const onOpenSubThreadInSidePanel = vi.fn()
     const tree = SubThreadReturnCard({

@@ -3744,6 +3744,7 @@
 
 .subthread-return-card {
   width: min(100%, 860px);
+  position: relative;
   /* Agent-tinted rim highlight: the FULL border carries the per-agent identity
    * accent (--agent-rim, set inline from agentIdentity.accent) so each
    * delegation surface reads as one cohesive "this agent" colour — a full

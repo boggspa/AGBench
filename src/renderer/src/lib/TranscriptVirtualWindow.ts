@@ -146,7 +146,9 @@ export function classifyRowType(message: ChatMessage): VirtualRowType {
   if (isSubThreadDelegationMessage(message)) return 'delegation'
   if (isSubThreadReturnMessage(message)) return 'return'
   if (isGuestParticipantReplyMessage(message)) return 'guestReply'
-  if (message.role === 'tool') return 'tool'
+  if (message.role === 'tool') {
+    return (message.toolActivities?.length || 0) > 0 ? 'tool' : 'system'
+  }
   if (message.metadata?.kind === 'ensembleParticipantHealth') return 'participantHealth'
   if (message.role === 'user') return 'user'
   if (message.role === 'error') return 'error'
@@ -173,6 +175,9 @@ export function classifyRowType(message: ChatMessage): VirtualRowType {
 export function contentVersion(message: ChatMessage): string {
   if (message.role === 'tool') {
     const activities = message.toolActivities || []
+    if (activities.length === 0) {
+      return `t:${(message.content || '').length}`
+    }
     let outputLen = 0
     let statuses = ''
     for (const a of activities) {

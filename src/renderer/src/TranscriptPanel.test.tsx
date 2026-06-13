@@ -113,6 +113,35 @@ function transcriptParityMessages(provider: ProviderId, chatKind: ChatKind): Cha
       timestamp: '2026-01-01T00:00:01.000Z'
     },
     {
+      id: `assistant-${provider}-${chatKind}`,
+      role: 'assistant',
+      content: [
+        '### Assistant parity',
+        '',
+        '> quoted **assistant** line',
+        '',
+        '- [x] checked item',
+        '- parent',
+        '  - nested child',
+        '',
+        '[Provider docs](https://example.com)',
+        '',
+        '```json',
+        '{"ok":true}',
+        '```'
+      ].join('\n'),
+      timestamp: '2026-01-01T00:00:01.500Z',
+      metadata:
+        chatKind === 'ensemble'
+          ? {
+              ensembleProvider: provider,
+              ensembleParticipantId: `${provider}-participant`,
+              ensembleRole: 'Reviewer',
+              ensembleModel: `${provider}-parity-model`
+            }
+          : undefined
+    },
+    {
       id: `tool-${provider}-${chatKind}`,
       role: 'tool',
       content: '',
@@ -299,9 +328,107 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
     expect(html).toContain('message-code-language">ts')
     expect(html).toContain('<strong>System note</strong>')
     expect(html).toContain('<table>')
+    expect(html).toContain('<h3>Assistant parity</h3>')
+    expect(html).toContain('<blockquote>')
+    expect(html).toContain('<strong>assistant</strong>')
+    expect(html).toContain('type="checkbox"')
+    expect(html).toContain('nested child')
+    expect(html).toContain('data-link-kind="external"')
+    expect(html).toContain('message-code-language">json')
     expect(html).toContain('Git status')
     expect(html).toContain(`provider-${provider}`)
     expect(html).not.toContain('mcp_TaskWraith_git_status')
+  })
+
+  it('keeps assistant markdown around grouped tool traces', () => {
+    const firstTool: ToolActivity = {
+      id: 'activity-read-one',
+      toolName: 'read_file',
+      displayName: 'Read file',
+      category: 'read',
+      status: 'success',
+      parameters: { file_path: '/repo/src/one.ts' },
+      resultSummary: 'read one'
+    }
+    const secondTool: ToolActivity = {
+      ...firstTool,
+      id: 'activity-read-two',
+      parameters: { file_path: '/repo/src/two.ts' },
+      resultSummary: 'read two'
+    }
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          currentProviderLabel: 'Codex',
+          currentProvider: 'codex',
+          currentChat: {
+            appChatId: 'chat-tool-ordering',
+            provider: 'codex',
+            chatKind: 'single'
+          },
+          messages: [
+            {
+              id: 'assistant-before-tools',
+              role: 'assistant',
+              content: '**Before tools**',
+              timestamp: '2026-01-01T00:00:00.000Z'
+            },
+            {
+              id: 'tool-one',
+              role: 'tool',
+              content: '',
+              timestamp: '2026-01-01T00:00:01.000Z',
+              runId: 'run-tool-ordering',
+              toolActivities: [firstTool]
+            },
+            {
+              id: 'tool-two',
+              role: 'tool',
+              content: '',
+              timestamp: '2026-01-01T00:00:02.000Z',
+              runId: 'run-tool-ordering',
+              toolActivities: [secondTool]
+            },
+            {
+              id: 'assistant-after-tools',
+              role: 'assistant',
+              content: '## After tools\n\n- grouped trace preserved',
+              timestamp: '2026-01-01T00:00:03.000Z'
+            }
+          ]
+        })}
+      />
+    )
+
+    expect(html).toContain('<strong>Before tools</strong>')
+    expect(html).toContain('<h2>After tools</h2>')
+    expect(html).toContain('<li>grouped trace preserved</li>')
+    expect(html).toContain('tool-group-tool-one-tool-two-2')
+    expect(html).toContain('Read 2 files')
+  })
+
+  it('renders content-only tool messages as markdown fallback bubbles', () => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          messages: [
+            {
+              id: 'legacy-tool-content',
+              role: 'tool',
+              content: '**Legacy tool result**\n\n- visible item',
+              timestamp: '2026-01-01T00:00:00.000Z'
+            }
+          ]
+        })}
+      />
+    )
+
+    expect(html).toContain('tool-message-fallback')
+    expect(html).toContain('<strong>Legacy tool result</strong>')
+    expect(html).toContain('<li>visible item</li>')
+    expect(html).toContain('Actions for tool message')
   })
 
   it('renders Ollama brand providers with model badges in message headers', () => {
