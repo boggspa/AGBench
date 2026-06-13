@@ -78,6 +78,19 @@ const TASKWRAITH_MCP_TOOL_GROUPS =
   'diagnostic/status tools: approval_status, provider_auth_status, run_timeline, raw_provider_events, create_handoff_card, switch_auth_profile, agent_delegation_role.'
 
 /**
+ * Shared edit-discipline note appended to every write-capable cloud-provider
+ * preamble (gemini/claude/kimi/codex/cursor/grok). Plan-mode/read-only runs
+ * never reach these preambles, so this only governs runs that can actually
+ * mutate the workspace. Encodes the inner read→edit→verify loop the way
+ * Cursor/Cline/Codex/Devin do: read first, verify after, never fake a pass.
+ */
+const CLOUD_EDIT_DISCIPLINE_NOTE = [
+  'Read before you edit: open the target file with read_file (or open_workspace_file) to see its current contents before write_file/replace/apply_patch, especially before a partial edit — never edit a file you have not read this run.',
+  "After making code changes, verify them: run the project's checks with run_task (lint/build/tests) and summarize the outcome with test_result_summary before declaring the task done.",
+  'Never claim tests, builds, or lint passed without actually running them — report real tool output, not a fabricated success.'
+].join('\n')
+
+/**
  * Collapse whitespace + truncate. Used per-turn so a single huge historical
  * message can't dominate the context block.
  */
@@ -567,6 +580,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       `Use the TaskWraith MCP tools directly for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control. Tool groups: ${TASKWRAITH_MCP_TOOL_GROUPS}`,
       `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
       'If Gemini exposes MCP-qualified names, use the `TaskWraith__<tool>` form, e.g. TaskWraith__workspace_search, TaskWraith__apply_patch, TaskWraith__git_status, TaskWraith__run_task, and TaskWraith__delegate_to_subthread.',
+      CLOUD_EDIT_DISCIPLINE_NOTE,
       'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit TaskWraith write tools.',
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
       'For CROSS-PROVIDER delegation (e.g. asking Kimi or Codex to handle a sub-task), call TaskWraith__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use your built-in invoke_agent / generalist agent for cross-provider work, those run inside your own process and cannot reach other TaskWraith providers.',
@@ -595,6 +609,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       `Tool groups: ${TASKWRAITH_MCP_TOOL_GROUPS}`,
       `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
       'Claude may expose tools as `mcp__TaskWraith__<tool>`; examples: mcp__TaskWraith__workspace_search, mcp__TaskWraith__apply_patch, mcp__TaskWraith__git_status, mcp__TaskWraith__run_task, and mcp__TaskWraith__delegate_to_subthread.',
+      CLOUD_EDIT_DISCIPLINE_NOTE,
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
       "For CROSS-PROVIDER delegation (e.g. asking Gemini, Kimi, or Codex to handle a sub-task), call mcp__TaskWraith__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Claude's built-in Task tool for cross-provider work, that runs inside Claude's process and cannot reach other TaskWraith providers.",
       "Spawn example: mcp__TaskWraith__delegate_to_subthread({ provider: 'gemini', prompt: 'Analyze this codebase...', returnResult: true }).",
@@ -625,6 +640,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       `Tool groups: ${TASKWRAITH_MCP_TOOL_GROUPS}`,
       `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
       'Kimi may expose tools as `TaskWraith__<tool>`; examples: TaskWraith__workspace_search, TaskWraith__apply_patch, TaskWraith__git_status, TaskWraith__run_task, and TaskWraith__delegate_to_subthread.',
+      CLOUD_EDIT_DISCIPLINE_NOTE,
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
       "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Codex to handle a sub-task), call TaskWraith__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use any built-in generalist-agent path for cross-provider work, those run inside Kimi's process and cannot reach other TaskWraith providers.",
       "Spawn example: TaskWraith__delegate_to_subthread({ provider: 'claude', prompt: 'Review this design doc...', returnResult: true }).",
@@ -664,6 +680,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       `Tool groups: ${TASKWRAITH_MCP_TOOL_GROUPS}`,
       `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
       'Codex may expose tools as `TaskWraith__<tool>` or as the bare tool name depending on CLI version; examples: TaskWraith__workspace_search, TaskWraith__apply_patch, TaskWraith__git_status, TaskWraith__run_task, and TaskWraith__delegate_to_subthread.',
+      CLOUD_EDIT_DISCIPLINE_NOTE,
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
       "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Kimi to handle a sub-task), call TaskWraith__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Codex's built-in invoke / generalist-agent path for cross-provider work, those run inside Codex's process and cannot reach other TaskWraith providers.",
       'The tool may also surface as the plain `delegate_to_subthread` name depending on Codex CLI version; either form invokes the same TaskWraith MCP entrypoint.',
@@ -693,6 +710,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       `Complete TaskWraith tool list: ${TASKWRAITH_MCP_TOOL_LIST}.`,
       namespace,
       'Use the TaskWraith MCP tools for file edits and shell commands. Native provider write/shell paths are constrained here so TaskWraith can apply permission policy, workspace/path checks, and transcript/audit logging.',
+      CLOUD_EDIT_DISCIPLINE_NOTE,
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
       "For CROSS-PROVIDER delegation, call delegate_to_subthread through the TaskWraith MCP server — do not use a provider-native sub-agent path because it cannot reach other TaskWraith providers.",
       "Spawn example: delegate_to_subthread({ provider: 'codex', prompt: 'Run the focused test suite and summarize failures.', returnResult: true }).",

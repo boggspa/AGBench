@@ -292,6 +292,53 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextualPrompt).not.toContain('TaskWraith runtime note')
   })
 
+  it('injects the read-before-edit + verify discipline into edit-capable cloud runs', () => {
+    for (const provider of ['gemini', 'claude', 'kimi', 'codex', 'cursor', 'grok'] as const) {
+      const result = composeRunPrompt({
+        provider,
+        finalPrompt: 'Make the change.',
+        messages: [],
+        chatContextTurns: 6,
+        codexHandoffsApplied: [],
+        isGlobalRun: false,
+        approvalMode: 'default',
+        providerLabel: provider
+      })
+
+      expect(result.contextualPrompt).toContain('Read before you edit')
+      expect(result.contextualPrompt).toContain('never edit a file you have not read this run')
+      expect(result.contextualPrompt).toContain('After making code changes, verify them')
+      expect(result.contextualPrompt).toContain('test_result_summary')
+      expect(result.contextualPrompt).toContain('not a fabricated success')
+    }
+  })
+
+  it('omits the edit discipline in plan mode and global (read-only) runs', () => {
+    const planRun = composeRunPrompt({
+      provider: 'claude',
+      finalPrompt: 'Inspect only.',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'plan',
+      providerLabel: 'Claude'
+    })
+    expect(planRun.contextualPrompt).not.toContain('Read before you edit')
+
+    const globalRun = composeRunPrompt({
+      provider: 'claude',
+      finalPrompt: 'Inspect only.',
+      messages: [],
+      chatContextTurns: 6,
+      codexHandoffsApplied: [],
+      isGlobalRun: true,
+      approvalMode: 'default',
+      providerLabel: 'Claude'
+    })
+    expect(globalRun.contextualPrompt).not.toContain('Read before you edit')
+  })
+
   it('applies compact Ollama context budget and scout workflow hint', () => {
     const long = 'x'.repeat(500)
     const result = composeRunPrompt({
