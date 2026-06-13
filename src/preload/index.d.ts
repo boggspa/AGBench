@@ -559,6 +559,7 @@ declare global {
       >
       openProviderLoginTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
       openProviderLogoutTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
+      openProviderUpgradeTerminal: (provider: ProviderId) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>

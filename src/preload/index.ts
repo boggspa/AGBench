@@ -191,7 +191,7 @@ const api = {
   getKimiAuthStatus: () => ipcRenderer.invoke('get-kimi-auth-status'),
   storeKimiApiKey: (key: string) => ipcRenderer.invoke('store-kimi-api-key', key),
   clearKimiApiKey: () => ipcRenderer.invoke('clear-kimi-api-key'),
-  upgradeKimiCli: () => ipcRenderer.invoke('provider:open-kimi-upgrade-terminal'),
+  upgradeKimiCli: () => ipcRenderer.invoke('provider:open-upgrade-terminal', 'kimi'),
   getGeminiAuthStatus: () => ipcRenderer.invoke('get-gemini-auth-status'),
   listGeminiAuthProfiles: () => ipcRenderer.invoke('list-gemini-auth-profiles'),
   saveGeminiAuthProfile: (profile: any) => ipcRenderer.invoke('save-gemini-auth-profile', profile),
@@ -400,6 +400,11 @@ const api = {
     }>,
   openProviderLogoutTerminal: (provider: ProviderId) =>
     ipcRenderer.invoke('provider:open-logout-terminal', provider) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
+  openProviderUpgradeTerminal: (provider: ProviderId) =>
+    ipcRenderer.invoke('provider:open-upgrade-terminal', provider) as Promise<{
       ok: boolean
       error?: string
     }>,

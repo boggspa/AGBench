@@ -89,6 +89,8 @@ import { ProviderInstallCommands } from './ProviderInstallCommands'
 import type { ModelUsageAggregate } from '../App'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from '../../../main/TaskWraithMcpTools'
 
+type ProviderCliUpgradeState = 'idle' | 'opening' | 'opened' | 'error'
+
 interface SettingsPanelProps {
   mode: AppearanceMode
   visualEffectStyle: VisualEffectStyle
@@ -179,7 +181,7 @@ interface SettingsPanelProps {
   cursorProviderAvailable?: boolean
   grokProviderAvailable?: boolean
   claudeLoginState?: 'idle' | 'loading' | 'success' | 'error'
-  kimiUpgradeState?: 'idle' | 'opening' | 'opened' | 'error'
+  providerCliUpgradeState?: Partial<Record<ProviderId, ProviderCliUpgradeState>>
   onImportCodexUsageCredential?: () => void
   onClearCodexUsageCredential?: () => void
   onTriggerClaudeLogin?: () => void
@@ -187,7 +189,7 @@ interface SettingsPanelProps {
   onClearClaudeApiKey?: () => void
   onStoreKimiApiKey?: (key: string) => void
   onClearKimiApiKey?: () => void
-  onUpgradeKimiCli?: () => void
+  onProviderUpgrade?: (provider: ProviderId) => void
   onSaveGeminiAuthProfile?: (profile: {
     id?: string
     label?: string
@@ -1426,7 +1428,7 @@ export function SettingsPanel({
   cursorProviderAvailable = false,
   grokProviderAvailable = false,
   claudeLoginState = 'idle',
-  kimiUpgradeState = 'idle',
+  providerCliUpgradeState = {},
   onImportCodexUsageCredential,
   onClearCodexUsageCredential,
   onTriggerClaudeLogin,
@@ -1434,7 +1436,7 @@ export function SettingsPanel({
   onClearClaudeApiKey,
   onStoreKimiApiKey,
   onClearKimiApiKey,
-  onUpgradeKimiCli,
+  onProviderUpgrade,
   onSaveGeminiAuthProfile,
   onStartGeminiOAuthLogin,
   onCancelGeminiOAuthLogin,
@@ -1642,6 +1644,29 @@ export function SettingsPanel({
     'Grok',
     'Authenticate the Grok CLI (in `~/.grok/bin`) in your shell, then launch Grok runs.'
   )
+  const providerUpgradeState = (provider: ProviderId): ProviderCliUpgradeState =>
+    providerCliUpgradeState[provider] || 'idle'
+  const renderProviderUpgradeButton = (provider: ProviderId) => {
+    const state = providerUpgradeState(provider)
+    return (
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost"
+        onClick={() => onProviderUpgrade?.(provider)}
+        disabled={!onProviderUpgrade || state === 'opening'}
+      >
+        {state === 'opening' ? 'Opening…' : 'Upgrade CLI…'}
+      </button>
+    )
+  }
+  const renderProviderUpgradeHint = (provider: ProviderId) => {
+    const state = providerUpgradeState(provider)
+    if (state === 'opened') {
+      return ' Upgrade terminal opened; TaskWraith will refresh detected CLI status shortly.'
+    }
+    if (state === 'error') return ' Could not open the upgrade terminal.'
+    return ''
+  }
   const providerMcpSummaries = SETTINGS_PROVIDER_ORDER.map((provider) => {
     const contract =
       providerCapabilitiesByProvider?.[provider] ??
@@ -3538,6 +3563,7 @@ export function SettingsPanel({
                           Open Terminal to sign out
                         </button>
                       )}
+                      {renderProviderUpgradeButton('codex')}
                       <button
                         type="button"
                         className="btn btn-sm"
@@ -3558,6 +3584,7 @@ export function SettingsPanel({
                     <p className="settings-provider-auth-footnote">
                       Usage import powers quota and credit meters only; Codex runs still use the
                       official CLI login.
+                      {renderProviderUpgradeHint('codex')}
                     </p>
                   </SettingsProviderAuthCard>
 
@@ -3587,6 +3614,7 @@ export function SettingsPanel({
                           Sign out
                         </button>
                       )}
+                      {renderProviderUpgradeButton('claude')}
                       {claudeAuthStatus?.apiKeyConfigured && onClearClaudeApiKey && (
                         <button
                           type="button"
@@ -3599,6 +3627,7 @@ export function SettingsPanel({
                     </div>
                     <p className="settings-provider-auth-footnote">
                       API key and CLI path controls are below.
+                      {renderProviderUpgradeHint('claude')}
                     </p>
                   </SettingsProviderAuthCard>
 
@@ -3654,9 +3683,11 @@ export function SettingsPanel({
                           Sign out active profile
                         </button>
                       )}
+                      {renderProviderUpgradeButton('gemini')}
                     </div>
                     <p className="settings-provider-auth-footnote">
                       API key, Vertex, and runtime controls are below.
+                      {renderProviderUpgradeHint('gemini')}
                     </p>
                   </SettingsProviderAuthCard>
 
@@ -3686,6 +3717,7 @@ export function SettingsPanel({
                           Sign out
                         </button>
                       )}
+                      {renderProviderUpgradeButton('kimi')}
                       {kimiAuthStatus?.apiKeyConfigured && onClearKimiApiKey && (
                         <button
                           type="button"
@@ -3698,6 +3730,7 @@ export function SettingsPanel({
                     </div>
                     <p className="settings-provider-auth-footnote">
                       Paste a Moonshot API key in the Kimi section below.
+                      {renderProviderUpgradeHint('kimi')}
                     </p>
                   </SettingsProviderAuthCard>
                   <SettingsProviderAuthCard
@@ -3711,26 +3744,30 @@ export function SettingsPanel({
                       <code>cursor-agent login</code>
                       <span>Run once in Terminal for official Cursor CLI runtime auth.</span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={() => onProviderLogin?.('cursor')}
-                      disabled={!onProviderLogin}
-                    >
-                      Open Terminal to sign in
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-ghost"
-                      onClick={() => onProviderLogout?.('cursor')}
-                      disabled={!onProviderLogout}
-                    >
-                      Open Terminal to sign out
-                    </button>
+                    <div className="settings-provider-auth-action-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => onProviderLogin?.('cursor')}
+                        disabled={!onProviderLogin}
+                      >
+                        Open Terminal to sign in
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => onProviderLogout?.('cursor')}
+                        disabled={!onProviderLogout}
+                      >
+                        Open Terminal to sign out
+                      </button>
+                      {renderProviderUpgradeButton('cursor')}
+                    </div>
                     <p className="settings-provider-auth-footnote">
                       Write-mode runs are contained by a workspace-local deny-list and surfaced
                       through Review changes. Enabled by default; set
                       <code> TASKWRAITH_DISABLE_CURSOR=1</code> to hide.
+                      {renderProviderUpgradeHint('cursor')}
                     </p>
                   </SettingsProviderAuthCard>
                   <SettingsProviderAuthCard
@@ -3746,24 +3783,28 @@ export function SettingsPanel({
                         Run the Grok CLI in Terminal and sign in (installs under ~/.grok/bin).
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={() => onProviderLogin?.('grok')}
-                      disabled={!onProviderLogin}
-                    >
-                      Open Terminal to sign in
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-ghost"
-                      onClick={() => onProviderLogout?.('grok')}
-                      disabled={!onProviderLogout}
-                    >
-                      Open Terminal to sign out
-                    </button>
+                    <div className="settings-provider-auth-action-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => onProviderLogin?.('grok')}
+                        disabled={!onProviderLogin}
+                      >
+                        Open Terminal to sign in
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => onProviderLogout?.('grok')}
+                        disabled={!onProviderLogout}
+                      >
+                        Open Terminal to sign out
+                      </button>
+                      {renderProviderUpgradeButton('grok')}
+                    </div>
                     <p className="settings-provider-auth-footnote">
                       Enabled by default; set <code>TASKWRAITH_DISABLE_GROK=1</code> to hide.
+                      {renderProviderUpgradeHint('grok')}
                     </p>
                   </SettingsProviderAuthCard>
                 </div>
@@ -4438,39 +4479,15 @@ export function SettingsPanel({
                 </p>
 
                 <label className="settings-label">Kimi CLI binary</label>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 'var(--space-sm)',
-                    alignItems: 'center'
-                  }}
-                >
-                  <input
-                    className="settings-select"
-                    value={kimiBinaryPath}
-                    onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
-                    placeholder="Auto-detect, or /path/to/kimi"
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    className="btn btn-sm btn-ghost"
-                    onClick={onUpgradeKimiCli}
-                    disabled={
-                      !onUpgradeKimiCli ||
-                      kimiUpgradeState === 'opening' ||
-                      kimiAuthStatus?.available === false
-                    }
-                  >
-                    {kimiUpgradeState === 'opening' ? 'Opening…' : 'Upgrade CLI…'}
-                  </button>
-                </div>
+                <input
+                  className="settings-select"
+                  value={kimiBinaryPath}
+                  onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
+                  placeholder="Auto-detect, or /path/to/kimi"
+                />
                 <p className="settings-hint">
                   Optional path override for Kimi Code CLI.
                   {kimiAuthStatus?.version ? ` Current: ${kimiAuthStatus.version}.` : ''}
-                  {kimiUpgradeState === 'opened'
-                    ? ' Upgrade terminal opened; TaskWraith will refresh the detected version shortly.'
-                    : ''}
-                  {kimiUpgradeState === 'error' ? ' Could not open the upgrade terminal.' : ''}
                 </p>
               </div>
 

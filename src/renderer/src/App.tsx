@@ -464,6 +464,8 @@ import { isFunFxMode, getLegacyFunFxSettingsFromLocalStorage } from './lib/funFx
 //
 // Imports below the const block — see top-of-file `import` group.
 
+type ProviderCliUpgradeState = 'idle' | 'opening' | 'opened' | 'error'
+
 const FX_BURST_DURATION_MS = 1150
 /**
  * Lifetime of the post-dismissal pointer animation on the sidebar
@@ -1214,9 +1216,9 @@ function App(): React.JSX.Element {
   const [claudeLoginState, setClaudeLoginState] = useState<
     'idle' | 'loading' | 'success' | 'error'
   >('idle')
-  const [kimiUpgradeState, setKimiUpgradeState] = useState<
-    'idle' | 'opening' | 'opened' | 'error'
-  >('idle')
+  const [providerCliUpgradeState, setProviderCliUpgradeState] = useState<
+    Partial<Record<ProviderId, ProviderCliUpgradeState>>
+  >({})
   const [agenticServices, setAgenticServices] =
     useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
   const [autoResumeParentOnSubThreadCompletion, setAutoResumeParentOnSubThreadCompletion] =
@@ -4119,31 +4121,55 @@ function App(): React.JSX.Element {
     }
   }
 
-  const handleUpgradeKimiCli = async () => {
-    if (typeof window.api.upgradeKimiCli !== 'function') return
-    setKimiUpgradeState('opening')
+  const setProviderUpgradeState = (provider: ProviderId, state: ProviderCliUpgradeState): void => {
+    setProviderCliUpgradeState((prev) => ({ ...prev, [provider]: state }))
+  }
+
+  const refreshProviderAfterCliUpgrade = (provider: ProviderId): void => {
+    if (provider === 'gemini') {
+      if (typeof window.api.getGeminiVersion === 'function') {
+        void window.api
+          .getGeminiVersion()
+          .then((version) => setGeminiVersion(version))
+          .catch(() => {})
+      }
+      void refreshGeminiAuthStatus()
+      void refreshProviderMetadata('gemini')
+      return
+    }
+    if (provider === 'claude' && typeof window.api.getClaudeAuthStatus === 'function') {
+      void window.api
+        .getClaudeAuthStatus()
+        .then(setClaudeAuthStatus)
+        .catch(() => {})
+    }
+    if (provider === 'kimi' && typeof window.api.getKimiAuthStatus === 'function') {
+      void window.api
+        .getKimiAuthStatus()
+        .then(setKimiAuthStatus)
+        .catch(() => {})
+    }
+    void refreshProviderMetadata(provider)
+  }
+
+  const handleUpgradeProviderCli = async (provider: ProviderId) => {
+    if (typeof window.api.openProviderUpgradeTerminal !== 'function') return
+    setProviderUpgradeState(provider, 'opening')
     try {
-      const result = await window.api.upgradeKimiCli()
+      const result = await window.api.openProviderUpgradeTerminal(provider)
       if (!result?.ok) {
-        setKimiUpgradeState('error')
-        setTimeout(() => setKimiUpgradeState('idle'), 5000)
+        setProviderUpgradeState(provider, 'error')
+        setTimeout(() => setProviderUpgradeState(provider, 'idle'), 5000)
         return
       }
-      setKimiUpgradeState('opened')
-      if (typeof window.api.getKimiAuthStatus === 'function') {
-        for (const delayMs of [4000, 15000, 30000]) {
-          window.setTimeout(() => {
-            void window.api
-              .getKimiAuthStatus()
-              .then(setKimiAuthStatus)
-              .catch(() => {})
-          }, delayMs)
-        }
+      setProviderUpgradeState(provider, 'opened')
+      for (const delayMs of [4000, 15000, 30000]) {
+        window.setTimeout(() => refreshProviderAfterCliUpgrade(provider), delayMs)
       }
-      setTimeout(() => setKimiUpgradeState('idle'), 10000)
+      setTimeout(() => setProviderUpgradeState(provider, 'idle'), 10000)
     } catch {
-      setKimiUpgradeState('error')
-      setTimeout(() => setKimiUpgradeState('idle'), 5000)
+      setProviderUpgradeState(provider, 'error')
+      setTimeout(() => setProviderUpgradeState(provider, 'idle'), 5000)
     }
   }
 
@@ -16154,7 +16180,7 @@ function App(): React.JSX.Element {
               cursorProviderAvailable={cursorProviderAvailable}
               grokProviderAvailable={grokProviderAvailable}
               claudeLoginState={claudeLoginState}
-              kimiUpgradeState={kimiUpgradeState}
+              providerCliUpgradeState={providerCliUpgradeState}
               onImportCodexUsageCredential={() => void handleImportCodexUsageCredential()}
               onClearCodexUsageCredential={() => void handleClearCodexUsageCredential()}
               onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
@@ -16162,7 +16188,7 @@ function App(): React.JSX.Element {
               onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
               onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
               onClearKimiApiKey={() => void handleClearKimiApiKey()}
-              onUpgradeKimiCli={() => void handleUpgradeKimiCli()}
+              onProviderUpgrade={(provider) => void handleUpgradeProviderCli(provider)}
               onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
               onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
               onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}

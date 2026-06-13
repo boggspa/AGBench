@@ -124,6 +124,15 @@ describe('IpcValidation', () => {
     ).not.toThrow()
   })
 
+  it('accepts provider CLI upgrade terminal requests for CLI-backed providers', () => {
+    for (const provider of ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']) {
+      expect(() => validateIpcArgs('provider:open-upgrade-terminal', [provider])).not.toThrow()
+    }
+    expect(() => validateIpcArgs('provider:open-upgrade-terminal', ['bad'])).toThrow(
+      /known provider/
+    )
+  })
+
   it('rejects Cursor at the IPC trust boundary when the kill-switch is set', () => {
     // TASKWRAITH_DISABLE_CURSOR=1 is the emergency opt-OUT; it forces cursor back
     // out of the accept-set at the boundary before any dispatch.

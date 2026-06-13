@@ -19084,10 +19084,10 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('providerRates:get', () => getCurrentProviderRates())
     ipcMain.handle('providerRates:probe', async () => probeAllProviderRates())
 
-    // 1.0.6-CRUX42/CRUX follow-up — provider auth operations that must run in
+    // 1.0.6-CRUX42/CRUX follow-up — provider CLI operations that must run in
     // the provider-owned CLI open in Terminal as one-shot `.command` files. The
-    // app never shells these silently: users can see exactly which login/logout
-    // command is running.
+    // app never shells these silently: users can see exactly which login/logout/
+    // upgrade command is running.
     const openProviderAuthTerminal = async (
       provider: ProviderId,
       action: 'login' | 'logout' | 'upgrade'
@@ -19095,7 +19095,8 @@ if (isGeminiMcpBridgeProcess) {
       const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
       const psQuote = (s: string): string => `'${s.replace(/'/g, "''")}'`
       try {
-        let commandParts: string[]
+        let commandParts: string[] | null = null
+        let rawCommand: string | null = null
         let label: string
         const actionLabel =
           action === 'login' ? 'Sign-in' : action === 'logout' ? 'Sign-out' : 'Upgrade'
@@ -19103,40 +19104,57 @@ if (isGeminiMcpBridgeProcess) {
           action === 'login' ? 'Signing in to' : action === 'logout' ? 'Signing out of' : 'Upgrading'
         let postscript = `${actionLabel} finished (exit $status). Close this window and return to TaskWraith.`
         if (provider === 'codex') {
-          if (action === 'upgrade') {
-            return { ok: false, error: 'Codex upgrade is not supported here.' }
-          }
           label = 'Codex'
           const resolved = await resolveCliProviderBinary('codex')
-          commandParts = [resolved.binaryPath || 'codex', action]
-        } else if (provider === 'claude') {
-          if (action === 'upgrade') {
-            return { ok: false, error: 'Claude upgrade is not supported here.' }
+          commandParts =
+            action === 'upgrade'
+              ? ['npm', 'install', '-g', '@openai/codex@latest']
+              : [resolved.binaryPath || 'codex', action]
+        } else if (provider === 'gemini') {
+          if (action !== 'upgrade') {
+            return { ok: false, error: `Gemini terminal ${action} is not supported here.` }
           }
+          label = 'Gemini'
+          commandParts = ['npm', 'install', '-g', '@google/gemini-cli@latest']
+        } else if (provider === 'claude') {
           label = 'Claude'
           const resolved = await resolveCliProviderBinary('claude')
-          commandParts = [resolved.binaryPath || 'claude', 'auth', action]
+          if (action === 'upgrade') {
+            if (resolved.binaryPath) {
+              commandParts = [resolved.binaryPath, 'update']
+            } else {
+              rawCommand = 'curl -fsSL https://claude.ai/install.sh | bash'
+            }
+          } else {
+            commandParts = [resolved.binaryPath || 'claude', 'auth', action]
+          }
         } else if (provider === 'kimi') {
           label = 'Kimi'
           const resolved = await resolveCliProviderBinary('kimi')
-          commandParts =
-            action === 'upgrade'
-              ? [resolved.binaryPath || 'kimi', '/upgrade']
-              : [resolved.binaryPath || 'kimi', action]
-        } else if (provider === 'cursor') {
           if (action === 'upgrade') {
-            return { ok: false, error: 'Cursor upgrade is not supported here.' }
+            if (resolved.binaryPath) {
+              commandParts = [resolved.binaryPath, '/upgrade']
+            } else {
+              rawCommand = 'curl -LsSf https://code.kimi.com/install.sh | bash'
+            }
+          } else {
+            commandParts = [resolved.binaryPath || 'kimi', action]
           }
+        } else if (provider === 'cursor') {
           label = 'Cursor'
           const resolved = await resolveCliProviderBinary('cursor')
-          commandParts = [resolved.binaryPath || 'cursor-agent', action]
-        } else if (provider === 'grok') {
           if (action === 'upgrade') {
-            return { ok: false, error: 'Grok upgrade is not supported here.' }
+            rawCommand = 'curl https://cursor.com/install -fsS | bash'
+          } else {
+            commandParts = [resolved.binaryPath || 'cursor-agent', action]
           }
+        } else if (provider === 'grok') {
           label = 'Grok'
           const resolved = await resolveCliProviderBinary('grok')
-          commandParts = [resolved.binaryPath || 'grok']
+          commandParts = action === 'upgrade' ? null : [resolved.binaryPath || 'grok']
+          if (action === 'upgrade') {
+            rawCommand = 'curl -fsSL https://x.ai/cli/install.sh | bash'
+          }
           if (action === 'logout') {
             postscript =
               'Grok CLI does not expose a logout subcommand yet. Use the opened Grok session to manage account state, then close this window.'
@@ -19144,10 +19162,14 @@ if (isGeminiMcpBridgeProcess) {
         } else {
           return { ok: false, error: `No terminal ${action} for ${provider}.` }
         }
-        const command =
-          process.platform === 'win32'
-            ? commandParts.map(psQuote).join(' ')
-            : commandParts.map(shQuote).join(' ')
+        if (!rawCommand && !commandParts) {
+          return { ok: false, error: `No terminal ${action} command for ${provider}.` }
+        }
+        const command = rawCommand
+          ? rawCommand
+          : process.platform === 'win32'
+            ? commandParts!.map(psQuote).join(' ')
+            : commandParts!.map(shQuote).join(' ')
         const dir = join(app.getPath('userData'), 'login')
         fsSync.mkdirSync(dir, { recursive: true })
         if (process.platform === 'win32') {
@@ -19204,6 +19226,9 @@ if (isGeminiMcpBridgeProcess) {
     )
     ipcMain.handle('provider:open-logout-terminal', async (_e, provider: ProviderId) =>
       openProviderAuthTerminal(provider, 'logout')
+    )
+    ipcMain.handle('provider:open-upgrade-terminal', async (_e, provider: ProviderId) =>
+      openProviderAuthTerminal(provider, 'upgrade')
     )
     ipcMain.handle('provider:open-kimi-upgrade-terminal', async () =>
       openProviderAuthTerminal('kimi', 'upgrade')

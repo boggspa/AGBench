@@ -125,6 +125,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   // 1.0.6-CRUX42 — open a Terminal running a provider's interactive CLI login.
   'provider:open-login-terminal': ['provider'],
   'provider:open-logout-terminal': ['provider'],
+  'provider:open-upgrade-terminal': ['provider'],
   'app:quit': [],
   // Auto-update service (no-arg snapshot/control channels).
   'update-snapshot': [],
