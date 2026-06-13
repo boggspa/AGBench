@@ -273,7 +273,7 @@
 
 .chat-corner-controls {
   position: absolute;
-  top: 36px;
+  top: 16px;
   left: calc(var(--space-sm) * 2);
   pointer-events: auto;
   display: inline-flex;
