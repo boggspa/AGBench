@@ -84,6 +84,46 @@ describe('RemoteThreadProjection', () => {
     })
   })
 
+  describe('interleaved tool ordering (iOS FINAL snapshot fidelity)', () => {
+    // The iOS FINAL (post-stream) snapshot reads ChatRecord.messages through
+    // this projection. It must preserve the desktop/bridge interleave —
+    // text -> tool burst -> more text -> another burst — as distinct rows in
+    // stream order, NOT clump every tool into one block above the text.
+    const interleaved: ChatMessage[] = [
+      { id: 't0', role: 'assistant', content: 'Reading the file.', timestamp: FIXED },
+      {
+        id: 't1',
+        role: 'tool',
+        content: '',
+        timestamp: FIXED,
+        toolActivities: [activity({ id: 'c1', toolName: 'read_file', displayName: 'Read file' })]
+      },
+      { id: 't2', role: 'assistant', content: 'Now editing it.', timestamp: FIXED },
+      {
+        id: 't3',
+        role: 'tool',
+        content: '',
+        timestamp: FIXED,
+        toolActivities: [activity({ id: 'c2', toolName: 'edit_file', displayName: 'Edit file' })]
+      }
+    ]
+
+    it('projects rows in stream order with each tool burst at its true position', () => {
+      const snap = project({ kind: 'latestN', n: 50 }, interleaved)
+      expect(snap.rows.map((r) => r.id)).toEqual(['t0', 't1', 't2', 't3'])
+      expect(snap.rows.map((r) => r.kind)).toEqual(['assistant', 'tool', 'assistant', 'tool'])
+    })
+
+    it('keeps two tool bursts separated by text as TWO tool rows (no clump)', () => {
+      const snap = project({ kind: 'latestN', n: 50 }, interleaved)
+      const toolRows = snap.rows.filter((r) => r.kind === 'tool')
+      expect(toolRows).toHaveLength(2)
+      // Each burst keeps its own single activity rather than coalescing.
+      expect(toolRows[0].toolSummary?.activityCount).toBe(1)
+      expect(toolRows[1].toolSummary?.activityCount).toBe(1)
+    })
+  })
+
   describe('aroundRow', () => {
     it('windows plus/minus radius around the target, bounded to 2*radius+1', () => {
       const snap = project({ kind: 'aroundRow', rowId: 'm5', radius: 2 })
