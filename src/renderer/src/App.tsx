@@ -11982,6 +11982,19 @@ function App(): React.JSX.Element {
     setGoalEditing(false)
   }
 
+  const markCurrentGoalBlocked = (): void => {
+    if (!currentActiveGoal) {
+      window.alert('No active goal is set for this chat.')
+      return
+    }
+    const reason = window.prompt(
+      'Why is this goal blocked?',
+      currentActiveGoal.blockedReason || ''
+    )
+    if (reason === null) return
+    updateCurrentGoalStatus('blocked', reason.trim() || 'Blocked by user.')
+  }
+
   const clearCurrentGoal = (): void => {
     if (!currentActiveGoal) return
     if (isUnfinishedActiveGoal(currentActiveGoal)) {
@@ -16161,7 +16174,7 @@ function App(): React.JSX.Element {
       command: '/goal',
       label: currentActiveGoal ? 'Manage active goal' : 'Set active goal',
       description:
-        'Set or manage this chat’s persistent objective. Usage: /goal <objective>, /goal pause, /goal resume, /goal clear.',
+        'Set or manage this chat’s persistent objective. Usage: /goal <objective>, /goal pause, /goal resume, /goal block, /goal complete.',
       group: 'Custom',
       run: () => {
         handleGoalSlashCommand()
@@ -20445,7 +20458,8 @@ function App(): React.JSX.Element {
 	                            >
 	                              Edit
 	                            </button>
-	                            {currentActiveGoal.status === 'paused' ? (
+	                            {currentActiveGoal.status === 'paused' ||
+	                            currentActiveGoal.status === 'blocked' ? (
 	                              <button
 	                                type="button"
 	                                className="composer-goal-action"
@@ -20462,6 +20476,16 @@ function App(): React.JSX.Element {
 	                                Pause
 	                              </button>
 	                            ) : null}
+	                            {currentActiveGoal.status !== 'blocked' &&
+	                              currentActiveGoal.status !== 'completed' && (
+	                                <button
+	                                  type="button"
+	                                  className="composer-goal-action"
+	                                  onClick={markCurrentGoalBlocked}
+	                                >
+	                                  Mark blocked
+	                                </button>
+	                              )}
 	                            {currentActiveGoal.status !== 'completed' && (
 	                              <button
 	                                type="button"
