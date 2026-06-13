@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { AuditOrchestrator, StartAuditInput } from '../audit/AuditOrchestrator'
 import type { AuditMode, AuditRunRecord } from '../store/types'
-import { optionalString, requireNonEmptyString } from '../settings/MainSanitizers'
+import { assertProviderId, optionalString, requireNonEmptyString } from '../settings/MainSanitizers'
 
 /**
  * Audit-run IPC surface — `audit-run:start`, `audit-run:cancel`,
@@ -51,6 +51,7 @@ export interface AuditHandlerDeps {
 interface StartAuditRunInput {
   mode?: string
   chatId?: string
+  preferredProvider?: string
   workspaceId?: string
   workspacePath?: string
 }
@@ -87,6 +88,9 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
       mode: normalizeMode(input?.mode),
       chatId,
       workspacePath,
+      ...(optionalString(input?.preferredProvider)
+        ? { preferredProvider: assertProviderId(input!.preferredProvider) }
+        : {}),
       ...(optionalString(input?.workspaceId) ? { workspaceId: input!.workspaceId } : {})
     }
     // The orchestrator creates the run record up front (status 'planning') and

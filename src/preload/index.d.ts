@@ -1079,6 +1079,7 @@ declare global {
       startAuditRun: (input: {
         mode?: AuditRunRecord['mode']
         chatId: string
+        preferredProvider?: ProviderId
         workspacePath: string
         workspaceId?: string
       }) => Promise<AuditRunRecord>

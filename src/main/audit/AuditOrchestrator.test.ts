@@ -247,6 +247,60 @@ describe('AuditOrchestrator — resilience', () => {
     expect(result.error).toMatch(/No eligible provider/)
   })
 
+  it('defaults the audit roster to the parent chat provider when it is eligible', async () => {
+    const providers: ProviderId[] = []
+    const deps = baseDeps({
+      resolveSignals: async () => [
+        { provider: 'claude', configured: true, authenticated: true, healthy: true },
+        { provider: 'kimi', configured: true, authenticated: true, healthy: true }
+      ],
+      dispatchRole: async (req): Promise<AuditRoleRunResult> => {
+        providers.push(req.provider)
+        if (req.role === 'recon') return { ok: true, runId: 'r-recon', profile: {} }
+        if (req.role === 'synthesis') return { ok: true, runId: 'r-syn', report: 'R' }
+        if (req.role === 'reviewer')
+          return {
+            ok: true,
+            runId: `r-${providers.length}`,
+            findings: [finding(`F${providers.length}`, { authorProvider: req.provider })]
+          }
+        return {
+          ok: true,
+          runId: `r-sk-${providers.length}`,
+          verdicts: [
+            { id: `v${providers.length}`, findingId: req.findingId!, skepticProvider: req.provider, decision: 'accept', createdAt: 't' } as AuditVerdict
+          ]
+        }
+      }
+    })
+
+    const result = await new AuditOrchestrator(deps).run({ ...input, preferredProvider: 'kimi' })
+
+    expect(result.status).toBe('completed')
+    expect(result.roster?.perRole.reviewer).toEqual(['kimi'])
+    expect(new Set(providers)).toEqual(new Set<ProviderId>(['kimi']))
+  })
+
+  it('does not silently fall back to Claude when the parent provider is not eligible', async () => {
+    let dispatched = false
+    const deps = baseDeps({
+      resolveSignals: async () => [
+        { provider: 'claude', configured: true, authenticated: true, healthy: true }
+      ],
+      dispatchRole: async (): Promise<AuditRoleRunResult> => {
+        dispatched = true
+        return { ok: true, runId: 'unexpected' }
+      }
+    })
+
+    const result = await new AuditOrchestrator(deps).run({ ...input, preferredProvider: 'codex' })
+
+    expect(result.status).toBe('failed')
+    expect(result.error).toContain('parent provider (codex)')
+    expect(result.roster?.perRole.reviewer).toEqual([])
+    expect(dispatched).toBe(false)
+  })
+
   it('cancels mid-run when isCancelled flips', async () => {
     let reconDone = false
     const deps = baseDeps({

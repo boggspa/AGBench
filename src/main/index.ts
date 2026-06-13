@@ -339,6 +339,7 @@ import {
   WorkspaceFileReadResult,
   GeminiWorktreeLaunchOption,
   ProviderId,
+  AuditRunRecord,
   ExternalPathGrant,
   ScheduledTask,
   AgenticServiceId,
@@ -475,6 +476,11 @@ import {
   isAuditMcpToolName,
   type ProviderSignalInput
 } from './audit/AuditOrchestratorWiring'
+import {
+  auditTranscriptMessageKind,
+  createAuditTranscriptMessage,
+  type AuditTranscriptMessageKind
+} from './audit/AuditTranscriptMessages'
 import { AuditOrchestrator } from './audit/AuditOrchestrator'
 import { AuditRunTracker } from './audit/AuditRunTracker'
 import { createAuditGatesRunner } from './audit/AuditGatesRunner'
@@ -2051,6 +2057,7 @@ const AUDIT_ARTIFACT_CAPABLE_PROVIDERS: ReadonlySet<ProviderId> = new Set(['clau
 // runCoordinator + mainWindow are in scope. Module ref so the IPC handlers
 // (Slice C) can reach it. Same pattern as ensembleOrchestratorRef.
 let auditOrchestratorRef: AuditOrchestrator | null = null
+const auditTranscriptMessageKindsByRunId = new Map<string, Set<AuditTranscriptMessageKind>>()
 
 const WORKSPACE_MCP_TOOL_NAME_SET = new Set<string>(WORKSPACE_MCP_TOOL_NAMES)
 
@@ -2615,6 +2622,25 @@ function broadcastChatPopoutUpdate(chat: ChatRecord): void {
   const win = workspacePopoutWindows.get(`chat:${chat.appChatId}`)
   if (!win || win.isDestroyed()) return
   safeSendToWebContents(win, 'chat-updated', chat)
+}
+
+function maybeAppendAuditTranscriptMessage(run: AuditRunRecord): void {
+  const kind = auditTranscriptMessageKind(run)
+  if (!kind) return
+  const seen = auditTranscriptMessageKindsByRunId.get(run.id) ?? new Set<AuditTranscriptMessageKind>()
+  if (seen.has(kind)) return
+  const parentChat = AppStore.getChat(run.chatId)
+  if (!parentChat) return
+
+  const message = createAuditTranscriptMessage(run, kind, new Date().toISOString())
+  const updated: ChatRecord = {
+    ...parentChat,
+    messages: [...parentChat.messages, message],
+    updatedAt: Date.now()
+  }
+  saveAndBroadcastChat(updated)
+  seen.add(kind)
+  auditTranscriptMessageKindsByRunId.set(run.id, seen)
 }
 
 function getPersistedEnsembleWakeups(): EnsembleWakeupRecord[] {
@@ -20128,6 +20154,7 @@ if (isGeminiMcpBridgeProcess) {
         } else {
           activeAuditRunId = run.id
         }
+        maybeAppendAuditTranscriptMessage(run)
         // Live-update push to the renderer (Slice C: 'audit-run-changed').
         safeSendToWebContents(mainWindow, 'audit-run-changed', run)
       },

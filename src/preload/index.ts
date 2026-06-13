@@ -843,6 +843,7 @@ const api = {
   startAuditRun: (input: {
     mode?: string
     chatId: string
+    preferredProvider?: ProviderId
     workspacePath: string
     workspaceId?: string
   }) => ipcRenderer.invoke('audit-run:start', input),

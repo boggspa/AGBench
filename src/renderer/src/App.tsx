@@ -15767,6 +15767,7 @@ function App(): React.JSX.Element {
           .startAuditRun({
             mode,
             chatId: chat.appChatId,
+            preferredProvider: getChatProvider(chat),
             workspacePath,
             ...(chat.workspaceId ? { workspaceId: chat.workspaceId } : {})
           })

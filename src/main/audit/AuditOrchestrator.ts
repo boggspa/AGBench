@@ -110,6 +110,9 @@ export interface AuditOrchestratorDeps {
 export interface StartAuditInput {
   mode: AuditMode
   chatId: string
+  /** Provider of the chat that triggered /audit. Used as the default audit roster
+   * envelope so v1 does not silently spend usage on an unrelated provider. */
+  preferredProvider?: ProviderId
   workspaceId?: string
   workspacePath: string
 }
@@ -208,6 +211,39 @@ function isLocalProvider(provider: ProviderId): boolean {
   return provider === 'ollama'
 }
 
+const AUDIT_ROLES: AuditRole[] = ['recon', 'reviewer', 'skeptic', 'synthesis']
+
+function prependProvider(list: ProviderId[] | undefined, provider: ProviderId): ProviderId[] {
+  return [provider, ...(list ?? []).filter((item) => item !== provider)]
+}
+
+function hasExplicitAuditRouting(policy: AuditOrchestrationSettings | undefined): boolean {
+  if (!policy) return false
+  if (policy.providerAllowlist?.length) return true
+  return Object.values(policy.perRolePreferences ?? {}).some((providers) => providers.length > 0)
+}
+
+function policyForRun(
+  policy: AuditOrchestrationSettings | undefined,
+  preferredProvider: ProviderId | undefined
+): AuditOrchestrationSettings | undefined {
+  if (!preferredProvider) return policy
+  const perRolePreferences: Partial<Record<AuditRole, ProviderId[]>> = {
+    ...(policy?.perRolePreferences ?? {})
+  }
+  for (const role of AUDIT_ROLES) {
+    perRolePreferences[role] = prependProvider(perRolePreferences[role], preferredProvider)
+  }
+  return {
+    ...(policy ?? {}),
+    // Until the plan-confirm/settings surface exists, default /audit to the
+    // parent chat's provider. Explicit audit routing policy may still opt into
+    // cross-provider fallback chains.
+    ...(!hasExplicitAuditRouting(policy) ? { providerAllowlist: [preferredProvider] } : {}),
+    perRolePreferences
+  }
+}
+
 // ── orchestrator ─────────────────────────────────────────────────────────────
 
 export class AuditOrchestrator {
@@ -241,14 +277,20 @@ export class AuditOrchestrator {
     try {
       // ── eligibility (before a single token is spent) ──────────────────────
       const signals = await this.deps.resolveSignals()
+      const policy = policyForRun(this.deps.policy, input.preferredProvider)
       const roster = resolveProviderCapabilities({
-        rolesNeeded: ['recon', 'reviewer', 'skeptic', 'synthesis'],
+        rolesNeeded: AUDIT_ROLES,
         signals,
-        policy: this.deps.policy
+        policy
       })
       this.persist({ roster })
       if (!roster.perRole.reviewer?.length || !roster.perRole.synthesis?.length) {
-        return this.fail('No eligible provider for the audit — check provider auth/health.')
+        const preferred = input.preferredProvider
+          ? ` The parent provider (${input.preferredProvider}) is not eligible for audit role-runs.`
+          : ''
+        return this.fail(
+          `No eligible provider for the audit.${preferred} Check provider auth/health, or configure an audit provider policy.`
+        )
       }
       if (this.cancelled()) return this.cancel()
 
