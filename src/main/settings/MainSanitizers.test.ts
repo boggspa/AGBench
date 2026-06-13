@@ -207,6 +207,24 @@ describe('MainSanitizers settings patches', () => {
     ).toBe(false)
   })
 
+  it('accepts a boolean modelUsageExternalUsage and drops non-boolean values', () => {
+    const settings = makeSettings()
+    const { sanitizeSettingsPatch } = makeSanitizers(settings)
+    expect(sanitizeSettingsPatch({ modelUsageExternalUsage: true }).modelUsageExternalUsage).toBe(
+      true
+    )
+    expect(sanitizeSettingsPatch({ modelUsageExternalUsage: false }).modelUsageExternalUsage).toBe(
+      false
+    )
+    // A non-boolean (e.g. a stray string) is stripped so it can't persist.
+    expect(
+      'modelUsageExternalUsage' in
+        sanitizeSettingsPatch({
+          modelUsageExternalUsage: 'yes' as unknown as boolean
+        })
+    ).toBe(false)
+  })
+
   it('sanitizes the local-servers lifecycle toggles', () => {
     const settings = makeSettings()
     const { sanitizeSettingsPatch } = makeSanitizers(settings)

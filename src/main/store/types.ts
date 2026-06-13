@@ -1348,6 +1348,16 @@ export interface AppSettings {
    */
   modelUsagePanelView?: 'plan' | 'spend'
   /**
+   * Settings → Model usage table "External Usage" toggle. When `true`, the
+   * per-provider / per-model usage table folds in provider activity tracked
+   * OUTSIDE TaskWraith (the same dataset behind the External Activity
+   * heatmap) so the user sees provider-WIDE usage; when `false`/unset it
+   * shows only TaskWraith's own runs. Persisted as a lightweight UI pref so
+   * the chosen scope survives reload. Optional so older settings files /
+   * fixtures default to TaskWraith-only.
+   */
+  modelUsageExternalUsage?: boolean
+  /**
    * 1.0.5-EW49 — Dashboard statistics preferences. Two slots:
    *   - `visibility` (per-stat boolean map): hide a chip to
    *     remove it from the dense grid without losing the

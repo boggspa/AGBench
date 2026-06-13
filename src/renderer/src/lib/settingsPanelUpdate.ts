@@ -42,6 +42,9 @@ export type SettingsPanelUpdate = {
   currencyOverestimatePercent?: AppSettings['currencyOverestimatePercent']
   /** Sidebar Model Usage card view ('plan' quota meters | 'spend' API cost). */
   modelUsagePanelView?: AppSettings['modelUsagePanelView']
+  /** Settings → Model usage table "External Usage" toggle (provider-wide vs
+   * TaskWraith-only). */
+  modelUsageExternalUsage?: AppSettings['modelUsageExternalUsage']
   /**
    * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
    * visibility map + global "reset all" timestamp). See

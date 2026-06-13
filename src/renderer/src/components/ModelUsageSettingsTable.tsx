@@ -62,14 +62,19 @@ export interface ModelUsageSettingsTableProps {
   /** Optional locale override for `Intl.NumberFormat`. */
   locale?: string
   /**
-   * Initial value of the "External Usage" toggle. Threaded from a persisted
-   * settings pref so the chosen view survives reload. Defaults to OFF
-   * (TaskWraith-only).
+   * Initial value of the "External Usage" toggle. When provided it takes
+   * precedence (handy for tests / explicit control). When OMITTED the
+   * component self-hydrates the persisted `modelUsageExternalUsage` setting
+   * over `window.api.getSettings()` on mount, defaulting to OFF
+   * (TaskWraith-only) until that resolves.
    */
   externalUsageDefault?: boolean
   /**
-   * Persist a new toggle value. Optional — when absent the toggle is purely
-   * component-local (still functional, just not remembered across reloads).
+   * Persist a new toggle value. When provided, the component defers entirely
+   * to it. When OMITTED the component self-persists via
+   * `window.api.updateSettings({ modelUsageExternalUsage })` so the choice
+   * survives reload without any prop threading. Either way the flip is
+   * reflected locally first so it feels instant.
    */
   onExternalUsageChange?: (next: boolean) => void
 }
@@ -206,18 +211,49 @@ export function ModelUsageSettingsTable({
   const [internalRecords, setInternalRecords] = useState<UsageRecord[]>([])
   const [externalRecords, setExternalRecords] = useState<UsageRecord[]>([])
   const [rates, setRates] = useState<RendererProviderRates>({})
-  // Toggle: seed from the persisted pref, mirror locally so a click is instant.
-  // Reconcile to the persisted value during render (no effect) by tracking the
-  // last-seen pref — same pattern ModelUsageCard uses for its view toggle.
+  // Whether the toggle's initial value is controlled by the caller. When the
+  // prop is omitted we self-hydrate the persisted setting (below).
+  const isControlledDefault = externalUsageDefault !== undefined
   const persistedExternal = externalUsageDefault === true
+  // Toggle: seed from the (possibly controlled) pref, mirror locally so a click
+  // is instant. Reconcile to a CONTROLLED pref during render (no effect) by
+  // tracking the last-seen value — same pattern ModelUsageCard uses for its
+  // view toggle. For the self-hydrated path the seed effect below sets it once.
   const [includeExternal, setIncludeExternal] = useState<boolean>(persistedExternal)
   const [lastPersistedExternal, setLastPersistedExternal] = useState<boolean>(persistedExternal)
-  if (persistedExternal !== lastPersistedExternal) {
+  if (isControlledDefault && persistedExternal !== lastPersistedExternal) {
     setLastPersistedExternal(persistedExternal)
     setIncludeExternal(persistedExternal)
   }
   // Bumped on the `usage-changed` event to force a refetch.
   const [refreshTick, setRefreshTick] = useState(0)
+
+  // Self-hydrate the persisted toggle when the caller didn't control it. Runs
+  // once on mount; defers the setState to a microtask so it isn't a synchronous
+  // in-effect update. Best-effort — stays OFF if the read fails.
+  useEffect(() => {
+    if (isControlledDefault) return
+    if (typeof window === 'undefined' || typeof window.api?.getSettings !== 'function') return
+    let cancelled = false
+    void window.api
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return
+        const stored = settings?.modelUsageExternalUsage === true
+        void Promise.resolve().then(() => {
+          if (!cancelled) setIncludeExternal(stored)
+        })
+      })
+      .catch(() => {
+        // Leave the toggle OFF.
+      })
+    return () => {
+      cancelled = true
+    }
+    // Mount-only: the persisted value is read once; subsequent flips go through
+    // selectExternal which both updates local state and re-persists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Fetch the priced rate table once (rarely changes within a session).
   useEffect(() => {
@@ -297,7 +333,15 @@ export function ModelUsageSettingsTable({
   const selectExternal = (next: boolean) => {
     if (next === includeExternal) return
     setIncludeExternal(next)
-    onExternalUsageChange?.(next)
+    if (onExternalUsageChange) {
+      onExternalUsageChange(next)
+    } else if (typeof window !== 'undefined' && typeof window.api?.updateSettings === 'function') {
+      // Self-persist when the caller didn't hand us a persistence callback, so
+      // the chosen scope survives reload without any prop threading. Fire-and-
+      // forget — a failed write just means the toggle reverts to its stored
+      // value on the next reload; the in-session flip already took effect.
+      void window.api.updateSettings({ modelUsageExternalUsage: next }).catch(() => {})
+    }
   }
 
   const shownRuns = countShownRuns(groups)
