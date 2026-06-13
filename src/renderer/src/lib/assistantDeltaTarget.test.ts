@@ -47,25 +47,70 @@ describe('resolveAssistantDeltaTarget', () => {
     })
   })
 
-  it('routes a tagged cumulative restatement back to its bubble across a tool burst (no duplicate)', () => {
-    // Claude divergent envelope: full turn re-stated after a tool ran. Must
-    // replace the existing bubble in place, never append a duplicate.
+  it('places a tagged cumulative restatement TAIL below the tool, not merged into the pre-tool bubble', () => {
+    // Claude clean cumulative envelope after a tool: the post-tool text is new
+    // and belongs in a fresh bubble below the tool. Merging the whole turn into
+    // the pre-tool bubble would clump it above the tool (the regression).
     const messages = [assistant('a1', 'Partial answer'), tool('t1')]
     expect(
       resolveAssistantDeltaTarget(messages, {
         incoming: 'Partial answer now complete',
         cumulative: true
       })
-    ).toEqual({ action: 'merge', index: 0 })
+    ).toEqual({ action: 'appendText', text: ' now complete' })
   })
 
-  it('routes an UNTAGGED superset snapshot back to its bubble across a tool burst', () => {
-    // Cursor cumulative frames are untagged; detected by superset of the
-    // existing bubble content.
+  it('places an UNTAGGED superset snapshot TAIL below the tool (Cursor mid-turn tool use)', () => {
+    // Cursor emits full snapshots untagged; after a tool, the post-tool tail
+    // opens a new bubble below the tool — interleaved, not clumped.
     const messages = [assistant('a1', 'Hello'), tool('t1')]
     expect(resolveAssistantDeltaTarget(messages, { incoming: 'Hello world' })).toEqual({
+      action: 'appendText',
+      text: ' world'
+    })
+  })
+
+  it('updates the trailing post-tool bubble with only the tail (Cursor continuing after the tool)', () => {
+    // A later Cursor snapshot once the post-tool bubble exists: replace that
+    // bubble with the tail beyond the pre-tool text — never the whole turn
+    // (which would duplicate the pre-tool prose).
+    const messages = [assistant('a1', 'Hello'), tool('t1'), assistant('a2', ' world')]
+    expect(resolveAssistantDeltaTarget(messages, { incoming: 'Hello world more' })).toEqual({
+      action: 'replaceText',
+      index: 2,
+      text: ' world more'
+    })
+  })
+
+  it('SKIPS a divergent cumulative envelope spanning a tool (Claude — deltas already rendered)', () => {
+    // The envelope normalizes whitespace so it does NOT cleanly extend the
+    // pre-tool bubble; the streamed deltas already produced the interleaving,
+    // so skip rather than duplicate (mirrors the bridge post-stream skip).
+    const messages = [
+      assistant('a1', 'First segment. '),
+      tool('t1'),
+      assistant('a2', 'Second segment.')
+    ]
+    expect(
+      resolveAssistantDeltaTarget(messages, {
+        incoming: 'First segment.Second segment.', // no space after the period — diverges
+        cumulative: true
+      })
+    ).toEqual({ action: 'skip' })
+  })
+
+  it('SKIPS a cumulative restatement that only re-covers the pre-tool text', () => {
+    const messages = [assistant('a1', 'Hello'), tool('t1')]
+    expect(
+      resolveAssistantDeltaTarget(messages, { incoming: 'Hello', cumulative: true })
+    ).toEqual({ action: 'skip' })
+  })
+
+  it('continues a genuine post-tool increment in the trailing bubble (not a restatement)', () => {
+    const messages = [assistant('a1', 'Intro.'), tool('t1'), assistant('a2', 'Result is')]
+    expect(resolveAssistantDeltaTarget(messages, { incoming: ' forty-two.' })).toEqual({
       action: 'merge',
-      index: 0
+      index: 2
     })
   })
 

@@ -9003,8 +9003,6 @@ function App(): React.JSX.Element {
               incoming: event.content,
               cumulative: event.cumulative === true
             })
-            const lastAssistantIdx = deltaTarget.action === 'merge' ? deltaTarget.index : -1
-            const last = lastAssistantIdx >= 0 ? updated.messages[lastAssistantIdx] : null
             // Phase K2 (b) — merge-with-separator. When Codex emits a new
             // `agentMessage` item within the same turn (different `itemId`
             // than the message we're streaming into), the deltas would
@@ -9047,59 +9045,90 @@ function App(): React.JSX.Element {
               }
               return Object.keys(next).length > 0 ? next : undefined
             }
-            if (last && last.role === 'assistant') {
-              // 1.0.6 dup-fix — idempotent merge. Claude (a cumulative
-              // `assistant` envelope that diverged from the streamed
-              // deltas, tagged `cumulative` by main) and Cursor (each
-              // `assistant` frame is a full cumulative snapshot) can
-              // deliver the WHOLE turn as one content event. A blind
-              // append would then double/triple the bubble, so decide
-              // append vs replace vs skip. Genuine increments — and new
-              // Codex items — still take the append branch below unchanged.
-              const merge = resolveAssistantDeltaMerge(last.content, event.content, {
+            // Apply the routing decision. `merge`/`append` are the original
+            // genuine-increment + same-bubble-restatement paths (unchanged).
+            // `skip`/`appendText`/`replaceText` handle a cumulative
+            // restatement that SPANS a tool boundary: only its post-tool tail
+            // is placed (new bubble below the tool, or the trailing post-burst
+            // bubble), never the whole turn — that was the Cursor-clump /
+            // Claude-duplication regression.
+            if (deltaTarget.action === 'skip') {
+              // Restatement already covered by the rendered turn — no-op.
+            } else if (deltaTarget.action === 'appendText') {
+              const metadata = mergeAssistantMetadata(undefined)
+              updated.messages = [
+                ...updated.messages,
+                {
+                  id: createMessageId(),
+                  role: 'assistant',
+                  content: deltaTarget.text,
+                  timestamp: new Date().toISOString(),
+                  ...(metadata ? { metadata } : {})
+                }
+              ]
+            } else if (deltaTarget.action === 'replaceText') {
+              const idx = deltaTarget.index
+              const target = updated.messages[idx]
+              if (target) {
+                const nextMetadata = mergeAssistantMetadata(target.metadata)
+                updated.messages = [
+                  ...updated.messages.slice(0, idx),
+                  {
+                    ...target,
+                    content: deltaTarget.text,
+                    ...(nextMetadata ? { metadata: nextMetadata } : {})
+                  },
+                  ...updated.messages.slice(idx + 1)
+                ]
+              }
+            } else if (deltaTarget.action === 'merge') {
+              // 1.0.6 dup-fix — idempotent merge into the trailing assistant
+              // bubble. Claude (a cumulative envelope tagged by main) and
+              // Cursor (full snapshot frames) can deliver the WHOLE bubble
+              // again; a blind append would double it, so decide append vs
+              // replace vs skip. Genuine increments + new Codex items append.
+              const idx = deltaTarget.index
+              const target = updated.messages[idx]
+              const merge = resolveAssistantDeltaMerge(target.content, event.content, {
                 cumulative: event.cumulative === true
               })
               if (merge.action === 'skip') {
-                // Stale/duplicate re-statement we already render in full —
-                // leave the bubble untouched.
+                // Stale/duplicate re-statement we already render — untouched.
               } else if (merge.action === 'replace') {
-                const nextMetadata = mergeAssistantMetadata(last.metadata)
+                const nextMetadata = mergeAssistantMetadata(target.metadata)
                 updated.messages = [
-                  ...updated.messages.slice(0, lastAssistantIdx),
+                  ...updated.messages.slice(0, idx),
                   {
-                    ...last,
+                    ...target,
                     content: merge.content,
                     ...(nextMetadata ? { metadata: nextMetadata } : {})
                   },
-                  ...updated.messages.slice(lastAssistantIdx + 1)
+                  ...updated.messages.slice(idx + 1)
                 ]
               } else {
                 const lastItemId =
-                  typeof last.metadata?.codexItemId === 'string'
-                    ? last.metadata.codexItemId
+                  typeof target.metadata?.codexItemId === 'string'
+                    ? target.metadata.codexItemId
                     : undefined
                 const itemTransition =
                   incomingItemIdStr !== undefined &&
                   lastItemId !== undefined &&
                   incomingItemIdStr !== lastItemId &&
-                  last.content.length > 0
+                  target.content.length > 0
                 const separator = itemTransition ? '\n\n---\n\n' : ''
-                const nextMetadata = mergeAssistantMetadata(last.metadata)
-                // Replace the assistant message in-place at its actual
-                // index (may not be `length - 1` when tool messages are
-                // interleaved). Tool messages between this assistant and
-                // the array end stay in place.
+                const nextMetadata = mergeAssistantMetadata(target.metadata)
                 updated.messages = [
-                  ...updated.messages.slice(0, lastAssistantIdx),
+                  ...updated.messages.slice(0, idx),
                   {
-                    ...last,
-                    content: last.content + separator + event.content,
+                    ...target,
+                    content: target.content + separator + event.content,
                     ...(nextMetadata ? { metadata: nextMetadata } : {})
                   },
-                  ...updated.messages.slice(lastAssistantIdx + 1)
+                  ...updated.messages.slice(idx + 1)
                 ]
               }
             } else {
+              // action === 'append' — open a fresh bubble with the incoming.
               const metadata = mergeAssistantMetadata(undefined)
               updated.messages = [
                 ...updated.messages,
@@ -9125,27 +9154,50 @@ function App(): React.JSX.Element {
               incoming: event.content,
               cumulative: true
             })
-            const completeAssistantIdx =
-              completeTarget.action === 'merge' ? completeTarget.index : -1
-            const last =
-              completeAssistantIdx >= 0 ? updated.messages[completeAssistantIdx] : null
+            // The complete event restates the FULL turn. A `merge`/`replaceText`
+            // targets an existing bubble; `skip` means the streamed deltas
+            // already rendered it (don't duplicate); `appendText`/`append` open
+            // a fresh post-tool bubble with only the tail / the content.
+            const completeTargetIdx =
+              completeTarget.action === 'merge' || completeTarget.action === 'replaceText'
+                ? completeTarget.index
+                : -1
+            const completeTargetMsg =
+              completeTargetIdx >= 0 ? updated.messages[completeTargetIdx] : null
+            // assistantMessageId anchors the plan-mode choice below — reuse the
+            // targeted bubble's id, else the trailing assistant's, else a new id.
+            const trailingAssistantForId =
+              updated.messages.length > 0 &&
+              updated.messages[updated.messages.length - 1].role === 'assistant'
+                ? updated.messages[updated.messages.length - 1]
+                : null
+            const newCompleteMessageId = createMessageId()
             const assistantMessageId =
-              last && last.role === 'assistant' ? last.id : createMessageId()
+              completeTargetMsg?.id ?? trailingAssistantForId?.id ?? newCompleteMessageId
 
             if (updated.chatKind !== 'ensemble') {
-              if (last && last.role === 'assistant') {
+              if (completeTarget.action === 'skip') {
+                // Already rendered by the streamed deltas — no-op.
+              } else if (
+                (completeTarget.action === 'merge' || completeTarget.action === 'replaceText') &&
+                completeTargetMsg
+              ) {
+                const nextContent =
+                  completeTarget.action === 'replaceText' ? completeTarget.text : event.content
                 updated.messages = [
-                  ...updated.messages.slice(0, completeAssistantIdx),
-                  { ...last, content: event.content },
-                  ...updated.messages.slice(completeAssistantIdx + 1)
+                  ...updated.messages.slice(0, completeTargetIdx),
+                  { ...completeTargetMsg, content: nextContent },
+                  ...updated.messages.slice(completeTargetIdx + 1)
                 ]
               } else {
+                const content =
+                  completeTarget.action === 'appendText' ? completeTarget.text : event.content
                 updated.messages = [
                   ...updated.messages,
                   {
-                    id: assistantMessageId,
+                    id: newCompleteMessageId,
                     role: 'assistant',
-                    content: event.content,
+                    content,
                     timestamp: new Date().toISOString()
                   }
                 ]

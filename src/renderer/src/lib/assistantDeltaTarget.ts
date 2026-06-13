@@ -10,28 +10,47 @@ import type { ChatMessage } from '../../../main/store/types'
  * is its own bubble and each tool burst its own ActivityStack row, in
  * order. This mirrors the iOS streaming path (commit af91f0be, which
  * "seals a text segment at every tool_use/tool_call boundary") and the
- * MAIN bridge transcript assembly (`appendBridgeRunText`, which opens a
- * NEW text part whenever the last part is a tool burst).
+ * MAIN bridge transcript assembly (`appendBridgeRunText`).
  *
- * The earlier desktop handler scanned backward past tool messages and
- * merged every later text delta into the FIRST assistant bubble of the
- * turn. That clumped every tool burst above the response: text was pulled
- * up out of its position, so the array tail stayed a tool message and all
- * tools coalesced into one group. This helper restores the seal while
- * still letting a CUMULATIVE full-turn restatement (Claude's divergent
- * envelope, Cursor's snapshot frames) update its existing bubble in place
- * across an interleaved tool burst instead of appending a duplicate.
+ * The hard case is the CUMULATIVE-RESTATEMENT providers, which re-send the
+ * WHOLE turn (not an increment):
+ *   - Cursor (cursor-agent stream-json, no --stream-partial-output): EVERY
+ *     `assistant` frame is a full-turn snapshot, untagged.
+ *   - Claude (Agent SDK): incremental deltas PLUS a trailing cumulative
+ *     envelope that re-states the turn (tagged `cumulative` when it diverges
+ *     from the streamed deltas).
  *
- * The decision is purely a function of the current message list, so it is
- * unit-tested in isolation from the 20k-line App.tsx handler that calls it.
+ * An earlier fix merged such a restatement into a SINGLE bubble across a
+ * tool boundary — which either clumped the whole turn into the pre-tool
+ * bubble (Cursor: tool ends up below all text) or duplicated the pre-burst
+ * text into the trailing bubble (Claude divergent envelope). The correct
+ * rule, mirroring the bridge: a restatement that spans a tool boundary is
+ * reconciled by DISTRIBUTING ONLY ITS POST-LAST-TOOL TAIL — the pre-tool
+ * text already lives in earlier bubbles and is never rewritten. If the
+ * restatement diverges from that already-rendered pre-tool text (so the tail
+ * can't be cleanly extracted), it is SKIPPED, exactly as the bridge skips
+ * post-stream restatements (the streamed deltas already produced the
+ * correct interleaving).
+ *
+ * Pure: the decision is a function of the message list, unit-tested in
+ * isolation from the 20k-line App.tsx handler that calls it.
  */
 
 export type AssistantDeltaTarget =
   /** Fold the incoming text into the existing assistant message at `index`
-   *  (the caller still decides append vs replace vs skip for that bubble). */
+   *  (caller still runs the merge helper to decide append/replace/skip). */
   | { action: 'merge'; index: number }
-  /** Start a NEW assistant message appended after the current tail. */
+  /** Start a NEW assistant message appended after the current tail (with the
+   *  caller's incoming text). */
   | { action: 'append' }
+  /** Do nothing — a restatement already covered by the rendered turn. */
+  | { action: 'skip' }
+  /** Open a NEW assistant bubble holding exactly `text` (a restatement's
+   *  post-tool tail), after a trailing tool burst. */
+  | { action: 'appendText'; text: string }
+  /** Replace the assistant bubble at `index` with exactly `text` (the
+   *  post-tool tail) — never the whole turn. */
+  | { action: 'replaceText'; index: number; text: string }
 
 interface ResolveAssistantDeltaTargetInput {
   /** The incoming delta/snapshot text. */
@@ -40,55 +59,92 @@ interface ResolveAssistantDeltaTargetInput {
   cumulative?: boolean
 }
 
-/**
- * Decide where an incoming `assistant_message_delta` should land.
- *
- * 1. Trailing assistant → that bubble (no tool burst since the last text;
- *    a genuine continuation or an in-place restatement).
- * 2. Trailing tool burst:
- *    - A CUMULATIVE full-turn restatement targets the nearest prior
- *      assistant (reached past the burst) so the snapshot replaces that
- *      bubble in place — appending would duplicate the whole turn. A
- *      restatement is the tagged `cumulative` envelope, OR an untagged
- *      snapshot that supersets (equals or extends) that bubble's content.
- *    - Otherwise the text is a genuine increment: the segment is sealed at
- *      the tool boundary, so append a NEW bubble AFTER the burst.
- *
- * Tool messages are NOT transparent to increments (unlike the prior
- * backward-scan): a tool between two text stretches is a real boundary,
- * exactly as the iOS stream and the bridge transcript treat it.
- */
+/** The current turn's trailing maximal run of assistant|tool messages (stops
+ * at a user/error/system boundary or the start of the list). */
+function trailingTurn(messages: ChatMessage[]): { start: number } {
+  let start = messages.length
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const role = messages[i].role
+    if (role === 'assistant' || role === 'tool') start = i
+    else break
+  }
+  return { start }
+}
+
 export function resolveAssistantDeltaTarget(
   messages: ChatMessage[],
   input: ResolveAssistantDeltaTargetInput
 ): AssistantDeltaTarget {
   const lastIndex = messages.length - 1
   const last = lastIndex >= 0 ? messages[lastIndex] : null
-  if (last && last.role === 'assistant') {
-    return { action: 'merge', index: lastIndex }
-  }
 
-  // Trailing message is a tool burst (or there is no message). Only a
-  // cumulative restatement may reach back across the burst to its bubble;
-  // genuine increments seal here and start a fresh segment.
-  let priorAssistantIdx = -1
-  for (let i = lastIndex; i >= 0; i--) {
-    const candidate = messages[i]
-    if (candidate.role === 'assistant') {
-      priorAssistantIdx = i
+  const { start } = trailingTurn(messages)
+  const turn = messages.slice(start)
+  let lastToolTurnIdx = -1
+  for (let i = turn.length - 1; i >= 0; i--) {
+    if (turn[i].role === 'tool') {
+      lastToolTurnIdx = i
       break
     }
-    if (candidate.role === 'tool') continue
-    break
   }
-  if (priorAssistantIdx >= 0) {
-    const prior = messages[priorAssistantIdx]
-    const isRestatement =
-      input.cumulative === true ||
-      (input.incoming.length >= prior.content.length && input.incoming.startsWith(prior.content))
-    if (isRestatement) {
-      return { action: 'merge', index: priorAssistantIdx }
-    }
+
+  // No tool boundary in this turn → simple routing: a trailing assistant
+  // continues (the merge helper handles increment vs same-bubble restatement);
+  // otherwise open a fresh bubble.
+  if (lastToolTurnIdx < 0) {
+    if (last && last.role === 'assistant') return { action: 'merge', index: lastIndex }
+    return { action: 'append' }
   }
-  return { action: 'append' }
+
+  // Assistant text already rendered BEFORE the last tool burst of this turn.
+  const preBurst = turn
+    .slice(0, lastToolTurnIdx)
+    .filter((m) => m.role === 'assistant')
+    .map((m) => m.content)
+    .join('')
+  const trailingAssistant = Boolean(last && last.role === 'assistant')
+
+  // A restatement re-sends the whole turn: tagged `cumulative`, OR an untagged
+  // snapshot that supersets the pre-tool text. A genuine delta is a short
+  // suffix and never restarts from the full pre-tool prose, so it won't match.
+  const supersetsPreBurst =
+    preBurst.length > 0 &&
+    input.incoming.length >= preBurst.length &&
+    input.incoming.startsWith(preBurst)
+  const isRestatement = input.cumulative === true || supersetsPreBurst
+
+  if (!isRestatement) {
+    // Genuine increment, sealed at the tool boundary.
+    if (trailingAssistant) return { action: 'merge', index: lastIndex } // continue post-burst segment
+    return { action: 'append' } // open post-burst segment
+  }
+
+  // Cumulative restatement spanning a tool boundary. Distribute only the
+  // post-last-tool tail; the pre-tool bubbles are authoritative and untouched.
+  if (preBurst.length === 0) {
+    // Nothing rendered before the tool in this turn → the whole restatement is
+    // a fresh post-tool segment.
+    if (trailingAssistant) return { action: 'merge', index: lastIndex }
+    return { action: 'append' }
+  }
+  if (!input.incoming.startsWith(preBurst)) {
+    // Diverges in the already-rendered pre-tool region (e.g. Claude's
+    // whitespace-normalized envelope) — the tail can't be cleanly extracted.
+    // The streamed deltas already produced the correct interleaving; skip,
+    // exactly as the bridge does (src/main/index.ts post-stream restatement).
+    return { action: 'skip' }
+  }
+  const tail = input.incoming.slice(preBurst.length)
+  if (tail.trim().length === 0) {
+    // Restatement only re-covers the pre-burst text; nothing new to place.
+    return { action: 'skip' }
+  }
+  if (trailingAssistant) {
+    // The post-burst bubble holds exactly the tail (NOT the whole turn —
+    // that is the duplication bug). Idempotent when it already matches.
+    if (last && last.content === tail) return { action: 'skip' }
+    return { action: 'replaceText', index: lastIndex, text: tail }
+  }
+  // Trailing is the tool burst → open a new post-burst bubble with the tail.
+  return { action: 'appendText', text: tail }
 }
