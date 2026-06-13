@@ -2020,11 +2020,32 @@ const auditRunTracker = new AuditRunTracker({ nowMs: () => Date.now() })
 
 // Cooperative cancellation flags per audit run id. `audit-run:cancel` flips the
 // flag; the orchestrator checks `isCancelled` between phases + spawns. The
-// orchestrator holds per-run state (this.record) so it runs audits serially;
-// `activeAuditRunId` is the id currently executing, set by the start handler so
-// the shared `isCancelled` dep can scope the flag check to the live run.
+// orchestrator holds per-run state (this.record) so it CANNOT run two audits at
+// once — `auditRunInFlight` enforces one-at-a-time at the start handler (set
+// synchronously before run()), which keeps the single `activeAuditRunId` (set by
+// onUpdate) correctly scoped to the live run for the cancel flag check.
 const cancelledAuditRunIds = new Set<string>()
 let activeAuditRunId: string | null = null
+let auditRunInFlight = false
+
+// Absolute backstop for a single audit role-run: if no completion/exit ever
+// reaches the AuditRunTracker (a provider path that finalizes without feeding
+// the central pumps, or a CLI that hangs without exiting — the documented Gemini
+// stuck-forever mode and any equivalent), settle it as a failure after this
+// ceiling so the orchestrator substitutes/degrades instead of hanging the whole
+// audit forever. Generous because it only fires on a true hang; normal
+// completion clears it.
+const AUDIT_ROLE_RUN_TIMEOUT_MS = 15 * 60 * 1000
+
+// v1: providers whose plan-mode runs can actually reach the MCP bridge to record
+// audit_* artifacts. gemini/grok/cursor keep the --sandbox seatbelt in plan mode
+// (the bridge subprocess can't reach the broker), and codex's primary app-server
+// path doesn't stamp TASKWRAITH_RUN_ID (so an audit_* call wouldn't route back to
+// the role-run's context). Assigning any of them a recording role yields a run
+// that exits ok but records NOTHING — a silently-empty audit. Restrict audit
+// roles to this set until the gemini seatbelt-swap + codex daemon run-id
+// correlation land, then widen it. (ollama excluded for v1 — unverified.)
+const AUDIT_ARTIFACT_CAPABLE_PROVIDERS: ReadonlySet<ProviderId> = new Set(['claude', 'kimi'])
 
 // The live AuditOrchestrator, assigned in app.whenReady() (Slice A) where
 // runCoordinator + mainWindow are in scope. Module ref so the IPC handlers
@@ -10777,15 +10798,15 @@ async function runGeminiProvider(
       TASKWRAITH_RUN_ID: route.appRunId || '',
       TASKWRAITH_CHAT_ID: route.appChatId || '',
       TASKWRAITH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
-      // Audit role-run: advertise the audit_* MCP tools to this run's bridge
-      // child (inherited via the Gemini CLI env). NOTE (v1 gap): by default a
-      // plan-mode Gemini run keeps the --sandbox seatbelt, which blocks the
-      // bridge subprocess from reaching the broker — so the audit tools (like
-      // every TaskWraith MCP tool in plan mode) are unreachable unless the
-      // flagged read-only-advertise path (TASKWRAITH_GEMINI_READONLY_MCP) is on,
-      // which drops the seatbelt. geminiReadOnlyAdvertise below ORs in audit
-      // runs so opted-in users get the bridge; the security-gated default-OFF
-      // seatbelt swap is the deferred fix for the rest.
+      // Audit role-run: set the audit-tool advertisement flag for this run's
+      // bridge child (inherited via the Gemini CLI env). NOTE (v1 gap): a
+      // plan-mode Gemini run keeps the --sandbox seatbelt (geminiReadOnlyAdvertise
+      // above does NOT OR-in audit runs), which blocks the bridge subprocess from
+      // reaching the broker — so the audit tools are unreachable here. That's
+      // exactly why the resolver restricts audit roles to AUDIT_ARTIFACT_CAPABLE_
+      // PROVIDERS (claude/kimi) in v1, so Gemini is never assigned a recording
+      // role. This flag is set forward-looking for when the security-gated
+      // seatbelt swap lands and Gemini can be widened back in.
       ...(payload.auditRun ? { TASKWRAITH_MCP_AUDIT: '1' } : {}),
       // Phase I2: every CLI spawn now carries the parent provider so
       // the TaskWraith MCP bridge subprocess (inherited via env) stamps
@@ -10910,7 +10931,10 @@ async function runGeminiProvider(
         }
       }
     : null
-  if (payload.ensembleRun) {
+  // Audit role-runs (payload.auditRun) get the same stuck-process killer as
+  // ensemble runs: a Gemini run can emit init then sit forever without exiting,
+  // which would otherwise never settle the AuditRunTracker and hang the audit.
+  if (payload.ensembleRun || payload.auditRun) {
     ensembleStuckTimer = setInterval(() => {
       const idleMs = Date.now() - lastOrchestratorEventAt
       if (idleMs < GEMINI_STUCK_IDLE_MS) return
@@ -19975,6 +19999,13 @@ if (isGeminiMcpBridgeProcess) {
         })
       }
       const completion = auditRunTracker.track(appRunId)
+      // Absolute backstop: if nothing ever settles this run (a missed completion
+      // path or a hung CLI), fail it after the ceiling so the audit doesn't hang
+      // forever. Cleared as soon as the run settles by any means.
+      const backstop = setTimeout(() => {
+        auditRunTracker.handleExit(appRunId, -1)
+      }, AUDIT_ROLE_RUN_TIMEOUT_MS)
+      void completion.finally(() => clearTimeout(backstop))
       if (!runCoordinatorRef || !mainWindow) {
         // No coordinator / window to dispatch through — settle the tracked
         // promise as a failure so the orchestrator can substitute or degrade.
@@ -20016,6 +20047,12 @@ if (isGeminiMcpBridgeProcess) {
       const settings = AppStore.getSettings()
       const inputs: ProviderSignalInput[] = []
       for (const provider of availableProviderIds()) {
+        // v1: only offer the resolver providers that can actually record audit_*
+        // artifacts in plan mode. Otherwise the resolver assigns a recording role
+        // to (e.g.) gemini, the run exits ok, records nothing, and the audit
+        // completes "successfully" but empty. Widen AUDIT_ARTIFACT_CAPABLE_PROVIDERS
+        // once the gemini/codex bridge limits are lifted.
+        if (!AUDIT_ARTIFACT_CAPABLE_PROVIDERS.has(provider)) continue
         if (provider === 'ollama') {
           // Local model: include only when the Ollama server is reachable AND has
           // at least one model installed. isLocal defaults true in
@@ -21154,6 +21191,18 @@ if (isGeminiMcpBridgeProcess) {
       getAuditOrchestrator: () => auditOrchestratorRef,
       getAuditRun: (id) => AppStore.getAuditRun(id),
       getAuditRuns: (workspaceId) => AppStore.getAuditRuns(workspaceId),
+      // One audit at a time: the orchestrator keeps per-run state (this.record)
+      // in a single field, so a concurrent run would clobber it (and the single
+      // activeAuditRunId cancel scope). Reserve synchronously at start; release
+      // when run() resolves. Returns false if one is already in flight.
+      beginAuditRun: () => {
+        if (auditRunInFlight) return false
+        auditRunInFlight = true
+        return true
+      },
+      endAuditRun: () => {
+        auditRunInFlight = false
+      },
       markAuditRunCancelled: (id) => {
         cancelledAuditRunIds.add(id)
       },

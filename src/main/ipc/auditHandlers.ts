@@ -14,9 +14,14 @@ import { optionalString, requireNonEmptyString } from '../settings/MainSanitizer
  * live updates via its `onUpdate` dep (wired in index.ts to broadcast
  * `audit-run-changed`); these handlers only kick off / cancel / read runs.
  *
- * Cancellation: the orchestrator holds per-run state so it runs audits
- * serially. The orchestrator's `onUpdate` (in index.ts) tracks the live run id;
- * `audit-run:cancel` flips that run's flag, which the orchestrator's
+ * Serialization: the orchestrator keeps per-run state in a single `this.record`
+ * field, so two concurrent runs would clobber each other (and the single live
+ * `activeAuditRunId` cancel scope). `audit-run:start` reserves an in-flight slot
+ * SYNCHRONOUSLY via `beginAuditRun()` before calling run() and releases it in a
+ * `finally`; a second start while one is running is rejected.
+ *
+ * Cancellation: the orchestrator's `onUpdate` (in index.ts) tracks the live run
+ * id; `audit-run:cancel` flips that run's flag, which the orchestrator's
  * `isCancelled` dep observes between phases + spawns. `audit-run:start` clears
  * any stale cancel flag once its run resolves so a recycled id starts clean.
  *
@@ -32,6 +37,11 @@ export interface AuditHandlerDeps {
   /** Store readers for the get-* channels. */
   getAuditRun: (id: string) => AuditRunRecord | null
   getAuditRuns: (workspaceId?: string) => AuditRunRecord[]
+  /** Reserve the single in-flight audit slot synchronously; returns false if one
+   * is already running (the orchestrator can't run two at once). */
+  beginAuditRun: () => boolean
+  /** Release the in-flight slot once run() resolves. */
+  endAuditRun: () => void
   /** Mark a run cancelled (cooperative; the orchestrator polls it). */
   markAuditRunCancelled: (auditRunId: string) => void
   /** Clear a stale cancel flag after a run of the same id resolves. */
@@ -54,6 +64,8 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
     getAuditOrchestrator,
     getAuditRun,
     getAuditRuns,
+    beginAuditRun,
+    endAuditRun,
     markAuditRunCancelled,
     clearAuditRunCancelled
   } = deps
@@ -65,6 +77,12 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
     }
     const chatId = requireNonEmptyString(input?.chatId, 'chatId')
     const workspacePath = requireNonEmptyString(input?.workspacePath, 'workspacePath')
+    // Reserve the single in-flight slot BEFORE awaiting anything — a second
+    // overlapping /audit would otherwise clobber the orchestrator's per-run
+    // state. Reject fast; the caller can retry once the current audit finishes.
+    if (!beginAuditRun()) {
+      throw new Error('An audit is already running — wait for it to finish or cancel it first.')
+    }
     const start: StartAuditInput = {
       mode: normalizeMode(input?.mode),
       chatId,
@@ -81,8 +99,10 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
       return record
     } finally {
       // run() has resolved (completed / failed / cancelled) — clear the cancel
-      // flag for this id so a later run reusing the (recycled) id starts clean.
+      // flag for this id so a later run reusing the (recycled) id starts clean,
+      // and release the in-flight slot so the next audit can start.
       if (record) clearAuditRunCancelled(record.id)
+      endAuditRun()
     }
   })
 
