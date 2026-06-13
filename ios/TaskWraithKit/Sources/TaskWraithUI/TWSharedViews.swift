@@ -2778,6 +2778,7 @@ private struct GoalRailControl: View {
                 .frame(width: 320)
                 .padding(12)
                 .background(TWTheme.surface2)
+                .presentationCompactAdaptation(.popover)
         }
     }
 
