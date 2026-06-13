@@ -1,6 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { createMainSanitizers } from './MainSanitizers'
+import { createMainSanitizers, sanitizeAuditOrchestration } from './MainSanitizers'
 import type { AppSettings, ExternalPathGrant, WorkspaceRecord } from '../store/types'
+
+describe('sanitizeAuditOrchestration', () => {
+  it('drops unknown providers from the allowlist + per-role prefs', () => {
+    const out = sanitizeAuditOrchestration({
+      providerAllowlist: ['claude', 'bogus', 'codex'],
+      perRolePreferences: { skeptic: ['grok', 'nope'], junk: ['claude'] }
+    })
+    expect(out?.providerAllowlist).toEqual(['claude', 'codex'])
+    expect(out?.perRolePreferences).toEqual({ skeptic: ['grok'] })
+  })
+
+  it('clamps the ollama concurrency cap to 1..4 and budgets to bounds', () => {
+    expect(sanitizeAuditOrchestration({ ollamaMaxConcurrent: 99 })?.ollamaMaxConcurrent).toBe(4)
+    expect(sanitizeAuditOrchestration({ ollamaMaxConcurrent: 0 })?.ollamaMaxConcurrent).toBe(1)
+    expect(sanitizeAuditOrchestration({ budgetMaxAgents: 9999 })?.budgetMaxAgents).toBe(200)
+  })
+
+  it('keeps ollamaEnabled boolean and returns undefined for empty/garbage input', () => {
+    expect(sanitizeAuditOrchestration({ ollamaEnabled: true })?.ollamaEnabled).toBe(true)
+    expect(sanitizeAuditOrchestration({})).toBeUndefined()
+    expect(sanitizeAuditOrchestration(null)).toBeUndefined()
+    expect(sanitizeAuditOrchestration({ providerAllowlist: ['nope'] })?.providerAllowlist).toEqual([])
+  })
+})
 
 function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {

@@ -4,6 +4,8 @@ import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import type {
   AppSettings,
+  AuditOrchestrationSettings,
+  AuditRole,
   EnsembleRunIdentity,
   ExternalPathGrant,
   HandoffCard,
@@ -89,7 +91,8 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'updateChannel',
   'lastSeenChangelogVersion',
   'pendingUpdateChangelog',
-  'approvalTimeouts'
+  'approvalTimeouts',
+  'auditOrchestration'
 ])
 
 export const MIN_INSPECTOR_WIDTH = 300
@@ -224,6 +227,65 @@ export function sanitizeAgenticNetworkPolicy(
   fallback: 'allow' | 'deny'
 ): 'allow' | 'deny' {
   return value === 'allow' || value === 'deny' ? value : fallback
+}
+
+const AUDIT_ROLES: readonly AuditRole[] = ['recon', 'reviewer', 'skeptic', 'synthesis']
+// Audit policy accepts ANY structural provider (incl. gated grok/cursor) —
+// the capability resolver excludes unconfigured/unavailable ones at runtime,
+// so storing a preference for a provider the user later enables is harmless.
+const AUDIT_PROVIDER_IDS = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+])
+
+/** Sanitize the audit orchestration policy: drop unknown providers, clamp the
+ * Ollama concurrency cap + budgets, and keep only known roles in the
+ * per-role preference map. Returns undefined when the input clears to nothing
+ * meaningful (so it round-trips as "use defaults"). */
+export function sanitizeAuditOrchestration(
+  value: unknown
+): AuditOrchestrationSettings | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const input = value as Record<string, unknown>
+  const filterProviders = (raw: unknown): ProviderId[] =>
+    Array.isArray(raw)
+      ? Array.from(
+          new Set(raw.filter((p): p is ProviderId => AUDIT_PROVIDER_IDS.has(p as ProviderId)))
+        )
+      : []
+  const out: AuditOrchestrationSettings = {}
+
+  if (Array.isArray(input.providerAllowlist)) {
+    out.providerAllowlist = filterProviders(input.providerAllowlist)
+  }
+  if (typeof input.ollamaEnabled === 'boolean') out.ollamaEnabled = input.ollamaEnabled
+  if (input.ollamaMaxConcurrent !== undefined) {
+    const n = Math.round(Number(input.ollamaMaxConcurrent))
+    if (Number.isFinite(n)) out.ollamaMaxConcurrent = Math.max(1, Math.min(4, n))
+  }
+  if (input.perRolePreferences && typeof input.perRolePreferences === 'object') {
+    const prefsIn = input.perRolePreferences as Record<string, unknown>
+    const prefs: Partial<Record<AuditRole, ProviderId[]>> = {}
+    for (const role of AUDIT_ROLES) {
+      const chain = filterProviders(prefsIn[role])
+      if (chain.length > 0) prefs[role] = chain
+    }
+    if (Object.keys(prefs).length > 0) out.perRolePreferences = prefs
+  }
+  if (input.budgetMaxAgents !== undefined) {
+    const n = Math.round(Number(input.budgetMaxAgents))
+    if (Number.isFinite(n)) out.budgetMaxAgents = Math.max(1, Math.min(200, n))
+  }
+  if (input.budgetMaxTokens !== undefined) {
+    const n = Math.round(Number(input.budgetMaxTokens))
+    if (Number.isFinite(n) && n > 0) out.budgetMaxTokens = n
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function sanitizeApprovalTimeoutMs(value: unknown, fallback: number): number {
@@ -1001,6 +1063,11 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
       } else {
         delete sanitized.funFxMode
       }
+    }
+    if ('auditOrchestration' in sanitized) {
+      const cleaned = sanitizeAuditOrchestration(sanitized.auditOrchestration)
+      if (cleaned) sanitized.auditOrchestration = cleaned
+      else delete sanitized.auditOrchestration
     }
     return sanitized as Partial<AppSettings>
   }

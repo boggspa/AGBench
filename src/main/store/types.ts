@@ -1553,6 +1553,11 @@ export interface AppSettings {
      * encryption but is now reading on one without (e.g. fresh login). */
     encryptionAvailable?: boolean
   }
+  /** Audit orchestration policy (durable, set once in Settings). The user's
+   * standing contribution to the four-actor model — the resolver enforces
+   * eligibility within this envelope and the agent assigns roles within the
+   * resolved set. See src/main/audit/ProviderCapabilityResolver.ts. */
+  auditOrchestration?: AuditOrchestrationSettings
 }
 
 export type ProductCrashSource =
