@@ -3531,7 +3531,27 @@ function materializeBackgroundSubThreadProviderOutput(
     return
   }
   if (payload?.type === 'content' && typeof payload.text === 'string') {
-    state.content += payload.text
+    // Reconcile cumulative restatements the same way the bridge-run path does
+    // (foldBridgeRunText): a tagged Claude divergent envelope (cumulative)
+    // and an untagged Cursor full-turn snapshot both re-state the whole turn,
+    // and a naive `+=` duplicated/tripled the sub-thread bubble. This path is
+    // text-only (no tool interleaving), so the bubble is just `state.content`:
+    // a superset replaces it, a stale shorter frame is dropped, an increment
+    // appends. (The tagged-cumulative case is also a superset/divergent and is
+    // handled by the same fold — divergent envelopes that aren't a clean
+    // superset fall through to append, matching the pre-fold behavior.)
+    if (payload.cumulative === true && state.content.trim().length > 0) {
+      const fold = foldBridgeRunText(state.content, payload.text)
+      // A clean superset replaces; otherwise (divergent) skip the restatement
+      // — the streamed deltas already hold the turn.
+      if (fold.kind === 'tail') state.content = payload.text
+      // skip / append-divergent → leave the accumulated deltas as-is
+    } else {
+      const fold = foldBridgeRunText(state.content, payload.text)
+      if (fold.kind !== 'skip') {
+        state.content = fold.kind === 'tail' ? payload.text : state.content + payload.text
+      }
+    }
     if (!state.flushedOnce) {
       flushBackgroundSubThreadTranscript(runId)
     } else {
