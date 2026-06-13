@@ -153,6 +153,7 @@ import {
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
 import { bridgeResultDiffStats, bridgeToolDiffStats } from './bridge/BridgeToolDiffStats'
+import { foldBridgeRunText } from './bridge/BridgeTextFold'
 import { backfillRunDiffCounts, toolEvidenceFromActivities } from '../shared/runDiffBackfill'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
 import {
@@ -3209,22 +3210,38 @@ function bridgeToolDisplayName(name: string): string {
   return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
 }
 
-/** Append streamed text to the current text part (or open a new one after
+/** Append a text fragment to the current text part (or open a new one after
  * a tool burst) — this is what interleaves text and tool messages in the
- * persisted transcript the way the desktop renderer does. */
-function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): void {
-  state.content += text
+ * persisted transcript the way the desktop renderer does. `fragment` is the
+ * NEW text only (a true increment, or a cumulative snapshot's tail). */
+function appendBridgeRunTextFragment(state: BridgeRunTranscriptState, fragment: string): void {
   const last = state.parts[state.parts.length - 1]
   if (last && last.kind === 'text') {
-    last.content += text
+    last.content += fragment
   } else {
     state.parts.push({
       id: `${state.assistantMessageId}-p${state.parts.length}`,
       kind: 'text',
-      content: text,
+      content: fragment,
       activities: []
     })
   }
+}
+
+/** Assemble an incoming assistant text event into the run's interleaved
+ * parts, reconciling UNTAGGED cumulative snapshots (Cursor) so the whole turn
+ * isn't re-appended below every tool burst. Mirrors the renderer
+ * (resolveAssistantDeltaMerge) + iOS (StreamingSnapshotFold). */
+function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): void {
+  if (!text) return
+  const fold = foldBridgeRunText(state.content, text)
+  if (fold.kind === 'skip') return
+  // For a cumulative snapshot only the tail is new; for an increment the
+  // whole `text` is new. Either way `state.content` becomes the full assembled
+  // text so the next snapshot reconciles against it.
+  const fragment = fold.kind === 'tail' ? fold.tail : text
+  state.content = fold.kind === 'tail' ? text : state.content + text
+  appendBridgeRunTextFragment(state, fragment)
 }
 
 function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): void {
