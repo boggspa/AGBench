@@ -436,6 +436,7 @@ import { WelcomeUsageDashboard } from './components/WelcomeUsageDashboard'
 import { ComposerWorkspaceSwitcher } from './components/ComposerWorkspaceSwitcher'
 import { TranscriptPanel } from './components/TranscriptPanel'
 import { AuditRunCard } from './components/AuditRunCard'
+import { AuditRunNotice } from './components/AuditRunNotice'
 // Re-exported so the existing `TranscriptPanel.test.tsx` (which imports it
 // from './App') keeps resolving after the component moved to its own module.
 export { TranscriptPanel } from './components/TranscriptPanel'
@@ -1080,6 +1081,18 @@ function upsertAuditRunList(runs: AuditRunRecord[], run: AuditRunRecord): AuditR
   return sortAuditRuns([run, ...runs.filter((item) => item.id !== run.id)]).slice(0, 30)
 }
 
+interface AuditRunNoticeState {
+  chatId: string
+  title: string
+  message: string
+}
+
+function auditActionErrorMessage(fallback: string, err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message.trim()
+  if (typeof err === 'string' && err.trim()) return err.trim()
+  return fallback
+}
+
 const DISMISSED_AUDIT_RUNS_STORAGE_KEY = 'taskwraith.dismissedAuditRunIds'
 
 function readDismissedAuditRunIds(): Set<string> {
@@ -1312,6 +1325,7 @@ function App(): React.JSX.Element {
   const [diffRefreshStatus, setDiffRefreshStatus] = useState<string>('')
   const [isPreparingDiffReview, setIsPreparingDiffReview] = useState(false)
   const [auditRuns, setAuditRuns] = useState<AuditRunRecord[]>([])
+  const [auditRunNotice, setAuditRunNotice] = useState<AuditRunNoticeState | null>(null)
   const [dismissedAuditRunIds, setDismissedAuditRunIds] = useState<Set<string>>(
     readDismissedAuditRunIds
   )
@@ -2177,6 +2191,8 @@ function App(): React.JSX.Element {
   const visibleAuditRun = useMemo(() => {
     return selectVisibleAuditRun(auditRuns, currentChat?.appChatId, dismissedAuditRunIds)
   }, [auditRuns, currentChat?.appChatId, dismissedAuditRunIds])
+  const visibleAuditRunNotice =
+    auditRunNotice && auditRunNotice.chatId === currentChat?.appChatId ? auditRunNotice : null
   const canOpenWorkspacePopout = Boolean(currentWorkspacePopoutPath)
   const isCurrentChatProviderLocked = Boolean(
     currentChat &&
@@ -6581,6 +6597,13 @@ function App(): React.JSX.Element {
       })
       .catch((err) => {
         console.error('[audit] getAuditRuns failed', err)
+        if (!cancelled && currentChat?.appChatId) {
+          setAuditRunNotice({
+            chatId: currentChat.appChatId,
+            title: 'Could not load audit history',
+            message: auditActionErrorMessage('Audit history could not be loaded.', err)
+          })
+        }
       })
 
     const unsubscribe =
@@ -6593,13 +6616,23 @@ function App(): React.JSX.Element {
       cancelled = true
       unsubscribe?.()
     }
-  }, [auditRunWorkspaceId])
+  }, [auditRunWorkspaceId, currentChat?.appChatId])
 
-  const handleCancelAuditRun = useCallback((auditRunId: string) => {
-    void window.api.cancelAuditRun(auditRunId).catch((err) => {
-      console.error('[audit] cancelAuditRun failed', err)
-    })
-  }, [])
+  const handleCancelAuditRun = useCallback(
+    (auditRunId: string) => {
+      const chatId = currentChat?.appChatId
+      void window.api.cancelAuditRun(auditRunId).catch((err) => {
+        console.error('[audit] cancelAuditRun failed', err)
+        if (!chatId) return
+        setAuditRunNotice({
+          chatId,
+          title: 'Could not cancel audit',
+          message: auditActionErrorMessage('Audit cancellation failed.', err)
+        })
+      })
+    },
+    [currentChat?.appChatId]
+  )
 
   const handleDismissAuditRun = useCallback((auditRunId: string) => {
     setDismissedAuditRunIds((prev) => {
@@ -6608,6 +6641,10 @@ function App(): React.JSX.Element {
       writeDismissedAuditRunIds(next)
       return next
     })
+  }, [])
+
+  const handleDismissAuditRunNotice = useCallback(() => {
+    setAuditRunNotice(null)
   }, [])
 
   // Autonomous background refresh for the sidebar "MODEL USAGE" meters.
@@ -15853,6 +15890,7 @@ function App(): React.JSX.Element {
         // v1: no card UI yet — clear the slash token, log, and kick off the run.
         // Live phase/finding updates arrive via window.api.onAuditRunChanged.
         consumeSlashTokenFromPrompt()
+        setAuditRunNotice(null)
         console.log(`[slash:/audit] starting ${mode} audit for ${workspacePath}`)
         void window.api
           .startAuditRun({
@@ -15868,6 +15906,11 @@ function App(): React.JSX.Element {
           })
           .catch((err) => {
             console.error('[slash:/audit] startAuditRun failed', err)
+            setAuditRunNotice({
+              chatId: chat.appChatId,
+              title: 'Could not start audit',
+              message: auditActionErrorMessage('Audit start failed.', err)
+            })
           })
       }
     },
@@ -17025,6 +17068,14 @@ function App(): React.JSX.Element {
               than 0.39.1. Headless workspace-trust behavior had recent security hardening. Please
               upgrade Gemini CLI before using this app on real repositories.
             </div>
+          )}
+
+          {visibleAuditRunNotice && (
+            <AuditRunNotice
+              title={visibleAuditRunNotice.title}
+              message={visibleAuditRunNotice.message}
+              onDismiss={handleDismissAuditRunNotice}
+            />
           )}
 
           {visibleAuditRun && (
