@@ -153,13 +153,8 @@ import {
 import { buildCodexUsageWindows } from './lib/codexUsageWindows'
 import type { QueuedRunRequest, RunRouteEventPayload, ActiveRunContext } from './lib/runRequestTypes'
 import { RunRailPanel } from './components/RunRailPanel'
-import {
-  createToolActivity,
-  pairToolResult,
-  isToolUseEvent,
-  isToolResultEvent,
-  estimateLineChanges
-} from './lib/ToolParser'
+import { estimateLineChanges } from './lib/ToolParser'
+import { reduceSoloToolEventMessages } from './lib/soloToolEventReducer'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -9279,97 +9274,22 @@ function App(): React.JSX.Element {
               }
             })
           } else if (event.type === 'tool_event') {
-            const createToolMessage = (): ChatMessage => ({
-              id: createMessageId(),
-              role: 'tool',
-              content: '',
-              timestamp: new Date().toISOString(),
-              toolActivities: []
-            })
-            let lastMsgIndex = updated.messages.length - 1
-            let lastMsg = updated.messages[lastMsgIndex]
-            if (updated.messages.length === 0 || lastMsg?.role !== 'tool') {
-              const trailingAssistant = lastMsg?.role === 'assistant' ? lastMsg : null
-              const previousToolIndex = trailingAssistant ? updated.messages.length - 2 : -1
-              const previousTool =
-                previousToolIndex >= 0 ? updated.messages[previousToolIndex] : null
-              if (trailingAssistant && previousTool?.role === 'tool') {
-                lastMsgIndex = previousToolIndex
-                lastMsg = previousTool
-              } else {
-                const toolMessage = createToolMessage()
-                updated.messages = trailingAssistant
-                  ? [...updated.messages.slice(0, -1), toolMessage, trailingAssistant]
-                  : [...updated.messages, toolMessage]
-                lastMsgIndex = trailingAssistant
-                  ? updated.messages.length - 2
-                  : updated.messages.length - 1
-                lastMsg = toolMessage
-              }
-            }
-            const acts = [...(lastMsg.toolActivities || [])]
-
-            const tData = event.data
-            const isUse = event.isUse || isToolUseEvent(tData)
-            const isResult = event.isResult || isToolResultEvent(tData)
             if (isProviderExecutionToolEvent(event)) {
               runContext.toolCallsCount += 1
             }
-            const tId =
-              event.data?.tool_id ||
-              event.data?.toolId ||
-              event.data?.id ||
-              event.data?.call_id ||
-              `unknown-${Date.now()}`
-            let latestToolActivity: ToolActivity | null = null
-
-            if (isUse) {
-              const newActivity = createToolActivity(tData)
-              acts.push(newActivity)
-              latestToolActivity = newActivity
-            } else if (isResult) {
-              const idx = acts.findIndex((a) => a.id === tId)
-              if (idx >= 0) {
-                acts[idx] = pairToolResult(acts[idx], tData)
-                latestToolActivity = acts[idx]
-              } else {
-                // Orphan result: create a minimal activity for it
-                const orphan = createToolActivity({
-                  type: 'tool_use',
-                  tool_id: tId,
-                  tool_name: event.name || 'unknown'
-                })
-                const paired = pairToolResult(orphan, tData)
-                acts.push(paired)
-                latestToolActivity = paired
-              }
-            } else {
-              // Fallback for unstructured tools
-              const fallback = createToolActivity({
-                type: 'tool_use',
-                tool_id: tId,
-                tool_name: event.name || 'unknown',
-                ...tData
-              })
-              fallback.status = 'success'
-              acts.push(fallback)
-              latestToolActivity = fallback
-            }
+            const reduction = reduceSoloToolEventMessages(updated.messages, event, {
+              createMessageId
+            })
+            updated.messages = reduction.messages
 
             if (
               isVisibleRunChat() &&
               !runContext.diffUnavailable &&
-              latestToolActivity &&
-              isResult
+              reduction.latestToolActivity &&
+              reduction.isResult
             ) {
-              upsertRunDiffFromTool(latestToolActivity, runContext.workspacePath)
+              upsertRunDiffFromTool(reduction.latestToolActivity, runContext.workspacePath)
             }
-
-            updated.messages = [
-              ...updated.messages.slice(0, lastMsgIndex),
-              { ...lastMsg, toolActivities: acts },
-              ...updated.messages.slice(lastMsgIndex + 1)
-            ]
           } else if (event.type === 'error') {
             updated.messages = [
               ...updated.messages,
