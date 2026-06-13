@@ -2604,8 +2604,10 @@ function safeSendToWebContents(
 }
 
 function saveAndBroadcastChat(chat: ChatRecord): void {
+  const previous = AppStore.getChat(chat.appChatId)
   AppStore.saveChat(chat)
   broadcastChatUpdated(chat)
+  maybeScheduleCodexNativeGoalSync(previous, chat, 'chat-save')
   // 1.0.5-PO2 — Notify open workspace popouts that something in
   // their workspace may have changed. The popout debounces a
   // re-fetch on its end; we just need to tell it something
@@ -2614,6 +2616,43 @@ function saveAndBroadcastChat(chat: ChatRecord): void {
   if (chat.workspacePath) {
     broadcastWorkspacePopoutRefresh(chat.workspacePath, 'chat-updated')
   }
+}
+
+const pendingCodexNativeGoalSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function codexNativeGoalSyncStateKey(chat: ChatRecord | null | undefined): string {
+  return JSON.stringify({
+    activeGoal: chat?.activeGoal || null,
+    nativeAvailable: Boolean(chat?.providerMetadata?.codexGoalNativeAvailable)
+  })
+}
+
+function shouldSyncCodexNativeGoalAfterSave(
+  previous: ChatRecord | null | undefined,
+  next: ChatRecord
+): boolean {
+  if (next.provider !== 'codex') return false
+  if (next.providerMetadata?.codexGoalNativeAvailable !== true) return false
+  if (!isCodexAppServerThreadId(next.linkedProviderSessionId)) return false
+  return codexNativeGoalSyncStateKey(previous) !== codexNativeGoalSyncStateKey(next)
+}
+
+function maybeScheduleCodexNativeGoalSync(
+  previous: ChatRecord | null | undefined,
+  next: ChatRecord,
+  reason: string
+): void {
+  if (!shouldSyncCodexNativeGoalAfterSave(previous, next)) return
+  const threadId = next.linkedProviderSessionId
+  if (!threadId) return
+
+  const existing = pendingCodexNativeGoalSyncTimers.get(next.appChatId)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    pendingCodexNativeGoalSyncTimers.delete(next.appChatId)
+    void syncCodexNativeGoalForSavedChat(next.appChatId, threadId, reason)
+  }, 150)
+  pendingCodexNativeGoalSyncTimers.set(next.appChatId, timer)
 }
 
 /**
@@ -9697,6 +9736,12 @@ function syncCodexGoalCapabilityMetadata(
   else if (goalOverride !== undefined) delete updated.activeGoal
   AppStore.saveChat(updated)
   broadcastChatUpdated(updated)
+  try {
+    bridgeBroadcasterRef?.broadcastThreadUpdated(updated.appChatId)
+    bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+  } catch (err) {
+    console.warn('[codex] native goal bridge broadcast failed:', err)
+  }
 }
 
 async function syncCodexNativeGoalForRun(
@@ -9734,6 +9779,35 @@ async function syncCodexNativeGoalForRun(
     }
     console.warn(
       `[codex] native goal sync failed for thread ${threadId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+  }
+}
+
+async function syncCodexNativeGoalForSavedChat(
+  appChatId: string,
+  expectedThreadId: string,
+  reason: string
+): Promise<void> {
+  const chat = AppStore.getChat(appChatId)
+  if (!chat || chat.provider !== 'codex') return
+  const threadId = chat.linkedProviderSessionId
+  if (!threadId || threadId !== expectedThreadId || !isCodexAppServerThreadId(threadId)) return
+  if (chat.providerMetadata?.codexGoalNativeAvailable !== true) return
+
+  // Reuse the current Codex app-server client only. Creating or retargeting a
+  // client here could silently switch a custom runtime profile during a UI edit.
+  const client = codexClient ? getCodexClient() : null
+  if (!client) return
+  try {
+    client.setNotificationHandler(handleCodexNotification)
+    client.setRequestHandler(handleCodexServerRequest)
+    await client.ensureStarted(app.getVersion())
+    await syncCodexNativeGoalForRun(client, appChatId, threadId)
+  } catch (error) {
+    console.warn(
+      `[codex] native goal background sync failed after ${reason}: ${
         error instanceof Error ? error.message : String(error)
       }`
     )
@@ -15363,6 +15437,7 @@ if (isGeminiMcpBridgeProcess) {
           else delete updated.activeGoal
           AppStore.saveChat(updated)
           broadcastChatUpdated(updated)
+          maybeScheduleCodexNativeGoalSync(chat, updated, 'remote-goal-update')
           broadcastThreadUpdate(updated.appChatId)
           const canonical = canonicalRemoteWorkspaceId(updated.workspaceId)
           if (canonical) pushRemoteThreadSnapshot(updated, canonical)
@@ -18188,8 +18263,10 @@ if (isGeminiMcpBridgeProcess) {
       return result
     })
     ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
+      const previous = AppStore.getChat(chat.appChatId)
       chatService.saveChat(chat)
       broadcastChatPopoutUpdate(chat)
+      maybeScheduleCodexNativeGoalSync(previous, chat, 'renderer-save-chat')
       broadcastThreadUpdate(chat?.appChatId)
     })
     ipcMain.handle('delete-chat', (_, chatId: string) => {
