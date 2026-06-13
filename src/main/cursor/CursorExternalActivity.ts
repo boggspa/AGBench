@@ -329,7 +329,7 @@ export async function loadCursorIdeUsageEvents(
     })
   const listTranscriptFileStats =
     options.listTranscriptFileStats ??
-    ((homeDir, sinceMs) => collectAgentTranscriptFileStats(homeDir, sinceMs))
+    ((homeDir, sinceMs) => collectAgentTranscriptFileStats(homeDir, sinceMs, statFile))
   const querySqlite = options.querySqlite ?? runSqliteQuery
   const parseBudget = Math.max(0, options.transcriptParseBudget ?? MAX_TRANSCRIPT_FILES)
 
@@ -558,7 +558,11 @@ async function loadCursorConversationModelHints(
 
 async function collectAgentTranscriptFileStats(
   homeDir: string,
-  sinceMs: number
+  sinceMs: number,
+  statFile: (path: string) => Promise<{ mtimeMs: number; size: number }> = async (path) => {
+    const stat = await fs.stat(path)
+    return { mtimeMs: stat.mtimeMs, size: stat.size }
+  }
 ): Promise<TranscriptFileStat[]> {
   const root = join(homeDir, '.cursor', 'projects')
   const files: TranscriptFileStat[] = []
@@ -582,7 +586,7 @@ async function collectAgentTranscriptFileStats(
       if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
       if (!entryPath.replace(/\\/g, '/').includes('/agent-transcripts/')) continue
       try {
-        const stat = await fs.stat(entryPath)
+        const stat = await statFile(entryPath)
         if (stat.mtimeMs < sinceMs) continue
         files.push({ path: entryPath, mtimeMs: stat.mtimeMs, size: stat.size })
       } catch {
