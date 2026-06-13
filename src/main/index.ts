@@ -306,7 +306,7 @@ import {
   extractProviderUsage,
   mergeProviderUsage
 } from './ProviderRunStats'
-import { getExternalUsageCached, buildExternalUsageRollup } from './ExternalProviderActivity'
+import { getExternalUsageCached, buildExternalUsageRollup, prewarmExternalUsageCache } from './ExternalProviderActivity'
 import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
@@ -14364,6 +14364,10 @@ if (isGeminiMcpBridgeProcess) {
         console.warn('Provider rate probe failed:', error instanceof Error ? error.message : error)
       })
     })
+
+    // Hydrate provider-wide external usage in the background. Cursor IDE scans
+    // are incremental + chunked off a persisted cache so this stays cheap.
+    prewarmExternalUsageCache()
 
     /*
      * F4 (1.0.3) — explicit application menu.

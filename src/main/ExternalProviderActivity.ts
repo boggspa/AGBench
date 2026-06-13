@@ -3,8 +3,14 @@ import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import os from 'os'
+import { app } from 'electron'
 import type { ProviderId, UsageRecord } from './store/types'
-import { loadCursorIdeUsageEvents } from './cursor/CursorExternalActivity'
+import {
+  loadCursorIdeUsageEvents,
+  prewarmCursorIdeUsageCache,
+  setCursorExternalActivityUpdateListener
+} from './cursor/CursorExternalActivity'
+import { CURSOR_TRANSCRIPT_CHUNK_SIZE } from './cursor/CursorExternalActivityCache'
 
 type ExternalActivityProvider = Extract<
   ProviderId,
@@ -15,6 +21,10 @@ interface ExternalProviderActivityOptions {
   homeDir?: string
   now?: Date
   lookbackDays?: number
+  /** Bypass cached external usage (still incremental for Cursor transcripts). */
+  force?: boolean
+  /** Override persisted Cursor incremental cache path (tests). */
+  cursorCachePath?: string
 }
 
 interface ExternalUsageEvent {
@@ -43,7 +53,7 @@ const MAX_CODEX_SQLITE_MARKERS_PER_BUCKET = 8
 // 2h freshness window; index.ts prewarms at startup so the FIRST open is
 // hydrated too.
 
-const EXTERNAL_USAGE_CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000
+const EXTERNAL_USAGE_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 export interface ExternalUsageRollup {
   providers: Array<{ provider: string; h24: number; d7: number; d90: number }>
@@ -92,6 +102,47 @@ export function buildExternalUsageRollup(
 
 let externalUsageCache: { records: UsageRecord[]; scannedAt: number } | null = null
 let externalUsageInFlight: Promise<UsageRecord[]> | null = null
+let cursorCacheListenerInstalled = false
+
+function resolveCursorExternalCachePath(override?: string): string {
+  if (override) return override
+  return join(app.getPath('userData'), 'cursor-external-activity-cache.json')
+}
+
+function ensureCursorCacheListener(): void {
+  if (cursorCacheListenerInstalled) return
+  cursorCacheListenerInstalled = true
+  setCursorExternalActivityUpdateListener((events) => {
+    replaceCachedCursorExternalRecords(events)
+  })
+}
+
+function replaceCachedCursorExternalRecords(
+  cursorEvents: Array<{
+    provider: 'cursor'
+    timestamp: number
+    model: string
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens: number
+    sourceKey: string
+  }>
+): void {
+  const cursorRecords = cursorEvents
+    .map((event) => eventToUsageRecord(event))
+    .filter((record): record is UsageRecord => Boolean(record))
+  if (cursorRecords.length === 0) return
+
+  if (!externalUsageCache) {
+    externalUsageCache = { records: cursorRecords, scannedAt: Date.now() }
+    return
+  }
+
+  const other = externalUsageCache.records.filter((record) => record.provider !== 'cursor')
+  externalUsageCache.records = [...other, ...cursorRecords].sort(
+    (a, b) => b.timestamp - a.timestamp
+  )
+}
 
 export async function getExternalUsageCached(
   options: ExternalProviderActivityOptions & { maxAgeMs?: number } = {}
@@ -99,10 +150,13 @@ export async function getExternalUsageCached(
   const maxAgeMs = options.maxAgeMs ?? EXTERNAL_USAGE_CACHE_MAX_AGE_MS
   const now = Date.now()
   const cached = externalUsageCache
-  if (cached && now - cached.scannedAt < maxAgeMs) {
+  if (cached && now - cached.scannedAt < maxAgeMs && options.force !== true) {
     return cached.records
   }
-  const refresh = (externalUsageInFlight ??= loadExternalProviderUsageRecords(options)
+  const refresh = (externalUsageInFlight ??= loadExternalProviderUsageRecords({
+    ...options,
+    force: options.force === true || options.maxAgeMs === 0
+  })
     .then((records) => {
       externalUsageCache = { records, scannedAt: Date.now() }
       return records
@@ -112,8 +166,23 @@ export async function getExternalUsageCached(
     }))
   // Stale-while-revalidate: a stale cache answers instantly while the
   // rescan proceeds; only a COLD cache awaits the scan.
-  if (cached) return cached.records
+  if (cached && options.force !== true && options.maxAgeMs !== 0) return cached.records
   return refresh
+}
+
+/** Kick off a background external-usage hydrate at app launch. Cursor IDE
+ * scans are incremental + chunked; other providers use the in-memory cache. */
+export function prewarmExternalUsageCache(): void {
+  ensureCursorCacheListener()
+  const homeDir = os.homedir()
+  const sinceMs = Date.now() - DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  prewarmCursorIdeUsageCache({
+    homeDir,
+    sinceMs,
+    cachePath: resolveCursorExternalCachePath(),
+    transcriptParseBudget: CURSOR_TRANSCRIPT_CHUNK_SIZE * 2
+  })
+  void getExternalUsageCached()
 }
 
 export async function loadExternalProviderUsageRecords(
@@ -129,7 +198,7 @@ export async function loadExternalProviderUsageRecords(
     readClaudeActivity,
     readGeminiActivity,
     readKimiActivity,
-    readCursorActivity
+    (homeDir: string, sinceMs: number) => readCursorActivity(homeDir, sinceMs, options)
   ]
   const nested = await Promise.all(readers.map((reader) => safeRead(reader, homeDir, sinceMs)))
   const byId = new Map<string, UsageRecord>()
@@ -449,8 +518,20 @@ async function readKimiActivity(homeDir: string, sinceMs: number): Promise<Exter
   return events
 }
 
-async function readCursorActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
-  return loadCursorIdeUsageEvents({ homeDir, sinceMs })
+async function readCursorActivity(
+  homeDir: string,
+  sinceMs: number,
+  options: ExternalProviderActivityOptions = {}
+): Promise<ExternalUsageEvent[]> {
+  ensureCursorCacheListener()
+  const force = options.force === true
+  return loadCursorIdeUsageEvents({
+    homeDir,
+    sinceMs,
+    cachePath: resolveCursorExternalCachePath(options.cursorCachePath),
+    force,
+    transcriptParseBudget: force ? 400 : CURSOR_TRANSCRIPT_CHUNK_SIZE * 2
+  })
 }
 
 async function runSqliteQuery(dbPath: string, query: string): Promise<string[]> {

@@ -1,7 +1,14 @@
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: () => join(tmpdir(), `taskwraith-external-activity-electron-${process.pid}`)
+  }
+}))
+
 import { loadExternalProviderUsageRecords } from './ExternalProviderActivity'
 
 describe('loadExternalProviderUsageRecords', () => {
@@ -334,7 +341,8 @@ describe('loadExternalProviderUsageRecords', () => {
 
       const records = await loadExternalProviderUsageRecords({
         homeDir,
-        now: new Date('2026-06-13T13:00:00.000Z')
+        now: new Date('2026-06-13T13:00:00.000Z'),
+        cursorCachePath: join(homeDir, 'cursor-external-activity-cache.json')
       })
       const cursor = records.find((record) => record.provider === 'cursor')
       expect(cursor?.totalTokens).toBe(150)
