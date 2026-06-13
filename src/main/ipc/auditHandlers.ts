@@ -78,12 +78,6 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
     }
     const chatId = requireNonEmptyString(input?.chatId, 'chatId')
     const workspacePath = requireNonEmptyString(input?.workspacePath, 'workspacePath')
-    // Reserve the single in-flight slot BEFORE awaiting anything — a second
-    // overlapping /audit would otherwise clobber the orchestrator's per-run
-    // state. Reject fast; the caller can retry once the current audit finishes.
-    if (!beginAuditRun()) {
-      throw new Error('An audit is already running — wait for it to finish or cancel it first.')
-    }
     const start: StartAuditInput = {
       mode: normalizeMode(input?.mode),
       chatId,
@@ -92,6 +86,14 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
         ? { preferredProvider: assertProviderId(input!.preferredProvider) }
         : {}),
       ...(optionalString(input?.workspaceId) ? { workspaceId: input!.workspaceId } : {})
+    }
+    // Reserve the single in-flight slot BEFORE awaiting anything — a second
+    // overlapping /audit would otherwise clobber the orchestrator's per-run
+    // state. All synchronous input validation is already complete here, so a
+    // bad request cannot leak the reserved slot before the finally block is
+    // installed.
+    if (!beginAuditRun()) {
+      throw new Error('An audit is already running — wait for it to finish or cancel it first.')
     }
     // The orchestrator creates the run record up front (status 'planning') and
     // pushes it via onUpdate (which the renderer observes through
