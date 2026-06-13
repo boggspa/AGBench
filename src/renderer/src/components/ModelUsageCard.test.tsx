@@ -125,18 +125,21 @@ describe('ModelUsageCard', () => {
     expect(html).not.toContain('200 / 200 remaining')
   })
 
-  it('still renders (forced to spend view) when there are no quota meters but apiSpend is wired', () => {
+  it('forces the spend view and hides the toggle when there are no quota meters but apiSpend is wired', () => {
     const rates: RendererProviderRates = {
       codex: [{ modelId: 'gpt-5.5', inputUsdPerMillion: 1, outputUsdPerMillion: 10 }]
     }
     const apiSpend: ModelUsageApiSpendOptions = { providerRates: rates, view: 'plan' }
     // No quota entries at all → previously the card returned null. Now the
     // spend view keeps the card mounted so an API-key user can see spend.
+    // With no plan-side meter there is nothing to toggle, so the toggle is
+    // hidden and the spend view is forced (no dead "Plan limits" click).
     const html = renderToStaticMarkup(
       <ModelUsageCard usageSummary={[]} variant="sidebar" apiSpend={apiSpend} />
     )
     expect(html).toContain('Model Usage')
-    expect(html).toContain('model-usage-view-toggle')
+    expect(html).not.toContain('model-usage-view-toggle')
+    expect(html).toContain('No API spend tracked in the last 30 days')
   })
 })
 

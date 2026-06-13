@@ -304,7 +304,12 @@ function ApiSpendRow({
       >
         {hasTokens ? `${formatTokenCount(totals.totalTokens)} tok` : '—'}
       </span>
-      <span className="model-usage-spend-cost">{totals.costDisplay || '—'}</span>
+      <span
+        className="model-usage-spend-cost"
+        title={totals.costDisplay ? 'Projected API-equivalent — estimated, not billed' : undefined}
+      >
+        {totals.costDisplay ? `~${totals.costDisplay}` : '—'}
+      </span>
     </div>
   )
 }
@@ -364,8 +369,10 @@ function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefi
       locale: options?.locale
     }
     return buildApiSpendByProvider(records, options?.providerRates ?? {}, currencyOptions)
-    // `Date.now()` is intentionally read inside the helper on each rebuild so
-    // the rolling windows track real time; records/options drive recompute.
+    // The helper reads the clock when it runs, so the rolling Day/7d/30d windows
+    // are anchored at recompute time. This memo re-runs only when records/options
+    // change (a new run bumps refreshKey → refetch → records), so an idle card
+    // keeps its last cutoffs until the next usage-changed tick.
   }, [
     records,
     options?.providerRates,
@@ -383,22 +390,21 @@ function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefi
     )
   }
 
+  // Count only the runs that feed the displayed windows (the 30d window is the
+  // widest), so the footnote can't claim runs from excluded providers or older
+  // than the view shows.
+  const shownRuns = spend.reduce((total, entry) => total + entry.month.runs, 0)
   return (
     <div className="model-usage-list model-usage-spend-list">
       {spend.map((entry) => (
         <ApiSpendProviderBlock key={entry.provider} entry={entry} />
       ))}
       <p className="model-usage-spend-footnote">
-        Projected from API rates · {recordsHint(records)}
+        Estimated API-equivalent · not billed ·{' '}
+        {shownRuns === 1 ? '1 run' : `${shownRuns.toLocaleString()} runs`}
       </p>
     </div>
   )
-}
-
-/** Tiny helper for the footnote — keeps the JSX readable. */
-function recordsHint(records: UsageRecord[]): string {
-  const priced = records.filter((r) => r && r.usageKind !== 'reset_hint').length
-  return priced === 1 ? '1 run' : `${priced.toLocaleString()} runs`
 }
 
 export function ModelUsageCard({ usageSummary, variant = 'card', apiSpend }: ModelUsageCardProps) {
@@ -462,12 +468,16 @@ export function ModelUsageCard({ usageSummary, variant = 'card', apiSpend }: Mod
   )
   // The API-spend view is offered whenever the caller wired it (sidebar).
   const apiSpendEnabled = Boolean(apiSpend)
-  // Render when there's a token/quota meter, a gated Grok credit meter, OR the
-  // API-spend view is available (so a user on API keys with no plan meters can
-  // still reach their spend). When only spend is available, force that view.
-  if (quotaEntries.length === 0 && !grokAvailable && !apiSpendEnabled) return null
-  const effectiveView: ModelUsagePanelView =
-    quotaEntries.length === 0 && !grokAvailable && apiSpendEnabled ? 'spend' : view
+  // A plan-side meter exists when there are quota entries or the gated Grok
+  // credit meter. Only then is the Plan ⇄ Spend choice meaningful.
+  const planViewAvailable = quotaEntries.length > 0 || grokAvailable
+  // Render when there's a plan-side meter OR the API-spend view is available (so
+  // a user on API keys with no plan meters can still reach their spend).
+  if (!planViewAvailable && !apiSpendEnabled) return null
+  // With no plan-side meter, force the spend view AND hide the toggle below —
+  // a lone "Plan limits" button would be a dead click.
+  const showViewToggle = apiSpendEnabled && planViewAvailable
+  const effectiveView: ModelUsagePanelView = planViewAvailable ? view : 'spend'
 
   const isSidebarVariant = variant === 'sidebar'
   const showQuotaEntries = !isSidebarVariant || sidebarExpanded
@@ -586,7 +596,7 @@ export function ModelUsageCard({ usageSummary, variant = 'card', apiSpend }: Mod
       )}
       <div className="model-usage-summary-header">
         <div className="run-summary-title">Model Usage</div>
-        {apiSpendEnabled && (
+        {showViewToggle && (
           <div className="model-usage-view-toggle" role="radiogroup" aria-label="Model usage view">
             <button
               type="button"
