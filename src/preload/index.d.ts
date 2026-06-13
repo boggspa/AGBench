@@ -47,7 +47,8 @@ import {
   RunAnalystRequest,
   RunAnalystSnapshot,
   AgenticServiceId,
-  AuditRunRecord
+  AuditRunRecord,
+  ProviderRunReroute
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
@@ -156,6 +157,7 @@ type AgentApprovalAction =
 
 interface AgentRunPayload {
   provider: ProviderId
+  providerReroute?: ProviderRunReroute
   scope?: 'workspace' | 'global'
   workspace?: string
   prompt: string
@@ -188,6 +190,7 @@ interface ComposerRunInput {
   chatId: string
   appRunId?: string
   provider?: ProviderId
+  providerReroute?: ProviderRunReroute
   scope?: ChatScope
   workspace?: string
   userInput?: string

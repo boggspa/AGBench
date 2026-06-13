@@ -72,6 +72,7 @@ import {
   createActiveGoal,
   isUnfinishedActiveGoal,
   normalizeActiveGoalObjective,
+  resolveActiveGoalForProvider,
   resolveActiveGoalMode,
   updateActiveGoalLifecycle
 } from '../../main/GoalState'
@@ -153,7 +154,8 @@ import {
   createWorktreeDiffUnavailable,
   resolveGeminiWorktreeConfig,
   isGeminiWorktreeDiffUnavailable,
-  getDiffWorkspacePath
+  getDiffWorkspacePath,
+  normalizeGeminiWorktreeLaunchOption
 } from './lib/geminiWorktree'
 import { chatHasInFlightThinkingWork } from './lib/chatThinkingState'
 import { humaniseModelId } from './lib/modelDisplayName'
@@ -3828,6 +3830,9 @@ function App(): React.JSX.Element {
     }
     if (next.welcomeHeatmapPrefs !== undefined) {
       settingsPatch.welcomeHeatmapPrefs = next.welcomeHeatmapPrefs
+    }
+    if (next.providerRunPauses !== undefined) {
+      settingsPatch.providerRunPauses = next.providerRunPauses
     }
 
     // 1.0.5-EW26 — Kimi compatibility filter. Same persist-only
@@ -8715,13 +8720,8 @@ function App(): React.JSX.Element {
       clearImagePermissions()
       latestRunRequestRef.current = request
 
-      const runWorktree =
+      const requestedRunWorktree =
         !isGlobalRun && runProvider === 'gemini' ? request.geminiWorktree : undefined
-      const runDiffUnavailable = !isGlobalRun && isGeminiWorktreeDiffUnavailable(runWorktree)
-      const runDiffWorkspacePath =
-        !isGlobalRun && runWorkspace && !runDiffUnavailable
-          ? getDiffWorkspacePath(runWorkspace, runWorktree)
-          : undefined
       const currentRunId = request.appRunId || Date.now().toString()
       if (request.discordContextSelection && !request.discordContextSnapshots?.length) {
         try {
@@ -8769,7 +8769,7 @@ function App(): React.JSX.Element {
           sessionTrust: request.sessionTrust,
           imageAttachments: request.imageAttachments,
           externalPathGrants: request.externalPathGrants,
-          geminiWorktree: runWorktree,
+          geminiWorktree: requestedRunWorktree,
           codexReasoningEffort: request.codexReasoningEffort,
           codexServiceTier: request.codexServiceTier,
           claudeReasoningEffort: request.claudeReasoningEffort,
@@ -8807,6 +8807,19 @@ function App(): React.JSX.Element {
         return
       }
       const composerMetadata = composedPayload.composer
+      const effectiveRunProvider = composedPayload.provider || runProvider
+      const runWorktree =
+        !isGlobalRun && effectiveRunProvider === 'gemini'
+          ? normalizeGeminiWorktreeLaunchOption(
+              composedPayload.geminiWorktree ||
+                (runProvider === 'gemini' ? request.geminiWorktree : undefined)
+            )
+          : undefined
+      const runDiffUnavailable = !isGlobalRun && isGeminiWorktreeDiffUnavailable(runWorktree)
+      const runDiffWorkspacePath =
+        !isGlobalRun && runWorkspace && !runDiffUnavailable
+          ? getDiffWorkspacePath(runWorkspace, runWorktree)
+          : undefined
       const finalPrompt = composerMetadata.finalPrompt
       const discordContextReads =
         composerMetadata.discordContextReads ||
@@ -8827,7 +8840,7 @@ function App(): React.JSX.Element {
       const contextApplicationLog = composerMetadata.applicationLog
 
       activeScheduledTaskIdRef.current = request.scheduledTaskId || null
-      const chatToUpdate = { ...runChat, provider: runProvider }
+      const chatToUpdate = { ...runChat, provider: effectiveRunProvider }
       if (composerMetadata.clearLinkedGeminiSession) {
         chatToUpdate.linkedGeminiSessionId = undefined
       }
@@ -8880,7 +8893,7 @@ function App(): React.JSX.Element {
         if (discordContextReads.length > 0) {
           chatToUpdate.messages = [
             ...chatToUpdate.messages,
-            createDiscordContextToolMessage(discordContextReads, runStartedAt, runProvider)
+            createDiscordContextToolMessage(discordContextReads, runStartedAt, effectiveRunProvider)
           ]
         }
       } else {
@@ -8897,7 +8910,7 @@ function App(): React.JSX.Element {
       activeRunDiffUnavailableRef.current = runDiffUnavailable
       const newRun: ChatRun = {
         runId: currentRunId,
-        provider: runProvider,
+        provider: effectiveRunProvider,
         startedAt: runStartedAt,
         promptMessageId,
         rawEventsFile: `run-events/${currentRunId}.jsonl`,
@@ -8905,9 +8918,10 @@ function App(): React.JSX.Element {
         approvalMode: modeToPass,
         runtimeProfileId: request.runtimeProfileId,
         handoffSourceRunId: request.handoffSourceRunId,
-        ...(runProvider !== 'gemini' && resumeSessionId
+        ...(effectiveRunProvider !== 'gemini' && resumeSessionId
           ? { providerThreadId: resumeSessionId }
           : {}),
+        ...(composedPayload.providerReroute ? { providerReroute: composedPayload.providerReroute } : {}),
         ...(runWorktree ? { geminiWorktree: runWorktree } : {}),
         ...(runDiffWorkspacePath ? { effectiveWorkspacePath: runDiffWorkspacePath } : {}),
         ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {}),
@@ -8951,11 +8965,11 @@ function App(): React.JSX.Element {
         chatId: runChatId,
         workspaceId: isGlobalRun ? undefined : chatToUpdate.workspaceId,
         workspacePath: isGlobalRun ? undefined : runWorkspace!.path,
-        provider: runProvider,
+        provider: effectiveRunProvider,
         kind: 'lifecycle',
         phase: 'control',
         source: 'renderer',
-        summary: `Run requested for ${getProviderLabel(runProvider)}`,
+        summary: `Run requested for ${getProviderLabel(effectiveRunProvider)}`,
         payload: {
           promptMessageId,
           requestedModel: modelToPass,
@@ -8966,7 +8980,8 @@ function App(): React.JSX.Element {
           diffUnavailable: runDiffUnavailable,
           scheduledTaskId: request.scheduledTaskId || null,
           runtimeProfileId: request.runtimeProfileId || null,
-          handoffSourceRunId: request.handoffSourceRunId || null
+          handoffSourceRunId: request.handoffSourceRunId || null,
+          providerReroute: composedPayload.providerReroute || null
         }
       })
 
@@ -8982,7 +8997,7 @@ function App(): React.JSX.Element {
           ? [
               {
                 type: 'info' as const,
-                content: `Resuming ${getProviderLabel(runProvider)} session: ${resumeSessionId}`
+                content: `Resuming ${getProviderLabel(effectiveRunProvider)} session: ${resumeSessionId}`
               }
             ]
           : []),
@@ -9057,7 +9072,7 @@ function App(): React.JSX.Element {
           chatId: runChatId,
           workspaceId: isGlobalRun ? undefined : chatToUpdate.workspaceId,
           workspacePath: isGlobalRun ? undefined : runWorkspace!.path,
-          provider: runProvider,
+          provider: effectiveRunProvider,
           kind: durableKindForAdapterEvent(event),
           phase: 'normalized',
           source: 'renderer',
@@ -9068,7 +9083,7 @@ function App(): React.JSX.Element {
         if (event.type === 'raw_event') {
           const redacted = redactLog(JSON.stringify(event.data, null, 2))
           handleGeminiCapacityExhaustion(
-            runProvider,
+            effectiveRunProvider,
             runContext,
             redacted,
             runChatId,
@@ -9177,7 +9192,7 @@ function App(): React.JSX.Element {
             const incomingItemIdStr =
               typeof incomingItemId === 'string' && incomingItemId ? incomingItemId : undefined
             const providerModelMetadata =
-              runProvider === 'ollama'
+              effectiveRunProvider === 'ollama'
                 ? (() => {
                     const model =
                       typeof event.model === 'string' && event.model
@@ -9374,7 +9389,7 @@ function App(): React.JSX.Element {
               Promise.all(
                 resetHints.map((hint) =>
                   window.api.recordUsage({
-                    provider: runProvider,
+                    provider: effectiveRunProvider,
                     workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
                     chatId: updated.appChatId,
                     runId: currentRunId,
@@ -9409,8 +9424,8 @@ function App(): React.JSX.Element {
             }
           } else if (event.type === 'run_started') {
             const sessionId = normalizeGeminiResumeTarget(event.session_id)
-            if (sessionId && (runProvider !== 'gemini' || !event.fallback)) {
-              if (runProvider !== 'gemini') {
+            if (sessionId && (effectiveRunProvider !== 'gemini' || !event.fallback)) {
+              if (effectiveRunProvider !== 'gemini') {
                 updated.linkedProviderSessionId = sessionId
               } else {
                 updated.linkedGeminiSessionId = sessionId
@@ -9419,7 +9434,7 @@ function App(): React.JSX.Element {
             const runs = [...(updated.runs || [])]
             if (runs.length > 0) {
               runs[runs.length - 1].actualModel = event.model
-              if (runProvider !== 'gemini') {
+              if (effectiveRunProvider !== 'gemini') {
                 runs[runs.length - 1].providerThreadId =
                   sessionId || runs[runs.length - 1].providerThreadId
               }
@@ -9429,7 +9444,7 @@ function App(): React.JSX.Element {
             if (isVisibleRunChat()) setIsThinking(false)
             const runs = [...(updated.runs || [])]
             const finishedSessionId = normalizeGeminiResumeTarget(event.providerThreadId)
-            if (finishedSessionId && runProvider !== 'gemini') {
+            if (finishedSessionId && effectiveRunProvider !== 'gemini') {
               updated.linkedProviderSessionId = finishedSessionId
             }
             const resolvedRunModel =
@@ -9447,7 +9462,7 @@ function App(): React.JSX.Element {
               runs[runs.length - 1].status = event.status
               runs[runs.length - 1].stats = event.stats
               runs[runs.length - 1].endedAt = new Date().toISOString()
-              if (finishedSessionId && runProvider !== 'gemini') {
+              if (finishedSessionId && effectiveRunProvider !== 'gemini') {
                 runs[runs.length - 1].providerThreadId = finishedSessionId
               }
             }
@@ -9467,7 +9482,7 @@ function App(): React.JSX.Element {
                   parentChatId: request.guestParentChatId,
                   guestChat: updated,
                   runId: currentRunId,
-                  provider: runProvider,
+                  provider: effectiveRunProvider,
                   model: resolvedRunModel !== 'unknown' ? resolvedRunModel : modelToPass,
                   role: request.guestRole || 'Guest',
                   content: finalGuestMessage.content
@@ -9500,7 +9515,7 @@ function App(): React.JSX.Element {
                   const mergedReset = mergeUsageReset({ resetAt, resetText }, resetHint)
 
                   return window.api.recordUsage({
-                    provider: runProvider,
+                    provider: effectiveRunProvider,
                     workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
                     chatId: updated.appChatId,
                     runId: currentRunId,
@@ -9515,7 +9530,7 @@ function App(): React.JSX.Element {
                     resetAt: mergedReset.resetAt,
                     resetText: mergedReset.resetText,
                     durationMs: entryDurationMs ?? runDurationMs,
-                    ...(runProvider === 'ollama' ? ollamaMemoryUsageFields(event.stats) : {}),
+                    ...(effectiveRunProvider === 'ollama' ? ollamaMemoryUsageFields(event.stats) : {}),
                     promptText: contextualPrompt,
                     responseText:
                       updated.messages[updated.messages.length - 1]?.role === 'assistant'
@@ -9539,7 +9554,7 @@ function App(): React.JSX.Element {
             }
             const reduction = reduceSoloToolEventMessages(updated.messages, event, {
               createMessageId,
-              provider: runProvider
+              provider: effectiveRunProvider
             })
             updated.messages = reduction.messages
 
@@ -9569,7 +9584,7 @@ function App(): React.JSX.Element {
       Object.assign(runContext, {
         runId: currentRunId,
         chatId: runChatId,
-        provider: runProvider,
+        provider: effectiveRunProvider,
         adapter,
         warnings: currentRunWarningsRef.current,
         usageResetHints: activeRunUsageResetHintsRef.current,
@@ -9580,7 +9595,7 @@ function App(): React.JSX.Element {
         workspacePath: runDiffWorkspacePath || null,
         workspaceId: isGlobalRun ? undefined : runWorkspace!.id,
         worktree: runWorktree,
-        checkpointingEnabled: runProvider === 'gemini' ? geminiCheckpointingEnabled : false,
+        checkpointingEnabled: effectiveRunProvider === 'gemini' ? geminiCheckpointingEnabled : false,
         startedAt: runStartedAt,
         diffUnavailable: runDiffUnavailable,
         scheduledTaskId: request.scheduledTaskId || null
@@ -9595,7 +9610,7 @@ function App(): React.JSX.Element {
       }
       try {
         if (
-          runProvider === 'codex' &&
+          effectiveRunProvider === 'codex' &&
           request.codexNativeReview &&
           resumeSessionId &&
           typeof window.api.startAgentReview === 'function'
@@ -9613,7 +9628,7 @@ function App(): React.JSX.Element {
         }
       } catch (error) {
         clearActiveRunContext(runContext)
-        const message = `Failed to start ${getProviderLabel(runProvider)}: ${redactLog(String(error))}`
+        const message = `Failed to start ${getProviderLabel(effectiveRunProvider)}: ${redactLog(String(error))}`
         updateRunQueueJobStatus(
           currentRunId,
           'failed',
@@ -11888,12 +11903,17 @@ function App(): React.JSX.Element {
   }
 
   const currentActiveGoal = currentChat?.activeGoal || null
+  const currentGoalModeOptions = {
+    codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable),
+    claudeNativeAvailable: Boolean(currentChat?.providerMetadata?.claudeGoalNativeAvailable)
+  }
+  const currentResolvedGoal = resolveActiveGoalForProvider(
+    currentActiveGoal,
+    currentProvider,
+    currentGoalModeOptions
+  )
   const currentGoalMode =
-    currentActiveGoal?.mode ||
-    resolveActiveGoalMode(currentProvider, {
-      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable),
-      claudeNativeAvailable: Boolean(currentChat?.providerMetadata?.claudeGoalNativeAvailable)
-    })
+    currentResolvedGoal?.mode || resolveActiveGoalMode(currentProvider, currentGoalModeOptions)
   const currentGoalModeLabel = activeGoalModeLabel(currentGoalMode)
   const currentGoalStatus = currentActiveGoal?.status || 'empty'
   const currentGoalButtonTitle = currentActiveGoal
@@ -11976,7 +11996,11 @@ function App(): React.JSX.Element {
       window.alert('No active goal is set for this chat.')
       return
     }
-    const nextGoal = updateActiveGoalLifecycle(currentActiveGoal, status, reason)
+    const nextGoal = updateActiveGoalLifecycle(
+      currentResolvedGoal || currentActiveGoal,
+      status,
+      reason
+    )
     persistGoalForCurrentChat(nextGoal)
     setGoalDraft(nextGoal.objective)
     setGoalEditing(false)
@@ -16623,6 +16647,7 @@ function App(): React.JSX.Element {
               currencyOverestimatePercent={overestimatePercent}
               dashboardStatPrefs={settings?.dashboardStatPrefs}
               welcomeHeatmapPrefs={settings?.welcomeHeatmapPrefs}
+              providerRunPauses={settings?.providerRunPauses}
               kimiSanitiserEnabled={settings?.kimiSanitiserEnabled ?? false}
               kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}
@@ -19359,6 +19384,7 @@ function App(): React.JSX.Element {
                               composerStyle={appearance.composerStyle}
                               grokAvailable={grokProviderAvailable}
                               cursorAvailable={cursorProviderAvailable}
+                              providerRunPauses={settings?.providerRunPauses}
                               onSelect={handleComposerProviderChange}
                               disabled={
                                 isCurrentComposerLocked ||
@@ -20980,6 +21006,7 @@ function App(): React.JSX.Element {
                           composerStyle={appearance.composerStyle}
                           grokAvailable={grokProviderAvailable}
                           cursorAvailable={cursorProviderAvailable}
+                          providerRunPauses={settings?.providerRunPauses}
                           onSelect={handleSideProviderChange}
                           disabled={
                             isSideComposerLocked ||

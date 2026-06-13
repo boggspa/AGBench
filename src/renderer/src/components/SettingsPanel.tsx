@@ -18,6 +18,8 @@ import type {
   ProviderApiKeyStatus,
   ProviderCapabilityContract,
   ProviderId,
+  ProviderReroutePlan,
+  ProviderRunPauseState,
   ProductOperationsStatus,
   ProductUpdateChannel,
   PromptSurfaceStyle,
@@ -135,6 +137,7 @@ interface SettingsPanelProps {
    */
   dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
   welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
+  providerRunPauses?: AppSettings['providerRunPauses']
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
   /** 1.0.5-EW26 — User's additional trigger keywords (newline-
@@ -261,6 +264,7 @@ interface SettingsPanelProps {
      */
     dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
     welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
+    providerRunPauses?: AppSettings['providerRunPauses']
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
     /** 1.0.5-EW26 — User additions to the trigger keyword list. */
@@ -1315,6 +1319,200 @@ function SettingsProviderAuthCard({
   )
 }
 
+function SettingsProviderPauseControls({
+  provider,
+  providerRunPauses,
+  onChange
+}: {
+  provider: ProviderId
+  providerRunPauses?: AppSettings['providerRunPauses']
+  onChange: (partial: { providerRunPauses?: AppSettings['providerRunPauses'] }) => void
+}): React.JSX.Element {
+  const state = providerRunPauses?.[provider]
+  const isPaused = Boolean(state?.paused)
+  const activePause = isPaused && isProviderPauseStillActive(state)
+  const rerouteProvider = state?.reroute?.provider || ''
+
+  const commitState = (nextState: ProviderRunPauseState | null): void => {
+    const nextPauses: NonNullable<AppSettings['providerRunPauses']> = {
+      ...(providerRunPauses || {})
+    }
+    if (nextState) {
+      nextPauses[provider] = {
+        ...nextState,
+        updatedAt: new Date().toISOString()
+      }
+    } else {
+      delete nextPauses[provider]
+    }
+    onChange({ providerRunPauses: nextPauses })
+  }
+
+  const updateState = (patch: Partial<ProviderRunPauseState>): void => {
+    const nextState: ProviderRunPauseState = {
+      paused: false,
+      ...(state || {}),
+      ...patch
+    }
+    if (
+      !nextState.paused &&
+      !nextState.until &&
+      !nextState.reason?.trim() &&
+      !nextState.reroute
+    ) {
+      commitState(null)
+      return
+    }
+    commitState(nextState)
+  }
+
+  const updateReroute = (patch: Partial<ProviderReroutePlan> | null): void => {
+    if (!patch) {
+      updateState({ reroute: null })
+      return
+    }
+    const current = state?.reroute || ({ provider: SETTINGS_PROVIDER_ORDER[0] } as ProviderReroutePlan)
+    const nextReroute = {
+      ...current,
+      ...patch
+    }
+    if (!nextReroute.provider || nextReroute.provider === provider) {
+      updateState({ reroute: null })
+      return
+    }
+    updateState({ reroute: nextReroute })
+  }
+
+  const statusText = isPaused
+    ? activePause
+      ? state?.until
+        ? `Paused until ${new Date(state.until).toLocaleString()}`
+        : 'Paused'
+      : 'Pause expired'
+    : 'New runs allowed'
+  const rerouteLabel =
+    state?.reroute?.provider && state.reroute.provider !== provider
+      ? `Rerouting to ${SETTINGS_PROVIDER_LABELS[state.reroute.provider]}`
+      : 'No automatic reroute'
+
+  return (
+    <div className={`settings-provider-pause ${isPaused ? 'is-paused' : ''}`}>
+      <label className="settings-provider-pause-toggle">
+        <span>
+          <strong>Pause new runs</strong>
+          <small>Keep sign-in and active runs intact, but stop new dispatches.</small>
+        </span>
+        <input
+          type="checkbox"
+          checked={isPaused}
+          onChange={(event) => updateState({ paused: event.target.checked })}
+        />
+      </label>
+      <div className="settings-provider-pause-status">
+        <span>{statusText}</span>
+        <span>{rerouteLabel}</span>
+      </div>
+      {isPaused && (
+        <div className="settings-provider-pause-grid">
+          <label>
+            <span>Until</span>
+            <input
+              className="settings-select"
+              type="datetime-local"
+              value={toPauseDateTimeLocal(state?.until)}
+              onChange={(event) => updateState({ until: fromPauseDateTimeLocal(event.target.value) })}
+            />
+          </label>
+          <label>
+            <span>Reason</span>
+            <input
+              className="settings-select"
+              value={state?.reason || ''}
+              onChange={(event) => updateState({ reason: event.target.value })}
+              placeholder="Outstanding bill, service outage, quota wall..."
+            />
+          </label>
+          <label>
+            <span>Reroute while paused</span>
+            <select
+              className="settings-select"
+              value={rerouteProvider}
+              onChange={(event) => {
+                const nextProvider = event.target.value as ProviderId
+                updateReroute(nextProvider ? { provider: nextProvider } : null)
+              }}
+            >
+              <option value="">Choose on each run</option>
+              {SETTINGS_PROVIDER_ORDER.filter((candidate) => candidate !== provider).map(
+                (candidate) => (
+                  <option key={candidate} value={candidate}>
+                    {SETTINGS_PROVIDER_LABELS[candidate]}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+          {rerouteProvider && (
+            <>
+              <label>
+                <span>Fallback model</span>
+                <input
+                  className="settings-select"
+                  value={state?.reroute?.customModel || state?.reroute?.selectedModelType || ''}
+                  onChange={(event) =>
+                    updateReroute({
+                      selectedModelType: event.target.value,
+                      customModel: ''
+                    })
+                  }
+                  placeholder="Provider default"
+                />
+              </label>
+              <label>
+                <span>Fallback approvals</span>
+                <select
+                  className="settings-select"
+                  value={state?.reroute?.approvalMode || ''}
+                  onChange={(event) =>
+                    updateReroute({ approvalMode: event.target.value || undefined })
+                  }
+                >
+                  <option value="">Use chat default</option>
+                  <option value="default">Default Approval</option>
+                  <option value="plan">Plan</option>
+                  <option value="auto_edit">Auto Edit</option>
+                  <option value="full_access">Full Access</option>
+                </select>
+              </label>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function isProviderPauseStillActive(state?: ProviderRunPauseState): boolean {
+  if (!state?.paused) return false
+  if (!state.until) return true
+  const until = Date.parse(state.until)
+  return Number.isFinite(until) && until > Date.now()
+}
+
+function toPauseDateTimeLocal(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function fromPauseDateTimeLocal(value: string): string | undefined {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+}
+
 function fxConfidenceLabel(source?: FxRateSnapshot['source']): string {
   if (source === 'live') return 'Live'
   if (source === 'cached') return 'Cached'
@@ -1417,6 +1615,7 @@ export function SettingsPanel({
   currencyOverestimatePercent,
   dashboardStatPrefs,
   welcomeHeatmapPrefs,
+  providerRunPauses,
   kimiSanitiserEnabled,
   kimiSanitiserCustomKeywords,
   claudeBinaryPath,
@@ -1713,6 +1912,13 @@ export function SettingsPanel({
     if (state === 'error') return ' Could not open the upgrade terminal.'
     return ''
   }
+  const renderProviderPauseControls = (provider: ProviderId): React.JSX.Element => (
+    <SettingsProviderPauseControls
+      provider={provider}
+      providerRunPauses={providerRunPauses}
+      onChange={onChange}
+    />
+  )
   const providerMcpSummaries = SETTINGS_PROVIDER_ORDER.map((provider) => {
     const contract =
       providerCapabilitiesByProvider?.[provider] ??
@@ -3632,6 +3838,7 @@ export function SettingsPanel({
                       official CLI login.
                       {renderProviderUpgradeHint('codex')}
                     </p>
+                    {renderProviderPauseControls('codex')}
                   </SettingsProviderAuthCard>
 
                   <SettingsProviderAuthCard
@@ -3675,6 +3882,7 @@ export function SettingsPanel({
                       API key and CLI path controls are below.
                       {renderProviderUpgradeHint('claude')}
                     </p>
+                    {renderProviderPauseControls('claude')}
                   </SettingsProviderAuthCard>
 
                   <SettingsProviderAuthCard
@@ -3735,6 +3943,7 @@ export function SettingsPanel({
                       API key, Vertex, and runtime controls are below.
                       {renderProviderUpgradeHint('gemini')}
                     </p>
+                    {renderProviderPauseControls('gemini')}
                   </SettingsProviderAuthCard>
 
                   <SettingsProviderAuthCard
@@ -3778,6 +3987,7 @@ export function SettingsPanel({
                       Paste a Moonshot API key in the Kimi section below.
                       {renderProviderUpgradeHint('kimi')}
                     </p>
+                    {renderProviderPauseControls('kimi')}
                   </SettingsProviderAuthCard>
                   <SettingsProviderAuthCard
                     provider="cursor"
@@ -3815,6 +4025,7 @@ export function SettingsPanel({
                       inside the Cursor CLI.
                       {renderProviderUpgradeHint('cursor')}
                     </p>
+                    {renderProviderPauseControls('cursor')}
                   </SettingsProviderAuthCard>
                   <SettingsProviderAuthCard
                     provider="grok"
@@ -3852,6 +4063,7 @@ export function SettingsPanel({
                       TaskWraith stores no Grok credential; auth stays inside the Grok CLI.
                       {renderProviderUpgradeHint('grok')}
                     </p>
+                    {renderProviderPauseControls('grok')}
                   </SettingsProviderAuthCard>
                 </div>
               </div>
@@ -4688,6 +4900,7 @@ export function SettingsPanel({
                     Refresh
                   </button>
                 </div>
+                {renderProviderPauseControls('ollama')}
 
                 <label className="settings-label">Ollama endpoint</label>
                 <input

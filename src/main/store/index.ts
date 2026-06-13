@@ -92,6 +92,7 @@ import {
   normalizeWorkflowTrigger,
   resolveNextWorkflowRunAt
 } from '../workflows/WorkflowScheduler'
+import { sanitizeProviderRunPauses } from '../ProviderRunPause'
 
 function cloneEnsembleForSideChat(parent: ChatRecord, provider: ProviderId) {
   const source = parent.ensemble || createDefaultEnsembleConfig(provider)
@@ -358,6 +359,7 @@ function normalizeAuditRunRecord(value: unknown): AuditRunRecord | null {
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
+  providerRunPauses: {},
   claudeBinaryPath: '',
   kimiBinaryPath: '',
   ollamaBaseUrl: 'http://127.0.0.1:11434',
@@ -787,6 +789,7 @@ export class AppStore {
     return {
       ...defaultSettings,
       ...stored,
+      providerRunPauses: sanitizeProviderRunPauses(stored.providerRunPauses),
       advancedFx: {
         ...defaultSettings.advancedFx,
         ...(stored.advancedFx || {})

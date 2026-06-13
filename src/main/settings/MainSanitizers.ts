@@ -20,6 +20,7 @@ import type {
   WorkflowTrigger,
   WorkspaceRecord
 } from '../store/types'
+import { sanitizeProviderRunPauses } from '../ProviderRunPause'
 
 const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi', 'ollama'])
 const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
@@ -31,6 +32,7 @@ const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
 }
 const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'activeProvider',
+  'providerRunPauses',
   'windowBounds',
   'claudeBinaryPath',
   'kimiBinaryPath',
@@ -783,6 +785,9 @@ export function createMainSanitizers(deps: MainSanitizerDeps) {
     }
     if ('activeProvider' in sanitized && sanitized.activeProvider !== undefined) {
       sanitized.activeProvider = assertProviderId(sanitized.activeProvider)
+    }
+    if ('providerRunPauses' in sanitized) {
+      sanitized.providerRunPauses = sanitizeProviderRunPauses(sanitized.providerRunPauses)
     }
     if ('ollamaToolControlTier' in sanitized) {
       const tier = sanitized.ollamaToolControlTier

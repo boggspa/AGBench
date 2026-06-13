@@ -3,6 +3,7 @@ import {
   activeGoalModeLabel,
   createActiveGoal,
   formatActiveGoalPromptBlock,
+  resolveActiveGoalForProvider,
   resolveActiveGoalMode,
   shouldInjectActiveGoal,
   updateActiveGoalLifecycle
@@ -25,6 +26,24 @@ describe('GoalState', () => {
     expect(resolveActiveGoalMode('codex', { codexNativeAvailable: true })).toBe('codex_native')
     expect(resolveActiveGoalMode('claude')).toBe('taskwraith_steered')
     expect(resolveActiveGoalMode('claude', { claudeNativeAvailable: true })).toBe('claude_native')
+  })
+
+  it('resolves stored goals against the provider handling the next turn', () => {
+    const goal = createActiveGoal('codex', 'Keep the objective portable', {
+      now: new Date('2026-06-13T12:00:00Z'),
+      codexNativeAvailable: true
+    })
+
+    const ollamaGoal = resolveActiveGoalForProvider(goal, 'ollama')
+    expect(ollamaGoal?.provider).toBe('ollama')
+    expect(ollamaGoal?.mode).toBe('ollama_harness')
+    expect(goal.provider).toBe('codex')
+    expect(goal.mode).toBe('codex_native')
+
+    expect(resolveActiveGoalForProvider(goal, 'gemini')?.mode).toBe('taskwraith_steered')
+    expect(
+      resolveActiveGoalForProvider(goal, 'claude', { claudeNativeAvailable: true })?.mode
+    ).toBe('claude_native')
   })
 
   it('injects active and blocked goals, not paused or completed goals', () => {

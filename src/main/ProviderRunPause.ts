@@ -1,0 +1,243 @@
+import type {
+  AppSettings,
+  ProviderId,
+  ProviderReroutePlan,
+  ProviderRunPauseState,
+  ProviderRunReroute
+} from './store/types'
+
+const PROVIDER_IDS: readonly ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
+const PROVIDER_SET = new Set<ProviderId>(PROVIDER_IDS)
+
+export class ProviderPausedError extends Error {
+  readonly code = 'PROVIDER_PAUSED'
+  readonly provider: ProviderId
+  readonly pause: ProviderRunPauseState
+
+  constructor(provider: ProviderId, pause: ProviderRunPauseState) {
+    super(formatProviderPausedMessage(provider, pause))
+    this.name = 'ProviderPausedError'
+    this.provider = provider
+    this.pause = pause
+  }
+}
+
+export interface ProviderDispatchResolution {
+  provider: ProviderId
+  reroute?: ProviderRunReroute
+  reroutePlan?: ProviderReroutePlan
+  pause?: ProviderRunPauseState
+}
+
+export function sanitizeProviderRunPauses(
+  value: unknown
+): AppSettings['providerRunPauses'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const input = value as Record<string, unknown>
+  const output: Partial<Record<ProviderId, ProviderRunPauseState>> = {}
+  for (const provider of PROVIDER_IDS) {
+    const state = sanitizeProviderPauseState(input[provider])
+    if (state) output[provider] = state
+  }
+  return output
+}
+
+export function getProviderPauseState(
+  settings: Pick<AppSettings, 'providerRunPauses'> | null | undefined,
+  provider: ProviderId,
+  now = Date.now()
+): ProviderRunPauseState | null {
+  const state = settings?.providerRunPauses?.[provider]
+  if (!state) return null
+  if (!isProviderPauseActive(state, now)) return null
+  return state
+}
+
+export function isProviderPaused(
+  settings: Pick<AppSettings, 'providerRunPauses'> | null | undefined,
+  provider: ProviderId,
+  now = Date.now()
+): boolean {
+  return Boolean(getProviderPauseState(settings, provider, now))
+}
+
+export function resolveProviderDispatch(
+  settings: Pick<AppSettings, 'providerRunPauses'> | null | undefined,
+  provider: ProviderId,
+  now = Date.now()
+): ProviderDispatchResolution {
+  const pause = getProviderPauseState(settings, provider, now)
+  if (!pause) return { provider }
+  const plan = sanitizeReroutePlan(pause.reroute)
+  if (plan && plan.provider !== provider && !getProviderPauseState(settings, plan.provider, now)) {
+    return {
+      provider: plan.provider,
+      reroutePlan: plan,
+      pause,
+      reroute: {
+        from: provider,
+        to: plan.provider,
+        reason: 'provider-paused',
+        savedAsDefault: true
+      }
+    }
+  }
+  throw new ProviderPausedError(provider, pause)
+}
+
+export function applyReroutePlanToPayload<T extends { provider: ProviderId }>(
+  payload: T,
+  resolution: ProviderDispatchResolution
+): T & { providerReroute?: ProviderRunReroute } {
+  if (!resolution.reroute || !resolution.reroutePlan) return payload
+  const plan = resolution.reroutePlan
+  return {
+    ...payload,
+    provider: resolution.provider,
+    providerReroute: resolution.reroute,
+    ...(plan.customModel
+      ? { model: plan.customModel }
+      : plan.selectedModelType
+        ? { model: plan.selectedModelType }
+        : {}),
+    ...(plan.approvalMode ? { approvalMode: plan.approvalMode } : {}),
+    ...(plan.runtimeProfileId ? { runtimeProfileId: plan.runtimeProfileId } : {}),
+    ...(resolution.provider === 'gemini'
+      ? { geminiAuthProfileId: plan.geminiAuthProfileId ?? null }
+      : {}),
+    ...(resolution.provider === 'codex'
+      ? {
+          reasoningEffort: plan.codexReasoningEffort ?? null,
+          serviceTier: plan.codexServiceTier ?? null
+        }
+      : {}),
+    ...(resolution.provider === 'claude'
+      ? {
+          claudeReasoningEffort: plan.claudeReasoningEffort ?? null,
+          claudeFastMode: plan.claudeFastMode ?? null
+        }
+      : {}),
+    ...(resolution.provider === 'kimi'
+      ? { kimiThinking: plan.kimiThinkingEnabled ?? null }
+      : {})
+  }
+}
+
+export function formatProviderPausedMessage(
+  provider: ProviderId,
+  pause: ProviderRunPauseState
+): string {
+  const label = providerLabel(provider)
+  const until =
+    pause.until && Date.parse(pause.until) > Date.now()
+      ? ` until ${new Date(pause.until).toLocaleString()}`
+      : ''
+  const reason = pause.reason?.trim() ? ` Reason: ${pause.reason.trim()}` : ''
+  return `${label} is paused for new runs${until}.${reason}`
+}
+
+export function providerLabel(provider: ProviderId): string {
+  if (provider === 'codex') return 'Codex'
+  if (provider === 'claude') return 'Claude'
+  if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
+  if (provider === 'ollama') return 'Ollama'
+  return 'Gemini'
+}
+
+function isProviderPauseActive(state: ProviderRunPauseState, now: number): boolean {
+  if (!state.paused) return false
+  if (!state.until) return true
+  const untilMs = Date.parse(state.until)
+  return Number.isFinite(untilMs) && untilMs > now
+}
+
+function sanitizeProviderPauseState(value: unknown): ProviderRunPauseState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const paused = input.paused === true
+  const until = sanitizeIsoTimestamp(input.until)
+  const reason = sanitizeShortString(input.reason, 280)
+  const reroute = sanitizeReroutePlan(input.reroute)
+  if (!paused && !until && !reason && !reroute) return null
+  return {
+    paused,
+    ...(until ? { until } : {}),
+    ...(reason ? { reason } : {}),
+    ...(reroute ? { reroute } : {}),
+    ...(typeof input.updatedAt === 'string' && input.updatedAt.trim()
+      ? { updatedAt: input.updatedAt.trim() }
+      : {})
+  }
+}
+
+function sanitizeReroutePlan(value: unknown): ProviderReroutePlan | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const provider = typeof input.provider === 'string' ? input.provider : ''
+  if (!PROVIDER_SET.has(provider as ProviderId)) return null
+  return {
+    provider: provider as ProviderId,
+    ...(sanitizeShortString(input.selectedModelType, 120)
+      ? { selectedModelType: sanitizeShortString(input.selectedModelType, 120) }
+      : {}),
+    ...(sanitizeShortString(input.customModel, 200)
+      ? { customModel: sanitizeShortString(input.customModel, 200) }
+      : {}),
+    ...(sanitizeShortString(input.approvalMode, 80)
+      ? { approvalMode: sanitizeShortString(input.approvalMode, 80) }
+      : {}),
+    ...(sanitizeShortString(input.runtimeProfileId, 200)
+      ? { runtimeProfileId: sanitizeShortString(input.runtimeProfileId, 200) }
+      : {}),
+    ...(input.geminiAuthProfileId === null
+      ? { geminiAuthProfileId: null }
+      : sanitizeShortString(input.geminiAuthProfileId, 200)
+        ? { geminiAuthProfileId: sanitizeShortString(input.geminiAuthProfileId, 200) }
+        : {}),
+    ...(input.codexReasoningEffort === null
+      ? { codexReasoningEffort: null }
+      : sanitizeShortString(input.codexReasoningEffort, 80)
+        ? { codexReasoningEffort: sanitizeShortString(input.codexReasoningEffort, 80) }
+        : {}),
+    ...(input.codexServiceTier === null
+      ? { codexServiceTier: null }
+      : sanitizeShortString(input.codexServiceTier, 80)
+        ? { codexServiceTier: sanitizeShortString(input.codexServiceTier, 80) }
+        : {}),
+    ...(input.claudeReasoningEffort === null
+      ? { claudeReasoningEffort: null }
+      : sanitizeShortString(input.claudeReasoningEffort, 80)
+        ? { claudeReasoningEffort: sanitizeShortString(input.claudeReasoningEffort, 80) }
+        : {}),
+    ...(input.claudeFastMode === null
+      ? { claudeFastMode: null }
+      : typeof input.claudeFastMode === 'boolean'
+        ? { claudeFastMode: input.claudeFastMode }
+        : {}),
+    ...(typeof input.kimiThinkingEnabled === 'boolean'
+      ? { kimiThinkingEnabled: input.kimiThinkingEnabled }
+      : {})
+  }
+}
+
+function sanitizeIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const trimmed = value.trim()
+  return Number.isFinite(Date.parse(trimmed)) ? trimmed : undefined
+}
+
+function sanitizeShortString(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed.slice(0, max) : undefined
+}

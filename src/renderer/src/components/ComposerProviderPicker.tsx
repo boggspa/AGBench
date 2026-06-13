@@ -34,7 +34,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ComposerStyle, ProviderId } from '../../../main/store/types'
+import type { AppSettings, ComposerStyle, ProviderId } from '../../../main/store/types'
 import { ProviderBadgeIcon, getProviderName } from './Sidebar'
 
 interface ComposerProviderPickerProps {
@@ -52,6 +52,7 @@ interface ComposerProviderPickerProps {
   cursorAvailable: boolean
   /** Same handler the old <select>'s onChange called. */
   onSelect: (provider: ProviderId) => void
+  providerRunPauses?: AppSettings['providerRunPauses']
   disabled?: boolean
   /**
    * Trigger glyph — App.tsx passes <LinkCircleSymbolIcon /> so the
@@ -70,6 +71,8 @@ interface ProviderRow {
   id: ProviderId
   label: string
   description: string
+  pauseLabel?: string
+  rerouteLabel?: string
 }
 
 /**
@@ -97,7 +100,8 @@ const PROVIDER_DESCRIPTIONS: Record<ProviderId, string> = {
  */
 export function resolveProviderRows(
   grokAvailable: boolean,
-  cursorAvailable: boolean
+  cursorAvailable: boolean,
+  providerRunPauses?: AppSettings['providerRunPauses']
 ): ProviderRow[] {
   const ids: ProviderId[] = [
     'gemini',
@@ -108,11 +112,15 @@ export function resolveProviderRows(
     ...(cursorAvailable ? (['cursor'] as ProviderId[]) : []),
     'ollama'
   ]
-  return ids.map((id) => ({
-    id,
-    label: getProviderName(id),
-    description: PROVIDER_DESCRIPTIONS[id]
-  }))
+  return ids.map((id) => {
+    const pauseInfo = getProviderPauseInfo(providerRunPauses, id)
+    return {
+      id,
+      label: getProviderName(id),
+      description: PROVIDER_DESCRIPTIONS[id],
+      ...(pauseInfo || {})
+    }
+  })
 }
 
 /**
@@ -140,9 +148,11 @@ export function ComposerProviderPickerRows({
             key={row.id}
             type="button"
             data-provider-value={row.id}
-            className={`composer-combined-picker-row composer-plus-picker-row ${active ? 'is-selected' : ''}`}
+            className={`composer-combined-picker-row composer-plus-picker-row ${
+              active ? 'is-selected' : ''
+            } ${row.pauseLabel ? 'is-paused' : ''}`}
             onClick={() => onSelect(row.id)}
-            title={row.description}
+            title={[row.description, row.pauseLabel, row.rerouteLabel].filter(Boolean).join('\n')}
             aria-pressed={active}
           >
             <span className="composer-plus-picker-row-icon" aria-hidden>
@@ -150,8 +160,15 @@ export function ComposerProviderPickerRows({
             </span>
             <span className="composer-plus-picker-row-copy">
               <span className="composer-combined-picker-row-label">{row.label}</span>
-              <span className="composer-combined-picker-row-sub">{row.description}</span>
+              <span className="composer-combined-picker-row-sub">
+                {row.pauseLabel ? `${row.pauseLabel} · ${row.rerouteLabel}` : row.description}
+              </span>
             </span>
+            {row.pauseLabel && (
+              <span className="composer-provider-paused-pill" aria-hidden>
+                Paused
+              </span>
+            )}
             {active && (
               <span className="composer-combined-picker-check" aria-hidden>
                 ✓
@@ -170,6 +187,7 @@ export function ComposerProviderPicker({
   grokAvailable,
   cursorAvailable,
   onSelect,
+  providerRunPauses,
   disabled,
   triggerIcon,
   title
@@ -179,7 +197,8 @@ export function ComposerProviderPicker({
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
 
-  const rows = resolveProviderRows(grokAvailable, cursorAvailable)
+  const rows = resolveProviderRows(grokAvailable, cursorAvailable, providerRunPauses)
+  const activePauseInfo = getProviderPauseInfo(providerRunPauses, provider)
 
   // Position the popover above the trigger (cloned from
   // ComposerPlusPicker).
@@ -272,8 +291,32 @@ export function ComposerProviderPicker({
       >
         {triggerIcon}
         <span className="composer-provider-button-label">{getProviderName(provider)}</span>
+        {activePauseInfo && (
+          <span className="composer-provider-button-paused" aria-label={activePauseInfo.pauseLabel}>
+            Paused
+          </span>
+        )}
       </button>
       {popover}
     </>
   )
+}
+
+function getProviderPauseInfo(
+  providerRunPauses: AppSettings['providerRunPauses'] | undefined,
+  provider: ProviderId
+): Pick<ProviderRow, 'pauseLabel' | 'rerouteLabel'> | null {
+  const pause = providerRunPauses?.[provider]
+  if (!pause?.paused) return null
+  if (pause.until) {
+    const until = Date.parse(pause.until)
+    if (!Number.isFinite(until) || until <= Date.now()) return null
+  }
+  return {
+    pauseLabel: pause.until ? `Paused until ${new Date(pause.until).toLocaleString()}` : 'Paused',
+    rerouteLabel:
+      pause.reroute?.provider && pause.reroute.provider !== provider
+        ? `reroutes to ${getProviderName(pause.reroute.provider)}`
+        : 'no automatic reroute'
+  }
 }

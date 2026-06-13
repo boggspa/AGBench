@@ -466,6 +466,27 @@ describe('ComposerService', () => {
     })
   })
 
+  it('injects active goals using the provider that will handle the next run', () => {
+    const payload = compose(
+      {
+        provider: 'ollama',
+        activeGoal: {
+          id: 'goal-1',
+          objective: 'Keep the portable goal mode honest',
+          status: 'active',
+          mode: 'codex_native',
+          provider: 'codex',
+          createdAt: '2026-06-13T12:00:00Z',
+          updatedAt: '2026-06-13T12:00:00Z'
+        }
+      },
+      {}
+    )
+
+    expect(payload.prompt).toContain('Provider mode: Ollama managed')
+    expect(payload.prompt).not.toContain('Provider mode: Native Codex goal')
+  })
+
   it('does not repeat Codex model-handoff context after the handoff key was applied', () => {
     const payload = compose(
       {

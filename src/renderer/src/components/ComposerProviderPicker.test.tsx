@@ -89,6 +89,19 @@ describe('resolveProviderRows (gated visibility + option order)', () => {
     expect(gemini?.label).toBe('Gemini')
     expect(gemini?.description).toBeTruthy()
   })
+
+  it('annotates paused providers with their saved reroute target', () => {
+    const rows = resolveProviderRows(true, true, {
+      codex: {
+        paused: true,
+        reroute: { provider: 'ollama' }
+      }
+    })
+    const codex = rows.find((r) => r.id === 'codex')
+
+    expect(codex?.pauseLabel).toBe('Paused')
+    expect(codex?.rerouteLabel).toBe('reroutes to Ollama')
+  })
 })
 
 describe('ComposerProviderPickerRows (popover body)', () => {

@@ -162,6 +162,33 @@ export type ProviderId =
   | 'grok'
   | 'cursor'
   | 'ollama'
+export type ProviderRerouteReason = 'provider-paused' | 'user-failover'
+export interface ProviderRunReroute {
+  from: ProviderId
+  to: ProviderId
+  reason: ProviderRerouteReason
+  savedAsDefault?: boolean
+}
+export interface ProviderReroutePlan {
+  provider: ProviderId
+  selectedModelType?: string
+  customModel?: string
+  approvalMode?: string
+  runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
+  codexReasoningEffort?: string | null
+  codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
+  kimiThinkingEnabled?: boolean
+}
+export interface ProviderRunPauseState {
+  paused: boolean
+  until?: string
+  reason?: string
+  reroute?: ProviderReroutePlan | null
+  updatedAt?: string
+}
 export type ActiveGoalStatus = 'active' | 'paused' | 'blocked' | 'completed'
 export type ActiveGoalMode =
   | 'codex_native'
@@ -1287,6 +1314,7 @@ export interface GeminiAuthStatus extends ProviderApiKeyStatus {
 
 export interface AppSettings {
   activeProvider?: ProviderId
+  providerRunPauses?: Partial<Record<ProviderId, ProviderRunPauseState>>
   windowBounds?: {
     x?: number
     y?: number
@@ -1916,6 +1944,7 @@ export interface PinnedMessageGroup {
 export interface ChatRun {
   runId: string
   provider?: ProviderId
+  providerReroute?: ProviderRunReroute
   providerRunId?: string
   providerThreadId?: string
   providerMetadata?: Record<string, unknown>

@@ -6,7 +6,8 @@ import type {
   ExternalPathGrant,
   GeminiWorktreeLaunchOption,
   ProviderId,
-  RuntimeProfile
+  RuntimeProfile,
+  ProviderRunReroute
 } from '../store/types'
 
 // Phase B1: AgentRunPayload + AgentRunRoute exported so extracted run services
@@ -18,6 +19,7 @@ export interface AgentRunRoute {
 
 export interface AgentRunPayload {
   provider: ProviderId
+  providerReroute?: ProviderRunReroute
   scope: ChatScope
   workspace?: string
   prompt: string

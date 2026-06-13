@@ -23,6 +23,17 @@ export function resolveActiveGoalMode(
   return 'taskwraith_steered'
 }
 
+export function resolveActiveGoalForProvider(
+  goal: ActiveGoal | null | undefined,
+  provider: ProviderId,
+  options: { codexNativeAvailable?: boolean; claudeNativeAvailable?: boolean } = {}
+): ActiveGoal | null {
+  if (!goal) return null
+  const mode = resolveActiveGoalMode(provider, options)
+  if (goal.provider === provider && goal.mode === mode) return goal
+  return { ...goal, provider, mode }
+}
+
 export function activeGoalModeLabel(mode: ActiveGoalMode): string {
   switch (mode) {
     case 'codex_native':

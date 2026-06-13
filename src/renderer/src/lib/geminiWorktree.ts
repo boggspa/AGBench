@@ -1,4 +1,8 @@
-import type { WorkspaceRecord, GeminiWorktreeConfig } from '../../../main/store/types'
+import type {
+  WorkspaceRecord,
+  GeminiWorktreeConfig,
+  GeminiWorktreeLaunchOption
+} from '../../../main/store/types'
 
 const WORKTREE_DIFF_UNAVAILABLE_TEXT =
   'Gemini worktree mode is active, but the effective worktree path is not known. Diff Studio is disabled so it does not show changes from the original workspace.'
@@ -34,10 +38,31 @@ const getDiffWorkspacePath = (
   worktree?: GeminiWorktreeConfig | null
 ): string => (worktree?.enabled && worktree.effectivePath ? worktree.effectivePath : workspace.path)
 
+const normalizeGeminiWorktreeLaunchOption = (
+  worktree?: GeminiWorktreeLaunchOption
+): GeminiWorktreeConfig | undefined => {
+  if (!worktree) return undefined
+  if (worktree === true) return { enabled: true }
+  if (typeof worktree === 'string') {
+    const name = worktree.trim()
+    return { enabled: true, ...(name ? { name } : {}) }
+  }
+  if (!worktree.enabled) return undefined
+  const name = typeof worktree.name === 'string' ? worktree.name.trim() : undefined
+  const effectivePath =
+    typeof worktree.effectivePath === 'string' ? worktree.effectivePath.trim() : undefined
+  return {
+    enabled: true,
+    ...(name ? { name } : {}),
+    ...(effectivePath ? { effectivePath } : {})
+  }
+}
+
 export {
   WORKTREE_DIFF_UNAVAILABLE_TEXT,
   createWorktreeDiffUnavailable,
   resolveGeminiWorktreeConfig,
   isGeminiWorktreeDiffUnavailable,
-  getDiffWorkspacePath
+  getDiffWorkspacePath,
+  normalizeGeminiWorktreeLaunchOption
 }

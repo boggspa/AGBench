@@ -11,6 +11,8 @@ import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { normalizeOllamaSessionMemory } from '../ollama/OllamaRunMemory'
 import { effectiveOllamaToolControlTier } from '../ollama/OllamaToolTiers'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
+import { resolveProviderDispatch, type ProviderDispatchResolution } from '../ProviderRunPause'
+import { resolveActiveGoalForProvider } from '../GoalState'
 import {
   coalesceExternalPathGrants,
   stripExternalPathGrantOrder
@@ -22,6 +24,7 @@ import type {
   ChatScope,
   ExternalPathGrant,
   GeminiWorktreeLaunchOption,
+  ProviderRunReroute,
   ProviderId
 } from '../store/types'
 
@@ -37,6 +40,7 @@ export interface ComposerInput {
   chatId: string
   appRunId?: string
   provider?: ProviderId
+  providerReroute?: ProviderRunReroute
   scope?: ChatScope
   workspace?: string
   userInput?: string
@@ -111,15 +115,18 @@ export class ComposerService {
       throw new Error(`Chat was not found: ${chatId}`)
     }
 
-    const provider = assertProviderId(input.provider || chat.provider || 'gemini')
+    const requestedProvider = assertProviderId(input.provider || chat.provider || 'gemini')
     const scope: ChatScope =
       input.scope === 'global' || chat.scope === 'global' ? 'global' : 'workspace'
     const settings = this.deps.getSettings()
+    const dispatchResolution = resolveProviderDispatch(settings, requestedProvider)
+    const provider = dispatchResolution.provider
+    const effectiveInput = applyComposerReroutePlan(input, dispatchResolution)
     const rawUserInput =
-      typeof input.userInput === 'string'
-        ? input.userInput
-        : typeof input.prompt === 'string'
-          ? input.prompt
+      typeof effectiveInput.userInput === 'string'
+        ? effectiveInput.userInput
+        : typeof effectiveInput.prompt === 'string'
+          ? effectiveInput.prompt
           : ''
     const planParsed = parsePlanModeInput(rawUserInput)
     const basePrompt = planParsed.prompt
@@ -128,22 +135,28 @@ export class ComposerService {
     }
     const selfReflectiveRequested = planParsed.selfReflective
 
-    const requestedModel = resolveRequestedModel(provider, input, chat)
+    const requestedModel = resolveRequestedModel(provider, effectiveInput, chat)
     const approvalMode =
       provider === 'ollama'
         ? 'plan'
-        : resolveApprovalMode(scope, planParsed.planMode ? 'plan' : input.approvalMode, chat)
-    const imagePaths = normalizeImagePaths(input.imageAttachments || input.attachments || [])
+        : resolveApprovalMode(
+            scope,
+            planParsed.planMode ? 'plan' : effectiveInput.approvalMode,
+            chat
+          )
+    const imagePaths = normalizeImagePaths(
+      effectiveInput.imageAttachments || effectiveInput.attachments || []
+    )
     const externalPathGrants =
       scope !== 'global'
-        ? normalizeComposerExternalPathGrants(input.externalPathGrants || [], provider)
+        ? normalizeComposerExternalPathGrants(effectiveInput.externalPathGrants || [], provider)
         : []
     const discordContextSnapshots = normalizeDiscordContextSnapshots(input.discordContextSnapshots)
     const finalPrompt = `${basePrompt}${attachmentPromptAppendix(imagePaths)}${provider === 'codex' ? externalPathGrantPromptAppendix(externalPathGrants) : ''}`
     const contextualFinalPrompt = `${finalPrompt}${formatDiscordContextPromptAppendix(discordContextSnapshots)}`
     const geminiAuthProfileId =
       provider === 'gemini'
-        ? optionalStringOrNull(input.geminiAuthProfileId) ||
+        ? optionalStringOrNull(effectiveInput.geminiAuthProfileId) ||
           metadataString(chat, 'geminiAuthProfileId') ||
           optionalStringOrNull(settings.defaultGeminiAuthProfileId) ||
           null
@@ -154,12 +167,16 @@ export class ComposerService {
       chat,
       requestedModel,
       approvalMode,
-      input.geminiWorktree,
+      effectiveInput.geminiWorktree,
       geminiAuthProfileId
     )
     const lastCompletedCodexModel =
       provider === 'codex' ? getLastCompletedCodexRunModel(chat) : null
     const codexHandoffsApplied = provider === 'codex' ? getCodexModelContextAppliedKeys(chat) : []
+    const activeGoal = resolveActiveGoalForProvider(chat.activeGoal, provider, {
+      codexNativeAvailable: Boolean(chat.providerMetadata?.codexGoalNativeAvailable),
+      claudeNativeAvailable: Boolean(chat.providerMetadata?.claudeGoalNativeAvailable)
+    })
     const composed = composeRunPrompt({
       provider,
       finalPrompt: contextualFinalPrompt,
@@ -174,12 +191,12 @@ export class ComposerService {
       providerLabel: getProviderLabel(provider),
       nativeSubAgentRequests: settings.nativeSubAgentRequests,
       guestParticipant: chat.guestParticipant,
-      activeGoal: chat.activeGoal,
+      activeGoal,
       ...(provider === 'ollama'
         ? {
             ollamaToolControlTier: effectiveOllamaToolControlTier(
               settings,
-              scope === 'global' ? undefined : input.workspace || chat.workspacePath
+              scope === 'global' ? undefined : effectiveInput.workspace || chat.workspacePath
             ),
             ollamaSessionMemory: normalizeOllamaSessionMemory(chat.ollamaSessionMemory)
           }
@@ -202,7 +219,8 @@ export class ComposerService {
       approvalMode === 'plan'
         ? resolveEffectiveRunPermissions({
             provider,
-            workspacePath: scope === 'global' ? undefined : input.workspace || chat.workspacePath,
+            workspacePath:
+              scope === 'global' ? undefined : effectiveInput.workspace || chat.workspacePath,
             settings,
             presetId: 'read_only'
           })
@@ -212,33 +230,48 @@ export class ComposerService {
       scope,
       ...(scope === 'global'
         ? {}
-        : { workspace: requireNonEmptyString(input.workspace || chat.workspacePath, 'Workspace') }),
+        : {
+            workspace: requireNonEmptyString(
+              effectiveInput.workspace || chat.workspacePath,
+              'Workspace'
+            )
+          }),
+      ...(input.providerReroute || dispatchResolution.reroute
+        ? { providerReroute: input.providerReroute || dispatchResolution.reroute }
+        : {}),
       prompt: composed.contextualPrompt,
       appRunId: optionalString(input.appRunId),
       appChatId: chatId,
       model: requestedModel,
       reasoningEffort:
-        provider === 'codex' ? optionalStringOrNull(input.codexReasoningEffort) || null : null,
+        provider === 'codex'
+          ? optionalStringOrNull(effectiveInput.codexReasoningEffort) || null
+          : null,
       serviceTier:
-        provider === 'codex' ? optionalStringOrNull(input.codexServiceTier) || null : null,
+        provider === 'codex'
+          ? optionalStringOrNull(effectiveInput.codexServiceTier) || null
+          : null,
       claudeReasoningEffort:
-        provider === 'claude' ? optionalStringOrNull(input.claudeReasoningEffort) || null : null,
+        provider === 'claude'
+          ? optionalStringOrNull(effectiveInput.claudeReasoningEffort) || null
+          : null,
       claudeFastMode:
         provider === 'claude'
-          ? (input.claudeFastMode ?? metadataBoolean(chat, 'claudeFastMode') ?? false)
+          ? (effectiveInput.claudeFastMode ?? metadataBoolean(chat, 'claudeFastMode') ?? false)
           : null,
       kimiThinking:
         provider === 'kimi'
-          ? (input.kimiThinkingEnabled ?? metadataBoolean(chat, 'kimiThinkingEnabled') ?? true)
+          ? (effectiveInput.kimiThinkingEnabled ?? metadataBoolean(chat, 'kimiThinkingEnabled') ?? true)
           : null,
       approvalMode,
       ...(effectiveRunPermissions ? { effectivePermissions: effectiveRunPermissions } : {}),
       imagePaths,
       providerSessionId: resumeDecision.sessionId || null,
       externalPathGrants,
-      sessionTrust: provider === 'gemini' ? Boolean(input.sessionTrust) : false,
-      geminiWorktree: scope !== 'global' && provider === 'gemini' ? input.geminiWorktree : null,
-      runtimeProfileId: optionalString(input.runtimeProfileId),
+      sessionTrust: provider === 'gemini' ? Boolean(effectiveInput.sessionTrust) : false,
+      geminiWorktree:
+        scope !== 'global' && provider === 'gemini' ? effectiveInput.geminiWorktree : null,
+      runtimeProfileId: optionalString(effectiveInput.runtimeProfileId),
       geminiAuthProfileId,
       handoffSourceRunId: optionalString(input.handoffSourceRunId),
       composer: {
@@ -264,6 +297,40 @@ export class ComposerService {
     }
 
     return payload
+  }
+}
+
+function applyComposerReroutePlan(
+  input: ComposerInput,
+  resolution: ProviderDispatchResolution
+): ComposerInput {
+  const plan = resolution.reroutePlan
+  if (!plan) return input
+  return {
+    ...input,
+    provider: resolution.provider,
+    ...(plan.selectedModelType ? { selectedModelType: plan.selectedModelType } : {}),
+    ...(plan.customModel !== undefined ? { customModel: plan.customModel } : {}),
+    ...(plan.approvalMode ? { approvalMode: plan.approvalMode } : {}),
+    ...(plan.runtimeProfileId ? { runtimeProfileId: plan.runtimeProfileId } : {}),
+    ...(resolution.provider === 'gemini'
+      ? { geminiAuthProfileId: plan.geminiAuthProfileId ?? null }
+      : {}),
+    ...(resolution.provider === 'codex'
+      ? {
+          codexReasoningEffort: plan.codexReasoningEffort ?? null,
+          codexServiceTier: plan.codexServiceTier ?? null
+        }
+      : {}),
+    ...(resolution.provider === 'claude'
+      ? {
+          claudeReasoningEffort: plan.claudeReasoningEffort ?? null,
+          claudeFastMode: plan.claudeFastMode ?? null
+        }
+      : {}),
+    ...(resolution.provider === 'kimi'
+      ? { kimiThinkingEnabled: plan.kimiThinkingEnabled ?? true }
+      : {})
   }
 }
 

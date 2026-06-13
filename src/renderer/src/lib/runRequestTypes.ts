@@ -11,6 +11,7 @@ import type {
   ChatRecord,
   ExternalPathGrant,
   GeminiWorktreeConfig,
+  ProviderRunReroute,
   RunWarning
 } from '../../../main/store/types'
 
@@ -18,6 +19,7 @@ export interface QueuedRunRequest {
   appRunId?: string
   scope?: ChatScope
   provider: ProviderId
+  providerReroute?: ProviderRunReroute
   prompt: string
   displayPrompt?: string
   overrideModel?: string

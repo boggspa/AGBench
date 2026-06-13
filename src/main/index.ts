@@ -266,6 +266,7 @@ import {
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { detectConfiguredProviders } from './ProviderConfiguration'
+import { applyReroutePlanToPayload, resolveProviderDispatch } from './ProviderRunPause'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
 import { DiscordContextService } from './channels/DiscordContextService'
 import { EnsembleOrchestrator, type ParticipantProbeResult } from './services/EnsembleOrchestrator'
@@ -18146,8 +18147,10 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-usage', (_, workspaceId?: string, chatId?: string) =>
       AppStore.getUsage(workspaceId, chatId)
     )
-    ipcMain.handle('get-external-usage', (_, options?: { force?: boolean }) =>
-      getExternalUsageCached(options?.force ? { maxAgeMs: 0 } : {})
+    ipcMain.handle(
+      'get-external-usage',
+      (_, options?: { force?: boolean }) =>
+        getExternalUsageCached(options?.force === true ? { maxAgeMs: 0 } : {})
     )
     const broadcastUsageRollupToRemote = (): void => {
       void getExternalUsageCached()
@@ -19932,6 +19935,25 @@ if (isGeminiMcpBridgeProcess) {
     // (Phase F3) can dispatch agent-driven sub-thread runs without
     // requiring a Gemini-renderer round-trip.
     runCoordinatorRef = runCoordinator
+    const dispatchRunWithProviderPause = async (
+      payload: AgentRunPayload,
+      event: Electron.IpcMainInvokeEvent | { sender: Electron.WebContents }
+    ): Promise<{ dispatched: boolean; appRunId: string }> => {
+      const resolution = resolveProviderDispatch(AppStore.getSettings(), payload.provider)
+      const routedPayload = applyReroutePlanToPayload(payload, resolution)
+      // Self-heal stale persisted MCP configs on EVERY dispatch path, not
+      // just renderer capability refreshes — bridge (iOS) dispatches on a
+      // Mac whose UI never opens the capabilities panel were running with
+      // pre-rebrand absolute command paths ("Failed to spawn MCP server
+      // 'TaskWraith'": ENOENT). The needs-repair probe is a cheap file
+      // read+compare and a no-op when healthy.
+      const repairCwd =
+        typeof routedPayload?.workspace === 'string' && routedPayload.workspace.length > 0
+          ? routedPayload.workspace
+          : undefined
+      await repairKnownStaleGeminiMcpBridgeConfigs(repairCwd).catch(() => {})
+      return runCoordinator.dispatch(routedPayload, event)
+    }
     if (messageBridgeRuntime) {
       const {
         messageChannelBindingStore,
@@ -20067,7 +20089,7 @@ if (isGeminiMcpBridgeProcess) {
           if (!mainWindow || mainWindow.isDestroyed()) {
             return Promise.resolve({ dispatched: false, appRunId: '' })
           }
-          return runCoordinator.dispatch(payload, { sender: mainWindow.webContents })
+          return dispatchRunWithProviderPause(payload, { sender: mainWindow.webContents })
         },
         dispatchEnsembleRun: ({ chat, prompt, imagePaths }) => {
           if (!mainWindow || mainWindow.isDestroyed()) {
@@ -20110,7 +20132,7 @@ if (isGeminiMcpBridgeProcess) {
       getChat: (chatId) => AppStore.getChat(chatId),
       saveChat: saveAndBroadcastChat,
       getSettings: () => AppStore.getSettings(),
-      dispatch: (payload, event) => runCoordinator.dispatch(payload, event),
+      dispatch: (payload, event) => dispatchRunWithProviderPause(payload, event),
       cancelRun: (provider, runId) => providerAdapters.require(provider).cancel(runId),
       createRunId: createFallbackRunId,
       now: () => Date.now(),
@@ -20171,8 +20193,7 @@ if (isGeminiMcpBridgeProcess) {
         auditRunTracker.handleExit(appRunId, -1)
         return completion
       }
-      void runCoordinatorRef
-        .dispatch(payload, { sender: mainWindow.webContents })
+      void dispatchRunWithProviderPause(payload, { sender: mainWindow.webContents })
         .then((result) => {
           // dispatch() resolving false means the run never started (queue
           // rejection, preflight failure, …) — settle as a failure rather than
@@ -20309,7 +20330,7 @@ if (isGeminiMcpBridgeProcess) {
       saveChat: saveAndBroadcastChat,
       listChats: () => AppStore.getChats(),
       dispatchRun: (payload) =>
-        runCoordinator.dispatch(payload, { sender: mainWindow!.webContents }),
+        dispatchRunWithProviderPause(payload, { sender: mainWindow!.webContents }),
       scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
       cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId),
       createRunId: createFallbackRunId,
@@ -20328,18 +20349,7 @@ if (isGeminiMcpBridgeProcess) {
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent
     ): Promise<{ dispatched: boolean; appRunId: string }> => {
-      // Self-heal stale persisted MCP configs on EVERY dispatch path, not
-      // just renderer capability refreshes — bridge (iOS) dispatches on a
-      // Mac whose UI never opens the capabilities panel were running with
-      // pre-rebrand absolute command paths ("Failed to spawn MCP server
-      // 'TaskWraith'": ENOENT). The needs-repair probe is a cheap file
-      // read+compare and a no-op when healthy.
-      const repairCwd =
-        typeof payload?.workspace === 'string' && payload.workspace.length > 0
-          ? payload.workspace
-          : undefined
-      await repairKnownStaleGeminiMcpBridgeConfigs(repairCwd).catch(() => {})
-      return runCoordinator.dispatch(payload, event)
+      return dispatchRunWithProviderPause(payload, event)
     }
 
     ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {

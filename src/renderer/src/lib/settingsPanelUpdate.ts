@@ -52,6 +52,7 @@ export type SettingsPanelUpdate = {
    */
   dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
   welcomeHeatmapPrefs?: AppSettings['welcomeHeatmapPrefs']
+  providerRunPauses?: AppSettings['providerRunPauses']
   /** 1.0.5-EW26 — Kimi compatibility filter. */
   kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
   kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
