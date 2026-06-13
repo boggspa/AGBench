@@ -46,9 +46,15 @@ workspace state on the user's machine.
   Grok, Cursor, and **local Ollama** (curated Qwen, Gemma, and GPT-OSS presets).
   Provider names describe compatible integrations only — CLIs and accounts stay
   user-installed.
+- **Thread Goals**: Set a persistent objective with `/goal <objective>` or the
+  composer goal control. Codex uses native goal state when the installed runtime
+  exposes it; every provider gets a TaskWraith-managed fallback with explicit
+  complete/blocked lifecycle tools.
 - **Ensemble Mode**: Multi-provider single-thread chats with up to six named
   participants, turn-bound or continuous orchestration, optional parallel fan-out,
   and TaskWraith MCP tools shared across providers.
+- **Audit Runs**: `/audit` can coordinate provider-backed review passes with
+  live progress, structured findings, verdicts, and dismissible run banners.
 - **Local Ollama**: Tiered workspace tools (read-only through provider parity),
   optional live web search/fetch, per-model context engineering, and session memory
   across runs — all policy-gated like cloud providers.
@@ -56,12 +62,12 @@ workspace state on the user's machine.
   compact timelines, durations, and raw event inspection.
 - **Diff Studio**: File-list and diff-detail review for run-scoped changes and
   current workspace changes, including previews for newly created text files.
-- **Local History and Usage**: Local-only chat, run, and usage state for repeat
-  work without a hosted backend.
+- **Local History and Usage**: Local-only chat, run, usage, approval-ledger, and
+  audit state for repeat work without a hosted backend.
 - **Release Tooling**: Security, dependency, packaging, and signing hooks for
   reproducible local release work.
 
-Current release: **v1.5.0** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release: **v1.5.1** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Public Source Boundary
 

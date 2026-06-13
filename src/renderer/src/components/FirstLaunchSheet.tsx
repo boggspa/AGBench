@@ -572,7 +572,7 @@ export function FirstLaunchSheet({
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to TaskWraith</h2>
               <p className="first-launch-sheet-subtitle">
-                First-launch checklist — providers, workspace, look, and Ensemble basics.
+                First-launch checklist — providers, workspace, goals, look, and Ensemble basics.
               </p>
             </div>
           </div>
@@ -594,7 +594,8 @@ export function FirstLaunchSheet({
             <strong>Cursor</strong>, <strong>Grok</strong>, and local{' '}
             <strong>Ollama</strong> models inside one consistent chrome so you can run and compare
             them side-by-side in the same UI. Each provider keeps its own auth — sign in to the
-            ones you want to use, skip the rest.
+            ones you want to use, skip the rest. Goals, approvals, audit runs, and usage history stay
+            in TaskWraith's local ledger so each provider shares the same operating context.
           </p>
         </section>
 
@@ -602,7 +603,8 @@ export function FirstLaunchSheet({
           <h3 className="first-launch-sheet-section-title">1. Sign in to your providers</h3>
           <p className="first-launch-sheet-section-helper">
             Status reflects what TaskWraith can see right now. A red dot can mean two different things
-            — read the label. Open Settings for inline sign-in flows (OAuth, API keys, CLI paths).
+            — read the label. Green means TaskWraith can launch that provider from this app. Open
+            Settings for inline sign-in flows (OAuth, API keys, CLI paths).
           </p>
           <ul className="first-launch-sheet-status-legend" aria-label="What the status dots mean">
             <li>

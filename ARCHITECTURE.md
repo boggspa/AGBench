@@ -12,6 +12,8 @@ Responsible for system-level operations:
 - **Integrated Terminal**: Uses `node-pty` to provide interactive setup and trust flows where a provider requires them.
 - Executing `git diff` on the selected workspace.
 - Enforcing safety rules (denylists, workspace confinement).
+- Maintaining local run state, approval/audit ledgers, persistent thread goals,
+  provider failover state, and model-usage summaries.
 
 ## Renderer Process (`src/renderer/`)
 
@@ -22,13 +24,30 @@ Responsible for the UI:
 - Communicates exclusively via `window.electron` IPC APIs defined in preload.
 - Stream parsing adapters normalize provider events into shared activity, diff, usage, and approval records.
 
-## Data Flow (Provider CLI)
+## Data Flow (Provider Runtime)
 
 1. User clicks "Run" -> Renderer sends a provider run request with the prompt.
-2. Main process verifies workspace safety and spawns the selected provider command with the workspace and approval mode.
-3. Main process reads `stdout`/`stderr` using the provider adapter.
-4. Main process sends normalized events via IPC to Renderer.
-5. Renderer updates state.
+2. Main process verifies workspace safety, resolves the effective provider
+   (including paused-provider failover), applies active goal context, and starts
+   the selected provider command, SDK, app-server, or Ollama harness.
+3. Main process reads provider events and tool calls using the provider adapter.
+4. Sensitive actions route through TaskWraith policy, approval ledgers, and
+   workspace confinement before execution.
+5. Main process sends normalized events via IPC to Renderer.
+6. Renderer updates transcript, activity, diff, usage, goal, and audit state.
+
+## Agent Orchestration
+
+- **Single-provider chats** run one provider against one workspace or global
+  context.
+- **Ensembles** share one transcript across multiple provider participants.
+- **Sub-threads** create isolated child chats for delegated work.
+- **Audit runs** coordinate provider-backed review passes with structured phases,
+  findings, verdicts, and synthesis.
+- **Thread goals** store a persistent objective and stopping condition separate
+  from `todo_write`; Codex can mirror native goal state when the installed
+  app-server exposes it, while other providers use TaskWraith-managed goal
+  steering and lifecycle tools.
 
 ## Visual Architecture
 
@@ -54,8 +73,12 @@ Responsible for the UI:
 - **ActivityStack** (`src/renderer/src/components/ActivityStack.tsx`): compact timeline rows for tool calls with status icons, labels, file paths, durations, and expandable raw events.
 - **DiffViewer** (`src/renderer/src/components/DiffViewer.tsx`): Diff Studio with selectable file list, status badges, and unified diff detail view with syntax-highlighted additions/deletions.
 - **SettingsPanel** (`src/renderer/src/components/SettingsPanel.tsx`): modal for appearance mode, transparency, motion, density, and inspector visibility.
+- **FirstLaunchSheet** (`src/renderer/src/components/FirstLaunchSheet.tsx`):
+  provider setup, workspace, appearance, goals, and ensemble onboarding.
 
 ## Storage
 
 - App settings are saved to the OS user data directory.
+- Chats, run events, approval records, audit run state, usage summaries, and
+  active goals are stored locally.
 - Secrets and release credentials must use the OS keychain or external CI secret store, not source files.

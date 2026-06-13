@@ -18,6 +18,12 @@ commands, automate apps, or answer approvals as security-sensitive.
   It does not silently commit, publish, or revert user files.
 - **Audit Logs**: Approval responses, automatic decisions, run events, and raw
   provider events are retained locally for review.
+- **Goal Lifecycle**: Persistent thread goals are stored separately from
+  `todo_write` so agents can complete or block the objective explicitly instead
+  of silently treating a checklist as the stopping condition.
+- **Audit Orchestration**: `/audit` runs use configured providers, local
+  findings/verdict state, and dismissible UI banners. They should never assume a
+  provider account the user has not configured.
 - **Log Redaction**: Raw stdout/stderr displayed in the app is redacted for
   common secrets such as bearer tokens, email addresses, and local home paths.
 
@@ -41,3 +47,6 @@ and provider names may be used nominatively to describe compatibility.
 Review the generated `git diff` before committing agent output. For public
 releases, also verify the source tree contains no private credentials, signing
 material, local build artifacts, or historical secret-bearing commits.
+Mac release artifacts should be signed, notarized, stapled, and validated before
+upload. Unsigned Windows/Linux artifacts should come from explicit CI workflows
+and be labelled as unsigned.

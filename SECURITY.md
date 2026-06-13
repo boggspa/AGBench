@@ -29,6 +29,14 @@ release signing as security-sensitive changes.
 - Release signing, notarization, npm, GitHub, Apple, and provider API tokens
   should be scoped and available only to the jobs or local shells that need
   them.
+- Apple notarization credentials should live in the macOS keychain as a named
+  notarytool profile, not in shell history or repository files. Local release
+  commands may reference the profile name, but must not print or commit the
+  underlying Apple ID password.
+- macOS public artifacts should be Developer ID signed, notarized, stapled, and
+  validated with Gatekeeper/update-feed checks before release upload.
+- Unsigned Windows and Linux artifacts should be produced by explicit GitHub
+  Actions workflows and labelled as unsigned in release notes.
 - CI release jobs should run dependency security checks before packaging or
   notarization.
 - If a supply-chain incident may have affected a machine or CI run, pause

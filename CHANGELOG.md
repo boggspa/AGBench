@@ -4,6 +4,77 @@ Notable changes to TaskWraith, the local-first macOS desktop workbench for runni
 and reviewing AI coding agents. Entries are user-facing highlights; execution,
 history, and workspace state stay on your machine throughout.
 
+## 1.5.1 - 2026-06-13
+
+### Added
+- **Persistent thread goals.** Use `/goal <objective>` or the new composer goal
+  control to set an active objective and stopping condition for a chat. Codex can
+  mirror goals into native app-server goal state when supported; other providers
+  use TaskWraith-steered goal context plus `goal_read`, `goal_update`,
+  `goal_complete`, and `goal_blocked` tools.
+- **Audit orchestration.** `/audit` now runs a policy-aware multi-agent review
+  pipeline with provider-selection controls, live progress cards, dismissible
+  completion banners, structured findings/verdicts, and safer failure reporting.
+- **Expanded local-model roster.** Ollama support now includes Qwen 3.6, Granite,
+  MiniCPM-V, and Nemotron presets alongside the existing GPT-OSS, Gemma, and Qwen
+  profiles.
+- **Provider failover controls.** Providers can be paused so queued or recovered
+  work can move to an available fallback rather than silently retrying a blocked
+  runtime.
+
+### Changed
+- **GPT-OSS/Ollama coding harness.** Local models get richer model metadata,
+  profile-aware context budgets, native-first tool calling, safer loop stopping
+  around goal lifecycle tools, workspace symbols/git context, and stricter
+  explore-before-edit/read-before-edit discipline.
+- **Provider and transcript parity.** Cursor, Grok, Ollama, and native provider
+  tool results now render with closer markdown/tool-card parity in the transcript
+  pane, including expanded tool-result prose.
+- **Model usage accounting.** Cursor IDE Composer activity, external provider
+  usage, cached-token pricing, manual refresh, and local Ollama RAM samples are
+  surfaced in the model-usage table with clearer provider rows.
+- **Brand and onboarding polish.** The first-launch sheet and workspace mastheads
+  use the theme-aware monoline ghost mark, clearer provider availability LEDs, and
+  updated copy for the current seven-provider surface.
+
+### Fixed
+- **Audit runs no longer assume Claude.** Audit provider selection respects the
+  configured provider set instead of spawning a provider the user may not have.
+- **Audit banners are dismissible.** Completed audit run cards can be hidden after
+  the user has seen the result.
+- **Cursor cache stat handling.** External Cursor usage scans use the correct file
+  stat helper and avoid crashing the cache prewarm path.
+- **Light-mode sky reveal.** Weather/sky effects retain the visible sky band
+  without washing out the transcript reading surface.
+
+## 1.5.0 - 2026-06-13
+
+### Added
+- **iOS companion source publication.** The Swift package, iOS app target, assets,
+  privacy manifest, entitlements, and interop fixtures are now tracked while
+  signing-local state, build outputs, and provisioning material remain ignored.
+- **Remote companion hardening.** Paired iPhone/iPad sessions gained richer
+  transcript fidelity, reconnect recovery, Git workflow actions, global-chat
+  visibility, and stricter bridge routing under the encrypted transport.
+- **Release hardening.** macOS update-feed validation now checks artifact sha512
+  and size parity, Swift bridge tests run in the macOS release path, and CI has
+  unsigned Windows and Linux artifact jobs.
+
+### Changed
+- **Public provider/MCP docs.** The docs now describe the seven first-class
+  providers and distinguish full brokered MCP providers from narrower Cursor,
+  Grok, and Ollama tool surfaces.
+- **Startup and persistence performance.** Chat hydration, workspace-change
+  caching, and persisted raw-event compaction reduce launch and selection cost on
+  large workspaces.
+
+### Security
+- **Public build boundary maintained.** Remote/iOS user-facing surfaces remain
+  gated behind `IOS_REMOTE_TRUE` while TestFlight/export-compliance work
+  continues.
+- **Package hygiene.** The shipped app excludes internal docs, local-only folders,
+  scripts, tests, and signing material from the production bundle.
+
 ## 1.4.8 — 2026-06-11
 
 ### Added
