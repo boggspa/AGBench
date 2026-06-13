@@ -1514,7 +1514,12 @@ export function createTaskWraithMcpToolDefinitions(): TaskWraithMcpToolDefinitio
     {
       name: 'ensemble_continue',
       description:
-        'In an active Ensemble Work Session, queue one follow-up round, mark the session complete, or pause it as blocked. Does not bypass participant permissions; each queued round still uses the normal approval and permission path.',
+        'In an active Ensemble Work Session, queue one follow-up round, mark the session complete, or pause it as blocked. ' +
+        'Choose acceptanceStatus deliberately: use `complete` only when the task is fully done and verified — every required tool call (edits, run_task checks, tests) actually ran and succeeded. ' +
+        'Use `blocked` only when you are genuinely stuck and need user input to proceed. ' +
+        'Use `inProgress` (with nextPrompt) to queue another round and keep working. ' +
+        'What is NOT blocked: a test you can fix is not a block — fix it and continue; a recoverable error (retryable failure, missing file you can create, tool you can call differently) is not a block — keep working. ' +
+        'Does not bypass participant permissions; each queued round still uses the normal approval and permission path.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
