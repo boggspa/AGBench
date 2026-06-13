@@ -1781,7 +1781,8 @@ function ActivityDiffFiles({
             <span className={`activity-file-change-status status-${file.status || 'unknown'}`}>
               {file.status || 'changed'}
             </span>
-            {(file.additions !== undefined || file.deletions !== undefined) && (
+            {(file.additions !== undefined || file.deletions !== undefined) &&
+              ((file.additions || 0) !== 0 || (file.deletions || 0) !== 0) && (
               <span className="activity-file-change-stats">
                 <span className="activity-line-stat activity-line-stat-add">
                   +{file.additions || 0}

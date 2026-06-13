@@ -12,9 +12,10 @@ import { deriveToolDiffSummary, estimateLineChanges, isErroredToolStatus } from 
  *   3. A speculative `lineChangesFromContent` fallback for write-style tools.
  *
  * Suppression rules:
- *   - Running / pending activities with no concrete additions or deletions
- *     stay silent. `+0 -0` reads as "no change" but actually means "still
- *     working" — the chevron pulse already telegraphs running state.
+ *   - Activities with no concrete additions or deletions stay silent.
+ *     `+0 -0` reads as a meaningful edit stat, but in practice it is
+ *     usually a placeholder from an edit/write tool that has no hunk
+ *     counts to report.
  *   - Activities with neither additions nor deletions defined render nothing.
  */
 
@@ -124,12 +125,12 @@ export function computeInlineStats(inputs: InlineStatInputs): InlineStatResult {
     return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence }
   }
 
-  const running = inputs.status === 'running' || inputs.status === 'pending'
   const bothZero = (additions || 0) === 0 && (deletions || 0) === 0
 
-  // Running activities with no real signal yet stay silent — `+0 -0` reads as
-  // "no change" but actually means "still working".
-  if (running && bothZero) {
+  // `+0 -0` is visual noise for write/edit rows. Keep asymmetric zeroes
+  // (`+N -0`, `+0 -N`) but suppress the all-zero placeholder regardless of
+  // terminal state.
+  if (bothZero) {
     return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence }
   }
 

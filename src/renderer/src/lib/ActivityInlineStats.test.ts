@@ -123,10 +123,10 @@ describe('ActivityInlineStats', () => {
       expect(result.confidence).toBe('estimated')
     })
 
-    it('keeps an "exact 0/0" diff summary visible (e.g. delete-and-recreate noop)', () => {
-      // Non-running activities with a real 0/0 are still meaningful — they
-      // tell the user the tool ran and produced no net change. The running
-      // suppression rule must not generalise here.
+    it('suppresses all-zero diff summaries for completed edit rows', () => {
+      // Some edit/write emitters report a completed file call with exact
+      // 0/0 counts when they have no hunk stats. That should not paint a
+      // misleading "+0 -0" odometer next to the tool title.
       const result = computeInlineStats({
         toolName: 'edit_file',
         status: 'success',
@@ -139,7 +139,7 @@ describe('ActivityInlineStats', () => {
         }
       })
 
-      expect(result.visible).toBe(true)
+      expect(result.visible).toBe(false)
       expect(result.additions).toBe(0)
       expect(result.deletions).toBe(0)
     })
@@ -213,6 +213,32 @@ describe('ActivityInlineStats', () => {
           confidence: 'estimated'
         },
         resultSummary: 'User rejected the execution for tool search_replace'
+      }
+      expect(inlineStatsForActivity(activity).visible).toBe(false)
+    })
+
+    it('returns invisible for a successful Edit File activity with +0/-0 stats', () => {
+      const activity: ToolActivity = {
+        id: 't1',
+        toolName: 'edit_file',
+        displayName: 'Edited codex-p1-delete-me.txt',
+        category: 'write',
+        status: 'success',
+        parameters: { path: 'codex-p1-delete-me.txt' },
+        diffSummary: {
+          additions: 0,
+          deletions: 0,
+          files: [
+            {
+              path: 'codex-p1-delete-me.txt',
+              status: 'modified',
+              additions: 0,
+              deletions: 0
+            }
+          ],
+          source: 'codex_changes',
+          confidence: 'exact'
+        }
       }
       expect(inlineStatsForActivity(activity).visible).toBe(false)
     })
