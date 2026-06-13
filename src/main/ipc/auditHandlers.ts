@@ -37,6 +37,8 @@ export interface AuditHandlerDeps {
   /** Store readers for the get-* channels. */
   getAuditRun: (id: string) => AuditRunRecord | null
   getAuditRuns: (workspaceId?: string) => AuditRunRecord[]
+  /** Validate and canonicalize the workspace path before reserving the run slot. */
+  validateWorkspacePath?: (workspacePath: string) => string
   /** Reserve the single in-flight audit slot synchronously; returns false if one
    * is already running (the orchestrator can't run two at once). */
   beginAuditRun: () => boolean
@@ -65,6 +67,7 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
     getAuditOrchestrator,
     getAuditRun,
     getAuditRuns,
+    validateWorkspacePath,
     beginAuditRun,
     endAuditRun,
     markAuditRunCancelled,
@@ -77,7 +80,10 @@ export function registerAuditHandlers(deps: AuditHandlerDeps): void {
       throw new Error('Audit orchestrator is not ready yet.')
     }
     const chatId = requireNonEmptyString(input?.chatId, 'chatId')
-    const workspacePath = requireNonEmptyString(input?.workspacePath, 'workspacePath')
+    const rawWorkspacePath = requireNonEmptyString(input?.workspacePath, 'workspacePath')
+    const workspacePath = validateWorkspacePath
+      ? validateWorkspacePath(rawWorkspacePath)
+      : rawWorkspacePath
     const start: StartAuditInput = {
       mode: normalizeMode(input?.mode),
       chatId,

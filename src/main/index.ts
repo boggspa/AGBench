@@ -21218,6 +21218,14 @@ if (isGeminiMcpBridgeProcess) {
       getAuditOrchestrator: () => auditOrchestratorRef,
       getAuditRun: (id) => AppStore.getAuditRun(id),
       getAuditRuns: (workspaceId) => AppStore.getAuditRuns(workspaceId),
+      validateWorkspacePath: (workspacePath) => {
+        const registeredWorkspace = requireRegisteredWorkspace(workspacePath, 'Workspace')
+        const stat = fsSync.statSync(registeredWorkspace)
+        if (!stat.isDirectory()) {
+          throw new Error('Workspace path must be a directory.')
+        }
+        return registeredWorkspace
+      },
       // One audit at a time: the orchestrator keeps per-run state (this.record)
       // in a single field, so a concurrent run would clobber it (and the single
       // activeAuditRunId cancel scope). Reserve synchronously at start; release
