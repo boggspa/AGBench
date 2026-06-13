@@ -12,7 +12,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { MascotGhost } from './AppChromeSymbols'
-import taskwraithGhostMark from '../assets/taskwraith-ghost-mark.png'
+import taskwraithGhostMonolineSvg from '../assets/taskwraith-ghost-monoline.svg?raw'
 import { isUpdatePillVisible, UpdatePill } from './UpdatePill'
 import type { UpdateStateSnapshot } from '../../../main/UpdateService'
 import type {
@@ -2360,11 +2360,10 @@ export function Sidebar({
         <div className="sidebar-masthead">
           <div className="sidebar-masthead-copy">
             <span className="sidebar-product-label">
-              <img
-                src={taskwraithGhostMark}
-                className="sidebar-product-ghost taskwraith-brand-ghost"
-                alt=""
+              <span
+                className="sidebar-product-ghost sidebar-product-ghost-monoline"
                 aria-hidden
+                dangerouslySetInnerHTML={{ __html: taskwraithGhostMonolineSvg }}
               />
               TaskWraith
             </span>

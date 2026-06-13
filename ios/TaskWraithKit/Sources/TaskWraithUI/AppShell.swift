@@ -158,7 +158,7 @@ struct IdentityErrorView: View {
 struct MastheadRow: View {
     var body: some View {
         HStack(spacing: 10) {
-            MastheadLogoView(size: 34)
+            GhostMonolineMarkView(size: 38)
             Text("TaskWraith")
                 .font(.largeTitle.bold())
                 .foregroundStyle(TWTheme.textPrimary)

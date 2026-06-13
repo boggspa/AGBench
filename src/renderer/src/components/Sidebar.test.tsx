@@ -149,6 +149,19 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('Sidebar masthead', () => {
+  it('uses the inline monoline TaskWraith mark', () => {
+    stubSidebarStorage({})
+
+    const html = renderSidebar([])
+    const masthead = html.slice(html.indexOf('sidebar-masthead'))
+
+    expect(masthead).toContain('sidebar-product-ghost-monoline')
+    expect(masthead).toContain('ghost-guy-mark-monoline-title')
+    expect(masthead).not.toContain('taskwraith-brand-ghost')
+  })
+})
+
 describe('Sidebar active chat override', () => {
   it('marks activeChatId as selected before currentChat catches up', () => {
     stubSidebarStorage({

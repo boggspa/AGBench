@@ -49,25 +49,64 @@ public struct GhostMarkView: View {
 
 public struct GhostMonolineMarkView: View {
     public var size: CGFloat = 58
+    public var glow: Bool = true
 
-    public init(size: CGFloat = 58) { self.size = size }
+    public init(size: CGFloat = 58, glow: Bool = true) {
+        self.size = size
+        self.glow = glow
+    }
 
     public var body: some View {
-        Group {
-            if let image = Self.loadImage() {
-                image
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(TWTheme.textTertiary)
-            } else {
-                Image(systemName: "sparkles")
-                    .font(.system(size: size * 0.55, weight: .semibold))
-                    .foregroundStyle(TWTheme.textTertiary)
+        ZStack {
+            if glow {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            gradient: Gradient(
+                                stops: [
+                                    .init(color: TWTheme.chroma1Default.opacity(0.34), location: 0),
+                                    .init(
+                                        color: TWTheme.chroma1Default.opacity(0.16),
+                                        location: 0.46
+                                    ),
+                                    .init(color: TWTheme.chroma1Default.opacity(0), location: 0.76)
+                                ]
+                            ),
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: size * 0.46
+                        )
+                    )
+                    .frame(width: size * 0.9, height: size * 0.9)
+                    .blur(radius: size * 0.08)
+                    .scaleEffect(1.08)
             }
+            Group {
+                if let image = Self.loadImage() {
+                    image
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: size * 0.55, weight: .semibold))
+                }
+            }
+            .foregroundStyle(markColor)
+            .shadow(color: shadowColor, radius: 1, y: 1)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private var markColor: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.black.opacity(0.76) : Color.white.opacity(0.94)
+    }
+
+    private var shadowColor: Color {
+        TWThemeStore.shared.systemTheme.isLight
+            ? Color.white.opacity(0.4) : Color.black.opacity(0.24)
     }
 
     private static func loadImage() -> Image? {
