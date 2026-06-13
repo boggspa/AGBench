@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="taskwraith-ghost-monoline-title">
-  <title id="taskwraith-ghost-monoline-title">TaskWraith monoline ghost mark</title>
-  <g fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M42 88V50C42 38.95 50.95 30 62 30h7c13.81 0 25 11.19 25 25v33"/>
-    <path d="M42 88h9l6 10 8-10 8 10 6-10h15"/>
-    <path d="M55 56v12"/>
-    <path d="M80 56v12"/>
-    <path d="M56 79h24"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img" aria-labelledby="ghost-guy-mark-monoline-title">
+  <title id="ghost-guy-mark-monoline-title">TaskWraith ghost mark monoline</title>
+  <g fill="none" stroke="currentColor" stroke-width="3.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M56 30H80L92 36L98 48V84H92L86 90L80 84L74 96L68 84L56 96L50 84H38V48L44 36Z"/>
+    <path d="M50 84V104"/>
+    <path d="M68 84V104"/>
+    <path d="M86 90V104"/>
+    <rect x="51" y="54" width="10" height="14"/>
+    <rect x="75" y="54" width="10" height="14"/>
   </g>
 </svg>

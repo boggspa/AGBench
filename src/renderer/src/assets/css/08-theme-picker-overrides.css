@@ -1505,18 +1505,38 @@
   display: block;
 }
 .first-launch-sheet-ghost-monoline {
-  background: color-mix(in srgb, var(--text-tertiary) 84%, var(--accent-blue, #60a5fa) 16%);
+  position: relative;
+  color: rgba(255, 255, 255, 0.94);
   opacity: 0.94;
-  -webkit-mask: url('../taskwraith-ghost-monoline.svg') center / contain no-repeat;
-  mask: url('../taskwraith-ghost-monoline.svg') center / contain no-repeat;
-  filter:
-    drop-shadow(0 0 6px color-mix(in srgb, var(--accent-blue, #60a5fa) 36%, transparent))
-    drop-shadow(0 0 18px color-mix(in srgb, var(--accent-blue, #60a5fa) 18%, transparent));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.24));
+}
+.first-launch-sheet-ghost-monoline::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    rgba(96, 165, 250, 0.34) 0%,
+    rgba(96, 165, 250, 0.18) 42%,
+    rgba(96, 165, 250, 0) 72%
+  );
+  filter: blur(5px);
+  transform: scale(1.08);
+}
+.first-launch-sheet-ghost-monoline svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
 }
 :is([data-theme='light'], [data-theme='mist'], [data-theme='sage'])
   .first-launch-sheet-ghost-monoline {
-  background: color-mix(in srgb, var(--text-secondary) 78%, var(--accent-blue, #2563eb) 22%);
+  color: rgba(0, 0, 0, 0.76);
   opacity: 0.9;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.4));
 }
 .first-launch-sheet-header h2 {
   margin: 0 0 4px 0;

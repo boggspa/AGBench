@@ -14,6 +14,7 @@ import {
   summariseProviderApiKeyStatus,
   type ProviderAuthVariant
 } from '../lib/providerAuthSummary'
+import taskwraithGhostMonolineSvg from '../assets/taskwraith-ghost-monoline.svg?raw'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 // 1.0.7-EW — onboarding "out of usage" card state. ModelUsageAggregate is the
 // same per-provider quota shape the sidebar Model Usage card consumes; type-only
@@ -560,12 +561,13 @@ export function FirstLaunchSheet({
         <header className="first-launch-sheet-header">
           <div className="first-launch-sheet-header-text">
             {/*
-              Theme-aware monoline mark. CSS masks the SVG so the glyph
-              inherits the active TaskWraith palette instead of a fixed PNG tint.
+              Theme-aware monoline mark. The SVG uses currentColor and is
+              rendered inline so it inherits the active TaskWraith palette.
             */}
             <span
               className="first-launch-sheet-ghost first-launch-sheet-ghost-monoline"
               aria-hidden
+              dangerouslySetInnerHTML={{ __html: taskwraithGhostMonolineSvg }}
             />
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to TaskWraith</h2>
