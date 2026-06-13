@@ -15,10 +15,10 @@ export function normalizeActiveGoalReason(value: unknown): string {
 
 export function resolveActiveGoalMode(
   provider: ProviderId,
-  options: { codexNativeAvailable?: boolean } = {}
+  options: { codexNativeAvailable?: boolean; claudeNativeAvailable?: boolean } = {}
 ): ActiveGoalMode {
   if (provider === 'codex' && options.codexNativeAvailable) return 'codex_native'
-  if (provider === 'claude') return 'claude_native'
+  if (provider === 'claude' && options.claudeNativeAvailable) return 'claude_native'
   if (provider === 'ollama') return 'ollama_harness'
   return 'taskwraith_steered'
 }
@@ -40,7 +40,7 @@ export function activeGoalModeLabel(mode: ActiveGoalMode): string {
 export function createActiveGoal(
   provider: ProviderId,
   objective: string,
-  options: { now?: Date; codexNativeAvailable?: boolean } = {}
+  options: { now?: Date; codexNativeAvailable?: boolean; claudeNativeAvailable?: boolean } = {}
 ): ActiveGoal {
   const now = options.now || new Date()
   const timestamp = now.toISOString()
@@ -53,7 +53,8 @@ export function createActiveGoal(
     objective: normalizedObjective,
     status: 'active',
     mode: resolveActiveGoalMode(provider, {
-      codexNativeAvailable: options.codexNativeAvailable
+      codexNativeAvailable: options.codexNativeAvailable,
+      claudeNativeAvailable: options.claudeNativeAvailable
     }),
     provider,
     createdAt: timestamp,

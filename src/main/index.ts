@@ -15211,14 +15211,16 @@ if (isGeminiMcpBridgeProcess) {
                 mode: resolveActiveGoalMode(provider, {
                   codexNativeAvailable: Boolean(
                     chat.providerMetadata?.codexGoalNativeAvailable
-                  )
+                  ),
+                  claudeNativeAvailable: Boolean(chat.providerMetadata?.claudeGoalNativeAvailable)
                 }),
                 updatedAt: now.toISOString()
               }
             } else {
               activeGoal = createActiveGoal(provider, objective, {
                 now,
-                codexNativeAvailable: Boolean(chat.providerMetadata?.codexGoalNativeAvailable)
+                codexNativeAvailable: Boolean(chat.providerMetadata?.codexGoalNativeAvailable),
+                claudeNativeAvailable: Boolean(chat.providerMetadata?.claudeGoalNativeAvailable)
               })
             }
           } else {

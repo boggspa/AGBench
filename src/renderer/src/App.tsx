@@ -11891,7 +11891,8 @@ function App(): React.JSX.Element {
   const currentGoalMode =
     currentActiveGoal?.mode ||
     resolveActiveGoalMode(currentProvider, {
-      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable),
+      claudeNativeAvailable: Boolean(currentChat?.providerMetadata?.claudeGoalNativeAvailable)
     })
   const currentGoalModeLabel = activeGoalModeLabel(currentGoalMode)
   const currentGoalStatus = currentActiveGoal?.status || 'empty'
@@ -11943,7 +11944,8 @@ function App(): React.JSX.Element {
     }
     const now = new Date()
     const mode = resolveActiveGoalMode(currentProvider, {
-      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+      codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable),
+      claudeNativeAvailable: Boolean(currentChat?.providerMetadata?.claudeGoalNativeAvailable)
     })
     const goal: ActiveGoal = existingGoal
       ? {
@@ -11956,7 +11958,8 @@ function App(): React.JSX.Element {
         }
       : createActiveGoal(currentProvider, objective, {
           now,
-          codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable)
+          codexNativeAvailable: Boolean(currentChat?.providerMetadata?.codexGoalNativeAvailable),
+          claudeNativeAvailable: Boolean(currentChat?.providerMetadata?.claudeGoalNativeAvailable)
         })
     if (existingGoal?.status === 'completed') {
       delete goal.completedAt

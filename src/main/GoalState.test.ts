@@ -23,7 +23,8 @@ describe('GoalState', () => {
   it('distinguishes native and steered provider modes', () => {
     expect(resolveActiveGoalMode('codex')).toBe('taskwraith_steered')
     expect(resolveActiveGoalMode('codex', { codexNativeAvailable: true })).toBe('codex_native')
-    expect(resolveActiveGoalMode('claude')).toBe('claude_native')
+    expect(resolveActiveGoalMode('claude')).toBe('taskwraith_steered')
+    expect(resolveActiveGoalMode('claude', { claudeNativeAvailable: true })).toBe('claude_native')
   })
 
   it('injects active and blocked goals, not paused or completed goals', () => {

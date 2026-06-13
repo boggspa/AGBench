@@ -4085,7 +4085,7 @@
 
 .composer-goal-popover {
   position: fixed;
-  z-index: 9500;
+  z-index: 12000;
   width: min(340px, 76vw);
   max-height: min(360px, calc(100vh - 16px));
   overflow: auto;
