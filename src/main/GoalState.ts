@@ -26,14 +26,14 @@ export function resolveActiveGoalMode(
 export function activeGoalModeLabel(mode: ActiveGoalMode): string {
   switch (mode) {
     case 'codex_native':
-      return 'Codex native goal'
+      return 'Native Codex goal'
     case 'claude_native':
-      return 'Claude native goal'
+      return 'Native Claude goal'
     case 'ollama_harness':
-      return 'Ollama harness goal'
+      return 'Ollama managed'
     case 'taskwraith_steered':
     default:
-      return 'TaskWraith-steered goal'
+      return 'Guided by TaskWraith'
   }
 }
 

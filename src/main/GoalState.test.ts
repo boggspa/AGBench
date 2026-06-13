@@ -16,7 +16,7 @@ describe('GoalState', () => {
 
     expect(goal.status).toBe('active')
     expect(goal.mode).toBe('ollama_harness')
-    expect(activeGoalModeLabel(goal.mode)).toBe('Ollama harness goal')
+    expect(activeGoalModeLabel(goal.mode)).toBe('Ollama managed')
     expect(goal.objective).toBe('Fix the failing parser test')
   })
 
@@ -47,7 +47,7 @@ describe('GoalState', () => {
     const block = formatActiveGoalPromptBlock(goal)
 
     expect(block).toContain('<taskwraith_active_goal>')
-    expect(block).toContain('TaskWraith-steered goal')
+    expect(block).toContain('Guided by TaskWraith')
     expect(block).toContain('todo_write may publish visible steps')
     expect(block).toContain('Use goal_read to inspect')
   })
