@@ -15737,6 +15737,48 @@ function App(): React.JSX.Element {
   const composerSlashExtraCommands: ComposerSlashCommand[] = [
     {
       kind: 'action',
+      id: 'taskwraith-audit',
+      command: '/audit',
+      label: 'Run a TaskWraith audit',
+      description:
+        'Run a multi-agent strengths/weaknesses audit of this workspace. Optional mode: quick (default), deep, release.',
+      group: 'Custom',
+      run: () => {
+        const chat = currentChat
+        if (!chat) return
+        const workspacePath = chat.workspacePath
+        if (!workspacePath) {
+          // v1: audits are workspace-scoped — a global chat has no repo to audit.
+          window.alert('Open a workspace chat to run an audit.')
+          return
+        }
+        // Parse an optional mode token from the composer text ("/audit deep").
+        // The slash menu closes on the space after "/audit", so the menu-driven
+        // selection defaults to quick; a typed "/audit <mode>" is still honored
+        // here by scanning the raw prompt. Default: quick.
+        const match = prompt.match(/\/audit\s+(quick|deep|release)\b/i)
+        const mode = (match?.[1]?.toLowerCase() as 'quick' | 'deep' | 'release') || 'quick'
+        // v1: no card UI yet — clear the slash token, log, and kick off the run.
+        // Live phase/finding updates arrive via window.api.onAuditRunChanged.
+        consumeSlashTokenFromPrompt()
+        console.log(`[slash:/audit] starting ${mode} audit for ${workspacePath}`)
+        void window.api
+          .startAuditRun({
+            mode,
+            chatId: chat.appChatId,
+            workspacePath,
+            ...(chat.workspaceId ? { workspaceId: chat.workspaceId } : {})
+          })
+          .then((run) => {
+            console.log(`[slash:/audit] audit ${run.id} finished: ${run.status}`)
+          })
+          .catch((err) => {
+            console.error('[slash:/audit] startAuditRun failed', err)
+          })
+      }
+    },
+    {
+      kind: 'action',
       id: 'taskwraith-clear',
       command: '/clear',
       label: 'Clear conversation',
