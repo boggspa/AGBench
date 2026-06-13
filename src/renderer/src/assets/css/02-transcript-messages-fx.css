@@ -138,6 +138,21 @@
   background-color: color-mix(in srgb, var(--bg-primary) 92%, #080808 8%);
 }
 
+.app-transcript.provider-grok {
+  --agent-accent-rgb: 245 245 245;
+  background-color: color-mix(in srgb, var(--bg-primary) 92%, #101114 8%);
+}
+
+.app-transcript.provider-cursor {
+  --agent-accent-rgb: 245 196 72;
+  background-color: color-mix(in srgb, var(--bg-primary) 90%, #18140a 10%);
+}
+
+.app-transcript.provider-ollama {
+  --agent-accent-rgb: 119 209 190;
+  background-color: color-mix(in srgb, var(--bg-primary) 90%, #081c18 10%);
+}
+
 /* Light theme: dial the tint way down so it reads as a hint, not a wash. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-gemini {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #4a73ff 4%);
@@ -150,6 +165,15 @@
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-kimi {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #a4be4a 4%);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-grok {
+  background-color: color-mix(in srgb, var(--bg-primary) 97%, #111318 3%);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-cursor {
+  background-color: color-mix(in srgb, var(--bg-primary) 96%, #f5c448 4%);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-ollama {
+  background-color: color-mix(in srgb, var(--bg-primary) 96%, #77d1be 4%);
 }
 
 /* Per-provider message-bubble polish — light typography pass to echo each
@@ -171,6 +195,18 @@
   border-radius: 14px;
   padding: 8px 13px;
 }
+.app-transcript.provider-grok .message-bubble.user {
+  border-radius: 14px;
+  padding: 8px 13px;
+}
+.app-transcript.provider-cursor .message-bubble.user {
+  border-radius: 12px;
+  padding: 8px 13px;
+}
+.app-transcript.provider-ollama .message-bubble.user {
+  border-radius: 15px;
+  padding: 8px 13px;
+}
 
 /* Assistant messages: native Claude / Codex / Gemini all render assistant
  * text as flowing markdown (no bubble). Our defaults are close already; this
@@ -186,6 +222,15 @@
 }
 .app-transcript.provider-kimi .message-bubble.assistant {
   line-height: 1.56;
+}
+.app-transcript.provider-grok .message-bubble.assistant {
+  line-height: 1.54;
+}
+.app-transcript.provider-cursor .message-bubble.assistant {
+  line-height: 1.55;
+}
+.app-transcript.provider-ollama .message-bubble.assistant {
+  line-height: 1.57;
 }
 
 .chat-context-application-pill {
@@ -3037,6 +3082,9 @@
 }
 .message-meta.provider-kimi {
   color: var(--provider-kimi-color) !important;
+}
+.message-meta.provider-grok {
+  color: var(--provider-grok-color) !important;
 }
 .message-meta.provider-cursor {
   color: var(--provider-cursor-color) !important;

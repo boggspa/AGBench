@@ -566,6 +566,9 @@ function buildEnsembleToolActivity(
     parameters,
     filePath,
     ...(diffSummary ? { diffSummary } : {}),
+    ...(participant
+      ? { metadata: { provider: participant.provider, ensembleProvider: participant.provider } }
+      : {}),
     rawUseEvent: event
   }
 }

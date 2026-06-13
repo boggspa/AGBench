@@ -2076,6 +2076,10 @@ Next action:
     expect(toolMessages[0].toolActivities?.[0].displayName).toBe('Read /tmp/notes.md')
     expect(toolMessages[0].toolActivities?.[0].status).toBe('success')
     expect(toolMessages[0].toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
+    expect(toolMessages[0].toolActivities?.[0].metadata).toMatchObject({
+      provider: 'claude',
+      ensembleProvider: 'claude'
+    })
 
     // Interleaved ordering: the participant's transcript slice
     // should read assistant → tool → assistant. The flushRun

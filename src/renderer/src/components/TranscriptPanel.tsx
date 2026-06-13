@@ -39,6 +39,7 @@ import type { DisplayCurrency } from '../lib/formatCost'
 import type { RendererProviderRates } from '../lib/providerRateEstimate'
 import type { RunCompleteNotice } from '../lib/runCompleteNotice'
 import { EMPTY_CHAT_MESSAGES } from '../lib/stableEmpties'
+import { groupAdjacentToolMessages } from '../lib/transcriptToolMessageGrouping'
 import { ActivityStack } from './ActivityStack'
 import { AgentQuestionCard, type AgentQuestionState } from './AgentQuestionCard'
 import { isGuestParticipantReplyMessage } from './GuestParticipantReplyCardModel'
@@ -49,7 +50,6 @@ import { isSubThreadReturnMessage } from './SubThreadReturnCardModel'
 import { ParticipantHealthCard } from './ParticipantHealthCard'
 import { ProviderRunFailureCard } from './ProviderRunFailureCard'
 import { MarkdownMessage } from './MarkdownMessage'
-import { MentionHighlightedText } from './MentionHighlightedText'
 import { MessageActionsChip } from './MessageActionsChip'
 import { ChatMessageMediaStrip, collectMessageMediaRefs, type ChatMediaRef } from './ChatMediaPanel'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -839,12 +839,25 @@ export const TranscriptPanel = memo(
     // window-selection snapshot (select-on-scroll, not on every measure), and a
     // one-shot anchor correction. So ensembles keep windowing and converge.
     const virtualizeEnabled = virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED
+    const displayMessages = useMemo(() => groupAdjacentToolMessages(visibleMessages), [visibleMessages])
+    const displayRunBoundaryByMessageId = useMemo(() => {
+      const map = new Map(runBoundaryByMessageId)
+      for (const message of displayMessages) {
+        if (map.has(message.id)) continue
+        const groupedIds = message.metadata?.groupedToolMessageIds
+        if (!Array.isArray(groupedIds)) continue
+        const boundaryId = groupedIds.find((id) => typeof id === 'string' && map.has(id))
+        if (boundaryId) map.set(message.id, map.get(boundaryId)!)
+      }
+      return map
+    }, [displayMessages, runBoundaryByMessageId])
+
     const virtualRows = useMemo(
       () =>
         virtualizeEnabled
-          ? projectRows(visibleMessages, new Set(runBoundaryByMessageId.keys()))
+          ? projectRows(displayMessages, new Set(displayRunBoundaryByMessageId.keys()))
           : EMPTY_VIRTUAL_ROWS,
-      [virtualizeEnabled, visibleMessages, runBoundaryByMessageId]
+      [virtualizeEnabled, displayMessages, displayRunBoundaryByMessageId]
     )
     const {
       window: virtualWindow,
@@ -931,11 +944,11 @@ export const TranscriptPanel = memo(
       ? virtualRows
           .slice(virtualWindow.startIndex, virtualWindow.endIndex)
           .map((r) => {
-            const msg = visibleMessages[r.index]
+            const msg = displayMessages[r.index]
             return msg ? { msg, rowKey: r.rowKey } : null
           })
           .filter((r): r is { msg: ChatMessage; rowKey: string } => Boolean(r))
-      : visibleMessages.map((msg, index) => ({ msg, rowKey: `${msg.id}#${index}` }))
+      : displayMessages.map((msg, index) => ({ msg, rowKey: `${msg.id}#${index}` }))
 
     return (
       <div className="transcript-scroll" ref={scrollRef}>
@@ -954,7 +967,7 @@ export const TranscriptPanel = memo(
             const isDelegationCard = isSubThreadDelegationMessage(msg)
             const isReturnCard = isSubThreadReturnMessage(msg)
             const isGuestReply = isGuestParticipantReplyMessage(msg)
-            const boundaryRun = runBoundaryByMessageId.get(msg.id)
+            const boundaryRun = displayRunBoundaryByMessageId.get(msg.id)
             const isSideChatSeedMessage = Boolean(
               sideChatSeedMessageId && msg.id === sideChatSeedMessageId
             )
@@ -1185,10 +1198,7 @@ export const TranscriptPanel = memo(
                             }${showCollapsed ? ' is-collapsed' : ''}`}
                           >
                             <div className="user-message-content">
-                              <MentionHighlightedText
-                                value={preview}
-                                participants={currentChat?.ensemble?.participants}
-                              />
+                              <MarkdownMessage content={preview} chat={currentChat || undefined} />
                             </div>
                             {mediaRefs.length > 0 && (
                               <ChatMessageMediaStrip
@@ -1237,7 +1247,7 @@ export const TranscriptPanel = memo(
                           isGuestReply ? 'assistant guest-participant-reply' : msg.role
                         }${ensembleRoundStatusClass(msg)}`}
                       >
-                        {msg.role === 'assistant' || isGuestReply ? (
+                        {msg.role === 'assistant' || msg.role === 'system' || isGuestReply ? (
                           <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
                         ) : (
                           msg.content

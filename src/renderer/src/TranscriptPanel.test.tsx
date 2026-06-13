@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createRef } from 'react'
 import { TranscriptPanel } from './App'
-import type { ChatMessage } from '../../main/store/types'
+import type { ChatKind, ChatMessage, ProviderId, ToolActivity } from '../../main/store/types'
 
 /**
  * 1.0.6-TV1 — TranscriptPanel windowing wiring.
@@ -28,6 +28,15 @@ function msg(i: number): ChatMessage {
 }
 
 const MESSAGES: ChatMessage[] = Array.from({ length: 120 }, (_, i) => msg(i))
+const RENDERER_PROVIDERS: ProviderId[] = [
+  'gemini',
+  'codex',
+  'claude',
+  'kimi',
+  'grok',
+  'cursor',
+  'ollama'
+]
 
 function makeProps(overrides: Record<string, any> = {}): any {
   return {
@@ -73,6 +82,55 @@ function makeProps(overrides: Record<string, any> = {}): any {
 
 function countBlocks(html: string): number {
   return (html.match(/data-vrow-id="/g) || []).length
+}
+
+function providerLabel(provider: ProviderId): string {
+  return provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
+function transcriptParityMessages(provider: ProviderId, chatKind: ChatKind): ChatMessage[] {
+  const toolActivity: ToolActivity = {
+    id: `activity-${provider}-${chatKind}`,
+    toolName: 'mcp_TaskWraith_git_status',
+    displayName: 'mcp_TaskWraith_git_status',
+    category: 'unknown',
+    status: 'success',
+    parameters: {},
+    resultSummary: 'clean',
+    metadata: { provider, ensembleProvider: provider }
+  }
+  return [
+    {
+      id: `user-${provider}-${chatKind}`,
+      role: 'user',
+      content: '**Bold user**\n\n- first item\n\n```ts\nconst localValue = 1\n```',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    },
+    {
+      id: `system-${provider}-${chatKind}`,
+      role: 'system',
+      content: '**System note**\n\n| Key | Value |\n| --- | --- |\n| provider | ok |',
+      timestamp: '2026-01-01T00:00:01.000Z'
+    },
+    {
+      id: `tool-${provider}-${chatKind}`,
+      role: 'tool',
+      content: '',
+      timestamp: '2026-01-01T00:00:02.000Z',
+      runId: `run-${provider}-${chatKind}`,
+      metadata:
+        chatKind === 'ensemble'
+          ? {
+              kind: 'ensembleParticipantTools',
+              ensembleProvider: provider,
+              ensembleParticipantId: `${provider}-participant`,
+              ensembleRole: 'Reviewer',
+              ensembleRoundId: 'round-1'
+            }
+          : undefined,
+      toolActivities: [toolActivity]
+    }
+  ]
 }
 
 /** Pull a spacer div's pixel height out of the static markup. */
@@ -211,6 +269,39 @@ describe('TranscriptPanel virtualisation wiring (TV1)', () => {
 
     expect(html).toContain('Open side chat from run result')
     expect(html).toContain('Side chat')
+  })
+
+  it.each(
+    RENDERER_PROVIDERS.flatMap((provider) =>
+      (['single', 'ensemble'] as const).map((chatKind) => [provider, chatKind] as const)
+    )
+  )('renders markdown and tool trace parity for %s %s transcript rows', (provider, chatKind) => {
+    const html = renderToStaticMarkup(
+      <TranscriptPanel
+        {...makeProps({
+          virtualize: false,
+          compactDensity: true,
+          currentProviderLabel: providerLabel(provider),
+          currentProvider: provider,
+          currentChat: {
+            appChatId: `chat-${provider}-${chatKind}`,
+            provider,
+            chatKind
+          },
+          messages: transcriptParityMessages(provider, chatKind)
+        })}
+      />
+    )
+
+    expect(html).toContain('<strong>Bold user</strong>')
+    expect(html).toContain('<li>first item</li>')
+    expect(html).toContain('message-code-shell')
+    expect(html).toContain('message-code-language">ts')
+    expect(html).toContain('<strong>System note</strong>')
+    expect(html).toContain('<table>')
+    expect(html).toContain('Git status')
+    expect(html).toContain(`provider-${provider}`)
+    expect(html).not.toContain('mcp_TaskWraith_git_status')
   })
 
   it('renders Ollama brand providers with model badges in message headers', () => {
