@@ -4,6 +4,7 @@ import {
   AuditRunRegistry,
   buildAuditRolePayload,
   buildProviderSignals,
+  createAuditRoleDispatcher,
   createAuditRuntime,
   isAuditMcpToolName,
   type ProviderSignalInput
@@ -15,7 +16,13 @@ import type { AuditFinding } from '../store/types'
 describe('buildProviderSignals', () => {
   it('maps live snapshots to resolver signals + defaults isLocal for ollama', () => {
     const inputs: ProviderSignalInput[] = [
-      { provider: 'claude', configured: true, authenticated: true, healthy: true, usageBand: 'low' },
+      {
+        provider: 'claude',
+        configured: true,
+        authenticated: true,
+        healthy: true,
+        usageBand: 'low'
+      },
       { provider: 'ollama', configured: true, authenticated: true, healthy: true }
     ]
     const signals = buildProviderSignals(inputs)
@@ -189,5 +196,99 @@ describe('createAuditRuntime', () => {
     )
     expect(res.isError).toBe(false)
     expect(runtime.collector.take('run-1').findings).toHaveLength(1)
+  })
+})
+
+describe('createAuditRoleDispatcher', () => {
+  const ids = { uuid: () => 'fixed', now: () => 't' }
+  const reviewerReq: AuditRoleRunRequest = {
+    auditRunId: 'a1',
+    role: 'reviewer',
+    provider: 'claude',
+    dimension: 'code health',
+    workspacePath: '/repo',
+    prompt: 'review'
+  }
+
+  it('registers the context before spawn, drains the run artifacts, and unregisters after', async () => {
+    const runtime = createAuditRuntime(ids)
+    let registeredDuringRun = false
+    const dispatch = createAuditRoleDispatcher({
+      runtime,
+      uuid: () => 'run-1',
+      spawnAndAwait: async (payload) => {
+        // The context must be live while the run executes so its MCP tool calls route.
+        registeredDuringRun = runtime.registry.get('run-1') !== null
+        await runtime.toolExecutors.executeAuditMcpTool(
+          'audit_record_finding',
+          { claim: 'leak', severity: 'high', evidenceRefs: [{ path: 'x.ts', line: 1 }] },
+          runtime.registry.get(payload.appRunId!)!
+        )
+        return { runId: 'run-1', ok: true, tokens: 1200, costUsd: 0.02, durationMs: 999 }
+      }
+    })
+    const result = await dispatch(reviewerReq)
+    expect(registeredDuringRun).toBe(true)
+    expect(result.ok).toBe(true)
+    expect(result.runId).toBe('run-1')
+    expect(result.tokens).toBe(1200)
+    expect(result.costUsd).toBe(0.02)
+    expect(result.durationMs).toBe(999)
+    expect(result.findings?.[0].claim).toBe('leak')
+    // Unregistered + bucket drained after completion.
+    expect(runtime.registry.get('run-1')).toBeNull()
+    expect(runtime.collector.take('run-1').findings).toHaveLength(0)
+  })
+
+  it('maps a failed outcome to ok:false and unregisters', async () => {
+    const runtime = createAuditRuntime(ids)
+    const dispatch = createAuditRoleDispatcher({
+      runtime,
+      uuid: () => 'run-2',
+      spawnAndAwait: async () => ({ runId: 'run-2', ok: false, error: 'provider rate-limited' })
+    })
+    const result = await dispatch(reviewerReq)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('provider rate-limited')
+    expect(runtime.registry.get('run-2')).toBeNull()
+  })
+
+  it('converts a thrown spawn into a failed result and discards the bucket', async () => {
+    const runtime = createAuditRuntime(ids)
+    const dispatch = createAuditRoleDispatcher({
+      runtime,
+      uuid: () => 'run-3',
+      spawnAndAwait: async (payload) => {
+        await runtime.toolExecutors.executeAuditMcpTool(
+          'audit_record_finding',
+          { claim: 'half', severity: 'low', evidenceRefs: [{ path: 'y.ts', line: 2 }] },
+          runtime.registry.get(payload.appRunId!)!
+        )
+        throw new Error('spawn died')
+      }
+    })
+    const result = await dispatch(reviewerReq)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('spawn died')
+    expect(runtime.registry.get('run-3')).toBeNull()
+    expect(runtime.collector.take('run-3').findings).toHaveLength(0) // discarded, not leaked
+  })
+
+  it('passes the synthesis final text through as the report', async () => {
+    const runtime = createAuditRuntime(ids)
+    const synthReq: AuditRoleRunRequest = {
+      auditRunId: 'a1',
+      role: 'synthesis',
+      provider: 'claude',
+      workspacePath: '/repo',
+      prompt: 'synthesize'
+    }
+    const dispatch = createAuditRoleDispatcher({
+      runtime,
+      uuid: () => 'run-4',
+      spawnAndAwait: async () => ({ runId: 'run-4', ok: true, finalText: '# Audit report\n...' })
+    })
+    const result = await dispatch(synthReq)
+    expect(result.report).toBe('# Audit report\n...')
   })
 })

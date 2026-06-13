@@ -22,7 +22,7 @@ import {
   type AuditToolDependencies,
   type AuditToolExecutors
 } from '../mcp/AuditToolExecutors'
-import type { AuditRoleRunRequest } from './AuditOrchestrator'
+import type { AuditRoleRunRequest, AuditRoleRunResult } from './AuditOrchestrator'
 import type { ProviderSignal, ProviderUsageBandValue } from './ProviderCapabilityResolver'
 import type { AgentRunPayload } from '../run/AgentRunTypes'
 import type {
@@ -204,4 +204,92 @@ export function createAuditRuntime(ids: { uuid: () => string; now: () => string 
   const registry = new AuditRunRegistry()
   const toolExecutors = createAuditToolExecutors(collector.toolDependencies(ids))
   return { registry, collector, toolExecutors }
+}
+
+// ── role dispatcher (the dispatchRole glue) ──────────────────────────────────
+
+/** What the app primitive returns once a spawned role-run has COMPLETED. The
+ * only app-specific part of dispatchRole is producing this — spawn the run from
+ * the payload, wait for it to finish, and report its run id + token/cost/time +
+ * (for synthesis) the final assistant text. Everything else in the dispatcher
+ * is pure glue, so it is unit-tested with a fake. */
+export interface AuditRoleRunOutcome {
+  runId: string
+  ok: boolean
+  error?: string
+  tokens?: number
+  costUsd?: number
+  durationMs?: number
+  /** The final assistant text — becomes the report for the synthesis role. */
+  finalText?: string
+}
+
+export interface AuditRoleDispatcherDeps {
+  runtime: AuditRuntime
+  /** Spawn the role-run from its payload and resolve when it COMPLETES. This is
+   * the sole RunCoordinator/runManager touch-point; index.ts implements it. The
+   * run MUST execute under `payload.appRunId` so its audit MCP tool calls route
+   * back to the context registered under that id. */
+  spawnAndAwait: (payload: AgentRunPayload) => Promise<AuditRoleRunOutcome>
+  /** Pre-allocates each role-run's app run id (registered BEFORE spawn so a tool
+   * call can never arrive before its context exists). */
+  uuid: () => string
+  buildPayload?: (
+    req: AuditRoleRunRequest,
+    appRunId: string,
+    options?: BuildAuditRolePayloadOptions
+  ) => AgentRunPayload
+  payloadOptions?: BuildAuditRolePayloadOptions
+}
+
+/** Build the orchestrator's `dispatchRole` dependency. The sequence — register
+ * the audit tool context, build the read-only payload, spawn+await, drain
+ * exactly this run's buffered artifacts, then ALWAYS unregister — is the part
+ * that must be correct regardless of provider, so it lives here (pure, tested)
+ * rather than buried in index.ts. The collector buckets by the pre-allocated
+ * appRunId, so concurrent reviewers never cross-contaminate. */
+export function createAuditRoleDispatcher(
+  deps: AuditRoleDispatcherDeps
+): (req: AuditRoleRunRequest) => Promise<AuditRoleRunResult> {
+  const build = deps.buildPayload ?? buildAuditRolePayload
+  return async (req: AuditRoleRunRequest): Promise<AuditRoleRunResult> => {
+    const appRunId = deps.uuid()
+    const context: AuditToolContext = {
+      auditRunId: req.auditRunId,
+      runId: appRunId,
+      role: req.role,
+      provider: req.provider,
+      ...(req.dimension ? { dimension: req.dimension } : {})
+    }
+    deps.runtime.registry.register(appRunId, context)
+    const payload = build(req, appRunId, deps.payloadOptions)
+    try {
+      const outcome = await deps.spawnAndAwait(payload)
+      const bucket = deps.runtime.collector.take(appRunId)
+      const base = {
+        runId: outcome.runId || appRunId,
+        ...(outcome.tokens !== undefined ? { tokens: outcome.tokens } : {}),
+        ...(outcome.costUsd !== undefined ? { costUsd: outcome.costUsd } : {}),
+        ...(outcome.durationMs !== undefined ? { durationMs: outcome.durationMs } : {})
+      }
+      if (!outcome.ok) {
+        return { ok: false, error: outcome.error, ...base }
+      }
+      return {
+        ok: true,
+        ...base,
+        ...(bucket.profile ? { profile: bucket.profile } : {}),
+        ...(bucket.findings.length ? { findings: bucket.findings } : {}),
+        ...(bucket.verdicts.length ? { verdicts: bucket.verdicts } : {}),
+        ...(outcome.finalText ? { report: outcome.finalText } : {})
+      }
+    } catch (err) {
+      // The run never produced usable artifacts — drop its buffer so a later
+      // run reusing the (recycled) id can't read stale findings.
+      deps.runtime.collector.discard(appRunId)
+      return { ok: false, runId: appRunId, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      deps.runtime.registry.unregister(appRunId)
+    }
+  }
 }
