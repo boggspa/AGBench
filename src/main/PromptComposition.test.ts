@@ -306,9 +306,15 @@ describe('composeRunPrompt sub-thread returns', () => {
       })
 
       expect(result.contextualPrompt).toContain('Read before you edit')
-      expect(result.contextualPrompt).toContain('never edit a file you have not read this run')
+      expect(result.contextualPrompt).toContain('Never modify a file you have not read this run')
+      // Creating a new file must NOT require a prior read (write_file create path).
+      expect(result.contextualPrompt).toContain(
+        'Creating a genuinely new file with write_file needs no prior read'
+      )
       expect(result.contextualPrompt).toContain('After making code changes, verify them')
       expect(result.contextualPrompt).toContain('test_result_summary')
+      // Verify step degrades gracefully when the repo has no configured task.
+      expect(result.contextualPrompt).toContain('If no such task exists')
       expect(result.contextualPrompt).toContain('not a fabricated success')
     }
   })

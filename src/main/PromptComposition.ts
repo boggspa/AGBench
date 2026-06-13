@@ -1,5 +1,8 @@
 import { resolveOllamaContextBudget } from './ollama/OllamaContextBudget'
-import { formatOllamaSessionMemoryForPrompt, type OllamaSessionMemory } from './ollama/OllamaRunMemory'
+import {
+  formatOllamaSessionMemoryForPrompt,
+  type OllamaSessionMemory
+} from './ollama/OllamaRunMemory'
 import { classifyOllamaPromptIntent } from './ollama/OllamaPromptIntent'
 import { ollamaTierAwareWorkflowHint } from './ollama/OllamaModelProfiles'
 import { suggestOllamaTierBump } from './ollama/OllamaTierSuggestion'
@@ -70,9 +73,9 @@ const TASKWRAITH_MCP_TOOL_GROUPS =
   'workspace/file tools: read_file, list_directory, workspace_search, workspace_symbols, open_workspace_file; ' +
   'edit tools: write_file, replace, apply_patch; ' +
   'git tools: git_status, git_diff, git_stage, git_commit; ' +
-	  'task/test tools: run_task, test_result_summary; ' +
-	  'user coordination tools: ask_user_question, todo_write; ' +
-	  'sub-thread tools: delegate_to_subthread, list_subthreads, read_subthread_result, cancel_subthread; ' +
+  'task/test tools: run_task, test_result_summary; ' +
+  'user coordination tools: ask_user_question, todo_write; ' +
+  'sub-thread tools: delegate_to_subthread, list_subthreads, read_subthread_result, cancel_subthread; ' +
   'creative app tools: creative_app_status, creative_app_capabilities, creative_project_snapshot, creative_timeline_validate, creative_timeline_ir, creative_timeline_diff; ' +
   'browser tools: browser_open, browser_click, browser_screenshot, browser_console; ' +
   'diagnostic/status tools: approval_status, provider_auth_status, run_timeline, raw_provider_events, create_handoff_card, switch_auth_profile, agent_delegation_role.'
@@ -85,8 +88,8 @@ const TASKWRAITH_MCP_TOOL_GROUPS =
  * Cursor/Cline/Codex/Devin do: read first, verify after, never fake a pass.
  */
 const CLOUD_EDIT_DISCIPLINE_NOTE = [
-  'Read before you edit: open the target file with read_file (or open_workspace_file) to see its current contents before write_file/replace/apply_patch, especially before a partial edit — never edit a file you have not read this run.',
-  "After making code changes, verify them: run the project's checks with run_task (lint/build/tests) and summarize the outcome with test_result_summary before declaring the task done.",
+  'Read before you edit: before you replace or apply_patch an existing file — or write_file over one that already exists — open it with read_file (or open_workspace_file) so you edit against its current contents, especially for a partial edit. Never modify a file you have not read this run. Creating a genuinely new file with write_file needs no prior read.',
+  'After making code changes, verify them when the project has checks: if run_task exposes a relevant lint/build/test task, run it and summarize the outcome with test_result_summary before declaring the task done. If no such task exists, say so plainly rather than inventing a result.',
   'Never claim tests, builds, or lint passed without actually running them — report real tool output, not a fabricated success.'
 ].join('\n')
 
@@ -454,10 +457,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   const guestParticipantPresenceContext = buildGuestParticipantPresenceContextBlock(
     input.guestParticipant
   )
-  const guestParticipantReplyContext = buildGuestParticipantReplyContextBlock(
-    messages,
-    finalPrompt
-  )
+  const guestParticipantReplyContext = buildGuestParticipantReplyContextBlock(messages, finalPrompt)
   const additionalPeerContext = [
     pendingSubThreadResultContext,
     guestParticipantPresenceContext,
@@ -517,22 +517,28 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     : 0
   let contextualPrompt = injectAdditionalPeerContext(
     shouldAppendContextForRun
-      ? appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt, contextBudget)
+      ? appendConversationContext(
+          finalPrompt,
+          messages,
+          contextTurnsApplied,
+          finalPrompt,
+          contextBudget
+        )
       : finalPrompt
   )
   let applicationLog = kimiNeedsContextInjection
     ? `Context turns: ${contextTurnsApplied} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
     : codexNeedsContextInjection
       ? `Context turns: ${contextTurnsApplied} (Codex: no resumable app-server thread; sending compact context + current request)`
-    : provider === 'ollama' && ollamaPromptIntent !== 'workspace'
-      ? 'Context turns: 0 (Ollama: conversational turn; skipping compact workspace context)'
-    : ollamaNeedsContextInjection
-      ? `Context turns: ${contextTurnsApplied} (Ollama: compact local context — search/read narrowly; ${contextBudget.maxBlockChars} char cap)`
-    : provider !== 'gemini'
-      ? `Context turns: 0 (${providerLabel} provider/session history is authoritative when available)`
-      : resumeSessionId
-        ? 'Context turns: 0 (resuming Gemini CLI session context)'
-        : `Context turns: ${contextTurnsApplied} (sending compact context + current request)`
+      : provider === 'ollama' && ollamaPromptIntent !== 'workspace'
+        ? 'Context turns: 0 (Ollama: conversational turn; skipping compact workspace context)'
+        : ollamaNeedsContextInjection
+          ? `Context turns: ${contextTurnsApplied} (Ollama: compact local context — search/read narrowly; ${contextBudget.maxBlockChars} char cap)`
+          : provider !== 'gemini'
+            ? `Context turns: 0 (${providerLabel} provider/session history is authoritative when available)`
+            : resumeSessionId
+              ? 'Context turns: 0 (resuming Gemini CLI session context)'
+              : `Context turns: ${contextTurnsApplied} (sending compact context + current request)`
 
   let codexHandoffApplied: ComposeRunPromptResult['codexHandoffApplied'] | undefined
   let uiNoticeMessage: string | undefined
@@ -547,7 +553,13 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     if (codexModelChangedAfterWork && !codexHandoffsApplied.includes(handoffKey)) {
       contextTurnsApplied = clampContextTurns(chatContextTurns, contextBudget)
       contextualPrompt = injectAdditionalPeerContext(
-        appendConversationContext(finalPrompt, messages, contextTurnsApplied, finalPrompt, contextBudget)
+        appendConversationContext(
+          finalPrompt,
+          messages,
+          contextTurnsApplied,
+          finalPrompt,
+          contextBudget
+        )
       )
       applicationLog = `Context turns: ${contextTurnsApplied} (Codex model changed from ${lastCompletedCodexModel} to ${nextModel}; applying chat context once)`
       codexHandoffApplied = {
@@ -712,7 +724,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
       'Use the TaskWraith MCP tools for file edits and shell commands. Native provider write/shell paths are constrained here so TaskWraith can apply permission policy, workspace/path checks, and transcript/audit logging.',
       CLOUD_EDIT_DISCIPLINE_NOTE,
       ...(nativeSubAgentInstruction ? [nativeSubAgentInstruction] : []),
-      "For CROSS-PROVIDER delegation, call delegate_to_subthread through the TaskWraith MCP server — do not use a provider-native sub-agent path because it cannot reach other TaskWraith providers.",
+      'For CROSS-PROVIDER delegation, call delegate_to_subthread through the TaskWraith MCP server — do not use a provider-native sub-agent path because it cannot reach other TaskWraith providers.',
       "Spawn example: delegate_to_subthread({ provider: 'codex', prompt: 'Run the focused test suite and summarize failures.', returnResult: true }).",
       'If the TaskWraith MCP tools are unavailable, stop and report the exact missing tool names instead of planning edits without applying them.'
     ].join('\n')
