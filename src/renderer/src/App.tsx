@@ -2,6 +2,7 @@ import { startTransition, useState, useEffect, useLayoutEffect, useMemo, useRef,
 import type { CSSProperties, ReactNode } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
+import { resolveAssistantDeltaTarget } from './lib/assistantDeltaTarget'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
 import {
@@ -8987,27 +8988,22 @@ function App(): React.JSX.Element {
               return updated
             }
             if (isVisibleRunChat()) setIsThinking(false)
-            // Phase K-followup — H2 garbling fix. Codex interleaves
-            // reasoning + tool-call events between content deltas. The
-            // naive `last = messages[length-1]` would see the tool
-            // message that just got appended and route the next content
-            // delta to the `else` branch, creating a NEW assistant
-            // bubble. Result: one logical assistant turn split across
-            // multiple bubbles with content fragments visually lost.
-            // Scan BACKWARD for the last assistant message, allowing
-            // tool messages to "pass through" without breaking the
-            // merge. Stop on user/system/error (a real conversation
-            // boundary that should end the merge).
-            let lastAssistantIdx = -1
-            for (let i = updated.messages.length - 1; i >= 0; i--) {
-              const candidate = updated.messages[i]
-              if (candidate.role === 'assistant') {
-                lastAssistantIdx = i
-                break
-              }
-              if (candidate.role === 'tool') continue
-              break
-            }
+            // Interleaving-preserving routing. A content delta continues
+            // the live bubble ONLY while the trailing message is still an
+            // assistant; once a tool burst is the trailing message the text
+            // segment is sealed and the next delta opens a NEW bubble AFTER
+            // the burst. This mirrors the iOS stream (af91f0be — "seal a
+            // text segment at every tool boundary") and the main bridge
+            // transcript (`appendBridgeRunText`). The previous code scanned
+            // backward PAST tool messages and merged every later delta into
+            // the first bubble of the turn, which pulled prose up out of its
+            // position and left the tail a tool message — so every tool
+            // burst coalesced into one ActivityStack rendered above the text.
+            const deltaTarget = resolveAssistantDeltaTarget(updated.messages, {
+              incoming: event.content,
+              cumulative: event.cumulative === true
+            })
+            const lastAssistantIdx = deltaTarget.action === 'merge' ? deltaTarget.index : -1
             const last = lastAssistantIdx >= 0 ? updated.messages[lastAssistantIdx] : null
             // Phase K2 (b) — merge-with-separator. When Codex emits a new
             // `agentMessage` item within the same turn (different `itemId`
@@ -9120,15 +9116,28 @@ function App(): React.JSX.Element {
             if (isVisibleRunChat() && updated.chatKind !== 'ensemble') setIsThinking(false)
             const isPlanMode = updated.runs?.[updated.runs.length - 1]?.approvalMode === 'plan'
             const parsedChoice = parsePlanModeChoice(event.content)
-            const last = updated.messages[updated.messages.length - 1]
+            // The complete event carries the FULL turn, so treat it as a
+            // cumulative restatement: it may reach back across a trailing
+            // tool burst to replace its own bubble in place. Without this an
+            // interleaved turn (text → tool burst → complete) would append a
+            // duplicate full-turn bubble below the tools.
+            const completeTarget = resolveAssistantDeltaTarget(updated.messages, {
+              incoming: event.content,
+              cumulative: true
+            })
+            const completeAssistantIdx =
+              completeTarget.action === 'merge' ? completeTarget.index : -1
+            const last =
+              completeAssistantIdx >= 0 ? updated.messages[completeAssistantIdx] : null
             const assistantMessageId =
               last && last.role === 'assistant' ? last.id : createMessageId()
 
             if (updated.chatKind !== 'ensemble') {
               if (last && last.role === 'assistant') {
                 updated.messages = [
-                  ...updated.messages.slice(0, -1),
-                  { ...last, content: event.content }
+                  ...updated.messages.slice(0, completeAssistantIdx),
+                  { ...last, content: event.content },
+                  ...updated.messages.slice(completeAssistantIdx + 1)
                 ]
               } else {
                 updated.messages = [
