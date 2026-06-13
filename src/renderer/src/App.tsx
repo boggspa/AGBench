@@ -61,7 +61,8 @@ import {
   PermissionPresetId,
   SideChatLifecycleState,
   PinnedMessageGroup,
-  PinnedMessageSummary
+  PinnedMessageSummary,
+  AuditRunRecord
 } from '../../main/store/types'
 import type { NativeCapabilitySnapshot } from '../../main/NativeCapabilities'
 import {
@@ -432,6 +433,7 @@ import { WelcomeWorkspacePicker } from './components/WelcomeWorkspacePicker'
 import { WelcomeUsageDashboard } from './components/WelcomeUsageDashboard'
 import { ComposerWorkspaceSwitcher } from './components/ComposerWorkspaceSwitcher'
 import { TranscriptPanel } from './components/TranscriptPanel'
+import { AuditRunCard } from './components/AuditRunCard'
 // Re-exported so the existing `TranscriptPanel.test.tsx` (which imports it
 // from './App') keeps resolving after the component moved to its own module.
 export { TranscriptPanel } from './components/TranscriptPanel'
@@ -1064,6 +1066,22 @@ function deriveRunCompleteNotice(
   }
 }
 
+function auditRunTimeKey(run: AuditRunRecord): string {
+  return run.updatedAt || run.endedAt || run.startedAt || run.createdAt || ''
+}
+
+function sortAuditRuns(runs: AuditRunRecord[]): AuditRunRecord[] {
+  return runs.slice().sort((a, b) => auditRunTimeKey(b).localeCompare(auditRunTimeKey(a)))
+}
+
+function upsertAuditRunList(runs: AuditRunRecord[], run: AuditRunRecord): AuditRunRecord[] {
+  return sortAuditRuns([run, ...runs.filter((item) => item.id !== run.id)]).slice(0, 30)
+}
+
+function auditRunIsActive(run: AuditRunRecord): boolean {
+  return run.status === 'planning' || run.status === 'awaitingConfirm' || run.status === 'running'
+}
+
 function App(): React.JSX.Element {
   // Shared copy-to-clipboard feedback for every in-app copy affordance
   // (message chips, latest-response button). One instance keeps the
@@ -1270,6 +1288,7 @@ function App(): React.JSX.Element {
   const [diffView, setDiffView] = useState<'this_run' | 'workspace'>('workspace')
   const [diffRefreshStatus, setDiffRefreshStatus] = useState<string>('')
   const [isPreparingDiffReview, setIsPreparingDiffReview] = useState(false)
+  const [auditRuns, setAuditRuns] = useState<AuditRunRecord[]>([])
 
   const currentRunWarningsRef = useRef<RunWarning[]>([])
   const preSnapshotRef = useRef<any>(null)
@@ -2128,6 +2147,13 @@ function App(): React.JSX.Element {
   }, [currentChat?.ensemble])
   const hasWorkspaceContext = Boolean(currentWorkspace && currentChat && !isCurrentGlobalChat)
   const currentWorkspacePopoutPath = currentWorkspace?.path || currentChat?.workspacePath || ''
+  const auditRunWorkspaceId = currentWorkspace?.id || currentChat?.workspaceId
+  const visibleAuditRun = useMemo(() => {
+    if (!currentChat?.appChatId) return null
+    const forChat = auditRuns.filter((run) => run.chatId === currentChat.appChatId)
+    if (forChat.length === 0) return null
+    return forChat.find(auditRunIsActive) || sortAuditRuns(forChat)[0] || null
+  }, [auditRuns, currentChat?.appChatId])
   const canOpenWorkspacePopout = Boolean(currentWorkspacePopoutPath)
   const isCurrentChatProviderLocked = Boolean(
     currentChat &&
@@ -6519,6 +6545,35 @@ function App(): React.JSX.Element {
   useEffect(() => {
     currentWorkspaceIdRef.current = currentWorkspace?.id ?? null
   }, [currentWorkspace?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api
+      .getAuditRuns(auditRunWorkspaceId)
+      .then((runs) => {
+        if (!cancelled) setAuditRuns(sortAuditRuns(runs).slice(0, 30))
+      })
+      .catch((err) => {
+        console.error('[audit] getAuditRuns failed', err)
+      })
+
+    const unsubscribe =
+      typeof window.api.onAuditRunChanged === 'function'
+        ? window.api.onAuditRunChanged((run) => {
+            setAuditRuns((prev) => upsertAuditRunList(prev, run))
+          })
+        : undefined
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [auditRunWorkspaceId])
+
+  const handleCancelAuditRun = useCallback((auditRunId: string) => {
+    void window.api.cancelAuditRun(auditRunId).catch((err) => {
+      console.error('[audit] cancelAuditRun failed', err)
+    })
+  }, [])
 
   // Autonomous background refresh for the sidebar "MODEL USAGE" meters.
   //
@@ -15772,6 +15827,7 @@ function App(): React.JSX.Element {
             ...(chat.workspaceId ? { workspaceId: chat.workspaceId } : {})
           })
           .then((run) => {
+            setAuditRuns((prev) => upsertAuditRunList(prev, run))
             console.log(`[slash:/audit] audit ${run.id} finished: ${run.status}`)
           })
           .catch((err) => {
@@ -16932,6 +16988,10 @@ function App(): React.JSX.Element {
               than 0.39.1. Headless workspace-trust behavior had recent security hardening. Please
               upgrade Gemini CLI before using this app on real repositories.
             </div>
+          )}
+
+          {visibleAuditRun && (
+            <AuditRunCard run={visibleAuditRun} onCancel={handleCancelAuditRun} />
           )}
 
           {/*

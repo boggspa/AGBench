@@ -802,3 +802,134 @@
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
   background: color-mix(in srgb, var(--content-bg) var(--main-pane-opacity-60), transparent);
 }
+
+.audit-run-card {
+  flex: 0 0 auto;
+  width: min(var(--composer-content-max-width), calc(100% - 32px));
+  margin: 14px auto 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--theme-border-accent) 48%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+  z-index: 4;
+}
+
+.audit-run-card-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.audit-run-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.audit-run-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.audit-run-card h2 {
+  margin: 2px 0 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.audit-run-status,
+.audit-run-meta span {
+  border: 1px solid color-mix(in srgb, var(--theme-border-accent) 36%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--content-bg) 72%, transparent);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.audit-run-status {
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.audit-run-status.status-running,
+.audit-run-status.status-planning,
+.audit-run-status.status-awaitingConfirm {
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 22%, var(--content-bg));
+}
+
+.audit-run-status.status-failed {
+  color: var(--danger);
+}
+
+.audit-run-progress {
+  height: 4px;
+  margin: 10px 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-border-accent) 18%, transparent);
+  overflow: hidden;
+}
+
+.audit-run-progress span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 45%, white));
+}
+
+.audit-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.audit-run-meta span {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.audit-run-error,
+.audit-run-coverage {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.audit-run-error {
+  color: var(--danger);
+}
+
+.audit-run-cancel {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--danger) 44%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, var(--content-bg));
+  color: var(--danger);
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.audit-run-cancel:hover {
+  background: color-mix(in srgb, var(--danger) 20%, var(--content-bg));
+}
+
+@media (max-width: 700px) {
+  .audit-run-card {
+    flex-direction: column;
+  }
+
+  .audit-run-cancel {
+    width: 100%;
+  }
+}
