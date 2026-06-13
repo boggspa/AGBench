@@ -152,8 +152,13 @@ import {
   summarizeCodexFileChanges
 } from './codex/CodexEventFormatting'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
-import { bridgeResultDiffStats, bridgeToolDiffStats } from './bridge/BridgeToolDiffStats'
+import { bridgeResultDiffStats } from './bridge/BridgeToolDiffStats'
 import { foldBridgeRunText } from './bridge/BridgeTextFold'
+import {
+  bridgeAssistantMessageMetadata,
+  bridgeModelMetadataFromEvent,
+  buildBridgeToolActivity
+} from './bridge/BridgeTranscriptActivity'
 import { backfillRunDiffCounts, toolEvidenceFromActivities } from '../shared/runDiffBackfill'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
 import {
@@ -1255,6 +1260,7 @@ type BridgeRunTranscriptState = {
   }>
   streamBuffer?: string
   actualModel?: string
+  modelLabel?: string
   providerSessionId?: string | null
   stats?: Record<string, unknown>
   status: 'running' | 'success' | 'failed'
@@ -3052,6 +3058,14 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
   let insertAfter = messages.findIndex((message) => message.id === state.promptMessageId)
   for (const part of state.parts) {
     if (part.kind === 'text' && part.content.trim().length === 0) continue
+    const assistantMetadata =
+      part.kind === 'text'
+        ? bridgeAssistantMessageMetadata({
+            provider: state.provider,
+            actualModel: state.actualModel,
+            modelLabel: state.modelLabel
+          })
+        : undefined
     const partMessage: ChatMessage =
       part.kind === 'text'
         ? {
@@ -3059,7 +3073,8 @@ function flushBridgeRunTranscript(runId: string, final = false): void {
             role: 'assistant',
             content: part.content,
             timestamp,
-            runId: state.runId
+            runId: state.runId,
+            ...(assistantMetadata ? { metadata: assistantMetadata } : {})
           }
         : {
             id: part.id,
@@ -3231,8 +3246,10 @@ function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string):
     const parsed = JSON.parse(trimmed) as Record<string, unknown>
     const providerSessionId = extractProviderSessionId(parsed)
     if (providerSessionId) state.providerSessionId = providerSessionId
-    if (parsed.type === 'init' && typeof parsed.model === 'string' && parsed.model.trim()) {
-      state.actualModel = parsed.model
+    const modelMetadata = bridgeModelMetadataFromEvent(parsed)
+    if (modelMetadata.model) state.actualModel = modelMetadata.model
+    if (modelMetadata.modelLabel) state.modelLabel = modelMetadata.modelLabel
+    if (parsed.type === 'init' && (modelMetadata.model || modelMetadata.modelLabel)) {
       if (!state.flushedOnce) flushBridgeRunTranscript(state.runId)
       return
     }
@@ -3277,29 +3294,6 @@ function appendBridgeRunJsonLine(state: BridgeRunTranscriptState, line: string):
   }
 }
 
-const BRIDGE_TOOL_CATEGORY_RULES: Array<{
-  pattern: RegExp
-  category: ToolActivity['category']
-}> = [
-  { pattern: /write|replace|apply_patch|edit|patch|create_file/i, category: 'write' },
-  { pattern: /read|list|cat|view|open/i, category: 'read' },
-  { pattern: /search|grep|glob|find/i, category: 'search' },
-  { pattern: /shell|bash|terminal|command|exec/i, category: 'shell' },
-  { pattern: /task|agent|delegate/i, category: 'task' }
-]
-
-function bridgeToolCategory(name: string): ToolActivity['category'] {
-  for (const rule of BRIDGE_TOOL_CATEGORY_RULES) {
-    if (rule.pattern.test(name)) return rule.category
-  }
-  return 'unknown'
-}
-
-function bridgeToolDisplayName(name: string): string {
-  const cleaned = name.replace(/^mcp__\w+__/i, '').replace(/[_-]+/g, ' ').trim()
-  return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : name
-}
-
 /** Append a text fragment to the current text part (or open a new one after
  * a tool burst) — this is what interleaves text and tool messages in the
  * persisted transcript the way the desktop renderer does. `fragment` is the
@@ -3335,50 +3329,11 @@ function appendBridgeRunText(state: BridgeRunTranscriptState, text: string): voi
 }
 
 function ingestBridgeRunToolUse(state: BridgeRunTranscriptState, payload: any): void {
-  const toolName = String(
-    payload.tool_name || payload.toolName || payload.name || payload.function?.name || 'tool'
-  )
-  // Canonical compat shape (shared by every provider's emitter): tool_id +
-  // parameters. The aliases cover raw provider events reaching this path
-  // un-normalized (gemini CLI JSONL).
-  const id = String(
-    payload.tool_id || payload.id || payload.call_id || payload.tool_call_id ||
-      payload.toolCallId || `bridge-tool-${state.activities.length + 1}`
-  )
-  const input = (payload.parameters ??
-    payload.input ??
-    payload.arguments ??
-    payload.params ??
-    {}) as Record<string, unknown>
-  const filePath =
-    (typeof input.path === 'string' && input.path) ||
-    (typeof input.file_path === 'string' && input.file_path) ||
-    (typeof input.filePath === 'string' && input.filePath) ||
-    undefined
-  // MCP wrapper tools (grok's use_tool, generic call_tool) carry the REAL
-  // tool in their input — "Git status" beats "Use tool {raw json}".
-  const innerName =
-    /^(use_tool|call_tool|mcp)$/i.test(toolName) && typeof input.tool_name === 'string'
-      ? input.tool_name
-      : undefined
-  const effectiveName = innerName || toolName
-  const diffSummary = bridgeToolDiffStats(effectiveName, input)
-  // Patch tools carry no path field — when the parsed patch touches exactly
-  // one file, that file names the card ("Edited foo.swift", desktop parity).
-  const patchPaths = new Set(
-    (diffSummary?.files ?? []).map((file) => file.path).filter(Boolean) as string[]
-  )
-  const effectiveFilePath = filePath || (patchPaths.size === 1 ? [...patchPaths][0] : undefined)
-  const activity: ToolActivity = {
-    id,
-    toolName,
-    displayName: bridgeToolDisplayName(effectiveName),
-    category: bridgeToolCategory(effectiveName),
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    ...(effectiveFilePath ? { filePath: effectiveFilePath } : {}),
-    ...(diffSummary ? { diffSummary } : {})
-  }
+  const activity = buildBridgeToolActivity({
+    payload: payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {},
+    provider: state.provider,
+    activityIndex: state.activities.length
+  })
   state.activities.push(activity)
   const last = state.parts[state.parts.length - 1]
   if (last && last.kind === 'tools') {
