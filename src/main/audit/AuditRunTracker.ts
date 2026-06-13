@@ -10,10 +10,9 @@
  * promise, and index.ts feeds the same provider-output / exit events here (next
  * to the ensemble hooks) so the promise resolves with the run's outcome.
  *
- * v1 captures completion + token/cost/duration only. The synthesis report is
- * deliberately NOT scraped from streaming prose here — synthesis falls back to
- * the orchestrator's structured report until a typed audit_record_report tool
- * lands (so the report stays a typed artifact, like findings/verdicts).
+ * The tracker also accumulates assistant content while the run is active. That
+ * text is only consumed by the synthesis role as the final report; structured
+ * findings/verdicts/profile still come through audit MCP tools.
  */
 import type { AuditRoleRunOutcome } from './AuditOrchestratorWiring'
 
@@ -21,6 +20,7 @@ interface Inflight {
   resolve: (outcome: AuditRoleRunOutcome) => void
   settled: boolean
   startedAtMs: number
+  finalText: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,6 +50,25 @@ export function tokensFromStats(stats: Record<string, unknown> | undefined): num
   return (input ?? 0) + (output ?? 0)
 }
 
+function eventText(event: Record<string, unknown>): string {
+  const value =
+    typeof event.text === 'string'
+      ? event.text
+      : typeof event.content === 'string'
+        ? event.content
+        : typeof event.output === 'string'
+          ? event.output
+          : ''
+  return value
+}
+
+function mergeContent(existing: string, next: string, cumulative: boolean): string {
+  if (!next) return existing
+  if (cumulative) return next
+  if (existing && next.startsWith(existing)) return next
+  return existing + next
+}
+
 export interface AuditRunTrackerDeps {
   nowMs: () => number
 }
@@ -68,7 +87,12 @@ export class AuditRunTracker {
   /** Start tracking; the returned promise resolves on the run's result/exit. */
   track(runId: string): Promise<AuditRoleRunOutcome> {
     return new Promise<AuditRoleRunOutcome>((resolve) => {
-      this.inflight.set(runId, { resolve, settled: false, startedAtMs: this.deps.nowMs() })
+      this.inflight.set(runId, {
+        resolve,
+        settled: false,
+        startedAtMs: this.deps.nowMs(),
+        finalText: ''
+      })
     })
   }
 
@@ -79,14 +103,20 @@ export class AuditRunTracker {
     const run = this.inflight.get(runId)
     if (!run || run.settled) return
     const event = isRecord(payload) ? payload : {}
+    if (event.type === 'content' || event.type === 'token') {
+      run.finalText = mergeContent(run.finalText, eventText(event), event.cumulative === true)
+      return
+    }
     if (event.type !== 'result') return
     const stats = isRecord(event.stats) ? event.stats : undefined
     // Mirror EnsembleOrchestrator's terminal-failure detection.
     const failed = event.status === 'failed' || event.subtype === 'error'
+    run.finalText = mergeContent(run.finalText, eventText(event), event.cumulative === true)
     this.settle(runId, run, {
       runId,
       ok: !failed,
       ...(failed ? { error: 'audit role-run reported a failed result' } : {}),
+      ...(run.finalText.trim() ? { finalText: run.finalText.trim() } : {}),
       ...this.statsOutcome(stats, run)
     })
   }
@@ -101,6 +131,7 @@ export class AuditRunTracker {
       runId,
       ok: exitCode === 0,
       ...(exitCode === 0 ? {} : { error: `provider exited with code ${exitCode}` }),
+      ...(run.finalText.trim() ? { finalText: run.finalText.trim() } : {}),
       durationMs: this.deps.nowMs() - run.startedAtMs
     })
   }

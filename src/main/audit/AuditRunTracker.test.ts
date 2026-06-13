@@ -43,6 +43,31 @@ describe('AuditRunTracker', () => {
     expect(tracker.isTracked('run-1')).toBe(false)
   })
 
+  it('accumulates assistant content and returns it as finalText on result', async () => {
+    const { tracker } = trackerWithClock()
+    const promise = tracker.track('run-report')
+    tracker.handleProviderOutput('run-report', { type: 'content', text: '# Audit report\n' })
+    tracker.handleProviderOutput('run-report', { type: 'content', text: '\nFinding details.' })
+    tracker.handleProviderOutput('run-report', { type: 'result', stats: { total_tokens: 25 } })
+    const outcome = await promise
+    expect(outcome.ok).toBe(true)
+    expect(outcome.finalText).toBe('# Audit report\n\nFinding details.')
+  })
+
+  it('handles cumulative assistant content without duplicating text', async () => {
+    const { tracker } = trackerWithClock()
+    const promise = tracker.track('run-cumulative')
+    tracker.handleProviderOutput('run-cumulative', { type: 'content', text: 'Alpha' })
+    tracker.handleProviderOutput('run-cumulative', {
+      type: 'content',
+      text: 'Alpha beta',
+      cumulative: true
+    })
+    tracker.handleExit('run-cumulative', 0)
+    const outcome = await promise
+    expect(outcome.finalText).toBe('Alpha beta')
+  })
+
   it('computes durationMs from the clock when stats omit it', async () => {
     const { tracker, advance } = trackerWithClock()
     const promise = tracker.track('run-2')
