@@ -12082,8 +12082,9 @@ function App(): React.JSX.Element {
     }
   }, [goalPopoverOpen, updateGoalPopoverPosition])
 
-  const openGoalPopover = (editing = false): void => {
-    setGoalDraft(currentActiveGoal?.objective || prompt.trim())
+  const openGoalPopover = (editing = false, draftOverride?: string): void => {
+    const fallbackDraft = draftOverride !== undefined ? draftOverride : prompt.trim()
+    setGoalDraft(currentActiveGoal?.objective || fallbackDraft)
     setGoalEditing(editing)
     setGoalPopoverOpen(true)
   }
@@ -12091,12 +12092,12 @@ function App(): React.JSX.Element {
   const handleGoalSlashCommand = (): void => {
     const trimmed = prompt.trim()
     if (trimmed && !/^\/goal\b/i.test(trimmed)) {
-      openGoalPopover(false)
+      openGoalPopover(false, promptWithoutCurrentSlashToken().trim())
       return
     }
     const args = trimmed.replace(/^\/goal\b/i, '').trim()
     if (!args) {
-      openGoalPopover(false)
+      openGoalPopover(false, '')
       return
     }
     const [verbToken, ...restTokens] = args.split(/\s+/)
