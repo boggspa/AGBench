@@ -468,6 +468,7 @@ import {
   type WorkspaceMcpToolName,
   type WorkspaceToolContext
 } from './mcp/WorkspaceToolExecutors'
+import { createAuditRuntime, isAuditMcpToolName } from './audit/AuditOrchestratorWiring'
 import {
   createDesktopToolExecutors,
   isDesktopMcpToolName
@@ -1986,6 +1987,16 @@ const workspaceToolExecutors = createWorkspaceToolExecutors({
     saveAndBroadcastChat,
     getSubThreadResumeSessionId
   }
+})
+
+// Shared per-app audit runtime: one artifact collector + one runId→context
+// registry + the audit MCP tool executors. The orchestrator (Slice 5c-2b)
+// registers a role-run before dispatch so an `audit_*` tool call routes to the
+// right run's collector; the dispatcher below refuses any audit tool whose run
+// isn't registered (i.e. a non-audit run can never reach these tools).
+const auditRuntime = createAuditRuntime({
+  uuid: () => randomUUID(),
+  now: () => new Date().toISOString()
 })
 
 const WORKSPACE_MCP_TOOL_NAME_SET = new Set<string>(WORKSPACE_MCP_TOOL_NAMES)
@@ -12320,7 +12331,33 @@ async function executeGeminiMcpTool(
       return { text, isError }
     }
 
-    if (isWorkspaceMcpToolName(toolName)) {
+    // Audit MCP tools (audit_set_profile / audit_record_finding /
+    // audit_record_verdict) are a separate namespace, exposed ONLY to a live
+    // audit role-run that the orchestrator registered in the audit registry —
+    // they are never part of the global tool catalog. Route them by name and
+    // refuse any audit tool whose run isn't a registered audit run, so a normal
+    // (non-audit) run can never reach them. `toolName` is typed to the global
+    // catalog union; check a widened string so the guard narrows cleanly.
+    const candidateAuditToolName: string = toolName
+    if (isAuditMcpToolName(candidateAuditToolName)) {
+      const auditContext = auditRuntime.registry.get(context.appRunId)
+      if (!auditContext) {
+        toolIsError = true
+        text = mcpJson({
+          ok: false,
+          tool: candidateAuditToolName,
+          error: 'Audit MCP tools are only available inside an active audit run.'
+        })
+      } else {
+        const auditResult = await auditRuntime.toolExecutors.executeAuditMcpTool(
+          candidateAuditToolName,
+          args,
+          auditContext
+        )
+        toolIsError = auditResult.isError
+        text = mcpJson(auditResult.result)
+      }
+    } else if (isWorkspaceMcpToolName(toolName)) {
       if (WORKSPACE_WIDE_WRITE_LOCK_TOOLS.has(toolName)) {
         const lock = acquireMcpWorkspaceWriteLocks({ context, toolName, cwd })
         if (!lock.ok) {
