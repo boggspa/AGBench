@@ -20982,7 +20982,11 @@ function App(): React.JSX.Element {
         geminiAuthStatus={geminiAuthStatus}
         cursorProviderAvailable={cursorProviderAvailable}
         grokProviderAvailable={grokProviderAvailable}
-        ollamaProviderAvailable={agentStatusByProvider.ollama?.available === true}
+        ollamaProviderAvailable={
+          agentStatusByProvider.ollama?.available === true &&
+          (typeof agentStatusByProvider.ollama?.modelCount !== 'number' ||
+            agentStatusByProvider.ollama.modelCount > 0)
+        }
         usageSummary={usageSummary}
         themeAppearance={appearance.themeAppearance || 'system'}
         composerStyle={appearance.composerStyle || 'default'}

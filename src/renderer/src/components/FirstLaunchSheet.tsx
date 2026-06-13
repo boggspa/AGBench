@@ -626,7 +626,7 @@ export function FirstLaunchSheet({
                 className="first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-partial"
                 aria-hidden
               />
-              Available · finish sign-in
+              Needs setup or sign-in
             </li>
             <li>
               <span
@@ -648,9 +648,9 @@ export function FirstLaunchSheet({
             <strong>Grok</strong> log in through their own CLI in a Terminal;{' '}
             <strong>Claude</strong> and <strong>Gemini</strong> use in-app OAuth or an API key;{' '}
             <strong>Kimi</strong> takes an API key. <strong>Ollama</strong> is local-only: install
-            Ollama, pull a model, and no cloud account is needed. TaskWraith can&apos;t see
-            Cursor&apos;s or Grok&apos;s CLI login, so those two dots stay amber even after you sign
-            in — that&apos;s expected.
+            Ollama, pull a model, and no cloud account is needed. Cursor and Grok auth stays inside
+            their CLIs, so TaskWraith marks those cards ready when the provider adapter is available;
+            the CLI may still ask you to finish login in Terminal.
           </p>
           <div className="first-launch-sheet-provider-grid">
             {providerRows.map((row) => (
@@ -1195,6 +1195,10 @@ function ProviderCard({
   ]
     .filter(Boolean)
     .join(' ')
+  const dotVariant =
+    (row.id === 'cursor' || row.id === 'grok') && row.variant === 'partial'
+      ? 'signed-in'
+      : row.variant
   return (
     <div className={classes} data-provider={row.id}>
       <div className="first-launch-sheet-provider-card-header">
@@ -1206,7 +1210,7 @@ function ProviderCard({
       </div>
       <div className="first-launch-sheet-provider-card-status">
         <span
-          className={`first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-${row.variant}`}
+          className={`first-launch-sheet-provider-status-dot first-launch-sheet-provider-status-dot-${dotVariant}`}
           aria-hidden
         />
         <span>{row.statusText}</span>

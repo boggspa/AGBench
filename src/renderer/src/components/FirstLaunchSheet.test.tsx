@@ -42,6 +42,14 @@ function makeGeminiAuthStatus(overrides: Partial<GeminiAuthStatus> = {}): Gemini
   }
 }
 
+function providerCardMarkup(html: string, provider: string): string {
+  const marker = `data-provider="${provider}"`
+  const start = html.indexOf(marker)
+  expect(start).toBeGreaterThanOrEqual(0)
+  const next = html.indexOf('data-provider="', start + marker.length)
+  return html.slice(start, next === -1 ? undefined : next)
+}
+
 describe('FirstLaunchSheet', () => {
   it('returns null when not open so the host can mount it unconditionally', () => {
     const html = renderToStaticMarkup(
@@ -171,6 +179,31 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Grok disabled')
   })
 
+  it('uses ready status dots for available Cursor, Grok, and Ollama cards', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        cursorProviderAvailable={true}
+        grokProviderAvailable={true}
+        ollamaProviderAvailable={true}
+      />
+    )
+
+    for (const provider of ['cursor', 'grok', 'ollama']) {
+      expect(providerCardMarkup(html, provider)).toContain(
+        'first-launch-sheet-provider-status-dot-signed-in'
+      )
+    }
+    expect(html).toContain('Needs setup or sign-in')
+    expect(html).not.toContain('stay amber')
+  })
+
   it('Kimi card carries the de-emphasised + optional classes for muted styling', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
@@ -221,6 +254,9 @@ describe('FirstLaunchSheet', () => {
       />
     )
     expect(html).toContain('Local runtime ready')
+    expect(providerCardMarkup(html, 'ollama')).toContain(
+      'first-launch-sheet-provider-status-dot-signed-in'
+    )
     expect(html).toContain('No cloud account is needed')
     expect(html).not.toContain('aria-label="Sign in to Ollama"')
     expect(html).not.toContain('aria-label="Sign out of Ollama"')
