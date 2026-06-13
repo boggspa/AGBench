@@ -67,7 +67,7 @@ const KIMI = participant({
   id: 'ensemble-kimi',
   provider: 'kimi',
   role: 'Coder',
-  model: 'kimi-k2.6-thinking',
+  model: 'kimi-k2.7-code-thinking',
   order: 4
 })
 
@@ -77,7 +77,7 @@ describe('normalizeAlias', () => {
   it('lowercases and collapses whitespace + hyphens + underscores', () => {
     expect(normalizeAlias('GPT-5.5')).toBe('gpt 5.5')
     expect(normalizeAlias('Sonnet  4.7')).toBe('sonnet 4.7')
-    expect(normalizeAlias('Kimi_K2.6')).toBe('kimi k2.6')
+    expect(normalizeAlias('Kimi_K2.7_Code')).toBe('kimi k2.7 code')
     expect(normalizeAlias('  Flash--Lite  ')).toBe('flash lite')
   })
 })
@@ -115,7 +115,16 @@ describe('generateModelAliases', () => {
     expect(aliases).not.toContain('fable 5.1')
   })
 
-  it('kimi: K2.6 + Kimi K2.6 + suffix forms', () => {
+  it('kimi: K2.7 Code + Kimi K2.7 Code + suffix forms', () => {
+    const aliases = generateModelAliases('kimi', 'kimi-k2.7-code-thinking')
+    expect(aliases).toContain('k2.7')
+    expect(aliases).toContain('kimi k2.7')
+    expect(aliases).toContain('k2.7 code')
+    expect(aliases).toContain('kimi k2.7 code')
+    expect(aliases).toContain('k2.7 code thinking')
+  })
+
+  it('kimi: legacy K2.6 aliases still resolve for old participants', () => {
     const aliases = generateModelAliases('kimi', 'kimi-k2.6-thinking')
     expect(aliases).toContain('k2.6')
     expect(aliases).toContain('kimi k2.6')
@@ -200,7 +209,7 @@ describe('buildParticipantAliasMap', () => {
     expect(map.byAlias.get('gpt 5.5')?.[0]).toBe(CODEX)
     expect(map.byAlias.get('sonnet 4.7')?.[0]).toBe(CLAUDE)
     expect(map.byAlias.get('flash lite')?.[0]).toBe(GEMINI)
-    expect(map.byAlias.get('k2.6')?.[0]).toBe(KIMI)
+    expect(map.byAlias.get('k2.7 code')?.[0]).toBe(KIMI)
   })
 
   it('tracks word counts so longest-prefix wins', () => {
@@ -263,20 +272,20 @@ describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () =>
     expect(result?.text).toBe('Flash Lite')
   })
 
-  it('resolves @Kimi K2.6 to the kimi participant', () => {
-    const result = findFirstMention('@Kimi K2.6 weigh in', QUARTET)
+  it('resolves @Kimi K2.7 Code to the kimi participant', () => {
+    const result = findFirstMention('@Kimi K2.7 Code weigh in', QUARTET)
     expect(result?.kind).toBe('participant')
     if (result?.kind === 'participant') expect(result.participant.id).toBe(KIMI.id)
-    expect(result?.text).toBe('Kimi K2.6')
+    expect(result?.text).toBe('Kimi K2.7 Code')
   })
 
   it('prefers longest-prefix when shorter prefixes also resolve', () => {
-    // "kimi" alone resolves to KIMI, but "kimi k2.6 thinking" is a
-    // 3-word alias that must win when present.
-    const result = findFirstMention('@Kimi K2.6 thinking please', QUARTET)
+    // "kimi" alone resolves to KIMI, but "kimi k2.7 code thinking" is a
+    // 4-word alias that must win when present.
+    const result = findFirstMention('@Kimi K2.7 Code Thinking please', QUARTET)
     expect(result?.kind).toBe('participant')
     if (result?.kind === 'participant') expect(result.participant.id).toBe(KIMI.id)
-    expect(result?.text).toBe('Kimi K2.6 thinking')
+    expect(result?.text).toBe('Kimi K2.7 Code Thinking')
   })
 
   it('falls back to shorter prefix when the longer one does not match', () => {

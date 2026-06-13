@@ -2461,7 +2461,7 @@ export class EnsembleOrchestrator {
       // shared with the renderer-side composer overlay + DM router so
       // tagging behaves identically across the three surfaces. New in
       // 1.0.3: multi-word model-name aliases (`@GPT 5.5`,
-      // `@Sonnet 4.7`, `@Flash Lite`, `@Kimi K2.6`) for the 1.0.4
+      // `@Sonnet 4.7`, `@Flash Lite`, `@Kimi K2.7 Code`) for the 1.0.4
       // same-provider-multiple-models case.
       //
       // Skips self-mentions (agents talking about themselves) — the
@@ -3246,7 +3246,7 @@ export class EnsembleOrchestrator {
             // Reasoning suffix companion to `ensembleModel`. The
             // renderer's `formatAssistantMessageLabel` appends this via
             // `reasoningDisplayLabel` so the header reads "5.5 Extra
-            // High" / "Opus 4.7 · Max" / "K2.6 Thinking" — matching
+            // High" / "Opus 4.7 · Max" / "K2.7 Code Thinking" — matching
             // the composer chip the user picked. Only the field that
             // applies to this participant's provider is set; the others
             // stay undefined.
@@ -4143,7 +4143,7 @@ function resolveYieldTargetParticipant(
  * imports it stays working. The runtime call path (`runRound`'s
  * auto-promotion) now uses `findFirstMention` directly so it can
  * resolve multi-word model aliases (`@GPT 5.5`, `@Sonnet 4.7`,
- * `@Flash Lite`, `@Kimi K2.6`) without losing the trailing words.
+ * `@Flash Lite`, `@Kimi K2.7 Code`) without losing the trailing words.
  *
  * Pattern mirrors the renderer-side composer overlay tokeniser via
  * the shared `EnsembleMentionAlias` module so coverage stays aligned:

@@ -136,7 +136,12 @@ const CLAUDE_DEFAULT_MODELS = [
   }
 ] satisfies CodexModelOption[]
 const KIMI_DEFAULT_MODELS = [
-  { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI model', isDefault: true }
+  {
+    id: 'kimi-k2.7-code',
+    label: 'Kimi K2.7 Code',
+    description: 'Kimi Code CLI model',
+    isDefault: true
+  }
 ] satisfies CodexModelOption[]
 const KIMI_DEFAULT_MODEL = KIMI_DEFAULT_MODELS[0].id
 // Single source of truth for Gemini's composer model list. Mirrors the

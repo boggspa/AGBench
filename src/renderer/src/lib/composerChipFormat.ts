@@ -4,7 +4,8 @@
  *
  * Real Codex shows `5.5 Extra High` (model digit + capitalised
  * reasoning level). Real Claude shows `Opus 4.7 · Max` (model name +
- * effort capped at "Max"). Real Kimi shows `K2.6` or `K2.6 Thinking`.
+ * effort capped at "Max"). Real Kimi shows `K2.7 Code` or
+ * `K2.7 Code Thinking`.
  * Each upstream product has its own convention; this module captures
  * those rules in pure functions so the rendering surface stays dumb.
  *
@@ -33,7 +34,7 @@ export interface ComposerChipContext {
  *
  * Codex (`gpt-5.5`, `gpt-5.4-mini`)        → `5.5`, `5.4-Mini`
  * Claude (`claude-opus-4-7-thinking`)      → `Opus 4.7`
- * Kimi (`kimi-k2.6`, `kimi-k2.6-thinking`) → `K2.6`
+ * Kimi (`kimi-k2.7-code`, `kimi-k2.7-code-thinking`) → `K2.7 Code`
  * Gemini (`gemini-2.5-pro`)                → `2.5 Pro`
  * Cursor (`composer-2.5-fast`)             → `Composer 2.5 Fast`
  * Grok (`grok-build`)                      → `Grok Build 0.1`
@@ -56,11 +57,11 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
   // 1.0.6-CRUX37 — resolve the sentinel to each provider's actual CLI default
   // model so the badge reads the real model name. Kimi and Grok dispatch with
   // bare `cli-default` (they expose a single CLI model, so the picker rarely
-  // changes it); their defaults are K2.6 and Grok Build 0.1. Codex / Claude /
+  // changes it); their defaults are K2.7 Code and Grok Build 0.1. Codex / Claude /
   // Gemini / Cursor resolve a concrete id before dispatch, so they seldom reach
   // here — keep the neutral 'CLI Default' for them.
   if (id === 'cli-default') {
-    if (provider === 'kimi') return 'K2.6'
+    if (provider === 'kimi') return 'K2.7 Code'
     if (provider === 'grok') return 'Grok Build 0.1'
     return 'CLI Default'
   }
@@ -94,7 +95,8 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
   }
 
   if (provider === 'kimi') {
-    // kimi-k2.6, kimi-k2.6-thinking → K2.6
+    // kimi-k2.7-code, kimi-k2.7-code-thinking → K2.7 Code
+    if (id.startsWith('kimi-k2.7-code')) return 'K2.7 Code'
     const match = id.match(/^kimi-(k[\d.]+)/)
     if (match) {
       return match[1].toUpperCase()
@@ -192,9 +194,9 @@ export function reasoningDisplayLabel(ctx: ComposerChipContext): string {
  * Examples:
  *   Codex shell + codex provider + xhigh   → `5.5 Extra High`
  *   Claude shell + claude provider + high  → `Opus 4.7 · Max`
- *   Kimi shell + kimi provider + on        → `K2.6 Thinking`
+ *   Kimi shell + kimi provider + on        → `K2.7 Code Thinking`
  *   TaskWraith shell + codex + high           → `GPT-5.5 · High`
- *   TaskWraith shell + kimi + on              → `K2.6 · Thinking`
+ *   TaskWraith shell + kimi + on              → `Kimi K2.7 Code · Thinking`
  */
 export function formatComposerModelChip(ctx: ComposerChipContext): string {
   const { provider, composerStyle, modelLabel, modelId } = ctx

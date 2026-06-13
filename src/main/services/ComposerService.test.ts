@@ -248,7 +248,8 @@ describe('ComposerService', () => {
   })
 
   it('defaults Kimi thinking to true from provider metadata defaults', () => {
-    const payload = compose({ provider: 'kimi' }, { selectedModelType: 'kimi-k2.6' })
+    const payload = compose({ provider: 'kimi' }, { selectedModelType: undefined })
+    expect(payload.model).toBe('kimi-k2.7-code')
     expect(payload.kimiThinking).toBe(true)
   })
 

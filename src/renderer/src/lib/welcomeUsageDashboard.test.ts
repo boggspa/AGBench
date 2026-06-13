@@ -405,8 +405,15 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
     expect(data.totalTokens).toBeGreaterThan(5_000)
   })
 
-  it('keeps only canonical Kimi variants (K2.6 + K2.6 Thinking) and relabels them', () => {
+  it('keeps canonical Kimi K2.7 Code plus legacy K2.6 variants and relabels them', () => {
     const records: UsageRecord[] = [
+      baseRecord({
+        id: 'k27',
+        timestamp: NOW - 30_000,
+        provider: 'kimi',
+        model: 'kimi-k2.7-code',
+        totalTokens: 2_000
+      }),
       baseRecord({
         id: 'a',
         timestamp: NOW - 60_000,
@@ -444,7 +451,11 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
       })
     ]
     const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
-    expect(data.modelBreakdown.map((m) => m.label)).toEqual(['Kimi K2.6', 'Kimi K2.6 Thinking'])
+    expect(data.modelBreakdown.map((m) => m.label)).toEqual([
+      'Kimi K2.7 Code',
+      'Kimi K2.6',
+      'Kimi K2.6 Thinking'
+    ])
   })
 
   it('repairs stale Grok/Cursor Gemini fallback model ids and merges them into provider defaults', () => {

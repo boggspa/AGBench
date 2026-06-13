@@ -32,8 +32,11 @@ describe('shortModelName', () => {
   })
 
   it('extracts Kimi version', () => {
+    expect(shortModelName('kimi', 'Kimi K2.7 Code', 'kimi-k2.7-code')).toBe('K2.7 Code')
+    expect(shortModelName('kimi', 'Kimi K2.7 Code Thinking', 'kimi-k2.7-code-thinking')).toBe(
+      'K2.7 Code'
+    )
     expect(shortModelName('kimi', 'Kimi K2.6 Thinking', 'kimi-k2.6-thinking')).toBe('K2.6')
-    expect(shortModelName('kimi', 'Kimi K2.6', 'kimi-k2.6')).toBe('K2.6')
   })
 
   it('extracts Gemini variant', () => {
@@ -70,7 +73,7 @@ describe('shortModelName', () => {
 
   it("resolves the cli-default sentinel to each provider's real default", () => {
     // Kimi + Grok dispatch with the bare sentinel → show their actual default.
-    expect(shortModelName('kimi', '', 'cli-default')).toBe('K2.6')
+    expect(shortModelName('kimi', '', 'cli-default')).toBe('K2.7 Code')
     expect(shortModelName('grok', '', 'cli-default')).toBe('Grok Build 0.1')
     // Providers that resolve a concrete id before dispatch keep the neutral label.
     expect(shortModelName('codex', '', 'cli-default')).toBe('CLI Default')
@@ -134,8 +137,8 @@ describe('reasoningDisplayLabel', () => {
       reasoningDisplayLabel({
         provider: 'kimi',
         composerStyle: 'kimi',
-        modelId: 'kimi-k2.6-thinking',
-        modelLabel: 'Kimi K2.6 Thinking',
+        modelId: 'kimi-k2.7-code',
+        modelLabel: 'Kimi K2.7 Code',
         kimiThinkingEnabled: true
       })
     ).toBe('Thinking')
@@ -143,8 +146,8 @@ describe('reasoningDisplayLabel', () => {
       reasoningDisplayLabel({
         provider: 'kimi',
         composerStyle: 'kimi',
-        modelId: 'kimi-k2.6',
-        modelLabel: 'Kimi K2.6',
+        modelId: 'kimi-k2.7-code',
+        modelLabel: 'Kimi K2.7 Code',
         kimiThinkingEnabled: false
       })
     ).toBe('')
@@ -187,16 +190,16 @@ describe('formatComposerModelChip', () => {
     ).toBe('Opus 4.7 · Max')
   })
 
-  it('Kimi shell + kimi provider + on → "K2.6 Thinking"', () => {
+  it('Kimi shell + kimi provider + on → "K2.7 Code Thinking"', () => {
     expect(
       formatComposerModelChip({
         provider: 'kimi',
         composerStyle: 'kimi',
-        modelId: 'kimi-k2.6-thinking',
-        modelLabel: 'Kimi K2.6 Thinking',
+        modelId: 'kimi-k2.7-code',
+        modelLabel: 'Kimi K2.7 Code',
         kimiThinkingEnabled: true
       })
-    ).toBe('K2.6 Thinking')
+    ).toBe('K2.7 Code Thinking')
   })
 
   it('TaskWraith native shell + codex provider falls back to "GPT-5.5 · High"', () => {
@@ -240,10 +243,10 @@ describe('formatComposerModelChip', () => {
       formatComposerModelChip({
         provider: 'kimi',
         composerStyle: 'claude',
-        modelId: 'kimi-k2.6-thinking',
-        modelLabel: 'Kimi K2.6 Thinking',
+        modelId: 'kimi-k2.7-code',
+        modelLabel: 'Kimi K2.7 Code',
         kimiThinkingEnabled: true
       })
-    ).toBe('Kimi K2.6 Thinking · Thinking')
+    ).toBe('Kimi K2.7 Code · Thinking')
   })
 })

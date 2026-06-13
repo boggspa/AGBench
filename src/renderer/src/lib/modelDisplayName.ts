@@ -70,10 +70,12 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
 
   // ── Kimi (extends the original welcomeUsageDashboard.ts
   // mappings; includes the variants visible in the user's
-  // Settings → Model usage list). The `kimi-k2-thinking`
-  // (no decimal) alias maps to the same display as the
-  // `k2.6` variant because Kimi treats them as equivalent for
-  // user-facing labelling. ───────────────────────────────────
+  // Settings → Model usage list). The legacy K2.6 aliases remain
+  // readable for historical usage rows; new dispatch defaults to
+  // Kimi K2.7 Code. ───────────────────────────────────────────
+  'kimi-k2.7-code': 'Kimi K2.7 Code',
+  'kimi-k2.7-code-thinking': 'Kimi K2.7 Code Thinking',
+  'kimi-k2.7-thinking': 'Kimi K2.7 Code Thinking',
   'kimi-k2.6': 'Kimi K2.6',
   'kimi-k2.6-thinking': 'Kimi K2.6 Thinking',
   'kimi-k2-thinking': 'Kimi K2.6 Thinking',

@@ -331,7 +331,7 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
       return {
         provider: 'kimi',
         providerLabel: 'Kimi',
-        modelLabel: 'K2.6',
+        modelLabel: 'K2.7 Code',
         permissionLabel: 'Read workspace',
         placeholder: 'Type "/" to use quick actions'
       }

@@ -406,6 +406,7 @@ declare global {
       getKimiAuthStatus: () => Promise<ProviderApiKeyStatus>
       storeKimiApiKey: (key: string) => Promise<void>
       clearKimiApiKey: () => Promise<void>
+      upgradeKimiCli: () => Promise<{ ok: boolean; error?: string }>
       getGeminiAuthStatus: () => Promise<GeminiAuthStatus>
       listGeminiAuthProfiles: () => Promise<GeminiAuthProfileSummary[]>
       saveGeminiAuthProfile: (profile: {

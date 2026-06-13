@@ -387,7 +387,7 @@ export interface EnsembleParticipant {
    *   reasoningEffort  Codex: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
    *                    Claude: 'off' | 'low' | 'medium' | 'high'
    *   fastModeEnabled  Codex (serviceTier=fast) + Claude (claudeFastMode)
-   *   thinkingEnabled  Kimi only — toggles k2.6 thinking mode
+   *   thinkingEnabled  Kimi only — toggles K2 thinking mode
    *   serviceTier      Reserved for explicit Codex tier overrides if
    *                    we ever expose more than the fast toggle.
    */

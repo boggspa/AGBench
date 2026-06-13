@@ -19,6 +19,7 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('claude', 'claude-opus-4-8-1m')).toBe(1_000_000)
     expect(resolveContextWindow('claude', 'claude-fable-5')).toBe(200_000)
     expect(resolveContextWindow('claude', 'claude-fable-5-1m')).toBe(1_000_000)
+    expect(resolveContextWindow('kimi', 'kimi-k2.7-code')).toBe(256_000)
     expect(resolveContextWindow('kimi', 'kimi-k2.6')).toBe(256_000)
     expect(resolveContextWindow('grok', 'grok-build')).toBe(256_000)
     expect(resolveContextWindow('ollama', 'qwen3:4b-instruct')).toBe(262_144)

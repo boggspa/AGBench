@@ -159,6 +159,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'trigger-claude-login': [],
   'store-kimi-api-key': ['optionalString'],
   'clear-kimi-api-key': [],
+  'provider:open-kimi-upgrade-terminal': [],
   // GitHub PR creation (optional payload with target path / options).
   'git:snapshot': ['optionalObject'],
   'git:stage': ['optionalObject'],

@@ -29,6 +29,7 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   opus: 200_000,
   haiku: 200_000,
   // Kimi
+  'kimi-k2.7-code': 256_000,
   'kimi-k2.6': 256_000,
   // Grok — grok-build (the CLI default) is the 256K build model; grok-4.3 is 1M.
   'grok-build': 256_000,

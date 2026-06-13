@@ -159,8 +159,8 @@ const CLAUDE_STATIC_MODELS = [
 ]
 const KIMI_STATIC_MODELS = [
   {
-    id: 'kimi-k2.6',
-    label: 'Kimi K2.6',
+    id: 'kimi-k2.7-code',
+    label: 'Kimi K2.7 Code',
     description: 'Kimi Code CLI configured default model',
     isDefault: true
   }
@@ -203,26 +203,33 @@ const CURSOR_STATIC_MODELS = [
   { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
   { id: 'composer-2.5', label: 'Composer 2.5' }
 ]
-const KIMI_DEFAULT_MODEL = 'kimi-k2.6'
+const KIMI_DEFAULT_MODEL = 'kimi-k2.7-code'
 const KIMI_CLI_MODEL_IDS = new Set(KIMI_STATIC_MODELS.map((model) => model.id))
 const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
-  ['default', 'kimi-k2.6'],
-  ['cli-default', 'kimi-k2.6'],
-  ['custom', 'kimi-k2.6'],
-  ['best', 'kimi-k2.6'],
-  ['kimi-latest', 'kimi-k2.6'],
-  ['kimi-k2', 'kimi-k2.6'],
-  ['kimi-k2-1t', 'kimi-k2.6'],
-  ['kimi-thinking-preview', 'kimi-k2.6'],
-  ['kimi-k2.5', 'kimi-k2.6'],
-  ['kimi-k2-thinking-turbo', 'kimi-k2.6'],
-  ['kimi-k2-thinking', 'kimi-k2.6'],
-  ['kimi-k2-turbo-preview', 'kimi-k2.6'],
-  ['kimi-k2-0905-preview', 'kimi-k2.6'],
-  ['kimi-k2-0711-preview', 'kimi-k2.6'],
-  ['kimi-k2-0905', 'kimi-k2.6'],
-  ['kimi-k2-0711', 'kimi-k2.6'],
-  ['kimi-k2-turbo', 'kimi-k2.6']
+  ['default', KIMI_DEFAULT_MODEL],
+  ['cli-default', KIMI_DEFAULT_MODEL],
+  ['custom', KIMI_DEFAULT_MODEL],
+  ['best', KIMI_DEFAULT_MODEL],
+  ['kimi-latest', KIMI_DEFAULT_MODEL],
+  ['kimi-code', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.7', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.7-code', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.7-code-thinking', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.7-thinking', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.6', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.6-thinking', KIMI_DEFAULT_MODEL],
+  ['kimi-k2', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-1t', KIMI_DEFAULT_MODEL],
+  ['kimi-thinking-preview', KIMI_DEFAULT_MODEL],
+  ['kimi-k2.5', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-thinking-turbo', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-thinking', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-turbo-preview', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-0905-preview', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-0711-preview', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-0905', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-0711', KIMI_DEFAULT_MODEL],
+  ['kimi-k2-turbo', KIMI_DEFAULT_MODEL]
 ])
 
 export function getStaticProviderModels(provider: ProviderId) {

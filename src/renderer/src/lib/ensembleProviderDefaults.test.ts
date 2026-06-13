@@ -184,8 +184,8 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
     expect(getEnsembleModelDefaults('codex').defaultModelId).toBe('gpt-5.5')
   })
 
-  it('exposes kimi preferred model id as kimi-k2.6', () => {
-    expect(getEnsembleModelDefaults('kimi').defaultModelId).toBe('kimi-k2.6')
+  it('exposes kimi preferred model id as kimi-k2.7-code', () => {
+    expect(getEnsembleModelDefaults('kimi').defaultModelId).toBe('kimi-k2.7-code')
   })
 
   it('exposes grok preferred model id as grok-build with the effort reasoning axis', () => {

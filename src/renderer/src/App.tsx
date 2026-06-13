@@ -1214,6 +1214,9 @@ function App(): React.JSX.Element {
   const [claudeLoginState, setClaudeLoginState] = useState<
     'idle' | 'loading' | 'success' | 'error'
   >('idle')
+  const [kimiUpgradeState, setKimiUpgradeState] = useState<
+    'idle' | 'opening' | 'opened' | 'error'
+  >('idle')
   const [agenticServices, setAgenticServices] =
     useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
   const [autoResumeParentOnSubThreadCompletion, setAutoResumeParentOnSubThreadCompletion] =
@@ -4113,6 +4116,34 @@ function App(): React.JSX.Element {
         .getKimiAuthStatus()
         .then(setKimiAuthStatus)
         .catch(() => {})
+    }
+  }
+
+  const handleUpgradeKimiCli = async () => {
+    if (typeof window.api.upgradeKimiCli !== 'function') return
+    setKimiUpgradeState('opening')
+    try {
+      const result = await window.api.upgradeKimiCli()
+      if (!result?.ok) {
+        setKimiUpgradeState('error')
+        setTimeout(() => setKimiUpgradeState('idle'), 5000)
+        return
+      }
+      setKimiUpgradeState('opened')
+      if (typeof window.api.getKimiAuthStatus === 'function') {
+        for (const delayMs of [4000, 15000, 30000]) {
+          window.setTimeout(() => {
+            void window.api
+              .getKimiAuthStatus()
+              .then(setKimiAuthStatus)
+              .catch(() => {})
+          }, delayMs)
+        }
+      }
+      setTimeout(() => setKimiUpgradeState('idle'), 10000)
+    } catch {
+      setKimiUpgradeState('error')
+      setTimeout(() => setKimiUpgradeState('idle'), 5000)
     }
   }
 
@@ -13364,7 +13395,7 @@ function App(): React.JSX.Element {
           : null
         // Mirror the assistant-header treatment in `formatAssistantMessageLabel`:
         // append the participant's reasoning effort / thinking flag so
-        // the in-flight indicator reads "5.5 Extra High" / "K2.6
+        // the in-flight indicator reads "5.5 Extra High" / "K2.7 Code
         // Thinking" — matching the composer chip the user picked.
         // `reasoningDisplayLabel` short-circuits to '' for providers
         // without a reasoning axis or when effort is 'off'.
@@ -16123,6 +16154,7 @@ function App(): React.JSX.Element {
               cursorProviderAvailable={cursorProviderAvailable}
               grokProviderAvailable={grokProviderAvailable}
               claudeLoginState={claudeLoginState}
+              kimiUpgradeState={kimiUpgradeState}
               onImportCodexUsageCredential={() => void handleImportCodexUsageCredential()}
               onClearCodexUsageCredential={() => void handleClearCodexUsageCredential()}
               onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
@@ -16130,6 +16162,7 @@ function App(): React.JSX.Element {
               onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
               onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
               onClearKimiApiKey={() => void handleClearKimiApiKey()}
+              onUpgradeKimiCli={() => void handleUpgradeKimiCli()}
               onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
               onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
               onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}

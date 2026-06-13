@@ -14,14 +14,14 @@
  * fine while the only mention forms were `@codex` / `@Planner` /
  * `@ensemble-codex` — short, single-token. Once the user asked for
  * model-name tagging (`@GPT 5.5`, `@Sonnet 4.7`, `@Flash Lite`,
- * `@Kimi K2.6`), the resolver needed to support **multi-word
+ * `@Kimi K2.7 Code`), the resolver needed to support **multi-word
  * mentions**, which is too much logic to duplicate three ways
  * without drifting.
  *
  * This module owns:
  *   1. The canonical regex that picks `@` plus up to 4 whitespace-
  *      separated word chunks. Each chunk allows letters / digits /
- *      `._-` so dots in version numbers (`5.5`, `4.7`, `K2.6`) and
+ *      `._-` so dots in version numbers (`5.5`, `4.7`, `K2.7`) and
  *      hyphens in model ids (`gpt-5.5-mini`) both flow through.
  *   2. Alias generation per participant — id, provider, role, plus
  *      pretty model forms in spaced + hyphenated + concat variants.
@@ -135,8 +135,8 @@ export function normalizeAlias(s: string): string {
  *   - Gemini (`gemini-2.5-flash-lite`): aliases include the parts
  *     space-joined (`2.5 flash lite`, `flash lite`), with + without
  *     the `gemini` prefix.
- *   - Kimi (`kimi-k2.6`, `kimi-k2-thinking`): aliases include the
- *     compact form (`k2.6`, `k2 thinking`) with + without `kimi`.
+ *   - Kimi (`kimi-k2.7-code`, `kimi-k2-thinking`): aliases include the
+ *     compact form (`k2.7 code`, `k2 thinking`) with + without `kimi`.
  *
  * Each generated alias is also added in "concat" form (whitespace
  * stripped) so users can type `@gpt5.5` and `@flashlite` without
@@ -193,16 +193,22 @@ export function generateModelAliases(provider: ProviderId, model: string | undef
       }
     }
   } else if (provider === 'kimi') {
-    // kimi-k2.6, kimi-k2.6-thinking, kimi-k2-thinking
+    // kimi-k2.7-code, kimi-k2.7-code-thinking, kimi-k2-thinking
     const match = id.match(/^kimi-(k[\d.]+)(.*)$/)
     if (match) {
       const ver = match[1]
-      const suffix = match[2].replace(/^-/, '').split('-').filter(Boolean).join(' ')
+      const suffixParts = match[2].replace(/^-/, '').split('-').filter(Boolean)
+      const suffix = suffixParts.join(' ')
       push(ver)
       push(`kimi ${ver}`)
       if (suffix) {
         push(`${ver} ${suffix}`)
         push(`kimi ${ver} ${suffix}`)
+        for (let i = 1; i < suffixParts.length; i++) {
+          const prefix = suffixParts.slice(0, i).join(' ')
+          push(`${ver} ${prefix}`)
+          push(`kimi ${ver} ${prefix}`)
+        }
       }
     }
   } else if (provider === 'gemini') {
@@ -447,7 +453,7 @@ export function findAllMentions(
  * Trailing-sentence-punctuation we strip from the LAST word of a
  * candidate prefix before matching it against the alias map. The
  * per-chunk regex allows `.` inside the chunk so model versions
- * like `5.5` or `K2.6` survive — but that means a normal sentence
+ * like `5.5` or `K2.7` survive — but that means a normal sentence
  * `Calling @Planner.` captures `Planner.` (trailing dot). The
  * alias map has `planner`, not `planner.`, so the match would
  * silently fail. Strip these post-capture instead of complicating

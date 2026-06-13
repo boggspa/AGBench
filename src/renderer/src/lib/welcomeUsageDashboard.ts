@@ -387,10 +387,10 @@ const formatPeakHour = (hour: number): string => {
  *
  *   - `default` / `unknown` model names are removed across all providers
  *     (model usage needs to be explicit, not a wildcard bucket).
- *   - Kimi: only the canonical `kimi-k2.6` (default) and any thinking
- *     variant survive; deprecated names (`kimi-latest`, `kimi-k2`,
- *     `kimi-k2.5`, `kimi-k2-thinking` aliases, etc.) collapse to nothing.
- *     Moonshot's docs now treat K2.6 as the implicit default model.
+ *   - Kimi: only the canonical `kimi-k2.7-code` (default), its thinking
+ *     variants, and legacy K2.6 rows survive; deprecated names (`kimi-latest`,
+ *     `kimi-k2`, `kimi-k2.5`, `kimi-k2-thinking` aliases, etc.) collapse to
+ *     nothing. Kimi Code now treats K2.7 Code as the implicit default model.
  *
  * Returns `false` when the (provider, model) pair shouldn't surface in
  * the dashboard's per-model breakdown.
@@ -399,7 +399,14 @@ const shouldSurfaceModelInBreakdown = (provider: ProviderId, model: string): boo
   const trimmed = (model || '').trim().toLowerCase()
   if (!trimmed || trimmed === 'default' || trimmed === 'unknown') return false
   if (provider === 'kimi') {
-    const KIMI_KEEP = new Set(['kimi-k2.6', 'kimi-k2.6-thinking', 'kimi-k2-thinking'])
+    const KIMI_KEEP = new Set([
+      'kimi-k2.7-code',
+      'kimi-k2.7-code-thinking',
+      'kimi-k2.7-thinking',
+      'kimi-k2.6',
+      'kimi-k2.6-thinking',
+      'kimi-k2-thinking'
+    ])
     return KIMI_KEEP.has(trimmed)
   }
   return true

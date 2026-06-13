@@ -179,6 +179,7 @@ interface SettingsPanelProps {
   cursorProviderAvailable?: boolean
   grokProviderAvailable?: boolean
   claudeLoginState?: 'idle' | 'loading' | 'success' | 'error'
+  kimiUpgradeState?: 'idle' | 'opening' | 'opened' | 'error'
   onImportCodexUsageCredential?: () => void
   onClearCodexUsageCredential?: () => void
   onTriggerClaudeLogin?: () => void
@@ -186,6 +187,7 @@ interface SettingsPanelProps {
   onClearClaudeApiKey?: () => void
   onStoreKimiApiKey?: (key: string) => void
   onClearKimiApiKey?: () => void
+  onUpgradeKimiCli?: () => void
   onSaveGeminiAuthProfile?: (profile: {
     id?: string
     label?: string
@@ -568,8 +570,7 @@ function getComposerPreviewMeta(style: ComposerStyle): {
     case 'kimi':
       return {
         providerLabel: 'Kimi',
-        // 1.0.6 — canonical Kimi label is K2.6 (K2.6 Thinking with reasoning on).
-        modelLabel: 'K2.6 Thinking',
+        modelLabel: 'K2.7 Code Thinking',
         permissionLabel: 'Read workspace',
         placeholder: 'Type "/" to quickly access skills'
       }
@@ -1425,6 +1426,7 @@ export function SettingsPanel({
   cursorProviderAvailable = false,
   grokProviderAvailable = false,
   claudeLoginState = 'idle',
+  kimiUpgradeState = 'idle',
   onImportCodexUsageCredential,
   onClearCodexUsageCredential,
   onTriggerClaudeLogin,
@@ -1432,6 +1434,7 @@ export function SettingsPanel({
   onClearClaudeApiKey,
   onStoreKimiApiKey,
   onClearKimiApiKey,
+  onUpgradeKimiCli,
   onSaveGeminiAuthProfile,
   onStartGeminiOAuthLogin,
   onCancelGeminiOAuthLogin,
@@ -4435,13 +4438,40 @@ export function SettingsPanel({
                 </p>
 
                 <label className="settings-label">Kimi CLI binary</label>
-                <input
-                  className="settings-select"
-                  value={kimiBinaryPath}
-                  onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
-                  placeholder="Auto-detect, or /path/to/kimi"
-                />
-                <p className="settings-hint">Optional path override for Kimi Code CLI.</p>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 'var(--space-sm)',
+                    alignItems: 'center'
+                  }}
+                >
+                  <input
+                    className="settings-select"
+                    value={kimiBinaryPath}
+                    onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
+                    placeholder="Auto-detect, or /path/to/kimi"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={onUpgradeKimiCli}
+                    disabled={
+                      !onUpgradeKimiCli ||
+                      kimiUpgradeState === 'opening' ||
+                      kimiAuthStatus?.available === false
+                    }
+                  >
+                    {kimiUpgradeState === 'opening' ? 'Opening…' : 'Upgrade CLI…'}
+                  </button>
+                </div>
+                <p className="settings-hint">
+                  Optional path override for Kimi Code CLI.
+                  {kimiAuthStatus?.version ? ` Current: ${kimiAuthStatus.version}.` : ''}
+                  {kimiUpgradeState === 'opened'
+                    ? ' Upgrade terminal opened; TaskWraith will refresh the detected version shortly.'
+                    : ''}
+                  {kimiUpgradeState === 'error' ? ' Could not open the upgrade terminal.' : ''}
+                </p>
               </div>
 
               <div className="settings-group">

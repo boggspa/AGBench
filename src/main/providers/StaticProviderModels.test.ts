@@ -48,6 +48,15 @@ describe('getStaticProviderModels (provider-specific catalogs)', () => {
   })
 })
 
+describe('normalizeCliProviderModel (kimi)', () => {
+  it('uses Kimi K2.7 Code as the CLI default and maps legacy aliases to it', () => {
+    expect(normalizeCliProviderModel('kimi', '')).toBe('kimi-k2.7-code')
+    expect(normalizeCliProviderModel('kimi', 'cli-default')).toBe('kimi-k2.7-code')
+    expect(normalizeCliProviderModel('kimi', 'kimi-k2.6')).toBe('kimi-k2.7-code')
+    expect(normalizeCliProviderModel('kimi', 'kimi-k2-thinking')).toBe('kimi-k2.7-code')
+  })
+})
+
 describe('getStaticProviderModels (claude)', () => {
   const models = getStaticProviderModels('claude') as StaticModelShape[]
   const byId = new Map(models.map((m) => [m.id, m]))

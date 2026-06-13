@@ -121,7 +121,7 @@ export interface GuestParticipantAddressInput {
  *      composer's DM routing stays in lockstep with the orchestrator's
  *      auto-promotion path and the overlay tokeniser. Recognises
  *      `@codex` / `@Planner` (legacy single-token), plus the new
- *      `@GPT 5.5` / `@Sonnet 4.7` / `@Flash Lite` / `@Kimi K2.6`
+ *      `@GPT 5.5` / `@Sonnet 4.7` / `@Flash Lite` / `@Kimi K2.7 Code`
  *      model-name forms.
  *
  * Returns a DM target only when the prompt addresses exactly one participant.

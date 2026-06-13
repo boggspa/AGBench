@@ -191,6 +191,7 @@ const api = {
   getKimiAuthStatus: () => ipcRenderer.invoke('get-kimi-auth-status'),
   storeKimiApiKey: (key: string) => ipcRenderer.invoke('store-kimi-api-key', key),
   clearKimiApiKey: () => ipcRenderer.invoke('clear-kimi-api-key'),
+  upgradeKimiCli: () => ipcRenderer.invoke('provider:open-kimi-upgrade-terminal'),
   getGeminiAuthStatus: () => ipcRenderer.invoke('get-gemini-auth-status'),
   listGeminiAuthProfiles: () => ipcRenderer.invoke('list-gemini-auth-profiles'),
   saveGeminiAuthProfile: (profile: any) => ipcRenderer.invoke('save-gemini-auth-profile', profile),
