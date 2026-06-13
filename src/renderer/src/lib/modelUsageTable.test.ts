@@ -258,15 +258,34 @@ describe('buildModelUsageTable — cost math + token flooring', () => {
     expect(codex.models[0].windows.h1.costUsd).toBe(42)
   })
 
-  it('treats negative / NaN token counts as zero', () => {
-    const records = [
-      makeRecord({ timestamp: NOW - 1000, inputTokens: -5 as number, outputTokens: NaN as number })
-    ]
-    const [codex] = buildModelUsageTable(records, [], RATES, USD, NOW)
+  it('floors negative / NaN token counts to zero on a record that still has usage', () => {
+    const [codex] = buildModelUsageTable(
+      [makeRecord({ timestamp: NOW - 1000, inputTokens: -5 as number, outputTokens: 1_000_000 })],
+      [],
+      RATES,
+      USD,
+      NOW
+    )
     const row = codex.models[0].windows.h1
-    expect(row.tokensIn).toBe(0)
-    expect(row.tokensOut).toBe(0)
-    expect(row.costUsd).toBe(0)
+    expect(row.tokensIn).toBe(0) // -5 floored to 0
+    expect(row.tokensOut).toBe(1_000_000)
+  })
+
+  it('drops a record whose tokens all floor to zero (no-usage, like a scanner marker)', () => {
+    const empty = buildModelUsageTable(
+      [
+        makeRecord({
+          timestamp: NOW - 1000,
+          inputTokens: -5 as number,
+          outputTokens: NaN as number
+        })
+      ],
+      [],
+      RATES,
+      USD,
+      NOW
+    )
+    expect(empty).toEqual([])
   })
 })
 
@@ -306,7 +325,7 @@ describe('buildModelUsageTable — currency conversion + overestimate', () => {
   })
 })
 
-describe('buildModelUsageTable — external merge on/off', () => {
+describe('buildModelUsageTable — External Usage switches source (no double-count)', () => {
   const internal = [
     makeRecord({
       provider: 'codex',
@@ -316,15 +335,24 @@ describe('buildModelUsageTable — external merge on/off', () => {
     })
   ]
   const external = [
-    // Same provider+model from a CLI session → folds into the SAME row.
+    // The SAME run TaskWraith executed, ALSO captured by the external CLI-
+    // session scan (we spawn the real codex CLI). Summing would double-count it.
     makeRecord({
-      id: 'external-codex-1',
+      id: 'external-codex-dup',
+      provider: 'codex',
+      model: 'gpt-5.5',
+      timestamp: NOW - HOURS(2),
+      inputTokens: 1_000_000 // $1 (the duplicate)
+    }),
+    // A provider-wide run that never went through TaskWraith.
+    makeRecord({
+      id: 'external-codex-2',
       provider: 'codex',
       model: 'gpt-5.5',
       timestamp: NOW - HOURS(3),
       inputTokens: 2_000_000 // $2
     }),
-    // A model only seen externally → its own row when merged.
+    // A model only seen externally → its own provider section.
     makeRecord({
       id: 'external-claude-1',
       provider: 'claude',
@@ -334,14 +362,15 @@ describe('buildModelUsageTable — external merge on/off', () => {
     })
   ]
 
-  it('ignores external records when includeExternal is off (default)', () => {
+  it('uses TaskWraith runs only when includeExternal is off (default)', () => {
     const result = buildModelUsageTable(internal, external, RATES, USD, NOW)
     expect(result.map((g) => g.provider)).toEqual(['codex'])
     expect(result[0].models[0].windows.h24.tokensIn).toBe(1_000_000)
+    expect(result[0].models[0].windows.h24.runs).toBe(1)
     expect(result[0].models[0].windows.h24.costUsd).toBeCloseTo(1, 6)
   })
 
-  it('merges external records into matching rows + new rows when includeExternal is on', () => {
+  it('uses the provider-wide external set ONLY when includeExternal is on (never sums)', () => {
     const result = buildModelUsageTable(
       internal,
       external,
@@ -349,25 +378,32 @@ describe('buildModelUsageTable — external merge on/off', () => {
       { currency: 'USD', includeExternal: true },
       NOW
     )
-    // Now both providers appear.
     expect(result.map((g) => g.provider)).toEqual(['codex', 'claude'])
     const codex = result.find((g) => g.provider === 'codex')!
-    // Same provider+model row absorbed both internal ($1) and external ($2).
+    // External-only: the two external codex runs ($1 dup + $2), NOT the internal
+    // $1 added on top. A naive internal+external merge would read 3 runs / $4.
     expect(codex.models).toHaveLength(1)
     const codexRow = codex.models[0].windows.h24
-    expect(codexRow.tokensIn).toBe(3_000_000)
     expect(codexRow.runs).toBe(2)
+    expect(codexRow.tokensIn).toBe(3_000_000)
     expect(codexRow.costUsd).toBeCloseTo(3, 6)
-    // Claude row exists only because of the external dataset.
+    // Claude appears only because of the external dataset.
     const claude = result.find((g) => g.provider === 'claude')!
     expect(claude.models[0].windows.h24.costUsd).toBeCloseTo(25, 6)
   })
 
-  it('still drops out-of-roster + future-dated external records when merged', () => {
+  it('drops out-of-roster + future-dated records on the external-only path', () => {
     const noisyExternal = [
       makeRecord({ provider: 'grok', timestamp: NOW - HOURS(1), inputTokens: 5_000_000 }),
       makeRecord({ provider: 'ollama', timestamp: NOW - HOURS(1), inputTokens: 5_000_000 }),
-      makeRecord({ provider: 'codex', timestamp: NOW + 60_000, inputTokens: 5_000_000 })
+      makeRecord({ provider: 'codex', timestamp: NOW + 60_000, inputTokens: 5_000_000 }),
+      // The one valid provider-wide record.
+      makeRecord({
+        provider: 'codex',
+        model: 'gpt-5.5',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 2_000_000
+      })
     ]
     const result = buildModelUsageTable(
       internal,
@@ -376,8 +412,33 @@ describe('buildModelUsageTable — external merge on/off', () => {
       { currency: 'USD', includeExternal: true },
       NOW
     )
-    // Only the internal codex run survives.
+    // Internal is NOT counted (external is on); only the valid external run.
     expect(result.map((g) => g.provider)).toEqual(['codex'])
-    expect(result[0].totals.h24.tokensIn).toBe(1_000_000)
+    expect(result[0].totals.h24.tokensIn).toBe(2_000_000)
+    expect(result[0].totals.h24.runs).toBe(1)
+  })
+
+  it('does not count zero-token marker records as runs', () => {
+    const withMarkers = [
+      makeRecord({
+        provider: 'codex',
+        model: 'gpt-5.5',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 1_000_000
+      }),
+      // Synthetic markers the external scanner emits (0 tokens, no cost).
+      makeRecord({ id: 'm1', provider: 'codex', model: 'gpt-5.5', timestamp: NOW - HOURS(1) }),
+      makeRecord({ id: 'm2', provider: 'cursor', model: 'cursor', timestamp: NOW - HOURS(1) })
+    ]
+    const result = buildModelUsageTable(
+      [],
+      withMarkers,
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    // Only the codex run with real tokens; the cursor marker creates no section.
+    expect(result.map((g) => g.provider)).toEqual(['codex'])
+    expect(result[0].models[0].windows.h24.runs).toBe(1)
   })
 })

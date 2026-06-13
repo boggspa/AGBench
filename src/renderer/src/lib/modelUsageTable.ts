@@ -8,13 +8,17 @@
  * windows — 1H / 24H / 7D / 30D / 90D — so the Settings table can show the
  * full grid the user asked for.
  *
- * Two data sources feed it:
- *   - TaskWraith's OWN runs (`window.api.getUsage()`), and
- *   - externally-tracked provider activity (`window.api.getExternalUsage()`,
- *     the same 90-day dataset behind the External Activity heatmap).
- * The `includeExternal` flag merges the second set in so the user can see
- * provider-WIDE usage (their CLI sessions outside TaskWraith) rather than
- * just what TaskWraith ran. With it off, only TaskWraith's runs count.
+ * Two data sources feed it, and the `includeExternal` flag SWITCHES between
+ * them — it does NOT sum them:
+ *   - off (default): TaskWraith's OWN runs only (`window.api.getUsage()`).
+ *   - on: the externally-tracked provider activity only
+ *     (`window.api.getExternalUsage()`, the same 90-day dataset behind the
+ *     External Activity heatmap). That set is provider-WIDE and already
+ *     includes TaskWraith's own runs — we spawn the real provider CLIs, whose
+ *     session logs the external scanner reads — so for every provider in the
+ *     roster it is a SUPERSET of the internal set. Summing the two would
+ *     double-count every TaskWraith run, so we pick one source, mirroring how
+ *     the External Activity heatmap keeps its two datasets isolated.
  *
  * **Honesty:** records carry token counts only — never a billed cost (see
  * `providerRateEstimate.ts`'s HONESTY GUARDRAILS). Every `costUsd` here is a
@@ -286,11 +290,11 @@ export function buildModelUsageTable(
   // provider -> model -> per-window accumulators.
   const buckets = new Map<ProviderId, Map<string, Record<ModelUsageWindowKey, UsageAccumulator>>>()
 
-  // We always walk the internal records; external records are folded in only
-  // when the toggle is on. Both share the same bucketing/cost path so a model
-  // run from a CLI session lands in the SAME row as a TaskWraith run of the
-  // same provider+model (provider-wide read).
-  const sources = includeExternal ? [internalRecords, externalRecords] : [internalRecords]
+  // External Usage SWITCHES the source, it does not add to it: the external
+  // dataset is provider-wide and already contains TaskWraith's own CLI runs, so
+  // summing internal + external would double-count every TaskWraith run. On →
+  // external only (provider-wide); off → internal only (TaskWraith's runs).
+  const sources = includeExternal ? [externalRecords] : [internalRecords]
 
   for (const records of sources) {
     if (!Array.isArray(records)) continue
@@ -305,6 +309,16 @@ export function buildModelUsageTable(
       // widest (90d) window — they can never land in any column.
       if (timestamp > now || timestamp < cutoffs.d90) continue
 
+      const tokensIn = toNonNegative(record.inputTokens)
+      const tokensOut = toNonNegative(record.outputTokens)
+      const costUsd = recordCostUsd(record, rates)
+      // Drop synthetic zero-signal markers — the external scanner emits some
+      // (codex session-index, cursor daily-stat rows) with 0 tokens and no
+      // cost. They carry no usage for this table and would otherwise inflate
+      // run counts. Skip BEFORE bucketing so a provider/model whose ONLY
+      // records are markers never sprouts an empty section.
+      if (tokensIn === 0 && tokensOut === 0 && costUsd === 0) continue
+
       let modelMap = buckets.get(provider)
       if (!modelMap) {
         modelMap = new Map()
@@ -316,10 +330,6 @@ export function buildModelUsageTable(
         windowSet = emptyWindowSet()
         modelMap.set(modelKey, windowSet)
       }
-
-      const tokensIn = toNonNegative(record.inputTokens)
-      const tokensOut = toNonNegative(record.outputTokens)
-      const costUsd = recordCostUsd(record, rates)
 
       const apply = (acc: UsageAccumulator) => {
         acc.tokensIn += tokensIn
