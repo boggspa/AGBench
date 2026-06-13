@@ -525,12 +525,12 @@ export function FirstLaunchSheet({
       id: 'ollama',
       label: 'Ollama',
       description:
-        'Local models running through Ollama. Best for people who already want on-device Qwen, Gemma, or GPT OSS testing. No cloud account is needed.',
+        'Local models running through Ollama. Best for people who already want on-device Qwen, Granite, Gemma, GPT OSS, MiniCPM, or Nemotron testing. No cloud account is needed.',
       variant: ollamaProviderAvailable ? 'signed-in' : 'partial',
       statusText: ollamaProviderAvailable ? 'Local runtime ready' : 'Local setup optional',
       hint: ollamaProviderAvailable
         ? 'Pick Local / Ollama in the provider picker, then choose an installed model in Settings or the composer.'
-        : 'Install Ollama, then pull a model such as `qwen3:4b-instruct`, `qwen3.5:9b`, `gemma4:12b`, or `gpt-oss`.',
+        : 'Install Ollama, then pull a model such as `qwen3:4b-instruct`, `qwen3.6:35b`, `granite4.1:30b`, `minicpm-v4.5:8b`, or `gpt-oss:20b`.',
       deemphasised: true,
       optional: true,
       localOnly: true

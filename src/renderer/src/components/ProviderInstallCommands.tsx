@@ -95,8 +95,13 @@ const PROVIDER_INSTALL_COMMANDS: ProviderInstallEntry[] = [
 const OLLAMA_MODEL_COMMANDS: OllamaModelEntry[] = [
   { id: 'qwen3:4b-instruct', label: 'Qwen 3 (4B Param)', command: 'ollama run qwen3:4b-instruct' },
   { id: 'qwen3.5:9b', label: 'Qwen 3.5 (9B Param)', command: 'ollama run qwen3.5:9b' },
+  { id: 'qwen3.6:35b', label: 'Qwen 3.6 (35B Param)', command: 'ollama run qwen3.6:35b' },
   { id: 'gemma4:12b', label: 'Gemma 4 (12B Param)', command: 'ollama run gemma4:12b' },
-  { id: 'gpt-oss:20b', label: 'GPT OSS (20B Param)', command: 'ollama run gpt-oss:20b' }
+  { id: 'gpt-oss:20b', label: 'GPT OSS (20B Param)', command: 'ollama run gpt-oss:20b' },
+  { id: 'minicpm-v4.5:8b', label: 'MiniCPM-V 4.5 (8B Param)', command: 'ollama run minicpm-v4.5:8b' },
+  { id: 'granite4.1:3b', label: 'Granite 4.1 (3B Param)', command: 'ollama run granite4.1:3b' },
+  { id: 'granite4.1:30b', label: 'Granite 4.1 (30B Param)', command: 'ollama run granite4.1:30b' },
+  { id: 'nemotron3:33b', label: 'Nemotron 3 Nano Omni (33B Param)', command: 'ollama run nemotron3:33b' }
 ]
 
 /**

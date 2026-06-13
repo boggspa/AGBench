@@ -355,6 +355,9 @@ export function humanizeOllamaModelId(model: string): string {
   if (key === 'qwen3.5:9b' || key.startsWith('qwen3.5:9b-')) {
     return 'Qwen 3.5 (9B Param)'
   }
+  if (key === 'qwen3.6:35b' || key.startsWith('qwen3.6:35b-')) {
+    return 'Qwen 3.6 (35B Param)'
+  }
   if (key === 'gemma4:12b' || key.startsWith('gemma4:12b-')) {
     return 'Gemma 4 (12B Param)'
   }
@@ -365,6 +368,18 @@ export function humanizeOllamaModelId(model: string): string {
     key === 'openai/gpt-oss-20b'
   ) {
     return 'GPT OSS (20B Param)'
+  }
+  if (key === 'minicpm-v4.5:8b' || key.startsWith('minicpm-v4.5:8b-')) {
+    return 'MiniCPM-V 4.5 (8B Param)'
+  }
+  if (key === 'granite4.1:3b' || key.startsWith('granite4.1:3b-')) {
+    return 'Granite 4.1 (3B Param)'
+  }
+  if (key === 'granite4.1:30b' || key.startsWith('granite4.1:30b-')) {
+    return 'Granite 4.1 (30B Param)'
+  }
+  if (key === 'nemotron3:33b' || key.startsWith('nemotron3:33b-')) {
+    return 'Nemotron 3 Nano Omni (33B Param)'
   }
   return id
     .split(':')

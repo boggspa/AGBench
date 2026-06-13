@@ -38,6 +38,7 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   // metadata, but use a conservative UI fallback when no live limit is known.
   'qwen3:4b-instruct': 262_144,
   'qwen3.5:9b': 262_144,
+  'qwen3.6:35b': 262_144,
   'gemma4:12b': 262_144,
   'gemma4:12b-it-qat': 262_144,
   'gemma4:12b-it-q4_k_m': 262_144,
@@ -46,7 +47,11 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   'gpt-oss': 131_072,
   'gpt-oss:20b': 131_072,
   'gpt-oss:latest': 131_072,
-  'openai/gpt-oss-20b': 131_072
+  'openai/gpt-oss-20b': 131_072,
+  'minicpm-v4.5:8b': 40_960,
+  'granite4.1:3b': 131_072,
+  'granite4.1:30b': 131_072,
+  'nemotron3:33b': 131_072
 }
 
 const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {

@@ -131,6 +131,9 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
     if (id === 'qwen3.5:9b' || id.startsWith('qwen3.5:9b-')) {
       return 'Qwen 3.5 (9B Param)'
     }
+    if (id === 'qwen3.6:35b' || id.startsWith('qwen3.6:35b-')) {
+      return 'Qwen 3.6 (35B Param)'
+    }
     if (id === 'gemma4:12b' || id.startsWith('gemma4:12b-')) {
       return 'Gemma 4 (12B Param)'
     }
@@ -141,6 +144,18 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
       id === 'openai/gpt-oss-20b'
     ) {
       return 'GPT OSS (20B Param)'
+    }
+    if (id === 'minicpm-v4.5:8b' || id.startsWith('minicpm-v4.5:8b-')) {
+      return 'MiniCPM-V 4.5 (8B Param)'
+    }
+    if (id === 'granite4.1:3b' || id.startsWith('granite4.1:3b-')) {
+      return 'Granite 4.1 (3B Param)'
+    }
+    if (id === 'granite4.1:30b' || id.startsWith('granite4.1:30b-')) {
+      return 'Granite 4.1 (30B Param)'
+    }
+    if (id === 'nemotron3:33b' || id.startsWith('nemotron3:33b-')) {
+      return 'Nemotron 3 Nano Omni (33B Param)'
     }
   }
 

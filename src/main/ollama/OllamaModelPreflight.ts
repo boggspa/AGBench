@@ -4,8 +4,13 @@ import type { ProviderCapabilityWarning } from '../store/types'
 export type OllamaModelFamily =
   | 'qwen3_4b'
   | 'qwen3_5_9b'
+  | 'qwen3_6_35b'
   | 'gemma4_12b'
   | 'gpt_oss_20b'
+  | 'minicpm_v45_8b'
+  | 'granite4_1_3b'
+  | 'granite4_1_30b'
+  | 'nemotron3_33b'
   | 'unknown'
 
 export interface OllamaModelPreflightInput {
@@ -43,8 +48,10 @@ function warning(
 function metadataText(modelInfo?: OllamaModelInfo | null): string {
   return [
     modelInfo?.family,
+    modelInfo?.parameterSize,
     ...(Array.isArray(modelInfo?.families) ? modelInfo.families : []),
     modelInfo?.show?.details?.family,
+    modelInfo?.show?.details?.parameter_size,
     ...(Array.isArray(modelInfo?.show?.details?.families) ? modelInfo.show.details.families : [])
   ]
     .filter(Boolean)
@@ -57,14 +64,12 @@ export function resolveOllamaModelFamily(
   modelId: string,
   modelInfo?: OllamaModelInfo | null
 ): OllamaModelFamily {
-  const meta = metadataText(modelInfo)
-  if (meta.includes('gptoss') || meta.includes('gpt-oss')) {
-    return 'gpt_oss_20b'
-  }
-  if (meta.includes('qwen3') && meta.includes('9b')) return 'qwen3_5_9b'
-  if (meta.includes('qwen3')) return 'qwen3_4b'
-  if (meta.includes('gemma')) return 'gemma4_12b'
   const key = modelId.trim().toLowerCase()
+  if (key === 'qwen3.6:35b' || key.startsWith('qwen3.6:35b-')) return 'qwen3_6_35b'
+  if (key === 'minicpm-v4.5:8b' || key.startsWith('minicpm-v4.5:8b-')) return 'minicpm_v45_8b'
+  if (key === 'granite4.1:3b' || key.startsWith('granite4.1:3b-')) return 'granite4_1_3b'
+  if (key === 'granite4.1:30b' || key.startsWith('granite4.1:30b-')) return 'granite4_1_30b'
+  if (key === 'nemotron3:33b' || key.startsWith('nemotron3:33b-')) return 'nemotron3_33b'
   if (key === 'qwen3:4b-instruct' || key.startsWith('qwen3:4b')) return 'qwen3_4b'
   if (key === 'qwen3.5:9b' || key.startsWith('qwen3.5:9b')) return 'qwen3_5_9b'
   if (key === 'gemma4:12b' || key.startsWith('gemma4:12b')) return 'gemma4_12b'
@@ -77,6 +82,19 @@ export function resolveOllamaModelFamily(
   ) {
     return 'gpt_oss_20b'
   }
+  const meta = metadataText(modelInfo)
+  if (meta.includes('gptoss') || meta.includes('gpt-oss')) {
+    return 'gpt_oss_20b'
+  }
+  if (meta.includes('qwen35moe') || meta.includes('qwen3.6')) return 'qwen3_6_35b'
+  if (meta.includes('nemotron')) return 'nemotron3_33b'
+  if (meta.includes('granite') && (meta.includes('3.4b') || meta.includes('3b'))) {
+    return 'granite4_1_3b'
+  }
+  if (meta.includes('granite')) return 'granite4_1_30b'
+  if (meta.includes('qwen3') && meta.includes('9b')) return 'qwen3_5_9b'
+  if (meta.includes('qwen3')) return 'qwen3_4b'
+  if (meta.includes('gemma')) return 'gemma4_12b'
   return 'unknown'
 }
 
@@ -152,17 +170,47 @@ function familyGuidance(family: OllamaModelFamily, modelLabel: string): {
         delegateHint:
           'For multi-file refactors, broad test-suite fixes, or long autonomous loops, delegate implementation to Codex or Claude.'
       }
+    case 'qwen3_6_35b':
+      return {
+        guidance: `${modelLabel} is a strong local reasoning model with a large context window and native tool support.`,
+        delegateHint:
+          'For long implementation loops or release-critical edits, keep Codex/Claude delegation available as the verification pass.'
+      }
     case 'qwen3_4b':
       return {
         guidance: `${modelLabel} is best for quick lookups, narrow reads, and short answers.`,
         delegateHint:
           'For edits, shell work, or multi-step refactors, use a larger local model or delegate to a cloud provider.'
       }
+    case 'minicpm_v45_8b':
+      return {
+        guidance: `${modelLabel} is a compact multimodal local model with tools and thinking support.`,
+        delegateHint:
+          'Use it for scoped reads, visual/local checks, and quick analysis; delegate broad code edits to a stronger implementation model.'
+      }
     case 'gemma4_12b':
       return {
         guidance: `${modelLabel} handles moderate local tasks well — exploration, planning, and smaller edits.`,
         delegateHint:
           'For large refactors or repo-wide test fixes, consider Codex or Claude for implementation.'
+      }
+    case 'granite4_1_3b':
+      return {
+        guidance: `${modelLabel} is a lightweight tool-capable local model for fast reads and small planning tasks.`,
+        delegateHint:
+          'For edits, shell verification, or long reasoning chains, use a larger Ollama tag or delegate to Codex/Claude.'
+      }
+    case 'granite4_1_30b':
+      return {
+        guidance: `${modelLabel} is a larger tool-capable local model suited to deeper local review and planning.`,
+        delegateHint:
+          'For release-critical patches, use it as a local reviewer or pair it with Codex/Claude verification.'
+      }
+    case 'nemotron3_33b':
+      return {
+        guidance: `${modelLabel} is a multimodal local reasoning model with native tools and thinking support.`,
+        delegateHint:
+          'Use it for deep local analysis and visual checks; delegate broad multi-file implementation when latency or reliability matters.'
       }
     case 'gpt_oss_20b':
       return {
@@ -176,6 +224,31 @@ function familyGuidance(family: OllamaModelFamily, modelLabel: string): {
         delegateHint:
           'For ambitious refactors or long tool chains, delegate the implementation pass to Codex or Claude.'
       }
+  }
+}
+
+function defaultParameterBillionsForFamily(family: OllamaModelFamily): number | null {
+  switch (family) {
+    case 'qwen3_4b':
+      return 4
+    case 'qwen3_5_9b':
+      return 9
+    case 'qwen3_6_35b':
+      return 36
+    case 'minicpm_v45_8b':
+      return 8
+    case 'gemma4_12b':
+      return 12
+    case 'granite4_1_3b':
+      return 3
+    case 'granite4_1_30b':
+      return 30
+    case 'nemotron3_33b':
+      return 33
+    case 'gpt_oss_20b':
+      return 20
+    default:
+      return null
   }
 }
 
@@ -209,15 +282,7 @@ export function evaluateOllamaModelPreflight(
 
   const paramB =
     parseOllamaParameterBillions(input.modelInfo?.parameterSize) ??
-    (family === 'qwen3_4b'
-      ? 4
-      : family === 'qwen3_5_9b'
-        ? 9
-        : family === 'gemma4_12b'
-          ? 12
-          : family === 'gpt_oss_20b'
-            ? 20
-            : null)
+    defaultParameterBillionsForFamily(family)
   const estimatedRamGb = estimateOllamaModelRamGb({
     parameterBillions: paramB,
     quantizationLevel: input.modelInfo?.quantizationLevel,

@@ -161,23 +161,48 @@ const OLLAMA_STATIC_MODELS = [
   {
     id: 'qwen3:4b-instruct',
     label: 'Qwen 3 (4B Param)',
-    description: 'Local Ollama model',
+    description: 'Local Ollama model · 262k context',
     isDefault: true
   },
   {
     id: 'qwen3.5:9b',
     label: 'Qwen 3.5 (9B Param)',
-    description: 'Qwen 3.5 9B via Ollama'
+    description: 'Qwen 3.5 9B via Ollama · 262k context'
+  },
+  {
+    id: 'qwen3.6:35b',
+    label: 'Qwen 3.6 (35B Param)',
+    description: 'Qwen 3.6 35B via Ollama · 262k context · vision/tools/thinking'
   },
   {
     id: 'gemma4:12b',
     label: 'Gemma 4 (12B Param)',
-    description: 'Google Gemma 4 12B via Ollama'
+    description: 'Google Gemma 4 12B via Ollama · 262k context'
   },
   {
     id: 'gpt-oss:20b',
     label: 'GPT OSS (20B Param)',
-    description: 'OpenAI gpt-oss 20B via Ollama'
+    description: 'OpenAI gpt-oss 20B via Ollama · 131k context'
+  },
+  {
+    id: 'minicpm-v4.5:8b',
+    label: 'MiniCPM-V 4.5 (8B Param)',
+    description: 'MiniCPM-V 4.5 8B via Ollama · 40k context · vision/tools/thinking'
+  },
+  {
+    id: 'granite4.1:3b',
+    label: 'Granite 4.1 (3B Param)',
+    description: 'IBM Granite 4.1 3B via Ollama · 131k context · tools'
+  },
+  {
+    id: 'granite4.1:30b',
+    label: 'Granite 4.1 (30B Param)',
+    description: 'IBM Granite 4.1 30B via Ollama · 131k context · tools'
+  },
+  {
+    id: 'nemotron3:33b',
+    label: 'Nemotron 3 Nano Omni (33B Param)',
+    description: 'NVIDIA Nemotron 3 Nano Omni 33B via Ollama · 131k context · vision/tools/thinking'
   },
   { id: 'custom', label: 'Custom model ID' }
 ]

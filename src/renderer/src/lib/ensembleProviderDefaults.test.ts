@@ -221,8 +221,13 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
     expect(ollama.modelOptions.map((o) => o.id)).toEqual([
       'qwen3:4b-instruct',
       'qwen3.5:9b',
+      'qwen3.6:35b',
       'gemma4:12b',
-      'gpt-oss:20b'
+      'gpt-oss:20b',
+      'minicpm-v4.5:8b',
+      'granite4.1:3b',
+      'granite4.1:30b',
+      'nemotron3:33b'
     ])
     expect(ollama.reasoningOptions).toEqual([])
   })
