@@ -569,6 +569,8 @@ import {
   serializeDiagnosticsSnapshot
 } from './ProductOperations'
 import { installIpcValidation } from './IpcValidation'
+import { registerPtyHandlers } from './ipc/ptyHandlers'
+import { registerShellHandlers } from './ipc/shellHandlers'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 // 1.0.5-EW26 — Kimi compatibility filter (curated + user-
 // editable keyword list, redacts matched sentences before the
@@ -607,6 +609,10 @@ import {
 } from './NativeSubAgentPolicy'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { getSubThreadResumeSessionId, resolveSubThreadRecall } from './SubThreadRecall'
+import {
+  delegationApprovalBudget,
+  delegationApprovalBudgetExhaustedMessage
+} from './DelegationApprovalBudgetGuard'
 import { classifyShellOpenTarget } from './ShellOpenPolicy'
 import {
   AUTO_RESUME_CONTINUATION_KIND,
@@ -12911,6 +12917,33 @@ async function executeGeminiMcpTool(
         : `Delegation prompt:\n${promptPreview}\n\n` +
           `Spawning this sub-thread starts a new run on ${targetProviderLabel} using its current model. ` +
           `This consumes ${targetProviderLabel} usage allowances.`
+      // Anti-spam: cap how many sub-thread delegation approvals a single
+      // parent run may generate. A runaway agent that calls
+      // delegate_to_subthread in a tight loop would otherwise flood the
+      // user with approval modals — and spawn a provider run per attempt —
+      // without bound. The budget is keyed on the parent run so it resets
+      // each turn; the in-memory ApprovalBudgetTracker (via
+      // DelegationApprovalBudgetGuard) holds the consumed count. Once the
+      // cap is crossed we short-circuit to the decline path BEFORE
+      // prompting, surfacing a tool_result so the agent stops looping.
+      const delegationBudgetKey = context.appRunId || parentChatId
+      if (delegationApprovalBudget.tryConsume(delegationBudgetKey) === 'exhausted') {
+        const budgetText = delegationApprovalBudgetExhaustedMessage(
+          parentProviderLabel,
+          targetProviderLabel,
+          delegationApprovalBudget.cap()
+        )
+        emitMcpToolTranscriptEvent({
+          type: 'tool_result',
+          tool_id: toolId,
+          tool_name: toolName,
+          status: 'error',
+          output: budgetText,
+          provider: parentProvider,
+          server: GEMINI_MCP_SERVER_NAME
+        })
+        return { text: budgetText, isError: true }
+      }
       const delegationApproved = await requestAgenticServiceApproval(
         context.sender,
         parentProvider,
@@ -20778,125 +20811,17 @@ if (isGeminiMcpBridgeProcess) {
       return getSessionYoloMode()
     })
 
-    // Phase K1: safe open-link bridge for transcript markdown clicks.
-    // The renderer classifies the href before calling us; main still
-    // re-validates the scheme as a security gate because the renderer
-    // could be compromised by a future markdown XSS. Whitelist:
-    //   - http / https / mailto -> shell.openExternal
-    //   - x-apple.systempreferences -> shell.openExternal for local permission setup
-    //   - file:// or scheme-less absolute/relative path -> shell.openPath
-    //   - everything else (javascript:, data:, ssh:, custom) -> no-op
-    ipcMain.handle(
-      'shell:open-link',
-      async (_event, hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
-        return openSafeShellTarget(hrefRaw)
-      }
-    )
-    ipcMain.handle(
-      'shell:reveal-in-finder',
-      async (_event, pathRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
-        return revealPathInFinder(pathRaw)
-      }
-    )
-    ipcMain.handle('favicon:getForUrl', async (_event, hrefRaw: unknown) => {
-      return getFaviconService().getForUrl(String(hrefRaw || ''))
-    })
+    // Outbound shell / URL bridges (shell:open-link, shell:reveal-in-finder,
+    // favicon:getForUrl) — extracted to ./ipc/shellHandlers. Thin delegators;
+    // the collaborators stay in index.ts (openSafeShellTarget has a second
+    // caller) and are injected.
+    registerShellHandlers({ openSafeShellTarget, revealPathInFinder, getFaviconService })
 
-    // PTY for Trust Assistant
-    const ptyProcesses = new Map<string, pty.IPty>()
-    const stoppedPtySessions = new Set<string>()
-
-    ipcMain.handle(
-      'start-pty',
-      async (event, workspacePath: string, sessionId: string = 'default') => {
-        const registeredWorkspace = requireRegisteredWorkspace(workspacePath)
-        const ptySessionId = optionalString(sessionId) || 'default'
-        stoppedPtySessions.delete(ptySessionId)
-        const allowed = await requestAgenticServiceApproval(
-          event.sender,
-          'gemini',
-          'shellCommands',
-          registeredWorkspace,
-          {
-            method: 'pty/start',
-            title: 'Approve setup terminal',
-            body: `${registeredWorkspace}\n${process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : 'bash')}`,
-            preview: {
-              kind: 'terminal',
-              workspacePath: registeredWorkspace,
-              sessionId: ptySessionId
-            }
-          }
-        )
-        if (!allowed) {
-          event.sender.send(
-            'pty-data',
-            'Terminal start denied by TaskWraith approval policy.\r\n',
-            ptySessionId
-          )
-          event.sender.send('pty-exit', -1, ptySessionId)
-          return
-        }
-        if (stoppedPtySessions.delete(ptySessionId)) {
-          event.sender.send('pty-exit', null, ptySessionId)
-          return
-        }
-
-        const existing = ptyProcesses.get(ptySessionId)
-        if (existing) {
-          existing.kill()
-          ptyProcesses.delete(ptySessionId)
-        }
-
-        const shellCommand =
-          os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || 'bash'
-
-        const ptyProcess = pty.spawn(shellCommand, [], {
-          name: 'xterm-color',
-          cols: 80,
-          rows: 24,
-          cwd: registeredWorkspace,
-          env: process.env as Record<string, string>
-        })
-        ptyProcesses.set(ptySessionId, ptyProcess)
-
-        ptyProcess.onData((data) => {
-          event.sender.send('pty-data', data, ptySessionId)
-        })
-
-        ptyProcess.onExit((e) => {
-          event.sender.send('pty-exit', e.exitCode, ptySessionId)
-          if (ptyProcesses.get(ptySessionId) === ptyProcess) {
-            ptyProcesses.delete(ptySessionId)
-          }
-        })
-      }
-    )
-
-    ipcMain.handle('stop-pty', (_, sessionId: string = 'default') => {
-      const ptySessionId = optionalString(sessionId) || 'default'
-      const ptyProcess = ptyProcesses.get(ptySessionId)
-      if (ptyProcess) {
-        ptyProcess.kill()
-        ptyProcesses.delete(ptySessionId)
-      } else {
-        stoppedPtySessions.add(ptySessionId)
-      }
-    })
-
-    ipcMain.handle('pty-write', (_, data: string, sessionId: string = 'default') => {
-      const ptyProcess = ptyProcesses.get(optionalString(sessionId) || 'default')
-      if (ptyProcess) {
-        ptyProcess.write(data)
-      }
-    })
-
-    ipcMain.handle('pty-resize', (_, cols: number, rows: number, sessionId: string = 'default') => {
-      const ptyProcess = ptyProcesses.get(optionalString(sessionId) || 'default')
-      if (ptyProcess) {
-        ptyProcess.resize(cols, rows)
-      }
-    })
+    // PTY (Trust Assistant terminal) handlers: start-pty / stop-pty /
+    // pty-write / pty-resize. Extracted to ./ipc/ptyHandlers — `ipcMain` is
+    // the validation-patched singleton, and the two index-local collaborators
+    // are injected so the module needs no back-reference into index.ts.
+    registerPtyHandlers({ requireRegisteredWorkspace, requestAgenticServiceApproval })
 
     void startGeminiMcpBroker().catch((error) => {
       console.error('Failed to start Gemini MCP broker', error)
