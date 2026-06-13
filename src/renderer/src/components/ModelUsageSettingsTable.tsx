@@ -42,6 +42,7 @@ import {
   MODEL_USAGE_WINDOW_LABEL,
   MODEL_USAGE_WINDOW_ORDER,
   buildModelUsageTableForSettings,
+  sumModelUsageProviderTotals,
   type ModelUsageProviderGroup,
   type ModelUsageWindowKey,
   type ModelUsageWindowTotals
@@ -206,7 +207,7 @@ export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProvi
   )
 }
 
-/** Ollama block — RAM / periodic-sample columns instead of tokens/cost. */
+/** Ollama block — periodic-sample / RAM columns instead of tokens/cost. */
 export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProviderGroup }) {
   const MemoryCells = ({
     windowKey,
@@ -217,16 +218,6 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
   }) => (
     <>
       <td
-        className="model-usage-table-memory"
-        title={
-          totals.avgPeakRssGb > 0
-            ? `Average per-run peak llama-server RSS (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
-            : undefined
-        }
-      >
-        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb, true)}
-      </td>
-      <td
         className="model-usage-table-samples"
         title={
           totals.runs > 0
@@ -235,6 +226,16 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
         }
       >
         {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs, true)}
+      </td>
+      <td
+        className="model-usage-table-memory"
+        title={
+          totals.avgPeakRssGb > 0
+            ? `Average per-run peak llama-server RSS (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb, true)}
       </td>
     </>
   )
@@ -269,6 +270,77 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
         </tr>
       ))}
     </tbody>
+  )
+}
+
+/** Footer totals — API token/cost roll-up + Ollama RAM roll-up. */
+export function ModelUsageTableTotalsFooter({
+  tokenTotals,
+  ollamaTotals
+}: {
+  tokenTotals: Record<ModelUsageWindowKey, ModelUsageWindowTotals> | null
+  ollamaTotals: Record<ModelUsageWindowKey, OllamaMemoryWindowTotals> | null
+}) {
+  if (!tokenTotals && !ollamaTotals) return null
+
+  const OllamaCells = ({
+    windowKey,
+    totals
+  }: {
+    windowKey: ModelUsageWindowKey
+    totals: OllamaMemoryWindowTotals
+  }) => (
+    <>
+      <td
+        className="model-usage-table-samples"
+        title={
+          totals.runs > 0
+            ? `Average periodic memory samples per run (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs, true)}
+      </td>
+      <td
+        className="model-usage-table-memory"
+        title={
+          totals.avgPeakRssGb > 0
+            ? `Average per-run peak llama-server RSS (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            : undefined
+        }
+      >
+        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb, true)}
+      </td>
+    </>
+  )
+
+  return (
+    <tfoot className="model-usage-table-totals">
+      {tokenTotals ? (
+        <tr className="model-usage-table-totals-row model-usage-table-totals-row--tokens">
+          <th scope="row" className="model-usage-table-totals-label">
+            Token / cost total
+          </th>
+          {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+            <WindowCells key={windowKey} windowKey={windowKey} totals={tokenTotals[windowKey]} />
+          ))}
+        </tr>
+      ) : null}
+      {ollamaTotals ? (
+        <tr className="model-usage-table-totals-row model-usage-table-totals-row--memory">
+          <th scope="row" className="model-usage-table-totals-label">
+            Ollama RAM total
+          </th>
+          {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
+            <OllamaCells
+              key={windowKey}
+              windowKey={windowKey}
+              totals={ollamaTotals[windowKey]}
+            />
+          ))}
+        </tr>
+      ) : null}
+    </tfoot>
   )
 }
 
@@ -435,6 +507,18 @@ export function ModelUsageSettingsTable({
     [ollamaMemoryRecords]
   )
 
+  const tokenTotals = useMemo(
+    () =>
+      groups.length > 0
+        ? sumModelUsageProviderTotals(groups, {
+            currency,
+            overestimatePercent,
+            locale
+          })
+        : null,
+    [groups, currency, overestimatePercent, locale]
+  )
+
   const hasTableContent = groups.length > 0 || Boolean(ollamaGroup)
 
   const selectExternal = (next: boolean) => {
@@ -520,6 +604,10 @@ export function ModelUsageSettingsTable({
                 <ModelUsageProviderTableBlock key={group.provider} group={group} />
               ))}
               {ollamaGroup ? <ModelUsageOllamaTableBlock group={ollamaGroup} /> : null}
+              <ModelUsageTableTotalsFooter
+                tokenTotals={tokenTotals}
+                ollamaTotals={ollamaGroup?.totals ?? null}
+              />
             </table>
           </div>
           <p className="model-usage-table-footnote">

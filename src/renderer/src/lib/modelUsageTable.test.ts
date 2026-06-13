@@ -5,6 +5,7 @@ import {
   MODEL_USAGE_WINDOW_ORDER,
   buildModelUsageTable,
   buildModelUsageTableForSettings,
+  sumModelUsageProviderTotals,
   type ModelUsageTableOptions
 } from './modelUsageTable'
 import { getFxRatesPerUsd, setFxRatesPerUsd } from './formatCost'
@@ -556,5 +557,35 @@ describe('buildModelUsageTableForSettings — grok/cursor supplement when extern
     const off = buildModelUsageTable(internal, [], RATES, USD, NOW)
     const settingsOff = buildModelUsageTableForSettings(internal, [], RATES, USD, NOW)
     expect(settingsOff).toEqual(off)
+  })
+})
+
+describe('sumModelUsageProviderTotals', () => {
+  it('sums provider roll-ups across the priced roster', () => {
+    const groups = buildModelUsageTable(
+      [
+        makeRecord({
+          provider: 'codex',
+          model: 'gpt-5.5',
+          timestamp: NOW - HOURS(1),
+          inputTokens: 1_000_000
+        }),
+        makeRecord({
+          provider: 'claude',
+          model: 'opus',
+          timestamp: NOW - HOURS(1),
+          outputTokens: 1_000_000
+        })
+      ],
+      [],
+      RATES,
+      USD,
+      NOW
+    )
+    const totals = sumModelUsageProviderTotals(groups, USD)
+    expect(totals.h24.totalTokens).toBe(2_000_000)
+    expect(totals.h24.runs).toBe(2)
+    expect(totals.h24.costUsd).toBeCloseTo(26, 6)
+    expect(totals.h24.costDisplay).toBe('$26.00')
   })
 })

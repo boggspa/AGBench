@@ -82,7 +82,7 @@
   width: 100%;
   table-layout: auto;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
   min-width: 100%;
 }
 
@@ -114,7 +114,7 @@
 
 .model-usage-table-subhead th {
   top: 32px;
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 500;
   color: var(--text-tertiary, var(--text-secondary));
   text-transform: uppercase;
@@ -142,8 +142,8 @@
   text-align: left !important;
   white-space: nowrap;
   width: 1%;
-  min-width: 108px;
-  max-width: 128px;
+  min-width: 130px;
+  max-width: 150px;
   padding-left: 8px !important;
   padding-right: 4px !important;
 }
@@ -164,7 +164,7 @@
 
 .model-usage-table-model-count {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   color: var(--text-tertiary, var(--text-secondary));
   padding: 1px 5px;
@@ -188,10 +188,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 1%;
-  max-width: 88px;
+  max-width: 110px;
   padding-left: 8px !important;
   padding-right: 2px !important;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .model-usage-table-tokens,
@@ -199,7 +199,7 @@
 .model-usage-table-memory,
 .model-usage-table-samples {
   font-variant-numeric: tabular-nums;
-  font-size: 11.5px;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 
@@ -240,9 +240,37 @@
 .model-usage-table-provider--memory .model-usage-table-memory,
 .model-usage-table-provider--memory .model-usage-table-samples {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   padding-left: 4px;
   padding-right: 4px;
+}
+
+/* Footer totals — API token/cost + Ollama RAM roll-ups. */
+.model-usage-table-totals {
+  border-top: 2px solid var(--panel-border, var(--surface-border));
+}
+
+.model-usage-table-totals-row th,
+.model-usage-table-totals-row td {
+  padding: 8px 6px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-2, #8884) 55%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border, var(--surface-border)) 65%, transparent);
+}
+
+.model-usage-table-totals-label {
+  text-align: left !important;
+  padding-left: 10px !important;
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+}
+
+.model-usage-table-totals-row--memory .model-usage-table-memory,
+.model-usage-table-totals-row--memory .model-usage-table-samples {
+  font-size: 10px;
 }
 
 /* Empty state */

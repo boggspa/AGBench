@@ -443,3 +443,28 @@ export function buildModelUsageTableForSettings(
     (group): group is ModelUsageProviderGroup => Boolean(group)
   )
 }
+
+/** Sum provider-level roll-ups into a single token/cost totals row. */
+export function sumModelUsageProviderTotals(
+  groups: ModelUsageProviderGroup[],
+  options: ModelUsageCurrencyOptions = {}
+): Record<ModelUsageWindowKey, ModelUsageWindowTotals> {
+  const currency: DisplayCurrency = options.currency ?? 'USD'
+  const overestimatePercent = Number.isFinite(options.overestimatePercent)
+    ? (options.overestimatePercent as number)
+    : 0
+  const locale = options.locale
+  const merged = emptyWindowSet()
+
+  for (const group of groups) {
+    for (const key of MODEL_USAGE_WINDOW_ORDER) {
+      const window = group.totals[key]
+      merged[key].tokensIn += window.tokensIn
+      merged[key].tokensOut += window.tokensOut
+      merged[key].runs += window.runs
+      merged[key].costUsd += window.costUsd
+    }
+  }
+
+  return finalizeWindowSet(merged, currency, overestimatePercent, locale)
+}

@@ -204,7 +204,7 @@ describe('humaniseModelIdCompact', () => {
 describe('humaniseModelIdTableCell', () => {
   it('hard-truncates long compact labels for narrow table cells', () => {
     expect(humaniseModelIdTableCell('gemini', 'gemini-3.1-flash-lite-preview')).toBe(
-      '3.1 Flash Lit…'
+      '3.1 Flash Lite Preview'
     )
   })
 

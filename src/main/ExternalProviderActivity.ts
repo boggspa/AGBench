@@ -176,6 +176,29 @@ function eventToUsageRecord(event: ExternalUsageEvent): UsageRecord | null {
   }
 }
 
+function extractCodexSessionModel(json: Record<string, unknown>): string | null {
+  const topType = typeof json.type === 'string' ? json.type : ''
+  const payload = json.payload
+  if (!payload || typeof payload !== 'object') return null
+  const record = payload as Record<string, unknown>
+  if (topType !== 'turn_context' && record.type !== 'turn_context') return null
+
+  const direct = typeof record.model === 'string' ? record.model.trim() : ''
+  if (direct) return direct
+
+  const collaboration = record.collaboration_mode
+  if (collaboration && typeof collaboration === 'object') {
+    const settings = (collaboration as Record<string, unknown>).settings
+    if (settings && typeof settings === 'object') {
+      const nested = typeof (settings as Record<string, unknown>).model === 'string'
+        ? (settings as Record<string, unknown>).model.trim()
+        : ''
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
 async function readCodexActivity(homeDir: string, sinceMs: number): Promise<ExternalUsageEvent[]> {
   const codexRoot = join(homeDir, '.codex')
   const files = [
@@ -196,8 +219,11 @@ async function readCodexActivity(homeDir: string, sinceMs: number): Promise<Exte
   for (const filePath of files) {
     const text = await readTextTail(filePath)
     let lineIndex = 0
+    let sessionModel = ''
     for (const json of parseJsonLines(text)) {
       lineIndex += 1
+      const turnModel = extractCodexSessionModel(json)
+      if (turnModel) sessionModel = turnModel
       if (json?.payload?.type !== 'token_count') continue
       const timestamp = parseTimestamp(json.timestamp)
       if (!timestamp || timestamp < sinceMs) continue
@@ -207,7 +233,7 @@ async function readCodexActivity(homeDir: string, sinceMs: number): Promise<Exte
       events.push({
         provider: 'codex',
         timestamp,
-        model: 'Codex',
+        model: sessionModel || 'codex',
         totalTokens,
         inputTokens:
           numberValue(usage?.input_tokens) +

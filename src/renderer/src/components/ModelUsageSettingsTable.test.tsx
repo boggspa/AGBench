@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ModelUsageProviderTableBlock, ModelUsageSettingsTable } from './ModelUsageSettingsTable'
-import { buildModelUsageTable } from '../lib/modelUsageTable'
+import { ModelUsageProviderTableBlock, ModelUsageSettingsTable, ModelUsageTableTotalsFooter } from './ModelUsageSettingsTable'
+import { buildModelUsageTable, sumModelUsageProviderTotals } from '../lib/modelUsageTable'
+import { buildOllamaMemoryModelTable } from '../lib/ollamaMemoryAggregation'
 import type { RendererProviderRates } from '../lib/providerRateEstimate'
 import type { UsageRecord } from '../../../main/store/types'
 
@@ -126,5 +127,50 @@ describe('ModelUsageProviderTableBlock (populated render)', () => {
     expect(html).toContain('Cursor')
     expect(html).toContain('tok')
     expect(html).toContain('~$0.11')
+  })
+})
+
+describe('ModelUsageTableTotalsFooter (populated render)', () => {
+  it('renders API token/cost and Ollama RAM total rows', () => {
+    const groups = buildModelUsageTable(
+      [
+        makeRecord({
+          provider: 'codex',
+          model: 'gpt-5.5',
+          timestamp: NOW - 60_000,
+          inputTokens: 2_000_000,
+          outputTokens: 500_000,
+          totalTokens: 2_500_000
+        })
+      ],
+      [],
+      RATES,
+      { currency: 'USD' },
+      NOW
+    )
+    const ollamaGroup = buildOllamaMemoryModelTable([
+      {
+        ...makeRecord({
+          provider: 'ollama',
+          model: 'qwen3:4b-instruct',
+          timestamp: NOW - 60_000
+        }),
+        ollamaMemoryPeakRssGb: 12,
+        ollamaMemorySampleCount: 8
+      }
+    ])
+    const html = renderToStaticMarkup(
+      <table>
+        <ModelUsageTableTotalsFooter
+          tokenTotals={sumModelUsageProviderTotals(groups, { currency: 'USD' })}
+          ollamaTotals={ollamaGroup?.totals ?? null}
+        />
+      </table>
+    )
+    expect(html).toContain('Token / cost total')
+    expect(html).toContain('Ollama RAM total')
+    expect(html).toContain('~$7.00')
+    expect(html).toContain('12GB')
+    expect(html).toContain('8 avg')
   })
 })

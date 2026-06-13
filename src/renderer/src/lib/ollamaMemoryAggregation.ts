@@ -209,19 +209,19 @@ export function mergeOllamaMemoryUsageRecords(
   return merged
 }
 
-/** Compact RAM label for table/card cells (e.g. `12 GB avg`). */
+/** Compact RAM label for table/card cells (e.g. `12 GB avg`, or `12GB` in table compact mode). */
 export function formatOllamaMemoryAvgCell(avgPeakRssGb: number, compact = false): string {
   if (!Number.isFinite(avgPeakRssGb) || avgPeakRssGb <= 0) return '—'
   if (compact) {
-    if (avgPeakRssGb >= 10) return `${Math.round(avgPeakRssGb)}G`
+    if (avgPeakRssGb >= 10) return `${Math.round(avgPeakRssGb)}GB`
     const fixed = avgPeakRssGb >= 1 ? avgPeakRssGb.toFixed(1) : avgPeakRssGb.toFixed(2)
-    return `${fixed.replace(/\.0+$/, '')}G`
+    return `${fixed.replace(/\.0+$/, '')}GB`
   }
   const label = formatOllamaSummaryMemoryGb(avgPeakRssGb)
   return label ? `${label} avg` : '—'
 }
 
-/** Compact periodic-sample label (e.g. `8 samples avg`). */
+/** Compact periodic-sample label (e.g. `8 samples avg`, or `8 avg` in table compact mode). */
 export function formatOllamaSampleAvgCell(
   avgSampleCount: number,
   runs: number,
@@ -231,10 +231,10 @@ export function formatOllamaSampleAvgCell(
   if (avgSampleCount > 0) {
     const rounded =
       avgSampleCount >= 10 ? Math.round(avgSampleCount) : Number(avgSampleCount.toFixed(1))
-    if (compact) return String(rounded)
+    if (compact) return `${rounded} avg`
     return `${rounded} samples avg`
   }
-  if (compact) return String(runs)
+  if (compact) return runs === 1 ? '1 avg' : `${runs} avg`
   return runs === 1 ? '1 run' : `${runs} runs`
 }
 

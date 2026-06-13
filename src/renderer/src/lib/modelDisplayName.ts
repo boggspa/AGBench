@@ -97,7 +97,7 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   // ── Ollama ────────────────────────────────────────────────
   'qwen3:4b-instruct': 'Qwen 3 (4B Param)',
   'qwen3.5:9b': 'Qwen 3.5 (9B Param)',
-  'qwen3.6:35b': 'Qwen 3.6 (35B Param)',
+  'qwen3.6:35b': 'Qwen 3.6 (35B-A3B)',
   'gemma4:12b': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-qat': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-q4_k_m': 'Gemma 4 (12B Param)',
@@ -172,7 +172,7 @@ export function humaniseModelId(
     return 'Qwen 3.5 (9B Param)'
   }
   if (provider === 'ollama' && key.startsWith('qwen3.6:35b-')) {
-    return 'Qwen 3.6 (35B Param)'
+    return 'Qwen 3.6 (35B-A3B)'
   }
   if (provider === 'ollama' && key.startsWith('minicpm-v4.5:8b-')) {
     return 'MiniCPM-V 4.5 (8B Param)'
@@ -227,7 +227,7 @@ const DATED_CLAUDE_MODEL_ID =
 export function humaniseModelIdTableCell(
   provider: ProviderId | undefined,
   modelId: string | undefined | null,
-  maxLength = 14
+  maxLength = 25
 ): string {
   const canonical = canonicalModelIdForProvider(provider, modelId).trim()
   let label = humaniseModelIdCompact(provider, modelId)

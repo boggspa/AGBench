@@ -17,7 +17,16 @@ describe('loadExternalProviderUsageRecords', () => {
         join(homeDir, '.codex', 'sessions', '2026', '05', '31', 'rollout.jsonl'),
         [
           JSON.stringify({
+            timestamp: '2026-05-31T08:59:00.000Z',
+            type: 'turn_context',
+            payload: {
+              type: 'turn_context',
+              model: 'gpt-5.5'
+            }
+          }),
+          JSON.stringify({
             timestamp: '2026-05-31T09:00:00.000Z',
+            type: 'event_msg',
             payload: {
               type: 'token_count',
               info: {
@@ -93,6 +102,7 @@ describe('loadExternalProviderUsageRecords', () => {
       const byProvider = new Map(records.map((record) => [record.provider, record]))
 
       expect(byProvider.get('codex')?.totalTokens).toBe(25)
+      expect(byProvider.get('codex')?.model).toBe('gpt-5.5')
       expect(byProvider.get('claude')?.totalTokens).toBe(19)
       expect(byProvider.get('gemini')?.totalTokens).toBe(24)
       expect(byProvider.get('kimi')?.totalTokens).toBe(25)
@@ -179,7 +189,64 @@ describe('loadExternalProviderUsageRecords', () => {
 
       expect(codexRecords.some((record) => record.totalTokens === 15)).toBe(true)
       expect(codexRecords.some((record) => record.totalTokens === 0)).toBe(true)
-      expect(codexRecords.every((record) => record.model === 'Codex')).toBe(true)
+      expect(codexRecords.find((record) => record.totalTokens === 15)?.model).toBe('codex')
+    } finally {
+      await rm(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  it('splits Codex external usage by turn_context model within each session file', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'taskwraith-external-codex-models-'))
+    try {
+      await mkdir(join(homeDir, '.codex', 'sessions', '2026', '06', '13'), { recursive: true })
+      await writeFile(
+        join(homeDir, '.codex', 'sessions', '2026', '06', '13', 'rollout.jsonl'),
+        [
+          JSON.stringify({
+            timestamp: '2026-06-13T10:00:00.000Z',
+            type: 'turn_context',
+            payload: { type: 'turn_context', model: 'gpt-5.5' }
+          }),
+          JSON.stringify({
+            timestamp: '2026-06-13T10:01:00.000Z',
+            payload: {
+              type: 'token_count',
+              info: {
+                last_token_usage: { input_tokens: 1000, output_tokens: 200, total_tokens: 1200 }
+              }
+            }
+          }),
+          JSON.stringify({
+            timestamp: '2026-06-13T11:00:00.000Z',
+            type: 'turn_context',
+            payload: {
+              type: 'turn_context',
+              collaboration_mode: { settings: { model: 'gpt-5.4' } }
+            }
+          }),
+          JSON.stringify({
+            timestamp: '2026-06-13T11:01:00.000Z',
+            type: 'event_msg',
+            payload: {
+              type: 'token_count',
+              info: {
+                last_token_usage: { input_tokens: 500, output_tokens: 100, total_tokens: 600 }
+              }
+            }
+          })
+        ].join('\n')
+      )
+
+      const records = await loadExternalProviderUsageRecords({
+        homeDir,
+        now: new Date('2026-06-13T13:00:00.000Z')
+      })
+      const codexRecords = records.filter((record) => record.provider === 'codex')
+
+      expect(codexRecords.map((record) => [record.model, record.totalTokens]).sort()).toEqual([
+        ['gpt-5.4', 600],
+        ['gpt-5.5', 1200]
+      ])
     } finally {
       await rm(homeDir, { recursive: true, force: true })
     }
