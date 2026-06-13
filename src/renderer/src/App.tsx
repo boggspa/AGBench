@@ -1563,6 +1563,10 @@ function App(): React.JSX.Element {
   } | null>(null)
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
+  // Monotonic tick bumped whenever usage records change (a run completes →
+  // `usage-changed` broadcast). Forwarded to the sidebar Model Usage card's
+  // API-spend view so it re-queries `getUsage` without a manual refresh.
+  const [usageRefreshTick, setUsageRefreshTick] = useState(0)
   // True once the first usage fetch has resolved. Until then we can't know
   // whether the welcome dashboard will render, so the welcome screen reserves
   // its (fixed) height to stop the greeting + composer jumping downward when
@@ -3717,6 +3721,12 @@ function App(): React.JSX.Element {
     }
     if (next.currencyOverestimatePercent !== undefined) {
       settingsPatch.currencyOverestimatePercent = next.currencyOverestimatePercent
+    }
+    // Sidebar Model Usage card view toggle (plan quota meters vs API
+    // spend). Persist-only — the sidebar reads `settings.modelUsagePanelView`
+    // directly when rendering the card.
+    if (next.modelUsagePanelView !== undefined) {
+      settingsPatch.modelUsagePanelView = next.modelUsagePanelView
     }
     // 1.0.5-EW49 — Dashboard stat prefs (visibility map / global
     // reset timestamp). The patch sets the whole object at once
@@ -7645,6 +7655,8 @@ function App(): React.JSX.Element {
       // than waiting for the 90s poll.
       window.api.onUsageChanged(() => {
         void refreshUsageSummaryRef.current?.()
+        // Nudge the sidebar API-spend view to re-query the priced records.
+        setUsageRefreshTick((tick) => tick + 1)
       })
     }
 
@@ -16011,6 +16023,15 @@ function App(): React.JSX.Element {
                 currentChat={currentChat}
                 activeChatId={activeSidebarChatId}
                 usageSummary={usageSummary}
+                modelUsageApiSpend={{
+                  providerRates,
+                  currency: displayCurrency,
+                  overestimatePercent,
+                  view: settings?.modelUsagePanelView ?? 'plan',
+                  onViewChange: (nextView) =>
+                    handleSettingsChange({ modelUsagePanelView: nextView }),
+                  refreshKey: usageRefreshTick
+                }}
                 runningChatIds={runningChatIdsArray}
                 workflows={workflowDefinitions}
                 scheduledTasks={scheduledTasks}

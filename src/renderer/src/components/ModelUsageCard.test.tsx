@@ -1,7 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ModelUsageCard } from './ModelUsageCard'
+import {
+  ApiSpendProviderBlock,
+  ModelUsageCard,
+  type ModelUsageApiSpendOptions
+} from './ModelUsageCard'
 import type { ModelUsageAggregate } from '../App'
+import { buildApiSpendByProvider } from '../lib/apiSpendAggregation'
+import type { RendererProviderRates } from '../lib/providerRateEstimate'
+import type { UsageRecord } from '../../../main/store/types'
 
 function quotaEntry(overrides: Partial<ModelUsageAggregate> = {}): ModelUsageAggregate {
   return {
@@ -80,5 +87,90 @@ describe('ModelUsageCard', () => {
 
     expect(html).toContain('model-usage-resize-handle')
     expect(html).toContain('model-usage-resize-grip')
+  })
+
+  it('does NOT render the view toggle when apiSpend is omitted', () => {
+    const html = renderToStaticMarkup(
+      <ModelUsageCard usageSummary={[quotaEntry()]} variant="sidebar" />
+    )
+    expect(html).not.toContain('model-usage-view-toggle')
+    expect(html).not.toContain('aria-label="API spend"')
+  })
+
+  it('renders both toggle glyphs (no text labels) when apiSpend is wired', () => {
+    const apiSpend: ModelUsageApiSpendOptions = { providerRates: {}, view: 'plan' }
+    const html = renderToStaticMarkup(
+      <ModelUsageCard usageSummary={[quotaEntry()]} variant="sidebar" apiSpend={apiSpend} />
+    )
+    // Toggle group + both accessible labels present (icons, not text).
+    expect(html).toContain('model-usage-view-toggle')
+    expect(html).toContain('aria-label="Plan limits"')
+    expect(html).toContain('aria-label="API spend"')
+    // Plan view is active by default; the quota meters still render.
+    expect(html).toContain('Kimi')
+    expect(html).toContain('200 / 200 remaining')
+  })
+
+  it('marks the API-spend radio active and shows the empty state under SSR when view=spend', () => {
+    // Under renderToStaticMarkup, the getUsage effect does NOT fire, so View B
+    // resolves to its honest empty state. We assert the toggle reflects the
+    // persisted selection and the spend body (not the quota meters) renders.
+    const apiSpend: ModelUsageApiSpendOptions = { providerRates: {}, view: 'spend' }
+    const html = renderToStaticMarkup(
+      <ModelUsageCard usageSummary={[quotaEntry()]} variant="sidebar" apiSpend={apiSpend} />
+    )
+    expect(html).toContain('aria-checked="true"')
+    expect(html).toContain('No API spend tracked in the last 30 days')
+    // Quota meter rows are hidden while the spend view is active.
+    expect(html).not.toContain('200 / 200 remaining')
+  })
+
+  it('still renders (forced to spend view) when there are no quota meters but apiSpend is wired', () => {
+    const rates: RendererProviderRates = {
+      codex: [{ modelId: 'gpt-5.5', inputUsdPerMillion: 1, outputUsdPerMillion: 10 }]
+    }
+    const apiSpend: ModelUsageApiSpendOptions = { providerRates: rates, view: 'plan' }
+    // No quota entries at all → previously the card returned null. Now the
+    // spend view keeps the card mounted so an API-key user can see spend.
+    const html = renderToStaticMarkup(
+      <ModelUsageCard usageSummary={[]} variant="sidebar" apiSpend={apiSpend} />
+    )
+    expect(html).toContain('Model Usage')
+    expect(html).toContain('model-usage-view-toggle')
+  })
+})
+
+describe('ApiSpendProviderBlock (View B populated render)', () => {
+  it('renders the provider heading + Day/7d/30d rows with tokens and currency', () => {
+    const now = new Date('2026-06-13T12:00:00.000Z').getTime()
+    const rates: RendererProviderRates = {
+      codex: [{ modelId: 'gpt-5.5', inputUsdPerMillion: 1, outputUsdPerMillion: 10 }]
+    }
+    const records: UsageRecord[] = [
+      {
+        id: 'r1',
+        provider: 'codex',
+        model: 'gpt-5.5',
+        timestamp: now - 60_000,
+        workspaceId: 'ws',
+        chatId: 'c',
+        runId: 'run',
+        inputTokens: 2_000_000,
+        outputTokens: 500_000,
+        totalTokens: 2_500_000,
+        durationMs: 0
+      }
+    ]
+    const [entry] = buildApiSpendByProvider(records, rates, { currency: 'USD' }, now)
+    const html = renderToStaticMarkup(<ApiSpendProviderBlock entry={entry} />)
+
+    expect(html).toContain('Codex')
+    // All three window labels present.
+    expect(html).toContain('Day')
+    expect(html).toContain('7d')
+    expect(html).toContain('30d')
+    // Token chip (compact) + projected cost in USD ($2 in + $5 out = $7.00).
+    expect(html).toContain('tok')
+    expect(html).toContain('$7.00')
   })
 })

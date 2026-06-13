@@ -21,16 +21,26 @@
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react'
-import type { ProviderId } from '../../../main/store/types'
+import type { ProviderId, UsageRecord } from '../../../main/store/types'
 import type { ModelUsageAggregate, UsageWindowAggregate } from '../App'
+import {
+  API_SPEND_WINDOW_ORDER,
+  buildApiSpendByProvider,
+  type ApiSpendCurrencyOptions,
+  type ApiSpendProviderTotals,
+  type ApiSpendWindowKey
+} from '../lib/apiSpendAggregation'
 import { computeQuotaPace } from '../lib/QuotaPace'
+import type { RendererProviderRates } from '../lib/providerRateEstimate'
 import { formatResetShort } from '../lib/UsageFormat'
+import { formatTokenCount } from '../lib/UsageHeatmap'
 import { getProviderName } from './Sidebar'
 import { GrokCreditsMeter } from './GrokCreditsMeter'
 import { ProviderLogoTile } from './ProviderLogoTile'
@@ -38,9 +48,35 @@ import { QuotaProgressBar } from './QuotaProgressBar'
 import { UsageHeatmap } from './UsageHeatmap'
 import './ModelUsageCard.css'
 
+/** The two views the card's top toggle switches between. */
+export type ModelUsagePanelView = 'plan' | 'spend'
+
+/**
+ * View-B ("API spend") inputs. Threaded from App.tsx → Sidebar so the
+ * card can price usage records and persist the chosen view. All optional
+ * so the SSR/test render path (and any caller that hasn't wired it) keeps
+ * working — when absent the toggle still renders but View B shows an
+ * empty state.
+ */
+export interface ModelUsageApiSpendOptions extends ApiSpendCurrencyOptions {
+  /** Per-model rate table from `fetchProviderRates()`. */
+  providerRates?: RendererProviderRates
+  /** Persisted view ('plan' | 'spend'). Defaults to 'plan'. */
+  view?: ModelUsagePanelView
+  /** Persist a new view selection (writes `settings.modelUsagePanelView`). */
+  onViewChange?: (view: ModelUsagePanelView) => void
+  /**
+   * Refresh trigger — bump to force View B to re-query `getUsage`
+   * (e.g. after a turn completes). Mirrors `UsageHeatmap.refreshKey`.
+   */
+  refreshKey?: number
+}
+
 interface ModelUsageCardProps {
   usageSummary: ModelUsageAggregate[]
   variant?: 'card' | 'sidebar'
+  /** View-B configuration. Omit to render only the quota view. */
+  apiSpend?: ModelUsageApiSpendOptions
 }
 
 const PROVIDER_ORDER: ProviderId[] = [
@@ -202,9 +238,190 @@ function ModelUsageDisclosureIcon({ isExpanded }: { isExpanded: boolean }) {
   )
 }
 
-export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCardProps) {
+/** "Plan limits" glyph — a shield with a gauge needle, reading as
+ * "protected quota / allowance". Stroked so it themes via currentColor. */
+function PlanLimitsGlyph() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 1.6 13 3.4v4.1c0 3.2-2.1 5.6-5 6.9-2.9-1.3-5-3.7-5-6.9V3.4L8 1.6Z" />
+      <path d="M5.4 9.1a3 3 0 0 1 5.2 0" />
+      <path d="M8 9 9.7 6.6" />
+      <circle cx="8" cy="9.2" r="0.75" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** "API spend" glyph — a coin stack with a currency mark, reading as
+ * "money / spend". Stroked so it themes via currentColor. */
+function ApiSpendGlyph() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <ellipse cx="8" cy="4" rx="5" ry="2.2" />
+      <path d="M3 4v3.4c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V4" />
+      <path d="M3 7.4v3.4c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V7.4" />
+    </svg>
+  )
+}
+
+const API_SPEND_WINDOW_LABEL: Record<ApiSpendWindowKey, string> = {
+  day: 'Day',
+  week: '7d',
+  month: '30d'
+}
+
+/** One Day/7d/30d row inside a provider's API-spend section. Shows the
+ * token total + projected spend in the user's display currency. */
+function ApiSpendRow({
+  windowKey,
+  totals
+}: {
+  windowKey: ApiSpendWindowKey
+  totals: ApiSpendProviderTotals[ApiSpendWindowKey]
+}) {
+  const hasTokens = totals.totalTokens > 0
+  return (
+    <div className="model-usage-spend-row">
+      <span className="model-usage-spend-window">{API_SPEND_WINDOW_LABEL[windowKey]}</span>
+      <span
+        className="model-usage-spend-tokens"
+        title={`${totals.totalTokens.toLocaleString()} tokens`}
+      >
+        {hasTokens ? `${formatTokenCount(totals.totalTokens)} tok` : '—'}
+      </span>
+      <span className="model-usage-spend-cost">{totals.costDisplay || '—'}</span>
+    </div>
+  )
+}
+
+/** One provider's API-spend section (heading + three window rows).
+ * Exported for SSR render tests — pure given its `entry`. */
+export function ApiSpendProviderBlock({ entry }: { entry: ApiSpendProviderTotals }) {
+  return (
+    <div className={`model-usage-item provider-${entry.provider} spend-only`}>
+      <div className="model-usage-provider-heading">
+        <span className={`sidebar-provider-label provider-${entry.provider}`}>
+          <ProviderLogoTile provider={entry.provider} />
+          <span className="model-usage-provider-name">{getProviderName(entry.provider)}</span>
+        </span>
+      </div>
+      <div className="model-usage-spend-rows">
+        {API_SPEND_WINDOW_ORDER.map((windowKey) => (
+          <ApiSpendRow key={windowKey} windowKey={windowKey} totals={entry[windowKey]} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * View B body. Fetches usage records over the existing `getUsage` IPC
+ * (same pattern as `UsageHeatmap`), aggregates them through the pure
+ * `buildApiSpendByProvider` helper, and renders one section per active
+ * provider. Spend is the projected API-equivalent (records carry no
+ * stored cost), priced via the rate table + converted to display
+ * currency. Renders an honest empty state when there's nothing to show.
+ */
+function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefined }) {
+  const [records, setRecords] = useState<UsageRecord[]>([])
+  const refreshKey = options?.refreshKey ?? 0
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.api?.getUsage !== 'function') return
+    let cancelled = false
+    window.api
+      .getUsage()
+      .then((latest) => {
+        if (!cancelled) setRecords(Array.isArray(latest) ? latest : [])
+      })
+      .catch(() => {
+        // Best-effort — leave whatever we have rather than crashing the card.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
+
+  const spend = useMemo<ApiSpendProviderTotals[]>(() => {
+    const currencyOptions: ApiSpendCurrencyOptions = {
+      currency: options?.currency,
+      overestimatePercent: options?.overestimatePercent,
+      locale: options?.locale
+    }
+    return buildApiSpendByProvider(records, options?.providerRates ?? {}, currencyOptions)
+    // `Date.now()` is intentionally read inside the helper on each rebuild so
+    // the rolling windows track real time; records/options drive recompute.
+  }, [
+    records,
+    options?.providerRates,
+    options?.currency,
+    options?.overestimatePercent,
+    options?.locale
+  ])
+
+  if (spend.length === 0) {
+    return (
+      <div className="model-usage-spend-empty">
+        No API spend tracked in the last 30 days. Runs on API keys / SDK credits show their
+        projected cost here.
+      </div>
+    )
+  }
+
+  return (
+    <div className="model-usage-list model-usage-spend-list">
+      {spend.map((entry) => (
+        <ApiSpendProviderBlock key={entry.provider} entry={entry} />
+      ))}
+      <p className="model-usage-spend-footnote">
+        Projected from API rates · {recordsHint(records)}
+      </p>
+    </div>
+  )
+}
+
+/** Tiny helper for the footnote — keeps the JSX readable. */
+function recordsHint(records: UsageRecord[]): string {
+  const priced = records.filter((r) => r && r.usageKind !== 'reset_hint').length
+  return priced === 1 ? '1 run' : `${priced.toLocaleString()} runs`
+}
+
+export function ModelUsageCard({ usageSummary, variant = 'card', apiSpend }: ModelUsageCardProps) {
   const quotaContentId = useId()
   const summaryRef = useRef<HTMLDivElement | null>(null)
+  // Active view. Seed from the persisted pref (`apiSpend.view`) and keep a
+  // local mirror so a click flips instantly even before the settings round-
+  // trip resolves. We reconcile to the persisted value *during render* (the
+  // React-recommended pattern, no effect) by tracking the last-seen pref: when
+  // the persisted pref changes externally, adopt it; otherwise keep the local
+  // optimistic value.
+  const persistedView = apiSpend?.view ?? 'plan'
+  const [view, setView] = useState<ModelUsagePanelView>(persistedView)
+  const [lastPersistedView, setLastPersistedView] = useState<ModelUsagePanelView>(persistedView)
+  if (persistedView !== lastPersistedView) {
+    setLastPersistedView(persistedView)
+    setView(persistedView)
+  }
+  const selectView = (next: ModelUsagePanelView) => {
+    if (next === view) return
+    setView(next)
+    apiSpend?.onViewChange?.(next)
+  }
   const resizeStartRef = useRef<{
     height: number
     maxHeight: number
@@ -243,8 +460,14 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
   const quotaEntries = sortByProvider(usageSummary).filter(
     (entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
   )
-  // Render when there's a token/quota meter OR a gated Grok credit meter to show.
-  if (quotaEntries.length === 0 && !grokAvailable) return null
+  // The API-spend view is offered whenever the caller wired it (sidebar).
+  const apiSpendEnabled = Boolean(apiSpend)
+  // Render when there's a token/quota meter, a gated Grok credit meter, OR the
+  // API-spend view is available (so a user on API keys with no plan meters can
+  // still reach their spend). When only spend is available, force that view.
+  if (quotaEntries.length === 0 && !grokAvailable && !apiSpendEnabled) return null
+  const effectiveView: ModelUsagePanelView =
+    quotaEntries.length === 0 && !grokAvailable && apiSpendEnabled ? 'spend' : view
 
   const isSidebarVariant = variant === 'sidebar'
   const showQuotaEntries = !isSidebarVariant || sidebarExpanded
@@ -363,6 +586,32 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
       )}
       <div className="model-usage-summary-header">
         <div className="run-summary-title">Model Usage</div>
+        {apiSpendEnabled && (
+          <div className="model-usage-view-toggle" role="radiogroup" aria-label="Model usage view">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={effectiveView === 'plan'}
+              className={`model-usage-view-toggle-btn ${effectiveView === 'plan' ? 'is-active' : ''}`}
+              onClick={() => selectView('plan')}
+              aria-label="Plan limits"
+              title="Plan limits"
+            >
+              <PlanLimitsGlyph />
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={effectiveView === 'spend'}
+              className={`model-usage-view-toggle-btn ${effectiveView === 'spend' ? 'is-active' : ''}`}
+              onClick={() => selectView('spend')}
+              aria-label="API spend"
+              title="API spend"
+            >
+              <ApiSpendGlyph />
+            </button>
+          </div>
+        )}
         {isSidebarVariant && (
           <button
             type="button"
@@ -379,24 +628,29 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
       </div>
       <div id={quotaContentId} className="model-usage-collapsible" aria-hidden={!showQuotaEntries}>
         <div className="model-usage-collapsible-inner">
-          <div className="model-usage-list">
-            {quotaEntries.map((entry) => (
-              <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
-            ))}
-            {/* 1.0.6-GU — Grok subscription credits (separate data model from
-             * the token/cost meters above; manual-refresh PTY probe). Only
-             * mounts when the gated Grok provider adapter is registered. Kept
-             * inside the list so the `.model-usage-item + .model-usage-item`
-             * divider lands between Kimi and Grok. */}
-            {grokAvailable ? <GrokCreditsMeter /> : null}
-          </div>
+          {effectiveView === 'spend' ? (
+            <ApiSpendView options={apiSpend} />
+          ) : (
+            <div className="model-usage-list">
+              {quotaEntries.map((entry) => (
+                <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
+              ))}
+              {/* 1.0.6-GU — Grok subscription credits (separate data model from
+               * the token/cost meters above; manual-refresh PTY probe). Only
+               * mounts when the gated Grok provider adapter is registered. Kept
+               * inside the list so the `.model-usage-item + .model-usage-item`
+               * divider lands between Kimi and Grok. */}
+              {grokAvailable ? <GrokCreditsMeter /> : null}
+            </div>
+          )}
         </div>
       </div>
       {/* Phase L6 slice 5 — activity heatmap. Renders the last 30
        * days of usage as a 30×12 grid (12 × 2h buckets per day),
        * coloured by the dominant provider in each bucket. Pulls
        * records via the existing `getUsage` IPC; sits at the foot
-       * of the card so the bars stay the primary read. */}
+       * of the card so the bars stay the primary read. The heatmap is
+       * token-activity (view-agnostic) so it stays under both views. */}
       <UsageHeatmap />
     </div>
   )

@@ -40,7 +40,7 @@ import {
   type SidebarHierarchySectionId
 } from '../lib/sidebarSectionOrder'
 import { AppShellStatsToolbar } from './AppShellStatsToolbar'
-import { ModelUsageCard } from './ModelUsageCard'
+import { ModelUsageCard, type ModelUsageApiSpendOptions } from './ModelUsageCard'
 import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
 import { ProviderGlyph } from './icons/ProviderGlyph'
 import { isSubThreadChat } from '../lib/chatScope'
@@ -185,6 +185,13 @@ interface SidebarProps {
    * the remote-connection icon falls back to opening Settings →
    * Bridge Networking as a discoverability hint. */
   onShowPairingSheet?: () => void
+  /**
+   * Model Usage card View-B ("API spend") inputs, forwarded to
+   * `ModelUsageCard`. Bundles the rate table + display-currency settings
+   * + the persisted view + a change handler. Optional so callers that
+   * don't surface the spend view (or tests) can omit it.
+   */
+  modelUsageApiSpend?: ModelUsageApiSpendOptions
 }
 
 interface PairedRemoteDeviceSummary {
@@ -1347,7 +1354,8 @@ export function Sidebar({
   onEditWorkflowInterval,
   onCancelWorkflowExecution,
   onDeleteWorkflow,
-  onShowPairingSheet
+  onShowPairingSheet,
+  modelUsageApiSpend
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
@@ -3439,7 +3447,11 @@ export function Sidebar({
          * visual identity to match the another-project compact card
          * (provider glyphs + warning gradient + pace tick + heatmap)
          * inside the new component, leaving Sidebar untouched. */}
-        <ModelUsageCard usageSummary={usageSummary} variant="sidebar" />
+        <ModelUsageCard
+          usageSummary={usageSummary}
+          variant="sidebar"
+          apiSpend={modelUsageApiSpend}
+        />
       </div>
 
       {/* Footer */}
