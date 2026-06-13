@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   AuditArtifactCollector,
+  AuditRunRegistry,
   buildAuditRolePayload,
   buildProviderSignals,
+  createAuditRuntime,
+  isAuditMcpToolName,
   type ProviderSignalInput
 } from './AuditOrchestratorWiring'
 import { createAuditToolExecutors } from '../mcp/AuditToolExecutors'
@@ -135,5 +138,56 @@ describe('AuditArtifactCollector', () => {
     collector.toolDependencies(ids).recordFinding(ctx('runX'), finding('f-x'))
     collector.discard('runX')
     expect(collector.take('runX').findings).toHaveLength(0)
+  })
+})
+
+describe('AuditRunRegistry + isAuditMcpToolName', () => {
+  it('registers, resolves, and unregisters run contexts', () => {
+    const registry = new AuditRunRegistry()
+    const context = {
+      auditRunId: 'a1',
+      runId: 'run-1',
+      role: 'reviewer' as const,
+      provider: 'claude' as const,
+      dimension: 'code health'
+    }
+    expect(registry.get('run-1')).toBeNull()
+    registry.register('run-1', context)
+    expect(registry.get('run-1')).toEqual(context)
+    expect(registry.get(undefined)).toBeNull()
+    registry.unregister('run-1')
+    expect(registry.get('run-1')).toBeNull()
+  })
+
+  it('recognizes audit tool names only', () => {
+    expect(isAuditMcpToolName('audit_record_finding')).toBe(true)
+    expect(isAuditMcpToolName('audit_record_verdict')).toBe(true)
+    expect(isAuditMcpToolName('audit_set_profile')).toBe(true)
+    expect(isAuditMcpToolName('write_file')).toBe(false)
+    expect(isAuditMcpToolName(undefined)).toBe(false)
+  })
+})
+
+describe('createAuditRuntime', () => {
+  const ids = { uuid: () => 'u', now: () => 't' }
+  it('routes a tool call for a registered run into the shared collector', async () => {
+    const runtime = createAuditRuntime(ids)
+    const context = {
+      auditRunId: 'a1',
+      runId: 'run-1',
+      role: 'reviewer' as const,
+      provider: 'claude' as const,
+      dimension: 'code health'
+    }
+    runtime.registry.register('run-1', context)
+    // The MCP dispatcher resolves the context via the registry, then executes.
+    const resolved = runtime.registry.get('run-1')!
+    const res = await runtime.toolExecutors.executeAuditMcpTool(
+      'audit_record_finding',
+      { claim: 'leak', severity: 'high', evidenceRefs: [{ path: 'x.ts', line: 1 }] },
+      resolved
+    )
+    expect(res.isError).toBe(false)
+    expect(runtime.collector.take('run-1').findings).toHaveLength(1)
   })
 })

@@ -14,9 +14,13 @@
  *     dispatchRole can drain exactly the artifacts a role-run produced.
  */
 
-import type {
-  AuditToolContext,
-  AuditToolDependencies
+import {
+  AUDIT_MCP_TOOL_NAMES,
+  createAuditToolExecutors,
+  type AuditMcpToolName,
+  type AuditToolContext,
+  type AuditToolDependencies,
+  type AuditToolExecutors
 } from '../mcp/AuditToolExecutors'
 import type { AuditRoleRunRequest } from './AuditOrchestrator'
 import type { ProviderSignal, ProviderUsageBandValue } from './ProviderCapabilityResolver'
@@ -155,4 +159,49 @@ export class AuditArtifactCollector {
   discard(runId: string): void {
     this.buckets.delete(runId)
   }
+}
+
+// ── audit-run registry + runtime ─────────────────────────────────────────────
+
+/** Maps a live provider run id → the audit tool context for that role-run, so
+ * the MCP dispatcher can route an `audit_*` tool call to the right run's
+ * collector. The orchestrator registers before dispatch and unregisters when
+ * the run ends. A tool call whose runId isn't registered is NOT an audit run
+ * (the dispatcher refuses it). */
+export class AuditRunRegistry {
+  private readonly byRunId = new Map<string, AuditToolContext>()
+
+  register(appRunId: string, context: AuditToolContext): void {
+    this.byRunId.set(appRunId, context)
+  }
+
+  get(appRunId: string | undefined): AuditToolContext | null {
+    if (!appRunId) return null
+    return this.byRunId.get(appRunId) ?? null
+  }
+
+  unregister(appRunId: string): void {
+    this.byRunId.delete(appRunId)
+  }
+}
+
+export function isAuditMcpToolName(name: unknown): name is AuditMcpToolName {
+  return typeof name === 'string' && (AUDIT_MCP_TOOL_NAMES as readonly string[]).includes(name)
+}
+
+export interface AuditRuntime {
+  registry: AuditRunRegistry
+  collector: AuditArtifactCollector
+  toolExecutors: AuditToolExecutors
+}
+
+/** The shared per-app audit runtime: one collector (buckets artifacts by
+ * runId), one registry (runId → context), and the MCP tool executors wired to
+ * the collector. index.ts instantiates this once; the MCP dispatcher and the
+ * orchestrator both use it. */
+export function createAuditRuntime(ids: { uuid: () => string; now: () => string }): AuditRuntime {
+  const collector = new AuditArtifactCollector()
+  const registry = new AuditRunRegistry()
+  const toolExecutors = createAuditToolExecutors(collector.toolDependencies(ids))
+  return { registry, collector, toolExecutors }
 }
