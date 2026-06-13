@@ -618,6 +618,13 @@ import {
   resolveActiveGoalMode,
   updateActiveGoalLifecycle
 } from './GoalState'
+import {
+  CODEX_THREAD_GOAL_CLEAR_METHOD,
+  CODEX_THREAD_GOAL_SET_METHOD,
+  activeGoalFromCodexThreadGoal,
+  codexThreadGoalSetParams,
+  isCodexNativeGoalUnsupportedError
+} from './CodexNativeGoal'
 import { TASKWRAITH_MCP_TOOLS, type TaskWraithMcpToolName } from './TaskWraithMcpTools'
 import { validateTodoWriteArgs } from './TodoList'
 import { handleChatTodoWrite } from './TodoWriteRegistry'
@@ -8801,6 +8808,10 @@ function handleCodexNotification(message: any) {
   if (messageThreadId && params.threadId !== state.threadId && messageThreadId !== state.threadId)
     return
 
+  if (syncCodexNativeGoalNotification(state, message)) {
+    return
+  }
+
   if (message.method === 'turn/started') {
     state.turnId = params.turn?.id || params.turnId || state.turnId
     if (state.appRunId && state.turnId) {
@@ -9650,7 +9661,11 @@ async function runApprovedHostCommand(requestId: string): Promise<boolean> {
   return true
 }
 
-function syncCodexGoalCapabilityMetadata(appChatId: string | undefined, nativeAvailable: boolean) {
+function syncCodexGoalCapabilityMetadata(
+  appChatId: string | undefined,
+  nativeAvailable: boolean,
+  goalOverride?: ChatRecord['activeGoal'] | null
+) {
   if (!appChatId) return
   const chat = AppStore.getChat(appChatId)
   if (!chat || chat.provider !== 'codex') return
@@ -9658,25 +9673,92 @@ function syncCodexGoalCapabilityMetadata(appChatId: string | undefined, nativeAv
     ...(chat.providerMetadata || {}),
     codexGoalNativeAvailable: nativeAvailable
   }
+  const activeGoalSource = goalOverride !== undefined ? goalOverride : chat.activeGoal
   const activeGoal =
-    chat.activeGoal?.provider === 'codex'
+    activeGoalSource?.provider === 'codex'
       ? {
-          ...chat.activeGoal,
+          ...activeGoalSource,
           mode: resolveActiveGoalMode('codex', { codexNativeAvailable: nativeAvailable })
         }
-      : chat.activeGoal
+      : activeGoalSource
   const metadataUnchanged =
     Boolean(chat.providerMetadata?.codexGoalNativeAvailable) === nativeAvailable
-  const goalUnchanged = activeGoal === chat.activeGoal || activeGoal?.mode === chat.activeGoal?.mode
+  const goalUnchanged =
+    goalOverride === undefined
+      ? activeGoal === chat.activeGoal || activeGoal?.mode === chat.activeGoal?.mode
+      : JSON.stringify(activeGoal || null) === JSON.stringify(chat.activeGoal || null)
   if (metadataUnchanged && goalUnchanged) return
   const updated: ChatRecord = {
     ...chat,
     providerMetadata,
-    ...(activeGoal ? { activeGoal } : {}),
     updatedAt: Date.now()
   }
+  if (activeGoal) updated.activeGoal = activeGoal
+  else if (goalOverride !== undefined) delete updated.activeGoal
   AppStore.saveChat(updated)
   broadcastChatUpdated(updated)
+}
+
+async function syncCodexNativeGoalForRun(
+  client: CodexAppServerClient,
+  appChatId: string | undefined,
+  threadId: string
+): Promise<void> {
+  if (!appChatId || !threadId) return
+  const chat = AppStore.getChat(appChatId)
+  if (!chat || chat.provider !== 'codex') return
+  try {
+    if (chat.activeGoal) {
+      const response: any = await client.request(
+        CODEX_THREAD_GOAL_SET_METHOD,
+        codexThreadGoalSetParams(threadId, chat.activeGoal),
+        15_000
+      )
+      const nativeGoal = response?.goal
+      syncCodexGoalCapabilityMetadata(
+        appChatId,
+        true,
+        nativeGoal
+          ? activeGoalFromCodexThreadGoal(nativeGoal, chat.activeGoal)
+          : { ...chat.activeGoal, provider: 'codex', mode: 'codex_native' }
+      )
+      return
+    }
+
+    await client.request(CODEX_THREAD_GOAL_CLEAR_METHOD, { threadId }, 15_000)
+    syncCodexGoalCapabilityMetadata(appChatId, true, null)
+  } catch (error) {
+    if (isCodexNativeGoalUnsupportedError(error)) {
+      syncCodexGoalCapabilityMetadata(appChatId, false)
+      return
+    }
+    console.warn(
+      `[codex] native goal sync failed for thread ${threadId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+  }
+}
+
+function syncCodexNativeGoalNotification(state: CodexRunState, message: any): boolean {
+  if (!state.appChatId) return false
+  if (message.method === 'thread/goal/updated') {
+    const nativeGoal = message.params?.goal
+    if (!nativeGoal) return true
+    const chat = AppStore.getChat(state.appChatId)
+    if (!chat) return true
+    syncCodexGoalCapabilityMetadata(
+      state.appChatId,
+      true,
+      activeGoalFromCodexThreadGoal(nativeGoal, chat.activeGoal)
+    )
+    return true
+  }
+  if (message.method === 'thread/goal/cleared') {
+    syncCodexGoalCapabilityMetadata(state.appChatId, true, null)
+    return true
+  }
+  return false
 }
 
 async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
@@ -9742,6 +9824,8 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   if (!threadId) {
     throw new Error('Codex app-server did not return a thread id.')
   }
+
+  await syncCodexNativeGoalForRun(client, payload.appChatId, threadId)
 
   const route = routeWithRunId('codex', payload)
   const codexState = createCodexRunState(

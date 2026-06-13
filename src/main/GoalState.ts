@@ -78,7 +78,12 @@ export function isUnfinishedActiveGoal(goal: ActiveGoal | null | undefined): boo
 }
 
 export function shouldInjectActiveGoal(goal: ActiveGoal | null | undefined): goal is ActiveGoal {
-  return Boolean(goal && (goal.status === 'active' || goal.status === 'blocked'))
+  return Boolean(
+    goal &&
+      (goal.status === 'active' || goal.status === 'blocked') &&
+      goal.mode !== 'codex_native' &&
+      goal.mode !== 'claude_native'
+  )
 }
 
 export function updateActiveGoalLifecycle(

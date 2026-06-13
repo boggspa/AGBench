@@ -59,6 +59,19 @@ describe('GoalState', () => {
     expect(shouldInjectActiveGoal(updateActiveGoalLifecycle(goal, 'completed'))).toBe(false)
   })
 
+  it('does not inject native provider goals that are handled by provider runtime state', () => {
+    const goal = createActiveGoal('codex', 'Let Codex own the native goal', {
+      now: new Date('2026-06-13T12:00:00Z'),
+      codexNativeAvailable: true
+    })
+
+    expect(goal.mode).toBe('codex_native')
+    expect(shouldInjectActiveGoal(goal)).toBe(false)
+    expect(shouldInjectActiveGoal(updateActiveGoalLifecycle(goal, 'blocked', 'Need input'))).toBe(
+      false
+    )
+  })
+
   it('formats steering rules for provider prompts', () => {
     const goal = createActiveGoal('codex', 'Implement /goal without replacing todo_write', {
       now: new Date('2026-06-13T12:00:00Z')

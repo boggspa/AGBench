@@ -256,6 +256,32 @@ describe('composeRunPrompt sub-thread returns', () => {
     expect(result.contextualPrompt).not.toContain('Paused objective.')
   })
 
+  it('does not inject native Codex goals because app-server owns steering', () => {
+    const result = composeRunPrompt({
+      provider: 'codex',
+      finalPrompt: 'Continue.',
+      messages: [],
+      chatContextTurns: 6,
+      resumeSessionId: 'codex-session-1',
+      codexHandoffsApplied: [],
+      isGlobalRun: false,
+      approvalMode: 'default',
+      providerLabel: 'Codex',
+      activeGoal: {
+        id: 'goal-1',
+        objective: 'Use Codex native goal state.',
+        status: 'active',
+        mode: 'codex_native',
+        provider: 'codex',
+        createdAt: '2026-06-13T12:00:00Z',
+        updatedAt: '2026-06-13T12:00:00Z'
+      }
+    })
+
+    expect(result.contextualPrompt).not.toContain('<taskwraith_active_goal>')
+    expect(result.contextualPrompt).not.toContain('Use Codex native goal state.')
+  })
+
   it('injects guest participant replies as labeled peer context', () => {
     const result = composeRunPrompt({
       provider: 'codex',
