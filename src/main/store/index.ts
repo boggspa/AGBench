@@ -40,7 +40,12 @@ import {
   WorkflowDefinition,
   WorkflowExecutionRecord,
   WorkflowRunTemplate,
-  PinnedMessageGroup
+  PinnedMessageGroup,
+  AuditRunRecord,
+  AuditFinding,
+  AuditVerdict,
+  AuditGateResult,
+  AuditParticipant
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
 import { createDefaultEnsembleConfig } from '../EnsembleDefaults'
@@ -137,11 +142,15 @@ const legacyUserDataDirs = ['TaskWraith'].map((dirName) =>
 )
 const chatsDir = path.join(userDataPath, 'chats')
 const chatListIndexPath = path.join(userDataPath, 'chat-list-index.json')
+const auditRunsPath = path.join(userDataPath, 'audit-runs.json')
 const runEventsDir = path.join(userDataPath, 'run-events')
 const runArtifactsDir = path.join(userDataPath, 'run-artifacts')
 const runEventSequenceCache = new Map<string, number>()
 const runEventHashCache = new Map<string, string>()
 const WORKFLOW_HISTORY_LIMIT = 50
+// Newest-N audit runs kept on disk. Each run holds its own findings/verdicts;
+// the per-run JSONL ledger (run-events) carries the replayable detail.
+const AUDIT_RUN_HISTORY_LIMIT = 100
 // 1.0.6-CRUX27 — grok + cursor are first-class providers; seed their built-in
 // runtime profiles too (local + global per provider, see getDefaultRuntimeProfiles)
 // so their global chats have a usable runtime out of the box. Unconditional:
@@ -303,6 +312,48 @@ function scheduledTaskStatusToWorkflowStatus(
   if (status === 'failed') return 'failed'
   if (status === 'cancelled') return 'cancelled'
   return null
+}
+
+/** Defensive shape-guard for a persisted audit run. Arrays default to empty
+ * and the budget/coverage substructures are tolerated-missing so records
+ * written by an older build still decode. Returns null only when the record
+ * is too malformed to be useful (no id). */
+function normalizeAuditRunRecord(value: unknown): AuditRunRecord | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Partial<AuditRunRecord>
+  if (typeof input.id !== 'string' || !input.id) return null
+  const nowIso = new Date().toISOString()
+  const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+  return {
+    schemaVersion: 1,
+    id: input.id,
+    mode: input.mode === 'deep' || input.mode === 'release' ? input.mode : 'quick',
+    chatId: typeof input.chatId === 'string' ? input.chatId : '',
+    workspaceId: typeof input.workspaceId === 'string' ? input.workspaceId : undefined,
+    workspacePath: typeof input.workspacePath === 'string' ? input.workspacePath : '',
+    status: input.status ?? 'planning',
+    phases: arr<AuditRunRecord['phases'][number]>(input.phases),
+    profile: input.profile,
+    dimensions: arr<string>(input.dimensions),
+    roster: input.roster,
+    participants: arr<AuditParticipant>(input.participants),
+    findings: arr<AuditFinding>(input.findings),
+    verdicts: arr<AuditVerdict>(input.verdicts),
+    gates: arr<AuditGateResult>(input.gates),
+    budget: input.budget ?? {
+      maxAgents: 0,
+      spentAgents: 0,
+      spentTokens: 0,
+      truncated: false
+    },
+    coverage: input.coverage,
+    report: typeof input.report === 'string' ? input.report : undefined,
+    error: typeof input.error === 'string' ? input.error : undefined,
+    createdAt: typeof input.createdAt === 'string' && input.createdAt ? input.createdAt : nowIso,
+    updatedAt: typeof input.updatedAt === 'string' && input.updatedAt ? input.updatedAt : nowIso,
+    startedAt: typeof input.startedAt === 'string' ? input.startedAt : undefined,
+    endedAt: typeof input.endedAt === 'string' ? input.endedAt : undefined
+  }
 }
 
 const defaultSettings: AppSettings = {
@@ -2016,6 +2067,123 @@ export class AppStore {
     writeJson(
       workflowsPath,
       this.getWorkflowDefinitions().filter((item) => item.id !== id)
+    )
+  }
+
+  // ── Audit runs ──────────────────────────────────────────────────────────
+  // Durable run objects for the audit orchestration workflow. Stored newest-
+  // first in audit-runs.json, capped at AUDIT_RUN_HISTORY_LIMIT. The
+  // orchestrator owns lifecycle; the store is dumb persistence + shape-guard.
+
+  static getAuditRuns(workspaceId?: string): AuditRunRecord[] {
+    return readJson<unknown[]>(auditRunsPath, [])
+      .map((item) => normalizeAuditRunRecord(item))
+      .filter((item): item is AuditRunRecord => Boolean(item))
+      .filter((run) => !workspaceId || run.workspaceId === workspaceId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
+  static getAuditRun(id: string): AuditRunRecord | null {
+    return this.getAuditRuns().find((run) => run.id === id) || null
+  }
+
+  static createAuditRun(
+    input: Omit<
+      AuditRunRecord,
+      | 'schemaVersion'
+      | 'id'
+      | 'createdAt'
+      | 'updatedAt'
+      | 'phases'
+      | 'participants'
+      | 'findings'
+      | 'verdicts'
+      | 'gates'
+    > &
+      Partial<
+        Pick<
+          AuditRunRecord,
+          'id' | 'phases' | 'participants' | 'findings' | 'verdicts' | 'gates'
+        >
+      >
+  ): AuditRunRecord {
+    const nowIso = new Date().toISOString()
+    const record = normalizeAuditRunRecord({
+      ...input,
+      id: input.id || randomUUID(),
+      phases: input.phases || [],
+      participants: input.participants || [],
+      findings: input.findings || [],
+      verdicts: input.verdicts || [],
+      gates: input.gates || [],
+      createdAt: nowIso,
+      updatedAt: nowIso
+    })
+    if (!record) throw new Error('Audit run is invalid.')
+    // Newest-first, trimmed to the cap.
+    const runs = [record, ...this.getAuditRuns().filter((r) => r.id !== record.id)].slice(
+      0,
+      AUDIT_RUN_HISTORY_LIMIT
+    )
+    writeJson(auditRunsPath, runs)
+    return record
+  }
+
+  static updateAuditRun(id: string, partial: Partial<AuditRunRecord>): AuditRunRecord | null {
+    const runs = this.getAuditRuns()
+    const index = runs.findIndex((run) => run.id === id)
+    if (index < 0) return null
+    const merged = normalizeAuditRunRecord({
+      ...runs[index],
+      ...partial,
+      id,
+      updatedAt: new Date().toISOString()
+    })
+    if (!merged) return null
+    runs[index] = merged
+    writeJson(auditRunsPath, runs)
+    return merged
+  }
+
+  /** Append a finding (idempotent on finding id). */
+  static appendAuditFinding(id: string, finding: AuditFinding): AuditRunRecord | null {
+    const run = this.getAuditRun(id)
+    if (!run) return null
+    const findings = [...run.findings.filter((f) => f.id !== finding.id), finding]
+    return this.updateAuditRun(id, { findings })
+  }
+
+  /** Append a verdict (idempotent on verdict id). */
+  static appendAuditVerdict(id: string, verdict: AuditVerdict): AuditRunRecord | null {
+    const run = this.getAuditRun(id)
+    if (!run) return null
+    const verdicts = [...run.verdicts.filter((v) => v.id !== verdict.id), verdict]
+    return this.updateAuditRun(id, { verdicts })
+  }
+
+  /** Append a gate result (idempotent on gate id). */
+  static appendAuditGateResult(id: string, gate: AuditGateResult): AuditRunRecord | null {
+    const run = this.getAuditRun(id)
+    if (!run) return null
+    const gates = [...run.gates.filter((g) => g.id !== gate.id), gate]
+    return this.updateAuditRun(id, { gates })
+  }
+
+  /** Upsert a participant by runId (status/cost/token updates as the run flows). */
+  static upsertAuditParticipant(id: string, participant: AuditParticipant): AuditRunRecord | null {
+    const run = this.getAuditRun(id)
+    if (!run) return null
+    const participants = [
+      ...run.participants.filter((p) => p.runId !== participant.runId),
+      participant
+    ]
+    return this.updateAuditRun(id, { participants })
+  }
+
+  static deleteAuditRun(id: string): void {
+    writeJson(
+      auditRunsPath,
+      this.getAuditRuns().filter((run) => run.id !== id)
     )
   }
 

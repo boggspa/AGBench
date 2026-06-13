@@ -2133,6 +2133,15 @@ export type RunEventKind =
   | 'diff'
   | 'final_message'
   | 'lifecycle'
+  // Audit orchestration workflow (see src/main/audit/AuditOrchestrator.ts) —
+  // each audit role-run writes phase/finding/verdict/gate events to its own
+  // run-events ledger so the inline card + iOS card can replay it live.
+  | 'audit_phase_start'
+  | 'audit_phase_complete'
+  | 'audit_finding'
+  | 'audit_verdict'
+  | 'audit_gate_result'
+  | 'audit_provider_substituted'
 
 export type RunEventPhase = 'raw' | 'normalized' | 'control' | 'artifact'
 
@@ -2603,6 +2612,224 @@ export interface WorkflowDefinition {
   history: WorkflowExecutionRecord[]
   createdAt: string
   updatedAt: string
+}
+
+// ── Audit orchestration workflow ───────────────────────────────────────────
+// A bounded, disciplined, multi-provider strengths/weaknesses audit. Unlike
+// WorkflowDefinition (a reusable schedule template), an AuditRunRecord is a
+// durable RUN object: a phase DAG (recon → plan → gates‖reviewers → dedup →
+// verify → synthesis) whose agents emit TYPED artifacts (findings/verdicts via
+// MCP tools, not prose). See docs + src/main/audit/AuditOrchestrator.ts.
+
+export type AuditMode = 'quick' | 'deep' | 'release'
+
+export type AuditRunStatus =
+  | 'planning'
+  | 'awaitingConfirm'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+/** Phases in execution order. `gates` and `review` run in parallel. */
+export type AuditPhaseId =
+  | 'recon'
+  | 'plan'
+  | 'gates'
+  | 'review'
+  | 'dedup'
+  | 'verify'
+  | 'synthesis'
+
+export type AuditPhaseStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+
+export interface AuditPhase {
+  id: AuditPhaseId
+  status: AuditPhaseStatus
+  startedAt?: string
+  endedAt?: string
+  detail?: string
+}
+
+/** Roles an audit assigns to providers. The gates runner is deterministic
+ * (no model), so it is NOT a role here. */
+export type AuditRole = 'recon' | 'reviewer' | 'skeptic' | 'synthesis'
+
+export type AuditFindingSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type AuditFindingPolarity = 'strength' | 'weakness'
+
+/** Verification lifecycle of a finding. `refuted` is only reachable when a
+ * skeptic cited contradicting evidence; an unsupported refutation downgrades
+ * to `unverified` (kept, flagged) — never silently dropped. */
+export type AuditFindingVerdictState = 'pending' | 'confirmed' | 'unverified' | 'refuted'
+
+export interface AuditEvidenceRef {
+  /** Workspace-relative path. */
+  path: string
+  line?: number
+  /** Short quoted snippet or note anchoring the claim. */
+  note?: string
+}
+
+export interface AuditFinding {
+  id: string
+  dimension: string
+  polarity: AuditFindingPolarity
+  claim: string
+  severity: AuditFindingSeverity
+  /** Reviewer's self-assessed confidence 0..1. */
+  confidence: number
+  evidenceRefs: AuditEvidenceRef[]
+  /** How to reproduce / verify the claim. */
+  verification?: string
+  suggestedFix?: string
+  blastRadius?: string
+  authorProvider: ProviderId
+  /** Stable key used by the dedup barrier (file+line+normalized-claim). */
+  dedupKey: string
+  /** Finding ids merged into this one during dedup. */
+  mergedFrom?: string[]
+  verdictState: AuditFindingVerdictState
+  createdAt: string
+}
+
+export type AuditVerdictDecision = 'accept' | 'downgrade' | 'refute'
+
+export interface AuditVerdict {
+  id: string
+  findingId: string
+  skepticProvider: ProviderId
+  decision: AuditVerdictDecision
+  /** Required for a `refute` to actually delete a finding. */
+  counterEvidence?: AuditEvidenceRef[]
+  rationale?: string
+  createdAt: string
+}
+
+export interface AuditGateResult {
+  id: string
+  /** e.g. 'typecheck', 'test', 'supply-chain', 'outdated', 'validate-release'. */
+  check: string
+  command: string
+  status: 'pass' | 'fail' | 'skipped'
+  exitCode?: number
+  /** Ref to the captured command log in the run-artifacts dir. */
+  logArtifactId?: string
+  summary?: string
+  durationMs?: number
+}
+
+export interface AuditParticipant {
+  runId: string
+  role: AuditRole
+  dimension?: string
+  provider: ProviderId
+  /** Identicon catalog name (agentIdentity) for the inline card. */
+  identicon?: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'substituted' | 'cancelled'
+  /** Provider this run was reassigned FROM, when the chain substituted. */
+  substitutedFrom?: ProviderId
+  tokens?: number
+  costUsd?: number
+  durationMs?: number
+  startedAt?: string
+  endedAt?: string
+}
+
+/** Resolved role→provider fallback chains + what was dropped and why. */
+export interface AuditRoster {
+  perRole: Partial<Record<AuditRole, ProviderId[]>>
+  degradations: AuditDegradation[]
+}
+
+export interface AuditDegradation {
+  provider: ProviderId
+  /** Eligibility layer that excluded it. */
+  reason: 'unconfigured' | 'unauthenticated' | 'unhealthy' | 'rate_limited' | 'policy_excluded' | 'ollama_disabled'
+  detail?: string
+}
+
+export interface AuditBudget {
+  maxAgents: number
+  maxTokens?: number
+  spentAgents: number
+  spentTokens: number
+  /** True once a ceiling forced verification to stop early. */
+  truncated: boolean
+}
+
+/** Honest reporting of how thorough the run actually was. */
+export interface AuditCoverage {
+  dimensionsPlanned: number
+  dimensionsCompleted: number
+  /** Finding ids verified by ≥2 providers. */
+  crossProviderVerifiedCount: number
+  /** Finding ids verified by only one provider (decorrelation limited). */
+  singleProviderVerifiedCount: number
+  substitutions: number
+  notes?: string[]
+}
+
+export interface AuditRunRecord {
+  schemaVersion: 1
+  id: string
+  mode: AuditMode
+  /** The triggering chat the final report is posted into. */
+  chatId: string
+  workspaceId?: string
+  workspacePath: string
+  status: AuditRunStatus
+  phases: AuditPhase[]
+  /** Recon output — the typed project profile that drives planning. */
+  profile?: AuditProjectProfile
+  dimensions: string[]
+  roster?: AuditRoster
+  participants: AuditParticipant[]
+  findings: AuditFinding[]
+  verdicts: AuditVerdict[]
+  gates: AuditGateResult[]
+  budget: AuditBudget
+  coverage?: AuditCoverage
+  /** Final synthesized markdown report (set on completion). */
+  report?: string
+  error?: string
+  createdAt: string
+  updatedAt: string
+  startedAt?: string
+  endedAt?: string
+}
+
+export interface AuditProjectProfile {
+  stack?: string[]
+  testSurface?: string[]
+  releasePaths?: string[]
+  securityAreas?: string[]
+  providerBoundaries?: string[]
+  docsSurface?: string[]
+  riskZones?: string[]
+}
+
+/** Carried on AgentRunPayload for audit role-runs (parallel to
+ * EnsembleRunIdentity) so the adapter routes events back to the orchestrator. */
+export interface AuditRunIdentity {
+  auditRunId: string
+  role: AuditRole
+  dimension?: string
+  /** Set for skeptic runs — the finding being refuted. */
+  findingId?: string
+}
+
+export interface AuditOrchestrationSettings {
+  /** Providers permitted in orchestration. Undefined = all available. */
+  providerAllowlist?: ProviderId[]
+  /** Local models opt-in (off by default — concurrency risk). */
+  ollamaEnabled?: boolean
+  /** Concurrent local-model cap, separate from the cloud pool. */
+  ollamaMaxConcurrent?: number
+  /** Optional per-role preference order (intersected with eligibility). */
+  perRolePreferences?: Partial<Record<AuditRole, ProviderId[]>>
+  budgetMaxAgents?: number
+  budgetMaxTokens?: number
 }
 
 export type RunQueueJobStatus =
