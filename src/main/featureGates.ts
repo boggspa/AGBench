@@ -13,11 +13,6 @@ export function concurrentWriteLanesEnabled(): boolean {
   return buildRuntimeFeatureGateSnapshot(process.env).concurrentWriteLanes
 }
 
-export function permissionEnvelopesEnabled(): boolean {
-  const value = process.env.TASKWRAITH_PERMISSION_ENVELOPES
-  return value === '1' || value === 'true' || value === 'yes'
-}
-
 export function composerContenteditableEnabled(): boolean {
   const value = process.env.TASKWRAITH_COMPOSER_CONTENTEDITABLE
   return value === '1' || value === 'true' || value === 'yes'

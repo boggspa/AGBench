@@ -3,11 +3,11 @@ import {
   classifyTool,
   groupToolsByClass,
   isReadOnlyBlockedTool,
+  READ_ONLY_TOOL_PRESET,
   TOOL_CLASS_LABELS,
   TOOL_CLASS_ORDER
 } from './ToolClassTaxonomy'
 import { TASKWRAITH_MCP_TOOLS } from './TaskWraithMcpTools'
-import { READ_ONLY_TOOL_PRESET } from './PermissionEnvelope'
 import { MCP_APP_STATE_MUTATION_TOOLS, MCP_AUTO_ALLOWED_TOOLS } from './mcp/McpAutoAllowedTools'
 
 describe('classifyTool', () => {

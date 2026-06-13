@@ -11,10 +11,11 @@
  *
  * Why a dedicated module (1.0.72): the read-only / plan posture UI needs to
  * show *which classes* a posture permits (panel feedback). The non-write class
- * lists are derived from the existing canonical sets — READ_ONLY_TOOL_PRESET
- * (PermissionEnvelope) and MCP_AUTO_ALLOWED_TOOLS (McpAutoAllowedTools) — and a
- * cross-check test asserts every member of those non-mutating sets classifies
- * as non-write, so this taxonomy can't silently drift from the safety invariant.
+ * lists are cross-checked against the canonical read-only sets —
+ * READ_ONLY_TOOL_PRESET (defined below) and MCP_AUTO_ALLOWED_TOOLS
+ * (McpAutoAllowedTools) — by a test that asserts every member of those
+ * non-mutating sets classifies as non-write, so this taxonomy can't silently
+ * drift from the safety invariant.
  *
  * classifyTool defaults the UNKNOWN tool to workspace_write — the safe default
  * (an unrecognised tool is treated as mutating, never surfaced as "safe").
@@ -45,6 +46,41 @@ export const TOOL_CLASS_LABELS: Record<ToolClass, string> = {
   orchestration: 'Orchestration',
   ui_elicitation: 'User prompts'
 }
+
+/**
+ * The canonical "read-only" tool preset — the non-mutating reads /
+ * searches / status checks a posture-restricted run may call. Anything
+ * mutating (`write_file`, `apply_patch`, `run_shell`, `git_commit`, …)
+ * is excluded by omission.
+ *
+ * Consumed by the read-only posture breakdown UI (`ToolClassBreakdown`)
+ * and cross-checked by `ToolClassTaxonomy.test.ts`, which asserts every
+ * member classifies as non-write so this preset can't drift from the
+ * taxonomy's safety invariant.
+ */
+export const READ_ONLY_TOOL_PRESET: ReadonlyArray<string> = Object.freeze([
+  'read_file',
+  'list_directory',
+  'grep',
+  'glob',
+  'attached_window_status',
+  'appwatch_status',
+  'ide_app_status',
+  'ide_app_capabilities',
+  'list_running_ides',
+  'provider_auth_status',
+  'creative_app_status',
+  'creative_app_capabilities',
+  'approval_status',
+  'list_ensemble_participants',
+  'provider_usage_status',
+  // 1.0.72 — asking the user a clarifying question is non-mutating (no fs /
+  // shell / network), so a read-only run may do it. Mirrors the main-
+  // participant behaviour for Codex / Claude / Kimi.
+  'ask_user_question',
+  // 1.4.2 — read-only runs may publish goal-step checklists.
+  'todo_write'
+])
 
 const WORKSPACE_READ_TOOLS = new Set<string>([
   'read_file',

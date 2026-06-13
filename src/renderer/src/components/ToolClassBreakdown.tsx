@@ -1,10 +1,10 @@
 import {
   groupToolsByClass,
+  READ_ONLY_TOOL_PRESET,
   TOOL_CLASS_LABELS,
   TOOL_CLASS_ORDER,
   type ToolClass
 } from '../../../main/ToolClassTaxonomy'
-import { READ_ONLY_TOOL_PRESET } from '../../../main/PermissionEnvelope'
 
 // Read-only is the one preset with a concrete allow-list (READ_ONLY_TOOL_PRESET);
 // other presets are policy-derived, so only these concrete tools are broken down.
