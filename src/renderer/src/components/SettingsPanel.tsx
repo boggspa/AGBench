@@ -149,6 +149,7 @@ interface SettingsPanelProps {
   ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
   ollamaProviderParityAcknowledgedAt?: string
   ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
+  auditOrchestration?: AppSettings['auditOrchestration']
   agenticServices: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   /** When true (default), TaskWraith auto-dispatches a continuation run
@@ -273,6 +274,7 @@ interface SettingsPanelProps {
     ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
     ollamaProviderParityAcknowledgedAt?: string
     ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
+    auditOrchestration?: AppSettings['auditOrchestration']
     agenticServices?: AgenticServicesSettings
     nativeSubAgentRequests?: NativeSubAgentRequestPolicy
     autoResumeParentOnSubThreadCompletion?: boolean
@@ -764,6 +766,23 @@ const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
   cursor: 'Cursor',
   ollama: 'Ollama'
 }
+
+const AUDIT_ARTIFACT_PROVIDER_OPTIONS: Array<{
+  value: ProviderId
+  label: string
+  helper: string
+}> = [
+  {
+    value: 'claude',
+    label: 'Claude',
+    helper: 'Artifact-backed role runs when Claude is configured.'
+  },
+  {
+    value: 'kimi',
+    label: 'Kimi',
+    helper: 'Artifact-backed role runs when a Kimi API key is configured.'
+  }
+]
 
 /** Human labels for a Gemini auth profile's `kind` (the raw values read
  * as opaque slugs in the profile dropdown). */
@@ -1402,6 +1421,7 @@ export function SettingsPanel({
   ollamaRunProfiles,
   ollamaProviderParityAcknowledgedAt,
   ollamaProviderParityWorkspaceGrants,
+  auditOrchestration,
   agenticServices,
   nativeSubAgentRequests = 'ask',
   autoResumeParentOnSubThreadCompletion,
@@ -1615,6 +1635,24 @@ export function SettingsPanel({
     value: AgenticServicesSettings[K]
   ): void => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } })
+  }
+  const auditProviderAllowlist = auditOrchestration?.providerAllowlist ?? []
+  const updateAuditOrchestration = (
+    patch: Partial<NonNullable<AppSettings['auditOrchestration']>>
+  ): void => {
+    onChange({
+      auditOrchestration: {
+        ...(auditOrchestration ?? {}),
+        providerAllowlist: auditProviderAllowlist,
+        ...patch
+      }
+    })
+  }
+  const toggleAuditProvider = (provider: ProviderId, enabled: boolean): void => {
+    const nextAllowlist = enabled
+      ? Array.from(new Set([...auditProviderAllowlist, provider]))
+      : auditProviderAllowlist.filter((item) => item !== provider)
+    updateAuditOrchestration({ providerAllowlist: nextAllowlist })
   }
   // Flip any signed-in provider whose worst quota window is at ~100% to
   // an honest "out of usage" state — otherwise a rate-limited provider
@@ -3986,6 +4024,120 @@ export function SettingsPanel({
                   When Codex hits a Swift/Xcode sandbox/tooling collision, TaskWraith can ask to rerun
                   that exact command once from the host process.
                 </p>
+
+                <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
+                  <span>
+                    Audit role providers
+                    <small>
+                      Empty keeps /audit on the parent chat provider. Select providers only when
+                      you want cross-provider audit fallback.
+                    </small>
+                  </span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 'var(--space-xs)',
+                      minWidth: 0
+                    }}
+                  >
+                    {AUDIT_ARTIFACT_PROVIDER_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 'var(--space-xs)',
+                          fontWeight: 600
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={auditProviderAllowlist.includes(option.value)}
+                          onChange={(event) =>
+                            toggleAuditProvider(option.value, event.target.checked)
+                          }
+                        />
+                        <span>
+                          {option.label}
+                          <small>{option.helper}</small>
+                        </span>
+                      </label>
+                    ))}
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      disabled={auditProviderAllowlist.length === 0}
+                      onClick={() => updateAuditOrchestration({ providerAllowlist: [] })}
+                    >
+                      Use parent provider only
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
+                  <span>
+                    Audit budget
+                    <small>
+                      Agent cap overrides the default per-mode budget. Token cap is optional.
+                    </small>
+                  </span>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      gap: 'var(--space-xs)'
+                    }}
+                  >
+                    <input
+                      className="settings-select"
+                      type="number"
+                      min={1}
+                      max={200}
+                      placeholder="Agents auto"
+                      value={auditOrchestration?.budgetMaxAgents ?? ''}
+                      onChange={(event) =>
+                        updateAuditOrchestration({
+                          budgetMaxAgents: event.target.value.trim()
+                            ? Number(event.target.value)
+                            : undefined
+                        })
+                      }
+                      aria-label="Audit max agents"
+                    />
+                    <input
+                      className="settings-select"
+                      type="number"
+                      min={1}
+                      step={1000}
+                      placeholder="Tokens auto"
+                      value={auditOrchestration?.budgetMaxTokens ?? ''}
+                      onChange={(event) =>
+                        updateAuditOrchestration({
+                          budgetMaxTokens: event.target.value.trim()
+                            ? Number(event.target.value)
+                            : undefined
+                        })
+                      }
+                      aria-label="Audit max tokens"
+                    />
+                  </div>
+                </div>
+
+                <label className="settings-service-row">
+                  <span>
+                    Ollama local audit roles
+                    <small>
+                      Reserved: v1 audit artifacts are currently recorded only through Claude/Kimi
+                      role runs.
+                    </small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(auditOrchestration?.ollamaEnabled)}
+                    disabled
+                  />
+                </label>
 
                 <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
                   <span>

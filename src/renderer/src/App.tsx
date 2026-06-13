@@ -3964,6 +3964,9 @@ function App(): React.JSX.Element {
       settingsPatch.ollamaProviderParityWorkspaceGrants = next.ollamaProviderParityWorkspaceGrants
       providersToRefresh.push('ollama')
     }
+    if (next.auditOrchestration !== undefined) {
+      settingsPatch.auditOrchestration = next.auditOrchestration
+    }
     if (next.agenticServices !== undefined) {
       const normalizedServices = { ...DEFAULT_AGENTIC_SERVICES, ...next.agenticServices }
       setAgenticServices(normalizedServices)
@@ -16290,6 +16293,7 @@ function App(): React.JSX.Element {
               ollamaProviderParityWorkspaceGrants={
                 settings?.ollamaProviderParityWorkspaceGrants
               }
+              auditOrchestration={settings?.auditOrchestration}
               agenticServices={agenticServices}
               nativeSubAgentRequests={settings?.nativeSubAgentRequests ?? 'ask'}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}

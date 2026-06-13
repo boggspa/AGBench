@@ -356,6 +356,22 @@ describe('IpcValidation', () => {
     )
   })
 
+  it('validates audit orchestration setting patches', () => {
+    expect(() =>
+      validateIpcArgs('update-settings', [
+        {
+          auditOrchestration: {
+            providerAllowlist: ['claude', 'kimi'],
+            budgetMaxAgents: 8
+          }
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('update-settings', [{ auditOrchestration: 'claude' }])).toThrow(
+      /auditOrchestration/
+    )
+  })
+
   it('accepts explicit PTY stop requests', () => {
     expect(() => validateIpcArgs('stop-pty', ['terminal-1'])).not.toThrow()
   })

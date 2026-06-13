@@ -43,6 +43,17 @@ describe('resolveProviderCapabilities — eligibility layers', () => {
     expect(degradations).toContainEqual({ provider: 'gemini', reason: 'policy_excluded' })
   })
 
+  it('treats an empty allowlist as no provider restriction', () => {
+    const policy: AuditOrchestrationSettings = { providerAllowlist: [] }
+    const { perRole, degradations } = resolveProviderCapabilities({
+      rolesNeeded: ['reviewer'],
+      signals: [sig('claude'), sig('kimi')],
+      policy
+    })
+    expect(perRole.reviewer).toEqual(['claude', 'kimi'])
+    expect(degradations).toEqual([])
+  })
+
   it('high usage band is eligible but deprioritized below low', () => {
     const { perRole } = resolveProviderCapabilities({
       rolesNeeded: ['reviewer'],

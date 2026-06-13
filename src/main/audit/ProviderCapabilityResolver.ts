@@ -66,7 +66,7 @@ function eligibilityReason(
   if (!signal.authenticated) return 'unauthenticated'
   if (!signal.healthy) return 'unhealthy'
   if (signal.usageBand === 'critical') return 'rate_limited'
-  if (policy?.providerAllowlist && !policy.providerAllowlist.includes(signal.provider)) {
+  if (policy?.providerAllowlist?.length && !policy.providerAllowlist.includes(signal.provider)) {
     return 'policy_excluded'
   }
   if (isLocal(signal) && !policy?.ollamaEnabled) return 'ollama_disabled'

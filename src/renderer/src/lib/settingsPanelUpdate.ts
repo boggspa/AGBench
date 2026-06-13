@@ -64,6 +64,7 @@ export type SettingsPanelUpdate = {
   ollamaRunProfiles?: AppSettings['ollamaRunProfiles']
   ollamaProviderParityAcknowledgedAt?: string
   ollamaProviderParityWorkspaceGrants?: AppSettings['ollamaProviderParityWorkspaceGrants']
+  auditOrchestration?: AppSettings['auditOrchestration']
   agenticServices?: AgenticServicesSettings
   nativeSubAgentRequests?: NativeSubAgentRequestPolicy
   autoResumeParentOnSubThreadCompletion?: boolean
