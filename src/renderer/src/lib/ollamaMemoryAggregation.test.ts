@@ -92,6 +92,10 @@ describe('ollamaMemoryAggregation', () => {
     expect(formatOllamaMemoryAvgCell(12.4)).toBe('12 GB avg')
     expect(formatOllamaSampleAvgCell(8, 2)).toBe('8 samples avg')
     expect(formatOllamaSampleAvgCell(0, 1)).toBe('1 run')
+    expect(formatOllamaMemoryAvgCell(17, true)).toBe('17G')
+    expect(formatOllamaMemoryAvgCell(6.5, true)).toBe('6.5G')
+    expect(formatOllamaSampleAvgCell(14, 3, true)).toBe('14')
+    expect(formatOllamaSampleAvgCell(6.5, 2, true)).toBe('6.5')
   })
 
   it('derives memory rows from persisted Ollama chat run stats', () => {

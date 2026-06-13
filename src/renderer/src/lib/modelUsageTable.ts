@@ -384,3 +384,62 @@ export function buildModelUsageTable(
   }
   return result
 }
+
+/**
+ * Providers whose TaskWraith-internal runs are merged into the table when
+ * External Usage is ON. Grok is never scanned by the external activity
+ * loader; Cursor is supplemented only when the external set has no cursor
+ * section (avoids double-counting TaskWraith cursor CLI runs that already
+ * appear in the provider-wide dataset).
+ */
+const INTERNAL_SUPPLEMENT_WHEN_EXTERNAL: ProviderId[] = ['grok', 'cursor']
+
+/**
+ * Settings-table entry point. When External Usage is OFF this is identical to
+ * {@link buildModelUsageTable}. When ON it uses the provider-wide external
+ * dataset for the five CLI providers but still folds in TaskWraith-internal
+ * grok runs (and cursor runs only when external has none).
+ */
+export function buildModelUsageTableForSettings(
+  internalRecords: UsageRecord[],
+  externalRecords: UsageRecord[],
+  rates: RendererProviderRates,
+  options: ModelUsageTableOptions = {},
+  now: number = Date.now()
+): ModelUsageProviderGroup[] {
+  if (options.includeExternal !== true) {
+    return buildModelUsageTable(internalRecords, externalRecords, rates, options, now)
+  }
+
+  const externalGroups = buildModelUsageTable(
+    internalRecords,
+    externalRecords,
+    rates,
+    { ...options, includeExternal: true },
+    now
+  )
+  const internalGroups = buildModelUsageTable(
+    internalRecords,
+    [],
+    rates,
+    { ...options, includeExternal: false },
+    now
+  )
+
+  const externalProviders = new Set(externalGroups.map((group) => group.provider))
+  const supplementProviders = INTERNAL_SUPPLEMENT_WHEN_EXTERNAL.filter(
+    (provider) => provider === 'grok' || !externalProviders.has(provider)
+  )
+  const supplemented = internalGroups.filter((group) =>
+    supplementProviders.includes(group.provider)
+  )
+
+  const byProvider = new Map(externalGroups.map((group) => [group.provider, group]))
+  for (const group of supplemented) {
+    byProvider.set(group.provider, group)
+  }
+
+  return MODEL_USAGE_PROVIDER_ORDER.map((provider) => byProvider.get(provider)).filter(
+    (group): group is ModelUsageProviderGroup => Boolean(group)
+  )
+}

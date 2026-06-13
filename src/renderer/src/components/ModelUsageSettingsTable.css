@@ -72,6 +72,7 @@
 /* Horizontal scroll wrapper — five windows × two columns is wide. */
 .model-usage-table-scroll {
   overflow-x: auto;
+  padding-right: 2px;
   border: 1px solid var(--panel-border, var(--surface-border));
   border-radius: var(--radius-md, 10px);
   background: var(--panel-bg-solid, var(--surface));
@@ -79,18 +80,19 @@
 
 .model-usage-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 12px;
-  min-width: 0;
+  min-width: 100%;
 }
 
+/* Shrink the name column; metric columns size to their content. */
 .model-usage-table col.model-usage-table-name-col {
-  width: 24%;
+  width: 1%;
 }
 
 .model-usage-table col.model-usage-table-metric-col {
-  width: 7.6%;
+  width: auto;
 }
 
 .model-usage-table thead th {
@@ -99,13 +101,15 @@
   text-align: right;
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 8px 10px;
+  padding: 7px 6px;
   background: var(--surface-2, var(--panel-elevated-bg));
   white-space: nowrap;
 }
 
 .model-usage-table thead .model-usage-table-corner {
   text-align: left;
+  padding-left: 10px;
+  padding-right: 4px;
 }
 
 .model-usage-table-subhead th {
@@ -126,7 +130,7 @@
 
 .model-usage-table-provider-row th,
 .model-usage-table-provider-row td {
-  padding: 8px 10px;
+  padding: 7px 6px;
   font-weight: 600;
   color: var(--text-primary);
   background: color-mix(in srgb, var(--surface-2, #8884) 40%, transparent);
@@ -136,40 +140,41 @@
 
 .model-usage-table-provider-cell {
   text-align: left !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 0;
+  width: 1%;
+  min-width: 108px;
+  max-width: 128px;
+  padding-left: 8px !important;
+  padding-right: 4px !important;
 }
 
 .model-usage-table-provider-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
 }
 
 .model-usage-table-provider-name {
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 .model-usage-table-model-count {
-  font-size: 10.5px;
+  flex-shrink: 0;
+  font-size: 10px;
   font-weight: 500;
   color: var(--text-tertiary, var(--text-secondary));
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
 }
 
 /* Per-model rows */
 .model-usage-table-model-row td {
-  padding: 6px 10px;
+  padding: 6px 6px;
   text-align: right;
   white-space: nowrap;
   color: var(--text-secondary);
@@ -182,7 +187,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 0;
+  width: 1%;
+  max-width: 88px;
+  padding-left: 8px !important;
+  padding-right: 2px !important;
+  font-size: 11px;
 }
 
 .model-usage-table-tokens,
@@ -190,6 +199,14 @@
 .model-usage-table-memory,
 .model-usage-table-samples {
   font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* Keep the rightmost 90D column off the scroll-container edge. */
+.model-usage-table thead tr:last-child th:last-child,
+.model-usage-table tbody tr td:last-child {
+  padding-right: 14px;
 }
 
 .model-usage-table-cost {
@@ -223,6 +240,9 @@
 .model-usage-table-provider--memory .model-usage-table-memory,
 .model-usage-table-provider--memory .model-usage-table-samples {
   color: var(--text-primary);
+  font-size: 11px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 /* Empty state */

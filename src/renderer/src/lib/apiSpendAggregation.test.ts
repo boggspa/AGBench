@@ -17,7 +17,7 @@ const RATES: RendererProviderRates = {
   claude: [{ modelId: 'opus', inputUsdPerMillion: 5, outputUsdPerMillion: 25 }],
   // Cursor ships no public rate — records still aggregate tokens but
   // project zero cost (matches `estimateRunCostUsd` returning 0).
-  cursor: []
+  cursor: [{ modelId: 'composer-2.5-fast', inputUsdPerMillion: 3, outputUsdPerMillion: 15 }]
 }
 
 function makeRecord(overrides: Partial<UsageRecord> & { timestamp: number }): UsageRecord {
@@ -79,22 +79,21 @@ describe('buildApiSpendByProvider — empty / zero', () => {
     expect(buildApiSpendByProvider(records, RATES, USD, NOW)).toEqual([])
   })
 
-  it('aggregates tokens but reports empty cost display when the rate table prices nothing', () => {
+  it('projects Cursor spend via the Composer 2.5 Fast proxy rate', () => {
     const records = [
       makeRecord({
         provider: 'cursor',
-        model: 'composer',
+        model: 'composer-2.5-fast',
         timestamp: NOW - 1000,
         inputTokens: 10_000,
-        outputTokens: 5000
+        outputTokens: 5_000
       })
     ]
     const [cursor] = buildApiSpendByProvider(records, RATES, USD, NOW)
     expect(cursor.provider).toBe('cursor')
     expect(cursor.day.totalTokens).toBe(15_000)
-    expect(cursor.day.costUsd).toBe(0)
-    // No positive cost → empty display string (caller renders a placeholder).
-    expect(cursor.day.costDisplay).toBe('')
+    expect(cursor.day.costUsd).toBeCloseTo(0.105, 6)
+    expect(cursor.day.costDisplay).toBe('$0.11')
   })
 })
 

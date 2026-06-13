@@ -5,7 +5,8 @@
  * per-token, so their run stats carry NO `cost_usd`:
  *   - Codex  → ChatGPT subscription quota (Plus / Pro / Business)
  *   - Grok   → SuperGrok subscription credits
- *   - Cursor → Cursor subscription (token-based but no clean public rate)
+ *   - Cursor → Cursor subscription (Composer pool on individual plans;
+ *              projected against Composer 2.5 Fast list pricing)
  *
  * For those seats the real spend is blank. This module maps summed input /
  * output tokens to a PROJECTED API-equivalent USD figure using the per-model

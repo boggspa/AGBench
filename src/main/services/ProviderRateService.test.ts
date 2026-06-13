@@ -92,6 +92,7 @@ describe('BAKED_IN_RATES', () => {
     expect(BAKED_IN_RATES.claude).toBeDefined()
     expect(BAKED_IN_RATES.gemini).toBeDefined()
     expect(BAKED_IN_RATES.kimi).toBeDefined()
+    expect(BAKED_IN_RATES.cursor).toBeDefined()
     expect(BAKED_IN_RATES.ollama).toBeDefined()
   })
 

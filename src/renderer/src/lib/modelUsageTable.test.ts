@@ -4,6 +4,7 @@ import {
   MODEL_USAGE_WINDOW_MS,
   MODEL_USAGE_WINDOW_ORDER,
   buildModelUsageTable,
+  buildModelUsageTableForSettings,
   type ModelUsageTableOptions
 } from './modelUsageTable'
 import { getFxRatesPerUsd, setFxRatesPerUsd } from './formatCost'
@@ -17,7 +18,7 @@ const NOW = new Date('2026-06-13T12:00:00.000Z').getTime()
 const RATES: RendererProviderRates = {
   codex: [{ modelId: 'gpt-5.5', inputUsdPerMillion: 1, outputUsdPerMillion: 10 }],
   claude: [{ modelId: 'opus', inputUsdPerMillion: 5, outputUsdPerMillion: 25 }],
-  cursor: []
+  cursor: [{ modelId: 'composer-2.5-fast', inputUsdPerMillion: 3, outputUsdPerMillion: 15 }]
 }
 
 function makeRecord(overrides: Partial<UsageRecord> & { timestamp: number }): UsageRecord {
@@ -81,7 +82,7 @@ describe('buildModelUsageTable — empty / zero / exclusions', () => {
     expect(buildModelUsageTable(records, [], RATES, USD, NOW)).toEqual([])
   })
 
-  it('aggregates tokens but reports empty cost display for zero-priced models', () => {
+  it('projects Cursor cost via the Composer 2.5 Fast proxy rate', () => {
     const records = [
       makeRecord({
         provider: 'cursor',
@@ -96,12 +97,10 @@ describe('buildModelUsageTable — empty / zero / exclusions', () => {
     expect(cursor.models).toHaveLength(1)
     expect(cursor.models[0].model).toBe('composer')
     expect(cursor.models[0].windows.h1.totalTokens).toBe(15_000)
-    expect(cursor.models[0].windows.h1.costUsd).toBe(0)
-    // No positive cost → empty display string (caller renders a placeholder).
-    expect(cursor.models[0].windows.h1.costDisplay).toBe('')
-    // Provider roll-up mirrors the lone model.
+    expect(cursor.models[0].windows.h1.costUsd).toBeCloseTo(0.105, 6)
+    expect(cursor.models[0].windows.h1.costDisplay).toBe('$0.11')
     expect(cursor.totals.h1.totalTokens).toBe(15_000)
-    expect(cursor.totals.h1.costDisplay).toBe('')
+    expect(cursor.totals.h1.costDisplay).toBe('$0.11')
   })
 
   it('buckets a blank model id under a provider-named fallback row', () => {
@@ -455,5 +454,107 @@ describe('buildModelUsageTable — External Usage switches source (no double-cou
     // Only the codex run with real tokens; the cursor marker creates no section.
     expect(result.map((g) => g.provider)).toEqual(['codex'])
     expect(result[0].models[0].windows.h24.runs).toBe(1)
+  })
+})
+
+describe('buildModelUsageTableForSettings — grok/cursor supplement when external is on', () => {
+  const externalCodex = makeRecord({
+    id: 'external-codex',
+    provider: 'codex',
+    model: 'gpt-5.5',
+    timestamp: NOW - HOURS(1),
+    inputTokens: 2_000_000
+  })
+
+  it('folds internal grok runs into the external-only table', () => {
+    const internal = [
+      makeRecord({
+        provider: 'grok',
+        model: 'grok-build',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 1_000_000,
+        outputTokens: 500_000
+      })
+    ]
+    const result = buildModelUsageTableForSettings(
+      internal,
+      [externalCodex],
+      { ...RATES, grok: [{ modelId: 'grok-build', inputUsdPerMillion: 2, outputUsdPerMillion: 10 }] },
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    expect(result.map((g) => g.provider)).toEqual(['codex', 'grok'])
+    const grok = result.find((g) => g.provider === 'grok')!
+    expect(grok.totals.h24.totalTokens).toBe(1_500_000)
+    const codex = result.find((g) => g.provider === 'codex')!
+    expect(codex.totals.h24.tokensIn).toBe(2_000_000)
+  })
+
+  it('supplements cursor from internal only when external has no cursor section', () => {
+    const internal = [
+      makeRecord({
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 10_000,
+        outputTokens: 5_000
+      })
+    ]
+    const result = buildModelUsageTableForSettings(
+      internal,
+      [externalCodex],
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    expect(result.map((g) => g.provider)).toEqual(['codex', 'cursor'])
+    expect(result.find((g) => g.provider === 'cursor')!.totals.h24.totalTokens).toBe(15_000)
+  })
+
+  it('does not double-count cursor when external already has cursor usage', () => {
+    const internal = [
+      makeRecord({
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 10_000,
+        outputTokens: 5_000
+      })
+    ]
+    const external = [
+      externalCodex,
+      makeRecord({
+        id: 'external-cursor',
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        timestamp: NOW - HOURS(2),
+        inputTokens: 20_000,
+        outputTokens: 10_000
+      })
+    ]
+    const result = buildModelUsageTableForSettings(
+      internal,
+      external,
+      RATES,
+      { currency: 'USD', includeExternal: true },
+      NOW
+    )
+    const cursor = result.find((g) => g.provider === 'cursor')!
+    expect(cursor.totals.h24.totalTokens).toBe(30_000)
+    expect(cursor.totals.h24.runs).toBe(1)
+  })
+
+  it('matches buildModelUsageTable when external is off', () => {
+    const internal = [
+      makeRecord({
+        provider: 'grok',
+        model: 'grok-build',
+        timestamp: NOW - HOURS(1),
+        inputTokens: 1_000_000
+      })
+    ]
+    const off = buildModelUsageTable(internal, [], RATES, USD, NOW)
+    const settingsOff = buildModelUsageTableForSettings(internal, [], RATES, USD, NOW)
+    expect(settingsOff).toEqual(off)
   })
 })

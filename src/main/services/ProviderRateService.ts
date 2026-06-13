@@ -146,16 +146,25 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
     ]
   },
   // Cursor / Composer 2.5 (gated, CR). TaskWraith drives Cursor through the
-  // cursor-agent CLI on the user's Cursor subscription (token-based, billed by
-  // Cursor), and the stream-json `result.usage` reports real tokens. Public
-  // per-token pricing for composer-2.5 isn't published as a clean rate, so we
-  // ship an EMPTY models list: usage tokens are still tracked, cost shows 0
-  // until a verified rate lands, and the empty list keeps Cursor OUT of the
-  // rate-prober fetch loop (skip-empty-models leak mitigation).
+  // cursor-agent CLI on the user's Cursor subscription. Individual plans bill
+  // via a Composer usage pool; team/enterprise pass API rates through. Public
+  // Fast-tier list pricing (default interactive tier) is published on Cursor's
+  // model docs — we project ALL Cursor token rows against composer-2.5-fast
+  // as a conservative interactive-session proxy (estimated, not billed).
   cursor: {
     provider: 'cursor',
-    pricingUrl: '',
-    models: []
+    pricingUrl: 'https://cursor.com/docs/models/cursor-composer-2-5',
+    models: [
+      {
+        modelId: 'composer-2.5-fast',
+        inputUsdPerMillion: 3.0,
+        outputUsdPerMillion: 15.0,
+        sourceUrl: 'https://cursor.com/docs/models/cursor-composer-2-5',
+        lastVerified: RATE_TABLE_VERSION,
+        notes:
+          'Composer 2.5 Fast tier (IDE default). PROJECTED API-equivalent — individual plans draw from the Composer pool, not per-token billing. Used as the fallback rate for every Cursor usage row.'
+      }
+    ]
   },
   codex: {
     provider: 'codex',
@@ -369,6 +378,15 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         confidence: 'baked-in'
       },
       {
+        modelId: 'qwen3.6:35b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Qwen 3.6 35B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
         modelId: 'gemma4:12b',
         inputUsdPerMillion: 0,
         outputUsdPerMillion: 0,
@@ -411,6 +429,42 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         sourceUrl: 'local://ollama',
         lastVerified: RATE_TABLE_VERSION,
         notes: 'OpenAI gpt-oss 20B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'minicpm-v4.5:8b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'MiniCPM-V 4.5 8B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'granite4.1:3b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'IBM Granite 4.1 3B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'granite4.1:30b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'IBM Granite 4.1 30B running through local Ollama. TaskWraith does not charge per token for local inference.',
+        confidence: 'baked-in'
+      },
+      {
+        modelId: 'nemotron3:33b',
+        inputUsdPerMillion: 0,
+        outputUsdPerMillion: 0,
+        sourceUrl: 'local://ollama',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'NVIDIA Nemotron 3 Nano Omni 33B running through local Ollama. TaskWraith does not charge per token for local inference.',
         confidence: 'baked-in'
       },
       {

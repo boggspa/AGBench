@@ -3,7 +3,8 @@ import {
   canonicalModelIdForProvider,
   getKnownModelLabels,
   humaniseModelId,
-  humaniseModelIdCompact
+  humaniseModelIdCompact,
+  humaniseModelIdTableCell
 } from './modelDisplayName'
 
 // 1.0.5-EW50 — Shared model-id humaniser. Covers the four
@@ -197,5 +198,17 @@ describe('humaniseModelIdCompact', () => {
     expect(humaniseModelIdCompact('gemini', 'cli-default')).toBe('CLI Default')
     expect(humaniseModelIdCompact('cursor', 'composer-2.5-fast')).toBe('Composer 2.5 Fast')
     expect(humaniseModelIdCompact('ollama', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
+  })
+})
+
+describe('humaniseModelIdTableCell', () => {
+  it('hard-truncates long compact labels for narrow table cells', () => {
+    expect(humaniseModelIdTableCell('gemini', 'gemini-3.1-flash-lite-preview')).toBe(
+      '3.1 Flash Lit…'
+    )
+  })
+
+  it('simplifies dated Claude API ids before truncating', () => {
+    expect(humaniseModelIdTableCell('claude', 'claude-haiku-4-5-20251001')).toBe('haiku 4.5')
   })
 })

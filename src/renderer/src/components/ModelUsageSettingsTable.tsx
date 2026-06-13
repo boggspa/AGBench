@@ -41,14 +41,14 @@ import type { UsageRecord, ChatRecord } from '../../../main/store/types'
 import {
   MODEL_USAGE_WINDOW_LABEL,
   MODEL_USAGE_WINDOW_ORDER,
-  buildModelUsageTable,
+  buildModelUsageTableForSettings,
   type ModelUsageProviderGroup,
   type ModelUsageWindowKey,
   type ModelUsageWindowTotals
 } from '../lib/modelUsageTable'
 import { fetchProviderRates, type RendererProviderRates } from '../lib/providerRateEstimate'
 import type { DisplayCurrency } from '../lib/formatCost'
-import { humaniseModelIdCompact } from '../lib/modelDisplayName'
+import { humaniseModelIdCompact, humaniseModelIdTableCell } from '../lib/modelDisplayName'
 import { formatTokenCount } from '../lib/UsageHeatmap'
 import {
   buildOllamaMemoryModelTable,
@@ -155,7 +155,7 @@ function WindowCells({
         className="model-usage-table-cost"
         title={
           totals.costDisplay
-            ? `Projected API-equivalent — estimated, not billed (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
+            ? `~${totals.costDisplay} · projected API-equivalent — estimated, not billed (${MODEL_USAGE_WINDOW_LABEL[windowKey]})`
             : undefined
         }
       >
@@ -180,8 +180,11 @@ export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProvi
             <span className="model-usage-table-provider-name">
               {getProviderName(group.provider)}
             </span>
-            <span className="model-usage-table-model-count">
-              {group.models.length} model{group.models.length === 1 ? '' : 's'}
+            <span
+              className="model-usage-table-model-count"
+              title={`${group.models.length} model${group.models.length === 1 ? '' : 's'}`}
+            >
+              {group.models.length}
             </span>
           </span>
         </th>
@@ -191,8 +194,8 @@ export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProvi
       </tr>
       {group.models.map((model) => (
         <tr key={`${group.provider}-${model.model}`} className="model-usage-table-model-row">
-          <td className="model-usage-table-model-cell" title={model.model}>
-            {humaniseModelIdCompact(group.provider, model.model)}
+          <td className="model-usage-table-model-cell" title={humaniseModelIdCompact(group.provider, model.model)}>
+            {humaniseModelIdTableCell(group.provider, model.model)}
           </td>
           {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
             <WindowCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
@@ -221,7 +224,7 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
             : undefined
         }
       >
-        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb)}
+        {formatOllamaMemoryAvgCell(totals.avgPeakRssGb, true)}
       </td>
       <td
         className="model-usage-table-samples"
@@ -231,7 +234,7 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
             : undefined
         }
       >
-        {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs)}
+        {formatOllamaSampleAvgCell(totals.avgSampleCount, totals.runs, true)}
       </td>
     </>
   )
@@ -243,8 +246,11 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
           <span className="model-usage-table-provider-label provider-ollama">
             <ProviderLogoTile provider="ollama" />
             <span className="model-usage-table-provider-name">{getProviderName('ollama')}</span>
-            <span className="model-usage-table-model-count">
-              {group.models.length} model{group.models.length === 1 ? '' : 's'}
+            <span
+              className="model-usage-table-model-count"
+              title={`${group.models.length} model${group.models.length === 1 ? '' : 's'}`}
+            >
+              {group.models.length}
             </span>
           </span>
         </th>
@@ -254,8 +260,8 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
       </tr>
       {group.models.map((model) => (
         <tr key={`ollama-${model.model}`} className="model-usage-table-model-row">
-          <td className="model-usage-table-model-cell" title={model.model}>
-            {humaniseModelIdCompact('ollama', model.model)}
+          <td className="model-usage-table-model-cell" title={humaniseModelIdCompact('ollama', model.model)}>
+            {humaniseModelIdTableCell('ollama', model.model)}
           </td>
           {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
             <MemoryCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
@@ -402,7 +408,7 @@ export function ModelUsageSettingsTable({
 
   const groups = useMemo<ModelUsageProviderGroup[]>(
     () =>
-      buildModelUsageTable(internalRecords, externalRecords, rates, {
+      buildModelUsageTableForSettings(internalRecords, externalRecords, rates, {
         currency,
         overestimatePercent,
         locale,
@@ -425,8 +431,8 @@ export function ModelUsageSettingsTable({
   )
 
   const ollamaGroup = useMemo(
-    () => (includeExternal ? null : buildOllamaMemoryModelTable(ollamaMemoryRecords)),
-    [ollamaMemoryRecords, includeExternal]
+    () => buildOllamaMemoryModelTable(ollamaMemoryRecords),
+    [ollamaMemoryRecords]
   )
 
   const hasTableContent = groups.length > 0 || Boolean(ollamaGroup)
@@ -488,7 +494,7 @@ export function ModelUsageSettingsTable({
               <thead>
                 <tr>
                   <th scope="col" className="model-usage-table-corner">
-                    Provider / model
+                    Model
                   </th>
                   {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
                     <th key={windowKey} scope="colgroup" colSpan={2}>

@@ -102,29 +102,29 @@ describe('ModelUsageProviderTableBlock (populated render)', () => {
     expect(html).toContain('tok')
   })
 
-  it('renders a neutral dash for windows with no activity and zero-priced cells', () => {
-    // cursor has an empty rate table → tokens aggregate, cost stays blank → "—".
-    const ratesNoCursor: RendererProviderRates = { ...RATES, cursor: [] }
+  it('projects Cursor cost via the Composer 2.5 Fast proxy rate', () => {
+    const ratesWithCursor: RendererProviderRates = {
+      ...RATES,
+      cursor: [{ modelId: 'composer-2.5-fast', inputUsdPerMillion: 3, outputUsdPerMillion: 15 }]
+    }
     const records: UsageRecord[] = [
       makeRecord({
         provider: 'cursor',
-        model: 'composer',
+        model: 'composer-2.5-fast',
         timestamp: NOW - 60_000,
         inputTokens: 10_000,
-        outputTokens: 5000,
+        outputTokens: 5_000,
         totalTokens: 15_000
       })
     ]
-    const [group] = buildModelUsageTable(records, [], ratesNoCursor, { currency: 'USD' }, NOW)
+    const [group] = buildModelUsageTable(records, [], ratesWithCursor, { currency: 'USD' }, NOW)
     const html = renderToStaticMarkup(
       <table>
         <ModelUsageProviderTableBlock group={group} />
       </table>
     )
     expect(html).toContain('Cursor')
-    // Token cell present, but cost cells render the neutral dash (no ~ figure).
     expect(html).toContain('tok')
-    expect(html).toContain('—')
-    expect(html).not.toContain('~$')
+    expect(html).toContain('~$0.11')
   })
 })

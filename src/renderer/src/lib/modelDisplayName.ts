@@ -97,6 +97,7 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   // ── Ollama ────────────────────────────────────────────────
   'qwen3:4b-instruct': 'Qwen 3 (4B Param)',
   'qwen3.5:9b': 'Qwen 3.5 (9B Param)',
+  'qwen3.6:35b': 'Qwen 3.6 (35B Param)',
   'gemma4:12b': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-qat': 'Gemma 4 (12B Param)',
   'gemma4:12b-it-q4_k_m': 'Gemma 4 (12B Param)',
@@ -109,7 +110,11 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   'gpt-oss': 'GPT OSS (20B Param)',
   'gpt-oss:20b': 'GPT OSS (20B Param)',
   'gpt-oss:latest': 'GPT OSS (20B Param)',
-  'openai/gpt-oss-20b': 'GPT OSS (20B Param)'
+  'openai/gpt-oss-20b': 'GPT OSS (20B Param)',
+  'minicpm-v4.5:8b': 'MiniCPM-V 4.5 (8B Param)',
+  'granite4.1:3b': 'Granite 4.1 (3B Param)',
+  'granite4.1:30b': 'Granite 4.1 (30B Param)',
+  'nemotron3:33b': 'Nemotron 3 Nano Omni (33B Param)'
 }
 
 const STALE_GEMINI_PLACEHOLDER_MODEL_IDS = new Set([
@@ -166,6 +171,21 @@ export function humaniseModelId(
   if (provider === 'ollama' && key.startsWith('qwen3.5:9b-')) {
     return 'Qwen 3.5 (9B Param)'
   }
+  if (provider === 'ollama' && key.startsWith('qwen3.6:35b-')) {
+    return 'Qwen 3.6 (35B Param)'
+  }
+  if (provider === 'ollama' && key.startsWith('minicpm-v4.5:8b-')) {
+    return 'MiniCPM-V 4.5 (8B Param)'
+  }
+  if (provider === 'ollama' && key.startsWith('granite4.1:3b-')) {
+    return 'Granite 4.1 (3B Param)'
+  }
+  if (provider === 'ollama' && key.startsWith('granite4.1:30b-')) {
+    return 'Granite 4.1 (30B Param)'
+  }
+  if (provider === 'ollama' && key.startsWith('nemotron3:33b-')) {
+    return 'Nemotron 3 Nano Omni (33B Param)'
+  }
   return KNOWN_MODEL_LABELS[key] || canonical
 }
 
@@ -193,6 +213,32 @@ export function humaniseModelIdCompact(
   if (!pattern) return full
   const stripped = full.replace(pattern, '').trim()
   return stripped || full
+}
+
+const DATED_CLAUDE_MODEL_ID =
+  /^claude-(haiku|sonnet|opus|fable)-(\d+)-(\d+)(?:-\d{8})?$/i
+
+/**
+ * Ultra-compact model label for narrow table cells (Settings → Model usage).
+ * Applies the compact humaniser, simplifies dated Claude API ids, then hard-
+ * truncates with an ellipsis. Callers should keep the full
+ * {@link humaniseModelIdCompact} string on the cell `title`.
+ */
+export function humaniseModelIdTableCell(
+  provider: ProviderId | undefined,
+  modelId: string | undefined | null,
+  maxLength = 14
+): string {
+  const canonical = canonicalModelIdForProvider(provider, modelId).trim()
+  let label = humaniseModelIdCompact(provider, modelId)
+  if (provider === 'claude' && label === canonical) {
+    const match = canonical.match(DATED_CLAUDE_MODEL_ID)
+    if (match) {
+      label = `${match[1]} ${match[2]}.${match[3]}`
+    }
+  }
+  if (label.length <= maxLength) return label
+  return `${label.slice(0, Math.max(1, maxLength - 1))}\u2026`
 }
 
 /**
