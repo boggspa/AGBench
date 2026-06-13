@@ -267,6 +267,8 @@ export class AuditOrchestrator {
   async run(input: StartAuditInput): Promise<AuditRunRecord> {
     const basePolicy = this.currentPolicy()
     this.localGate = new Semaphore(Math.max(1, basePolicy?.ollamaMaxConcurrent ?? 1))
+    this.substitutions = 0
+    this.completedDimensions = 0
     const phases: AuditPhase[] = (
       ['recon', 'plan', 'gates', 'review', 'dedup', 'verify', 'synthesis'] as AuditPhaseId[]
     ).map((id) => ({ id, status: 'pending' }))

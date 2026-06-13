@@ -248,6 +248,29 @@ describe('AuditOrchestrator — resilience', () => {
     expect(result.roster?.perRole.reviewer).toEqual(['codex'])
   })
 
+  it('resets per-run counters when the same orchestrator handles another audit', async () => {
+    const deps = baseDeps()
+    let failedOnce = false
+    deps.dispatchRole = async (req): Promise<AuditRoleRunResult> => {
+      if (req.role === 'reviewer' && req.provider === 'claude' && !failedOnce) {
+        failedOnce = true
+        return { ok: false, runId: 'r-fail', error: 'temporary provider failure' }
+      }
+      if (req.role === 'recon') return { ok: true, runId: 'r-recon', profile: {} }
+      if (req.role === 'synthesis') return { ok: true, runId: 'r-syn', report: 'R' }
+      if (req.role === 'reviewer') return { ok: true, runId: `r-${++idSeq}`, findings: [] }
+      return { ok: true, runId: `r-${++idSeq}`, verdicts: [] }
+    }
+    const orchestrator = new AuditOrchestrator(deps)
+
+    const first = await orchestrator.run(input)
+    const second = await orchestrator.run(input)
+
+    expect(first.coverage?.substitutions).toBe(1)
+    expect(second.coverage?.substitutions).toBe(0)
+    expect(second.coverage?.dimensionsCompleted).toBe(3)
+  })
+
   it('fails cleanly when no provider is eligible', async () => {
     const deps = baseDeps({
       resolveSignals: async () => [
