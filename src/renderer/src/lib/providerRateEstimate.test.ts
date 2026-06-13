@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   estimateRunCostUsd,
+  estimateUsageRecordCostUsd,
   normalizeProviderRates,
   resolveModelRate,
+  usageRecordInputTokens,
   type RendererProviderRates
 } from './providerRateEstimate'
 
@@ -50,7 +52,12 @@ describe('normalizeProviderRates', () => {
     }
     const out = normalizeProviderRates(snapshot)
     expect(out.codex).toEqual([
-      { modelId: 'gpt-5.5', inputUsdPerMillion: 1.25, outputUsdPerMillion: 10.0 }
+      {
+        modelId: 'gpt-5.5',
+        inputUsdPerMillion: 1.25,
+        outputUsdPerMillion: 10.0,
+        cachedInputUsdPerMillion: 0.125
+      }
     ])
     // Empty model lists are dropped entirely.
     expect(out.cursor).toEqual([
@@ -134,5 +141,65 @@ describe('estimateRunCostUsd', () => {
     expect(estimateRunCostUsd(RATES, 'codex', 'gpt-5.5', NaN, NaN)).toBe(0)
     // one valid count still estimates
     expect(estimateRunCostUsd(RATES, 'codex', 'gpt-5.5', 1_000_000, NaN)).toBeCloseTo(1.25, 6)
+  })
+})
+
+const CLAUDE_RATES: RendererProviderRates = {
+  claude: [
+    {
+      modelId: 'claude-opus-4-7',
+      inputUsdPerMillion: 5,
+      outputUsdPerMillion: 25,
+      cachedInputUsdPerMillion: 0.5
+    }
+  ]
+}
+
+describe('usageRecordInputTokens', () => {
+  it('sums cache reads and creation when a breakdown is present', () => {
+    expect(
+      usageRecordInputTokens({
+        provider: 'claude',
+        model: 'claude-opus-4-7',
+        inputTokens: 11,
+        outputTokens: 5,
+        cacheReadInputTokens: 3
+      })
+    ).toBe(14)
+  })
+
+  it('returns base inputTokens for legacy combined rows', () => {
+    expect(
+      usageRecordInputTokens({
+        provider: 'claude',
+        model: 'claude-opus-4-7',
+        inputTokens: 14,
+        outputTokens: 5
+      })
+    ).toBe(14)
+  })
+})
+
+describe('estimateUsageRecordCostUsd', () => {
+  it('prices cache reads at the cached input rate', () => {
+    const usd = estimateUsageRecordCostUsd(CLAUDE_RATES, {
+      provider: 'claude',
+      model: 'claude-opus-4-7',
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+      cacheReadInputTokens: 4_000_000
+    })
+    // 1M * $5/M + 4M * $0.5/M = 7
+    expect(usd).toBeCloseTo(7, 6)
+  })
+
+  it('keeps legacy combined input rows on the standard input rate', () => {
+    const usd = estimateUsageRecordCostUsd(CLAUDE_RATES, {
+      provider: 'claude',
+      model: 'claude-opus-4-7',
+      inputTokens: 5_000_000,
+      outputTokens: 0
+    })
+    expect(usd).toBeCloseTo(25, 6)
   })
 })

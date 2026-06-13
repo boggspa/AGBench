@@ -29,7 +29,7 @@
  */
 
 import type { ProviderId, UsageRecord } from '../../../main/store/types'
-import { estimateRunCostUsd, type RendererProviderRates } from './providerRateEstimate'
+import { estimateUsageRecordCostUsd, usageRecordInputTokens, type RendererProviderRates } from './providerRateEstimate'
 import { formatCost, type DisplayCurrency } from './formatCost'
 
 /** Rolling window keys for the per-provider spend rows. */
@@ -139,13 +139,7 @@ function recordCostUsd(record: UsageRecord, rates: RendererProviderRates): numbe
       0
   )
   if (Number.isFinite(explicit) && explicit > 0) return explicit
-  return estimateRunCostUsd(
-    rates,
-    record.provider,
-    record.model,
-    toNonNegative(record.inputTokens),
-    toNonNegative(record.outputTokens)
-  )
+  return estimateUsageRecordCostUsd(rates, record)
 }
 
 /** Materialise an accumulator into the public window totals shape,
@@ -222,7 +216,7 @@ export function buildApiSpendByProvider(
       buckets.set(provider, triplet)
     }
 
-    const tokensIn = toNonNegative(record.inputTokens)
+    const tokensIn = usageRecordInputTokens(record)
     const tokensOut = toNonNegative(record.outputTokens)
     const costUsd = recordCostUsd(record, rates)
 

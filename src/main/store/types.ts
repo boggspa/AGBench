@@ -2433,6 +2433,9 @@ export interface UsageRecord {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  /** Non-cache prompt tokens when a provider splits cache reads/creation. */
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
   inputTokenLimit?: number
   outputTokenLimit?: number
   totalTokenLimit?: number

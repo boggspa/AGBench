@@ -111,6 +111,8 @@ describe('loadExternalProviderUsageRecords', () => {
       expect(byProvider.get('codex')?.totalTokens).toBe(25)
       expect(byProvider.get('codex')?.model).toBe('gpt-5.5')
       expect(byProvider.get('claude')?.totalTokens).toBe(19)
+      expect(byProvider.get('claude')?.inputTokens).toBe(11)
+      expect(byProvider.get('claude')?.cacheReadInputTokens).toBe(3)
       expect(byProvider.get('gemini')?.totalTokens).toBe(24)
       expect(byProvider.get('kimi')?.totalTokens).toBe(25)
       expect(records.every((record) => record.workspaceId === 'external')).toBe(true)

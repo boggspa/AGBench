@@ -28,7 +28,7 @@
  * export and is trivially mockable.
  */
 
-import type { ProviderId } from '../../../main/store/types'
+import type { ProviderId, UsageRecord } from '../../../main/store/types'
 
 /**
  * Minimal renderer-side mirror of `ProviderRateService`'s `ModelRateEntry`.
@@ -40,6 +40,7 @@ export interface RendererModelRate {
   modelId: string
   inputUsdPerMillion: number
   outputUsdPerMillion: number
+  cachedInputUsdPerMillion?: number
 }
 
 /** Per-provider rate table, keyed by provider id. Partial because a snapshot
@@ -80,11 +81,18 @@ export function normalizeProviderRates(raw: unknown): RendererProviderRates {
         isFiniteNonNeg(m.inputUsdPerMillion) &&
         isFiniteNonNeg(m.outputUsdPerMillion)
       ) {
-        entries.push({
+        const entry: RendererModelRate = {
           modelId: m.modelId,
           inputUsdPerMillion: m.inputUsdPerMillion,
           outputUsdPerMillion: m.outputUsdPerMillion
-        })
+        }
+        if (
+          isFiniteNonNeg(m.cachedInputUsdPerMillion) &&
+          m.cachedInputUsdPerMillion < m.inputUsdPerMillion
+        ) {
+          entry.cachedInputUsdPerMillion = m.cachedInputUsdPerMillion
+        }
+        entries.push(entry)
       }
     }
     if (entries.length > 0) out[provider as ProviderId] = entries
@@ -143,6 +151,69 @@ export function estimateRunCostUsd(
   if (inTok === 0 && outTok === 0) return 0
   const usd =
     (inTok / 1_000_000) * rate.inputUsdPerMillion + (outTok / 1_000_000) * rate.outputUsdPerMillion
+  return Number.isFinite(usd) && usd > 0 ? usd : 0
+}
+
+type UsageCostRecord = Pick<
+  UsageRecord,
+  | 'provider'
+  | 'model'
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'cacheReadInputTokens'
+  | 'cacheCreationInputTokens'
+>
+
+const toNonNeg = (value: unknown): number => (isFiniteNonNeg(value) ? value : 0)
+
+/** Sum input-side tokens for display when a record carries a cache breakdown. */
+export function usageRecordInputTokens(record: UsageCostRecord): number {
+  const base = toNonNeg(record.inputTokens)
+  const cacheRead = toNonNeg(record.cacheReadInputTokens)
+  const cacheCreation = toNonNeg(record.cacheCreationInputTokens)
+  if (cacheRead > 0 || cacheCreation > 0) return base + cacheRead + cacheCreation
+  return base
+}
+
+/**
+ * Cache-aware variant of {@link estimateRunCostUsd} for persisted usage rows.
+ * When `cacheReadInputTokens` / `cacheCreationInputTokens` are present, cache
+ * reads bill at `cachedInputUsdPerMillion` (falling back to the standard input
+ * rate). Legacy rows that still combine all input into `inputTokens` keep the
+ * previous all-at-input-rate behaviour.
+ */
+export function estimateUsageRecordCostUsd(
+  rates: RendererProviderRates,
+  record: UsageCostRecord
+): number {
+  const rate = resolveModelRate(rates, record.provider, record.model)
+  if (!rate) return 0
+  const outputTokens = toNonNeg(record.outputTokens)
+  const cacheRead = toNonNeg(record.cacheReadInputTokens)
+  const cacheCreation = toNonNeg(record.cacheCreationInputTokens)
+  const hasCacheBreakdown = cacheRead > 0 || cacheCreation > 0
+  const inputTokens = toNonNeg(record.inputTokens)
+
+  if (!hasCacheBreakdown) {
+    return estimateRunCostUsd(
+      rates,
+      record.provider,
+      record.model,
+      inputTokens,
+      outputTokens
+    )
+  }
+
+  if (inputTokens === 0 && cacheRead === 0 && cacheCreation === 0 && outputTokens === 0) {
+    return 0
+  }
+
+  const cachedInputRate = rate.cachedInputUsdPerMillion ?? rate.inputUsdPerMillion
+  const usd =
+    (inputTokens / 1_000_000) * rate.inputUsdPerMillion +
+    (cacheRead / 1_000_000) * cachedInputRate +
+    (cacheCreation / 1_000_000) * rate.inputUsdPerMillion +
+    (outputTokens / 1_000_000) * rate.outputUsdPerMillion
   return Number.isFinite(usd) && usd > 0 ? usd : 0
 }
 

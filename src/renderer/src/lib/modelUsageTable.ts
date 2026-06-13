@@ -41,7 +41,7 @@
 
 import type { ProviderId, UsageRecord } from '../../../main/store/types'
 import { canonicalModelIdForProvider } from './modelDisplayName'
-import { estimateRunCostUsd, type RendererProviderRates } from './providerRateEstimate'
+import { estimateUsageRecordCostUsd, usageRecordInputTokens, type RendererProviderRates } from './providerRateEstimate'
 import { formatCost, type DisplayCurrency } from './formatCost'
 
 /** Rolling window keys for the per-model rows (shortest → longest). */
@@ -193,13 +193,7 @@ function recordCostUsd(record: UsageRecord, rates: RendererProviderRates): numbe
       0
   )
   if (Number.isFinite(explicit) && explicit > 0) return explicit
-  return estimateRunCostUsd(
-    rates,
-    record.provider,
-    record.model,
-    toNonNegative(record.inputTokens),
-    toNonNegative(record.outputTokens)
-  )
+  return estimateUsageRecordCostUsd(rates, record)
 }
 
 /** Normalise a model id for grouping. Falls back to the provider name so a
@@ -310,7 +304,7 @@ export function buildModelUsageTable(
       // widest (90d) window — they can never land in any column.
       if (timestamp > now || timestamp < cutoffs.d90) continue
 
-      const tokensIn = toNonNegative(record.inputTokens)
+      const tokensIn = usageRecordInputTokens(record)
       const tokensOut = toNonNegative(record.outputTokens)
       const costUsd = recordCostUsd(record, rates)
       // Drop synthetic zero-signal markers — the external scanner emits some

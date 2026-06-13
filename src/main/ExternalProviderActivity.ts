@@ -34,6 +34,8 @@ interface ExternalUsageEvent {
   inputTokens?: number
   outputTokens?: number
   totalTokens: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
   sourceKey: string
 }
 
@@ -229,6 +231,8 @@ function eventToUsageRecord(event: ExternalUsageEvent): UsageRecord | null {
   const id = `external-${event.provider}-${stableHash(
     `${event.timestamp}|${event.model}|${totalTokens}|${event.sourceKey}`
   )}`
+  const cacheReadInputTokens = Math.max(0, Math.round(event.cacheReadInputTokens || 0))
+  const cacheCreationInputTokens = Math.max(0, Math.round(event.cacheCreationInputTokens || 0))
   return {
     id,
     provider: event.provider,
@@ -241,6 +245,8 @@ function eventToUsageRecord(event: ExternalUsageEvent): UsageRecord | null {
     inputTokens,
     outputTokens,
     totalTokens,
+    ...(cacheReadInputTokens > 0 ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens > 0 ? { cacheCreationInputTokens } : {}),
     durationMs: 0
   }
 }
@@ -299,16 +305,17 @@ async function readCodexActivity(homeDir: string, sinceMs: number): Promise<Exte
       const usage = json.payload?.info?.last_token_usage || json.payload?.info?.total_token_usage
       const totalTokens = tokenTotal(usage)
       if (totalTokens <= 0) continue
+      const cacheReadInputTokens =
+        numberValue(usage?.cache_read_input_tokens) + numberValue(usage?.cached_input_tokens)
+      const cacheCreationInputTokens = numberValue(usage?.cache_creation_input_tokens)
       events.push({
         provider: 'codex',
         timestamp,
         model: sessionModel || 'codex',
         totalTokens,
-        inputTokens:
-          numberValue(usage?.input_tokens) +
-          numberValue(usage?.cached_input_tokens) +
-          numberValue(usage?.cache_read_input_tokens) +
-          numberValue(usage?.cache_creation_input_tokens),
+        inputTokens: numberValue(usage?.input_tokens),
+        cacheReadInputTokens,
+        cacheCreationInputTokens,
         outputTokens:
           numberValue(usage?.output_tokens) + numberValue(usage?.reasoning_output_tokens),
         sourceKey: `${filePath}:${lineIndex}`
@@ -340,12 +347,11 @@ async function readClaudeActivity(homeDir: string, sinceMs: number): Promise<Ext
       const usage = json?.usage || json?.message?.usage
       if (!usage || typeof usage !== 'object') continue
       const inputTokens =
-        numberValue(usage.input_tokens) +
-        numberValue(usage.cache_creation_input_tokens) +
-        numberValue(usage.cache_read_input_tokens) +
-        numberValue(usage.input_audio_tokens)
+        numberValue(usage.input_tokens) + numberValue(usage.input_audio_tokens)
+      const cacheReadInputTokens = numberValue(usage.cache_read_input_tokens)
+      const cacheCreationInputTokens = numberValue(usage.cache_creation_input_tokens)
       const outputTokens = numberValue(usage.output_tokens) + numberValue(usage.output_audio_tokens)
-      const totalTokens = inputTokens + outputTokens
+      const totalTokens = inputTokens + cacheReadInputTokens + cacheCreationInputTokens + outputTokens
       if (totalTokens <= 0) continue
       const messageId = String(json?.message?.id || '')
       const requestId = String(json?.requestId || json?.request_id || '')
@@ -357,6 +363,8 @@ async function readClaudeActivity(homeDir: string, sinceMs: number): Promise<Ext
         timestamp,
         model: String(json?.message?.model || json?.model || 'Claude'),
         inputTokens,
+        cacheReadInputTokens,
+        cacheCreationInputTokens,
         outputTokens,
         totalTokens,
         sourceKey: `${filePath}:${lineIndex}`
@@ -497,18 +505,20 @@ async function readKimiActivity(homeDir: string, sinceMs: number): Promise<Exter
       const message = json?.message
       if (message?.type !== 'StatusUpdate') continue
       const usage = message?.payload?.token_usage
-      const inputTokens =
-        numberValue(usage?.input_other) +
-        numberValue(usage?.input_cache_read) +
-        numberValue(usage?.input_cache_creation)
+      const inputTokens = numberValue(usage?.input_other)
+      const cacheReadInputTokens = numberValue(usage?.input_cache_read)
+      const cacheCreationInputTokens = numberValue(usage?.input_cache_creation)
       const outputTokens = numberValue(usage?.output)
-      const totalTokens = inputTokens + outputTokens
+      const totalTokens =
+        inputTokens + cacheReadInputTokens + cacheCreationInputTokens + outputTokens
       if (totalTokens <= 0) continue
       events.push({
         provider: 'kimi',
         timestamp,
         model: 'Kimi',
         inputTokens,
+        cacheReadInputTokens,
+        cacheCreationInputTokens,
         outputTokens,
         totalTokens,
         sourceKey: `${filePath}:${lineIndex}`
