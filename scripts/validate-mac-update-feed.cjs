@@ -2,6 +2,7 @@
 
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 
 const DEFAULT_FEED_NAMES = ['latest-mac.yml', 'beta-mac.yml']
 
@@ -25,11 +26,15 @@ function classifyMacArtifact(name) {
   return 'unknown'
 }
 
+function parseFeedScalar(value) {
+  if (!value || typeof value !== 'string') return undefined
+  return value.trim().replace(/^['"]|['"]$/g, '')
+}
+
 function extractArtifactEntries(feedText) {
   const entries = []
   const seen = new Set()
-  const topLevelPath = feedText.match(/(?:^|\n)path:\s*([^\n]+)/)?.[1]
-  const add = (source, rawValue) => {
+  const add = (source, rawValue, metadata = {}) => {
     const name = cleanArtifactName(rawValue)
     if (!name || !/\.(?:zip|dmg)$/i.test(name)) return
     const key = `${source}:${name}`
@@ -38,16 +43,39 @@ function extractArtifactEntries(feedText) {
     entries.push({
       source,
       name,
-      arch: classifyMacArtifact(name)
+      arch: classifyMacArtifact(name),
+      sha512: parseFeedScalar(metadata.sha512),
+      size: metadata.size !== undefined ? Number(metadata.size) : undefined
     })
   }
-  add('path', topLevelPath)
 
-  const nestedEntryPattern = /(?:^|\n)\s+(?:-\s*)?(?:url|path):\s*([^\n]+)/g
-  let match
-  while ((match = nestedEntryPattern.exec(feedText))) {
-    add('file', match[1])
+  const topLevelPath = feedText.match(/(?:^|\n)path:\s*([^\n]+)/)?.[1]
+  const topLevelSha512 = feedText.match(/(?:^|\n)sha512:\s*([^\n]+)/)?.[1]
+  add('path', topLevelPath, { sha512: topLevelSha512 })
+
+  const lines = feedText.split(/\r?\n/)
+  let currentFile = null
+  const flushCurrentFile = () => {
+    if (!currentFile) return
+    add('file', currentFile.url || currentFile.path, currentFile)
+    currentFile = null
   }
+  for (const line of lines) {
+    const entryMatch = line.match(/^\s*-\s*(url|path):\s*(.+)$/)
+    if (entryMatch) {
+      flushCurrentFile()
+      currentFile = { [entryMatch[1]]: entryMatch[2] }
+      continue
+    }
+    if (!currentFile) continue
+    const nestedMatch = line.match(/^\s+(url|path|sha512|size):\s*(.+)$/)
+    if (nestedMatch) {
+      currentFile[nestedMatch[1]] = nestedMatch[2]
+    } else if (/^\S/.test(line)) {
+      flushCurrentFile()
+    }
+  }
+  flushCurrentFile()
   return entries
 }
 
@@ -69,6 +97,12 @@ function validateMacUpdateFeedText(feedText, options = {}) {
         `${fileName}: ${entry.name} is ${entry.arch}; shared mac feeds must publish universal artifacts.`
       )
     }
+    if (!entry.sha512) {
+      errors.push(`${fileName}: ${entry.name} is missing sha512 metadata.`)
+    }
+    if (entry.source === 'file' && (!Number.isFinite(entry.size) || entry.size <= 0)) {
+      errors.push(`${fileName}: ${entry.name} is missing positive size metadata.`)
+    }
   }
 
   return {
@@ -78,9 +112,44 @@ function validateMacUpdateFeedText(feedText, options = {}) {
   }
 }
 
+function validateFeedArtifactMetadata(feedPath, artifacts) {
+  const errors = []
+  const feedName = path.basename(feedPath)
+  const baseDir = path.dirname(feedPath)
+  for (const artifact of artifacts) {
+    const artifactPath = path.join(baseDir, artifact.name)
+    if (!fs.existsSync(artifactPath)) {
+      errors.push(`${feedName}: missing referenced artifact ${artifact.name}.`)
+      continue
+    }
+    const stat = fs.statSync(artifactPath)
+    if (Number.isFinite(artifact.size) && artifact.size > 0 && stat.size !== artifact.size) {
+      errors.push(
+        `${feedName}: ${artifact.name} size mismatch: feed=${artifact.size}, actual=${stat.size}.`
+      )
+    }
+    if (artifact.sha512) {
+      const actualSha512 = crypto
+        .createHash('sha512')
+        .update(fs.readFileSync(artifactPath))
+        .digest('base64')
+      if (actualSha512 !== artifact.sha512) {
+        errors.push(`${feedName}: ${artifact.name} sha512 mismatch.`)
+      }
+    }
+  }
+  return errors
+}
+
 function validateMacUpdateFeedFile(filePath) {
   const text = fs.readFileSync(filePath, 'utf8')
-  return validateMacUpdateFeedText(text, { fileName: path.basename(filePath) })
+  const result = validateMacUpdateFeedText(text, { fileName: path.basename(filePath) })
+  const metadataErrors = validateFeedArtifactMetadata(filePath, result.artifacts)
+  return {
+    ...result,
+    ok: result.ok && metadataErrors.length === 0,
+    errors: [...result.errors, ...metadataErrors]
+  }
 }
 
 function resolveFeedFiles(targets) {
@@ -138,6 +207,7 @@ module.exports = {
   classifyMacArtifact,
   extractArtifactEntries,
   runCli,
+  validateFeedArtifactMetadata,
   validateMacUpdateFeedFile,
   validateMacUpdateFeedText
 }
