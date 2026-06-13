@@ -169,6 +169,32 @@ export function humaniseModelId(
   return KNOWN_MODEL_LABELS[key] || canonical
 }
 
+/** Brand prefix stripped when a model name is shown under its provider header. */
+const PROVIDER_MODEL_LABEL_PREFIX: Partial<Record<ProviderId, RegExp>> = {
+  gemini: /^Gemini\s+/i,
+  claude: /^Claude\s+/i,
+  kimi: /^Kimi\s+/i,
+  grok: /^Grok\s+/i
+}
+
+/**
+ * Human-readable model label for grouped surfaces (e.g. Settings → Model usage)
+ * where the provider is already shown on the parent row. Drops the redundant
+ * brand prefix (`Claude Opus 4.8` → `Opus 4.8`) while preserving labels that
+ * do not repeat the provider (`GPT-5.5`, `CLI Default`).
+ */
+export function humaniseModelIdCompact(
+  provider: ProviderId | undefined,
+  modelId: string | undefined | null
+): string {
+  const full = humaniseModelId(provider, modelId)
+  if (!full || !provider) return full
+  const pattern = PROVIDER_MODEL_LABEL_PREFIX[provider]
+  if (!pattern) return full
+  const stripped = full.replace(pattern, '').trim()
+  return stripped || full
+}
+
 /**
  * Read-only accessor for tests + tooling that need to enumerate
  * the known mappings (e.g. a future "show every known model"

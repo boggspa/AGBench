@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalModelIdForProvider,
   getKnownModelLabels,
-  humaniseModelId
+  humaniseModelId,
+  humaniseModelIdCompact
 } from './modelDisplayName'
 
 // 1.0.5-EW50 — Shared model-id humaniser. Covers the four
@@ -180,5 +181,21 @@ describe('humaniseModelId', () => {
       // it — must humanise to something readable.
       expect(labels['cli-default']).toBeDefined()
     })
+  })
+})
+
+describe('humaniseModelIdCompact', () => {
+  it('drops the provider brand when the parent row already names it', () => {
+    expect(humaniseModelIdCompact('claude', 'claude-opus-4-8')).toBe('Opus 4.8')
+    expect(humaniseModelIdCompact('gemini', 'gemini-3-flash-preview')).toBe('3 Flash Preview')
+    expect(humaniseModelIdCompact('kimi', 'kimi-k2.6')).toBe('K2.6')
+    expect(humaniseModelIdCompact('grok', 'grok-build')).toBe('Build 0.1')
+  })
+
+  it('leaves labels that do not repeat the provider unchanged', () => {
+    expect(humaniseModelIdCompact('codex', 'gpt-5.5')).toBe('GPT-5.5')
+    expect(humaniseModelIdCompact('gemini', 'cli-default')).toBe('CLI Default')
+    expect(humaniseModelIdCompact('cursor', 'composer-2.5-fast')).toBe('Composer 2.5 Fast')
+    expect(humaniseModelIdCompact('ollama', 'qwen3:4b-instruct')).toBe('Qwen 3 (4B Param)')
   })
 })

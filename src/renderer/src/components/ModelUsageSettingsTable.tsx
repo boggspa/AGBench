@@ -37,7 +37,7 @@
  * populated render can be SSR-tested by feeding aggregator output directly.
  */
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import type { UsageRecord } from '../../../main/store/types'
+import type { UsageRecord, ChatRecord } from '../../../main/store/types'
 import {
   MODEL_USAGE_WINDOW_LABEL,
   MODEL_USAGE_WINDOW_ORDER,
@@ -48,12 +48,13 @@ import {
 } from '../lib/modelUsageTable'
 import { fetchProviderRates, type RendererProviderRates } from '../lib/providerRateEstimate'
 import type { DisplayCurrency } from '../lib/formatCost'
-import { humaniseModelId } from '../lib/modelDisplayName'
+import { humaniseModelIdCompact } from '../lib/modelDisplayName'
 import { formatTokenCount } from '../lib/UsageHeatmap'
 import {
   buildOllamaMemoryModelTable,
   formatOllamaMemoryAvgCell,
   formatOllamaSampleAvgCell,
+  mergeOllamaMemoryUsageRecords,
   type OllamaMemoryProviderGroup,
   type OllamaMemoryWindowTotals
 } from '../lib/ollamaMemoryAggregation'
@@ -191,7 +192,7 @@ export function ModelUsageProviderTableBlock({ group }: { group: ModelUsageProvi
       {group.models.map((model) => (
         <tr key={`${group.provider}-${model.model}`} className="model-usage-table-model-row">
           <td className="model-usage-table-model-cell" title={model.model}>
-            {humaniseModelId(group.provider, model.model)}
+            {humaniseModelIdCompact(group.provider, model.model)}
           </td>
           {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
             <WindowCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
@@ -254,7 +255,7 @@ export function ModelUsageOllamaTableBlock({ group }: { group: OllamaMemoryProvi
       {group.models.map((model) => (
         <tr key={`ollama-${model.model}`} className="model-usage-table-model-row">
           <td className="model-usage-table-model-cell" title={model.model}>
-            {humaniseModelId('ollama', model.model)}
+            {humaniseModelIdCompact('ollama', model.model)}
           </td>
           {MODEL_USAGE_WINDOW_ORDER.map((windowKey) => (
             <MemoryCells key={windowKey} windowKey={windowKey} totals={model.windows[windowKey]} />
@@ -279,6 +280,7 @@ export function ModelUsageSettingsTable({
   onExternalUsageChange
 }: ModelUsageSettingsTableProps) {
   const [internalRecords, setInternalRecords] = useState<UsageRecord[]>([])
+  const [chats, setChats] = useState<ChatRecord[]>([])
   const [externalRecords, setExternalRecords] = useState<UsageRecord[]>([])
   const [rates, setRates] = useState<RendererProviderRates>({})
   // Whether the toggle's initial value is controlled by the caller. When the
@@ -335,6 +337,23 @@ export function ModelUsageSettingsTable({
       cancelled = true
     }
   }, [])
+
+  // Fetch TaskWraith chats so Ollama RAM can backfill from historical run stats.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.api?.getChats !== 'function') return
+    let cancelled = false
+    window.api
+      .getChats()
+      .then((latest) => {
+        if (!cancelled) setChats(Array.isArray(latest) ? latest : [])
+      })
+      .catch(() => {
+        // Best-effort — usage rows without chat backfill still render.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTick])
 
   // Fetch TaskWraith's own usage records (+ refetch on usage-changed).
   useEffect(() => {
@@ -400,9 +419,14 @@ export function ModelUsageSettingsTable({
     ]
   )
 
+  const ollamaMemoryRecords = useMemo(
+    () => mergeOllamaMemoryUsageRecords(internalRecords, chats),
+    [internalRecords, chats]
+  )
+
   const ollamaGroup = useMemo(
-    () => (includeExternal ? null : buildOllamaMemoryModelTable(internalRecords)),
-    [internalRecords, includeExternal]
+    () => (includeExternal ? null : buildOllamaMemoryModelTable(ollamaMemoryRecords)),
+    [ollamaMemoryRecords, includeExternal]
   )
 
   const hasTableContent = groups.length > 0 || Boolean(ollamaGroup)
