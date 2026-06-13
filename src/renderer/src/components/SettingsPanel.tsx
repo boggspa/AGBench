@@ -1282,8 +1282,15 @@ function SettingsProviderAuthCard({
   // The status dot has CSS for signed-in / partial / not-available only.
   // "out-of-usage" (signed in but rate-limited) reads as a warning, so
   // borrow the amber `partial` dot styling rather than fall back to the
-  // neutral base dot.
-  const dotVariant = summary.variant === 'out-of-usage' ? 'partial' : summary.variant
+  // neutral base dot. Cursor/Grok are CLI-owned auth surfaces: when the
+  // adapter is available, the card should read as ready/connected even
+  // though TaskWraith cannot inspect the provider's private login state.
+  const dotVariant =
+    summary.variant === 'out-of-usage'
+      ? 'partial'
+      : (provider === 'cursor' || provider === 'grok') && summary.variant === 'partial'
+        ? 'signed-in'
+        : summary.variant
   return (
     <article
       className={`settings-provider-auth-card settings-provider-auth-card-${summary.variant} provider-${provider}`}
@@ -3804,8 +3811,8 @@ export function SettingsPanel({
                     </div>
                     <p className="settings-provider-auth-footnote">
                       Write-mode runs are contained by a workspace-local deny-list and surfaced
-                      through Review changes. Enabled by default; set
-                      <code> TASKWRAITH_DISABLE_CURSOR=1</code> to hide.
+                      through Review changes. TaskWraith stores no Cursor credential; auth stays
+                      inside the Cursor CLI.
                       {renderProviderUpgradeHint('cursor')}
                     </p>
                   </SettingsProviderAuthCard>
@@ -3842,7 +3849,7 @@ export function SettingsPanel({
                       {renderProviderUpgradeButton('grok')}
                     </div>
                     <p className="settings-provider-auth-footnote">
-                      Enabled by default; set <code>TASKWRAITH_DISABLE_GROK=1</code> to hide.
+                      TaskWraith stores no Grok credential; auth stays inside the Grok CLI.
                       {renderProviderUpgradeHint('grok')}
                     </p>
                   </SettingsProviderAuthCard>

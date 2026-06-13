@@ -2270,6 +2270,14 @@
   color: var(--provider-kimi-color);
 }
 
+.settings-provider-auth-card.provider-cursor {
+  color: var(--provider-cursor-color);
+}
+
+.settings-provider-auth-card.provider-grok {
+  color: var(--provider-grok-color);
+}
+
 .settings-provider-auth-card-header,
 .settings-provider-auth-status,
 .settings-provider-auth-action-row {

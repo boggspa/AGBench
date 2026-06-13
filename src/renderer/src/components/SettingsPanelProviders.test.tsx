@@ -1,0 +1,108 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import type { ComponentProps } from 'react'
+import { describe, expect, it } from 'vitest'
+import { SettingsPanel } from './SettingsPanel'
+import { DEFAULT_AGENTIC_SERVICES } from '../lib/agenticServicesDefaults'
+
+type SettingsPanelProps = ComponentProps<typeof SettingsPanel>
+
+function makeSettingsProps(overrides: Partial<SettingsPanelProps> = {}): SettingsPanelProps {
+  return {
+    mode: 'solid',
+    visualEffectStyle: 'auto',
+    themeAppearance: 'dark',
+    themeCornerStyle: 'rounded',
+    themeAccentStyle: 'blue',
+    toolIconAccent: 'system',
+    userBubbleColor: 'system',
+    promptSurfaceStyle: 'theme',
+    composerStyle: 'default',
+    transcriptFontFamily: 'system',
+    composerFontFamily: 'system',
+    keyCommandBindings: {},
+    reduceTransparency: false,
+    reduceMotion: false,
+    compactDensity: false,
+    liveActivityViewport: true,
+    sidebarOpacity: 100,
+    mainPaneOpacity: 100,
+    geminiCheckpointingEnabled: false,
+    geminiApiRuntime: 'auto',
+    chatContextTurns: 6,
+    currency: 'USD',
+    currencyOverestimatePercent: 0,
+    dashboardStatPrefs: {},
+    welcomeHeatmapPrefs: {},
+    kimiSanitiserEnabled: false,
+    kimiSanitiserCustomKeywords: '',
+    claudeBinaryPath: '',
+    kimiBinaryPath: '',
+    ollamaBaseUrl: 'http://127.0.0.1:11434',
+    ollamaDefaultModel: 'gpt-oss:20b',
+    agenticServices: DEFAULT_AGENTIC_SERVICES,
+    nativeSubAgentRequests: 'ask',
+    autoResumeParentOnSubThreadCompletion: true,
+    agenticWorkspaceGrantCount: 0,
+    agenticWorkspaceGrants: [],
+    activeProvider: 'codex',
+    providerCapabilities: null,
+    providerCapabilitiesByProvider: {},
+    mcpStatusByProvider: {},
+    geminiMcpBridgeEnabled: false,
+    geminiMcpBridgeStatus: null,
+    codexSandboxFallback: 'ask_rerun',
+    funFxEnabled: false,
+    funFxMode: 'off',
+    advancedFx: {
+      agentAura: false,
+      livingWorkspace: false,
+      dataViz: false,
+      intensity: 'subtle'
+    },
+    updateChannel: 'stable',
+    approvalTimeouts: {
+      enabled: true,
+      perProviderMs: {
+        gemini: 120_000,
+        codex: 30_000,
+        claude: 120_000,
+        kimi: 60_000
+      },
+      mainAuthorityMs: 60_000
+    },
+    productOperationsStatus: null,
+    geminiAuthStatus: null,
+    codexStatus: null,
+    claudeAuthStatus: null,
+    kimiAuthStatus: null,
+    ollamaStatus: null,
+    cursorProviderAvailable: true,
+    grokProviderAvailable: true,
+    providerCliUpgradeState: {},
+    onInstallGeminiMcpBridge: () => {},
+    onRefreshGeminiMcpBridgeStatus: () => {},
+    onRefreshProductOperationsStatus: () => {},
+    onExportProductDiagnostics: () => {},
+    onRepairProductInstall: () => {},
+    onChange: () => {},
+    onClose: () => {},
+    activeTab: 'providers',
+    layout: 'takeover',
+    ...overrides
+  }
+}
+
+describe('SettingsPanel provider cards', () => {
+  it('renders available Cursor and Grok cards without raw env flags and with ready LEDs', () => {
+    const html = renderToStaticMarkup(<SettingsPanel {...makeSettingsProps()} />)
+
+    expect(html).toContain('settings-provider-auth-card-partial provider-cursor')
+    expect(html).toContain('settings-provider-auth-card-partial provider-grok')
+    expect(html).toContain('Available · CLI sign-in')
+    expect(html).toContain(
+      'settings-provider-auth-status-dot settings-provider-auth-status-dot-signed-in'
+    )
+    expect(html).not.toContain('TASKWRAITH_DISABLE_CURSOR')
+    expect(html).not.toContain('TASKWRAITH_DISABLE_GROK')
+  })
+})
