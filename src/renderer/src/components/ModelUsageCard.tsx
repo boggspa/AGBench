@@ -28,7 +28,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react'
-import type { ProviderId, UsageRecord } from '../../../main/store/types'
+import type { ProviderId, UsageRecord, ChatRecord } from '../../../main/store/types'
 import type { ModelUsageAggregate, UsageWindowAggregate } from '../App'
 import {
   API_SPEND_WINDOW_ORDER,
@@ -41,6 +41,7 @@ import {
   buildOllamaMemorySpend,
   formatOllamaMemoryAvgCell,
   formatOllamaSampleAvgCell,
+  mergeOllamaMemoryUsageRecords,
   type OllamaMemorySpendTotals,
   type OllamaMemoryWindowTotals
 } from '../lib/ollamaMemoryAggregation'
@@ -415,19 +416,25 @@ export function OllamaMemorySpendBlock({ entry }: { entry: OllamaMemorySpendTota
  */
 function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefined }) {
   const [records, setRecords] = useState<UsageRecord[]>([])
+  const [chats, setChats] = useState<ChatRecord[]>([])
   const refreshKey = options?.refreshKey ?? 0
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.api?.getUsage !== 'function') return
+    if (typeof window === 'undefined') return
     let cancelled = false
-    window.api
-      .getUsage()
-      .then((latest) => {
-        if (!cancelled) setRecords(Array.isArray(latest) ? latest : [])
-      })
-      .catch(() => {
-        // Best-effort — leave whatever we have rather than crashing the card.
-      })
+    const usagePromise =
+      typeof window.api?.getUsage === 'function'
+        ? window.api.getUsage().catch(() => [] as UsageRecord[])
+        : Promise.resolve([] as UsageRecord[])
+    const chatsPromise =
+      typeof window.api?.getChats === 'function'
+        ? window.api.getChats().catch(() => [] as ChatRecord[])
+        : Promise.resolve([] as ChatRecord[])
+    void Promise.all([usagePromise, chatsPromise]).then(([latestUsage, latestChats]) => {
+      if (cancelled) return
+      setRecords(Array.isArray(latestUsage) ? latestUsage : [])
+      setChats(Array.isArray(latestChats) ? latestChats : [])
+    })
     return () => {
       cancelled = true
     }
@@ -453,8 +460,8 @@ function ApiSpendView({ options }: { options: ModelUsageApiSpendOptions | undefi
   ])
 
   const ollamaMemory = useMemo(
-    () => buildOllamaMemorySpend(records),
-    [records]
+    () => buildOllamaMemorySpend(mergeOllamaMemoryUsageRecords(records, chats)),
+    [records, chats]
   )
 
   if (spend.length === 0 && !ollamaMemory) {

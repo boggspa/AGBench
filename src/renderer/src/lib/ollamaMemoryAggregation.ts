@@ -7,11 +7,12 @@
  * periodic sample counts (not cumulative token totals).
  */
 
-import type { UsageRecord } from '../../../main/store/types'
+import type { ChatRecord, UsageRecord } from '../../../main/store/types'
 import {
   extractOllamaPeakRssGb,
   extractOllamaSampleCount,
-  formatOllamaSummaryMemoryGb
+  formatOllamaSummaryMemoryGb,
+  ollamaMemoryUsageFields
 } from './ollamaMemoryDisplay'
 import {
   API_SPEND_WINDOW_MS,
@@ -120,6 +121,94 @@ const modelKeyFor = (record: UsageRecord): string => {
 
 const isOllamaMemoryRecord = (record: UsageRecord): boolean =>
   record.provider === 'ollama' && extractOllamaPeakRssGb(record) > 0
+
+const chatRunTimestampMs = (endedAt?: string, startedAt?: string): number | null => {
+  const ended = endedAt ? Date.parse(endedAt) : Number.NaN
+  if (Number.isFinite(ended)) return ended
+  const started = startedAt ? Date.parse(startedAt) : Number.NaN
+  return Number.isFinite(started) ? started : null
+}
+
+/**
+ * Reconstruct memory-bearing usage rows from persisted chat transcripts.
+ * Completed Ollama runs store peak RSS + sample counts on `ChatRun.stats`
+ * long before `usage.json` learned those fields — this lets the RAM views
+ * populate from existing threads without waiting for new runs.
+ */
+export function deriveOllamaMemoryUsageFromChats(chats: ChatRecord[]): UsageRecord[] {
+  const derived: UsageRecord[] = []
+  if (!Array.isArray(chats)) return derived
+
+  for (const chat of chats) {
+    const runs = chat?.runs
+    if (!Array.isArray(runs) || runs.length === 0) continue
+    const workspaceId = chat.workspaceId || 'global'
+    const chatId = chat.appChatId
+
+    for (const run of runs) {
+      if (run?.provider !== 'ollama') continue
+      const memory = ollamaMemoryUsageFields(run.stats)
+      if (!memory.ollamaMemoryPeakRssGb) continue
+      const timestamp = chatRunTimestampMs(run.endedAt, run.startedAt)
+      if (timestamp == null) continue
+
+      derived.push({
+        id: `chat-run-${run.runId}`,
+        provider: 'ollama',
+        timestamp,
+        workspaceId,
+        chatId,
+        runId: run.runId,
+        usageKind: 'run',
+        model: (run.actualModel || run.requestedModel || 'ollama').trim() || 'ollama',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: 0,
+        ...memory
+      })
+    }
+  }
+  return derived
+}
+
+/**
+ * Merge `usage.json` rows with chat-derived Ollama memory rows. Patches
+ * historical usage records that lack memory fields and appends chat-only
+ * runs that never reached usage.json.
+ */
+export function mergeOllamaMemoryUsageRecords(
+  usageRecords: UsageRecord[],
+  chats: ChatRecord[]
+): UsageRecord[] {
+  const merged = [...usageRecords]
+  const indexByRunId = new Map<string, number>()
+  for (let index = 0; index < merged.length; index += 1) {
+    const record = merged[index]
+    if (record?.provider === 'ollama' && record.runId) {
+      indexByRunId.set(record.runId, index)
+    }
+  }
+
+  for (const derived of deriveOllamaMemoryUsageFromChats(chats)) {
+    const existingIndex = derived.runId ? indexByRunId.get(derived.runId) : undefined
+    if (existingIndex !== undefined) {
+      const existing = merged[existingIndex]
+      if (!extractOllamaPeakRssGb(existing)) {
+        merged[existingIndex] = {
+          ...existing,
+          ollamaMemoryPeakRssGb: derived.ollamaMemoryPeakRssGb,
+          ollamaMemorySampleCount: derived.ollamaMemorySampleCount
+        }
+      }
+      continue
+    }
+    merged.push(derived)
+    if (derived.runId) indexByRunId.set(derived.runId, merged.length - 1)
+  }
+
+  return merged
+}
 
 /** Compact RAM label for table/card cells (e.g. `12 GB avg`). */
 export function formatOllamaMemoryAvgCell(avgPeakRssGb: number): string {
