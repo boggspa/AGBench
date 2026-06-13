@@ -34,6 +34,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run ci
+      # The native macOS bridge daemon gates Screen Watch / creative-app /
+      # editor actions, so its Swift unit tests must pass before changes land.
+      # The bridge is macOS-only and needs the Xcode Swift toolchain
+      # (preinstalled on GitHub macOS runners), so this step is gated to the
+      # macOS legs of the matrix and skipped on Linux/Windows. `swift test`
+      # exits non-zero on failure, which fails this job.
+      - name: Swift bridge tests (macOS only)
+        if: runner.os == 'macOS'
+        run: |
+          swift --version
+          npm run test:swift:bridge
 
   notarized-macos-release:
     name: Notarized macOS Release

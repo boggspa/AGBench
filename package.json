@@ -52,8 +52,8 @@
     "build:win": "npm run build:win:compile && electron-builder --win --x64 --arm64 && npm run build:win:checks",
     "build:win:nopublish": "npm run build:win:compile && electron-builder --win --x64 --arm64 --publish never && npm run build:win:checks",
     "build:win:signed": "node scripts/require-windows-signing-env.cjs && npm run build:win",
-    "build:mac": "npm run clean:dist && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal && npm run validate:mac-update-feed",
-    "build:mac:notarized": "npm run clean:dist && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist && npm run validate:mac-update-feed",
+    "build:mac": "npm run clean:dist && npm run test:swift:bridge && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal && npm run validate:mac-update-feed",
+    "build:mac:notarized": "npm run clean:dist && npm run test:swift:bridge && TASKWRAITH_BRIDGE_ARCH=universal npm run prebuild:bridge-daemon && node scripts/smoke-bridge-daemon-roundtrip.cjs && npm run prepare:mac-universal-deps && npm run build && electron-builder --mac --universal -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist && npm run validate:mac-update-feed",
     "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
