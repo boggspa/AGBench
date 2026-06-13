@@ -84,8 +84,6 @@ const CODEX_MODELS: CombinedModelPickerModelOption[] = [
 
 const CLAUDE_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'default', label: 'Default' },
-  { id: 'claude-fable-5', label: 'Claude Fable 5' },
-  { id: 'claude-fable-5-1m', label: 'Claude Fable 5 1M' },
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
   { id: 'claude-opus-4-8-1m', label: 'Claude Opus 4.8 1M' },
   { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
@@ -129,7 +127,7 @@ const OLLAMA_MODELS: CombinedModelPickerModelOption[] = [
 ]
 
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])
-// Fast mode is Opus-only (Opus 4.8/4.7/4.6) — Fable + 1M variants excluded.
+// Fast mode is Opus-only (Opus 4.8/4.7/4.6); 1M variants are excluded.
 const CLAUDE_FAST_CAPABLE = new Set<string>([
   'claude-opus-4-8',
   'claude-opus-4-7',

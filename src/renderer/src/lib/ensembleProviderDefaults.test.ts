@@ -188,6 +188,13 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
     expect(getEnsembleModelDefaults('kimi').defaultModelId).toBe('kimi-k2.7-code')
   })
 
+  it('hides temporarily unavailable Claude Fable variants from ensemble model options', () => {
+    const claude = getEnsembleModelDefaults('claude')
+    expect(claude.modelOptions.map((option) => option.id)).not.toEqual(
+      expect.arrayContaining(['claude-fable-5', 'claude-fable-5-1m'])
+    )
+  })
+
   it('exposes grok preferred model id as grok-build with the effort reasoning axis', () => {
     const grok = getEnsembleModelDefaults('grok')
     expect(grok.defaultModelId).toBe('grok-build')

@@ -88,6 +88,11 @@ const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'high' }
 ]
 export const CLAUDE_THINKING_BUDGET: Record<string, number> = { low: 2048, medium: 8000, high: 16000 }
+const CLAUDE_TEMPORARILY_UNAVAILABLE_MODEL_IDS = new Set([
+  'fable',
+  'claude-fable-5',
+  'claude-fable-5-1m'
+])
 // NOTE: keep in sync with the renderer's CLAUDE_DEFAULT_MODELS (App.tsx).
 // This list is served to the renderer via `getAgentModels('claude')` and
 // becomes `agentModelsByProvider.claude`, which OVERRIDES the renderer's own
@@ -100,19 +105,6 @@ const CLAUDE_STATIC_MODELS = [
     label: 'Default',
     description: 'Claude Code configured default',
     isDefault: true,
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-  },
-  {
-    id: 'claude-fable-5',
-    label: 'Claude Fable 5',
-    description: 'Most intelligent — new tier above Opus',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-    // No Fast tier — Fast mode is Opus-only (Opus 4.8/4.7/4.6).
-  },
-  {
-    id: 'claude-fable-5-1m',
-    label: 'Claude Fable 5 1M',
-    description: '1M context window — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   {
@@ -275,7 +267,8 @@ export function normalizeCliProviderModel(provider: ProviderId, model?: string |
   if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best')
     return 'default'
   if (provider === 'claude') {
-    if (['default', 'sonnet', 'opus', 'haiku', 'fable'].includes(trimmed)) return trimmed
+    if (CLAUDE_TEMPORARILY_UNAVAILABLE_MODEL_IDS.has(lowered)) return 'default'
+    if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
     if (trimmed.startsWith('claude-')) {
       // The `-1m` suffix is an TaskWraith-internal marker for the 1M-context
       // variant — it drives the context-window meter (contextWindows.ts) and

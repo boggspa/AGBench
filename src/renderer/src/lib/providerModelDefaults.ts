@@ -71,6 +71,11 @@ const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'medium' },
   { reasoningEffort: 'high' }
 ]
+const CLAUDE_TEMPORARILY_HIDDEN_MODEL_IDS = new Set([
+  'fable',
+  'claude-fable-5',
+  'claude-fable-5-1m'
+])
 const CLAUDE_DEFAULT_MODELS = [
   {
     id: 'default',
@@ -78,20 +83,6 @@ const CLAUDE_DEFAULT_MODELS = [
     description: 'Claude Code configured default',
     isDefault: true,
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-  },
-  {
-    id: 'claude-fable-5',
-    label: 'Claude Fable 5',
-    description: 'Most intelligent — new tier above Opus',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-    // No Fast tier — Fast mode is Opus-only (Opus 4.8/4.7/4.6).
-  },
-  {
-    id: 'claude-fable-5-1m',
-    label: 'Claude Fable 5 1M',
-    description: '1M context window — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-    // 1M variants are intentionally excluded from the paid Fast tier.
   },
   {
     id: 'claude-opus-4-8',
@@ -202,10 +193,7 @@ const CLAUDE_MODEL_IDS = new Set([
   'sonnet',
   'opus',
   'haiku',
-  'fable',
   'custom',
-  'claude-fable-5',
-  'claude-fable-5-1m',
   'claude-opus-4-8',
   'claude-opus-4-8-1m',
   'claude-opus-4-7',
@@ -220,7 +208,8 @@ const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(model
 const isCodexModelId = (modelId: string): boolean =>
   modelId.startsWith('gpt-') || modelId.includes('codex')
 const isClaudeModelId = (modelId: string): boolean =>
-  CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
+  !CLAUDE_TEMPORARILY_HIDDEN_MODEL_IDS.has(normalizeProviderModelKey(modelId)) &&
+  (CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude'))
 const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
 const isOllamaModelId = (modelId: string): boolean =>
   OLLAMA_MODEL_IDS.has(modelId) || modelId.includes(':')
